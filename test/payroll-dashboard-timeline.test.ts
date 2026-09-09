@@ -250,6 +250,12 @@ describe('7f6ca478 — the three statuses in the request that do not exist stay 
     expect([...schema.payrollStatusEnum.enumValues].sort()).toEqual(['closed', 'draft', 'processed']);
   });
 
+  // 0b326d5f (r256) — UPDATED, NOT WEAKENED. The listing now renders a fourth PILL, "Reprocess
+  // Required", for a processed run carrying `needs_recalc_at`. That is not an invented status and this
+  // case still holds it out: the derived state is `processed` + a real column (app/payroll/dashboard-
+  // logic.ts `payrollListState`), it styles from a SEPARATE constant (REPROCESS_PILL), and STATUS_STYLE
+  // below stays keyed by exactly the enum — which is precisely what keeps "no fourth payroll status"
+  // enforced while the screen says what the reporter asked it to say.
   it('the dashboard styles exactly the real statuses — no invented state can render a badge', () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'page.tsx'), 'utf8'));
     const block = /const STATUS_STYLE: Record<string, string> = \{([\s\S]*?)\n\};/.exec(src);

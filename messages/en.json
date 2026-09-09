@@ -3293,7 +3293,8 @@
         "processed": "Processed",
         "closed": "Closed",
         "unattached": "Unattached",
-        "reprocess": "Pending reprocessing"
+        "reprocess": "Pending reprocessing",
+        "reprocessRequired": "Reprocess Required"
       },
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
@@ -3310,6 +3311,8 @@
       "deleteDraftFailed": "The draft payroll process could not be deleted. Please try again, or contact your administrator if the problem persists.",
       "toastDeleted": "Draft payroll process deleted",
       "notPublishedBadge": "Not published",
+      "reprocessAffected": "{n, plural, one {# employee affected} other {# employees affected}}",
+      "reprocessBadgeNote": "Payroll-affecting data changed after this run was processed, so its payslips, statutory figures and totals are the earlier numbers. Reprocess the affected employees to bring it up to date — the run cannot be closed until that is done.",
       "notPublishedBanner": "{n} payroll run(s) are calculated but not published — the employees in them cannot see their payslips yet. Open a run and close it to publish.",
       "filterYear": "Year",
       "previousYear": "Previous year",

@@ -3293,7 +3293,8 @@
         "processed": "已处理",
         "closed": "已关闭",
         "unattached": "未挂接",
-        "reprocess": "待重新计算"
+        "reprocess": "待重新计算",
+        "reprocessRequired": "需重新处理"
       },
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
@@ -3310,6 +3311,8 @@
       "deleteDraftFailed": "无法删除草稿薪资流程。请重试，如果问题持续存在，请联系管理员。",
       "toastDeleted": "薪资流程草稿已删除",
       "notPublishedBadge": "未发布",
+      "reprocessAffected": "{n, plural, other {影响 # 名员工}}",
+      "reprocessBadgeNote": "该批次处理完成后，影响薪资的数据发生了变更，因此工资单、法定金额和合计仍是此前的数字。请对受影响的员工重新处理以更新数据 — 在此之前该批次无法关闭。",
       "notPublishedBanner": "有 {n} 个薪资批次已计算但尚未发布 — 其中的员工还看不到自己的工资单。打开批次并关闭它即可发布。",
       "filterYear": "年份",
       "previousYear": "上一年",

@@ -3293,7 +3293,8 @@
         "processed": "Diproses",
         "closed": "Ditutup",
         "unattached": "Belum dilampirkan",
-        "reprocess": "Menunggu pengiraan semula"
+        "reprocess": "Menunggu pengiraan semula",
+        "reprocessRequired": "Perlu Proses Semula"
       },
       "importHistory": "Import sejarah gaji",
       "periodContext": "Tempoh gaji",
@@ -3310,6 +3311,8 @@
       "deleteDraftFailed": "Proses gaji draf tidak dapat dipadam. Sila cuba lagi, atau hubungi pentadbir anda jika masalah berterusan.",
       "toastDeleted": "Draf proses gaji telah dipadam",
       "notPublishedBadge": "Belum diterbitkan",
+      "reprocessAffected": "{n, plural, other {# pekerja terjejas}}",
+      "reprocessBadgeNote": "Data yang menjejaskan gaji telah berubah selepas proses ini dijalankan, jadi slip gaji, angka berkanun dan jumlahnya masih angka lama. Proses semula pekerja yang terjejas untuk mengemas kininya — proses ini tidak boleh ditutup sehingga itu selesai.",
       "notPublishedBanner": "{n} proses gaji telah dikira tetapi belum diterbitkan — pekerja di dalamnya masih tidak dapat melihat slip gaji mereka. Buka satu proses dan tutupnya untuk menerbitkan.",
       "filterYear": "Tahun",
       "previousYear": "Tahun sebelumnya",

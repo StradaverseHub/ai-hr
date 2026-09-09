@@ -20,13 +20,16 @@ import { DashboardFilterBar } from './dashboard-filters';
 import { PayrollRowActions } from './row-actions';
 import {
   MONTHS,
+  REPROCESS_REQUIRED,
   applyFilters,
   asArray,
   dashboardHref,
   monthCells,
+  needsReprocess,
   parseMonths,
   parseYear,
   periodsForYear,
+  reprocessEmploymentIds,
   selectedPeriods,
   summarise,
   yearOptions,
@@ -69,6 +72,19 @@ const STATUS_STYLE: Record<string, string> = {
   processed: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   closed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
 };
+
+/**
+ * 0b326d5f — the pill for the DERIVED "Reprocess Required" state, and it is a separate constant ON
+ * PURPOSE. `STATUS_STYLE` above is keyed by `payrollStatusEnum` value and is pinned to be exactly that
+ * by test/payroll-dashboard-timeline.test.ts, which is the guard that stops an invented status ever
+ * getting a badge. This state is not an invented status — it is `processed` + `needs_recalc_at`, real
+ * data the run itself carries — so it renders from here and that guard stays exactly as strict as it is.
+ *
+ * Ringed amber rather than the flat amber of the "Not published" chip beside it: a run can legitimately
+ * carry both, and two identical chips in one cell is how the reader stops reading either.
+ */
+const REPROCESS_PILL =
+  'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/40';
 
 /** Header cells never wrap: "Payroll Period", not "Payroll" over "Period" (the request's §5). */
 const TH = 'whitespace-nowrap px-3 py-2 font-medium';
@@ -236,7 +252,17 @@ export default async function PayrollPage({
         // namespace that actually holds those four keys (r134 shipped a screen reading them from a
         // namespace that never had them, and every run page said MISSING_MESSAGE).
         cycleOptions={payrollRunTypeEnum.enumValues.map((v) => ({ value: v, label: t(`runType.${v}`) }))}
-        statusOptions={payrollStatusEnum.enumValues.map((v) => ({ value: v, label: t(`status.${v}`) }))}
+        // 0b326d5f — THE NEW STATE IS FILTERABLE, and this is the answer to "say which". A chip the
+        // filter cannot reach is worse than no chip: the whole point of the badge is "show me the runs
+        // that need attention", and this single-select is the only control on the screen that can do
+        // it. The synthetic value rides the SAME `?status=` parameter as the three enum values —
+        // `applyFilters` resolves it through `payrollListState`, so nothing about the URL shape, the
+        // Back round trip (d75b0c11) or `dashboardHref` changes. Choosing "Processed" still returns the
+        // stale runs too; only this option narrows to them.
+        statusOptions={[
+          ...payrollStatusEnum.enumValues.map((v) => ({ value: v, label: t(`status.${v}`) })),
+          { value: REPROCESS_REQUIRED, label: t('status.reprocessRequired') },
+        ]}
         labels={{
           year: t('filterYear'),
           previousYear: t('previousYear'),
@@ -301,6 +327,10 @@ export default async function PayrollPage({
             <tbody className="divide-y divide-border">
               {batchPage.map((b) => {
                 const totals = b.totals as { net?: number } | null;
+                // 0b326d5f — the run's own mark, read through the shared derivation so the badge, the
+                // count and the status filter cannot disagree about which runs are stale.
+                const stale = needsReprocess(b);
+                const staleIds = reprocessEmploymentIds(b);
                 return (
                   <tr key={b.id} className="hover:bg-muted/40">
                     <td className="whitespace-nowrap px-3 py-2.5">
@@ -338,11 +368,25 @@ export default async function PayrollPage({
                       {totals?.net != null ? formatMoney(totals.net, b.currency) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}
-                      >
-                        {t(`status.${b.status}`)}
-                      </span>
+                      {/* 0b326d5f — a processed run whose inputs have moved reads "Reprocess Required"
+                          INSTEAD OF "Processed", which is the reporter's actual ask. Underneath it is
+                          still `status = 'processed'`; only what this cell says changes. A CLOSED run
+                          never reaches this branch — `needsReprocess` keys on 'processed' — so the
+                          "Closed remains protected" rule holds however the flag was left. */}
+                      {stale ? (
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REPROCESS_PILL}`}
+                          title={t('reprocessBadgeNote')}
+                        >
+                          {t('status.reprocessRequired')}
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}
+                        >
+                          {t(`status.${b.status}`)}
+                        </span>
+                      )}
                       {/* ef31d251 — a second badge, from the SHARED derivation rather than a repeated
                           inline `b.status === 'processed'` test, so this and the run detail header can
                           never drift apart about what has actually reached employees. */}
@@ -350,6 +394,38 @@ export default async function PayrollPage({
                         <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
                           {t('notPublishedBadge')}
                         </span>
+                      )}
+                      {/* WHO IS AFFECTED, AND THE WAY IN. The reporter's last line asks not to have to
+                          investigate what changed by hand: the run already knows, in
+                          `recalc_employment_ids`, and that is the exact set /payroll/<id>/reprocess
+                          arrives pre-ticked with (it reads the same column — no parameter to carry, so
+                          nothing here can hand it a stale selection).
+
+                          Gated on `multiCycleOn` — the SAME condition as the Reprocess row action in the
+                          ⋯ menu below, written from the same flag, so this screen never offers a door
+                          the destination will refuse. Without the module the count still shows, because
+                          "your figures are stale" is true whether or not you can act on it here. */}
+                      {stale && staleIds.length > 0 && (
+                        <div className="mt-1">
+                          {multiCycleOn ? (
+                            <Link
+                              href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
+                              // The count is the STATEMENT; the destination is the title, borrowed from
+                              // the run-detail banner's own action label (payroll.batch) rather than
+                              // written twice, so the two ways into the same screen read the same. A link
+                              // labelled only "2 employees affected" says nothing about where it goes to
+                              // anyone reading the page through a list of its links.
+                              title={tb('recalcBannerAction')}
+                              className="text-xs font-medium text-primary hover:underline"
+                            >
+                              {t('reprocessAffected', { n: staleIds.length })}
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {t('reprocessAffected', { n: staleIds.length })}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
