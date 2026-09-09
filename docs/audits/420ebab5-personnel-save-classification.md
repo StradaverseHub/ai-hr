@@ -342,3 +342,77 @@ qualification — so a tab-wide "Save Changes" there would be a button with noth
 tab-wide "Discard Changes" would be a button that covers nothing. This is not a limit of the current
 build that a later round could lift; it is what those two tabs are. Everything else the request asked
 for is built.
+
+---
+
+## r257 — the close-out round: measured against the plan, promise by promise
+
+**Nothing was rebuilt.** This round read the approved plan line by line against what is on `main` and
+closed only what was genuinely open. Four of the five promises were already shipped across r253–r256;
+what was missing was not behaviour but *proof* — three of the plan's own claims had no test that could
+fail, and one of the tests that existed could not tell the two things it was named for apart.
+
+### What was measured as already built
+
+| the plan's promise | where it lives | already guarded by |
+|---|---|---|
+| the whole row opens the employee | `app/admin/personnel/employee-row.tsx` + `row-link.tsx` (a per-**cell** overlay; the positioning context is the `<td>`, never the `<tr>`) | `personnel-row-click.dom.test.tsx`, `personnel-row-click.browser.test.tsx` |
+| all 35 forms classified into (a) and (b) | this document | `personnel-tab-save-tabs.test.ts` §6 — the markers on the rendered source are exactly the section map and no others |
+| one Save per tab | five tabs through one `runTabSave` | `personnel-tab-save.test.ts`, `personnel-tab-save-tabs.test.ts` |
+| changed fields marked, old value against new | `lib/tab-save-dom.ts` `diffTab` | `personnel-tab-save.dom.test.tsx` §2 |
+| leaving a TAB asks first | `lib/unsaved-changes.ts` registry | §6 |
+| leaving the SCREEN by an in-app link asks first | the capture-phase click guard | §10 |
+| Back / Forward asks first | the history sentinel | §11 |
+| a bucket (b) write asks first | the document-level submit guard | §12, §13 |
+
+### The four gaps this round closed
+
+1. **"Discard puts the information back to the last saved version" had never been tested against a
+   moved baseline.** §5 discards a FIRST edit, and on a page nobody has saved yet "the last saved
+   version" and "the page as it first rendered" are the same string — so §5 could not distinguish the
+   claim from its opposite. **§14** saves once, lets `router.refresh()` land, edits again and discards,
+   and asserts on a value that never appeared in the initial render. Measured broken (`'Ali bin Ahmad'`)
+   when the refresh is made not to carry the saved value, which is the assertion's proof of life.
+2. **The plan's own worked example was pinned only before the write.** §4 and §13 show an *unsubmitted*
+   bucket (b) form is invisible to the count, the payload and the restore. **§15** records the revision
+   for real — on the Payroll shape, where the revision dialog and the salary history sit INSIDE the card
+   the scope encloses — and only then presses the tab's Discard: the revision survives, is not replayed,
+   and the tab reports nothing to discard the moment it is written. Measured broken (the Save arms on a
+   typed revision amount, and the revision's own action stops running at all) when the revision form is
+   given a section marker.
+3. **`beforeunload` was described in three docblocks and asserted nowhere.** **§16** pins the half the
+   page controls: the unload is cancelled while the tab is dirty, is not cancelled on a clean tab, and
+   stops being cancelled the moment the edits are discarded.
+4. **The Employment tab's reading order had no guard**, though Attendance got one in r255 and Payroll in
+   r256. The bar sits above two cards it does not cover and answers for that with `covers`; that answer
+   only holds while the consolidated card LEADS the tab. `personnel-tab-save-tabs.test.ts` §6 now pins
+   `employmentInfoCard` → `directSuperiorCard` → `delegationsCard`.
+
+### The two r255 verify-pass findings, re-checked
+
+* **Attendance reading order** — fixed in r255 and guarded: the scope leads the tab with Holiday Calendar
+  first, Work Location and Shift Arrangement render below it, and
+  `personnel-holiday-grade-relocation.test.ts` (5) holds the order.
+* **The Employment save bar in the middle of the tab** — answered rather than moved, deliberately, and now
+  guarded (4 above). Moving the bar to the foot of the tab would put it under two cards it does not own,
+  which reads worse than sitting above them with their names printed on it.
+
+### The one thing left open, and why it was left
+
+**Discard restores the refreshed SERVER payload, so a Discard pressed before that payload comes back
+restores the values the page opened with.** The window needs a second edit AND a Discard between the
+"Changes saved" toast and the refresh returning. Both fixes are worse than the window:
+
+* restoring from the values the client POSTED removes the window and breaks normalisation — the server
+  trims a name and reformats a date, so Discard would start putting back the admin's raw keystrokes
+  rather than the record as it now reads;
+* gating the button on the refresh means a refresh that never returns leaves Discard disabled for good,
+  and AGENTS 28 rates a control that does nothing worse than a narrow window.
+
+It is written into the §14 docblock beside the test rather than left for the next round to rediscover.
+
+### Still true, and still the sentence the reporter is owed
+
+Family and Qualification cannot have one Save. Every form on both tabs is a child record, so a tab-wide
+Save there would have nothing to save and a tab-wide Discard would cover nothing. Everything else the
+request asked for is built, and as of this round every part of it is pinned by a test that can fail.
