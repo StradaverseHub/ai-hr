@@ -8626,6 +8626,26 @@
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
       "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
       "introTwoEditors": "Setiap satu daripadanya masih boleh diubah pada skrin tempatnya berada hari ini. Kedua-dua skrin menulis ke rekod yang sama, dan skrin lama akan dibuang pada pertukaran nanti."
+    },
+    "leaveConfigApprovalChains": {
+      "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",
+      "untemplatedTitle": "Peraturan yang tidak dibina daripada templat",
+      "untemplatedHint": "Peraturan kelulusan ini membawa langkahnya sendiri dan bukan templat, jadi ia tidak muncul dalam senarai penugasan di atas. Ia masih menentukan siapa meluluskan sesuatu permohonan.",
+      "untemplatedReadOnly": "Baca sahaja. Untuk menukar siapa yang meluluskan, tugaskan templat kepada syarikat, jenis cuti dan pekerja yang berkenaan di bahagian di atas.",
+      "untemplatedEmpty": "Setiap peraturan kelulusan aktif dibina daripada templat, jadi semua yang menghalakan permohonan sudah ditunjukkan di atas.",
+      "colScope": "Terpakai kepada",
+      "scopeAllEmployees": "Semua orang dalam syarikat",
+      "chainEmptyFallback": "Tiada langkah sendiri — permohonan ini kembali kepada aliran lalai seluruh organisasi.",
+      "readoutTitle": "Siapa meluluskan jenis cuti ini",
+      "readoutHint": "Aliran yang dicapai oleh permohonan bagi jenis cuti ini apabila tiada peraturan yang lebih khusus terpakai kepada pekerja itu. Baca sahaja — ubah pada Rantaian kelulusan.",
+      "sourceRule": "Ditetapkan oleh peraturan kelulusan",
+      "sourceTemplate": "Aliran: {name}",
+      "sourceTenantDefault": "Aliran lalai seluruh organisasi",
+      "sourceFallback": "Rantaian terbina dalam — tiada peraturan dan tiada lalai organisasi",
+      "escalationOn": "Dinaikkan selepas {days, plural, other {# hari bekerja}} kepada {target}.",
+      "escalationOff": "Peningkatan dimatikan.",
+      "otherRules": "{n, plural, other {# peraturan lain}} dalam syarikat ini boleh menghalakan jenis cuti ini secara berbeza, bergantung pada pekerja.",
+      "readoutManageLink": "Ubah pada Rantaian kelulusan"
     }
   },
   "topbar": {

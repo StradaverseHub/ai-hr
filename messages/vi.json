@@ -8626,6 +8626,26 @@
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
       "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
       "introTwoEditors": "Mỗi thiết lập trong số đó vẫn có thể thay đổi trên màn hình hiện đang chứa nó. Cả hai màn hình ghi vào cùng một dữ liệu, và màn hình cũ sẽ được gỡ bỏ khi chuyển đổi."
+    },
+    "leaveConfigApprovalChains": {
+      "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",
+      "untemplatedTitle": "Quy tắc không tạo từ mẫu",
+      "untemplatedHint": "Các quy tắc phê duyệt này mang các bước của riêng chúng thay vì dùng mẫu, nên không xuất hiện trong danh sách gán ở trên. Chúng vẫn quyết định ai phê duyệt một đơn.",
+      "untemplatedReadOnly": "Chỉ đọc. Để thay đổi người phê duyệt, hãy gán một mẫu cho các công ty, loại nghỉ phép và nhân viên tương ứng ở phần trên.",
+      "untemplatedEmpty": "Mọi quy tắc phê duyệt đang hoạt động đều được tạo từ mẫu, nên tất cả những gì định tuyến một đơn đều đã hiển thị ở trên.",
+      "colScope": "Áp dụng cho",
+      "scopeAllEmployees": "Tất cả nhân viên trong công ty",
+      "chainEmptyFallback": "Không có bước riêng — các đơn này quay về luồng mặc định của toàn tổ chức.",
+      "readoutTitle": "Ai phê duyệt loại nghỉ phép này",
+      "readoutHint": "Luồng mà một đơn thuộc loại nghỉ phép này sẽ đi qua khi không có quy tắc hẹp hơn áp dụng cho nhân viên đó. Chỉ đọc — thay đổi tại Chuỗi phê duyệt.",
+      "sourceRule": "Do một quy tắc phê duyệt đặt",
+      "sourceTemplate": "Luồng: {name}",
+      "sourceTenantDefault": "Luồng mặc định toàn tổ chức",
+      "sourceFallback": "Chuỗi mặc định của hệ thống — không có quy tắc và không có mặc định tổ chức",
+      "escalationOn": "Chuyển cấp sau {days, plural, other {# ngày làm việc}} tới {target}.",
+      "escalationOff": "Chuyển cấp đang tắt.",
+      "otherRules": "{n, plural, other {# quy tắc khác}} trong công ty này có thể định tuyến loại nghỉ phép này khác đi, tùy theo nhân viên.",
+      "readoutManageLink": "Thay đổi tại Chuỗi phê duyệt"
     }
   },
   "topbar": {

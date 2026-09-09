@@ -8626,6 +8626,26 @@
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
       "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
       "introTwoEditors": "Each of them can still be changed on the screen it is on today. Both screens write the same record, and the older one is removed at the changeover."
+    },
+    "leaveConfigApprovalChains": {
+      "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",
+      "untemplatedTitle": "Rules not built from a template",
+      "untemplatedHint": "These approval rules carry their own steps instead of a template, so they do not appear in the assignment list above. They still decide who approves a request.",
+      "untemplatedReadOnly": "Read-only. To change who approves, assign a template to the companies, leave types and employees it should cover in the section above.",
+      "untemplatedEmpty": "Every active approval rule is built from a template, so everything that routes a request is shown above.",
+      "colScope": "Applies to",
+      "scopeAllEmployees": "Everyone in the company",
+      "chainEmptyFallback": "No steps of its own — these requests fall back to the org-wide default flow.",
+      "readoutTitle": "Who approves this leave type",
+      "readoutHint": "The flow a request for this leave type reaches when no narrower rule applies to the employee. Read-only — change it on Approval chain.",
+      "sourceRule": "Set by an approval rule",
+      "sourceTemplate": "Flow: {name}",
+      "sourceTenantDefault": "Org-wide default flow",
+      "sourceFallback": "Built-in chain — no rule and no org-wide default",
+      "escalationOn": "Escalates after {days, plural, one {# working day} other {# working days}} to {target}.",
+      "escalationOff": "Escalation off.",
+      "otherRules": "{n, plural, one {# other rule} other {# other rules}} in this company can route this leave type differently, depending on the employee.",
+      "readoutManageLink": "Change this on Approval chain"
     }
   },
   "topbar": {

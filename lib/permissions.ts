@@ -403,7 +403,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'nav.leaveApproval',
     guard: 'scopedSession',
     // R13 0d147b78: absorbed the standalone /admin/leave-approval into the leave tabs (old route now redirects).
-    routes: ['/admin/leave/approval'],
+    //
+    // a6fe37fc ROUND 4 — `/admin/leave-config/approval-chains` IS THE ONE SCREEN OF THE NEW LEAVE
+    // CONFIGURATION MODULE THAT DOES **NOT** HANG OFF `leaveConfig`, AND THE EXCEPTION IS THE POINT.
+    // Every other `/admin/leave-config/` route above is `requireAdmin` on the `leaveConfig` key. This
+    // screen keeps `scopedSession` because a COMPANY-SCOPED ADMIN MUST KEEP SEEING ONLY THEIR OWN
+    // COMPANIES (IA §6.4; docs/design/a6fe37fc-migration-order.md → Round 3's permission note names it
+    // as Round 4's exception). Registering it on `leaveConfig` would put a requireAdmin column in front
+    // of a scopedSession page — test/function-access.test.ts derives access from the guard the page
+    // actually calls, so the two must agree, and "no merging of screens that are gated differently"
+    // (IA §6.4) exists precisely so a rebuild cannot misreport one of the two guards.
+    //
+    // THE ROUTE AND THE PAGE LAND IN ONE COMMIT OR NEITHER: test/function-access.test.ts fails BOTH ways
+    // — a guarded page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+    // THE SCREEN KEY IS NOT RENAMED (see this file's head: a key "may key stored role configs"), and the
+    // `href` does not move until Round 5 — the menu still points at `/admin/leave/approval`, which is
+    // still a full screen. The new route is deliberately OFF the leave config map for the same reason
+    // Round 2's and Round 3's are (test/leave-config-map.test.ts carries the `/admin/leave-config/`
+    // prefix exemption; test/leave-config-round4.test.ts pins the absence so it cannot happen by
+    // accident).
+    routes: ['/admin/leave/approval', '/admin/leave-config/approval-chains'],
     hasScopeNote: true,
   },
   {

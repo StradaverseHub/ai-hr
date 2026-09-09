@@ -8626,6 +8626,26 @@
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
       "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
       "introTwoEditors": "其中每一项目前仍可在其原有页面上修改。两个页面写入同一份记录，旧页面将在切换时移除。"
+    },
+    "leaveConfigApprovalChains": {
+      "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",
+      "untemplatedTitle": "非模板生成的规则",
+      "untemplatedHint": "这些审批规则自带审批步骤而非引用模板，因此不会出现在上方的指派清单中。它们仍然决定谁来审批申请。",
+      "untemplatedReadOnly": "只读。若要更改审批人，请在上方区块中把模板指派给相应的公司、假期类型与员工。",
+      "untemplatedEmpty": "所有生效的审批规则都由模板生成，因此决定申请去向的内容已全部显示在上方。",
+      "colScope": "适用范围",
+      "scopeAllEmployees": "公司全体员工",
+      "chainEmptyFallback": "没有自己的步骤 — 这些申请回退到全组织默认流程。",
+      "readoutTitle": "谁审批此假期类型",
+      "readoutHint": "当没有更具体的规则适用于该员工时，此假期类型的申请所走的流程。只读 — 请在「审批链」中修改。",
+      "sourceRule": "由审批规则设定",
+      "sourceTemplate": "流程：{name}",
+      "sourceTenantDefault": "全组织默认流程",
+      "sourceFallback": "内置审批链 — 既无规则也无全组织默认流程",
+      "escalationOn": "{days, plural, other {# 个工作日}}后升级至{target}。",
+      "escalationOff": "未启用升级。",
+      "otherRules": "本公司另有 {n, plural, other {# 条规则}}，可能因员工不同而把此假期类型导向其他流程。",
+      "readoutManageLink": "前往「审批链」修改"
     }
   },
   "topbar": {
