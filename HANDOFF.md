@@ -18,14 +18,14 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-09 (r226-r256 SHIPPED · BOARD HAS 1 APPROVED, DELIBERATELY OPEN · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
+## CURRENT STATE — snapshot 2026-09-10 (r226-r257 SHIPPED · BOARD HAS 3 APPROVED + 2 RAISED CORRECTIONS AWAITING THE REPORTER · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@69b6dc38` IS WHAT RUNS ON PRODUCTION (r256, 2026-09-09)** — verified by an
+**`main@9cc51ea2` IS WHAT RUNS ON PRODUCTION (r257, 2026-09-10)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines, read as TEXT. Not by
 `deploy.sh` succeeding, which is not proof; and not by a line count, which is not a change count.
 (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode and it is
-gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 22:28:08.
-**Migration `0457` VERIFIED APPLIED, not assumed: 373 migrations applied, `0457` IS THE LAST ONE**, and
+gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 01:20:04.
+**373 migrations applied and `0457` IS STILL THE LAST ONE — r257 carried NO migration**, and
 `information_schema` on the box returns all three new `shift` columns with the promised defaults
 (`color` NULL, `flexible_break_enabled` false, `flexible_break_minutes` NULL). Its `RAISE NOTICE`
 reported **11 shifts, 0 coloured, 0 flexible** — the change shipped inert, as designed.
@@ -38,10 +38,14 @@ a production-data restore, and the owner reported 8.5s), **manager 1.0-1.4s** (w
 well). Manager is now the slowest identity; nothing about it is pathological, it simply sees the most.
 
 
-**BOARD: ONE APPROVED ITEM, DELIBERATELY OPEN.** `420ebab5` (Personnel Management — list, detail
-view and tabs) has now been BUILT THREE TIMES and closed none of them; it is held open rather than
-marked done. Everything else approved was closed by r256 — see that entry. The four items below are the
-r247 closures, kept because their findings still stand.
+**BOARD AFTER r257.** `420ebab5` and `2983802f` are DEPLOYED. Approved and waiting: **`a6fe37fc`**
+(Leave Configuration — Round 1 of 6 is built and deployed; Round 2 is BLOCKED on `8c9ba51a` below),
+**`759dfc7d`** and **`9583deac`** — the reporter approved both new plans within the hour of them being
+pushed, and BOTH want the personnel tab sections, so run them in sequence, never beside each other.
+Two operator-raised corrections are OPEN and awaiting the reporter: **`8c9ba51a`** (may we point the
+routing replay at their LIVE database — nothing has been, and nothing will be until they answer) and
+**`afdf71e2`** (the section import updates, it cannot create). The four items below are the r247
+closures, kept because their findings still stand.
 
 **✅ ALL FOUR APPROVED ITEMS WERE CLOSED (r247, 2026-09-05).**
 - `cd63bd91` Haji Leave — `deployed`, `build_ref = no-code-change`. It already worked; Delete is offered
@@ -320,6 +324,67 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r257 (2026-09-10) — THREE APPROVED ITEMS BUILT, TWO RETURNED AS PLANS. **DEPLOYED `main@9cc51ea2`**, no migration.
+
+**Verified on the box:** `rsync -azi --delete --dry-run` returned ZERO lines read as TEXT; service active,
+`GET localhost:3000/` -> 401, `BUILD_ID` fresh 01:20:04, **373 migrations — UNCHANGED, this round carried
+no migration**, and zero `MISSING_MESSAGE` since restart. Gate: **801 files, 6 chunks, all exit=0.**
+
+**THE BOARD HAD FIVE APPROVED AND ONLY THREE COULD BE BUILT.** `420ebab5`, `759dfc7d`, `2983802f` and
+`9583deac` all rebuild `app/admin/personnel/[employmentId]`'s shared tab sections; r253 cost a five-file
+hand-resolved conflict from two branches there. Built the three that are genuinely disjoint
+(`a6fe37fc` leave · `420ebab5` personnel · `2983802f` import); pushed `759dfc7d` and `9583deac` back as
+plans with mockups. **The reporter approved both within the hour** — they are the next round's work.
+
+**TWO PREMISES CHECKED BEFORE WRITING TO THE REPORTER, AND BOTH WERE WRONG:**
+  · `759dfc7d`'s hard half is ALREADY BUILT. Family on drafts is live end to end — `DRAFT_STEPS` carries
+    `family`, `core/employee-draft.ts:586-594` validates it before anything is created, and
+    `materialiseDependents` writes the real rows at Activate. Only the tabbed layout is left.
+  · **OUR OWN previous build note for `9583deac` was wrong.** It said stage two "needs a request store …
+    allocate the migration centrally". `profile_change_request` (schema:4659) and ADR-0012's
+    approve-before-it-applies path have existed all along for bank, dependants and PCB category. The
+    correction went at the TOP of the new plan, in the reporter's favour (AGENTS 31). The one real gap is
+    the rejection REASON, which genuinely is not stored.
+
+**`420ebab5` IS CLOSED, AND THE BUILD CHANGED NO PRODUCTION CODE.** Four rounds had already built it; this
+one measured it promise by promise, added the four guards that had no test capable of failing, and closed
+the Discard race. Family and Qualification cannot have one Save button — every form on both is a child
+record — and that sentence is the one thing the reporter is still owed.
+
+**THE ADVERSARIAL VERIFY EARNED ITS KEEP AGAIN — ALL THREE CAME BACK `fix-first`, WITH TWO BLOCKERS:**
+  1. **The cutover harness could certify a false pass.** `a6fe37fc` Round 1 exists to prove all 261
+     approval rules still reach the same approver before Round 5 deletes ten screens. The verifier proved
+     at runtime it printed the tick and exited 0 while a live employee's approver had moved: the baseline
+     sampled ONE representative per routing group, and when that person left, the whole group dropped out
+     of the comparison. Now matched by routing TUPLE, `gone` only when nobody active is left, an
+     unassociable case FAILS, and cost went from `4 × grid cells` queries to a CONSTANT EIGHT per tenant.
+  2. **The importer diverges from the approved plan.** The plan promised create-if-not-found; a section
+     file carries no name, email, department, join date or salary, so it cannot. The engineering call was
+     kept and the product now says so in four places BEFORE upload; the correction went to the board as
+     `afdf71e2` rather than closing the item as if the promise were kept.
+
+**THREE DATA-INTEGRITY DEFECTS THE IMPORT VERIFY FOUND, ALL PRE-DATING THE FEATURE:** one file could give
+two employees the same WORK EMAIL — which is the LOGIN identity and has **no unique index** behind it; two
+rows could claim one NRIC and the second died mid-run; and four Employment columns wrote legacy fields the
+tab stopped reading at migration `0213`, so an import could report success and change nothing visible.
+Also PDPA: raw driver error text — statement AND bound parameters, an NRIC among them — was persisted into
+`employee_import_run.errors` and rendered to the admin. Fixed in `core/import-sections.ts`; **still present
+in `core/import.ts:1118`/`:1231` for the wide importer and owed its own round.**
+
+**THE GATE WENT RED ONCE, ON A REAL BUG, AND IT WAS A GUARD THAT CAUGHT IT.**
+`test/today-in-myt-drift.test.ts` flagged `core/import-sections.ts`: the reporting-line edge a Direct
+Superior column opens was stamped `new Date().toISOString().slice(0, 10)` — a UTC date. At UTC+8 that
+names YESTERDAY between 00:00 and 08:00 MYT, so an early-morning import opened the new manager's edge a
+day early, silently rewriting one day of who reported to whom — the exact history rewrite the line's own
+comment said it was avoiding. Hand-fixed with `todayInKualaLumpur()` (AGENTS 23b: one fix pass, then the
+parent).
+
+**RAISED BACK TO THE REPORTER:** `8c9ba51a` — the approved plan's build notes said the 261-rule replay
+"runs against a COPY, not production"; both design documents say the opposite, emphatically. It reads
+their LIVE database. **Nothing has been pointed at production and nothing will be until they answer.**
+That is Round 1's remaining exit condition; Round 2 waits on it. `afdf71e2` — the import correction above.
+
 
 ### r256 (2026-09-09) — EIGHT WORKSTREAMS, SEVEN ITEMS CLOSED. **DEPLOYED `main@69b6dc38`**, migration `0457`.
 
