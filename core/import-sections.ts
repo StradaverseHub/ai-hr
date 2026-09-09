@@ -35,6 +35,18 @@
  * WHAT IS DELIBERATELY NOT WRITEABLE and why is declared in `lib/import-sections.ts`
  * (`UNSECTIONED_COLUMNS`) — organisational moves, effective-dated pay, and the statutory columns whose
  * only writer is the full-row setter.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * UPDATE-ONLY, AND THE PRODUCT SAYS SO OUT LOUD.
+ *
+ * The approved plan asked for create-if-not-found on every section file. It cannot be built: a narrow
+ * file carries no full name, no work email, no department, no join date and no basic salary — every
+ * one of them required by `IMPORT_COLUMNS.required` — so there is nothing to bring a person into
+ * existence FROM, and a "create" would be an invented employee record. So this importer refuses an
+ * unmatched Employee ID, and the divergence is stated where the reader is, not left to be inferred:
+ * the row's refusal names the full employee template, the preview carries a banner explaining WHY
+ * when any row is unmatched, and the template chooser + this section's own notice say it BEFORE a
+ * file is uploaded. The correction is being put to the reporter in the same words (AGENTS 31).
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -49,13 +61,15 @@ import {
   profileOption,
 } from '../db/schema';
 import { setEmploymentInfo, setReportingLine, updatePerson, type PersonProfileFields } from './org';
+import { primaryEmergencyContactSql } from './emergency-contacts';
 import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
 import { IMPORT_RUN_ERROR_CAP, type ImportRecord, type ImportRunError } from './import';
 import {
-  foreignColumns,
+  classifyForeignColumns,
   IMPORT_SECTION_DEFS,
+  SECTION_DISPLAY_NAMES,
   SECTION_KEY_COLUMN,
   type ImportSection,
   type SectionImportPreview,
@@ -90,8 +104,24 @@ type Subject = {
   phone: string | null;
   hiredOn: string;
   pack: CountryPack;
-  /** The person's stored profile columns this importer can write, for the merge + change diff. */
+  /** The person's stored profile columns this importer can write, for the merge + change diff. EVERY
+   *  column in `PROFILE_PERSON_COLUMNS` is loaded here: a field the diff cannot see is a field the
+   *  preview reports as changed when the cell equals what is already stored, which turns a re-uploaded
+   *  corrected file (the exact thing the preview is sold on) into a page of phantom updates. */
   personRow: Record<string, string | null>;
+  /** The employment's stored period columns, for the same reason — the preview must not promise a
+   *  probation change when the file repeats the probation that is already recorded. */
+  employmentRow: {
+    probationValue: number | null;
+    probationUnit: string | null;
+    probationMonths: number | null;
+    probationDays: number | null;
+    noticeBeforeConfirmationValue: number | null;
+    noticeBeforeConfirmationUnit: string | null;
+    resignationNoticeMonths: number | null;
+    resignationNoticeDays: number | null;
+    confirmationDate: string | null;
+  };
   /** The statutory row, or null when the employee has none yet (no IC ever saved). */
   statutory: Record<string, unknown> | null;
   /** Family already on file, lowercased `name|relationship`, so a re-uploaded family file does not
@@ -143,11 +173,27 @@ type DependentPatch = {
   isBeneficiary: boolean;
   remarks?: string;
 };
-/** Only the periods + confirmation date this section may write. `setEmploymentInfo` leaves anything
- *  absent alone, so an omitted key is genuinely untouched — no merge needed on this one. */
+/**
+ * Only the periods + confirmation date this section may write. `setEmploymentInfo` leaves anything
+ * absent alone, so an omitted key is genuinely untouched — no merge needed on this one.
+ *
+ * THE VALUE + UNIT PAIR IS THE ONE THE SCREEN READS (migration 0213). The legacy month/day column is
+ * written alongside it, from the same cell, so the two can never disagree — and so an import is
+ * visible on the Employment tab, which resolves `probationValue ?? probationMonths`. Writing only the
+ * legacy column, as this importer first did, produced a run that reported success and changed nothing
+ * the user could see for any employee whose Employment tab had been saved once.
+ */
 type EmploymentInfoPatch = Partial<
   Record<
-    'probationMonths' | 'probationDays' | 'confirmationDate' | 'resignationNoticeMonths' | 'resignationNoticeDays',
+    | 'probationMonths'
+    | 'probationDays'
+    | 'confirmationDate'
+    | 'resignationNoticeMonths'
+    | 'resignationNoticeDays'
+    | 'probationValue'
+    | 'probationUnit'
+    | 'noticeBeforeConfirmationValue'
+    | 'noticeBeforeConfirmationUnit',
     string
   >
 >;
@@ -221,10 +267,21 @@ async function analyze(
     // THE FENCE (lib/import-sections.ts). Server-side, because the file is user-supplied: a Profile
     // column pasted into a Bank and Statutory sheet must be refused, not silently ignored — "I filled
     // it in and nothing happened" is as bad as writing it.
-    const foreign = foreignColumns(section, present);
-    if (foreign.length > 0) {
+    //
+    // THE REFUSAL NAMES THE DOOR, and only a door that exists. A refused column that ANOTHER SECTION
+    // owns is answered with that section's name. A refused column NO section owns — 17 of the wide
+    // template's 49, the EPF/SOCSO numbers among them — is answered plainly: no section file can
+    // change it. The old single sentence told everybody to "choose the section that owns them", which
+    // for those 17 was an instruction to go looking for something that is not there.
+    const { movable, unsectioned } = classifyForeignColumns(section, present);
+    for (const { column, section: owner } of movable) {
       fileErrors.push(
-        `These columns do not belong to this section and were refused: ${foreign.join(', ')}. Nothing was imported — remove them, or choose the section that owns them.`,
+        `Column "${column}" belongs to the ${SECTION_DISPLAY_NAMES[owner]} section, not this one. Nothing was imported — remove the column, or import it with the ${SECTION_DISPLAY_NAMES[owner]} template.`,
+      );
+    }
+    if (unsectioned.length > 0) {
+      fileErrors.push(
+        `No section file can change these columns: ${unsectioned.join(', ')}. They are not importable per section yet — change them on the employee's own Personnel record (a department, position, company or join date is a dated movement; pay is effective-dated; the EPF/SOCSO/EIS and residency fields are saved together on the Statutory card). Nothing was imported — remove these columns and upload again.`,
       );
     }
   }
@@ -235,9 +292,25 @@ async function analyze(
     const c = normalizeEmployeeCode(norm(rec[SECTION_KEY_COLUMN]));
     if (c) codes.add(c);
   }
-  const { byCode, superiorByCode, superiorByEmail, catalog, icOwners } = await loadSubjects(ctx, codes, section);
+  const { byCode, superiorByCode, superiorByEmail, catalog, icOwners, emailOwners } = await loadSubjects(
+    ctx,
+    codes,
+    section,
+  );
 
   const seenCodes = new Set<string>();
+  /**
+   * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
+   *
+   * The pre-loop `icOwners` / `emailOwners` snapshots answer "does somebody ELSE already have this?".
+   * They cannot answer "did an EARLIER ROW OF THIS FILE already claim it?" — and a column-shifted
+   * spreadsheet is exactly how two employees end up with one work email or one NRIC. Unchecked, the
+   * email case previewed clean and wrote silently (there is no unique index behind it), and the NRIC
+   * case previewed clean and died at commit on a raw driver error. Both are caught here, in the DRY
+   * RUN, where the spreadsheet can still be corrected. Row numbers only — never the value.
+   */
+  const seenEmails = new Map<string, number>();
+  const seenIcs = new Map<string, number>();
   const resolved: ResolvedSectionRow[] = [];
 
   records.forEach((rec, idx) => {
@@ -258,8 +331,13 @@ async function analyze(
 
     if (!codeRaw) errors.push('Missing employee_code — it is the link to the employee being updated');
     else if (!subject) {
+      // UPDATE-ONLY, SAID OUT LOUD. A section file carries no full name, no work email, no department,
+      // no join date and no salary — the five things a new employee record cannot exist without — so
+      // there is nothing here to create a person FROM. Rather than leave that as an implementation
+      // detail the reader has to infer from "not found", the refusal states the rule and names the
+      // template that DOES add people. The screen says the same thing before a file is uploaded.
       errors.push(
-        `No employee with Employee ID "${codeRaw}". A section file updates people who already exist — create them with the full employee template first.`,
+        `No employee has Employee ID "${codeRaw}". A section file can only UPDATE people who are already in the system — it cannot add anyone. To add this person, choose "Everything — new employees" at the top of this page and use the full employee template, then run this file again.`,
       );
     }
     // Two rows for one employee would apply in file order and leave whichever won invisible. Refused.
@@ -283,7 +361,17 @@ async function analyze(
     };
 
     if (subject) {
-      if (section === 'profile') buildProfile(rec, cell, subject, row, { catalog, icOwners, errors, changes });
+      if (section === 'profile')
+        buildProfile(rec, cell, subject, row, {
+          catalog,
+          icOwners,
+          emailOwners,
+          seenIcs,
+          seenEmails,
+          rowNum: idx + 1,
+          errors,
+          changes,
+        });
       else if (section === 'employment')
         buildEmployment(cell, subject, row, { superiorByCode, superiorByEmail, errors, changes });
       else if (section === 'bank_statutory') buildBankStatutory(cell, subject, row, { errors, changes });
@@ -293,12 +381,24 @@ async function analyze(
     // MATCHED, VALID, AND NOTHING TO DO. Reported as its own verdict rather than counted as an update:
     // a preview that says "12 will be updated" when four of them carry no values is a preview that
     // cannot be checked. (Calling the writers with an empty payload would also throw.)
+    //
+    // A ROW THAT REPEATS WHAT IS ALREADY RECORDED IS ALSO NOTHING TO DO. Re-uploading a corrected file
+    // is the normal way this feature is used, and most of its rows are unchanged; counting them as
+    // updates would inflate the headline, write audit events for changes nobody made, and hide the
+    // handful of rows that really do move. `changes` is the truth here — every section pushes a column
+    // onto it only when the cell DIFFERS from what is stored.
     const willWrite =
       row.personPatch || row.ic || row.passport || row.bank || row.tax || row.employmentInfo ||
       row.superiorEmploymentId || row.dependent;
-    if (subject && errors.length === 0 && !willWrite) {
+    if (subject && errors.length === 0 && (!willWrite || changes.length === 0)) {
       row.result.verdict = 'skip';
-      if (warnings.length === 0) warnings.push('Nothing to change on this row — every cell is blank');
+      if (warnings.length === 0) {
+        warnings.push(
+          willWrite
+            ? 'Nothing to change on this row — every value it carries is already recorded'
+            : 'Nothing to change on this row — every cell is blank',
+        );
+      }
     }
     row.result.ok = errors.length === 0 && row.result.verdict === 'update';
     resolved.push(row);
@@ -340,6 +440,24 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         permanentCity: person.permanentCity,
         permanentState: person.permanentState,
         permanentCountry: person.permanentCountry,
+        // The emergency-contact block is loaded for the SAME reason the address is: the change diff
+        // compares the cell against the stored value, and a column it cannot see always looks changed.
+        // 23ad620e moved these five off `person` into the per-person register, so they are read the way
+        // every other single-contact reader reads them — the highest-priority live row.
+        emergencyContactName: primaryEmergencyContactSql('full_name'),
+        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
+        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
+        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
+        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        probationValue: employment.probationValue,
+        probationUnit: employment.probationUnit,
+        probationMonths: employment.probationMonths,
+        probationDays: employment.probationDays,
+        noticeBeforeConfirmationValue: employment.noticeBeforeConfirmationValue,
+        noticeBeforeConfirmationUnit: employment.noticeBeforeConfirmationUnit,
+        resignationNoticeMonths: employment.resignationNoticeMonths,
+        resignationNoticeDays: employment.resignationNoticeDays,
+        confirmationDate: employment.confirmationDate,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -401,6 +519,22 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
           permanentCity: r.permanentCity,
           permanentState: r.permanentState,
           permanentCountry: r.permanentCountry,
+          emergencyContactName: r.emergencyContactName,
+          emergencyContactRelationship: r.emergencyContactRelationship,
+          emergencyContactPhone: r.emergencyContactPhone,
+          emergencyContactPhone2: r.emergencyContactPhone2,
+          emergencyContactAddress: r.emergencyContactAddress,
+        },
+        employmentRow: {
+          probationValue: r.probationValue,
+          probationUnit: r.probationUnit,
+          probationMonths: r.probationMonths,
+          probationDays: r.probationDays,
+          noticeBeforeConfirmationValue: r.noticeBeforeConfirmationValue,
+          noticeBeforeConfirmationUnit: r.noticeBeforeConfirmationUnit,
+          resignationNoticeMonths: r.resignationNoticeMonths,
+          resignationNoticeDays: r.resignationNoticeDays,
+          confirmationDate: r.confirmationDate == null ? null : String(r.confirmationDate),
         },
         statutory: statByPerson.get(r.personId) ?? null,
         familyKeys: familyByPerson.get(r.personId) ?? new Set<string>(),
@@ -433,14 +567,20 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     // Who currently owns which IC, so a Profile file that re-keys an NRIC onto the wrong person is
     // refused in the preview rather than by a raw unique-constraint violation at write.
     const icOwners = new Map<string, string>();
+    // …and who owns which WORK EMAIL, which is the login identity and has NO unique index behind it
+    // (db/schema.ts: `primaryEmail` carries only `person_tenant_idx`). Without this check a Profile
+    // file quietly gave two employees one login address and the preview said nothing at all.
+    const emailOwners = new Map<string, string>();
     if (section === 'profile') {
       const allStat = await tx
         .select({ personId: employeeStatutoryMy.personId, icNumber: employeeStatutoryMy.icNumber })
         .from(employeeStatutoryMy);
       for (const s of allStat) if (s.icNumber) icOwners.set(s.icNumber, s.personId);
+      const allPeople = await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person);
+      for (const p of allPeople) if (p.primaryEmail) emailOwners.set(p.primaryEmail.trim().toLowerCase(), p.id);
     }
 
-    return { byCode, superiorByCode, superiorByEmail, catalog, icOwners };
+    return { byCode, superiorByCode, superiorByEmail, catalog, icOwners, emailOwners };
   });
 }
 
@@ -469,7 +609,14 @@ function buildProfile(
   cell: (c: string) => string | undefined,
   subject: Subject,
   row: ResolvedSectionRow,
-  x: BuildCtx & { catalog: Map<string, Set<string>>; icOwners: Map<string, string> },
+  x: BuildCtx & {
+    catalog: Map<string, Set<string>>;
+    icOwners: Map<string, string>;
+    emailOwners: Map<string, string>;
+    seenIcs: Map<string, number>;
+    seenEmails: Map<string, number>;
+    rowNum: number;
+  },
 ) {
   const { errors, changes, catalog } = x;
   const patch: PersonProfileFields = {};
@@ -477,9 +624,34 @@ function buildProfile(
   // The core trio. `updatePerson` REWRITES all three from its arguments — omitting the phone number
   // nulls it — so the stored values are carried through and only what the file supplied replaces them.
   const fullName = cell('full_name');
-  const email = cell('email');
+  let email = cell('email');
   const phone = cell('phone');
-  if (email !== undefined && !EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
+
+  /**
+   * THE WORK EMAIL IS THE LOGIN IDENTITY, AND NOTHING BEHIND IT ENFORCES UNIQUENESS. Two employees on
+   * one address is not a cosmetic defect: it is two people sharing a login. Both halves are checked —
+   * an address an EARLIER ROW of this file already assigned, and an address somebody else already
+   * holds — and a failure REMOVES the cell rather than leaving it to be written, so a rejected email
+   * can never fall through into the merged payload below.
+   */
+  if (email !== undefined) {
+    const key = email.toLowerCase();
+    const alreadyInFile = x.seenEmails.get(key);
+    const owner = x.emailOwners.get(key);
+    if (!EMAIL_RE.test(email)) {
+      errors.push(`Invalid email "${email}"`);
+      email = undefined;
+    } else if (alreadyInFile !== undefined) {
+      errors.push(`Duplicate email in this file — row ${alreadyInFile} already assigns "${email}"`);
+      email = undefined;
+    } else if (owner && owner !== subject.personId) {
+      errors.push(`Another employee already has the work email "${email}" — it is a login identity and cannot be shared`);
+      email = undefined;
+    } else {
+      x.seenEmails.set(key, x.rowNum);
+    }
+  }
+
   if (fullName !== undefined && fullName !== subject.fullName) changes.push('full_name');
   if (email !== undefined && email !== subject.primaryEmail) changes.push('email');
   if (phone !== undefined && phone !== (subject.phone ?? '')) changes.push('phone');
@@ -511,8 +683,16 @@ function buildProfile(
     } else {
       const icNorm = subject.pack.statutory.normalizeIC(icRaw);
       const owner = x.icOwners.get(icNorm);
-      if (owner && owner !== subject.personId) errors.push('Another employee already has this IC');
-      else {
+      const alreadyInFile = x.seenIcs.get(icNorm);
+      if (alreadyInFile !== undefined) {
+        // The identity number is UNIQUE in the database, so this row would have died at COMMIT with a
+        // driver error carrying the NRIC itself as a bound parameter — into the admin's screen and into
+        // the stored import history. Caught here instead, and the message names the ROW, never the value.
+        errors.push(`Duplicate ic_number in this file — row ${alreadyInFile} already assigns this identity number`);
+      } else if (owner && owner !== subject.personId) {
+        errors.push('Another employee already has this IC');
+      } else {
+        x.seenIcs.set(icNorm, x.rowNum);
         row.ic = { icNumber: icNorm, oldIcNumber: (subject.statutory?.oldIcNumber as string | null) ?? null };
         if (icNorm !== (subject.statutory?.icNumber ?? '')) changes.push('ic_number');
       }
@@ -550,13 +730,16 @@ function buildProfile(
       errors.push('passport_expiry_date must be on or after passport_issue_date');
     } else {
       row.passport = merged;
-      for (const [v, label] of [
-        [pNumber, 'passport_number'],
-        [pIssue, 'passport_issue_date'],
-        [pExpiry, 'passport_expiry_date'],
-        [pCountry, 'passport_issuing_country'],
+      for (const [v, label, was] of [
+        [pNumber, 'passport_number', stored?.passportNumber],
+        [pIssue, 'passport_issue_date', stored?.passportIssueDate],
+        [pExpiry, 'passport_expiry_date', stored?.passportExpiryDate],
+        [pCountry, 'passport_issuing_country', stored?.passportIssuingCountry],
       ] as const) {
-        if (v !== undefined) changes.push(label);
+        // Reported as changed only when it actually MOVES. A file that repeats what is already on
+        // record is the normal shape of a corrected re-upload, and a preview that calls every repeated
+        // cell a change is a preview nobody can read.
+        if (v !== undefined && v !== ((was as string | null) ?? '')) changes.push(label);
       }
     }
   }
@@ -571,23 +754,83 @@ function buildEmployment(
 ) {
   const { errors, changes } = x;
   const info: EmploymentInfoPatch = {};
+  const stored = subject.employmentRow;
 
-  /** A whole number of months or days, or a named error. */
-  const period = (column: string, field: string) => {
+  /** A whole number of months or days, or a named error. `undefined` when the cell is blank/absent. */
+  const period = (column: string): number | undefined => {
     const raw = cell(column);
-    if (raw === undefined) return;
+    if (raw === undefined) return undefined;
     const n = Number(raw.replace(/[,_]/g, ''));
     if (!Number.isInteger(n) || n < 0) {
       errors.push(`Invalid ${column} "${raw}" (whole number, 0 or more)`);
+      return undefined;
+    }
+    return n;
+  };
+
+  /**
+   * ONE PERIOD, WRITTEN WHERE THE SCREEN LOOKS FOR IT.
+   *
+   * The Employment tab renders `probationValue ?? probationMonths` with a unit beside it, so the pair
+   * is what an import has to move; the legacy month/day column is written from the SAME cell so the
+   * fallback can never contradict the field. The tab holds one number and one unit per period, which
+   * is why a row filling in BOTH the months and the days column for one period is refused: half of it
+   * would be dropped, and a silent half-write is the failure this whole item exists to prevent.
+   */
+  const writePeriod = (p: {
+    monthsColumn: string;
+    daysColumn: string;
+    valueField: 'probationValue' | 'noticeBeforeConfirmationValue';
+    unitField: 'probationUnit' | 'noticeBeforeConfirmationUnit';
+    legacyMonthsField: 'probationMonths' | 'resignationNoticeMonths';
+    legacyDaysField: 'probationDays' | 'resignationNoticeDays';
+    storedValue: number | null;
+    storedUnit: string | null;
+    storedLegacyMonths: number | null;
+  }) => {
+    const months = period(p.monthsColumn);
+    const days = period(p.daysColumn);
+    if (months !== undefined && days !== undefined) {
+      errors.push(
+        `${p.monthsColumn} and ${p.daysColumn} cannot both be filled in on one row — this period is recorded as one number and one unit. Use months, or use days.`,
+      );
       return;
     }
-    (info as Record<string, string>)[field] = String(n);
-    changes.push(column);
+    const value = months ?? days;
+    if (value === undefined) return;
+    const unit = months !== undefined ? 'month' : 'day';
+    (info as Record<string, string>)[p.valueField] = String(value);
+    (info as Record<string, string>)[p.unitField] = unit;
+    (info as Record<string, string>)[months !== undefined ? p.legacyMonthsField : p.legacyDaysField] = String(value);
+    // What the screen shows today: the new pair when it is set, else the legacy months with the unit
+    // the tab defaults to. The change is reported only when the import actually moves it.
+    const shownValue = p.storedValue ?? p.storedLegacyMonths;
+    const shownUnit = p.storedValue != null ? (p.storedUnit ?? 'month') : 'month';
+    if (shownValue !== value || shownUnit !== unit) changes.push(months !== undefined ? p.monthsColumn : p.daysColumn);
   };
-  period('probation_months', 'probationMonths');
-  period('probation_days', 'probationDays');
-  period('resignation_notice_months', 'resignationNoticeMonths');
-  period('resignation_notice_days', 'resignationNoticeDays');
+
+  writePeriod({
+    monthsColumn: 'probation_months',
+    daysColumn: 'probation_days',
+    valueField: 'probationValue',
+    unitField: 'probationUnit',
+    legacyMonthsField: 'probationMonths',
+    legacyDaysField: 'probationDays',
+    storedValue: stored.probationValue,
+    storedUnit: stored.probationUnit,
+    storedLegacyMonths: stored.probationMonths,
+  });
+  writePeriod({
+    monthsColumn: 'resignation_notice_months',
+    daysColumn: 'resignation_notice_days',
+    valueField: 'noticeBeforeConfirmationValue',
+    unitField: 'noticeBeforeConfirmationUnit',
+    legacyMonthsField: 'resignationNoticeMonths',
+    legacyDaysField: 'resignationNoticeDays',
+    storedValue: stored.noticeBeforeConfirmationValue,
+    storedUnit: stored.noticeBeforeConfirmationUnit,
+    storedLegacyMonths: stored.resignationNoticeMonths,
+  });
 
   const confirmation = cell('confirmation_date');
   if (confirmation !== undefined) {
@@ -596,7 +839,7 @@ function buildEmployment(
       errors.push(`confirmation_date must be on or after this employee's join date (${subject.hiredOn})`);
     else {
       info.confirmationDate = confirmation;
-      changes.push('confirmation_date');
+      if (confirmation !== (stored.confirmationDate ?? '')) changes.push('confirmation_date');
     }
   }
   if (Object.keys(info).length > 0) row.employmentInfo = info;
@@ -661,31 +904,34 @@ function buildBankStatutory(
       errors.push('bank_name and bank_account_no must be provided together');
     } else {
       row.bank = merged;
-      if (bankName !== undefined) changes.push('bank_name');
-      if (bankAccountNo !== undefined) changes.push('bank_account_no');
+      if (bankName !== undefined && bankName !== ((stored.bankName as string | null) ?? '')) changes.push('bank_name');
+      if (bankAccountNo !== undefined && bankAccountNo !== ((stored.bankAccountNo as string | null) ?? ''))
+        changes.push('bank_account_no');
     }
   }
 
   if (touchesTax) {
-    let taxCategory = Number(stored.taxCategory ?? 1);
+    const storedCategory = Number(stored.taxCategory ?? 1);
+    let taxCategory = storedCategory;
     if (taxCategoryRaw !== undefined) {
       const n = Number(taxCategoryRaw);
       if (![1, 2, 3].includes(n)) errors.push('tax_category must be 1, 2 or 3');
       else {
         taxCategory = n;
-        changes.push('tax_category');
+        if (n !== storedCategory) changes.push('tax_category');
       }
     }
-    let numChildren = Number(stored.numChildren ?? 0);
+    const storedChildren = Number(stored.numChildren ?? 0);
+    let numChildren = storedChildren;
     if (numChildrenRaw !== undefined) {
       const n = Number(numChildrenRaw.replace(/[,_]/g, ''));
       if (!Number.isInteger(n) || n < 0) errors.push(`Invalid num_children "${numChildrenRaw}"`);
       else {
         numChildren = n;
-        changes.push('num_children');
+        if (n !== storedChildren) changes.push('num_children');
       }
     }
-    if (taxNumber !== undefined) changes.push('tax_number');
+    if (taxNumber !== undefined && taxNumber !== ((stored.taxNumber as string | null) ?? '')) changes.push('tax_number');
     row.tax = {
       taxNumber: taxNumber ?? ((stored.taxNumber as string | null) ?? null),
       taxCategory,
@@ -766,6 +1012,46 @@ function buildFamily(
   changes.push('family_member');
 }
 
+/**
+ * WHICH WRITE WAS IN FLIGHT WHEN A ROW THREW, and the columns to name in the message.
+ *
+ * The dry run catches everything it can see; what is left is a database refusal (a unique index, a
+ * check constraint, a race with somebody editing the same person). The admin still has to be told
+ * WHICH part of the row did not go in — and told it without the value that caused it.
+ */
+export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'tax' | 'employmentInfo' | 'superior' | 'dependent';
+
+const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
+  person: 'full_name / email / phone / address / emergency contact',
+  ic: 'ic_number',
+  passport: 'passport_number / passport_issue_date / passport_expiry_date / passport_issuing_country',
+  bank: 'bank_name / bank_account_no',
+  tax: 'tax_number / tax_category / num_children',
+  employmentInfo: 'probation / notice period / confirmation_date',
+  superior: 'direct_superior',
+  dependent: 'the family member on this row',
+};
+
+/** A Postgres unique violation, however the driver wrapped it. Detected WITHOUT reading the message
+ *  into the output — knowing the class of failure is useful; quoting the statement is not. */
+function isUniqueViolation(e: unknown): boolean {
+  for (let cur: unknown = e, depth = 0; cur && depth < 5; depth++) {
+    const code = (cur as { code?: unknown }).code;
+    if (code === '23505') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return /duplicate key value|unique constraint/i.test(String((e as Error)?.message ?? ''));
+}
+
+export function writeFailureMessage(step: WriteStep, e: unknown): string {
+  const cols = WRITE_STEP_COLUMNS[step];
+  // "not fully applied" rather than "nothing was changed": the writers run in sequence, so an earlier
+  // one on the same row may already have committed. Overstating the rollback would be its own lie.
+  return isUniqueViolation(e)
+    ? `Could not save ${cols} — another employee already has one of these values. This row was not fully applied.`
+    : `Could not save ${cols} — the database refused the change. This row was not fully applied.`;
+}
+
 /** Dry run — validate and produce the per-row verdict. Writes nothing. */
 export async function validateSectionImport(
   ctx: SessionContext,
@@ -803,7 +1089,9 @@ export async function commitSectionImport(
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
+    let step: WriteStep = 'person';
     try {
+      step = 'person';
       if (row.personPatch) {
         await updatePerson(ctx, {
           personId: s.personId,
@@ -814,11 +1102,17 @@ export async function commitSectionImport(
           ...row.personPatch.fields,
         });
       }
+      step = 'ic';
       if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, ...row.ic });
+      step = 'passport';
       if (row.passport) await s.pack.statutory.setPassport(ctx, { personId: s.personId, ...row.passport });
+      step = 'bank';
       if (row.bank) await s.pack.statutory.setBank(ctx, { personId: s.personId, ...row.bank });
+      step = 'tax';
       if (row.tax) await s.pack.statutory.setTax(ctx, { personId: s.personId, ...row.tax });
+      step = 'employmentInfo';
       if (row.employmentInfo) await setEmploymentInfo(ctx, { employmentId: s.employmentId, ...row.employmentInfo });
+      step = 'superior';
       if (row.superiorEmploymentId) {
         await setReportingLine(ctx, {
           subordinateEmploymentId: s.employmentId,
@@ -829,10 +1123,24 @@ export async function commitSectionImport(
           validFrom: new Date().toISOString().slice(0, 10),
         });
       }
+      step = 'dependent';
       if (row.dependent) await addDependent(ctx, { personId: s.personId, ...row.dependent });
       updated++;
     } catch (e) {
-      failed.push({ rowNum: row.result.rowNum, employeeCode: row.result.employeeCode, message: (e as Error).message });
+      // NEVER THE DRIVER'S OWN WORDS. A failed write throws a Drizzle error whose message carries the
+      // whole statement AND its bound parameters — an NRIC, a bank account, a tax reference. That text
+      // was being rendered to the admin and PERSISTED into `employee_import_run.errors`, in a product
+      // holding Malaysian personal data. The stored + displayed message now names the COLUMNS and the
+      // row and nothing else; the detail stays in the server log where an engineer can still find it.
+      console.error(
+        `[section-import] row ${row.result.rowNum} (${row.result.employeeCode}) failed at step "${step}":`,
+        e,
+      );
+      failed.push({
+        rowNum: row.result.rowNum,
+        employeeCode: row.result.employeeCode,
+        message: writeFailureMessage(step, e),
+      });
     }
   }
 

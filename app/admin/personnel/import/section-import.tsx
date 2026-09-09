@@ -231,6 +231,10 @@ export function SectionImport({ section, reference }: { section: ImportSection; 
               </li>
             ))}
           </ul>
+          {/* The fence, said before the upload rather than only in the refusal — and said HONESTLY:
+              some of the full template's columns belong to another section, and some belong to no
+              section at all and are changed on the employee's own record instead. */}
+          <p className="mt-2 text-muted-foreground">{t('sectionColumnsNotice')}</p>
         </details>
 
         <StepHeading num={3} label={t('sectionStep3')} />
@@ -427,6 +431,15 @@ function SectionPreview({
           </button>
         )}
       </div>
+
+      {/* ROWS THAT MATCH NOBODY, ANSWERED ONCE AND IN FULL. The per-row cell says "Not found"; this
+          says WHY a section file cannot simply create them, and names the template that can. Without
+          it the only place the product admits to being update-only is a truncated table cell. */}
+      {preview.createCount > 0 && (
+        <div className="border-b border-border bg-amber-50/60 px-4 py-3 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+          {t('sectionNotFoundNotice', { count: preview.createCount })}
+        </div>
+      )}
 
       {/* A WHOLE-FILE REFUSAL — the fence, or a missing Employee ID column. Nothing at all is written
           while this is showing, and the server refuses independently: the disabled button is the

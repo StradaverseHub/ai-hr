@@ -91,6 +91,12 @@ export function ImportWorkbench({
             })}
           </div>
         </fieldset>
+        {/* THE DIVERGENCE, STATED BEFORE A FILE IS CHOSEN. A section file cannot create anybody — it
+            carries no name, work email, department, join date or salary to create them FROM — and the
+            place to learn that is here, not in a row-level refusal after an upload has failed. */}
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {t('sectionChooserUpdateOnly')}
+        </p>
       </Card>
 
       {choice === 'full' ? (

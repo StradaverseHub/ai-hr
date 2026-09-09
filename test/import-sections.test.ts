@@ -13,12 +13,20 @@
  *    rest of their statutory row untouched too (the setters it calls rewrite their whole block from
  *    their arguments, so an unmerged payload would blank what the file never mentioned).
  * §5 The other three sections, cell → record.
+ * §6 TWO EMPLOYEES CAN NEVER BE GIVEN ONE IDENTITY — the work email (no unique index behind it, so
+ *    nothing else stands between a column-shifted sheet and two people sharing a login) and the
+ *    identity number (a unique index, whose violation used to reach the admin AND the stored history
+ *    as raw driver text carrying the NRIC as a bound parameter).
+ * §7 AN IMPORT THAT REPORTS SUCCESS MUST BE VISIBLE ON THE SCREEN — the Employment periods written
+ *    where the Employment tab reads them, a fence refusal that names only doors that exist, a preview
+ *    that does not call an unchanged row an update, and a history badge that does not call a
+ *    nothing-was-wrong run a failure.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { commitEmployeeImport } from '../core/import';
-import { commitSectionImport, validateSectionImport } from '../core/import-sections';
+import { commitEmployeeImport, listEmployeeImportRuns } from '../core/import';
+import { commitSectionImport, validateSectionImport, writeFailureMessage } from '../core/import-sections';
 import {
   foreignColumns,
   IMPORT_SECTION_DEFS,
@@ -27,7 +35,9 @@ import {
   sectionColumns,
   UNSECTIONED_COLUMNS,
 } from '../lib/import-sections';
-import { IMPORT_COLUMNS } from '../lib/import-schema';
+import { importRunOutcome, IMPORT_COLUMNS } from '../lib/import-schema';
+import { setEmploymentInfo } from '../core/org';
+import { setBankProfileMY, setIcProfileMY, setPassportProfileMY } from '../localization/my/statutory';
 import { parseCsvRecords } from '../lib/csv';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -313,6 +323,95 @@ describe('2983802f §4 · A BLANK CELL MEANS "LEAVE THIS AS IT IS"', () => {
     expect(after.bankAccountNo).toBe(before.bankAccountNo);
     expect(after.icNumber).toBe(before.icNumber);
   });
+
+  /**
+   * EVERY CARRY-THROUGH, PINNED — one assertion per merged field, not one per setter.
+   *
+   * The four below were the ones nothing held: the whole suite stayed green with the person phone, the
+   * custom-payment-holder block, the passport remark + ISO country code and the CP39 old identity-card
+   * number all dropped from their merges. Each of those, shipped, is silent data loss on a file that
+   * never mentioned the field — which is the ONE failure this item exists to prevent.
+   */
+  it('a Profile file that changes only the city leaves the mobile number alone', async () => {
+    await seedEmployee(43, 'SEC0043');
+    const before = await personOf('SEC0043');
+    expect(before.phone).toBe('+60 12-300 0043'); // the fixture really did write one
+
+    const records = recs('employee_code,city', ['SEC0043,Shah Alam']);
+    expect((await commitSectionImport(a, { section: 'profile', records })).updated).toBe(1);
+
+    const after = await personOf('SEC0043');
+    expect(after.permanentCity).toBe('Shah Alam');
+    // `updatePerson` rewrites name / email / phone from its arguments: an unmerged payload nulls this.
+    expect(after.phone).toBe('+60 12-300 0043');
+    expect(after.fullName).toBe('Section Subject 43');
+    expect(after.primaryEmail).toBe('sec43@acme.test');
+  });
+
+  it('a bank-account-only import leaves the custom payment holder alone — the salary is not redirected', async () => {
+    await seedEmployee(44, 'SEC0044');
+    const p = await personOf('SEC0044');
+    // Somebody else is paid this employee's salary — a real configuration, and the one a careless
+    // `setBank` payload silently cancels by nulling the four columns it was not passed.
+    await setBankProfileMY(a, {
+      personId: p.id,
+      bankName: 'Maybank',
+      bankAccountNo: '5140001112244',
+      enableCustomHolderName: true,
+      customHolderName: 'Siti binti Ahmad',
+      enableCustomHolderId: true,
+      customHolderId: '900101015566',
+    });
+
+    const records = recs('employee_code,bank_account_no', ['SEC0044,7009998888']);
+    expect((await commitSectionImport(a, { section: 'bank_statutory', records })).updated).toBe(1);
+
+    const stat = await statutoryOf('SEC0044');
+    expect(stat.bankAccountNo).toBe('7009998888');
+    expect(stat.enableCustomHolderName).toBe(true);
+    expect(stat.customHolderName).toBe('Siti binti Ahmad');
+    expect(stat.enableCustomHolderId).toBe(true);
+    expect(stat.customHolderId).toBe('900101015566');
+  });
+
+  it('a passport-expiry-only import leaves the remark and the CP39 country code alone', async () => {
+    await seedEmployee(45, 'SEC0045');
+    const p = await personOf('SEC0045');
+    await setPassportProfileMY(a, {
+      personId: p.id,
+      passportNumber: 'A1234567',
+      passportIssueDate: '2024-01-01',
+      passportExpiryDate: '2029-01-01',
+      passportRemark: 'Renewed at KLIA',
+      passportIssuingCountryCode: 'MY',
+    });
+
+    // "Correct 400 expiry dates" — the file the whole merge exists to make legal.
+    const records = recs('employee_code,passport_expiry_date', ['SEC0045,2031-05-05']);
+    expect((await commitSectionImport(a, { section: 'profile', records })).updated).toBe(1);
+
+    const stat = await statutoryOf('SEC0045');
+    expect(stat.passportExpiryDate).toBe('2031-05-05');
+    expect(stat.passportNumber).toBe('A1234567');
+    expect(stat.passportIssueDate).toBe('2024-01-01');
+    // Neither has an import column at all, and `setPassport` rewrites both from its arguments.
+    expect(stat.passportRemark).toBe('Renewed at KLIA');
+    expect(stat.passportIssuingCountryCode).toBe('MY');
+  });
+
+  it('an IC correction leaves the CP39 old identity-card number alone', async () => {
+    await seedEmployee(46, 'SEC0046');
+    const p = await personOf('SEC0046');
+    await setIcProfileMY(a, { personId: p.id, icNumber: ic(46), oldIcNumber: 'A 1234567' });
+
+    const records = recs('employee_code,ic_number', [`SEC0046,${ic(96)}`]);
+    expect((await commitSectionImport(a, { section: 'profile', records })).updated).toBe(1);
+
+    const stat = await statutoryOf('SEC0046');
+    expect(stat.icNumber).toBe(ic(96));
+    // `setIc` rewrites `old_ic_number` from its argument — an omitted one wipes the CP39's No. K/P Lama.
+    expect(stat.oldIcNumber).toBe('A 1234567');
+  });
 });
 
 describe('2983802f §5 · the other three sections write what they own', () => {
@@ -405,5 +504,218 @@ describe('2983802f §5 · the other three sections write what they own', () => {
       .from(schema.employeeDependent)
       .where(eq(schema.employeeDependent.personId, p.id));
     expect(after.length).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('2983802f §6 · two employees can never be given one identity', () => {
+  /**
+   * The work email is the LOGIN identity and has no unique index behind it (db/schema.ts: `primaryEmail`
+   * carries only `person_tenant_idx`), so nothing but this check stands between a column-shifted
+   * spreadsheet and two people sharing an account. The identity number DOES have one — which is worse,
+   * not better: the collision surfaced as a raw driver error at commit, carrying the NRIC itself as a
+   * bound parameter into the admin's screen and into the stored import history.
+   */
+  it('refuses a second row in ONE file that assigns the same work email, and the second employee keeps theirs', async () => {
+    await seedEmployee(61, 'SEC0061');
+    await seedEmployee(62, 'SEC0062');
+    const records = recs('employee_code,email', ['SEC0061,shared@acme.test', 'SEC0062,shared@acme.test']);
+
+    const preview = await validateSectionImport(a, { section: 'profile', records });
+    expect(preview.rows[0].errors).toEqual([]);
+    expect(preview.rows[1].errors.join(' ')).toContain('Duplicate email in this file');
+    expect(preview.rows[1].ok).toBe(false);
+    expect(preview.updateCount).toBe(1);
+
+    const result = await commitSectionImport(a, { section: 'profile', records });
+    expect(result.updated).toBe(1);
+    expect((await personOf('SEC0061')).primaryEmail).toBe('shared@acme.test');
+    expect((await personOf('SEC0062')).primaryEmail).toBe('sec62@acme.test');
+  });
+
+  it('refuses a work email that another employee already holds', async () => {
+    await seedEmployee(63, 'SEC0063');
+    await seedEmployee(64, 'SEC0064');
+    const records = recs('employee_code,email', ['SEC0063,sec64@acme.test']);
+
+    const preview = await validateSectionImport(a, { section: 'profile', records });
+    expect(preview.rows[0].errors.join(' ')).toContain('already has the work email');
+    expect(preview.updateCount).toBe(0);
+
+    expect((await commitSectionImport(a, { section: 'profile', records })).updated).toBe(0);
+    expect((await personOf('SEC0063')).primaryEmail).toBe('sec63@acme.test');
+    expect((await personOf('SEC0064')).primaryEmail).toBe('sec64@acme.test');
+  });
+
+  it('refuses two rows in ONE file that assign the same identity number, in the DRY RUN', async () => {
+    await seedEmployee(65, 'SEC0065');
+    await seedEmployee(66, 'SEC0066');
+    const shared = ic(96);
+    const records = recs('employee_code,ic_number', [`SEC0065,${shared}`, `SEC0066,${shared}`]);
+
+    const preview = await validateSectionImport(a, { section: 'profile', records });
+    expect(preview.rows[0].errors).toEqual([]);
+    expect(preview.rows[1].errors.join(' ')).toContain('Duplicate ic_number in this file');
+    // …and the refusal names the ROW, never the number (PDPA — this is an identity document).
+    expect(preview.rows[1].errors.join(' ')).not.toContain(shared);
+
+    // The second row must never reach the write, so no raw unique-violation can be reported or stored.
+    const result = await commitSectionImport(a, { section: 'profile', records });
+    expect(result.failed).toEqual([]);
+    expect(result.updated).toBe(1);
+    expect((await statutoryOf('SEC0066')).icNumber).toBe(ic(66));
+  });
+
+  it('a failed write is reported by column and row — never by the driver’s text or a bound value', () => {
+    // The exact shape observed before this was fixed: a Drizzle unique violation whose message carries
+    // the statement AND the NRIC that caused it, which was rendered to the admin and persisted into
+    // `employee_import_run.errors`.
+    const driverError = Object.assign(
+      new Error(
+        'Failed query: update "employee_statutory_my" set "ic_number" = $1, "old_ic_number" = $2, ' +
+          '"updated_at" = now() where "person_id" = $3 params: 899010199556,,e251f6a3-1111-2222-3333-444455556666',
+      ),
+      { code: '23505' },
+    );
+    const msg = writeFailureMessage('ic', driverError);
+    expect(msg).toContain('ic_number');
+    expect(msg).toContain('another employee already has');
+    expect(msg).not.toContain('899010199556');
+    expect(msg).not.toContain('Failed query');
+    expect(msg).not.toContain('e251f6a3');
+
+    // A failure that is NOT a collision still names the columns and still quotes nothing.
+    const other = writeFailureMessage('bank', new Error('null value in column "bank_name" params: 5140001112299'));
+    expect(other).toContain('bank_account_no');
+    expect(other).not.toContain('5140001112299');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('2983802f §7 · an import that reports success must be visible on the screen', () => {
+  /**
+   * "Appears to work and does nothing" is the worst pass this feature can produce. Migration 0213 moved
+   * the Employment tab's periods to a VALUE + UNIT pair and the tab renders `probationValue ??
+   * probationMonths` — so an import that wrote only the legacy column changed nothing anybody could see
+   * for every employee whose Employment tab had ever been saved.
+   */
+  it('Employment writes the probation and notice period the Employment tab actually reads', async () => {
+    await seedEmployee(71, 'SEC0071');
+    const records = recs('employee_code,probation_months,resignation_notice_months', ['SEC0071,6,2']);
+    const result = await commitSectionImport(a, { section: 'employment', records });
+    expect(result.updated, JSON.stringify(result.failed)).toBe(1);
+
+    const emp = await employmentOf('SEC0071');
+    expect(emp.probationValue).toBe(6);
+    expect(emp.probationUnit).toBe('month');
+    expect(emp.noticeBeforeConfirmationValue).toBe(2);
+    expect(emp.noticeBeforeConfirmationUnit).toBe('month');
+    // …and the legacy twin is written from the SAME cell, so the tab's fallback can never contradict it.
+    expect(emp.probationMonths).toBe(6);
+    expect(emp.resignationNoticeMonths).toBe(2);
+  });
+
+  it('an employee whose Employment tab was saved once still SEES the imported probation period', async () => {
+    await seedEmployee(72, 'SEC0072');
+    const before = await employmentOf('SEC0072');
+    // Exactly what the Employment tab form posts (page.tsx has probationValue/probationUnit inputs and
+    // no probationMonths input at all) — the save that used to make an import invisible.
+    await setEmploymentInfo(a, { employmentId: before.id, probationValue: '3', probationUnit: 'month' });
+
+    const records = recs('employee_code,probation_months', ['SEC0072,6']);
+    expect((await commitSectionImport(a, { section: 'employment', records })).updated).toBe(1);
+
+    const emp = await employmentOf('SEC0072');
+    expect(emp.probationValue ?? emp.probationMonths).toBe(6); // ← the expression the tab renders
+    expect(emp.probationUnit).toBe('month');
+  });
+
+  it('a days column writes a DAYS period, and months + days on one row is refused', async () => {
+    await seedEmployee(73, 'SEC0073');
+    const days = recs('employee_code,probation_days', ['SEC0073,90']);
+    expect((await commitSectionImport(a, { section: 'employment', records: days })).updated).toBe(1);
+    const emp = await employmentOf('SEC0073');
+    expect(emp.probationValue).toBe(90);
+    expect(emp.probationUnit).toBe('day');
+    expect(emp.probationDays).toBe(90);
+
+    // The screen holds ONE number and ONE unit per period, so half of this row would be dropped.
+    const both = await validateSectionImport(a, {
+      section: 'employment',
+      records: recs('employee_code,probation_months,probation_days', ['SEC0073,3,15']),
+    });
+    expect(both.rows[0].errors.join(' ')).toContain('cannot both be filled in');
+    expect(both.rows[0].ok).toBe(false);
+  });
+
+  it('the fence names the section that owns a refused column, and says plainly when none does', async () => {
+    await seedEmployee(74, 'SEC0074');
+    const moved = await validateSectionImport(a, {
+      section: 'bank_statutory',
+      records: recs('employee_code,bank_name,address_line_1', ['SEC0074,CIMB,Somewhere Else']),
+    });
+    expect(moved.fileErrors.join(' ')).toContain('address_line_1');
+    expect(moved.fileErrors.join(' ')).toContain('Profile'); // the door exists, so name it
+
+    // epf_number is owned by NO section. The old refusal told the reader to "choose the section that
+    // owns them" — on the single likeliest bulk update HR would attempt, that was a door that is not
+    // there. It has to say so instead.
+    const homeless = await validateSectionImport(a, {
+      section: 'bank_statutory',
+      records: recs('employee_code,bank_name,epf_number', ['SEC0074,CIMB,EPF-9']),
+    });
+    const joined = homeless.fileErrors.join(' ');
+    expect(joined).toContain('epf_number');
+    expect(joined).toContain('No section file can change these columns');
+    expect(joined).not.toContain('choose the section that owns');
+  });
+
+  it('a Profile row that repeats what is already on file is NO CHANGE, not an update', async () => {
+    await seedEmployee(75, 'SEC0075');
+    // The emergency-contact block lives in the per-person register, not on `person`; a diff that could
+    // not see it called all five columns changed and turned a re-uploaded corrected file into a page of
+    // phantom updates.
+    const preview = await validateSectionImport(a, {
+      section: 'profile',
+      records: recs('employee_code,emergency_contact_name,emergency_contact_phone,city', [
+        'SEC0075,Aunt May,+60 12-999 0000,Kuala Lumpur',
+      ]),
+    });
+    expect(preview.rows[0].changes).toEqual([]);
+    expect(preview.rows[0].verdict).toBe('skip');
+    expect(preview.updateCount).toBe(0);
+  });
+
+  it('a run in which every row was already correct is not badged as a failure', async () => {
+    await seedEmployee(76, 'SEC0076');
+    const records = recs('employee_code,bank_name,bank_account_no', ['SEC0076,Maybank,5140001112276']);
+    const result = await commitSectionImport(a, {
+      section: 'bank_statutory',
+      records,
+      fileName: 'nothing-to-do.xlsx',
+    });
+    expect(result.updated).toBe(0);
+    expect(result.failed).toEqual([]);
+
+    const [run] = await listEmployeeImportRuns(a);
+    expect(run.totalRows).toBe(1);
+    expect(run.importedRows).toBe(0);
+    expect(run.failedRows).toBe(0);
+    // Nothing was wrong with this run. Keying the badge on "imported nothing" painted it red.
+    expect(importRunOutcome(run)).toBe('succeeded');
+  });
+
+  it('refuses a row whose Employee ID matches nobody, and names the template that DOES add people', async () => {
+    await seedEmployee(77, 'SEC0077');
+    const preview = await validateSectionImport(a, {
+      section: 'profile',
+      records: recs('employee_code,city', ['SEC0077,Ipoh', 'NOBODY7,Ipoh']),
+    });
+    expect(preview.createCount).toBe(1);
+    const refusal = preview.rows[1].errors.join(' ');
+    expect(refusal).toContain('NOBODY7');
+    expect(refusal).toContain('can only UPDATE');
+    expect(refusal).toContain('cannot add anyone');
+    expect(refusal).toContain('Everything — new employees');
   });
 });

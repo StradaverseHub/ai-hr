@@ -104,6 +104,17 @@ const PROFILE_COLUMNS = [
  * with its own history row, not a cell edit, and `setEmploymentInfo` refuses the join date outright
  * unless a movement tag accompanies it (core/org.ts). A spreadsheet column that silently did nothing
  * would be worse than no column at all. See `UNSECTIONED_COLUMNS`.
+ *
+ * WHAT THE PERIOD COLUMNS ACTUALLY WRITE, and why it is not the column of the same name. Migration
+ * 0213 (955c7de4) redesigned the Employment tab's periods into a VALUE + UNIT pair — `probation_value`
+ * / `probation_unit`, `notice_before_confirmation_value` / `_unit` — and the tab reads
+ * `probationValue ?? probationMonths`. So an import that wrote only the legacy `probation_months`
+ * column was INVISIBLE on that screen for every employee whose Employment tab had ever been saved:
+ * a run that reported success and changed nothing anybody could see. `core/import-sections.ts` maps
+ * `probation_months` → (value = N, unit = 'month') and `probation_days` → (value = N, unit = 'day'),
+ * writing the matching legacy column alongside so the two never disagree. The screen holds ONE period
+ * per field, so a row supplying BOTH months and days for the same period is refused rather than
+ * silently losing half of it.
  */
 const EMPLOYMENT_COLUMNS = [
   'probation_months',
@@ -196,6 +207,57 @@ export function foreignColumns(section: ImportSection, present: readonly string[
     if (!out.includes(col)) out.push(col);
   }
   return out;
+}
+
+/**
+ * Which section owns a column, or `null` when none does. Derived from the defs so it cannot drift.
+ *
+ * Family is searched LAST and the first match wins, which matters for the three names the family sheet
+ * shares with the employee sheet (`full_name`, `phone`, `passport_number` — on the family contract they
+ * describe a spouse, not the employee). Somebody who put `full_name` in a Bank and Statutory file meant
+ * the employee's, so Profile is the section they are pointed at.
+ */
+export function sectionOwning(column: string): ImportSection | null {
+  const order = [...IMPORT_SECTION_KEYS].sort((a, b) => Number(IMPORT_SECTION_DEFS[a].family) - Number(IMPORT_SECTION_DEFS[b].family));
+  for (const s of order) {
+    const def = IMPORT_SECTION_DEFS[s];
+    if (def.required.includes(column) || def.optional.includes(column)) return s;
+  }
+  return null;
+}
+
+/** The section labels the REFUSAL message names. English, like every other server-side import message
+ *  (`core/import.ts` does the same); the screen's own chrome is translated. */
+export const SECTION_DISPLAY_NAMES: Record<ImportSection, string> = {
+  profile: 'Profile',
+  employment: 'Employment',
+  bank_statutory: 'Bank and Statutory',
+  family: 'Family',
+};
+
+/**
+ * THE FENCE, SPLIT INTO THE TWO ANSWERS A REFUSAL HAS TO GIVE.
+ *
+ * The refusal used to tell everybody to "choose the section that owns them" — and for 17 of the wide
+ * template's 49 columns NO SECTION OWNS THEM, so that instruction sent people looking for a door that
+ * does not exist. The commonest bulk update HR would attempt (an EPF number) landed exactly there.
+ * So a refused column is now classified:
+ *
+ *   `movable`     — another section owns it, and the message NAMES that section.
+ *   `unsectioned` — no section owns it. The message says so plainly instead of implying one does.
+ */
+export function classifyForeignColumns(
+  section: ImportSection,
+  present: readonly string[],
+): { movable: { column: string; section: ImportSection }[]; unsectioned: string[] } {
+  const movable: { column: string; section: ImportSection }[] = [];
+  const unsectioned: string[] = [];
+  for (const col of foreignColumns(section, present)) {
+    const owner = sectionOwning(col);
+    if (owner) movable.push({ column: col, section: owner });
+    else unsectioned.push(col);
+  }
+  return { movable, unsectioned };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
