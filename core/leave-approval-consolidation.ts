@@ -35,6 +35,18 @@
  * leave type), not in this rewrite — but it means a NEW leave type now needs an assignment, where before
  * it inherited the company's base chain. `conversionCaveats` reports it for the companies it applies to so
  * the operator sees it before, not after.
+ *
+ * ── a6fe37fc ROUND 1: THIS MODULE IS ALSO THE APPROVAL REPLAY HARNESS ──────────────────────────────────
+ *
+ * The Leave Configuration replacement has to prove the same thing this conversion proves — that no
+ * employee's approver moved — but across a whole rebuild rather than one rewrite, and against the
+ * customer's real configuration. It is the SAME proof, so it is the same code: `snapshotApprovalRouting`
+ * and `diffSnapshots` were promoted, unchanged, to `approvalRoutingSnapshot` and `diffApprovalRouting`,
+ * and three functions were added around them — `approvalRoutingCoverage` (which rules ever WIN),
+ * `replayApprovalRouting` (one read-only transaction that always rolls back: the shape that makes running
+ * against production safe) and `verifyApprovalRouting` (which findings are FAILURES).
+ * `scripts/replay-approval-routing.ts` is a CLI over those, and nothing it has to be right about lives
+ * only in the script — a script runs by hand on the server, where no gate can see it.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -51,7 +63,9 @@ import {
 } from '../db/schema';
 import {
   resolveApprovalChain,
+  resolveApprovalDecision,
   sanitizeLevels,
+  type ApprovalDecisionSource,
   type ApprovalMatchAttrs,
   type LeaveLevelKind,
 } from './leave-approval-policy';
@@ -284,8 +298,16 @@ export async function approvalDayProbes(tx: Tx): Promise<number[]> {
   return [...probes].sort((a, b) => a - b);
 }
 
-/** Resolve every (subject × leave type × day probe) chain, keyed so before/after line up exactly. */
-async function snapshotApprovalRouting(
+/**
+ * Resolve every (subject × leave type × day probe) chain, keyed so before/after line up exactly.
+ *
+ * a6fe37fc Round 1 — EXPORTED, unchanged. It was private to this module's conversion proof; the approval
+ * replay harness (`scripts/replay-approval-routing.ts`) compares a tenant's routing across a whole
+ * migration with the SAME function, so the cutover gate and the conversion proof cannot drift apart. Not
+ * one line of its logic was rewritten to promote it, deliberately: a re-implementation would be a second
+ * answer to "what does this tenant's configuration resolve to", which is the thing being guarded against.
+ */
+export async function approvalRoutingSnapshot(
   tx: Tx,
   subjects: RoutingSubject[],
   leaveTypeIds: string[],
@@ -303,7 +325,15 @@ async function snapshotApprovalRouting(
   return snap;
 }
 
-function diffSnapshots(
+/**
+ * Every key whose resolved chain moved between two snapshots, named rather than counted so the operator
+ * can look the employee up. a6fe37fc Round 1 — EXPORTED, unchanged, for the same reason as
+ * `approvalRoutingSnapshot`.
+ *
+ * Keys present in `after` but absent from `before` are NOT differences: a leave type or an employment
+ * that did not exist when the baseline was taken has no "before" chain to have moved from.
+ */
+export function diffApprovalRouting(
   before: Map<string, string>,
   after: Map<string, string>,
   subjects: RoutingSubject[],
@@ -324,6 +354,223 @@ function diffSnapshots(
     });
   }
   return out;
+}
+
+// ──────────────────────────── coverage ────────────────────────────
+
+/** One active rule, and how many resolutions it actually won. */
+export type ApprovalRuleCoverage = {
+  ruleId: string;
+  companyId: string;
+  ruleName: string | null;
+  leaveTypeId: string | null;
+  /** Cases (subject × leave type × day probe) this rule won. **0 means the rule is unreachable TODAY** —
+   *  scoped to something no active employment has, or shadowed by a more specific rule. */
+  wins: number;
+};
+
+export type ApprovalRoutingCoverage = {
+  /** How many (subject × leave type × day probe) resolutions were performed. */
+  decisions: number;
+  /** Where those resolutions ended: a rule, the tenant-default template, or the built-in chain. */
+  bySource: Record<ApprovalDecisionSource, number>;
+  /** Every ACTIVE rule in the tenant, most-winning first. Rules with `wins: 0` are the honest limit of the
+   *  replay's promise: it proves nothing changed for any real employee, and a rule that reaches no real
+   *  employee is proven unchanged only in the sense that it reached nobody before and reaches nobody now. */
+  rules: ApprovalRuleCoverage[];
+};
+
+/**
+ * WHICH RULES EVER WIN, over the same grid the snapshot compares.
+ *
+ * a6fe37fc migration order §2.3. A replay over rules that never match proves nothing about them, so the
+ * harness reports the rules that never won rather than letting a clean diff imply they were checked. It
+ * calls `resolveApprovalDecision` — the SAME matcher `resolveApprovalChain` wraps — so a rule credited
+ * with a win here is a rule that would route a real request, not one a second ranking thinks would.
+ *
+ * Read-only. Kept separate from `approvalRoutingSnapshot` (rather than folded into it) because that
+ * function is the before/after proof and is promoted unchanged on purpose.
+ */
+export async function approvalRoutingCoverage(
+  tx: Tx,
+  subjects: RoutingSubject[],
+  leaveTypeIds: string[],
+  dayProbes: number[],
+): Promise<ApprovalRoutingCoverage> {
+  const rows = await tx
+    .select({
+      id: leaveApprovalPolicy.id,
+      companyId: leaveApprovalPolicy.companyId,
+      ruleName: leaveApprovalPolicy.ruleName,
+      leaveTypeId: leaveApprovalPolicy.leaveTypeId,
+    })
+    .from(leaveApprovalPolicy)
+    .where(eq(leaveApprovalPolicy.active, true))
+    .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+
+  const wins = new Map<string, number>();
+  const bySource: Record<ApprovalDecisionSource, number> = { rule: 0, 'tenant-default': 0, fallback: 0 };
+  let decisions = 0;
+  for (const s of subjects) {
+    for (const leaveTypeId of leaveTypeIds) {
+      for (const days of dayProbes) {
+        const d = await resolveApprovalDecision(tx, s.companyId, leaveTypeId, { ...s.attrs, days });
+        decisions += 1;
+        bySource[d.source] += 1;
+        if (d.ruleId) wins.set(d.ruleId, (wins.get(d.ruleId) ?? 0) + 1);
+      }
+    }
+  }
+  const rules = rows.map((r) => ({
+    ruleId: r.id,
+    companyId: r.companyId,
+    ruleName: r.ruleName,
+    leaveTypeId: r.leaveTypeId,
+    wins: wins.get(r.id) ?? 0,
+  }));
+  rules.sort((a, b) => b.wins - a.wins || a.companyId.localeCompare(b.companyId) || a.ruleId.localeCompare(b.ruleId));
+  return { decisions, bySource, rules };
+}
+
+// ──────────────────────────── the replay ────────────────────────────
+
+/** One tenant's resolved routing, as read inside a single read-only transaction that was rolled back. */
+export type RoutingReplay = {
+  tenantId: string;
+  /** One representative employment per distinct routing tuple. */
+  subjects: RoutingSubject[];
+  /** The real headcount those representatives stand for — the promise is about employees, not tuples. */
+  employmentsCovered: number;
+  leaveTypeIds: string[];
+  dayProbes: number[];
+  /** `employmentId|leaveTypeId|days` → the resolved chain, joined with ' → '. */
+  chains: Map<string, string>;
+  coverage: ApprovalRoutingCoverage | null;
+  /** What POSTGRES says about the transaction the replay ran in — not what this module believes. */
+  readOnlyEnforced: boolean;
+};
+
+/** Internal signal that the replay finished; throwing it rolls the transaction back. The replay NEVER
+ *  commits, so there is no success path out of the transaction and no flag that could add one. */
+class ReplayComplete extends Error {
+  readonly replay: RoutingReplay;
+  constructor(replay: RoutingReplay) {
+    super('replay complete');
+    this.name = 'ReplayComplete';
+    this.replay = replay;
+  }
+}
+
+/**
+ * a6fe37fc Round 1 — READ ONE TENANT'S APPROVAL ROUTING, PROVE NOTHING WAS WRITTEN.
+ *
+ * The engine behind `scripts/replay-approval-routing.ts`, and it lives HERE rather than in the script so
+ * that the thing which runs against the customer's production database is the thing the gate exercises on
+ * every run (`test/leave-approval-replay.test.ts`). A safety shape that only the script has is a safety
+ * shape nothing tests.
+ *
+ * THE SHAPE IS THE SAFETY, and all three parts of it are load-bearing:
+ *   · READS ONLY — enforced by Postgres (`SET TRANSACTION READ ONLY`), not by this module's good
+ *     intentions, and the enforcement is read back and returned so a caller can assert it.
+ *   · ONE TRANSACTION THAT ALWAYS ROLLS BACK — the only way out is `ReplayComplete`, thrown after the
+ *     reads. There is no commit path to add a write to later.
+ *   · NO APPLY MODE. `convertLegacyApprovalRules` has one because it converts; this replays. Nothing here
+ *     takes a write option, and nothing may be given one.
+ *
+ * `extraLeaveTypeIds` / `extraDayProbes` exist for `--verify`: a baseline's grid is unioned in so the two
+ * snapshots line up key-for-key even when a leave type or a day-range bound was added since. They only
+ * ever ADD keys to resolve; they cannot remove one, so a verify can never quietly stop checking a case.
+ */
+export async function replayApprovalRouting(
+  ctx: SessionContext,
+  opts: { extraLeaveTypeIds?: string[]; extraDayProbes?: number[]; coverage?: boolean } = {},
+): Promise<RoutingReplay> {
+  try {
+    return await withTenant(ctx, async (tx) => {
+      // Belt and braces, in that order: the transaction is made read-only by the DATABASE before a single
+      // row is read, so even a future edit that tried to write would fail rather than succeed quietly.
+      await tx.execute(sql`SET TRANSACTION READ ONLY`);
+      const ro = await tx.execute(sql`select current_setting('transaction_read_only') as ro`);
+      const readOnlyEnforced = (ro as unknown as { ro: string }[])[0]?.ro === 'on';
+
+      const { subjects, employmentsCovered } = await listRoutingSubjects(tx);
+      // EVERY leave type, archived included: a rule scoped to an archived type still matches if the type is
+      // ever used, and excluding it would leave a blind spot exactly where a migration is most careless.
+      const types = await tx.select({ id: leaveType.id }).from(leaveType);
+      const leaveTypeIds = [...new Set([...types.map((t) => t.id), ...(opts.extraLeaveTypeIds ?? [])])].sort();
+      const dayProbes = [...new Set([...(await approvalDayProbes(tx)), ...(opts.extraDayProbes ?? [])])].sort(
+        (a, b) => a - b,
+      );
+
+      const chains = await approvalRoutingSnapshot(tx, subjects, leaveTypeIds, dayProbes);
+      const coverage = opts.coverage
+        ? await approvalRoutingCoverage(tx, subjects, leaveTypeIds, dayProbes)
+        : null;
+
+      throw new ReplayComplete({
+        tenantId: ctx.tenantId,
+        subjects,
+        employmentsCovered,
+        leaveTypeIds,
+        dayProbes,
+        chains,
+        coverage,
+        readOnlyEnforced,
+      });
+    });
+  } catch (e) {
+    if (e instanceof ReplayComplete) return e.replay;
+    throw e;
+  }
+}
+
+/** What a `--verify` run found, split by what each finding MEANS. */
+export type ReplayVerdict = {
+  /** Cases whose chain moved for an employment that is STILL an active routing subject. THIS IS THE
+   *  FAILURE — it is the promise ("the same approver, for the same real employee") not being kept. */
+  changed: RoutingDifference[];
+  /** Cases from the baseline whose employment is no longer an active routing subject — terminated, or with
+   *  no open assignment. NOT a failure: migration order §2.5 excludes terminated employments because a
+   *  terminated employee submits no leave. Reported by name anyway, so a suspicious number of them is
+   *  visible instead of silently swallowed. */
+  gone: RoutingDifference[];
+  /** Cases that exist now and did not at baseline (a new employment, or a new leave type). Not a
+   *  difference — there is no "before" chain for them to have moved from. */
+  added: number;
+};
+
+/** The baseline stores only what a difference needs to NAME a company for an employment that has since
+ *  left. Attributes are deliberately not stored: a verify must resolve against today's org data. */
+export type BaselineSubject = { employmentId: string; companyId: string };
+
+/**
+ * Compare a replay against a committed baseline and say which findings are FAILURES.
+ *
+ * a6fe37fc Round 1. This judgement — "a moved chain for a live employee fails the cutover; a chain that
+ * belonged to someone who has since left does not" — is the acceptance test's whole opinion, so it lives
+ * here where the gate runs it, not inside a CLI that only ever runs by hand on the server. A branch that
+ * decides whether a release may proceed and is exercised nowhere is exactly the kind of thing that is
+ * discovered to be wrong during the release it was written for.
+ */
+export function verifyApprovalRouting(
+  before: Map<string, string>,
+  replay: RoutingReplay,
+  baselineSubjects: BaselineSubject[],
+): ReplayVerdict {
+  const live = new Set(replay.subjects.map((s) => s.employmentId));
+  // Employments that have since left are carried as stubs purely so a `gone` line can name its company
+  // rather than an empty string. They resolve nothing — they are not subjects any more.
+  const stubs: RoutingSubject[] = baselineSubjects
+    .filter((s) => !live.has(s.employmentId))
+    .map((s) => ({ companyId: s.companyId, employmentId: s.employmentId, employmentCount: 0, attrs: {} }));
+  const differences = diffApprovalRouting(before, replay.chains, [...replay.subjects, ...stubs]);
+  let added = 0;
+  for (const key of replay.chains.keys()) if (!before.has(key)) added += 1;
+  return {
+    changed: differences.filter((d) => live.has(d.employmentId)),
+    gone: differences.filter((d) => !live.has(d.employmentId)),
+    added,
+  };
 }
 
 // ──────────────────────────── conversion ────────────────────────────
@@ -393,7 +640,7 @@ export async function convertLegacyApprovalRules(
       const leaveTypeIds = types.map((t) => t.id);
       const dayProbes = await approvalDayProbes(tx);
 
-      const before = await snapshotApprovalRouting(tx, subjects, leaveTypeIds, dayProbes);
+      const before = await approvalRoutingSnapshot(tx, subjects, leaveTypeIds, dayProbes);
       const actions: ConversionAction[] = [];
 
       for (const rule of legacy) {
@@ -549,8 +796,8 @@ export async function convertLegacyApprovalRules(
       }
 
       // ── the proof ────────────────────────────────────────────────────────────────────────────────
-      const after = await snapshotApprovalRouting(tx, subjects, leaveTypeIds, dayProbes);
-      const differences = diffSnapshots(before, after, subjects);
+      const after = await approvalRoutingSnapshot(tx, subjects, leaveTypeIds, dayProbes);
+      const differences = diffApprovalRouting(before, after, subjects);
       if (differences.length) throw new ApprovalRoutingChangedError(differences);
 
       const expandedCompanies = [

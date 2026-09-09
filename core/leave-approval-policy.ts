@@ -136,16 +136,36 @@ function beats(a: RuleRow, b: RuleRow): boolean {
   return a.createdAt.getTime() > b.createdAt.getTime();
 }
 
-/** Resolve the ordered approver levels for a request: the most-specific matching active rule wins, then the
- *  company default, then the built-in fallback. Runs inside the request transaction (so under the
+/** Where a resolved chain came from. `'rule'` is the only source that names a rule — the other two mean
+ *  no rule won, so there is nothing to name. */
+export type ApprovalDecisionSource = 'rule' | 'tenant-default' | 'fallback';
+
+/** The whole answer to "who approves this request", not only the chain: WHICH rule won, and WHERE the
+ *  chain came from when none did. The extra two fields are what lets the approval replay report coverage —
+ *  which of a tenant's rules ever actually win — without a second ranking of the same rows. */
+export type ApprovalDecision = {
+  levels: LeaveLevelKind[];
+  /** The winning rule's id when `source === 'rule'`; null for the tenant default and the built-in chain. */
+  ruleId: string | null;
+  source: ApprovalDecisionSource;
+};
+
+/** Resolve the approver decision for a request: the most-specific matching active rule wins, then the
+ *  tenant-default template, then the built-in fallback. Runs inside the request transaction (so under the
  *  requester's RLS, which is why the policy is readable tenant-wide). Resolution is scoped to the passed
- *  attributes, which come from the requesting employment's OWN current assignment only (ADR-0071 1(f)). */
-export async function resolveApprovalChain(
+ *  attributes, which come from the requesting employment's OWN current assignment only (ADR-0071 1(f)).
+ *
+ *  a6fe37fc Round 1 — THIS IS THE ONE MATCHER, AND `resolveApprovalChain` IS A ONE-LINE WRAPPER OVER IT.
+ *  The ranking below (match → specificity → tie-break → effective levels → tenant default → fallback) must
+ *  never be copied anywhere else: a second ranking of the same rules that drifts from this one is exactly
+ *  the defect the Leave Configuration replacement exists to remove, and a replay run against a copy of the
+ *  matcher would prove nothing about how production routes a request. */
+export async function resolveApprovalDecision(
   tx: Tx,
   companyId: string,
   leaveTypeId: string | null,
   attrs: ApprovalMatchAttrs = {},
-): Promise<LeaveLevelKind[]> {
+): Promise<ApprovalDecision> {
   const rules = (await tx
     .select({
       id: leaveApprovalPolicy.id,
@@ -202,12 +222,24 @@ export async function resolveApprovalChain(
       }
     }
     const lv = effectiveLevels(best);
-    if (lv.length) return lv;
+    if (lv.length) return { levels: lv, ruleId: best.id, source: 'rule' };
   }
   // No matching rule (or its effective chain resolved empty): fall back to the org-wide default template,
-  // then the built-in chain.
-  if (tenantDefaultLevels.length) return tenantDefaultLevels;
-  return FALLBACK_CHAIN;
+  // then the built-in chain. Neither names a rule, so `ruleId` is null — a coverage report must not credit
+  // a win to a rule that did not win.
+  if (tenantDefaultLevels.length) return { levels: tenantDefaultLevels, ruleId: null, source: 'tenant-default' };
+  return { levels: FALLBACK_CHAIN, ruleId: null, source: 'fallback' };
+}
+
+/** The ordered approver levels for a request — every existing caller's entry point, and deliberately a
+ *  one-line wrapper: it must have no ranking of its own to drift from `resolveApprovalDecision`'s. */
+export async function resolveApprovalChain(
+  tx: Tx,
+  companyId: string,
+  leaveTypeId: string | null,
+  attrs: ApprovalMatchAttrs = {},
+): Promise<LeaveLevelKind[]> {
+  return (await resolveApprovalDecision(tx, companyId, leaveTypeId, attrs)).levels;
 }
 
 /** The company-default chain, for the admin editor.
