@@ -10,7 +10,10 @@ import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
 // "EMP-0008" here for the same reason it does there. Dependency-free, so a client island may import it.
 import { matchesEmployeeSearch } from '@/lib/employee-search';
 
-export type Master = { id: string; name: string; companyId: string };
+/** A label option for the Step-2 filter dropdowns. `isGlobal` is the "All Companies" criteria: a global
+ *  label belongs to every company of the tenant, so the wizard's company narrowing unions it in
+ *  (f1bbc572) rather than testing the origin company alone. */
+export type Master = { id: string; name: string; companyId: string; isGlobal: boolean };
 
 // Client-safe mirror of core/read.ts's PayrollRunEmployeeRow (NOT imported directly — core/read.ts pulls
 // in db/client, which is server-only and would break the client/server RSC boundary for this component).

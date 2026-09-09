@@ -138,10 +138,10 @@ export default async function PayrollProcessPage({
           // "all companies I'm scoped to", and the server re-resolves it against allowedCompanies as a
           // backstop so the run can never widen beyond the admin's grants.
           companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))}
-          departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, businessUnitId: d.businessUnitId }))}
-          businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId }))}
-          positions={positions.map((p) => ({ id: p.id, name: p.title, companyId: p.companyId }))}
-          costCenters={costCenters.map((c) => ({ id: c.id, name: c.name, companyId: c.companyId }))}
+          departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, isGlobal: d.isGlobal, businessUnitId: d.businessUnitId }))}
+          businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal }))}
+          positions={positions.map((p) => ({ id: p.id, name: p.title, companyId: p.companyId, isGlobal: p.isGlobal }))}
+          costCenters={costCenters.map((c) => ({ id: c.id, name: c.name, companyId: c.companyId, isGlobal: c.isGlobal }))}
           jobGrades={jobGrades.map((g) => ({ id: g.id, name: g.name }))}
           payDayByCompany={payDayByCompany}
           existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company }))}

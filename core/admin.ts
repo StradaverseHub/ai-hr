@@ -1254,6 +1254,10 @@ export function listPositions(
         companyId: position.companyId,
         title: position.title,
         jobFamily: position.jobFamily,
+        // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
+        // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
+        // above already admits it; a picker that re-filtered on company_id alone threw it away again).
+        isGlobal: position.isGlobal,
         archivedAt: position.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
       })
@@ -1282,6 +1286,10 @@ export function listCostCenters(
         companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
+        // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
+        // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
+        // above already admits it; a picker that re-filtered on company_id alone threw it away again).
+        isGlobal: costCenter.isGlobal,
         archivedAt: costCenter.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
       })
@@ -1312,6 +1320,10 @@ export function listBusinessUnits(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
+        // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
+        // above already admits it; a picker that re-filtered on company_id alone threw it away again).
+        isGlobal: businessUnit.isGlobal,
         archivedAt: businessUnit.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
       })
@@ -1333,6 +1345,14 @@ export function listBusinessUnits(
 // The System Labels admin page is the ONLY consumer of `description`, so it gets its own read queries that
 // select the column. The general-purpose listDepartments/listPositions/listCostCenters/listBusinessUnits
 // used by the hire form and People filters are deliberately left untouched (no description) — narrow scope.
+//
+// SCOPE (f1bbc572): `opts.companyIds` here narrows by ORIGIN company only — deliberately, because this is
+// the MAINTENANCE read: the System Labels screen loads the tenant's rows unfiltered and then applies the
+// origin ∪ global rule in memory (lib/system-label-scope.ts), which is what lets it show a Global row
+// alongside the Global scope cell whatever company created it. Do NOT read these four as "the labels this
+// company may use" — that question is answered by the resolver
+// (core/system-labels.ts visibleLabelIdsCondition), which the general-purpose
+// listDepartments/listPositions/listCostCenters/listBusinessUnits above pass their companyIds through.
 //
 // Audit columns (62de487d): the four label tables carry `created_at` but no updated_at/updated_by — the
 // "Last updated" audit info the grid shows is DERIVED from the domain-event log (each create/update/archive

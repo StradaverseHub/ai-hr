@@ -22,6 +22,7 @@ import { GradeLabelsGrid } from '@/components/grade-labels-grid';
 import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 import { ProfileOptionsGrid } from '@/components/profile-options-grid';
 import { SystemLabelsTabs } from '@/components/system-labels-tabs';
+import { labelsInCompanyScope, type CompanyScopedLabel } from '@/lib/system-label-scope';
 import { removeProfileOptionAction, saveProfileOptionsAction } from './profile-options/actions';
 import {
   assignLabelCompaniesAction,
@@ -148,7 +149,15 @@ export default async function SystemLabelsPage({
     lastUpdatedBy: r.lastUpdatedBy,
   });
 
-  const inScope = <T extends { companyId: string }>(rows: T[]) => rows.filter((r) => scopedIdSet.has(r.companyId));
+  // f1bbc572 — WHAT A ROW'S SCOPE IS. A label carries an ORIGIN company (the company it happened to be
+  // added from) and an `is_global` flag meaning "All Companies". This filter used to test the origin
+  // alone, so a Global label behaved like a company label belonging to whichever company created it: on
+  // the live tenant 59 global rows had been created under six of twelve companies, and no company saw
+  // the whole global set. The union below is the SAME rule every consumer already reads through
+  // (core/system-labels.ts visibleLabelIdsCondition: origin ∪ shared-in ∪ global) — this screen was the
+  // odd one out, which is also why `assignedCompanyIds` two lines up was already richer than the filter
+  // that preceded it.
+  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => labelsInCompanyScope(rows, scopedIdSet);
 
   const data: Record<GridKind, GridRecord[]> = {
     department: inScope(departments).map((r) => norm(r, deptMap)),

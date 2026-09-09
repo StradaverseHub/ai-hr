@@ -12,6 +12,7 @@ import type {
   RecomputeRow,
   RecomputeRunSummary,
 } from '@/core/attendance-recompute';
+import { labelsInCompanyScope } from '@/lib/system-label-scope';
 import { applyRecomputeAction, previewRecomputeAction } from './actions';
 
 /**
@@ -32,7 +33,7 @@ import { applyRecomputeAction, previewRecomputeAction } from './actions';
  */
 
 type Company = { id: string; name: string };
-type Department = { id: string; name: string; companyId: string };
+type Department = { id: string; name: string; companyId: string; isGlobal: boolean };
 type Employee = {
   employmentId: string;
   name: string;
@@ -83,7 +84,12 @@ export function RecomputeClient({
 
   const companyName = (id: string) => companies.find((c) => c.id === id)?.name ?? id;
   const deptOptions = useMemo(
-    () => departments.filter((d) => d.companyId === companyId),
+    // f1bbc572 — a Global department belongs to EVERY company, so the company narrowing is the union
+    // origin ∪ global, not origin alone. Filtering on company_id by itself dropped a global department
+    // out of this picker for every company but the one it happened to be created under, while the
+    // employees below it kept it — the department filter then matched nothing that was there. No
+    // company selected still means no options (the select is disabled), not "the global ones".
+    () => (companyId ? labelsInCompanyScope(departments, new Set([companyId])) : []),
     [departments, companyId],
   );
   const empOptions = useMemo(

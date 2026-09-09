@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
+import { labelsInCompanyScope } from '@/lib/system-label-scope';
 import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from './actions';
 import { preferredCycleId, wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
@@ -202,10 +203,13 @@ export function Wizard({
   // Step-2 filter catalogs span the WHOLE selected company set (multi-company): a filter dropdown must offer
   // every selected company's departments / BUs / positions / cost centres, not just the primary company's.
   const companySet = useMemo(() => new Set(companyIds), [companyIds]);
-  const companyDepartments = useMemo(() => departments.filter((d) => companySet.has(d.companyId)), [departments, companySet]);
-  const companyBusinessUnits = useMemo(() => businessUnits.filter((b) => companySet.has(b.companyId)), [businessUnits, companySet]);
-  const companyPositions = useMemo(() => positions.filter((p) => companySet.has(p.companyId)), [positions, companySet]);
-  const companyCostCenters = useMemo(() => costCenters.filter((c) => companySet.has(c.companyId)), [costCenters, companySet]);
+  // f1bbc572 — "belongs to the selected company set" is origin ∪ GLOBAL. A label whose Criteria is Global
+  // is usable by every company, so employees in the run carry it; narrowing these catalogs on the origin
+  // company alone left a filter dropdown missing the very department/position the rows below it show.
+  const companyDepartments = useMemo(() => labelsInCompanyScope(departments, companySet), [departments, companySet]);
+  const companyBusinessUnits = useMemo(() => labelsInCompanyScope(businessUnits, companySet), [businessUnits, companySet]);
+  const companyPositions = useMemo(() => labelsInCompanyScope(positions, companySet), [positions, companySet]);
+  const companyCostCenters = useMemo(() => labelsInCompanyScope(costCenters, companySet), [costCenters, companySet]);
 
   // Step 1 valid: AT LEAST ONE company (multi-company), a valid month, and a cycle. Multi-company Phase 1
   // uses a single shared cycle across the selected companies (plan §"Step 1"); the primary company's cycle
