@@ -8644,6 +8644,7 @@
       "discardChanges": "Hủy thay đổi",
       "cancel": "Hủy bỏ",
       "saving": "Đang lưu…",
+      "discarding": "Đang hủy…",
       "savedToast": "Đã lưu thay đổi",
       "saveFailed": "Không thể lưu các thay đổi của bạn",
       "noChanges": "Không có thay đổi chưa lưu",

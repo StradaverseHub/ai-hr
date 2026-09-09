@@ -371,15 +371,28 @@ fail, and one of the tests that existed could not tell the two things it was nam
    moved baseline.** §5 discards a FIRST edit, and on a page nobody has saved yet "the last saved
    version" and "the page as it first rendered" are the same string — so §5 could not distinguish the
    claim from its opposite. **§14** saves once, lets `router.refresh()` land, edits again and discards,
-   and asserts on a value that never appeared in the initial render. Measured broken (`'Ali bin Ahmad'`)
-   when the refresh is made not to carry the saved value, which is the assertion's proof of life.
+   and asserts on a value that never appeared in the initial render. Proof of life, measured against
+   SHIPPED code rather than the harness (the r257 verify pass rightly rejected the first attempt, which
+   had perturbed the test's own `rerender` argument): freeze `children` in a ref inside
+   `tab-save-scope.tsx` so the content div renders the opening payload for ever — i.e. Discard restores
+   the page as it first rendered — and §14's first case fails with
+   `expected 'Ali bin Ahmad' to be 'Ali bin Hassan'` while **§5 passes**, which is the only thing that
+   shows §14 catches what §5 cannot. §14's second case passes under that mutation, correctly: it pins
+   the in-place re-baseline, not the remount.
 2. **The plan's own worked example was pinned only before the write.** §4 and §13 show an *unsubmitted*
    bucket (b) form is invisible to the count, the payload and the restore. **§15** records the revision
    for real — on the Payroll shape, where the revision dialog and the salary history sit INSIDE the card
-   the scope encloses — and only then presses the tab's Discard: the revision survives, is not replayed,
-   and the tab reports nothing to discard the moment it is written. Measured broken (the Save arms on a
-   typed revision amount, and the revision's own action stops running at all) when the revision form is
-   given a section marker.
+   the scope encloses — and only then presses the tab's Discard. What that case pins, stated as it was
+   corrected after the verify pass: the remount really did sweep the inside of that card (a control
+   belonging to no section at all is back to its server value, and so is the field the tab owns); the
+   revision's own action ran exactly once, neither replayed nor reversed; and the amount reached no
+   namespace of the payload. Measured broken two ways — `key={nonce}` replaced by a constant key fails
+   the sweep assertion with `expected 'agreed at review' to be ''`, and giving the revision form a
+   section marker arms the Save on a typed amount and stops the revision's own action running at all.
+   **"The recorded row is still on screen" is NOT among the pinned results**, and the first version of
+   this document was wrong to record it as one: the history is state of the component that renders the
+   scope, so `key={nonce}` cannot reach it by construction. It is read as a consequence, below the
+   assertions that can fail.
 3. **`beforeunload` was described in three docblocks and asserted nowhere.** **§16** pins the half the
    page controls: the unload is cancelled while the tab is dirty, is not cancelled on a clean tab, and
    stops being cancelled the moment the edits are discarded.
@@ -397,22 +410,49 @@ fail, and one of the tests that existed could not tell the two things it was nam
   guarded (4 above). Moving the bar to the foot of the tab would put it under two cards it does not own,
   which reads worse than sitting above them with their names printed on it.
 
-### The one thing left open, and why it was left
+### The thing that was left open — and was worse than this document said, so it was closed
 
-**Discard restores the refreshed SERVER payload, so a Discard pressed before that payload comes back
-restores the values the page opened with.** The window needs a second edit AND a Discard between the
-"Changes saved" toast and the refresh returning. Both fixes are worse than the window:
+The first version of this section described the open edge as "a Discard pressed before the refreshed
+payload comes back restores the values the page opened with", i.e. a stale render, and argued the two
+available fixes were worse than the window. **The verify pass measured it and it was not a display
+quirk: it silently wrote a previously-saved field back to its pre-save value.** The chain, driven end to
+end against the real component:
 
-* restoring from the values the client POSTED removes the window and breaks normalisation — the server
-  trims a name and reformats a date, so Discard would start putting back the admin's raw keystrokes
-  rather than the record as it now reads;
-* gating the button on the refresh means a refresh that never returns leaves Discard disabled for good,
-  and AGENTS 28 rates a control that does nothing worse than a narrow window.
+1. `router.refresh()` dispatches inside its own transition and returns synchronously, so the bar is live
+   again the instant a save resolves, while `children` still carries the values the page opened with;
+2. Discard remounts (`key={nonce}`), so the PRE-save value goes back into an input the admin had already
+   saved, and the fresh baseline adopts it as "last saved" — nothing on screen says otherwise;
+3. the next save of that section posts it, because `buildTabPayload` packs every control of a dirty
+   section rather than only the changed ones (`lib/tab-save-dom.ts`), and `syncCarriedValues` mirrors the
+   same stale value into the sibling section's carry-through input, so even an unrelated Contact & Address
+   save writes the old name back.
 
-It is written into the §14 docblock beside the test rather than left for the next round to rediscover.
+Rated as a lost save rather than a stale render, "both fixes are worse than the window" no longer held,
+and the option space was not the two that had been considered. **What shipped is a third: the discard
+waits for the payload it restores from.** A save marks the scope stale; the mark clears when a new
+`children` identity arrives, which is the refreshed RSC tree and nothing else (the component's own state
+changes re-render it with the same element the server made). A Discard inside the window is armed rather
+than run and fires the moment the payload lands, restoring the real last-saved values through the same
+remount as always — islands included — and Save is inert while it is owed, so nothing can post the stale
+value in the meantime. The two rejected fixes are still rejected, for the reasons given before: restoring
+from the values the client POSTED breaks normalisation, and simply disabling the button on a refresh that
+never returns is a control that does nothing.
+
+**What is left.** The wait is bounded by `REFRESH_WAIT_MS` (5s), because a refresh that never comes back
+must not leave Discard unanswerable. On that timeout the reader gets the restore that IS available — the
+pre-fix behaviour — and the repair is re-armed, so if the payload does turn up, a tab nobody has touched
+since is remounted onto it. What survives is one case: a refresh slower than the bound AND a further edit
+AND a save of the same section before the payload lands. **§17** of `personnel-tab-save.dom.test.tsx`
+pins the fix; reverting `tab-save-scope.tsx` to its pre-fix state fails its first case with
+`expected 'Ali bin Ahmad' to be 'Ali bin Hassan'` — the pre-save name going back into a field that had
+already been saved — and fails the payload case with the same string. The timeout fallback itself is
+described here and in the code but is not pinned by a test.
 
 ### Still true, and still the sentence the reporter is owed
 
 Family and Qualification cannot have one Save. Every form on both tabs is a child record, so a tab-wide
 Save there would have nothing to save and a tab-wide Discard would cover nothing. Everything else the
-request asked for is built, and as of this round every part of it is pinned by a test that can fail.
+request asked for is built, and every promise in it is now pinned by at least one assertion that has been
+watched to fail against shipped code — with the two exceptions named above and not glossed over: the
+`REFRESH_WAIT_MS` fallback, and "the recorded row is still on screen", which the design makes
+unfalsifiable and which is therefore read as a consequence rather than counted as a guard.

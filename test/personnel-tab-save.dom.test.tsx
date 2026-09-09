@@ -348,7 +348,7 @@ describe('§4 THE FENCE — a card outside the scope is untouched by the tab-wid
   it('editing a bucket (b) card neither arms the tab Save nor reaches the payload nor is undone by Discard', async () => {
     const user = userEvent.setup();
     const save = saveMock(async () => ok(['person']));
-    render(<Screen save={save} />);
+    const { rerender } = render(<Screen save={save} />);
     const { name, salary, saveBtn, discardBtn } = fields();
 
     // A salary revision typed into its own card is invisible to the tab.
@@ -367,6 +367,11 @@ describe('§4 THE FENCE — a card outside the scope is untouched by the tab-wid
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     const fd = save.mock.calls[0]![0] as FormData;
     expect([...fd.keys()].some((k) => k.includes('amount'))).toBe(false);
+
+    // The refresh that save asked for, coming back. Every save on the real page is followed by one; here
+    // it has to be handed over by hand, and a Discard pressed before it arrives is deliberately HELD
+    // rather than run against markup that is a round trip behind the record (§17).
+    rerender(<Screen save={save} />);
 
     // …and Discard, the dangerous half, leaves it exactly where it was.
     await user.clear(name);
@@ -1114,16 +1119,11 @@ describe('§13 a bucket (b) form INSIDE a consolidated card is still fenced off,
  * fail. `rerender` with a new `serverName` IS `router.refresh()` landing; the real page gets the same
  * new element from the server, this test hands it over by hand because there is no server here.
  *
- * THE ONE EDGE THIS DOES NOT CLOSE, MEASURED IN r257 AND WRITTEN DOWN RATHER THAN PAPERED OVER. Because
- * the restore is the refreshed SERVER payload, a Discard pressed in the window before that payload comes
- * back restores the values the page opened with instead — run this file with the `rerender` above handing
- * back `SAVED_NAME` and the first case fails with 'Ali bin Ahmad', which is exactly that. It was left
- * alone deliberately. Restoring from the values the client POSTED instead would remove the window and
- * introduce a worse fault: the server normalises what it stores (a trimmed name, a reformatted date), so
- * Discard would start putting back the admin's raw keystrokes rather than the record as it now reads.
- * Gating the button on the refresh instead means a refresh that never returns leaves Discard disabled
- * for good — a control that does nothing, which AGENTS 28 rates worse than the narrow window. The window
- * needs a second edit AND a Discard between the toast and the payload's return.
+ * THE WINDOW BETWEEN THE SAVE AND THAT PAYLOAD is where this used to go wrong, and §17 below is where it
+ * is now pinned: until the refresh comes back, the element this restore reads is still the PRE-save one.
+ * r257 first documented that as a stale render and left it; the verify pass measured it properly and it
+ * was worse than documented — the pre-save value went back into the input, became the new baseline, and
+ * was posted by the next save. `discard` in components/tab-save-scope.tsx now waits for the payload.
  */
 function RefreshableScreen({ save, serverName }: { save: SaveFn; serverName: string }) {
   return (
@@ -1137,6 +1137,12 @@ function RefreshableScreen({ save, serverName }: { save: SaveFn; serverName: str
             {/* What the RSC page renders. It changes when — and only when — a save has landed and the
                 refresh has come back, which is exactly what makes it "the last saved version". */}
             <input name="fullName" defaultValue={serverName} />
+          </label>
+          {/* A SECOND field in the SAME section, never saved and never refreshed — §17 edits this one so
+              the tab can be dirty without touching the name the first save wrote. */}
+          <label>
+            <span>Date of Birth</span>
+            <input name="dateOfBirth" defaultValue="1990-01-01" />
           </label>
         </form>
       </TabSaveScope>
@@ -1227,6 +1233,16 @@ describe('§14 Discard restores the LAST SAVED version, not the page as it first
  * remount sweeps the very subtree the revision was recorded in. What keeps the record safe is not
  * distance — it is that the fence is the SECTION MARKER: the revision form carries none, so it is never
  * read, marked, packed or reset, and the history it wrote is rendered from state the scope does not own.
+ *
+ * WHAT THIS CASE DOES **NOT** REST ON, corrected after the r257 verify pass. "The recorded row is still
+ * on screen" cannot fail here and is not the proof: the history is rendered by the component that RENDERS
+ * the scope, so `key={nonce}` cannot reach it by construction — exactly as on the real page, where it is
+ * server markup the remount re-renders unchanged. Stating that as a pinned result was overclaiming. The
+ * assertions that CAN fail, and therefore carry the case, are these: the sweep really did happen and
+ * really did cross this card (the unmarked Revision Note inside it is back to its server value); the
+ * revision's own action ran exactly once and was neither replayed nor reversed; the tab reported nothing
+ * to discard the moment the revision was written; and the amount reached no namespace of the payload.
+ * The row's presence is kept as a consequence worth reading, below those, and labelled as one.
  */
 function PayrollScreen({ save, revise }: { save: SaveFn; revise: (fd: FormData) => void }) {
   // Stands in for the salary history the server re-renders after `setCompensationAction` redirects.
@@ -1262,6 +1278,14 @@ function PayrollScreen({ save, revise }: { save: SaveFn; revise: (fd: FormData) 
             </label>
             <button type="submit">Record revision</button>
           </form>
+          {/* NEITHER BUCKET — a control that belongs to no section and to no (b) form, the shape of the
+              Employment tab's company-transfer inputs, which live inside a consolidated card. The remount
+              DOES reset this one, and that is what makes "the sweep reached inside this card" an assertion
+              capable of failing rather than a claim about geometry. */}
+          <label>
+            <span>Revision Note</span>
+            <input data-testid="revision-note" defaultValue="" />
+          </label>
           {/* BUCKET (a): the one field edit nested inside this card, which is why the scope encloses it. */}
           <form data-save-section="payment">
             <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
@@ -1305,20 +1329,30 @@ describe('§15 a revision that was RECORDED is not undone by the tab’s Discard
     expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Discard Changes' })).toBeDisabled();
 
-    // 3 — now edit the card's OWN field and press the tab's Discard.
+    // 3 — type into a control that belongs to nothing, so the sweep has something to prove itself on,
+    //     then edit the card's OWN field and press the tab's Discard.
+    await user.type(screen.getByLabelText('Revision Note'), 'agreed at review');
     await user.selectOptions(screen.getByLabelText('Payment Method'), 'cash');
     const discardBtn = screen.getByRole('button', { name: 'Discard Changes' });
     await waitFor(() => expect(discardBtn).toBeEnabled());
     await user.click(discardBtn);
     await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
 
-    // THE ASSERTION THIS SECTION EXISTS FOR — the recorded revision survived the remount.
+    // THE ASSERTIONS THIS SECTION EXISTS FOR. First, the remount really happened and really did sweep the
+    // INSIDE of the card the revision was recorded in: a control that belongs to no section at all is
+    // back to its server value, and so is the field the tab does own. Discard IS reaching this subtree —
+    // which is what makes the revision's survival a fact about the fence rather than about distance.
+    expect((screen.getByTestId('revision-note') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Payment Method') as HTMLSelectElement).value).toBe('bank');
+    // Second, the recorded revision came through that sweep as a WRITE, not as an edit: not reversed,
+    // and — the fault a subtree fence would cause — not replayed either.
+    expect(revise).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+    // And so the row is still on screen. Read as a consequence, not as the proof: the history is state
+    // of the component that renders the scope (server markup on the real page), which `key={nonce}`
+    // cannot reach — see the note above this describe.
     expect(history().getByText(REVISION)).toBeInTheDocument();
     expect(history().getByText('5,000.00 from 2026-01-01')).toBeInTheDocument();
-    // …and Discard neither replayed it nor reversed it.
-    expect(revise).toHaveBeenCalledTimes(1);
-    // …while the field the tab DOES own is back on its last saved value.
-    expect((screen.getByLabelText('Payment Method') as HTMLSelectElement).value).toBe('bank');
   });
 
   it('and the amount that recorded it never reaches the tab’s payload, under any namespace', async () => {
@@ -1392,5 +1426,124 @@ describe('§16 a reload or a close asks too, and only when there is something to
     await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
 
     expect(fireBeforeUnload().defaultPrevented).toBe(false);
+  });
+});
+
+/**
+ * ── §17 (r257 verify) A DISCARD PRESSED BEFORE THE REFRESH COMES BACK CANNOT UN-SAVE A SAVED FIELD ───
+ *
+ * THE DEFECT THIS PINS, MEASURED RATHER THAN REASONED ABOUT. A successful save re-baselines in place and
+ * asks the router to refresh; `router.refresh()` dispatches inside its own transition and returns
+ * synchronously, so the bar is live again while `children` still carries the values the page opened with.
+ * Discard restores by REMOUNTING that subtree. So a Discard pressed in the window between the two put the
+ * PRE-save value back into an input the admin had already saved, the fresh baseline adopted it as "last
+ * saved", and the next save of that section posted it — `buildTabPayload` packs every control of a dirty
+ * section, and `syncCarriedValues` mirrors the same stale value into the sibling section's carry-through
+ * input. r257 first wrote that down as a stale render and left it; the verify pass showed it was a lost
+ * save, which is a different thing altogether.
+ *
+ * WHAT THE FIX IS. `discard` waits for the payload it restores from — see the note over it in
+ * components/tab-save-scope.tsx — and nothing can be written on top of it in the meantime. The wait ends
+ * when a new `children` identity arrives, which in the real page is the refreshed RSC tree and here is the
+ * `rerender` below; it is bounded by REFRESH_WAIT_MS so that a refresh which never comes back cannot leave
+ * Discard as a control that does nothing.
+ *
+ * The window is entered here by saving and NOT calling `rerender` — the save has resolved and the payload
+ * has not landed, which is exactly the state the real page is in for one round trip after every save.
+ */
+describe('§17 a Discard in the refresh window cannot put back a value that was already saved', () => {
+  const SAVED_ONCE = 'Ali bin Hassan';
+  const DISCARDING = messages.components.tabSave.discarding;
+  const nameField = () => screen.getByLabelText('Full Name') as HTMLInputElement;
+  const dobField = () => screen.getByLabelText('Date of Birth') as HTMLInputElement;
+
+  /** Save the name and stop there: the action has resolved, the refresh has been ASKED for, and the
+   *  payload has not come back (no `rerender`). That is the window. */
+  const saveNameAndStayInTheWindow = async (
+    user: ReturnType<typeof userEvent.setup>,
+    save: ReturnType<typeof saveMock>,
+  ) => {
+    await user.clear(nameField());
+    await user.type(nameField(), SAVED_ONCE);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+    expect(nameField().value).toBe(SAVED_ONCE);
+  };
+
+  /** Then edit a DIFFERENT field of the same section and press Discard. */
+  const editDobAndDiscard = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.clear(dobField());
+    await user.type(dobField(), '1991-02-02');
+    const discardBtn = screen.getByRole('button', { name: 'Discard Changes' });
+    await waitFor(() => expect(discardBtn).toBeEnabled());
+    await user.click(discardBtn);
+  };
+
+  it('holds the discard instead of restoring the pre-save value, and nothing can be written meanwhile', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+
+    // THE ASSERTION THIS SECTION EXISTS FOR, and it is taken the instant the click returns because that
+    // is when the remount used to happen: before the fix it put 'Ali bin Ahmad' — the value the page
+    // opened with, and the one the record no longer holds — straight back into this input.
+    expect(nameField().value).toBe(SAVED_ONCE);
+    expect(nameField().value).not.toBe(SAVED_NAME);
+    // …and the second half of the same defect: nothing may post while the discard is still owed, or the
+    // stale value would be written back under a payload the admin never asked for.
+    await waitFor(() => expect(screen.getByRole('button', { name: DISCARDING })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: DISCARDING })).toBeDisabled();
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('and runs it the moment the refreshed payload lands, so the discard is honoured, not dropped', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+    await waitFor(() => expect(screen.getByRole('button', { name: DISCARDING })).toBeInTheDocument());
+
+    // The refresh coming back — the real page gets this element from the server.
+    rerender(<RefreshableScreen save={save} serverName={SAVED_ONCE} />);
+
+    // The held discard runs: the second edit is gone, the tab is clean, the bar is a bar again.
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+    expect(dobField().value).toBe('1990-01-01');
+    expect(nameField().value).toBe(SAVED_ONCE);
+    expect(screen.getByRole('button', { name: 'Discard Changes' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: DISCARDING })).not.toBeInTheDocument();
+  });
+
+  it('so the next save of that section carries the name the first save wrote', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+    rerender(<RefreshableScreen save={save} serverName={SAVED_ONCE} />);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+    await user.clear(dobField());
+    await user.type(dobField(), '1992-03-03');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+
+    // A whole-section pack: the name rides along with the date edit whether it moved or not. It must be
+    // the saved one.
+    const sent = save.mock.calls[1]![0] as FormData;
+    expect(sent.get('section.person.dateOfBirth')).toBe('1992-03-03');
+    expect(sent.get('section.person.fullName')).toBe(SAVED_ONCE);
+    expect(sent.get('section.person.fullName')).not.toBe(SAVED_NAME);
   });
 });

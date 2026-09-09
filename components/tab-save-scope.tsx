@@ -74,6 +74,11 @@
  * server-rendered default IS the last saved value. A SAVE takes the opposite route and re-baselines in
  * place (see `rebaselineSections`), because remounting there would race `router.refresh()` and could show
  * the reader the pre-save value under a "Changes saved" toast.
+ *
+ * …WHICH IS ONLY TRUE ONCE THE REFRESH HAS COME BACK, and r257 measured what happens before it does: the
+ * server-rendered default is then the PRE-save value, so a Discard pressed in that window did not just
+ * show a stale field, it wrote one back. See the note over `discard` — the discard now waits for the
+ * payload it restores from.
  */
 
 import {
@@ -111,6 +116,16 @@ import type { TabSaveResult } from '@/lib/personnel-tab-sections';
  * entry can be recognised again after `personnel-tabs.tsx` replaceStates a `?tab=` onto it.
  */
 const HISTORY_SENTINEL_KEY = '__tabSaveUnsavedSentinel';
+
+/**
+ * HOW LONG A DISCARD WILL WAIT for the refreshed server payload before restoring from the markup it
+ * already has (see the note over `discard`). In practice the wait is whatever is LEFT of one RSC round
+ * trip — the reader can only be in that window because the refresh is still in flight — so it is normally
+ * a few hundred milliseconds. The bound exists for the one case that is not: a refresh that never comes
+ * back must not leave Discard as a control that does nothing, which AGENTS 28 rates worse than the narrow
+ * window it is protecting against.
+ */
+const REFRESH_WAIT_MS = 5_000;
 
 /** One extra history entry at the CURRENT url, so the next Back press lands here instead of leaving. */
 function pushHistorySentinel(): void {
@@ -163,6 +178,18 @@ export function TabSaveScope({
   const [pending, startTransition] = useTransition();
   const [promptOpen, setPromptOpen] = useState(false);
   const proceedRef = useRef<(() => void) | null>(null);
+
+  // THE REFRESH WINDOW (r257) — all of it is explained over `discard`. Declared up here because the save
+  // path arms the first of them and the bar's buttons read the third.
+  /** A save has committed and its `router.refresh()` has not come back: `children` is behind the record. */
+  const staleUntilRefreshRef = useRef(false);
+  /** A Discard pressed inside that window, armed and waiting for the payload it needs. */
+  const discardWaitingRef = useRef(false);
+  const [discardWaiting, setDiscardWaiting] = useState(false);
+  /** The wait timed out and the reader was given the restore that WAS available; repair it when the
+   *  payload finally lands. */
+  const remountOnFreshRef = useRef(false);
+  const waitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const blankLabel = t('emptyValue');
   const editedLabel = t('editedBadge');
@@ -254,6 +281,11 @@ export function TabSaveScope({
     (onDone?: () => void) => {
       const root = contentRef.current;
       if (!root) return;
+      // A DISCARD IS ALREADY ARMED and waiting for the refreshed payload (see `discard`); writing now
+      // would commit the very edits the reader has just asked to throw away. Both bar buttons and the
+      // prompt's Save are disabled while that is true, so this covers the routes that are not buttons:
+      // the Enter key and an implicit form submission.
+      if (discardWaitingRef.current) return;
       // WHAT IS ON SCREEN, not what the last event pass recorded. `changes` is derived from input/change/
       // click/keyup and a rAF pass, so it necessarily lags anything that handles the SAME keystroke later
       // in the same dispatch — which is how a save came to be packed from a Combobox's pre-selection
@@ -278,7 +310,12 @@ export function TabSaveScope({
         // Whatever DID commit is the server's truth now, success or not — re-baseline exactly those
         // sections so a partial failure leaves only the section that did not commit still marked edited.
         rebaselineSections(result.saved);
-        if (result.saved.length > 0) router.refresh();
+        if (result.saved.length > 0) {
+          // From here until the payload comes back, the server markup this scope would restore from is
+          // one round trip behind the record. See `discard`.
+          staleUntilRefreshRef.current = true;
+          router.refresh();
+        }
         if (!result.ok) {
           setError(result.error ?? t('saveFailed'));
           toast.error(result.error ?? t('saveFailed'));
@@ -291,10 +328,65 @@ export function TabSaveScope({
     [blankLabel, employmentId, rebaselineSections, router, saveAction, t, tabKey],
   );
 
+  const endDiscardWait = useCallback(() => {
+    if (waitTimerRef.current !== null) {
+      clearTimeout(waitTimerRef.current);
+      waitTimerRef.current = null;
+    }
+    discardWaitingRef.current = false;
+    setDiscardWaiting(false);
+  }, []);
+
+  /**
+   * DISCARD, AND THE ONE WINDOW IN WHICH THE MARKUP IT RESTORES FROM IS NOT THE LAST SAVED VERSION.
+   *
+   * r257 measured this rather than reasoning about it. `router.refresh()` dispatches inside its OWN
+   * transition and returns synchronously, so the moment a save resolves the bar is live again while
+   * `children` still carries the values the page opened with. A Discard pressed there did not merely SHOW
+   * a stale field, which is how an earlier note under-described it: the remount put the PRE-save value
+   * back into the input, the fresh baseline adopted it as "last saved", and the next save of that section
+   * posted it — `buildTabPayload` packs every control of a dirty section, not only the changed ones, and
+   * `syncCarriedValues` mirrors the same stale value into the sibling section's carry-through input. An
+   * edit that had already been written was therefore overwritten by its own pre-save value, silently.
+   *
+   * SO THE DISCARD WAITS FOR THE PAYLOAD IT NEEDS. `staleUntilRefreshRef` is armed when a save commits and
+   * cleared when a new `children` identity arrives — which is the refreshed RSC payload and nothing else,
+   * because this component's own state changes re-render it with the SAME element the server made. A
+   * Discard inside the window is armed instead of run and fires the instant that payload lands, restoring
+   * the real last-saved values through the same remount as always, islands included.
+   *
+   * WHY NOT WRITE THE SAVED VALUES BACK INSTEAD, which would need no wait at all: half of these controls
+   * are React-CONTROLLED by client islands (the Combobox submits through `<input type="hidden"
+   * value={selected}>`), so a hand-restored value would disagree with the label beside it and be reverted
+   * by that island's next render — the hazard the header note has warned about since this file was
+   * written. Restoring from what the client POSTED has a second fault: the server normalises what it
+   * stores, so Discard would put back the admin's raw keystrokes rather than the record as it now reads.
+   *
+   * WHAT IS LEFT. If the payload does not come back within REFRESH_WAIT_MS the reader gets the restore
+   * that IS available (the pre-r257 behaviour) rather than a button that never answers, and the repair is
+   * re-armed: when the payload does arrive, a tab nobody has touched since is remounted onto it. What
+   * survives that is one case — a refresh slower than the bound AND a further edit AND a save of the same
+   * section before the payload lands.
+   */
   const discard = useCallback(() => {
     setError(null);
+    // Already armed. Pressing again cannot make the payload come back sooner.
+    if (discardWaitingRef.current) return;
+    if (staleUntilRefreshRef.current) {
+      discardWaitingRef.current = true;
+      setDiscardWaiting(true);
+      waitTimerRef.current = setTimeout(() => {
+        endDiscardWait();
+        // The refresh is not coming. Stop making every later Discard pay the same wait to learn that
+        // again — but keep the repair armed, so if the payload does turn up the saved values go back.
+        staleUntilRefreshRef.current = false;
+        remountOnFreshRef.current = true;
+        setNonce((n) => n + 1);
+      }, REFRESH_WAIT_MS);
+      return;
+    }
     setNonce((n) => n + 1);
-  }, []);
+  }, [endDiscardWait]);
 
   // Enter must never post one card on its own any more — see the header note.
   useEffect(() => {
@@ -346,6 +438,35 @@ export function TabSaveScope({
         isDirty: () => dirtyRef.current,
         prompt: (proceed) => askRef.current(proceed),
       }),
+    [],
+  );
+
+  /**
+   * THE REFRESHED PAYLOAD ARRIVING — the moment the markup Discard restores from stops being stale.
+   *
+   * A new `children` IDENTITY is that payload and nothing else: this component re-renders on its own
+   * state constantly (every keystroke moves `changes`) and React hands it the SAME element the server
+   * made each time, so only a replaced RSC tree can change this prop. That makes it the signal a discard
+   * armed in the window is waiting for — see `discard`.
+   */
+  useEffect(() => {
+    staleUntilRefreshRef.current = false;
+    const armed = discardWaitingRef.current;
+    const rearmed = remountOnFreshRef.current;
+    remountOnFreshRef.current = false;
+    if (!armed && !rearmed) return;
+    endDiscardWait();
+    // The re-arm is a repair, not a command: if the reader has started editing again since the wait timed
+    // out, their edits outrank putting the saved values back on screen. An ARMED discard is a command.
+    if (!armed && dirtyRef.current) return;
+    setNonce((n) => n + 1);
+  }, [children, endDiscardWait]);
+
+  // Never leave a wait timer running behind an unmounted tab.
+  useEffect(
+    () => () => {
+      if (waitTimerRef.current !== null) clearTimeout(waitTimerRef.current);
+    },
     [],
   );
 
@@ -545,10 +666,19 @@ export function TabSaveScope({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={!dirty || pending} onClick={discard}>
-              {t('discardChanges')}
+            {/* `discardWaiting` disables BOTH: a discard that is waiting for the refreshed payload has
+                already been asked for, and a save pressed on top of it would write the edits it is
+                throwing away. */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!dirty || pending || discardWaiting}
+              onClick={discard}
+            >
+              {discardWaiting ? t('discarding') : t('discardChanges')}
             </Button>
-            <Button type="button" size="sm" disabled={!dirty || pending} onClick={() => save()}>
+            <Button type="button" size="sm" disabled={!dirty || pending || discardWaiting} onClick={() => save()}>
               {pending ? t('saving') : t('saveChanges')}
             </Button>
           </div>
@@ -612,7 +742,7 @@ export function TabSaveScope({
               <Button
                 type="button"
                 size="sm"
-                disabled={pending}
+                disabled={pending || discardWaiting}
                 onClick={() => {
                   const proceed = proceedRef.current;
                   setPromptOpen(false);

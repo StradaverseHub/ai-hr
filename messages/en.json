@@ -8644,6 +8644,7 @@
       "discardChanges": "Discard Changes",
       "cancel": "Cancel",
       "saving": "Saving…",
+      "discarding": "Discarding…",
       "savedToast": "Changes saved",
       "saveFailed": "Could not save your changes",
       "noChanges": "No unsaved changes",
