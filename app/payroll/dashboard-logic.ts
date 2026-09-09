@@ -159,6 +159,70 @@ export function monthCells(
 }
 
 /**
+ * ── 0b326d5f (r256) — "REPROCESS REQUIRED", A DISPLAY STATE DERIVED FROM THE MARK ────────────────
+ *
+ * The reporter asked for a fourth payroll status. There is not one, and this build does not add one:
+ * `payrollStatusEnum` is exactly ('draft','processed','closed') and db/schema.ts says so at the
+ * `needsRecalcAt` column in as many words — "the mark is an ATTRIBUTE of a processed run, so nothing
+ * that switches on status has to learn a new value". Every report, export, permission and service
+ * predicate that already understands 'processed' therefore keeps working untouched, and a run that owes
+ * a recalculation genuinely IS still processed; it is just stale.
+ *
+ * What was missing was the SIGNAL. The mechanism has been live since 49e7e0a2 — a one-off transaction
+ * added, changed or removed on a processed run stamps `needs_recalc_at` with the exact employments, and
+ * `closeBatch` refuses while it is set — but the Payroll Process listing still rendered those runs as a
+ * plain "Processed", so nothing told the administrator the figures were out of date until Close was
+ * refused. Measured on production 2026-09-08: SIX runs were carrying the mark and every one of them
+ * read as Processed on this screen.
+ *
+ * ONE derivation, exported, for the same reason lib/payroll-publication.ts exists: the badge, the
+ * affected-employee count and the STATUS FILTER all have to agree about which runs are stale, and three
+ * inline `status === 'processed' && needsRecalcAt != null` tests are how they start disagreeing.
+ */
+export const REPROCESS_REQUIRED = 'reprocess_required';
+
+/** The shape any of this reads — `listBatches` rows carry all three; tests may carry only `status`. */
+export type RecalcMarkedRow = {
+  status: string;
+  needsRecalcAt?: Date | string | null;
+  recalcEmploymentIds?: unknown;
+};
+
+/**
+ * Does this run's own mark say its figures are stale?
+ *
+ * CLOSED IS NEVER STALE, whatever the flag says, and that is a rule rather than a defensive habit: the
+ * reporter asked for exactly this ("it shall not override Closed status automatically"), a closed run is
+ * immutable, and `unlockClosedBatch` flips closed → processed WITHOUT clearing `needs_recalc_at` — so a
+ * run that was marked, then closed through an older path, would otherwise shout on a screen where there
+ * is nothing the administrator can do about it. Keying on `status === 'processed'` (never on
+ * `status !== 'draft'`) makes closed silent by construction.
+ */
+export function needsReprocess(b: RecalcMarkedRow): boolean {
+  return b.status === 'processed' && b.needsRecalcAt != null;
+}
+
+/** What the listing SHOWS for a run: the stored status, or the derived state when the mark is set. */
+export function payrollListState(b: RecalcMarkedRow): string {
+  return needsReprocess(b) ? REPROCESS_REQUIRED : b.status;
+}
+
+/**
+ * The employments this run is waiting on — the count the row prints, and exactly the set the selective
+ * reprocess arrives pre-ticked with (app/payroll/[batchId]/reprocess reads the same column).
+ *
+ * Empty for a run that is not stale, so a leftover `recalc_employment_ids` on a cleared or closed run
+ * can never put a count on screen. De-duplicated and type-filtered because the column is `jsonb`: what
+ * comes back is whatever was written, not a checked `string[]`.
+ */
+export function reprocessEmploymentIds(b: RecalcMarkedRow): string[] {
+  if (!needsReprocess(b)) return [];
+  const ids = b.recalcEmploymentIds;
+  if (!Array.isArray(ids)) return [];
+  return [...new Set(ids.filter((x): x is string => typeof x === 'string' && x.length > 0))];
+}
+
+/**
  * Apply the non-period filters in JS over the year's already-fetched rows.
  *
  * The PERIOD narrowing happens in SQL (listBatches takes the period set); company / cycle / status are
@@ -167,7 +231,13 @@ export function monthCells(
  * "nothing", which keeps "All companies" as the default without a magic sentinel value.
  */
 export function applyFilters<
-  T extends { payPeriod: string; companyId: string; runType: string; status: string },
+  T extends {
+    payPeriod: string;
+    companyId: string;
+    runType: string;
+    status: string;
+    needsRecalcAt?: Date | string | null;
+  },
 >(
   rows: readonly T[],
   f: { periods: readonly string[]; companyIds: readonly string[]; cycles: readonly string[]; statuses: readonly string[] },
@@ -181,7 +251,12 @@ export function applyFilters<
       periods.has(r.payPeriod) &&
       (companies.size === 0 || companies.has(r.companyId)) &&
       (cycles.size === 0 || cycles.has(r.runType)) &&
-      (statuses.size === 0 || statuses.has(r.status)),
+      // 0b326d5f — the status filter reaches the DERIVED state as well as the stored one, and the two
+      // are OR-ed rather than swapped. That is the decision, stated: "Processed" still means every
+      // processed run INCLUDING the stale ones (the plan's promise that nothing which already
+      // understands 'processed' changes meaning), and REPROCESS_REQUIRED narrows to just the stale
+      // ones. Without this a chip would be on screen that the single-select filter could not reach.
+      (statuses.size === 0 || statuses.has(r.status) || statuses.has(payrollListState(r))),
   );
 }
 

@@ -5259,6 +5259,14 @@ export const payrollBatch = pgTable(
     // NOT a fourth payroll status. `payrollStatusEnum` is exactly ['draft','processed','closed'] and this
     // build adds nothing to it — the mark is an ATTRIBUTE of a processed run, so nothing that switches on
     // status has to learn a new value.
+    //
+    // 0b326d5f (r256) RE-AFFIRMS THAT, and is the reason to read this comment before adding the value.
+    // The reporter asked for "Reprocess Required" as a fourth status in the Payroll Process listing, and
+    // it now appears there — as a DISPLAY state derived from this column (app/payroll/dashboard-logic.ts
+    // `payrollListState`: processed + needs_recalc_at ⇒ 'reprocess_required'), including in that screen's
+    // status filter. The stored value stayed 'processed', so every report, export, permission and service
+    // predicate that already understands it kept working untouched. The reporter was told this in the
+    // approved plan and invited to reject it if they wanted a real fourth value; they approved.
     needsRecalcAt: timestamp('needs_recalc_at', { withTimezone: true }),
     // The employments whose figures are known to be stale — exactly the set to hand to the existing
     // selective reprocess (generatePayslips reprocessSubset). A jsonb array rather than a child table
