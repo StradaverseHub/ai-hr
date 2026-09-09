@@ -1,0 +1,150 @@
+<meta charset="utf-8">
+<title>759dfc7d — the draft record, on the same tabs as an employee</title>
+<!--
+  Mockup for 759dfc7d (Draft Employee Record Enhancement).
+
+  MEASURED ON main@2bc0d707, 2026-09-09. Nothing here is invented.
+    lib/employee-draft-schema.ts:195 — DRAFT_STEPS is ['profile','employment','statutory','payroll',
+      'family']. FAMILY IS ALREADY THERE: app/admin/personnel/new/family-step.tsx (23KB), and
+      core/employee-draft.ts:586-594 validates the family BEFORE anything is created and materialises
+      it into real dependent rows at Activate (shared column mapping with addDependent, core/dependents.ts).
+      Pinned by test/employee-draft-family.test.ts and test/draft-family-step.dom.test.tsx.
+      So the hard half of this request is DONE, and the picture says so rather than re-promising it.
+    app/admin/personnel/new/wizard.tsx — 38KB, still a STEPPED form (one step at a time, tick per step).
+    app/admin/personnel/[employmentId]/page.tsx:669-688 — the active employee record has ELEVEN tabs:
+      profile, family, job, careerMovement, attendance, bankStatutory, payroll, leave, documents,
+      qualification, others.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - The contents of any tab. This request is about the SHAPE of the screen, not the fields, and the
+      fields are the ones already on the employee record — drawing them would promise a redesign nobody
+      asked for.
+    - Real draft data. "Nurul Huda" and the codes are placeholders in the reporter's own format.
+    - The Activate dialog. It exists today and is not changing.
+    - Qualification and Others are shown in the "after Activate" group because the approved plan named
+      only four tabs to withhold and did not account for these two. The plan text raises that rather
+      than the picture deciding it silently.
+
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;
+        --dim:#9aa0ad;--donebg:#eef2ff;--donefg:#4338ca}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .amber{background:var(--amberbg);color:var(--amber)} .good{background:var(--goodbg);color:var(--goodfg)}
+  .done{background:var(--donebg);color:var(--donefg)}
+  /* stepped form */
+  .steps{display:flex;align-items:center;gap:0;margin:10px 0 14px}
+  .step{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--mf)}
+  .dot{width:20px;height:20px;border-radius:999px;display:grid;place-items:center;font-size:10px;
+       font-weight:700;background:var(--muted);color:var(--mf);border:1px solid var(--border)}
+  .dot.ok{background:var(--goodbg);color:var(--goodfg);border-color:#bbf7d0}
+  .dot.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .bar{flex:1;height:1px;background:var(--border);margin:0 9px}
+  .panel{border:1px dashed var(--border);border-radius:10px;padding:18px;text-align:center;
+         color:var(--mf);font-size:11.5px;background:#fcfcfe}
+  /* tabs */
+  .tabs{display:flex;gap:5px;border-bottom:1px solid var(--border);padding-bottom:8px;margin:10px 0 12px;flex-wrap:wrap}
+  .tab{font-size:11.5px;padding:4px 10px;border-radius:8px;color:var(--mf);border:1px solid transparent}
+  .tab.on{background:var(--primary);color:#fff;font-weight:600}
+  .tab.have{background:var(--card);border-color:var(--border);color:var(--fg)}
+  .tab.later{color:var(--dim);background:repeating-linear-gradient(135deg,#fafafc,#fafafc 4px,#f2f3f7 4px,#f2f3f7 8px)}
+  .idl{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .av{width:34px;height:34px;border-radius:999px;background:var(--muted);display:grid;place-items:center;
+      font-weight:700;color:var(--mf);font-size:12px}
+  .nm{font-size:14px;font-weight:600}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;
+        font-size:12px;color:#7c4a03}
+  .ok{background:var(--goodbg);border:1px solid #bbf7d0;border-radius:10px;padding:11px 13px;
+      font-size:12px;color:#14532d}
+  .legend{font-size:11px;color:var(--mf);margin-top:8px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:5px}
+</style>
+
+<div class="card">
+  <h1>A new joiner's record — today, and as proposed</h1>
+  <p class="sub">Sketch: wording, spacing and colours will differ. The point is the shape of the screen,
+    not the fields — those are the ones already on an employee's record.</p>
+
+  <div class="cols">
+    <!-- BEFORE -->
+    <div>
+      <div class="lbl">Today <span class="pill amber">A stepped form</span></div>
+      <div class="idl"><div class="av">NH</div><div><div class="nm">New employee</div>
+        <div class="sub" style="margin:0">Step 2 of 5</div></div></div>
+      <div class="steps">
+        <div class="step"><span class="dot ok">✓</span></div><span class="bar"></span>
+        <div class="step"><span class="dot on">2</span></div><span class="bar"></span>
+        <div class="step"><span class="dot">3</span></div><span class="bar"></span>
+        <div class="step"><span class="dot">4</span></div><span class="bar"></span>
+        <div class="step"><span class="dot">5</span></div>
+      </div>
+      <div class="sub" style="margin:0 0 10px">Profile Details · <b>Employment</b> · Bank &amp; Statutory ·
+        Payroll · Family</div>
+      <div class="panel">One step at a time.<br>You move forward and back through the form.</div>
+      <p class="sub" style="margin-top:10px">The same person, once activated, opens a record with eleven
+        tabs, different section names and a different layout — so there are two screens to learn for one
+        employee.</p>
+    </div>
+
+    <!-- AFTER -->
+    <div>
+      <div class="lbl">Proposed <span class="pill good">The same tabs as an employee</span></div>
+      <div class="idl"><div class="av">NH</div><div>
+        <div class="nm">Nurul Huda <span class="pill amber">Draft — pending activation</span></div>
+        <div class="sub" style="margin:0">EMP-0107 (reserved) · Fiamma Holdings</div></div></div>
+      <div class="tabs">
+        <span class="tab on">Profile</span>
+        <span class="tab have">Employment</span>
+        <span class="tab have">Bank &amp; Statutory</span>
+        <span class="tab have">Payroll</span>
+        <span class="tab have">Family</span>
+        <span class="tab later">Career Movement</span>
+        <span class="tab later">Attendance</span>
+        <span class="tab later">Leave</span>
+        <span class="tab later">Documents</span>
+        <span class="tab later">Qualification</span>
+        <span class="tab later">Others</span>
+      </div>
+      <div class="panel">The same cards, the same fields and the same dropdowns<br>
+        an activated employee already shows on this tab.</div>
+      <p class="legend">
+        <span class="sw" style="background:var(--primary)"></span>Open now &nbsp;
+        <span class="sw" style="background:#fff;border:1px solid var(--border)"></span>Available on a draft &nbsp;
+        <span class="sw" style="background:#f2f3f7"></span>Appears once activated
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Family already works — this is not part of what is left to build</h2>
+  <div class="ok">
+    <b>Family members can be added to a draft today, and they survive activation.</b> The Family step is
+    live on the new-joiner form, it is checked before anything is created, and at Activate the family
+    becomes real records on the employee with nothing retyped. That was the hard half of this request —
+    it is the one part of a draft that had nowhere to live — and it is done.
+  </div>
+</div>
+
+<div class="card">
+  <h2>What is actually left, and why it is queued</h2>
+  <div class="note">
+    <b>The remaining work is the layout: moving the draft from a stepped form onto those tabs.</b>
+    Those tab screens are being rebuilt right now by another request you approved — one Save button per
+    tab, with a change summary and an unsaved-changes prompt. Two builds rewriting the same screens at
+    the same time is how work gets silently lost, so this one follows it rather than running beside it.
+  </div>
+  <p class="sub" style="margin-top:10px">A draft keeps everything that makes it a draft: save at any
+    point without filling everything in, nothing validated until you activate, and the screen keeps
+    telling you what is still outstanding.</p>
+</div>

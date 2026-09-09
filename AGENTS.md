@@ -266,6 +266,18 @@ a real round:
     dynamically belongs in that list. **And check that a new test's assertions ever EXECUTED** — these
     nine had never run once.
 
+35. **NEVER BRANCH ON A VALUE AN AGENT ECHOES BACK TO YOU — READ IT FROM THE STRUCTURE YOU CONTROL.** r257's
+    verify stage selected each verifier's approved-plan path and worktree with
+    `build.slug === 'leave-replay' ? … : …`. The build agents each reported `slug` as `r257-leave-replay`
+    (they read it off their branch, which is reasonable), so every ternary fell through: ALL THREE
+    verifiers were handed the same wrong item's plan, and `${WT}/r257-${build.slug}` resolved to
+    `r257-r257-leave-replay`, a path that does not exist. Two verifiers said so in their findings; that is
+    the only reason it was caught. **The damage is invisible in the summary** — the workflow reported 6/6
+    agents complete, 0 errors, and three confident verdicts, while the step that catches an unmet promise
+    to the reporter had been reading the wrong promise. A schema field an agent fills is DATA, not a key.
+    Close over the parent's own `WORK` entry instead, and prefer `(build, w) =>` to re-deriving `w` from
+    `build`.
+
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
 depends on** → verify → mark deployed. `GET /` returning 401 is the healthy password gate. Proof of
