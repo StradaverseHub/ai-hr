@@ -14,7 +14,10 @@ export type ExistingRun = {
   company: string;
 };
 
-export type Company = { id: string; name: string };
+/** f1bbc572 — `sharedSystemLabels` is the company's Shared System Labels opt-out, carried because the
+ *  GLOBAL branch of the Step-2 label catalogs is gated on it exactly as the server-side resolver is
+ *  (core/system-labels.ts visibleLabelIdsCondition). Step 1 itself never reads it. */
+export type Company = { id: string; name: string; sharedSystemLabels: boolean };
 
 /** The four fixed behavioural run types a configured cycle maps to (mirrors payrollRunTypeEnum). */
 export type CycleRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';

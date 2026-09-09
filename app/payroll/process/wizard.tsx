@@ -206,10 +206,18 @@ export function Wizard({
   // f1bbc572 — "belongs to the selected company set" is origin ∪ GLOBAL. A label whose Criteria is Global
   // is usable by every company, so employees in the run carry it; narrowing these catalogs on the origin
   // company alone left a filter dropdown missing the very department/position the rows below it show.
-  const companyDepartments = useMemo(() => labelsInCompanyScope(departments, companySet), [departments, companySet]);
-  const companyBusinessUnits = useMemo(() => labelsInCompanyScope(businessUnits, companySet), [businessUnits, companySet]);
-  const companyPositions = useMemo(() => labelsInCompanyScope(positions, companySet), [positions, companySet]);
-  const companyCostCenters = useMemo(() => labelsInCompanyScope(costCenters, companySet), [costCenters, companySet]);
+  //
+  // The global half is gated on Shared System Labels being ON for at least one SELECTED company, which is
+  // the same condition the resolver applies (`exists (… co2.id in (ids) and co2.shared_system_labels)`);
+  // an opted-out selection must not be offered a filter its own resolver would not admit.
+  const globalUsable = useMemo(
+    () => companies.some((c) => companySet.has(c.id) && c.sharedSystemLabels),
+    [companies, companySet],
+  );
+  const companyDepartments = useMemo(() => labelsInCompanyScope(departments, companySet, globalUsable), [departments, companySet, globalUsable]);
+  const companyBusinessUnits = useMemo(() => labelsInCompanyScope(businessUnits, companySet, globalUsable), [businessUnits, companySet, globalUsable]);
+  const companyPositions = useMemo(() => labelsInCompanyScope(positions, companySet, globalUsable), [positions, companySet, globalUsable]);
+  const companyCostCenters = useMemo(() => labelsInCompanyScope(costCenters, companySet, globalUsable), [costCenters, companySet, globalUsable]);
 
   // Step 1 valid: AT LEAST ONE company (multi-company), a valid month, and a cycle. Multi-company Phase 1
   // uses a single shared cycle across the selected companies (plan §"Step 1"); the primary company's cycle

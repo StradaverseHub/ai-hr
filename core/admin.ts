@@ -14,6 +14,9 @@ import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { isCurrencyCode } from '../lib/currencies';
+// f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
+// instead of forwarding the driver's SQL. Pure module (the lib/leave-visual precedent above).
+import type { LabelErrorToken } from '../lib/label-error-token';
 import { visibleLabelIdsCondition } from './system-labels';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type, shared with
 // listLeaveTypes' inUse predicate. Two hand-written lists are what drifted into the reported bug.
@@ -2607,7 +2610,23 @@ export type LabelUpdateInput = {
   label?: string;
   description?: string;
 };
-export type LabelRowError = { key: string; field?: string; message: string };
+/**
+ * One row's refusal. `message` is the diagnostic sentence (English, like every other message in this
+ * module); `code` — when present — is a STABLE TOKEN the client translates before it reaches a screen
+ * (`admin.systemLabels.<code>`, the app/payroll/transactions `errorKeys` precedent). Every refusal that
+ * an admin can actually provoke carries one; the token is what makes the banner speak the reader's
+ * language instead of the driver's.
+ */
+export type LabelRowError = { key: string; field?: string; message: string; code?: LabelErrorCode };
+
+/**
+ * The refusals the grid knows how to say in six languages (lib/label-error-token.ts owns the list and
+ * the reason). Deliberately only the two PRIVILEGE ones: a field-level refusal — a duplicate code, a
+ * blank required cell — already reaches the reader as a highlighted cell under the existing translated
+ * "fix the highlighted rows" banner, while these two are about the ACTOR rather than the cell and have
+ * nothing to highlight.
+ */
+export type LabelErrorCode = Extract<LabelErrorToken, 'globalGroupAdminOnly' | 'notAdminForCompany'>;
 
 /** Thrown to roll the whole bulk-save transaction back; carries the per-row errors for the grid. */
 export class LabelBulkError extends Error {
@@ -2626,11 +2645,80 @@ const KIND_AGG: Record<LabelKindStr, string> = {
   business_unit: 'business-unit',
 };
 
-/** Postgres insufficient_privilege (42501) — raised by the app.guard_is_global() trigger when a
- *  non-group-admin tries to set is_global=true. Surfaced as a friendly per-row scope error. */
+/**
+ * THE SQLSTATE, WHEREVER DRIZZLE PUT IT. Drizzle re-throws its own Error with the driver's PostgresError
+ * on `.cause`, so `e.code` on the OUTER error is undefined for every database refusal — which is exactly
+ * how `Failed query: update "department" set "name" = $1 … params: RenamedByB,…` came to be rendered
+ * verbatim in an admin's error banner (f1bbc572 round 2): the 42501 branch below never matched, the catch
+ * fell through to `else throw e`, and the action passed `(e as Error).message` to the screen. Walk the
+ * chain, as isUniqueViolation above already does.
+ */
+function pgErrorChain(e: unknown): { code?: string; message?: string }[] {
+  const out: { code?: string; message?: string }[] = [];
+  let cur = e as { code?: string; message?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    out.push({ code: cur.code, message: cur.message });
+    cur = cur.cause as { code?: string; message?: string; cause?: unknown } | null | undefined;
+  }
+  return out;
+}
+
+/** The SQLSTATE of the database refusal behind `e`, or undefined when `e` did not come from Postgres.
+ *  (A SQLSTATE is five characters of [0-9A-Z]; Node's own `code`s — ECONNREFUSED, ERR_… — are not.) */
+function pgErrorCode(e: unknown): string | undefined {
+  return pgErrorChain(e).find((l) => /^[0-9A-Z]{5}$/.test(l.code ?? ''))?.code;
+}
+
+/** Postgres insufficient_privilege (42501) — either the app.guard_is_global() trigger (0157) refusing a
+ *  non-group-admin's is_global=true, or an RLS policy refusing the write outright. */
 function isPrivilegeError(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  return code === '42501';
+  return pgErrorCode(e) === '42501';
+}
+
+/**
+ * The RLS variant of a 42501: the row's own company is not one this admin administers, so
+ * `tenant_isolation`'s WITH CHECK (`app.is_admin_for(company_id)`, 0016) refuses the write. Told apart
+ * from the is_global trigger by the message, because both raise insufficient_privilege.
+ *
+ * A company-scoped hr_admin can REACH such a row since f1bbc572: a Global label is listed for every
+ * company whatever company created it. The grid renders those rows read-only (components/
+ * system-labels-grid.tsx), so this is the backstop for a stale page or a grant revoked mid-session — it
+ * has to name the reason rather than let the driver's text escape.
+ */
+function isRlsWriteRefusal(e: unknown): boolean {
+  return isPrivilegeError(e) && pgErrorChain(e).some((l) => /row-level security/i.test(l.message ?? ''));
+}
+
+/**
+ * The token for a label write refusal an admin may be TOLD about, or undefined when this is not one of
+ * them. Exported for the server actions, which face the same two refusals outside bulkSaveLabels — the
+ * Criteria popover's setGlobal / assign / unassign / copy all write the same RLS-guarded tables.
+ */
+export function labelFailureCode(e: unknown): LabelErrorCode | undefined {
+  if (isRlsWriteRefusal(e)) return 'notAdminForCompany';
+  if (isPrivilegeError(e)) return 'globalGroupAdminOnly';
+  return undefined;
+}
+
+/** True when `e` is the DATABASE speaking (any SQLSTATE), whose text — `Failed query: update "department"
+ *  set "name" = $1 … params: …` — must never be rendered to a user. */
+export function isDatabaseError(e: unknown): boolean {
+  return pgErrorCode(e) !== undefined;
+}
+
+/** Classify a caught row failure into the per-row error the grid renders. Returns undefined for anything
+ *  this function does not recognise, which the caller re-throws rather than dressing up. */
+function labelRowError(e: unknown, key: string, field: string): LabelRowError | undefined {
+  if (isUniqueViolation(e)) return { key, field, message: 'A label with this code / name already exists in the company.' };
+  // Order matters: an RLS refusal is ALSO a 42501, and it is not about the Criteria cell.
+  if (isRlsWriteRefusal(e))
+    return { key, code: 'notAdminForCompany', message: 'This label belongs to a company you do not administer.' };
+  if (isPrivilegeError(e))
+    return { key, field: 'scope', code: 'globalGroupAdminOnly', message: 'Only a group admin can make a label global.' };
+  // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
+  if (e instanceof CrossCompanyError)
+    return { key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message };
+  return undefined;
 }
 
 export async function bulkSaveLabels(
@@ -2711,11 +2799,10 @@ export async function bulkSaveLabels(
         }
         created++;
       } catch (e) {
-        if (isUniqueViolation(e)) errors.push({ key: c.key, field: kind === 'department' || kind === 'position' ? (kind === 'department' ? 'name' : 'title') : 'code', message: 'A label with this code / name already exists in the company.' });
-        else if (isPrivilegeError(e)) errors.push({ key: c.key, field: 'scope', message: 'Only a group admin can make a label global.' });
-        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
-        else if (e instanceof CrossCompanyError) errors.push({ key: c.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
-        else throw e;
+        const rowErr = labelRowError(e, c.key, kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code');
+        if (!rowErr) throw e;
+        errors.push(rowErr);
+        if (pgErrorCode(e)) throw new LabelBulkError(errors); // see the note in the update loop below
       }
     }
 
@@ -2771,11 +2858,17 @@ export async function bulkSaveLabels(
         }
         updated++;
       } catch (e) {
-        if (isUniqueViolation(e)) errors.push({ key: u.key, field: kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code', message: 'A label with this code / name already exists in the company.' });
-        else if (isPrivilegeError(e)) errors.push({ key: u.key, field: 'scope', message: 'Only a group admin can make a label global.' });
-        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
-        else if (e instanceof CrossCompanyError) errors.push({ key: u.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
-        else throw e;
+        const rowErr = labelRowError(e, u.key, kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code');
+        if (!rowErr) throw e;
+        errors.push(rowErr);
+        // STOP HERE IF POSTGRES SPOKE. withTenant opens ONE transaction with no savepoints, so a
+        // statement the database refused has already aborted it: every later statement in this loop
+        // raises 25P02 ("current transaction is aborted"), which is neither a unique nor a privilege
+        // violation, so it escaped through `throw e` as a raw driver string with nothing highlighted —
+        // the failure class recorded against the grades path in app/admin/settings/actions.ts. The save
+        // is atomic anyway (any error rolls the whole thing back), so reporting the FIRST database
+        // refusal and stopping loses nothing except a second, misleading error.
+        if (pgErrorCode(e)) throw new LabelBulkError(errors);
       }
     }
 

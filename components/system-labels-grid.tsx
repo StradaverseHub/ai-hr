@@ -35,6 +35,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { messageOrToken } from '@/lib/label-error-token';
 import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import {
@@ -80,6 +81,9 @@ type RowState = GridRecord & {
 };
 
 export type GridActions = {
+  // A row error's `code` (f1bbc572) is the translatable TOKEN for a refusal about the ACTOR rather than
+  // the cell — "you do not administer that company", "Global is group-admin-only". `message` stays the
+  // diagnostic sentence; the banner prefers the token, because that is the half a reader can read.
   save: (
     kind: GridKind,
     payload: {
@@ -111,7 +115,7 @@ export type GridActions = {
         description?: string;
       }[];
     },
-  ) => Promise<{ ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] } | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string }>;
+  ) => Promise<{ ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] } | { ok: false; rowErrors: { key: string; field?: string; message: string; code?: string }[]; message?: string }>;
   setGlobal: (kind: GridKind, labelId: string, isGlobal: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
   assign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
   unassign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
@@ -176,6 +180,7 @@ function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState
 export function SystemLabelsGrid({
   data,
   companies,
+  writableCompanyIds,
   isGroupAdmin,
   actions,
   gradesSlot,
@@ -187,6 +192,19 @@ export function SystemLabelsGrid({
 }: {
   data: Record<GridKind, GridRecord[]>;
   companies: GridCompany[];
+  /**
+   * f1bbc572 — THE COMPANIES THIS ADMIN MAY WRITE, from `adminCompanies()` (the page's read of
+   * `app.is_admin_for(company.id)`, which is the very predicate RLS enforces on these four tables —
+   * subtree grants included).
+   *
+   * It is NOT the same set as `companies`: that is the company-switcher SCOPE, which also contains
+   * companies the user merely works at. Since f1bbc572 a Global label is listed for every company
+   * whatever company created it, so a company-scoped hr_admin now SEES rows whose origin company they
+   * cannot write. Rendering those as ordinary inputs invited an edit the database then refused — and
+   * because Save is ATOMIC, one such row took every other edit in that Save down with it. Rows outside
+   * this set are therefore read-only, with the Criteria, archive and Duplicate actions withheld too.
+   */
+  writableCompanyIds: string[];
   isGroupAdmin: boolean;
   actions: GridActions;
   /** b1b81a08 — the Grades BODY (components/grade-labels-grid.tsx), rendered in place of the company-scoped
@@ -269,6 +287,18 @@ export function SystemLabelsGrid({
 
   const rows = rowsByKind[kind];
   const companyName = useMemo(() => new Map(companies.map((c) => [c.id, c.name])), [companies]);
+  // f1bbc572 — see the `writableCompanyIds` prop note. A DRAFT is always writable: it is created under
+  // `newRowCompany`, and its own INSERT is what decides.
+  const writableIds = useMemo(() => new Set(writableCompanyIds), [writableCompanyIds]);
+  const canWrite = useCallback(
+    (r: { companyId: string; isNew?: boolean }) => !!r.isNew || writableIds.has(r.companyId),
+    [writableIds],
+  );
+
+  /** f1bbc572 — every server refusal reaches the banner through here: a token (lib/label-error-token.ts)
+   *  becomes the sentence for THIS reader's locale, an application error's own message passes through,
+   *  and the driver's `Failed query: update "department" set …` never arrives at all. */
+  const failureText = useCallback((m: string | undefined) => messageOrToken(m, t, t('saveFailed')), [t]);
 
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const drafts = rows.filter((r) => r.isNew);
@@ -281,6 +311,11 @@ export function SystemLabelsGrid({
     setRowsByKind((prev) => ({ ...prev, [kind]: next }));
   }
   function updateCell(key: string, field: keyof GridRecord, value: string | boolean | null) {
+    // A read-only row can never become dirty: its UPDATE would be refused by RLS, and Save is atomic, so
+    // it would roll back every other row's edit with it. The inputs are rendered readOnly; this is the
+    // second lock, for the paths that do not go through a keystroke.
+    const target = rows.find((r) => r.key === key);
+    if (!target || !canWrite(target)) return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
   }
   /**
@@ -301,9 +336,20 @@ export function SystemLabelsGrid({
     patchRows(next);
     followDraft(next, draft.key);
   }
+  /**
+   * f1bbc572 — DUPLICATE MUST NOT OFFER A COPY THE DATABASE WILL REFUSE. The copy is INSERTED under the
+   * SOURCE row's own company, so it is offered only where that insert can succeed (RLS checks
+   * `is_admin_for` on the new row's company exactly as it does for an update); the button is disabled on
+   * a read-only row rather than producing a draft that fails on Save and rolls the whole Save back.
+   *
+   * And it is never born Global unless the actor may set Global at all: the 0157 `guard_is_global`
+   * trigger refuses `is_global = true` from a non-group-admin, which for a copy of a Global row is a
+   * refusal of a value the user never chose. `isGroupAdmin` is the same gate `addRow` already applies.
+   */
   function duplicateRow(src: RowState) {
+    if (!canWrite(src)) return;
     draftSeq.current += 1;
-    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
+    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
     const next = [...rows, copy];
     patchRows(next);
     followDraft(next, copy.key);
@@ -312,6 +358,9 @@ export function SystemLabelsGrid({
     patchRows(rows.filter((r) => r.key !== key));
   }
   function toggleArchive(key: string) {
+    // Archiving is an UPDATE (archived_at), so it needs the same write right as a text edit.
+    const target = rows.find((r) => r.key === key);
+    if (!target || !canWrite(target)) return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, archived: !r.archived, dirty: true } : r)));
   }
 
@@ -382,7 +431,12 @@ export function SystemLabelsGrid({
         const map: Record<string, { field?: string; message: string }> = {};
         for (const e of res.rowErrors) map[e.key] = { field: e.field, message: e.message };
         setRowErrors(map);
-        setError(res.message ?? t('saveFailed'));
+        // f1bbc572 — SAY WHY, IN THE READER'S LANGUAGE. A refusal about the ACTOR ("you do not
+        // administer that company") highlights no cell, so "fix the highlighted rows" would leave the
+        // admin staring at a row with nothing wrong in it; its token is promoted to the banner. A
+        // field-level refusal keeps the existing banner and speaks through the highlighted cell.
+        const rowToken = res.rowErrors.find((e) => e.code)?.code;
+        setError(failureText(rowToken ?? res.message));
       }
     });
   }
@@ -391,7 +445,7 @@ export function SystemLabelsGrid({
   function runScope(fn: () => Promise<{ ok: true } | { ok: false; message: string }>) {
     startTransition(async () => {
       const r = await fn();
-      if (!r.ok) setError(r.message);
+      if (!r.ok) setError(failureText(r.message));
       else setError(null);
     });
   }
@@ -407,7 +461,7 @@ export function SystemLabelsGrid({
     startTransition(async () => {
       const res = await actions.setGlobal(k, r.id, next);
       if (!res.ok) {
-        setError(res.message);
+        setError(failureText(res.message));
         return;
       }
       setError(null);
@@ -425,11 +479,11 @@ export function SystemLabelsGrid({
     startTransition(async () => {
       if (toAssign.length) {
         const a = await actions.assign(k, r.id, toAssign);
-        if (!a.ok) return setError(a.message);
+        if (!a.ok) return setError(failureText(a.message));
       }
       if (toRemove.length) {
         const u = await actions.unassign(k, r.id, toRemove);
-        if (!u.ok) return setError(u.message);
+        if (!u.ok) return setError(failureText(u.message));
       }
       setError(null);
       setScopePopover(null);
@@ -854,9 +908,18 @@ export function SystemLabelsGrid({
               )}
               {pageRows.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
+                // f1bbc572 — a row whose ORIGIN company this admin does not administer is SHOWN (Global
+                // means every company sees it) but not editable: RLS refuses the write, and an atomic
+                // Save would lose every other edited row with it. Read-only, not hidden — hiding it is
+                // the defect this round fixed.
+                const readOnly = !canWrite(r);
                 return (
                   <tr key={r.key} className={`${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
                     <td className="px-2 py-1.5 align-middle">
+                      {/* Deliberately NOT withheld on a read-only row: the tick feeds "Copy to
+                          companies", whose write is a label_company_assignment row gated on the TARGET
+                          company (0157), not on this row's origin — sharing a global label INTO a company
+                          you do administer is exactly what an admin in this position wants. */}
                       <input
                         type="checkbox"
                         checked={selected.has(r.key)}
@@ -878,9 +941,18 @@ export function SystemLabelsGrid({
                           value={String(r[c.field] ?? '')}
                           onChange={(e) => updateCell(r.key, c.field, e.target.value)}
                           onKeyDown={(e) => onCellKey(e, rowIdx, String(c.field))}
+                          // `readOnly`, NOT `disabled`: the value stays selectable, copyable and reachable
+                          // by keyboard — this is a row the admin is entitled to READ — while every edit
+                          // path (typing, paste into the cell) is closed.
+                          readOnly={readOnly}
+                          aria-readonly={readOnly || undefined}
                           // 797e3523: full value on hover so long text is readable without a wider column.
-                          title={String(r[c.field] ?? '')}
-                          className={`${cellInput} w-full min-w-0 ${err?.field === c.field ? 'border-destructive' : ''}`}
+                          // On a read-only row the tooltip says WHY instead, which is the more useful of
+                          // the two when the cell will not take an edit.
+                          title={readOnly ? t('readOnlyRow') : String(r[c.field] ?? '')}
+                          className={`${cellInput} w-full min-w-0 ${err?.field === c.field ? 'border-destructive' : ''} ${
+                            readOnly ? 'cursor-default bg-muted/40 text-muted-foreground' : ''
+                          }`}
                         />
                       </td>
                     ))}
@@ -891,6 +963,17 @@ export function SystemLabelsGrid({
                     <td className="relative px-3 py-1.5">
                       {r.isNew ? (
                         <span className="text-xs text-muted-foreground">{t('saveFirst')}</span>
+                      ) : readOnly ? (
+                        // Criteria is a WRITE (setGlobal / assign / unassign all update RLS-guarded
+                        // tables), so on a read-only row it is stated, not offered.
+                        <span
+                          title={t('readOnlyRow')}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            r.isGlobal ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {scopeLabel(r)}
+                        </span>
                       ) : (
                         <button
                           type="button"
@@ -903,7 +986,7 @@ export function SystemLabelsGrid({
                           <ChevronDown className="size-3.5 shrink-0" aria-hidden />
                         </button>
                       )}
-                      {scopePopover === r.key && !r.isNew && (
+                      {scopePopover === r.key && !r.isNew && !readOnly && (
                         <ScopePopover
                           row={r}
                           companies={companies}
@@ -927,7 +1010,13 @@ export function SystemLabelsGrid({
                     {/* Row actions */}
                     <td className="px-3 py-1.5 text-right">
                       <div className="inline-flex gap-1">
-                        <RowIconButton title={t('duplicateRow')} onClick={() => duplicateRow(r)}>
+                        {/* Duplicate INSERTS under this row's own company, so on a read-only row it is
+                            withheld rather than offered and refused — see duplicateRow. */}
+                        <RowIconButton
+                          title={readOnly ? t('readOnlyRow') : t('duplicateRow')}
+                          onClick={() => duplicateRow(r)}
+                          disabled={readOnly}
+                        >
                           <Copy className="size-3.5" aria-hidden />
                         </RowIconButton>
                         {r.isNew ? (
@@ -935,7 +1024,11 @@ export function SystemLabelsGrid({
                             <X className="size-3.5" aria-hidden />
                           </RowIconButton>
                         ) : (
-                          <RowIconButton title={r.archived ? t('unarchive') : t('archive')} onClick={() => toggleArchive(r.key)} disabled={r.inUse && !r.archived}>
+                          <RowIconButton
+                            title={readOnly ? t('readOnlyRow') : r.archived ? t('unarchive') : t('archive')}
+                            onClick={() => toggleArchive(r.key)}
+                            disabled={readOnly || (r.inUse && !r.archived)}
+                          >
                             {r.archived ? <ArchiveRestore className="size-3.5" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
                           </RowIconButton>
                         )}

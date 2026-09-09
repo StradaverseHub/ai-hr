@@ -137,7 +137,7 @@ export default async function PayrollProcessPage({
           // set the per-company masters + cycle catalogs are loaded for. "All my companies" therefore means
           // "all companies I'm scoped to", and the server re-resolves it against allowedCompanies as a
           // backstop so the run can never widen beyond the admin's grants.
-          companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))}
+          companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }))}
           departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, isGlobal: d.isGlobal, businessUnitId: d.businessUnitId }))}
           businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId, isGlobal: b.isGlobal }))}
           positions={positions.map((p) => ({ id: p.id, name: p.title, companyId: p.companyId, isGlobal: p.isGlobal }))}

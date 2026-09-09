@@ -61,6 +61,7 @@ import { Fragment, useCallback, useMemo, useRef, useState, useTransition } from 
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
+import { messageOrToken } from '@/lib/label-error-token';
 import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import {
@@ -136,6 +137,10 @@ function toRow(r: GradeGridRecord): RowState {
 
 export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; actions: GradeGridActions }) {
   const t = useTranslations('admin.systemLabels');
+  /** f1bbc572 — the grade actions share the label actions' failure vocabulary: a recognised refusal
+   *  arrives as a TOKEN to translate here, and a raw database string never arrives at all
+   *  (lib/label-error-token.ts). Anything else is an application error's own sentence. */
+  const failureText = useCallback((m: string | undefined) => messageOrToken(m, t, t('saveFailed')), [t]);
   const [rows, setRows] = useState<RowState[]>(() => data.map(toRow));
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
@@ -208,7 +213,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         setRows((prev) => prev.filter((r) => r.key !== row.key));
         setError(null);
       } else {
-        setError(res.message);
+        setError(failureText(res.message));
       }
     });
   }
@@ -225,7 +230,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
     startTransition(async () => {
       const res = await actions.restore(archivedId);
       if (!res.ok) {
-        setError(res.message);
+        setError(failureText(res.message));
         return;
       }
       const restored = toRow(res.row);
@@ -301,7 +306,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         setRows((prev) =>
           prev.map((r) => (!r.isNew && updatedKeys.has(r.key) && !failed.has(r.key) ? { ...r, dirty: false } : r)),
         );
-        setError(res.message ?? t('saveFailed'));
+        setError(failureText(res.message));
       }
     });
   }

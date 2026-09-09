@@ -34,10 +34,14 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { type SessionContext } from '../db/client';
 import {
+  bulkSaveLabels,
   createBusinessUnit,
   createCostCenter,
   createDepartment,
   createPosition,
+  isDatabaseError,
+  labelFailureCode,
+  LabelBulkError,
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
   listDepartmentsForLabels,
@@ -132,7 +136,7 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
       // Read exactly as the page does — tenant-wide, through a company-B-scoped admin — then apply the
       // page's own narrowing for a scope that contains company B and nothing else.
       const rows = await K.list(await adminFor(coB));
-      const seen = labelsInCompanyScope(rows, new Set([coB])).map((r) => r.id);
+      const seen = labelsInCompanyScope(rows, new Set([coB]), true).map((r) => r.id);
 
       expect(seen).toContain(globalId); // Global: created under A, visible to B.
       expect(seen).toContain(bOwnId); // B's own row: unchanged.
@@ -163,7 +167,7 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
         ...rows.filter((r) => r.companyId === coB).map((r) => r.id),
         ...rows.filter((r) => r.isGlobal).map((r) => r.id),
       ]);
-      const got = new Set(labelsInCompanyScope(rows, new Set([coB])).map((r) => r.id));
+      const got = new Set(labelsInCompanyScope(rows, new Set([coB]), true).map((r) => r.id));
 
       expect(got).toEqual(expected);
       // Non-trivial: the set really does span both companies, and really does leave A's private row out.
@@ -173,12 +177,14 @@ describe('f1bbc572 — a Global System Label is in scope for every company', () 
     });
   }
 
+  // `globalUsable` carries no default (round 2): a caller that forgets it does not compile, which is the
+  // only reliable guard against a surface silently re-acquiring "true" and drifting from the resolver.
   it('the Shared System Labels opt-out still wins where the server gates on it (globalUsable = false)', async () => {
     const globalRow = { companyId: 'company-a', isGlobal: true };
     const ownRow = { companyId: 'company-b', isGlobal: false };
     const scope = new Set(['company-b']);
-    // Flag ON (the default for a plain list filter): the global row is in scope.
-    expect(labelInCompanyScope(globalRow, scope)).toBe(true);
+    // Flag ON — the company shares labels, so the global row is in scope.
+    expect(labelInCompanyScope(globalRow, scope, true)).toBe(true);
     // Flag OFF: origin-only, exactly as `labelUsableByCompany` resolves it for an opted-out company —
     // a picker whose save runs through that guard must not offer what the save would refuse.
     expect(labelInCompanyScope(globalRow, scope, false)).toBe(false);
@@ -192,7 +198,11 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
   it('the System Labels page narrows through labelsInCompanyScope, not through the origin company alone', () => {
     const s = src('app/admin/settings/system-labels/page.tsx');
     expect(s).toContain("from '@/lib/system-label-scope'");
-    expect(s).toContain('labelsInCompanyScope(rows, scopedIdSet)');
+    // Flag-gated, because the SERVER resolver's global branch is: an opted-out company must not be
+    // shown a label its own pickers would refuse (the 'visible in the list, unavailable in the picker'
+    // state the plan calls worse than the defect).
+    expect(s).toContain('labelsInCompanyScope(rows, scopedIdSet, globalUsable)');
+    expect(s).toContain('const globalUsable = scopedCompanies.some((c) => c.sharedSystemLabels);');
     // The exact shape of the defect, which must never come back.
     expect(s).not.toContain('rows.filter((r) => scopedIdSet.has(r.companyId))');
   });
@@ -200,15 +210,16 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
   it('the swept pickers narrow through the same rule', () => {
     // Payroll → Process, step 2 filter catalogs (all four kinds).
     const wizard = src('app/payroll/process/wizard.tsx');
-    expect(wizard).toContain('labelsInCompanyScope(departments, companySet)');
-    expect(wizard).toContain('labelsInCompanyScope(businessUnits, companySet)');
-    expect(wizard).toContain('labelsInCompanyScope(positions, companySet)');
-    expect(wizard).toContain('labelsInCompanyScope(costCenters, companySet)');
+    expect(wizard).toContain('labelsInCompanyScope(departments, companySet, globalUsable)');
+    expect(wizard).toContain('labelsInCompanyScope(businessUnits, companySet, globalUsable)');
+    expect(wizard).toContain('labelsInCompanyScope(positions, companySet, globalUsable)');
+    expect(wizard).toContain('labelsInCompanyScope(costCenters, companySet, globalUsable)');
+    expect(wizard).toContain('c.sharedSystemLabels');
     expect(wizard).not.toContain('departments.filter((d) => companySet.has(d.companyId))');
 
     // Attendance → Recompute, the department filter for the chosen company.
     const recompute = src('app/attendance/recompute/recompute-client.tsx');
-    expect(recompute).toContain('labelsInCompanyScope(departments, new Set([companyId]))');
+    expect(recompute).toContain('labelsInCompanyScope(departments, new Set([companyId]), companyShared)');
     expect(recompute).not.toContain('departments.filter((d) => d.companyId === companyId)');
 
     // Delegations → coverage picker (flag-gated, because its save runs through labelUsableByCompany).
@@ -224,5 +235,136 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
     expect(admin).toContain('isGlobal: position.isGlobal,');
     expect(admin).toContain('isGlobal: costCenter.isGlobal,');
     expect(admin).toContain('isGlobal: businessUnit.isGlobal,');
+  });
+});
+
+/**
+ * f1bbc572 ROUND 2 — WHAT HAPPENS WHEN THE ADMIN EDITS A ROW THEY CAN SEE BUT NOT WRITE.
+ *
+ * Making a Global label visible to every company handed a COMPANY-SCOPED hr_admin rows whose origin
+ * company they do not administer. RLS refuses that write —
+ * `CREATE POLICY tenant_isolation ON department … WITH CHECK (… app.is_admin_for(company_id))`
+ * (0016_company_scoped_authz.sql) — and the Save is atomic, so the refusal took every OTHER row edited
+ * in the same Save down with it while the banner printed the driver's own text:
+ *
+ *   Failed query: update "department" set "name" = $1, "label" = $2, "description" = $3
+ *   where "department"."id" = $4  params: RenamedByB,,edited by B,b22d7f28-…
+ *
+ * — because `isPrivilegeError` read `e.code`, which drizzle leaves undefined (the SQLSTATE is on
+ * `.cause`), so every branch of the catch missed and the raw error escaped through `else throw e`.
+ *
+ * The grid now renders those rows READ-ONLY (test/system-labels-readonly.dom.test.tsx). These cases pin
+ * the server half, which is what stands between a stale page — or a grant revoked mid-session — and SQL
+ * on an admin's screen.
+ */
+describe('f1bbc572 — a refused label write is named, not dumped', () => {
+  it('reads the SQLSTATE off .cause, where drizzle actually puts it', () => {
+    // The exact shape captured from the probe: drizzle's own Error, the PostgresError on `.cause`.
+    const wrapped = Object.assign(
+      new Error('Failed query: update "department" set "name" = $1 …\nparams: RenamedByB,,edited by B'),
+      { cause: Object.assign(new Error('new row violates row-level security policy for table "department"'), { code: '42501' }) },
+    );
+    expect((wrapped as { code?: string }).code).toBeUndefined(); // the reason the old test-by-e.code failed
+    expect(labelFailureCode(wrapped)).toBe('notAdminForCompany');
+    expect(isDatabaseError(wrapped)).toBe(true);
+
+    // The is_global trigger raises the SAME SQLSTATE and must stay a DIFFERENT sentence.
+    const trigger = Object.assign(new Error('Failed query: update "department" …'), {
+      cause: Object.assign(new Error('Only a group admin may make a system label global (is_global)'), { code: '42501' }),
+    });
+    expect(labelFailureCode(trigger)).toBe('globalGroupAdminOnly');
+
+    // An application error is not the database talking: its own message is the one written for a reader.
+    expect(labelFailureCode(new Error('Cannot unassign: a company still uses this label.'))).toBeUndefined();
+    expect(isDatabaseError(new Error('Cannot unassign: a company still uses this label.'))).toBe(false);
+  });
+
+  it('a company-B admin editing company A’s Global department gets a translatable refusal, not SQL — and B’s own edit is rolled back', async () => {
+    const a = adminCtx(b); // group admin — creates the fixtures and passes the is_global trigger
+    const coB = await secondCompany();
+    const globalId = (await createDepartment(a, { companyId: b.companyId, name: 'GlobalFromA' })).id;
+    await setLabelGlobal(a, { kind: 'department', labelId: globalId, isGlobal: true });
+    const bOwnId = (await createDepartment(a, { companyId: coB, name: 'BOwnDept' })).id;
+
+    const bAdmin = await adminFor(coB);
+    // The row is VISIBLE to B — that is f1bbc572 — so B can reach it and try to rename it.
+    const visible = labelsInCompanyScope(await listDepartmentsForLabels(bAdmin), new Set([coB]), true);
+    expect(visible.map((r) => r.id)).toContain(globalId);
+
+    const thrown = await bulkSaveLabels(bAdmin, 'department', {
+      creates: [],
+      updates: [
+        { key: 'row-b', id: bOwnId, name: 'BRenamed' }, // B's own row, edited in the SAME Save
+        { key: 'row-a', id: globalId, name: 'RenamedByB' },
+      ],
+    }).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(LabelBulkError);
+    const rowErrors = (thrown as LabelBulkError).rowErrors;
+    expect(rowErrors).toHaveLength(1);
+    expect(rowErrors[0].key).toBe('row-a');
+    expect(rowErrors[0].code).toBe('notAdminForCompany');
+
+    // NOTHING the driver said may travel with it: not the statement, not the parameter values.
+    const surfaced = [(thrown as Error).message, ...rowErrors.map((r) => r.message)].join(' | ');
+    expect(surfaced).not.toMatch(/Failed query/i);
+    expect(surfaced).not.toMatch(/update "department"/i);
+    expect(surfaced).not.toMatch(/RenamedByB/);
+
+    // Atomic: B's own rename went with it, and A's row is untouched.
+    const after = await listDepartmentsForLabels(a);
+    expect(after.find((r) => r.id === bOwnId)?.name).toBe('BOwnDept');
+    expect(after.find((r) => r.id === globalId)?.name).toBe('GlobalFromA');
+  });
+
+  /**
+   * THE SECOND ERROR THAT USED TO BURY THE FIRST. `withTenant` opens ONE transaction with no savepoints,
+   * so the refused statement ABORTS it: with the refused row FIRST, the next row's UPDATE raised 25P02
+   * ("current transaction is aborted"), which is neither a unique nor a privilege violation — it escaped
+   * through `else throw e` as a raw driver string with nothing highlighted, hiding the refusal that
+   * actually caused it. bulkSaveLabels now stops at the first DATABASE refusal, which the atomic save
+   * makes free: everything rolls back either way.
+   */
+  it('a refusal on the FIRST row is reported as itself, not as the aborted-transaction error behind it', async () => {
+    const a = adminCtx(b);
+    const coB = await secondCompany();
+    const globalId = (await createDepartment(a, { companyId: b.companyId, name: 'GlobalFirst' })).id;
+    await setLabelGlobal(a, { kind: 'department', labelId: globalId, isGlobal: true });
+    const bOwnId = (await createDepartment(a, { companyId: coB, name: 'BOwnFirst' })).id;
+
+    const thrown = await bulkSaveLabels(await adminFor(coB), 'department', {
+      creates: [],
+      updates: [
+        { key: 'row-a', id: globalId, name: 'RenamedByB' }, // refused — and it aborts the transaction
+        { key: 'row-b', id: bOwnId, name: 'BRenamed' }, // would raise 25P02 if the loop carried on
+      ],
+    }).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(LabelBulkError);
+    const rowErrors = (thrown as LabelBulkError).rowErrors;
+    expect(rowErrors).toEqual([expect.objectContaining({ key: 'row-a', code: 'notAdminForCompany' })]);
+    const surfaced = [(thrown as Error).message, ...rowErrors.map((r) => r.message)].join(' | ');
+    expect(surfaced).not.toMatch(/current transaction is aborted/i);
+    expect(surfaced).not.toMatch(/Failed query/i);
+
+    // Still atomic: neither row moved.
+    const after = await listDepartmentsForLabels(a);
+    expect(after.find((r) => r.id === bOwnId)?.name).toBe('BOwnFirst');
+    expect(after.find((r) => r.id === globalId)?.name).toBe('GlobalFirst');
+  });
+
+  it('a company-B admin editing its OWN row still saves — the refusal is about the row, not the admin', async () => {
+    const a = adminCtx(b);
+    const coB = await secondCompany();
+    const bOwnId = (await createDepartment(a, { companyId: coB, name: 'BOwnDept2' })).id;
+
+    const bAdmin = await adminFor(coB);
+    const res = await bulkSaveLabels(bAdmin, 'department', {
+      creates: [],
+      updates: [{ key: 'row-b', id: bOwnId, name: 'BRenamed2' }],
+    });
+
+    expect(res.updated).toBe(1);
+    expect((await listDepartmentsForLabels(a)).find((r) => r.id === bOwnId)?.name).toBe('BRenamed2');
   });
 });

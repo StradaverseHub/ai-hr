@@ -13,9 +13,12 @@
  * (`visibleLabelIdsCondition`, origin ∪ shared-in ∪ global). It deliberately does NOT model the
  * shared-in (junction) branch: a junction row is not carried on a label row, so a surface that needs it
  * must filter in SQL through the resolver instead of here. `globalUsable` mirrors the resolver's
- * `shared_system_labels` gate for callers whose save path runs through `labelUsableByCompany` — pass the
- * company's flag there, so a picker never offers an option its own save would refuse. Callers with no
- * such write guard (pure list filters) leave it at its default.
+ * `shared_system_labels` gate — `is_global = true AND exists (… co2.shared_system_labels = true)` — and
+ * EVERY caller passes it, including pure list filters. Round 2 of f1bbc572: a surface that admits a
+ * global label the resolver would refuse for that company is "visible in the maintenance list and
+ * unavailable in the picker", which is worse than the defect this module was written to fix. The flag is
+ * ON tenant-wide today (0298 + autoEnableSharedLabels), so passing it changes nothing until an admin
+ * opts a company out — which is the moment it has to be right.
  *
  * Pure and dependency-free (the lib/hire-form-filter.ts precedent) so a server component, a client
  * component and a test all read the same rule.
@@ -24,11 +27,13 @@
 /** The two fields the rule needs from a label row. */
 export type CompanyScopedLabel = { companyId: string; isGlobal: boolean };
 
-/** True when `label` is usable by at least one company in `companyIds`: origin ∪ global. */
+/** True when `label` is usable by at least one company in `companyIds`: origin ∪ (global, if usable).
+ *  `globalUsable` has NO DEFAULT on purpose — round 2 of f1bbc572 found the maintenance screen and the
+ *  server resolver disagreeing precisely because a caller had inherited `true` without deciding. */
 export function labelInCompanyScope(
   label: CompanyScopedLabel,
   companyIds: ReadonlySet<string>,
-  globalUsable = true,
+  globalUsable: boolean,
 ): boolean {
   if (companyIds.has(label.companyId)) return true;
   return label.isGlobal && globalUsable;
@@ -38,7 +43,7 @@ export function labelInCompanyScope(
 export function labelsInCompanyScope<T extends CompanyScopedLabel>(
   labels: readonly T[],
   companyIds: ReadonlySet<string>,
-  globalUsable = true,
+  globalUsable: boolean,
 ): T[] {
   return labels.filter((l) => labelInCompanyScope(l, companyIds, globalUsable));
 }

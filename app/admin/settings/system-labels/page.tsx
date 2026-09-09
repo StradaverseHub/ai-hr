@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { isGroupAdmin } from '@/lib/authz';
-import { listCompanies, listJobGrades } from '@/core/read';
+import { adminCompanies, listCompanies, listJobGrades } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
@@ -65,7 +65,7 @@ export default async function SystemLabelsPage({
   // ⚠️ A NAME ADDED TO THIS DESTRUCTURE MUST BE ADDED TO THE ARRAY BELOW IN THE SAME POSITION. Every
   // element is an array, so a mismatch shifts each later variable by one slot and NOTHING type-errors —
   // each catalogue silently becomes a different one.
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups] =
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups, writableCompanies] =
     await Promise.all([
       listCompanies(s, { includeArchived: true }),
       listDepartmentsForLabels(s),
@@ -88,6 +88,11 @@ export default async function SystemLabelsPage({
       // through inScope(...) below. Archived groups arrive too — the editor badges them and the editor is
       // the only surface that can un-archive one.
       listGradeGroups(s),
+      // f1bbc572 — the companies this admin may WRITE, resolved by the database's own `app.is_admin_for`
+      // (subtree grants included), NOT by the company switcher and NOT by the TS mirror in lib/authz. The
+      // grid renders every row outside this set read-only, because this is exactly the predicate the
+      // `tenant_isolation` WITH CHECK on these four tables applies to the UPDATE (0016:101-103).
+      adminCompanies(s),
     ]);
 
   const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -157,7 +162,16 @@ export default async function SystemLabelsPage({
   // (core/system-labels.ts visibleLabelIdsCondition: origin ∪ shared-in ∪ global) — this screen was the
   // odd one out, which is also why `assignedCompanyIds` two lines up was already richer than the filter
   // that preceded it.
-  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => labelsInCompanyScope(rows, scopedIdSet);
+  //
+  // GATED ON THE SHARING FLAG, exactly as the resolver's own global branch is
+  // (`is_global = true AND exists (… co2.shared_system_labels = true)`). Without the gate this list and
+  // every picker fed by the resolver disagree the moment a company turns Shared System Labels OFF: the
+  // label would be listed here and refused by `labelUsableByCompany` in the hire wizard — "visible in the
+  // maintenance list and unavailable in the picker", the state the plan calls out as WORSE than the
+  // defect. `shared_system_labels` is ON tenant-wide today (0298's backfill + setLabelGlobal's
+  // autoEnableSharedLabels), so this changes nothing until an admin deliberately opts a company out.
+  const globalUsable = scopedCompanies.some((c) => c.sharedSystemLabels);
+  const inScope = <T extends CompanyScopedLabel>(rows: T[]) => labelsInCompanyScope(rows, scopedIdSet, globalUsable);
 
   const data: Record<GridKind, GridRecord[]> = {
     department: inScope(departments).map((r) => norm(r, deptMap)),
@@ -273,6 +287,7 @@ export default async function SystemLabelsPage({
       <SystemLabelsGrid
         data={data}
         companies={gridCompanies}
+        writableCompanyIds={writableCompanies.map((c) => c.id)}
         isGroupAdmin={isGroupAdmin(s)}
         actions={actions}
         gradesSlot={gradesSlot}

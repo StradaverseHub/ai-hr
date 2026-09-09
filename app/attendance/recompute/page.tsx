@@ -46,7 +46,7 @@ export default async function AttendanceRecomputePage() {
       <RecomputeClient
         companies={companies
           .filter((c) => scopeIds.includes(c.id))
-          .map((c) => ({ id: c.id, name: c.name }))}
+          .map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }))}
         departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, isGlobal: d.isGlobal }))}
         employees={employees.map((e) => ({
           employmentId: e.employmentId,
