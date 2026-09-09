@@ -3517,6 +3517,7 @@
       "eaColCode": "Mã nhân viên",
       "eaColDepartment": "Phòng ban",
       "eaNoMatch": "Không có nhân viên nào khớp với tìm kiếm của bạn.",
+      "eaTooMany": "Mỗi lần chỉ chọn tối đa {max} nhân viên.",
       "eaNoneForYear": "Không ai tại {company} có số liệu lương cho năm {year}, nên không có biểu mẫu EA nào để tạo. Hãy chạy lương của năm đó trước."
     },
     "ea": {

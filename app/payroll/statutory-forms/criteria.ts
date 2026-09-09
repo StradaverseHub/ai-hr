@@ -93,3 +93,85 @@ export function reportDestination(
     hidden: [],
   };
 }
+
+/**
+ * r256 — THE PERIOD THE STEP ARRIVES SHOWING, and why it is not simply "now".
+ *
+ * A criteria step opens with its selects already set, and whatever they are set to is what an operator who
+ * presses the button without reading gets. The first cut of this page set the year to `today.slice(0, 4)`
+ * and rolled only the MONTH back, which is wrong twice a year in ways that only show up in the season when
+ * these forms are actually filed:
+ *
+ *   • On 5 January the month rolled to December and the year did not, so CP39 arrived on `2026-12` —
+ *     eleven months in the FUTURE — and generated an empty return for a month that has not happened.
+ *   • Through the whole of January, February and March — the C.P.8A / Form E filing season — the annual
+ *     rows arrived on the year that had just BEGUN. Pressing Continue on the EA in February 2027 opened the
+ *     2027 population: one month of pay, printed under a tax document's name (AGENTS 28). The year being
+ *     filed in that window is 2026.
+ *
+ * THREE RULES, BECAUSE THERE ARE THREE KINDS OF FORM HERE, and the shape of the destination says which:
+ *
+ *   1. A form that takes a MONTH is filed for the month just ENDED — the submission that is actually open,
+ *      the same sentence app/payroll/statutory-forms/page.tsx has carried since it had a period picker. The
+ *      year rolls back WITH it, which is the half that was missing.
+ *   2. A form with no month whose destination is an annual SUBMISSION (Form E / CP8D, and the two C.P.8A
+ *      rows, whose population is that same report) is filed in arrears: through the filing season it is
+ *      last year's return that is open, and from April the next one to be prepared is the year in progress.
+ *   3. Anything else with a year and no month — Form TP1, whose destination is not one of this pack's
+ *      reports at all — is a declaration for the year IN PROGRESS, and `/payroll/transactions/tp1` defaults
+ *      to that same current assessment year. Defaulting it into last year would put HR on a closed year's
+ *      declarations for a quarter of every year.
+ *
+ * `today` IS THE TENANT'S, NEVER `new Date()` — between 00:00 and 08:00 MYT the UTC date is still
+ * yesterday's, and on 1 January that is a whole year out (lib/hr-date.ts, and the same reason
+ * app/payroll/dashboard-logic.ts gives).
+ */
+
+/**
+ * The last month of the Malaysian annual-filing season: the C.P.8A reaches employees by the last day of
+ * February and Form E is filed by 31 March, so up to and including March the year being worked on is the
+ * one that closed.
+ */
+const FILING_SEASON_LAST_MONTH = 3;
+
+/**
+ * The report a destination ultimately draws its figures from, by id — `undefined` when it opens something
+ * that is not one of this pack's reports.
+ *
+ * TWO WAYS AN ENTRY CAN NAME ONE, and both are the pack's own words rather than this module's: a link that
+ * opens a report directly carries it in its href (`my.borang-e` → `/payroll/statutory-forms/my.cp8d`), and
+ * a link that opens the LIST OF PEOPLE in one declares `populationReportId` (the two C.P.8A rows → `my.cp8d`).
+ * `my.tp1` opens `/payroll/transactions/tp1` and declares neither, so it resolves to nothing — which is how
+ * rule 3 above tells itself apart from rule 2 without any screen naming a form.
+ */
+export function destinationReportId(action: string, populationReportId?: string): string | undefined {
+  if (populationReportId) return populationReportId;
+  const m = /^\/payroll\/statutory-forms\/([^/]+)$/.exec(action);
+  return m ? decodeURIComponent(m[1]) : undefined;
+}
+
+/**
+ * What the step's selects should arrive showing, for one destination, as of the tenant's `today`.
+ *
+ * `target` is the destination's own report (see `destinationReportId`) or nothing. Pure, so
+ * test/statutory-forms-criteria-858a1128.test.ts can run it over the pack's OWN entries on the two dates
+ * the naive default got wrong — 5 January and 5 March — rather than grep for a formula.
+ */
+export function defaultCriteria(
+  today: string,
+  criteria: readonly { kind: CriterionKind }[],
+  target?: { periodKind: 'month' | 'year' | 'event'; submission?: unknown } | null,
+): { year: string; month: string } {
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  // Rule 1 — the month just ENDED, year and month together, so January reaches back into last December.
+  const ended =
+    m === 1
+      ? { year: String(y - 1), month: '12' }
+      : { year: String(y), month: String(m - 1).padStart(2, '0') };
+  if (criteria.some((c) => c.kind === 'month')) return ended;
+  // Rule 2 — an annual return, filed after the year it covers has closed. Rule 3 is the fall-through.
+  const filedInArrears = target?.periodKind === 'year' && target.submission != null;
+  const inSeason = m <= FILING_SEASON_LAST_MONTH;
+  return { year: String(filedInArrears && inSeason ? y - 1 : y), month: ended.month };
+}

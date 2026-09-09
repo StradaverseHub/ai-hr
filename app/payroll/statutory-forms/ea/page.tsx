@@ -7,6 +7,7 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { EaEmployeePicker, type EaPickerRow } from './employee-picker';
+import { MAX_EA_SELECTION } from './limits';
 
 /**
  * r256 (item 858a1128) — THE C.P.8A (EA)'s SECOND STEP: pick the people, then generate.
@@ -97,9 +98,12 @@ export default async function EaEmployeeSelectionPage({
       const employmentId = typeof r.employmentId === 'string' ? r.employmentId : '';
       if (!employmentId) return null;
       const person = roster.get(employmentId);
-      const status = person
-        ? deriveEmploymentStatus({ terminatedOn: person.terminatedOn }, today)
-        : 'active';
+      // THE WHOLE ROW, not one field of it. Handing the deriver `{ terminatedOn }` alone left four of its
+      // six buckets unreachable — a probationer, a blacklisted employment, a recorded resignation with no
+      // termination date and a last working day ALL printed "Active" here while Personnel said otherwise
+      // about the same person on the same day. `listEmployees` now carries the full lifecycle set, and this
+      // reads it the way every other status badge in the product does.
+      const status = person ? deriveEmploymentStatus(person, today) : 'active';
       return {
         employmentId,
         name: String(r.name ?? person?.name ?? ''),
@@ -165,6 +169,8 @@ export default async function EaEmployeeSelectionPage({
                 colDepartment: t('eaColDepartment'),
                 colStatus: t('colStatus'),
                 noMatch: t('eaNoMatch'),
+                // Interpolated HERE, on the server: the ceiling is a constant, unlike the running count.
+                tooMany: t('eaTooMany', { max: MAX_EA_SELECTION }),
               }}
             />
           )}

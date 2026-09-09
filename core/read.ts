@@ -158,6 +158,25 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        // r256 — THE LIFECYCLE INPUTS THE STATUS DERIVER READS, the same set `listEmployeesPage` carries
+        // (R43 c26c3ce5 / R81). They are columns of the `employment` row this select already reads, so
+        // there is no extra join and no extra row.
+        //
+        // THEY ARE HERE BECAUSE THEIR ABSENCE WAS A TRAP. `terminatedOn` alone is enough to CALL
+        // deriveEmploymentStatus and enough for it to return something plausible, so the C.P.8A picker
+        // built its Status column out of that one field and could only ever print Active or Resigned:
+        // a probationer read "Active" beside their name while Personnel said "Probation" about the same
+        // person on the same day, and a blacklisted employment read "Active" too. Any consumer of this
+        // read that shows a status badge now has the whole ladder available (see core/employment-status.ts
+        // for why the two probation fallbacks are not optional — nothing writes a confirmation date at
+        // hire).
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))

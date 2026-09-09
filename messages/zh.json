@@ -3517,6 +3517,7 @@
       "eaColCode": "员工编号",
       "eaColDepartment": "部门",
       "eaNoMatch": "没有员工符合您的搜索条件。",
+      "eaTooMany": "每次最多选择 {max} 位员工。",
       "eaNoneForYear": "{company} 在 {year} 没有任何薪资数据，因此无法生成 EA 表格。请先完成该年度的薪资运算。"
     },
     "ea": {

@@ -33,6 +33,10 @@ import { employeeEaStatement } from '@/core/reporting';
 import { listCompanies } from '@/core/read';
 import { renderEaPdf, type EaPdfData, type EaPdfLabels } from '@/lib/ea-pdf';
 import { eaPdfLabels } from '@/lib/ea-pdf-labels';
+// The ceiling, shared with the picker so the number the screen advertises is the number enforced here.
+// See ../limits.ts for why it is 200 and not the 500 this route first claimed — above ~405 ids the GET
+// never reached this code at all, it was refused by the HTTP layer with a bare 431.
+import { MAX_EA_SELECTION } from '../limits';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -40,12 +44,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YEAR = /^\d{4}$/;
 const EA_LANGS = ['en', 'ms'] as const;
 type EaLang = (typeof EA_LANGS)[number];
-/**
- * A ceiling, not a policy. The picker's Select All is one press over a whole company, and a tenant with
- * thousands of employments would otherwise render thousands of PDFs inside one request. Chosen well above
- * any real headcount this product serves so nobody meets it in ordinary use.
- */
-const MAX_SELECTION = 500;
 
 const notFound = () => new Response('Not found', { status: 404 });
 
@@ -56,7 +54,7 @@ export async function GET(req: Request) {
   const ids = q.getAll('id');
   // Shape first, before any query: a malformed id never reaches the database.
   if (!UUID.test(companyId) || !YEAR.test(year)) return notFound();
-  if (ids.length === 0 || ids.length > MAX_SELECTION || !ids.every((id) => UUID.test(id))) return notFound();
+  if (ids.length === 0 || ids.length > MAX_EA_SELECTION || !ids.every((id) => UUID.test(id))) return notFound();
   // The same person ticked twice — only reachable by hand-editing the URL — is one copy, not two.
   const unique = [...new Set(ids)];
 

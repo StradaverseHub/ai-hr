@@ -32,9 +32,12 @@ import { REGISTERED_ROUTES } from '../lib/permissions';
 import {
   TEMPLATED,
   criteriaHref,
+  defaultCriteria,
+  destinationReportId,
   parseDestination,
   reportDestination,
 } from '../app/payroll/statutory-forms/criteria';
+import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
 import { filterEaRows } from '../app/payroll/statutory-forms/ea/filter';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -57,6 +60,7 @@ const code = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 const DIRECTORY = code('app/payroll/statutory-forms/page.tsx');
+const READ = code('core/read.ts');
 const CRITERIA = code('app/payroll/statutory-forms/open/page.tsx');
 const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
 const EA_PAGE = code('app/payroll/statutory-forms/ea/page.tsx');
@@ -363,7 +367,7 @@ describe('the C.P.8A (EA) picks people, and can pick many', () => {
   it('refuses a partial answer rather than shipping one', () => {
     expect(EA_DOWNLOAD).toContain('if (!ea) return notFound()');
     expect(EA_DOWNLOAD).toContain('ids.length === 0');
-    expect(EA_DOWNLOAD).toContain('MAX_SELECTION');
+    expect(EA_DOWNLOAD).toContain('MAX_EA_SELECTION');
     // Gated like the CP22 batch beside it, and pinned to THIS employer: after an Entity Transfer a year
     // can span two, and handing over the wrong employer's statement is the failure the per-employee route
     // refuses too.
@@ -379,6 +383,125 @@ describe('the C.P.8A (EA) picks people, and can pick many', () => {
     expect(EA_DOWNLOAD).toContain("EA_LANGS = ['en', 'ms']");
     expect(EA_DOWNLOAD).toContain('EA_LANGS.includes(langParam as EaLang)');
     expect(EA_PAGE).toContain("EA_LANGS = ['en', 'ms']");
+  });
+});
+
+/**
+ * r256 — THE DEFAULT PERIOD, ON THE TWO DATES THE NAIVE ONE GETS WRONG.
+ *
+ * Whatever these selects arrive showing is what an operator who presses the button without reading gets, so
+ * a default naming a period that has not happened is a statutory form generated for a future month or a
+ * part-year. The first cut set the year to `today.slice(0, 4)` and rolled only the MONTH back, which is
+ * invisible for nine months of the year and wrong for the three in which these forms are actually filed:
+ *
+ *   • 5 January — the month rolls to December, the year does not, so CP39 opens on a month ELEVEN MONTHS
+ *     AWAY and generates an empty return for it.
+ *   • 5 March — mid C.P.8A / Form E season, the annual rows open on the year that has just BEGUN, so
+ *     Continue on the EA lands on a two-month population printed under a tax document's name (AGENTS 28).
+ *
+ * Both dates are pinned below, and they are run through the pack's OWN entries rather than asserted against
+ * a formula copied out of the page — the same reason every other case in this file is pure.
+ */
+describe('the criteria step arrives on a period that has already happened', () => {
+  /** The destination's own report, resolved exactly as the step resolves it. */
+  const targetOf = (d: { action: string }, populationReportId?: string) =>
+    MY_REPORTS.find((r) => r.id === destinationReportId(d.action, populationReportId));
+
+  it('defaults a MONTHLY form to the month just ended, rolling the year back with it', () => {
+    const monthly = MY_REPORTS.filter((r) => r.submission && r.periodKind === 'month');
+    expect(monthly.length).toBeGreaterThan(0);
+    for (const r of monthly) {
+      const d = reportDestination(r.id, r.periodKind);
+      // 5 January: December of LAST year. The year is the half the naive default never rolled.
+      expect(defaultCriteria('2027-01-05', d.criteria, r), r.id).toEqual({ year: '2026', month: '12' });
+      // 5 March: February of this year, and the ordinary mid-year case is unchanged.
+      expect(defaultCriteria('2027-03-05', d.criteria, r), r.id).toEqual({ year: '2027', month: '02' });
+      expect(defaultCriteria('2026-09-09', d.criteria, r), r.id).toEqual({ year: '2026', month: '08' });
+    }
+  });
+
+  it('defaults the C.P.8A (EA) to the tax year being filed FOR, all through the filing season', () => {
+    for (const l of EA_LINKS) {
+      const d = parseDestination(l.href);
+      const target = targetOf(d, l.populationReportId);
+      expect(target?.periodKind, l.id).toBe('year');
+      // January and March are both inside the season: what is being filed is the year that CLOSED.
+      expect(defaultCriteria('2027-01-05', d.criteria, target).year, l.id).toBe('2026');
+      expect(defaultCriteria('2027-03-05', d.criteria, target).year, l.id).toBe('2026');
+      // From April the season is over and the next return to prepare is the year in progress.
+      expect(defaultCriteria('2027-04-01', d.criteria, target).year, l.id).toBe('2027');
+      expect(defaultCriteria('2026-09-09', d.criteria, target).year, l.id).toBe('2026');
+    }
+  });
+
+  it('defaults Form E / CP8D and its Borang E alias the same way, because they are one return', () => {
+    const cp8d = MY_REPORTS.find((r) => r.id === 'my.cp8d')!;
+    const asReport = reportDestination(cp8d.id, cp8d.periodKind);
+    expect(defaultCriteria('2027-03-05', asReport.criteria, targetOf(asReport)).year).toBe('2026');
+    const asLink = parseDestination(linkById.get('my.borang-e')!.href);
+    expect(defaultCriteria('2027-03-05', asLink.criteria, targetOf(asLink)).year).toBe('2026');
+  });
+
+  it('leaves Form TP1 on the assessment year in progress, because it is not filed in arrears', () => {
+    // TP1 is an employee's declaration for the year they are IN — `/payroll/transactions/tp1` defaults to
+    // the current assessment year, and a criteria step that opened it on a closed year would put HR on last
+    // year's declarations for a quarter of every year. It tells itself apart by its destination resolving
+    // to no report of this pack's at all, so nothing here names the form.
+    const d = parseDestination(linkById.get('my.tp1')!.href);
+    expect(targetOf(d, linkById.get('my.tp1')!.populationReportId)).toBeUndefined();
+    expect(defaultCriteria('2027-01-05', d.criteria, undefined).year).toBe('2027');
+    expect(defaultCriteria('2027-03-05', d.criteria, undefined).year).toBe('2027');
+  });
+
+  it('reads the TENANT clock, never the host’s', () => {
+    // Between 00:00 and 08:00 MYT the UTC date is still yesterday's, and on 1 January that is a whole year
+    // out — the failure app/payroll/dashboard-logic.ts documents.
+    expect(CRITERIA).toContain('todayInKualaLumpur()');
+    expect(CRITERIA).not.toContain('new Date()');
+    // And the defaults come from the shared rule rather than being recomputed on the page.
+    expect(CRITERIA).toContain('defaultCriteria(today, parsed.criteria, target)');
+    expect(CRITERIA).not.toContain('today.slice(0, 4)');
+  });
+});
+
+/**
+ * r256 — THE PICKER'S STATUS COLUMN, AND THE CEILING BEHIND ITS BUTTON.
+ */
+describe('the C.P.8A picker tells the truth about people and about its own limit', () => {
+  it('derives each person’s status from the WHOLE lifecycle row, not from terminatedOn alone', () => {
+    // `{ terminatedOn }` alone is enough to CALL the deriver and enough for it to return something
+    // plausible, which is why this was silent: probation, blacklist, a manual resignation date and a last
+    // working date all collapsed to "Active" beside a name that read "Probation" on Personnel.
+    expect(EA_PAGE).toContain('deriveEmploymentStatus(person, today)');
+    expect(EA_PAGE).not.toContain('{ terminatedOn: person.terminatedOn }');
+    // The row can only carry them if the read projects them. `listEmployees` is the unpaginated read this
+    // screen uses; the paginated one has carried the set since R43.
+    const projection = READ.slice(
+      READ.indexOf('export function listEmployees('),
+      READ.indexOf('export type EmployeeListRow'),
+    );
+    expect(projection.length).toBeGreaterThan(0);
+    for (const col of [
+      'confirmationDate',
+      'finalConfirmationDate',
+      'probationEndDate',
+      'provisionalEndOn',
+      'resignationDate',
+      'lastWorkingDate',
+      'blacklistedAt',
+    ]) {
+      expect(projection, col).toContain(`${col}: employment.${col}`);
+    }
+  });
+
+  it('advertises a ceiling the transport can actually deliver, and enforces it on both sides', () => {
+    // 40 bytes of URL per ticked person against Node's 16 KB header budget: at 500 the GET was refused with
+    // a bare 431 before the route ran, so the route's own refusal could never be reached. Half the budget is
+    // left for cookies and the rest of the headers.
+    expect(MAX_EA_SELECTION * 40).toBeLessThan(8192);
+    expect(EA_PICKER).toContain('MAX_EA_SELECTION');
+    expect(EA_PICKER).toContain('disabled={selected.length === 0 || overLimit}');
+    expect(EA_DOWNLOAD).toContain('ids.length > MAX_EA_SELECTION');
   });
 });
 
@@ -441,6 +564,7 @@ describe('the new words exist in every locale, and only the interpolated ones ca
     'eaColDepartment',
     'eaNoMatch',
     'eaNoneForYear',
+    'eaTooMany',
   ];
   /** Interpolated at render, so a missing `{…}` in a locale would print the wrong sentence, not throw. */
   const INTERPOLATED: Record<string, string[]> = {
@@ -449,6 +573,7 @@ describe('the new words exist in every locale, and only the interpolated ones ca
     eaPickPeople: ['{company}', '{year}'],
     eaSelectedCount: ['{count}'],
     eaNoneForYear: ['{company}', '{year}'],
+    eaTooMany: ['{max}'],
   };
 
   it.each(LOCALES)('%s carries every new key with a real translation', (loc, dict) => {

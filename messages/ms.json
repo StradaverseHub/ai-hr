@@ -3517,6 +3517,7 @@
       "eaColCode": "ID pekerja",
       "eaColDepartment": "Jabatan",
       "eaNoMatch": "Tiada pekerja sepadan dengan carian anda.",
+      "eaTooMany": "Pilih tidak lebih daripada {max} orang pada satu masa.",
       "eaNoneForYear": "Tiada sesiapa di {company} mempunyai angka gaji bagi {year}, jadi tiada penyata EA untuk dijana. Jalankan gaji tahun tersebut dahulu."
     },
     "ea": {

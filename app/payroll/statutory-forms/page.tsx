@@ -356,7 +356,7 @@ export default async function StatutoryFormsPage({
    * r256 adds a third condition, and it is a REFUSAL: an extra whose href is templated renders nothing at
    * all. The directory has no company and no year to substitute, so a `{companyId}` left in an href would
    * go into the markup literally and open a 404. No catalog entry declares one today and
-   * test/statutory-forms-directory-858a1128.test.ts fails the moment one does — this is the belt beside
+   * test/statutory-forms-criteria-858a1128.test.ts fails the moment one does — this is the belt beside
    * that brace, not a silent tolerance.
    *
    * `fallbackTitle` exists for exactly one row — the blank CP22, whose tooltip lives in `payroll.cp22`

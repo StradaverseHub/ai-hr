@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Field, btnPrimary, inputCls } from '@/components/ui';
 import { filterEaRows } from './filter';
+import { MAX_EA_SELECTION } from './limits';
 
 /**
  * r256 (item 858a1128) — STEP TWO OF THE C.P.8A (EA): WHO the forms are for.
@@ -24,6 +25,12 @@ import { filterEaRows } from './filter';
  *
  * IT SUBMITS AS A GET, so the download route reads plain search params and the result is a normal file
  * response. Nothing here posts, and nothing here generates: the route does, when this button is pressed.
+ *
+ * ⚠️ AND THAT GET IS WHY THERE IS A VISIBLE CEILING. One hidden input per person is 40 bytes of URL, and a
+ * request whose headers overflow Node's 16 KB limit is refused by the HTTP layer with a bare 431 before any
+ * route runs — an unexplained error page at the end of a careful selection. So the same `MAX_EA_SELECTION`
+ * the route enforces is enforced HERE, where the operator can still do something about it: the button locks
+ * and the screen says how many at a time, rather than letting the press fail. See ./limits.ts.
  */
 export type EaPickerRow = {
   employmentId: string;
@@ -53,6 +60,8 @@ export type EaPickerStrings = {
   colDepartment: string;
   colStatus: string;
   noMatch: string;
+  /** "Select at most N at a time" — N is a constant, so the page interpolates it on the server. */
+  tooMany: string;
 };
 
 const STATUS_CLS: Record<string, string> = {
@@ -90,6 +99,10 @@ export function EaEmployeePicker({
   );
 
   const chosen = new Set(selected);
+  // Above the ceiling the selection is kept and the GENERATION is refused — not the tick. Silently
+  // dropping the 201st person, or having Select All stop partway, would be a selection that does not say
+  // what it is about to produce; this one does.
+  const overLimit = selected.length > MAX_EA_SELECTION;
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   // Select all applies to WHAT IS ON SCREEN, added to whatever is already chosen — the button sits under
@@ -197,10 +210,14 @@ export function EaEmployeePicker({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">{strings.selectedTemplate.replace('{count}', String(selected.length))}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted-foreground">{strings.selectedTemplate.replace('{count}', String(selected.length))}</span>
+          {overLimit && <span className="text-xs font-medium text-destructive">{strings.tooMany}</span>}
+        </div>
         {/* Nothing selected is nothing to produce, so the button cannot be pressed — an empty EA download
-            is not a useful answer and the route refuses it a second time. */}
-        <button className={btnPrimary} disabled={selected.length === 0}>
+            is not a useful answer and the route refuses it a second time. Too many is the same story at the
+            other end: the request would be refused by the HTTP layer, so it is refused here with words. */}
+        <button className={btnPrimary} disabled={selected.length === 0 || overLimit}>
           {strings.generate}
         </button>
       </div>

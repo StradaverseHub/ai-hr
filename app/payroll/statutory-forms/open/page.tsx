@@ -6,7 +6,13 @@ import { listCompanies } from '@/core/read';
 import { listStatutoryCatalog } from '@/core/reporting';
 import { Card, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
-import { parseDestination, reportDestination, type CriterionKind } from '../criteria';
+import {
+  defaultCriteria,
+  destinationReportId,
+  parseDestination,
+  reportDestination,
+  type CriterionKind,
+} from '../criteria';
 
 /**
  * r256 (item 858a1128) — ONE FORM'S CRITERIA, ASKED AFTER THE FORM IS CHOSEN AND BEFORE ANYTHING IS MADE.
@@ -45,6 +51,12 @@ import { parseDestination, reportDestination, type CriterionKind } from '../crit
  * caption may only say what is true of EVERY form that carries it, and r218 shipped an unsourced claim
  * about an agency by rewording one in a new place. Nothing here promotes a form between statuses either;
  * the value comes off the catalog entry and is displayed.
+ *
+ * IT ARRIVES ON A PERIOD THAT HAS ALREADY HAPPENED. The selects open on the last CLOSED filing period —
+ * the month just ended for a monthly form, and for an annual return the year being filed FOR, which
+ * through the January-to-March C.P.8A / Form E season is the year that closed rather than the one that has
+ * just begun. `defaultCriteria` in `../criteria` holds the rules and the arithmetic; both are driven off
+ * the TENANT's clock, because between 00:00 and 08:00 MYT the UTC date is still yesterday's.
  *
  * AN UNKNOWN OR UNBUILT FORM 404s. `form` comes from the URL, so it is attacker-controlled; it is
  * resolved against the catalog of the jurisdictions this admin's OWN company scope reaches, and a
@@ -94,18 +106,31 @@ export default async function StatutoryFormCriteriaPage({
   if (!report && !link) notFound();
 
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
+  // THE TENANT'S CLOCK, NOT THE HOST'S. Between 00:00 and 08:00 MYT the UTC date is still yesterday's, and
+  // on 1 January that is a whole year out — the defaults below are built from this and nothing else.
   const today = todayInKualaLumpur();
-  // The year just ENDED is not the default: a statutory year is the year you are filing FOR, and the
-  // month select defaults to the month just ended for the same reason it does on `[formId]` — that is
-  // the submission which is actually open.
-  const defaultYear = today.slice(0, 4);
-  const years = yearOptions(today, defaultYear);
-  const defaultMonth = today.slice(5, 7) === '01' ? '12' : String(Number(today.slice(5, 7)) - 1).padStart(2, '0');
 
   // Both branches come out of `../criteria`, which is also what the directory reads to decide whether a
   // card comes here at all — one rule, three readers, so a card cannot be sent to a step that then asks
   // for something the destination does not take.
   const parsed = link ? parseDestination(link.href) : reportDestination(report!.id, report!.periodKind);
+
+  /**
+   * THE PERIOD THIS STEP ARRIVES SHOWING — the last one that has actually HAPPENED, never "now".
+   *
+   * Whatever these selects are set to is what an operator who presses the button without reading gets, so
+   * a default that names a future period is a generated statutory form for a month or a year that has not
+   * finished. `defaultCriteria` owns the three rules (see `../criteria`); this page's only job is to hand
+   * it the destination's own report, resolved from the PACK — the href for a link that opens a report
+   * (`my.borang-e` → `my.cp8d`) or `populationReportId` for one that opens the people in it (the two
+   * C.P.8A rows). No form id is written down here, which is the point: Form TP1 resolves to nothing and
+   * keeps the year in progress precisely because its destination is not one of this pack's reports.
+   */
+  const target = catalog.reports.find(
+    (r) => r.id === destinationReportId(parsed.action, link?.populationReportId),
+  );
+  const { year: defaultYear, month: defaultMonth } = defaultCriteria(today, parsed.criteria, target);
+  const years = yearOptions(today, defaultYear);
 
   const name = report ? report.label : t(link!.labelKey as 'link_cp22');
   const description = report
