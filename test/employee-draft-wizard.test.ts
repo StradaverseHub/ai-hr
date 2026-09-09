@@ -33,9 +33,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import {
-  DRAFT_STEPS,
+  DRAFT_TABS,
   draftLabel,
-  missingByStep,
+  missingByTab,
   missingForCreation,
   missingToCreate,
   stepKey,
@@ -130,25 +130,27 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'basicSalary']);
   });
 
-  it('an empty draft is missing exactly the required fields, grouped by their own step', () => {
-    const m = missingByStep({});
+  it('an empty draft is missing exactly the required fields, grouped by their own TAB', () => {
+    const m = missingByTab({});
     // PROFILE DETAILS NOW REQUIRES NOTHING (item 06f0cb8f). Company, Full Name and Email left for the
     // Create screen; what is left on this step is optional in every writer downstream, so it opens with
     // a tick. Its rules are FORMAT rules only — see the malformed-date case below.
     expect(m.profile).toEqual([]);
-    expect(m.employment).toEqual(['department', 'employmentType', 'hiredOn']);
-    expect(m.statutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
+    expect(m.job).toEqual(['department', 'employmentType', 'hiredOn']);
+    expect(m.bankStatutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
     expect(m.payroll).toEqual(['basicSalary']);
     // ITEM 759dfc7d ADDED `family`, AND IT REQUIRES NOTHING. Most new joiners have no family record to
     // enter, so a step that demanded one would block every one of them; what the rule does judge is a
     // member somebody DID add (see test/employee-draft-family.test.ts §1).
     expect(m.family).toEqual([]);
-    // Review is GONE — Activate replaced it, and `missingByStep` must not still be shaped around a step
-    // the form no longer has. The list is ALSO order-sensitive, which is why this case pins it rather
-    // than a set: the 1-based position of each key is `employee_draft.current_step` on rows already
-    // sitting in production, so a new step may only ever be APPENDED. Inserting `family` in the
-    // reporter's preferred tab order would silently reopen every existing draft on a different step.
-    expect(Object.keys(m)).toEqual(['profile', 'employment', 'statutory', 'payroll', 'family']);
+    // Review is GONE — Activate replaced it, and `missingByTab` must not still be shaped around a step
+    // the form no longer has. The KEYS ARE THE ACTIVE RECORD'S TAB KEYS since 759dfc7d work item 2
+    // (`employment` → `job`, `statutory` → `bankStatutory`), which is what lets one rule speak the same
+    // vocabulary as the screen it drives. The list is ALSO order-sensitive, which is why this case pins
+    // it rather than a set: each key's position maps to `employee_draft.current_step` on rows already
+    // sitting in production, so a tab may only ever be APPENDED. Re-ordering to put Family SECOND —
+    // where the activated record shows it — would silently reopen every existing draft on another tab.
+    expect(Object.keys(m)).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
   });
 
   it('a complete draft has nothing outstanding', () => {
@@ -176,38 +178,38 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     // The email is judged by the CREATE rule now — it is one of the four — and a malformed one must be
     // refused there, before a record and an Employee ID exist for it.
     expect(missingToCreate({ profile: { fullName: 'X', primaryEmail: 'not-an-email' } })).toContain('primaryEmail');
-    expect(missingByStep({ profile: { fullName: 'X', primaryEmail: 'a@b.co', dateOfBirth: '01/01/1990' } }).profile)
+    expect(missingByTab({ profile: { fullName: 'X', primaryEmail: 'a@b.co', dateOfBirth: '01/01/1990' } }).profile)
       .toContain('dateOfBirth');
-    expect(missingByStep({ employment: { hiredOn: '1 June 2026' } }).employment).toContain('hiredOn');
+    expect(missingByTab({ employment: { hiredOn: '1 June 2026' } }).job).toContain('hiredOn');
   });
 
   it('mirrors the importer: bank name and account number are all-or-nothing', () => {
-    expect(missingByStep({ statutory: { bankName: 'Maybank' } }).statutory).toEqual(['bankAccount']);
-    expect(missingByStep({ statutory: { bankAccountNo: '514012345678' } }).statutory).toEqual(['bankAccount']);
-    expect(missingByStep({ statutory: { bankName: 'Maybank', bankAccountNo: '514012345678' } }).statutory).toEqual([]);
-    expect(missingByStep({ statutory: {} }).statutory).toEqual([]);
+    expect(missingByTab({ statutory: { bankName: 'Maybank' } }).bankStatutory).toEqual(['bankAccount']);
+    expect(missingByTab({ statutory: { bankAccountNo: '514012345678' } }).bankStatutory).toEqual(['bankAccount']);
+    expect(missingByTab({ statutory: { bankName: 'Maybank', bankAccountNo: '514012345678' } }).bankStatutory).toEqual([]);
+    expect(missingByTab({ statutory: {} }).bankStatutory).toEqual([]);
   });
 
   it('mirrors setCompensation: a daily or hourly pay mode needs a positive rate', () => {
     const base = { payroll: { basicSalary: '5000', payMode: 'daily' } };
-    expect(missingByStep(base).payroll).toContain('rateAmount');
-    expect(missingByStep({ payroll: { ...base.payroll, rateAmount: '180' } }).payroll).not.toContain('rateAmount');
+    expect(missingByTab(base).payroll).toContain('rateAmount');
+    expect(missingByTab({ payroll: { ...base.payroll, rateAmount: '180' } }).payroll).not.toContain('rateAmount');
     // A monthly worker needs no rate at all.
-    expect(missingByStep({ payroll: { basicSalary: '5000', payMode: 'monthly' } }).payroll).toEqual([]);
+    expect(missingByTab({ payroll: { basicSalary: '5000', payMode: 'monthly' } }).payroll).toEqual([]);
   });
 
   it('rejects a zero or negative salary, not merely a blank one', () => {
-    expect(missingByStep({ payroll: { basicSalary: '0' } }).payroll).toContain('basicSalary');
-    expect(missingByStep({ payroll: { basicSalary: '-100' } }).payroll).toContain('basicSalary');
-    expect(missingByStep({ payroll: { basicSalary: 'abc' } }).payroll).toContain('basicSalary');
+    expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).toContain('basicSalary');
+    expect(missingByTab({ payroll: { basicSalary: '-100' } }).payroll).toContain('basicSalary');
+    expect(missingByTab({ payroll: { basicSalary: 'abc' } }).payroll).toContain('basicSalary');
   });
 
-  it('step numbers and keys round-trip, and the label comes from the name typed so far', () => {
-    for (const k of DRAFT_STEPS) expect(stepKey(stepNumber(k))).toBe(k);
+  it('tab numbers and keys round-trip, and the label comes from the name typed so far', () => {
+    for (const k of DRAFT_TABS) expect(stepKey(stepNumber(k))).toBe(k);
     // Out-of-range clamps rather than returning undefined — a stored step from a future version of
     // the wizard must still open something.
-    expect(stepKey(0)).toBe(DRAFT_STEPS[0]);
-    expect(stepKey(99)).toBe(DRAFT_STEPS[DRAFT_STEPS.length - 1]);
+    expect(stepKey(0)).toBe(DRAFT_TABS[0]);
+    expect(stepKey(99)).toBe(DRAFT_TABS[DRAFT_TABS.length - 1]);
     expect(draftLabel({ profile: { fullName: '  Nadia Yusof ' } })).toBe('Nadia Yusof');
     expect(draftLabel({})).toBe('');
   });
@@ -306,12 +308,18 @@ describe('§1b the Employee ID mode decides whether the ID is required', () => {
 
 // ── §2 the computed-key guard ─────────────────────────────────────────────────────────────────────
 describe('§2 every computed translation key resolves, in all six locales', () => {
-  it('t(`steps.${k}`) — one for every step', () => {
+  it('t(`tabs.${k}`) — one for every tab, and the old `steps` block is gone', () => {
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`));
-      for (const k of DRAFT_STEPS) {
-        expect(String(msgs.people?.wizard?.steps?.[k] ?? '').trim(), `${loc} steps.${k}`).not.toBe('');
+      for (const k of DRAFT_TABS) {
+        expect(String(msgs.people?.wizard?.tabs?.[k] ?? '').trim(), `${loc} tabs.${k}`).not.toBe('');
       }
+      // 759dfc7d work item 2 — the five-step form is gone and so are its step labels. Left behind they
+      // would be five orphan strings per locale that read as the screen's vocabulary and are not.
+      expect(msgs.people?.wizard?.steps, `${loc} wizard.steps`).toBeUndefined();
+      // Back / Next went with the wizard: a tabbed record has no sequence to move along.
+      expect(msgs.people?.wizard?.back, `${loc} wizard.back`).toBeUndefined();
+      expect(msgs.people?.wizard?.next, `${loc} wizard.next`).toBeUndefined();
     }
   });
 

@@ -29,7 +29,7 @@
  *
  * LABELS ARE READ WHERE THEY LIVE — `people.detail.taxCategory*`, the Personnel card's own keys. The
  * wizard's `fields.taxCategory` and its `taxCategory.1` / `.2` / `.3` value labels are retired with this
- * change. Checked before retiring them, per the trap that nearly cost three keys in r159: `missingByStep`
+ * change. Checked before retiring them, per the trap that nearly cost three keys in r159: `missingByTab`
  * (lib/employee-draft-schema.ts) never returns 'taxCategory', so the Review step's computed
  * t(`fields.${f}`) cannot ask for it — unlike `fields.bankAccount` and `fields.rateAmount`, which are kept
  * for exactly that reason.

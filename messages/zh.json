@@ -1722,21 +1722,12 @@
       "backLabel": "返回员工管理",
       "title": "创建新员工",
       "description": "记录及其员工编号已经存在。填写其余内容后点击“启用”——进度可随时保存。",
-      "progressLabel": "创建步骤",
-      "steps": {
-        "profile": "个人资料明细",
-        "employment": "雇佣信息",
-        "statutory": "银行与法定",
-        "payroll": "薪资",
-        "family": "家庭"
-      },
+      "progressLabel": "记录分区",
       "notSet": "— 未设置 —",
       "selectPrompt": "— 请选择 —",
       "yes": "是",
       "no": "否",
       "untitledDraft": "未命名草稿",
-      "back": "上一步",
-      "next": "下一步",
       "saveDraft": "保存草稿",
       "saving": "正在保存…",
       "draftSaved": "草稿已保存",
@@ -1768,7 +1759,26 @@
       "activate": "启用",
       "activating": "正在启用…",
       "activateNeeds": "启用还需要：",
-      "discardReleasesTip": "只有当该员工编号是最近发出的一个时，放弃草稿才会把它退回。否则该编号仍算已用，序号将跳过它。"
+      "discardReleasesTip": "只有当该员工编号是最近发出的一个时，放弃草稿才会把它退回。否则该编号仍算已用，序号将跳过它。",
+      "tabs": {
+        "profile": "个人资料",
+        "job": "任职信息",
+        "bankStatutory": "银行与法定",
+        "payroll": "薪酬",
+        "family": "家庭",
+        "empty": "此处暂无内容。"
+      },
+      "sections": {
+        "personalDetails": "个人信息",
+        "contactAddress": "联系方式与地址",
+        "organisation": "组织",
+        "employmentDates": "雇佣日期",
+        "bank": "银行信息",
+        "statutoryMalaysia": "法定信息（马来西亚）",
+        "identityTax": "身份与税务",
+        "compensation": "基本薪资"
+      },
+      "draftStatus": "草稿 — 待启用"
     }
   },
   "leave": {

@@ -24,7 +24,7 @@
  *
  * LABELS ARE READ WHERE THEY LIVE — `people.detail.bank` / `.bankSelectPlaceholder` / `.bankAccount`. The
  * wizard's `fields.bankName` and `fields.bankAccountNo` are retired. `fields.bankAccount` is DELIBERATELY
- * KEPT: `missingByStep` returns that field name when exactly one of the two is filled (half a bank
+ * KEPT: `missingByTab` returns that field name when exactly one of the two is filled (half a bank
  * instruction cannot pay anybody) and the Review step renders it through a COMPUTED t(`fields.${f}`) the
  * i18n static check cannot see — the same reason `fields.rateAmount` was kept in group 2.
  *

@@ -41,7 +41,7 @@
  *
  * LABELS ARE READ WHERE THEY LIVE. `people.detail.birthDate` / `.age` / `.ageYears` — the profile screen's
  * existing keys, so no catalog gains a key and the wizard's `people.wizard.fields.dateOfBirth` stops being
- * rendered as a label. That key is DELIBERATELY NOT DELETED: `missingByStep` can return the field name
+ * rendered as a label. That key is DELIBERATELY NOT DELETED: `missingByTab` can return the field name
  * 'dateOfBirth' and the wizard's Review step renders it through a COMPUTED t(`fields.${f}`) that the i18n
  * static check cannot see — the same reason `fields.rateAmount` and `fields.basicSalary` were kept.
  *
@@ -57,7 +57,7 @@ import { completedYearsAt } from '@/lib/completed-years';
 /** What an <input type="date"> can hold: '' or a complete yyyy-mm-dd. A stored draft can hold neither (it
  *  is free-form JSON), and `new Date('nonsense')` yields NaN years rather than throwing — so the Age is
  *  computed only for a well-formed date and reads "Not Available" otherwise, which is also what a blank DOB
- *  shows. `missingByStep` separately flags a malformed draft date on the step itself. */
+ *  shows. `missingByTab` separately flags a malformed draft date on the step itself. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 type Mode =

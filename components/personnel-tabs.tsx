@@ -22,7 +22,7 @@
  * inside this shell contains the target, it activates that panel so the tour spotlight can measure a
  * visible element (panels stay mounted-but-hidden, so `querySelector` finds targets in hidden tabs).
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
@@ -37,6 +37,8 @@ export function ClientTabs<K extends string>({
   emptyLabel,
   defaultTab,
   ariaLabel = 'Sections',
+  selectRef,
+  onTabChange,
 }: {
   tabs: { key: K; label: string }[];
   panels: Partial<Record<K, ReactNode>>;
@@ -46,6 +48,24 @@ export function ClientTabs<K extends string>({
   // Initial tab (deep-link / reload survival). Falls back to the first tab when absent/unknown.
   defaultTab?: K;
   ariaLabel?: string;
+  /**
+   * 759dfc7d — OPT-IN imperative handle: the shell writes its own `selectTab` here, so an ancestor can
+   * move the shell without owning its state. The draft record (app/admin/personnel/new/wizard.tsx) needs
+   * it for the "Activate still needs — Employment: Join date" list, whose whole value is that the name of
+   * the missing thing is the way to reach it.
+   *
+   * IT IS `selectTab` AND NOT `setActive` DELIBERATELY. Everything that makes a tab switch safe lives in
+   * `selectTab` — the unsaved-changes prompt, and reflecting the tab into the URL — so a caller-driven
+   * jump is the same switch a click is, rather than a second path around the guard. Absent on the
+   * employee detail page, which switches only by click and is unaffected.
+   */
+  selectRef?: MutableRefObject<((key: K) => void) | null>;
+  /**
+   * 759dfc7d — told AFTER a switch commits, for a caller that has to persist which tab is open. The
+   * draft record stores it as `employee_draft.current_step`, so a draft picked up two days later reopens
+   * on the tab it was left on. Fires only on a real switch (`commitTab`), never on the initial render.
+   */
+  onTabChange?: (key: K) => void;
 }) {
   const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
   const [active, setActive] = useState<K | undefined>(initial);
@@ -66,6 +86,7 @@ export function ClientTabs<K extends string>({
 
   const commitTab = (key: K) => {
     setActive(key);
+    onTabChange?.(key);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', key);
@@ -93,6 +114,19 @@ export function ClientTabs<K extends string>({
     }
     commitTab(key);
   };
+
+  // The handle is refreshed after EVERY render — no dependency array — because `selectTab` closes over
+  // `active`, and a stale copy would prompt against the wrong tab. An effect rather than a bare
+  // assignment in the render body: writing a ref during render is what `react-hooks/refs` forbids, and
+  // an effect is early enough regardless, because the only caller is a click handler that cannot run
+  // before the render it belongs to has committed. Cleared on unmount so nothing holds a dead shell.
+  useEffect(() => {
+    if (!selectRef) return;
+    selectRef.current = selectTab;
+    return () => {
+      selectRef.current = null;
+    };
+  });
 
   useEffect(() => {
     const shell = shellRef.current;

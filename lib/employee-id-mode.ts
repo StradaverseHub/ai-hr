@@ -9,7 +9,7 @@
  * IT IS PURE AND CLIENT-SAFE (no DB imports) for the same reason lib/employee-draft-schema.ts is: the
  * SAME answer has to drive three places that must never drift —
  *   - the radio pair and the required-ness of the Employee ID field, in the browser;
- *   - `missingByStep`, which decides whether the Profile step shows a tick;
+ *   - `missingByTab`, which decides whether the Profile step shows a tick;
  *   - `completeEmployeeDraft`, which is the only one of the three that is trusted.
  *
  * THE RULE IS RESOLVED, NEVER STORED. The user's radio PICK is remembered on the draft
