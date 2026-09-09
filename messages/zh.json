@@ -8587,6 +8587,25 @@
         "entitlementArchive": "额度归档",
         "ledgerArchive": "台账归档"
       }
+    },
+    "leaveConfigTypes": {
+      "pageDescription": "一种休假类型，五个标签页，按决策顺序排列。",
+      "previewNote": "这是新的休假类型页面，与菜单当前链接的页面并行构建。两者保存到相同的记录；在正式切换之前，在此保存后会返回当前页面。",
+      "tabsLabel": "休假类型配置标签页",
+      "tab": {
+        "identity": "休假类型",
+        "eligibility": "谁可以享有",
+        "entitlement": "可享有多少",
+        "application": "如何申请",
+        "approvers": "由谁审批"
+      },
+      "tabHint": {
+        "identity": "此休假类型的名称及其行为方式。",
+        "eligibility": "谁可以申请此类休假。留空表示不限。",
+        "entitlement": "多少天，以及谁适用哪张额度表。",
+        "application": "此类休假的申请必须满足的条件。每张卡片单独保存。",
+        "approvers": "属于休假类型本身的审批设置。审批链在“审批链”页面创建和分配。"
+      }
     }
   },
   "topbar": {

@@ -349,6 +349,18 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave/generate',
       '/admin/leave/payroll',
       '/admin/leave/replacement',
+      // a6fe37fc ROUND 2 — the NEW Leave types screen, built alongside `/admin/leave/entitlements`
+      // rather than replacing it (docs/design/a6fe37fc-migration-order.md). Same admin surface, same
+      // `requireAdmin` guard, so it is a ROUTE on this screenKey rather than a new one — the
+      // `/admin/leave/generate` precedent above, and what the migration order specifies for the whole
+      // new module: only `href` and `routes` ever move, never the screen key (a key "may key stored role
+      // configs", so renaming one would silently drop every tenant's grant for the area).
+      // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
+      // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+      // IT IS DELIBERATELY **NOT** ON THE LEAVE CONFIG MAP. The map is the customer's menu for this area
+      // and the menu moves in Round 5, not now; test/leave-config-map.test.ts carries that exemption by
+      // name, and test/leave-config-types-tabs.test.ts pins the absence so it cannot happen by accident.
+      '/admin/leave-config/types',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an

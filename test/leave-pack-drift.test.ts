@@ -113,6 +113,13 @@ const ALWAYS_ALLOWED = [
   // precedent: the allowlist is audited debt that may only shrink.
   'app/leave/', // the My Absence self-service home (balances/apply/history/export)
   'app/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit
+  // a6fe37fc Round 2 — THE SAME SCREENS AT THEIR NEW ADDRESS, not new debt. IA §2.0 moves all ten
+  // leave-config screens under /admin/leave-config, so this prefix is the sibling of the line above
+  // and Rounds 3-5 land here too. Declared in ALWAYS_ALLOWED — the structural statement of which
+  // directories are legitimate leave-pack consumers — and deliberately NOT in
+  // test/pack-drift-allowlist.json, which is audited debt that may only shrink (AGENTS 15).
+  // The old prefix stays until Round 6 deletes the last page under it.
+  'app/admin/leave-config/',
   'app/admin/leave-approval/', // approval templates + workflow matrix
   'app/admin/toil/', // TOIL policy admin
   'app/me/leave/', // own-attachment download route (kept for /me?tab=leave back-compat)
