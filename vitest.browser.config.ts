@@ -27,6 +27,44 @@ import { playwright } from '@vitest/browser-playwright';
 export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
+    /**
+     * ONE React, or hooks break in a way that reads like a component bug (r256).
+     * Vite's dep optimizer runs per discovered graph, and two passes produce two React copies:
+     * react-dom then installs the hook dispatcher on one copy's shared internals while a component
+     * imported through the other reads `null`. The symptom is
+     * `TypeError: Cannot read properties of null (reading 'useContext')` thrown from inside a library
+     * (lucide-react, for us) — nothing points at the real cause, and the test looks like it broke the
+     * component it renders.
+     */
+    dedupe: ['react', 'react-dom'],
+  },
+  /**
+   * WHY THESE ARE LISTED BY HAND. The dep scanner is STATIC: a test that reaches a component through
+   * `await import(...)` — which test/topbar-identity-width.browser.test.tsx must do, so `vi.mock` lands
+   * before the module loads — hides that component's whole import graph from it. Those deps are then
+   * discovered at runtime, forcing a SECOND optimize pass, which is what duplicates React and also
+   * makes the first run after a cold cache fail outright with
+   * "Vite unexpectedly reloaded a test" and zero tests collected.
+   *
+   * So: anything a browser test reaches only through a dynamic import belongs here. The list is
+   * everything components/user-menu.tsx pulls in, plus the render harness itself.
+   */
+  optimizeDeps: {
+    include: [
+      'react',
+      'react/jsx-dev-runtime',
+      'react-dom',
+      'react-dom/client',
+      'react-dom/server',
+      '@testing-library/react',
+      'next-intl',
+      'next/link',
+      'lucide-react',
+      '@radix-ui/react-slot',
+      'class-variance-authority',
+      'clsx',
+      'tailwind-merge',
+    ],
   },
   test: {
     name: 'browser',
