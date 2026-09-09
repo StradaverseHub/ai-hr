@@ -3972,8 +3972,6 @@
       "reprocessColNetAfter": "สุทธิหลัง",
       "reprocessColMoved": "สิ่งที่เปลี่ยน",
       "reprocessColWhy": "เหตุผล",
-      "reprocessColResult": "ผลการคำนวณเงินเดือน",
-      "reprocessResultLink": "ดูผลการคำนวณเงินเดือน",
       "reprocessMovedGross": "รายได้รวม",
       "reprocessPayUnchanged": "ค่าจ้างไม่เปลี่ยน",
       "reprocessNothingMoved": "ไม่มีการเปลี่ยนแปลง",

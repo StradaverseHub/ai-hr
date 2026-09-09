@@ -30,6 +30,17 @@
  * SOURCE-SHAPE GUARDS ARE THE FLOOR, NOT THE PROOF. Where one is used it pins a relationship (this call
  * is fed this screen's rows; the empty-state row spans as many columns as the header has) rather than a
  * formatting choice, so running a formatter over the page cannot turn this file red.
+ *
+ * ── REV.2 (2026-09-09): WHERE THE LINK LIVES WAS THE REQUEST, AND THE FIRST BUILD GOT IT WRONG. ──────
+ * Everything above is about the DESTINATION, and all of it still holds. What r253 got wrong was the
+ * AFFORDANCE: it added a "Payroll Result" column whose anchor read "View payroll result" and left the
+ * employee name as plain text. The reporter rejected that. On the Payroll Process run screen the
+ * employee's own name and Employee ID are the link (e440991b point 5) — "consistent with the normal
+ * Payroll Process screen" is the whole request, and a second control in a column of its own is not
+ * consistent with a screen that has no such column. So the name now carries the href, the extra column
+ * and its two message keys are gone, and the cases that pinned them were UPDATED to pin the reversal
+ * rather than removed (AGENTS 18) — each one says, in place, what it used to assert and why it changed.
+ * Nothing about the URL, the builder, the join or the `from` round trip moved.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -108,30 +119,82 @@ describe('b372e923 — the contract between the page and the join it renders', (
     expect(PAGE).toMatch(/resultHrefs\.get\(\s*r\.id\s*,?\s*\)/);
   });
 
-  it('renders the link as a Link carrying that row’s href, and plain text when there is none', () => {
-    expect(PAGE).toMatch(/<Link href=\{resultHref\}/);
-    expect(PAGE).toContain("t('reprocessResultLink')");
-    // The fallback is text, never an anchor to nowhere: a dead link is a promise this screen would break.
-    expect(PAGE).toMatch(/resultHref \? \(/);
-    expect(PAGE).toMatch(/<span className="text-muted-foreground">—<\/span>/);
+  /**
+   * The employee cell of a result row: from the row's own `resultHref` to the end of the first cell.
+   * Everything the reversal below turns on lives inside it, and slicing it here keeps each assertion
+   * about what is IN the cell rather than what happens to appear somewhere on a 500-line page.
+   */
+  const employeeCell = () => {
+    const from = PAGE.indexOf('const resultHref = resultHrefs.get(r.id)');
+    expect(from, 'the row no longer looks its href up by row id').toBeGreaterThan(-1);
+    const end = PAGE.indexOf('</td>', from);
+    expect(end, 'the result row has no first cell').toBeGreaterThan(from);
+    return PAGE.slice(from, end);
+  };
+
+  it('THE NAME IS THE LINK — the href is spent on the employee name and code, not on a second control', () => {
+    // ── REV.2, AND THE REASON THIS CASE READS THE WAY IT DOES. ────────────────────────────────────
+    // r253 satisfied "add a Payroll Result link" with a separate column whose anchor said "View payroll
+    // result" and left the employee name as plain text. The reporter rejected it: the run screen has no
+    // such column — there the employee's own NAME opens their result — and "consistent with the normal
+    // Payroll Process screen" is the request, not "reachable somehow". The href, the builder and the
+    // destination did not change; what carries them did. Hence the assertions moved to the name and the
+    // label key went away, rather than this case being deleted (AGENTS 18).
+    const cell = employeeCell();
+    const link = cell.match(/<Link href=\{resultHref\}[\s\S]*?<\/Link>/)?.[0] ?? '';
+    expect(link, 'the row’s href is not on an anchor in the EMPLOYEE cell').not.toBe('');
+    expect(link, 'the employee NAME is not inside the link — this is exactly what was rejected').toContain(
+      'r.employeeName',
+    );
+    expect(link, 'the Employee ID is not inside the link; the run screen links both').toContain('r.employeeCode');
+
+    // ONE affordance, not two. The old column is gone and no anchor may carry this href anywhere else on
+    // the screen — a name that links AND a "Payroll Result" cell that links is the clutter objected to.
+    expect((PAGE.match(/href=\{resultHref\}/g) ?? []).length, 'the row draws more than one result link').toBe(1);
+    expect(PAGE, 'the separate Payroll Result column came back').not.toContain("t('reprocessColResult')");
+    expect(PAGE, 'the separate link label came back').not.toContain("t('reprocessResultLink')");
+
+    // The fallback is the SAME cell without the anchor — never a dead link, and never a row that loses
+    // the employee's name because they have no payslip on this run.
+    expect(cell).toMatch(/resultHref \? \(/);
+    const fallback = cell.slice(cell.indexOf('</Link>') + '</Link>'.length);
+    expect(fallback, 'the unlinked row lost the employee name').toContain('r.employeeName');
+    expect(fallback, 'the unlinked row still renders an anchor').not.toContain('<Link');
+
     // The cell is decided by `resultHref` ALONE. An `isAdd` inside it would be the special case the plan
     // rules out — an addition's payslip was created by this very reprocess, so it links like the rest,
     // and the real-run case below proves it does.
-    expect(PAGE.match(/\{resultHref \? \([\s\S]*?\)\}/)?.[0] ?? '', 'the link cell branches on something else').not.toContain('isAdd');
+    expect(cell, 'the link cell branches on something else').not.toContain('isAdd');
   });
 
-  it('the new action column is a column — the empty-state row still spans the WHOLE result table', () => {
-    expect(PAGE).toContain("t('reprocessColResult')");
-    // The invariant, not a literal: whatever this table's header count becomes, the "nothing moved" row
-    // spans all of it. A `colSpan` left behind at the old width leaves a ragged cell under the new
-    // column, and hard-coding the number here would go red the next time a column is added anywhere.
-    const marker = PAGE.indexOf("t('reprocessColResult')");
+  it('the result table has NO Payroll Result column, and the empty-state row spans the whole of what is left', () => {
+    // Was: "the new action column is a column". The column is the thing that was reversed, so the case
+    // now pins its absence — and pins the consequence r253's version was written to catch, which did not
+    // stop being true when the column went: whatever this table's header count is, the "nothing moved"
+    // row spans ALL of it. A `colSpan` left behind at the six-column width would render a cell wider than
+    // the table it sits in, and hard-coding a number here would go red the next time a column moves.
+    const marker = PAGE.indexOf("t('reprocessColWhy')");
+    expect(marker, 'the result table’s header could not be located').toBeGreaterThan(-1);
     const table = PAGE.slice(PAGE.lastIndexOf('<thead', marker), PAGE.indexOf('</table>', marker));
     const headerCols = (table.match(/<th[\s>]/g) ?? []).length;
-    expect(headerCols, 'the result table’s header could not be located').toBeGreaterThanOrEqual(6);
+    expect(headerCols, 'the result table lost more than the Payroll Result column').toBe(5);
+    expect(table, 'a Payroll Result header is back in the result table').not.toContain("t('reprocessColResult')");
     const spans = [...table.matchAll(/colSpan=\{(\d+)\}/g)].map((m) => Number(m[1]));
     expect(spans.length, 'the result table has no full-width row left to check').toBeGreaterThan(0);
     for (const s of spans) expect(s, `a row spans ${s} of ${headerCols} columns`).toBe(headerCols);
+  });
+
+  it('and the run screen it is now consistent with links the same two things, so "the same way" is checked on both', () => {
+    // The reporter's words were "consistent with the normal Payroll Process screen". That is a statement
+    // about TWO screens, and a guard that only reads this one cannot see it come apart: if the run screen
+    // ever moves its link off the name, this case says so instead of silently guarding a comparison to
+    // nothing. e440991b point 5 is the decision on that side.
+    expect(RUN_SCREEN, 'the run screen no longer links the employee name').toMatch(
+      /<Link href=\{payslipDetailHref\(sl\.employmentId\)\}[\s\S]{0,200}?\{sl\.name\}/,
+    );
+    expect(RUN_SCREEN, 'the run screen no longer links the Employee ID').toMatch(
+      /<Link href=\{payslipDetailHref\(sl\.employmentId\)\}[\s\S]{0,200}?<EmployeeCode/,
+    );
   });
 
   it('reaches the destination through the shared builder, and builds no URL of its own', () => {
@@ -155,11 +218,23 @@ describe('b372e923 — the contract between the page and the join it renders', (
     expect(PAGE, 'the raw search param reached a link').not.toMatch(/reprocessResultHrefs\([^)]*sp\.from/);
   });
 
-  it('the label and the column header are translated in all six locales, not echoed from English', () => {
+  it('the reversed column and label are gone from all six locales, and what the table still shows is translated', () => {
+    // Was: "the label and the column header are translated in all six locales". Both strings the case
+    // named — the "Payroll Result" header and its "View payroll result" anchor — were the separate
+    // control the reporter rejected, so the case now pins their REMOVAL in every locale rather than
+    // their translation: an orphaned key in five files is how a reverted affordance comes back.
     for (const key of ['reprocessColResult', 'reprocessResultLink']) {
       for (const l of LOCALES) {
+        expect(msg(l, `payroll.batch.${key}`), `payroll.batch.${key} was left behind in ${l}`).toBeUndefined();
+      }
+    }
+    // The link needs no label of its own now, because its text is the employee's name — which is the
+    // point: a name is the same word in every locale, and it is what the run screen links too.
+    // The discipline the old case carried does not lapse; it moves to the headers this table still has.
+    for (const key of ['colEmployee', 'reprocessColNetBefore', 'reprocessColNetAfter', 'reprocessColMoved', 'reprocessColWhy']) {
+      for (const l of LOCALES) {
         const v = msg(l, `payroll.batch.${key}`);
-        expect(typeof v === 'string' && v.length > 0, `payroll.batch.${key} missing in ${l}`).toBe(true);
+        expect(typeof v === 'string' && (v as string).length > 0, `payroll.batch.${key} missing in ${l}`).toBe(true);
       }
       // A stale English VALUE passes key-parity, so the five non-English locales are checked against en.
       for (const l of LOCALES.filter((x) => x !== 'en')) {
@@ -205,6 +280,23 @@ describe('b372e923 — the join, on rows and slips that do not line up', () => {
     const hrefs = reprocessResultHrefs(rows, slips, RUN);
     expect(hrefs.has('row-gone'), 'a row with no payslip was given a link').toBe(false);
     expect(hrefs.size).toBe(2);
+  });
+
+  it('links whenever a payslip exists, WHATEVER the run’s status — the join never asks', () => {
+    // rev.2, the reporter's "the link should appear regardless of status". No status check was built,
+    // because there is nothing to check: the only fact this join consults is whether the employment has
+    // a payslip on this run, and `PayrollResultRun` does not even carry a status to branch on. Pinned
+    // structurally so a later "only link a processed run" guard cannot be added without this going red —
+    // the failure it would cause (a completed reprocess whose rows are plain text) looks like nothing.
+    expect(code(`${REPROCESS_DIR}/result-links.ts`), 'the join started reading the run’s status').not.toMatch(
+      /\bstatus\b/,
+    );
+    // Same row, same slips, a run object carrying every status the screen can be in: one href, unchanged.
+    const linked = ['draft', 'processing', 'processed', 'closed', 'paid'].map(
+      (status) => reprocessResultHrefs(rows, slips, { ...RUN, status } as typeof RUN).get('row-a'),
+    );
+    expect(new Set(linked).size, 'the link changed with the run’s status').toBe(1);
+    expect(linked[0]).toBe(payrollResultHref(RUN, 'emp-a'));
   });
 
   it('carries the list’s filter query as `from`, and omits it when there is none', () => {

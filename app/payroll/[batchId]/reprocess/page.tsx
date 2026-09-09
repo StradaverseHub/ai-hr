@@ -7,7 +7,7 @@ import { batchDetail, getReprocessJob, listBatches, listPayslipLessEligible, rep
 import { listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 // 65e2d5de — the Recalculation History card folds. The open/closed choice is a cookie the SERVER reads,
 // so the first paint is already correct (no closed-then-restored flash); see the component's own note.
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
@@ -20,6 +20,8 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // b372e923 — one Payroll Result href per result row, joined to this run's payslips by employment. The
 // join lives in its own module so the "opens somebody else's result" failure can be checked row by row
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
+// The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
+// the operator clicks to reach it.
 import { reprocessResultHrefs } from './result-links';
 
 /**
@@ -302,8 +304,10 @@ export default async function ReprocessPage({
                   <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetAfter')}</th>
                   <th className="px-3 py-2 font-medium">{t('reprocessColMoved')}</th>
                   <th className="px-3 py-2 font-medium">{t('reprocessColWhy')}</th>
-                  {/* b372e923 — the action column the reprocess result never had. */}
-                  <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColResult')}</th>
+                  {/* b372e923 rev.2 — there is NO "Payroll Result" column. r253 added one; the reporter
+                      rejected it because the run screen has no such column either — there, the employee's
+                      own name is the link. The Employee column below is now that same affordance, and a
+                      second control for the one action would be exactly the clutter that was rejected. */}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -319,11 +323,25 @@ export default async function ReprocessPage({
                   const resultHref = resultHrefs.get(r.id);
                   return (
                     <tr key={r.id}>
-                      <td className="px-3 py-2">
-                        <span className="inline-flex items-baseline gap-1.5">
-                          <EmployeeCode code={r.employeeCode} />
-                          <span>{r.employeeName}</span>
-                        </span>
+                      {/* b372e923 rev.2 — THE NAME IS THE LINK, and the Employee ID with it, exactly as
+                          the Payroll Process run screen does it (app/payroll/[batchId]/page.tsx, "code
+                          and name both open the employee's full payroll result"). r253 read the request
+                          as "add a link" and put a separate Payroll Result column beside a plain-text
+                          name; the reporter rejected it, because the point was that the two screens
+                          behave the SAME WAY — you click the name you are already looking at, not a
+                          different control in a different place. Same href, same builder, same
+                          destination as before: only what carries it changed.
+
+                          No payslip on this run ⇒ the identical cell WITHOUT the anchor. The row still
+                          reads normally; what it must never do is offer a link that opens nothing. */}
+                      <td className="px-3 py-2 font-medium">
+                        {resultHref ? (
+                          <Link href={resultHref} className="text-primary hover:underline">
+                            <EmployeeName code={r.employeeCode} name={r.employeeName} />
+                          </Link>
+                        ) : (
+                          <EmployeeName code={r.employeeCode} name={r.employeeName} />
+                        )}
                       </td>
                       {/* Net BEFORE and AFTER come off the stored snapshots this run wrote at the time
                           (payroll_employee_result_history.before / .after), never off a fresh
@@ -361,21 +379,12 @@ export default async function ReprocessPage({
                             : t('reprocessWhyOwnInputs')}
                         {r.reason ? ` · ${r.reason}` : ''}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-xs">
-                        {resultHref ? (
-                          <Link href={resultHref} className="font-medium text-primary hover:underline">
-                            {t('reprocessResultLink')}
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
                     </tr>
                   );
                 })}
                 {jobRows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
                       {t('reprocessNothingMoved')}
                     </td>
                   </tr>
