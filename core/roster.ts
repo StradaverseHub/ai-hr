@@ -28,6 +28,7 @@ import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
 import { cellKey, monthDates, monthRange, type AssignedCell, type UsualShift } from '../lib/roster-month';
+import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -127,6 +128,19 @@ function validateShiftDayType(v: string | null | undefined): ShiftDayType | null
   return s as ShiftDayType;
 }
 
+/**
+ * 6340aecb — the shift's DISPLAY-ONLY colour. Blank ⇒ null (no colour), otherwise one of the closed
+ * palette. Validated against the same token list the DB CHECK in migration 0457 carries and the same one
+ * the swatches render from, so the screen, the service and the database cannot disagree about what a
+ * colour is — the shape lib/leave-visual.ts + migration 0179 already established for leave_type.color.
+ */
+function validateShiftColor(v: string | null | undefined): ShiftColorToken | null {
+  const s = optText(v);
+  if (s == null) return null;
+  if (!isShiftColorToken(s)) throw new Error(`Invalid shift colour: ${s}`);
+  return s;
+}
+
 export type ShiftInput = {
   /** R33 f21d6eee — Shared shift library: shifts are tenant-global. Absent/null ⇒ company_id NULL (the new
    *  default for templates authored on the shift-settings page). Legacy callers may still pass a company_id
@@ -205,6 +219,15 @@ export type ShiftInput = {
    *  this shift; null keeps today's behaviour. `halfDaySecondIn` is recorded + validated against it. */
   halfDayFirstOut?: string | null;
   halfDaySecondIn?: string | null;
+  // ── 6340aecb · Shift Settings redesign (migration 0457) ──────────────────────────────────────────────
+  /** DISPLAY-ONLY colour token (lib/shift-visual.ts SHIFT_COLOR_TOKENS). Blank/absent ⇒ null ⇒ the Duty
+   *  Roster keeps its rotating position-keyed palette for this shift, i.e. today's exact appearance. */
+  color?: string | null;
+  /** The FLEXIBLE BREAK. On ⇒ `flexibleBreakMinutes` is an ALLOWANCE the employee may take whenever they
+   *  like, so the engine deducts it outright instead of the punch's overlap with the break windows, and it
+   *  becomes the shift's canonical breakMinutes on save. Absent/false ⇒ byte-identical to today. */
+  flexibleBreakEnabled?: boolean | null;
+  flexibleBreakMinutes?: number | null;
 };
 
 type NormalizedShift = {
@@ -243,6 +266,10 @@ type NormalizedShift = {
   fullDayOtMinutes: number | null;
   halfDayFirstOut: string | null;
   halfDaySecondIn: string | null;
+  // 6340aecb — absent ⇒ null / false, exactly like the General columns above.
+  color: ShiftColorToken | null;
+  flexibleBreakEnabled: boolean;
+  flexibleBreakMinutes: number | null;
 };
 
 /** Shared create/update validation. Auto normal-hours is NEVER persisted — it stays span − Σ breaks via the
@@ -303,6 +330,41 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     breakMinutes = breakPeriods
       .filter((bp) => bp.paid !== true)
       .reduce((acc, bp) => acc + (hhmmToMin(bp.end) - hhmmToMin(bp.start)), 0);
+  }
+
+  // ── 6340aecb · THE FLEXIBLE BREAK (migration 0457) ──────────────────────────────────────────────────
+  // A flexible break is an ALLOWANCE, not a clock window: "you may take up to 45 minutes, whenever you
+  // like". Two consequences, and both are decided HERE rather than at each reader:
+  //
+  //   1. The allowance BECOMES the shift's canonical break_minutes. break_minutes is what every other
+  //      consumer already reads as "this shift's break" — scheduled/normal hours (netScheduledMinutes), the
+  //      punch import, the hourly clamp, and the cap on the spanned-break deduction. Leaving them reading a
+  //      window sum while the engine deducted an allowance would give the same shift two different break
+  //      figures depending on which screen you asked, which is exactly the drift cf21e554's paid-break
+  //      change moved into this function to avoid.
+  //   2. The break WINDOWS are still stored and still editable. That is the reporter's point 12 — the
+  //      allowance applies EVEN WHEN a Break Start / Break End is configured — so a shift keeps its
+  //      12:00–13:00 on the screen as the intended time while the engine stops requiring the clocking to
+  //      have covered it.
+  //
+  // OFF (absent, and every row stored before 0457) changes nothing at all: break_minutes keeps the value
+  // computed above and the engine keeps the deduction it applies today.
+  const flexibleBreakEnabled = p.flexibleBreakEnabled === true;
+  let flexibleBreakMinutes = optMinutes(p.flexibleBreakMinutes, 'Flexible break');
+  if (flexibleBreakEnabled) {
+    // Refused rather than stored: a flexible break with no allowance is a switch the engine cannot honour
+    // (and the DB CHECK in 0457 says the same thing — this is the sentence HR sees).
+    if (flexibleBreakMinutes == null || flexibleBreakMinutes <= 0) {
+      throw new Error('A flexible break needs an allowed duration in minutes — set one, or switch Flexible off');
+    }
+    if (flexibleBreakMinutes >= span) {
+      throw new Error('The flexible break allowance must be shorter than the shift span');
+    }
+    breakMinutes = flexibleBreakMinutes;
+  } else {
+    // A stored allowance with the switch off would be a number nothing reads; drop it so "off" has exactly
+    // one representation, the same rule lateOutNextDay follows for its own orphaned flag.
+    flexibleBreakMinutes = null;
   }
 
   let normalMinutesOverride: number | null = null;
@@ -377,6 +439,9 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   const fullDayLeaveMinutes = optMinutes(p.fullDayLeaveMinutes, 'Full-day leave hours');
   const normalHoursRoundingMinutes = optMinutes(p.normalHoursRoundingMinutes, 'Normal-hours rounding');
   const fullDayOtMinutes = optMinutes(p.fullDayOtMinutes, 'Full-day overtime hours');
+  // 6340aecb — the DISPLAY-ONLY colour (see validateShiftColor). Blank ⇒ null ⇒ the Duty Roster keeps its
+  // rotating position-keyed palette for this shift, i.e. today's exact appearance.
+  const color = validateShiftColor(p.color);
 
   // Earliest clock-in must not sit AFTER the shift starts — a shift that opens its doors later than it
   // begins cannot be worked. Compared on the plain time-of-day: an early-in on the PREVIOUS calendar day is
@@ -445,6 +510,9 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     fullDayOtMinutes,
     halfDayFirstOut,
     halfDaySecondIn,
+    color,
+    flexibleBreakEnabled,
+    flexibleBreakMinutes,
   };
 }
 
@@ -467,6 +535,11 @@ const generalColumns = (n: NormalizedShift) => ({
   fullDayOtMinutes: n.fullDayOtMinutes,
   halfDayFirstOut: n.halfDayFirstOut,
   halfDaySecondIn: n.halfDaySecondIn,
+  // 6340aecb — the colour and the flexible-break pair ride here for the same reason every column above
+  // does: createShift, updateShift and copyShift cannot drift apart.
+  color: n.color,
+  flexibleBreakEnabled: n.flexibleBreakEnabled,
+  flexibleBreakMinutes: n.flexibleBreakMinutes,
 });
 
 function isUniqueViolation(e: unknown): boolean {
@@ -725,6 +798,11 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
           fullDayOtMinutes: src.fullDayOtMinutes,
           halfDayFirstOut: src.halfDayFirstOut,
           halfDaySecondIn: src.halfDaySecondIn,
+          // 6340aecb — a copy that silently dropped the colour would land uncoloured on the roster, and one
+          // that dropped the flexible break would quietly compute a different day than the shift it copied.
+          color: src.color,
+          flexibleBreakEnabled: src.flexibleBreakEnabled,
+          flexibleBreakMinutes: src.flexibleBreakMinutes,
           // archivedAt deliberately omitted ⇒ the copy is ACTIVE even when the source is archived.
         })
         .returning({ id: shift.id });
@@ -1767,7 +1845,8 @@ export type RosterMonthView = {
   employees: RosterMonthEmployee[];
   /** Before filtering — what the filter dropdowns are built from, so choosing one never empties them. */
   allEmployees: RosterMonthEmployee[];
-  shifts: { id: string; code: string | null; name: string; startTime: string; endTime: string }[];
+  /** 6340aecb — `color` is the shift's DISPLAY-ONLY colour token; NULL keeps the grid's rotating palette. */
+  shifts: { id: string; code: string | null; name: string; startTime: string; endTime: string; color: string | null }[];
   /** `employmentId|date` → what is STORED (null for the dates nobody rostered). */
   cells: Record<string, AssignedCell>;
   /** employmentId → usual shift, for the grey ghost cells and the OFF markers. */
@@ -1842,7 +1921,14 @@ export async function rosterMonthView(
     dates,
     employees,
     allEmployees,
-    shifts: shiftRows.map((s) => ({ id: s.id, code: s.code, name: s.name, startTime: s.startTime, endTime: s.endTime })),
+    shifts: shiftRows.map((s) => ({
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      color: s.color,
+    })),
     cells,
     usual,
     usualNames,

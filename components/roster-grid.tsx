@@ -40,6 +40,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction, rowAssignAction } from '@/app/roster/actions';
 import { EmployeeCode } from '@/components/ui';
+import { shiftChipClass } from '@/lib/shift-visual';
 import {
   ROSTER_TEMPLATE_ID_COLUMNS,
   breachesRestDayRule,
@@ -52,7 +53,17 @@ import {
   type UsualShift,
 } from '@/lib/roster-month';
 
-export type ShiftLite = { id: string; code: string | null; name: string; startTime: string; endTime: string };
+/** 6340aecb — `color` is the shift's own DISPLAY-ONLY colour token (lib/shift-visual.ts). OPTIONAL, and
+ *  ABSENT/NULL IS THE LOAD-BEARING CASE: a shift with no colour keeps the rotating position-keyed palette
+ *  below, so a roster whose shifts have never been coloured renders exactly as it does today. */
+export type ShiftLite = {
+  id: string;
+  code: string | null;
+  name: string;
+  startTime: string;
+  endTime: string;
+  color?: string | null;
+};
 export type GridEmployee = {
   employmentId: string;
   name: string;
@@ -63,7 +74,10 @@ export type GridEmployee = {
 export type GridDate = { iso: string; dow: string; day: string };
 type Brush = string; // shiftId | 'rest' | 'clear'
 
-const SHIFT_COLORS = [
+/** The AUTOMATIC palette: a shift with no configured colour is tinted by its POSITION in the list, which
+ *  is what every shift on this screen has always been. 6340aecb only renamed it — the entries, the order
+ *  and the modulo are untouched, so an uncoloured roster is pixel-identical to before. */
+const AUTO_SHIFT_COLORS = [
   'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300',
   'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
   'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300',
@@ -127,7 +141,12 @@ export function RosterGrid({
 
   const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
   const shiftIndex = (id: string) => shifts.findIndex((s) => s.id === id);
-  const shiftColor = (id: string) => SHIFT_COLORS[Math.max(0, shiftIndex(id)) % SHIFT_COLORS.length];
+  // 6340aecb — the shift's OWN colour wins on the Duty Roster (the reporter's point 7); a shift that has
+  // never been given one falls back to the automatic position palette, i.e. today's appearance. An
+  // unrecognised stored token also falls back rather than rendering an unstyled cell — shiftChipClass
+  // returns null for anything outside the closed palette.
+  const shiftColor = (id: string) =>
+    shiftChipClass(shiftById.get(id)?.color) ?? AUTO_SHIFT_COLORS[Math.max(0, shiftIndex(id)) % AUTO_SHIFT_COLORS.length];
   const codeOf = (id: string) => shiftCodeOf(shiftById.get(id));
   const cellFromBrush = (br: Brush): AssignedCell =>
     br === 'rest' ? { kind: 'rest' } : br === 'clear' ? null : { kind: 'shift', shiftId: br };

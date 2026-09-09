@@ -35,6 +35,10 @@ export type BreakDisplay = {
   /** Set only when breakPeriods are present AND their summed UNPAID minutes ≠ breakMinutes. Value = the
    *  scalar (breakMinutes) the hours engine actually deducts, so the caller can surface both figures. */
   mismatchMinutes?: number;
+  /** 6340aecb — set only when the shift's FLEXIBLE BREAK is on. Value = the allowance in minutes, which is
+   *  what the engine deducts and (core/roster.ts) what breakMinutes was written to on save. The caller
+   *  renders its own localized "Flexible · up to Nm" label; this is the number, not the wording. */
+  flexibleMinutes?: number;
 };
 
 const hhmm = (t: string): string => t.slice(0, 5); // "HH:MM:SS" | "HH:MM" → "HH:MM"
@@ -48,12 +52,20 @@ const toMin = (t: string): number => {
  * Format the Break Time column for one shift.
  * @param breakPeriods the stored break windows (may be null/empty)
  * @param breakMinutes the canonical scalar the hours engine deducts (Σ of the UNPAID windows)
+ * @param flexible 6340aecb — the shift's flexible-break pair. OPTIONAL: every existing caller omits it and
+ *   gets exactly the display it got before, which is also what an uncoloured, non-flexible shift shows.
  */
 export function formatBreakDisplay(
   breakPeriods: BreakPeriod[] | null | undefined,
   breakMinutes: number | null | undefined,
+  flexible?: { enabled?: boolean | null; minutes?: number | null } | null,
 ): BreakDisplay {
   const scalar = Math.trunc(breakMinutes ?? 0);
+  // 6340aecb — a FLEXIBLE shift's break is an allowance, and core/roster.ts writes that allowance into
+  // break_minutes on save. So the window sum and the scalar are EXPECTED to differ here whenever the
+  // operator set an allowance that is not the windows' length, and the mismatch badge — which exists to
+  // warn about a DRIFTED row — must not fire on a shift that is working exactly as configured.
+  const flexibleMinutes = flexible?.enabled === true && flexible.minutes != null ? Math.trunc(flexible.minutes) : undefined;
   if (breakPeriods && breakPeriods.length > 0) {
     const rows: BreakDisplayRow[] = breakPeriods.map((bp, i) => ({
       seq: i + 1,
@@ -65,8 +77,10 @@ export function formatBreakDisplay(
     }));
     const text = rows.map((r) => `${r.seq}. ${r.start}–${r.end} (${r.minutes}m)`).join(', ');
     const unpaidSum = rows.filter((r) => !r.paid).reduce((acc, r) => acc + r.minutes, 0);
+    if (flexibleMinutes != null) return { text, rows, flexibleMinutes };
     return unpaidSum === scalar ? { text, rows } : { text, rows, mismatchMinutes: scalar };
   }
+  if (flexibleMinutes != null) return { text: `${scalar} min`, rows: [], flexibleMinutes };
   if (scalar > 0) return { text: `${scalar} min`, rows: [] };
   return { text: '', rows: [] }; // caller renders its localized "No break" label for the empty case
 }

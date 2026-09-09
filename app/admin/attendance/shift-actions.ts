@@ -177,6 +177,15 @@ function shiftFields(formData: FormData) {
     fullDayOtMinutes: optNum(formData, 'fullDayOtMinutes'),
     halfDayFirstOut: optTime(formData, 'halfDayFirstOut'),
     halfDaySecondIn: optTime(formData, 'halfDaySecondIn'),
+    // 6340aecb — the colour is a RADIO GROUP whose "No colour" option posts an empty string, so blank ⇒
+    // null ⇒ the roster keeps its automatic palette for this shift. The service validates the token
+    // against the closed palette; anything else is refused rather than stored.
+    color: optStr(formData, 'color'),
+    // 6340aecb — the FLEXIBLE BREAK. A real checkbox, so an unticked box posts NOTHING and presence is a
+    // safe read (unlike a hidden input, which is always submitted — the trap that once shipped a
+    // pay-affecting setting nobody could turn off). Off ⇒ the shift computes exactly as it does today.
+    flexibleBreakEnabled: formData.get('flexibleBreakEnabled') != null,
+    flexibleBreakMinutes: optNum(formData, 'flexibleBreakMinutes'),
   };
 }
 

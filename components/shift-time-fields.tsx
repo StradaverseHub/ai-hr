@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { Card, Field, inputCls } from '@/components/ui';
 
 // cf21e554 stage 1 — `paid` is the reference Break tab's "Paid?" tick. Optional, and ABSENT MEANS UNPAID,
 // so a shift saved before this release round-trips byte-identically (see BreakPeriod in db/schema.ts).
@@ -23,6 +23,18 @@ const clock = (mins: number) => `${String(Math.floor(mins / 60) % 24).padStart(2
 
 export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
 
+// 6340aecb — the weekly row moved in here with the rest of Working Times. Static literal keys so the i18n
+// coverage test's check C can see every one of them (the same reason shift-form.tsx spelled them out).
+const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
+const DAY_KIND_KEY = {
+  full: 'dayKindFull',
+  half: 'dayKindHalf',
+  rest: 'dayKindRest',
+  off: 'dayKindOff',
+} as const;
+export type DayKind = keyof typeof DAY_KIND_KEY;
+
 /**
  * R7 Multi-Shift Phase 1 — the shift form's time fields: start/end, repeatable break windows, a LIVE auto
  * normal-hours readout, and a manual override that wins when filled. Valid break rows post as one JSON
@@ -31,8 +43,8 @@ export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
  * The live figure here is a DISPLAY preview only — the authoritative math is the shared server helper
  * (core/attendance.ts shiftSpan/netScheduledMinutes), which the service re-derives on save.
  *
- * b8aa3466 — this island now also owns the SHIFT TYPE select, because the type is what decides which of
- * these boxes a shift needs, and that decision has to happen in the browser as the operator changes it:
+ * b8aa3466 — this island also owns the SHIFT TYPE select, because the type is what decides which of these
+ * boxes a shift needs, and that decision has to happen in the browser as the operator changes it:
  *
  *   • Normal      — Time in / Time out. Total normal working hours is prefilled from the times and the
  *                   unpaid breaks and is optional. Half-day cut-off is a clock time.
@@ -41,17 +53,27 @@ export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
  *                   blank on that row, so promoting those instead would have moved the engine). Total
  *                   normal working hours is REQUIRED with no prefill — without it the engine reads a
  *                   normal day on that shift as the whole 12-hour window and no overtime accrues until
- *                   hour 12. Half-day cut-off is DERIVED (half the required hours of work) and therefore
- *                   not asked for.
+ *                   hour 12. Half-day cut-off is DERIVED (half the required hours of work).
  *   • Full Flexi  — still unpickable, exactly as before. Nothing here turns it on.
  *
- * EVERY BOX HAS A PRINTED LABEL. Ten controls used to carry only an aria-label or a placeholder — four of
- * them the first four things you type into.
+ * ── 6340aecb · WHAT THIS COMPONENT NOW IS ────────────────────────────────────────────────────────────
+ * It renders TWO of the redesigned screen's four sections — WORKING TIMES and BREAKS — as their own cards,
+ * rather than one flat run of boxes. They live together in one client component because they share state:
+ * the shift type decides the labels and which boxes are asked for, and the break rows feed the live
+ * normal-hours readout. Splitting them into two islands would mean lifting that state into a third.
+ *
+ * The four boxes that moved IN with the redesign (2nd half start time, the earliest-in / latest-out pair
+ * and its next-day tick) are plain uncontrolled inputs — they are here for LAYOUT, not for state, and they
+ * post exactly the field names shift-actions.ts already reads.
+ *
+ * EVERY BOX HAS A PRINTED LABEL. Ten controls used to carry only an aria-label or a placeholder.
  *
  * THE PREVIEW BELOW IS THE SIXTH INLINED COPY of span-minus-break (HANDOFF.md names it the one most likely
- * to drift from core/attendance.ts netScheduledMinutes). Two rules keep it honest, and both are load-bearing:
- *   • only the UNPAID windows are subtracted — `flexible` must NEVER enter breakSum, because core/roster.ts
- *     persists break_minutes as Σ of the UNPAID windows and nothing else;
+ * to drift from core/attendance.ts netScheduledMinutes). Three rules keep it honest, all load-bearing:
+ *   • only the UNPAID windows are subtracted — a window's `flexible` flag must NEVER enter breakSum,
+ *     because core/roster.ts persists break_minutes as Σ of the UNPAID windows and nothing else;
+ *   • when the SHIFT-LEVEL flexible break is on, the ALLOWANCE is the break — core/roster.ts writes it
+ *     into break_minutes on save, so the readout must deduct the same figure the engine will;
  *   • a type whose span is not the normal-hours figure SUPPRESSES the preview rather than computing one
  *     from a window it does not mean (Semi Flexi).
  */
@@ -64,8 +86,15 @@ export function ShiftTimeFields({
   defaultOverride = '',
   defaultRounding = '',
   defaultHalfDayFirstOut = '',
+  defaultHalfDaySecondIn = '',
+  defaultEarlyIn = '',
+  defaultLateOut = '',
+  defaultLateOutNextDay = false,
   defaultDailyCutoffEnabled = false,
   defaultDailyCutoffTime = '',
+  defaultFlexibleBreakEnabled = false,
+  defaultFlexibleBreakMinutes = '',
+  dayKinds,
 }: {
   /** b8aa3466 — the shift template type, now client state because it drives the field set. */
   defaultType?: ShiftFormType;
@@ -79,13 +108,25 @@ export function ShiftTimeFields({
   defaultOverride?: string;
   /** cf21e554 — the shift's Normal-Hours Rounding, so the live readout shows the SAME figure the engine
    *  will use (netScheduledMinutes rounds the net figure DOWN to a multiple of this). Display only: the
-   *  input itself lives in More settings. */
+   *  input itself lives in General Controls. */
   defaultRounding?: string;
-  /** b8aa3466 — the half-day cut-off (stored half_day_first_out). Normal only; Semi Flexi derives it. */
+  /** b8aa3466 — the half-day cut-off (stored half_day_first_out). Normal only; Semi Flexi derives it.
+   *  6340aecb — the reporter's "1st Half End Time"; its partner below is "2nd Half Start Time". */
   defaultHalfDayFirstOut?: string;
+  defaultHalfDaySecondIn?: string;
+  /** 6340aecb — the relabelled pair (stored early_in / late_out; the COLUMNS are unchanged, because both
+   *  are read across attendance and payroll and a rename buys nothing the label does not). */
+  defaultEarlyIn?: string;
+  defaultLateOut?: string;
+  defaultLateOutNextDay?: boolean;
   /** b8aa3466 — the daily cut-off pair (migration 0429). */
   defaultDailyCutoffEnabled?: boolean;
   defaultDailyCutoffTime?: string;
+  /** 6340aecb — the FLEXIBLE BREAK (migration 0457). Off ⇒ the shift computes exactly as it does today. */
+  defaultFlexibleBreakEnabled?: boolean;
+  defaultFlexibleBreakMinutes?: string;
+  /** b8aa3466 — the four-way weekly row, resolved by the caller from the three stored arrays. */
+  dayKinds: Record<number, DayKind>;
 }) {
   const t = useTranslations('roster');
   const ta = useTranslations('admin.attendancePolicy');
@@ -96,6 +137,11 @@ export function ShiftTimeFields({
   const [breakMinutes, setBreakMinutes] = useState(defaultBreakMinutes);
   const [cutoffOn, setCutoffOn] = useState(defaultDailyCutoffEnabled);
   const [cutoffAt, setCutoffAt] = useState(defaultDailyCutoffTime || '02:00');
+  // 6340aecb — the flexible break. `flexMin` is seeded from the stored allowance, and on a shift that has
+  // never had one it is seeded from the break the shift already deducts, so ticking the box does not
+  // silently propose a different figure than the operator is looking at.
+  const [flexOn, setFlexOn] = useState(defaultFlexibleBreakEnabled);
+  const [flexMin, setFlexMin] = useState(defaultFlexibleBreakMinutes);
 
   const semiFlexi = type === 'semi_flexi';
 
@@ -104,12 +150,16 @@ export function ShiftTimeFields({
   const crosses = !!start && !!end && end <= start;
   const span = start && end ? (crosses ? toMin(end) + 1440 - toMin(start) : toMin(end) - toMin(start)) : 0;
   // Only the UNPAID windows come off — the same rule core/roster.ts applies when it persists break_minutes.
-  // `flexible` deliberately plays no part here: a flexible break is still deducted, it just is not pinned
-  // to a clock time.
-  const breakSum =
+  // A window's own `flexible` flag deliberately plays no part here: that flag says the window is a target
+  // rather than a fixed clock, and the window is still deducted.
+  const windowBreakSum =
     breaks.length > 0
       ? validBreaks.filter((bp) => !bp.paid).reduce((acc, bp) => acc + (toMin(bp.end) - toMin(bp.start)), 0)
       : Number(breakMinutes) || 0;
+  // 6340aecb — with the SHIFT-LEVEL flexible break on, the allowance IS the shift's break: core/roster.ts
+  // writes it into break_minutes on save, so this readout has to deduct the same number the engine will.
+  const flexMinutes = Number(flexMin) || 0;
+  const breakSum = flexOn && flexMinutes > 0 ? flexMinutes : windowBreakSum;
   const roundTo = Number(defaultRounding) || 0;
   const net = Math.max(0, span - breakSum);
   const auto = roundTo > 0 ? Math.floor(net / roundTo) * roundTo : net;
@@ -145,31 +195,39 @@ export function ShiftTimeFields({
 
   const setBreak = (i: number, patch: Partial<BreakRow>) => setBreaks((prev) => prev.map((bp, j) => (j === i ? { ...bp, ...patch } : bp)));
 
-  return (
-    <div className="space-y-4">
-      {/* f3321963 — Shift Type. Normal + Semi-Flexi are selectable; Full-Flexi is reserved for a FUTURE
-          enhancement (reporter-sanctioned), so its option stays disabled and the note below explains it.
-          b8aa3466 — client state: it decides which boxes below are asked for. */}
-      <Field label={ta('shiftTypeLabel')}>
-        <select
-          name="shiftTemplateType"
-          value={type}
-          onChange={(e) => setType(e.target.value as ShiftFormType)}
-          className={inputCls}
-        >
-          <option value="normal">{ta('shiftTypeNormal')}</option>
-          <option value="semi_flexi">{ta('shiftTypeSemiFlexi')}</option>
-          <option value="full_flexi" disabled>
-            {ta('shiftTypeFullFlexi')}
-          </option>
-        </select>
-      </Field>
+  /** Ticking Flexible with nothing typed proposes the break the shift already deducts, so the box never
+   *  starts at a figure that quietly differs from what the operator can see above it. */
+  const toggleFlex = (on: boolean) => {
+    setFlexOn(on);
+    if (on && flexMin.trim() === '' && windowBreakSum > 0) setFlexMin(String(windowBreakSum));
+  };
 
-      <fieldset className="space-y-4">
-        <legend className="mb-1.5 text-sm font-medium text-foreground">{t('workingTimesLegend')}</legend>
+  return (
+    <>
+      {/* ── SECTION 2 · WORKING TIMES ─────────────────────────────────────────────────────────────── */}
+      <Card className="space-y-4 p-4">
+        <h2 className="text-sm font-semibold text-foreground">{t('workingTimesLegend')}</h2>
+
+        {/* f3321963 — Shift Type. Normal + Semi-Flexi are selectable; Full-Flexi is reserved for a FUTURE
+            enhancement (reporter-sanctioned), so its option stays disabled and the note below explains it.
+            It leads Working Times because it is what decides how every time under it is read. */}
+        <Field label={ta('shiftTypeLabel')}>
+          <select
+            name="shiftTemplateType"
+            value={type}
+            onChange={(e) => setType(e.target.value as ShiftFormType)}
+            className={inputCls}
+          >
+            <option value="normal">{ta('shiftTypeNormal')}</option>
+            <option value="semi_flexi">{ta('shiftTypeSemiFlexi')}</option>
+            <option value="full_flexi" disabled>
+              {ta('shiftTypeFullFlexi')}
+            </option>
+          </select>
+        </Field>
 
         {/* 1 + 2 — the SAME two stored columns either way; only the wording changes with the type. */}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={semiFlexi ? t('earliestTimeIn') : t('timeIn')}>
             <input
               name="startTime"
@@ -190,7 +248,30 @@ export function ShiftTimeFields({
               className={inputCls}
             />
           </Field>
+
+          {/* 6340aecb — THE RELABELLED PAIR (request point 8). The COLUMNS are untouched: early_in and
+              late_out are read across attendance and payroll, and a column rename buys nothing the label
+              does not. Only the message VALUES changed, in all six locales. The hints stay because the two
+              new names sit beside Time in / Time out and the difference between them is the whole point. */}
+          <Field label={ta('shiftEarlyIn')}>
+            <input name="earlyIn" type="time" defaultValue={defaultEarlyIn} className={inputCls} />
+          </Field>
+          <div>
+            <Field label={ta('shiftLateOut')}>
+              <input name="lateOut" type="time" defaultValue={defaultLateOut} className={inputCls} />
+            </Field>
+            <label className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                name="lateOutNextDay"
+                defaultChecked={defaultLateOutNextDay}
+                className="h-3.5 w-3.5 accent-primary"
+              />
+              {ta('shiftLateOutNextDay')}
+            </label>
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground">{ta('shiftClockWindowHint')}</p>
 
         {/* 3 — Total normal working hours. Hours + minutes on screen, MINUTES in the database. */}
         <div>
@@ -226,9 +307,104 @@ export function ShiftTimeFields({
           </p>
         </div>
 
-        {/* 4 — Breaks, with the new Fixed tick beside the existing Paid one. */}
+        {/* 4 — THE HALF-DAY PAIR (request point 9). Both columns already existed; what they never had was a
+            findable home. The first is a clock time on a Normal shift (stored half_day_first_out, which
+            also OVERRIDES the company-wide half-day cut-off for this shift); DERIVED on Semi Flexi from
+            half the required hours of WORK, so nothing is asked for and nothing is posted — which is what
+            makes the server derive it. The second is recorded and validated against the first. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {semiFlexi ? (
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-foreground">{t('halfDayCutoffLabel')}</span>
+              <p className="text-sm text-foreground">
+                {totalMinutes == null || totalMinutes === 0
+                  ? t('halfDayCutoffDerivedPending')
+                  : t('halfDayCutoffDerived', {
+                      half: hm(Math.floor(totalMinutes / 2)),
+                      total: hm(totalMinutes),
+                      at: clock(toMin(start || '00:00') + Math.floor(totalMinutes / 2)),
+                    })}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <Field label={t('halfDayCutoffLabel')}>
+                <input name="halfDayFirstOut" type="time" defaultValue={defaultHalfDayFirstOut} className={inputCls} />
+              </Field>
+              <p className="mt-1 text-xs text-muted-foreground">{t('halfDayCutoffHint')}</p>
+            </div>
+          )}
+          <div>
+            <Field label={ta('shiftHalfDaySecondIn')}>
+              <input name="halfDaySecondIn" type="time" defaultValue={defaultHalfDaySecondIn} className={inputCls} />
+            </Field>
+            <p className="mt-1 text-xs text-muted-foreground">{ta('shiftHalfDayPairHint')}</p>
+          </div>
+        </div>
+
+        {/* 5 — the DAILY CUT-OFF (b8aa3466, migration 0429). */}
         <div>
-          <span className="mb-1.5 block text-sm font-medium text-foreground">{t('breaksLabel')}</span>
+          <span className="mb-1.5 block text-sm font-medium text-foreground">{t('dailyCutoffLegend')}</span>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
+            <input
+              type="checkbox"
+              name="dailyCutoffEnabled"
+              checked={cutoffOn}
+              onChange={(e) => setCutoffOn(e.target.checked)}
+              className="h-3.5 w-3.5 accent-primary"
+            />
+            {t('dailyCutoffUse')}
+          </label>
+          {cutoffOn && (
+            <span className="mt-1.5 block max-w-xs">
+              <Field label={t('dailyCutoffAt')}>
+                <input
+                  name="dailyCutoffTime"
+                  type="time"
+                  required
+                  value={cutoffAt}
+                  onChange={(e) => setCutoffAt(e.target.value)}
+                  className={inputCls}
+                />
+              </Field>
+            </span>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">{t('dailyCutoffHint')}</p>
+        </div>
+
+        {/* 6 — b8aa3466: the Mon–Sun row, seven dropdowns with four choices each. One <select> per weekday
+            posting "full" | "half" | "rest" | "off", decoded server-side in shift-actions.ts into the three
+            ISO-weekday arrays the service expects. It sits in Working Times because which days a shift is
+            worked is a working time, not a general control. */}
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium text-foreground">{ta('shiftWorkingDays')}</legend>
+          <div className="flex flex-wrap gap-1.5">
+            {ISO_DAYS.map((d) => (
+              <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
+                <span className="text-xs font-medium text-foreground">{ta(DAY_KEY[d])}</span>
+                <select
+                  name={`dayKind_${d}`}
+                  defaultValue={dayKinds[d] ?? 'rest'}
+                  className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                  aria-label={ta(DAY_KEY[d])}
+                >
+                  <option value="full">{t(DAY_KIND_KEY.full)}</option>
+                  <option value="half">{t(DAY_KIND_KEY.half)}</option>
+                  <option value="rest">{t(DAY_KIND_KEY.rest)}</option>
+                  <option value="off">{t(DAY_KIND_KEY.off)}</option>
+                </select>
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t('dayKindHint')}</p>
+        </fieldset>
+      </Card>
+
+      {/* ── SECTION 3 · BREAKS ────────────────────────────────────────────────────────────────────── */}
+      <Card className="space-y-4 p-4">
+        <h2 className="text-sm font-semibold text-foreground">{t('breaksLabel')}</h2>
+
+        <div>
           {breaks.length === 0 ? (
             <Field label={t('breakMins')}>
               <input
@@ -326,68 +502,50 @@ export function ShiftTimeFields({
           </span>
         </div>
 
-        {/* 5 — the DAILY CUT-OFF (b8aa3466, migration 0429). */}
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-foreground">{t('dailyCutoffLegend')}</span>
+        {/* ── 6340aecb · THE FLEXIBLE BREAK (request points 11 + 12, migration 0457) ─────────────────
+            NOT a cosmetic switch: with it on, the allowance is what comes off a day's clocking (and what
+            the shift's scheduled hours are struck from), instead of the overlap between the punch and the
+            windows above. The windows stay — the reporter's point 12 is that the allowance applies EVEN
+            WHEN a Break Start / Break End is configured. Off is the default and off is byte-identical to
+            every shift that exists today. */}
+        <fieldset className="rounded-lg border border-border p-3">
+          <legend className="px-1 text-sm font-medium text-foreground">{t('flexibleBreakLegend')}</legend>
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
             <input
               type="checkbox"
-              name="dailyCutoffEnabled"
-              checked={cutoffOn}
-              onChange={(e) => setCutoffOn(e.target.checked)}
+              name="flexibleBreakEnabled"
+              checked={flexOn}
+              onChange={(e) => toggleFlex(e.target.checked)}
               className="h-3.5 w-3.5 accent-primary"
             />
-            {t('dailyCutoffUse')}
+            {t('flexibleBreakUse')}
           </label>
-          {cutoffOn && (
-            <span className="mt-1.5 block max-w-xs">
-              <Field label={t('dailyCutoffAt')}>
+          {flexOn && (
+            <span className="mt-2 block max-w-xs">
+              <Field label={t('flexibleBreakMinutes')} required requiredAriaLabel={t('requiredField')}>
                 <input
-                  name="dailyCutoffTime"
-                  type="time"
+                  name="flexibleBreakMinutes"
+                  type="number"
+                  min={1}
+                  max={1440}
                   required
-                  value={cutoffAt}
-                  onChange={(e) => setCutoffAt(e.target.value)}
+                  value={flexMin}
+                  onChange={(e) => setFlexMin(e.target.value)}
                   className={inputCls}
                 />
               </Field>
             </span>
           )}
-          <p className="mt-1 text-xs text-muted-foreground">{t('dailyCutoffHint')}</p>
-        </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t('flexibleBreakHint')}</p>
+        </fieldset>
 
-        {/* 6 — the HALF-DAY CUT-OFF. A clock time on a Normal shift (the stored half_day_first_out, simply
-            relabelled); DERIVED on Semi Flexi from half the required hours of WORK, breaks excluded — so
-            nothing is asked for, and nothing is posted, which is what makes the server derive it. */}
-        <div>
-          {semiFlexi ? (
-            <>
-              <span className="mb-1.5 block text-sm font-medium text-foreground">{t('halfDayCutoffLabel')}</span>
-              <p className="text-sm text-foreground">
-                {totalMinutes == null || totalMinutes === 0
-                  ? t('halfDayCutoffDerivedPending')
-                  : t('halfDayCutoffDerived', {
-                      half: hm(Math.floor(totalMinutes / 2)),
-                      total: hm(totalMinutes),
-                      at: clock(toMin(start || '00:00') + Math.floor(totalMinutes / 2)),
-                    })}
-              </p>
-            </>
-          ) : (
-            <>
-              <Field label={t('halfDayCutoffLabel')}>
-                <input
-                  name="halfDayFirstOut"
-                  type="time"
-                  defaultValue={defaultHalfDayFirstOut}
-                  className={inputCls}
-                />
-              </Field>
-              <p className="mt-1 text-xs text-muted-foreground">{t('halfDayCutoffHint')}</p>
-            </>
-          )}
-        </div>
-      </fieldset>
-    </div>
+        {/* What the day will actually be worth, stated rather than left to be inferred from four boxes. */}
+        <p className="text-xs text-muted-foreground">
+          {semiFlexi
+            ? t('breakDeductionSemiHint')
+            : t('breakDeductionSummary', { deducted: hm(breakSum), net: hm(net) })}
+        </p>
+      </Card>
+    </>
   );
 }

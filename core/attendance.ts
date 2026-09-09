@@ -506,6 +506,10 @@ type ResolvedSchedule = {
   // b8aa3466 — the resolved shift's DAILY CUT-OFF as minutes from midnight, or NULL when the shift leaves
   // it off (every shift today). NULL ⇒ anchorToShift keeps its hard-coded 12-hour rule byte-identically.
   dailyCutoffMinutes: number | null;
+  // 6340aecb — the resolved shift's FLEXIBLE BREAK allowance in minutes, or NULL when the shift leaves the
+  // switch off (every shift stored before migration 0457) and on the company-policy branch, which has no
+  // shift to carry one. NULL ⇒ the break deduction below is byte-identical to today.
+  flexibleBreakMinutes: number | null;
   // R7 Multi-Shift Phase 1: the shift's manual normal-hours override. When set it is the shift's normal
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
@@ -632,6 +636,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // b8aa3466 — the daily cut-off (migration 0429).
       cutoffOn: shift.dailyCutoffEnabled,
       cutoffAt: shift.dailyCutoffTime,
+      // 6340aecb — the flexible break (migration 0457).
+      flexOn: shift.flexibleBreakEnabled,
+      flexMin: shift.flexibleBreakMinutes,
       shiftType: shift.type,
     })
     .from(rosterAssignment)
@@ -651,6 +658,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     // The company-policy branch has no shift, so there is no cut-off to carry either: anchorToShift keeps
     // its 12-hour rule, exactly as it does today.
     dailyCutoffMinutes: null,
+    // …and no shift means no flexible break either: the policy branch keeps the 6h-cliff deduction.
+    flexibleBreakMinutes: null,
     normalMinutesOverride: null,
     otRule: null,
     // The company-policy branch has no shift, so there is nothing to carry OT windows.
@@ -703,6 +712,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       shiftEnd: ra.end,
       breakPeriods: ra.periods ?? null,
       dailyCutoffMinutes: ra.cutoffOn && ra.cutoffAt ? toMinutes(ra.cutoffAt) : null,
+      flexibleBreakMinutes: ra.flexOn && ra.flexMin != null ? ra.flexMin : null,
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
       otWindows,
@@ -755,6 +765,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     offPattern: shift.offPattern,
     cutoffOn: shift.dailyCutoffEnabled,
     cutoffAt: shift.dailyCutoffTime,
+    // 6340aecb — the flexible break (migration 0457).
+    flexOn: shift.flexibleBreakEnabled,
+    flexMin: shift.flexibleBreakMinutes,
     shiftType: shift.type,
   };
   const [ds] = arrangement
@@ -820,6 +833,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         shiftEnd,
         breakPeriods: ds.periods ?? null,
         dailyCutoffMinutes: ds.cutoffOn && ds.cutoffAt ? toMinutes(ds.cutoffAt) : null,
+        // 6340aecb — the allowance is NOT halved on a Half day, and deliberately: it is a break the employee
+        // takes, not a portion of the day's hours. `sched` above already halves the NET figure, and halving
+        // the break too would deduct it twice over.
+        flexibleBreakMinutes: ds.flexOn && ds.flexMin != null ? ds.flexMin : null,
         normalMinutesOverride: override,
         otRule: ds.otRule ?? null,
         otWindows,
@@ -1017,9 +1034,18 @@ function deriveAttendance(
           };
         })()
       : null;
+  // 6340aecb — A FLEXIBLE BREAK IS AN ALLOWANCE, NOT A WINDOW. The employee may take up to N minutes
+  // whenever they like, so there is nothing for the engine to test the clocking against: N comes off,
+  // clamped to the day's own span so a short day can never go negative. It therefore REPLACES both of the
+  // rules below — the window-overlap deduction (there is no window to require) and workedFromSpan's 6h
+  // cliff (an allowance the operator has stated is not conditional on the length of the day).
+  //
+  // NULL on every shift that leaves the switch off, on every shift stored before migration 0457, and on
+  // the company-policy branch — for all of which the two lines below are exactly what they were.
+  const flexibleBreak = s.flexibleBreakMinutes != null ? Math.min(s.flexibleBreakMinutes, span) : null;
   // b7b886e2 — the break comes out only when the clocking actually SPANNED a declared break window, as the
   // reporter specified. Without windows there is nothing to test against, so the legacy 6h cliff stands.
-  const spannedBreak = w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null;
+  const spannedBreak = flexibleBreak ?? (w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
   const workedMinutes = spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
   // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
   // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a
