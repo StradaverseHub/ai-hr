@@ -1,0 +1,89 @@
+<meta charset="utf-8">
+<title>9583deac — My Profile, and what a change request looks like</title>
+<!--
+  Mockup for 9583deac (My Profile redesign + self-service change requests).
+  MEASURED 2026-09-09:
+    app/me/page.tsx:234-239 — My Profile has exactly five tabs today: overview, profile, pay,
+      performance, documents (the reporter's list is accurate).
+    app/admin/personnel/[employmentId]/page.tsx:662-688 — the Personnel record has ELEVEN: profile,
+      family, job, careerMovement, attendance, bankStatutory, payroll, leave, documents, qualification,
+      others.
+  NOT DRAWN, deliberately, because a picture cannot hedge and these are undecided:
+    - The approval SETTING screens (permission matrix, approver levels). The request describes multi-level
+      sequential approval; drawing a configured workflow would promise a design we have not costed.
+    - Any field that is not already on the Personnel record.
+    - Real employee data — the values here are the reporter's own placeholder format.
+  The three field STATES are drawn because they are the part that must be unambiguous on day one.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;--lock:#6b7280}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 4px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:14px;flex-wrap:wrap}
+ .tab{font-size:12px;padding:4px 10px;border-radius:8px;color:var(--mf)}
+ .tab.on{background:var(--primary);color:#fff;font-weight:600}
+ .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+ .fld{border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+ .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+ .v{font-size:13px;margin-top:2px}
+ .btn{display:inline-block;padding:3px 9px;border-radius:8px;font-size:11px;font-weight:600;margin-top:7px}
+ .btn-g{border:1px solid var(--border)} .btn-p{background:var(--primary);color:#fff}
+ .lock{font-size:11px;color:var(--lock);margin-top:6px}
+ .pend{background:var(--amberbg);border-color:#fcd34d}
+ .pendtag{display:inline-block;background:#fef3c7;color:var(--amber);padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;margin-top:6px}
+ .hdr{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+ .av{width:46px;height:46px;border-radius:999px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+ .mf{color:var(--mf)} .old{text-decoration:line-through;color:var(--mf)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+</style>
+<div class="card">
+  <div class="hdr">
+    <div class="av">AR</div>
+    <div><div style="font-weight:600;font-size:15px">Aisyah Rahman</div>
+      <div class="mf" style="font-size:11.5px">A0001 · Executive · Finance · Active</div></div>
+  </div>
+  <div class="tabs">
+    <span class="tab on">Profile</span><span class="tab">Employment</span><span class="tab">Bank &amp; Statutory</span>
+    <span class="tab">Payroll</span><span class="tab">Family</span><span class="tab">Documents</span>
+  </div>
+  <p class="sub">The same tabs and the same section names as Personnel Management — full width, so a
+    section is read across rather than scrolled past. Today My Profile has five different tabs
+    (Overview, Profile, Pay, Performance, Documents).</p>
+  <div class="grid">
+    <div class="fld"><div class="k">Employee ID</div><div class="v">A0001</div>
+      <div class="lock">Read only</div></div>
+    <div class="fld"><div class="k">Full name</div><div class="v">Aisyah Rahman</div>
+      <div class="lock">Read only</div></div>
+    <div class="fld"><div class="k">Identity No (NRIC)</div><div class="v">900101-01-1111</div>
+      <div class="lock">Read only</div></div>
+    <div class="fld"><div class="k">Contact number</div><div class="v">012-345 6789</div>
+      <span class="btn btn-g">Request change</span></div>
+    <div class="fld pend"><div class="k">Home address</div>
+      <div class="v"><span class="old">12 Jalan Lama</span> → 88 Jalan Baru</div>
+      <span class="pendtag">Pending approval</span></div>
+    <div class="fld"><div class="k">Email</div><div class="v">aisyah@acme.test</div>
+      <span class="btn btn-g">Request change</span></div>
+  </div>
+  <p class="sub" style="margin-top:12px">Three states, and they are meant to be unmistakable: a field you
+    may ask to change, a field that is yours to read only, and a field with a request already waiting.</p>
+</div>
+
+<div class="card">
+  <h2>What the approver sees</h2>
+  <p class="sub">Old value beside requested value, so the decision is a comparison rather than a hunt.</p>
+  <table>
+    <tr><th>Employee</th><th>Section</th><th>Field</th><th>Current</th><th>Requested</th><th></th></tr>
+    <tr><td>Aisyah Rahman · A0001</td><td>Profile</td><td>Home address</td>
+        <td class="mf">12 Jalan Lama</td><td>88 Jalan Baru</td>
+        <td><span class="btn btn-p">Approve</span> <span class="btn btn-g">Reject</span></td></tr>
+  </table>
+  <p class="sub" style="margin-top:10px">Nothing reaches the master employee record until this is
+    approved. Rejecting asks for a reason.</p>
+</div>

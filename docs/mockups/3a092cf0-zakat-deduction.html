@@ -1,0 +1,137 @@
+<meta charset="utf-8">
+<title>3a092cf0 — Zakat belongs in Total Deductions</title>
+<!--
+  Mockup for 3a092cf0 (Payroll - Zakat and Income Tax Deduction Calculation Correction).
+
+  EVERY FIGURE IS REAL AND MEASURED, production read-only, 2026-09-08. Nothing here is invented.
+    payslip for SIG01 (TENGKU BIN TENGKU), batch 2026-01, status processed, latest version:
+      basic 3708.00 · allowance 600.00 · gross_pay 4308.00
+      statutory.epfEmployee 410 · socsoEmployee 18.75 · socsoSkbbk 0 · eisEmployee 7.5 · pcb 0 · zakat 30
+      other_deductions 0.00 · total_deductions 436.25 · net_pay 3871.75
+      statutory.pcbMeta.trace.mtdNormalCalc 7.9 · mtdNormalFloored 0
+    410 + 18.75 + 0 + 7.5 + 0 = 436.25 exactly — so the stored total EXCLUDES the zakat of 30.
+    The corrected column is arithmetic on those same stored figures: 436.25 + 30 = 466.25,
+    4308.00 - 466.25 = 3841.75. It matches the reporter's own expected table.
+    Scale, measured across every payslip carrying a non-zero zakat:
+      9 payslips · 4 employees · 7 runs · 2,569.23 total zakat · 2 of them on CLOSED runs.
+
+  WHAT IS DELIBERATELY NOT DRAWN, because the plan cannot promise it in a picture:
+    - The two payslips on CLOSED runs (EMP-0001 and EMP-0002, 2026-01). A closed run is frozen at
+      trigger level; whether those are reissued is the reporter's decision and is left in WORDS.
+    - Any "corrected" figure for the other seven payslips. They are named in the plan with their real
+      zakat, but drawing new nets for people whose runs we have not recalculated would be inventing
+      results.
+    - The PCB drill-down. The RM7.90 line is shown as the reason PCB is zero, not as a new screen.
+  Money format from lib/money.ts — the ISO code is a PREFIX ("MYR 4,308.00"), never a localised symbol.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--amber:#b45309;--amberbg:#fffbeb}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .tot td{border-top:2px solid var(--fg);font-weight:700}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)}
+  .good{background:var(--goodbg);color:var(--goodfg)}
+  .miss{background:var(--badbg)}
+  .add{background:var(--goodbg)}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+  .mf{color:var(--mf)}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+</style>
+
+<div class="card">
+  <h1>Payroll Result — SIG01 TENGKU BIN TENGKU · January 2026 · Monthly</h1>
+  <p class="sub">The figures on the left are exactly what the system holds for this payslip today. The
+    figures on the right are the same payslip with the zakat counted as a deduction.</p>
+
+  <div class="cols">
+    <div>
+      <div class="lbl">Today <span class="pill bad">Zakat missing from the total</span></div>
+      <table>
+        <tr><th>Deduction</th><th class="r">Amount</th></tr>
+        <tr><td>EPF / KWSP</td><td class="r">410.00</td></tr>
+        <tr><td>SOCSO / PERKESO</td><td class="r">18.75</td></tr>
+        <tr><td>EIS / SIP</td><td class="r">7.50</td></tr>
+        <tr><td>PCB / MTD</td><td class="r">0.00</td></tr>
+        <tr class="miss"><td>Zakat <span class="mf">— shown, but not counted</span></td><td class="r">30.00</td></tr>
+        <tr class="tot"><td>Total Deductions</td><td class="r">436.25</td></tr>
+        <tr class="tot"><td>Net Pay</td><td class="r">3,871.75</td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">410.00 + 18.75 + 7.50 + 0.00 = 436.25. The zakat is on the
+        payslip but is not in the total, so the RM30.00 is never taken from the employee.</p>
+    </div>
+
+    <div>
+      <div class="lbl">Proposed <span class="pill good">Zakat counted, once</span></div>
+      <table>
+        <tr><th>Deduction</th><th class="r">Amount</th></tr>
+        <tr><td>EPF / KWSP</td><td class="r">410.00</td></tr>
+        <tr><td>SOCSO / PERKESO</td><td class="r">18.75</td></tr>
+        <tr><td>EIS / SIP</td><td class="r">7.50</td></tr>
+        <tr><td>PCB / MTD</td><td class="r">0.00</td></tr>
+        <tr class="add"><td>Zakat</td><td class="r">30.00</td></tr>
+        <tr class="tot"><td>Total Deductions</td><td class="r">466.25</td></tr>
+        <tr class="tot"><td>Net Pay</td><td class="r">3,841.75</td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">410.00 + 18.75 + 7.50 + 0.00 + 30.00 = 466.25, and
+        4,308.00 − 466.25 = 3,841.75. This is the table in your request, figure for figure.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Why PCB is zero here — and why the zakat is still owed</h2>
+  <p class="sub">This is the part worth checking, because it decides whether the RM30.00 is an extra
+    deduction or simply moves between two lines.</p>
+  <table>
+    <tr><th>Step</th><th class="r">Amount</th><th>What it means</th></tr>
+    <tr><td>Tax calculated for the month</td><td class="r">7.90</td>
+        <td class="mf">The employee's own PCB before anything is applied against it.</td></tr>
+    <tr><td>Minimum the tax office collects</td><td class="r">10.00</td>
+        <td class="mf">Below this, nothing is remitted — so the PCB line is set to 0.00.</td></tr>
+    <tr><td>PCB / MTD on the payslip</td><td class="r">0.00</td>
+        <td class="mf">Zero because of the minimum, <b>not</b> because the zakat cancelled it.</td></tr>
+    <tr class="tot"><td>Zakat still to be deducted</td><td class="r">30.00</td>
+        <td class="mf" style="font-weight:400">The full amount, because no tax was there to absorb it.</td></tr>
+  </table>
+  <p class="sub" style="margin-top:10px">Where an employee <i>does</i> have tax to pay, the zakat is
+    applied against it first exactly as it is today, and only what is left over is charged on top — so
+    nobody is charged twice.</p>
+</div>
+
+<div class="card">
+  <h2>Every payslip this affects</h2>
+  <p class="sub">Measured on your live data, 8 September 2026. These are all the payslips that carry a
+    zakat amount.</p>
+  <table>
+    <tr><th>Employee</th><th>Period</th><th>Payroll status</th><th class="r">Zakat not counted</th></tr>
+    <tr><td>EMP-0001</td><td>January 2026</td><td><span class="pill bad">Closed</span></td><td class="r">100.00</td></tr>
+    <tr><td>EMP-0002</td><td>January 2026</td><td><span class="pill bad">Closed</span></td><td class="r">168.09</td></tr>
+    <tr><td>SIG01</td><td>January 2026</td><td>Processed</td><td class="r">30.00</td></tr>
+    <tr><td>EMP-0001</td><td>April 2026</td><td>Processed</td><td class="r">100.00</td></tr>
+    <tr><td>EMP-0002</td><td>April 2026</td><td>Processed</td><td class="r">168.78</td></tr>
+    <tr><td>EMP-0001</td><td>May 2026</td><td>Processed</td><td class="r">100.00</td></tr>
+    <tr><td>EMP-0001</td><td>July 2026</td><td>Processed</td><td class="r">100.00</td></tr>
+    <tr><td>100815</td><td>August 2026</td><td>Processed</td><td class="r">890.53</td></tr>
+    <tr><td>100815</td><td>September 2026</td><td>Processed</td><td class="r">911.83</td></tr>
+    <tr class="tot"><td colspan="3">9 payslips · 4 employees · 7 payroll runs</td><td class="r">2,569.23</td></tr>
+  </table>
+  <div class="note" style="margin-top:12px">
+    <b>The two January payslips marked Closed are the ones to decide about.</b> A closed run is frozen
+    and the system will not recalculate it. The fix corrects every future payslip and every run you can
+    still reprocess; whether those two are reissued is your call, and we have not assumed it.
+  </div>
+</div>

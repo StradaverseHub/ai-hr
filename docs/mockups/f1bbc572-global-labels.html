@@ -1,0 +1,99 @@
+<meta charset="utf-8">
+<title>f1bbc572 — Global labels must appear for every company</title>
+<!--
+  Mockup for f1bbc572 (System Labels: Global Criteria Visibility).
+
+  MEASURED ON PRODUCTION, read-only, 2026-09-09. Nothing invented.
+    12 companies in the tenant.
+    Rows by criteria, with the number of DISTINCT origin companies they were created under:
+      department     global 21 (6 origin companies) · company-specific  1 (1)
+      position       global 27 (5)                  · company-specific 17 (3)
+      cost_center    global  5 (3)                  · company-specific  9 (3)
+      business_unit  global  6 (1)                  · company-specific  1 (1)
+      → 59 global labels in total.
+  THE DEFECT, read in app/admin/settings/system-labels/page.tsx:151:
+      const inScope = <T extends { companyId: string }>(rows: T[]) =>
+        rows.filter((r) => scopedIdSet.has(r.companyId));
+    It tests the label's ORIGIN company and never consults `isGlobal`, so a Global label created under
+    one company is filtered out for every other. The grid's own client filter (system-labels-grid.tsx
+    :484-485) has a scope control but no company dimension, so this server-side line is the whole story.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - Real label codes. The reporter's REL01/REL02 example is illustrative and their live rows are
+      departments/positions/cost centres, so drawing named codes would be inventing their data. The
+      counts on the right are the measured ones.
+    - Any change to company-specific behaviour, which the reporter says is already correct.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+  .gone{background:var(--badbg);color:#7f1d1d;text-decoration:line-through}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+  .mf{color:var(--mf)}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+</style>
+
+<div class="card">
+  <h1>System Labels — filtered to a company that is not where the label was created</h1>
+  <p class="sub">Left is what happens today. Right is what Global is supposed to mean. The example uses
+    four departments; the counts underneath are your real ones.</p>
+  <div class="cols">
+    <div>
+      <div class="lbl">Today <span class="pill bad">Global rows disappear</span></div>
+      <table>
+        <tr><th>Code</th><th>Description</th><th>Criteria</th><th>Shown under Company B</th></tr>
+        <tr><td>REL01</td><td>Spouse</td><td>Global <span class="mf">(created under Company A)</span></td><td><span class="pill gone">Hidden</span></td></tr>
+        <tr><td>REL02</td><td>Child</td><td>Global <span class="mf">(created under Company A)</span></td><td><span class="pill gone">Hidden</span></td></tr>
+        <tr><td>REL03</td><td>Parent</td><td>Global <span class="mf">(created under Company B)</span></td><td><span class="pill good">Shown</span></td></tr>
+        <tr><td>REL04</td><td>Other Dependent</td><td>Company A</td><td><span class="pill gone">Hidden</span></td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">Whether a Global label appears depends on which company it
+        happened to be created under — which is not something the person setting Criteria = Global would
+        expect to matter, and is not visible anywhere on the screen.</p>
+    </div>
+    <div>
+      <div class="lbl">Proposed <span class="pill good">Global means every company</span></div>
+      <table>
+        <tr><th>Code</th><th>Description</th><th>Criteria</th><th>Shown under Company B</th></tr>
+        <tr><td>REL01</td><td>Spouse</td><td>Global</td><td><span class="pill good">Shown</span></td></tr>
+        <tr><td>REL02</td><td>Child</td><td>Global</td><td><span class="pill good">Shown</span></td></tr>
+        <tr><td>REL03</td><td>Parent</td><td>Global</td><td><span class="pill good">Shown</span></td></tr>
+        <tr><td>REL04</td><td>Other Dependent</td><td>Company A</td><td><span class="pill gone">Hidden</span></td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">Company-specific rows are unchanged — REL04 still belongs to
+        Company A only, which you told us already works correctly.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>How much of your data this affects</h2>
+  <p class="sub">Measured on your live system, 9 September 2026. You have 12 companies.</p>
+  <table>
+    <tr><th>Label type</th><th class="r">Marked Global</th><th class="r">Created under how many different companies</th><th>Effect today</th></tr>
+    <tr><td>Department</td><td class="r">21</td><td class="r">6</td><td class="mf">Each is visible under only one of your 12 companies</td></tr>
+    <tr><td>Position</td><td class="r">27</td><td class="r">5</td><td class="mf">Same</td></tr>
+    <tr><td>Cost Centre</td><td class="r">5</td><td class="r">3</td><td class="mf">Same</td></tr>
+    <tr><td>Business Unit</td><td class="r">6</td><td class="r">1</td><td class="mf">Same</td></tr>
+  </table>
+  <div class="note" style="margin-top:12px">
+    <b>59 labels are marked Global and none of them behaves that way.</b> Because they were created under
+    six different companies between them, no single company sees the whole set — which is why the list
+    looks different depending on which company you are filtered to.
+  </div>
+</div>

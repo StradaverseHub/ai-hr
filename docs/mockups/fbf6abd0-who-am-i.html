@@ -1,0 +1,64 @@
+<meta charset="utf-8">
+<title>fbf6abd0 — Who am I logged in as</title>
+<!--
+  Mockup for fbf6abd0 (Logged-In User Identification).
+  MEASURED 2026-09-09: app/layout.tsx renders the header's right-hand side as divider → language →
+  theme → LogoutButton (lines ~184-221). There is NO name, NO employee ID and NO avatar anywhere in it.
+  The identity switcher at :184 is dev/demo only and is hidden on the real deployment, so on a normal
+  login nothing on the page says who you are.
+  NOT DRAWN: the dropdown's full contents beyond the two links the request names, and any avatar photo
+  (the product has an Avatar component that falls back to initials; a photo would promise an upload flow
+  this item does not ask for). Employee ID shown as A0001 is the reporter's own example format.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 10px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;border:1px solid var(--border);
+      border-radius:10px;padding:10px 14px;background:var(--card)}
+ .chip{font-size:11.5px;color:var(--mf)} .divider{width:1px;height:18px;background:var(--border)}
+ .btn{border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11.5px}
+ .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+ .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+ .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+ .av{width:30px;height:30px;border-radius:999px;background:var(--primary);color:#fff;display:inline-flex;
+     align-items:center;justify-content:center;font-size:11.5px;font-weight:700}
+ .menu{border:1px solid var(--border);border-radius:12px;padding:12px 14px;width:250px;background:var(--card);
+       box-shadow:0 8px 24px rgba(0,0,0,.08);margin-left:auto}
+ .menu .nm{font-weight:600;font-size:13px} .menu .id{font-size:11.5px;color:var(--mf);margin-top:1px}
+ .menu a{display:block;font-size:12px;color:var(--primary);margin-top:9px;text-decoration:none}
+ .hr{height:1px;background:var(--border);margin:10px 0}
+</style>
+<div class="card">
+  <h1>The top bar — today and proposed</h1>
+  <p class="sub">The same corner of the same screen. Nothing else on the page changes.</p>
+  <div class="lbl">Today <span class="pill bad">Nothing says who you are</span></div>
+  <div class="bar">
+    <span class="divider"></span><span class="chip">EN</span><span class="chip">Theme</span>
+    <span class="btn">Log out</span>
+  </div>
+  <p class="sub" style="margin-top:8px">An HR administrator who manages many people's records has no
+    confirmation of which account they are working under.</p>
+  <div class="lbl" style="margin-top:14px">Proposed <span class="pill good">Name and Employee ID, always visible</span></div>
+  <div class="bar">
+    <span class="divider"></span><span class="chip">EN</span><span class="chip">Theme</span>
+    <span class="av">AR</span>
+    <span><span style="font-weight:600">Aisyah Rahman</span><br><span class="chip">A0001</span></span>
+  </div>
+</div>
+<div class="card">
+  <h2>The menu behind it</h2>
+  <p class="sub">Log out moves into the same menu, so the corner stays uncluttered on a narrow screen.</p>
+  <div class="menu">
+    <div class="nm">Aisyah Rahman</div>
+    <div class="id">Employee ID: A0001</div>
+    <div class="hr"></div>
+    <a>View my profile</a>
+    <a>Log out</a>
+  </div>
+</div>

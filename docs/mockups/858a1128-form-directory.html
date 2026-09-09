@@ -1,0 +1,99 @@
+<meta charset="utf-8">
+<title>858a1128 — Statutory Forms as a form directory</title>
+<!--
+  Mockup for 858a1128 (Statutory Forms UIUX and Generation Workflow).
+  MEASURED 2026-09-09, app/payroll/statutory-forms/page.tsx: the screen takes companyId / year / month
+  as searchParams (:239-243) — i.e. the reporting period is chosen BEFORE a form is, which is the
+  complaint. The forms are ALREADY registered per agency with a fidelity status
+  ('official' | 'agency-layout' | 'figures' | 'draft-file' | 'planned', :130) and the pack registers
+  EIGHT reports (:32), so the grouping the request asks for largely exists — what changes is the order
+  of the journey, not the catalogue.
+  NOT DRAWN: the generated forms themselves (unchanged by this item), and any form not already
+  registered — inventing a row here would promise a form we do not produce. The fidelity chips are the
+  ones the screen already shows, because dropping them would hide a distinction the reporter relies on.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--info:#eef2ff}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 4px} h3{font-size:12px;margin:14px 0 6px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .btn{display:inline-block;padding:4px 10px;border-radius:8px;font-size:11.5px;font-weight:600}
+ .btn-p{background:var(--primary);color:#fff} .btn-g{border:1px solid var(--border)}
+ .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+ .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+ .chip{background:var(--muted);color:var(--mf);padding:1px 7px;border-radius:999px;font-size:10px}
+ .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+ .filters{display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--muted)}
+ .sel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 26px 4px 9px;font-size:11.5px}
+ .modal{border:1px solid #c7d2fe;background:var(--info);border-radius:12px;padding:14px 16px;width:420px}
+ .mf{color:var(--mf)}
+</style>
+<div class="card">
+  <h1>Today — the period is chosen before the form</h1>
+  <div class="filters">
+    <span class="lbl" style="margin:0">Company</span><span class="sel">ABC Sdn Bhd</span>
+    <span class="lbl" style="margin:0">Year</span><span class="sel">2026</span>
+    <span class="lbl" style="margin:0">Month</span><span class="sel">January</span>
+  </div>
+  <p class="sub" style="margin-top:9px"><span class="pill bad">The complaint</span> You must answer
+    "which period?" before you have decided which form you came for — and the C.P.8A (EA) is annual, so
+    the Month box does not apply to it at all.</p>
+</div>
+
+<div class="card">
+  <h1>Proposed — a directory of forms first</h1>
+  <p class="sub">No period at the top. Pick the form you came for; it asks for what it needs.</p>
+  <h3>EPF (KWSP)</h3>
+  <table>
+    <tr><th style="width:22%">Form</th><th>Description</th><th style="width:16%">Fidelity</th><th style="width:14%"></th></tr>
+    <tr><td>Borang A</td><td>Monthly EPF contribution</td><td><span class="chip">Agency layout</span></td><td><span class="btn btn-p">Open form</span></td></tr>
+  </table>
+  <h3>SOCSO / EIS (PERKESO)</h3>
+  <table>
+    <tr><th style="width:22%">Form</th><th>Description</th><th style="width:16%">Fidelity</th><th style="width:14%"></th></tr>
+    <tr><td>Borang 8A</td><td>Monthly SOCSO contribution</td><td><span class="chip">Agency layout</span></td><td><span class="btn btn-p">Open form</span></td></tr>
+  </table>
+  <h3>Income Tax (LHDN)</h3>
+  <table>
+    <tr><th style="width:22%">Form</th><th>Description</th><th style="width:16%">Fidelity</th><th style="width:14%"></th></tr>
+    <tr><td>CP39</td><td>Monthly tax submission</td><td><span class="chip">Figures</span></td><td><span class="btn btn-p">Open form</span></td></tr>
+    <tr><td>C.P.8A (EA)</td><td>Employee annual statement</td><td><span class="chip">Official</span></td><td><span class="btn btn-p">Open form</span></td></tr>
+  </table>
+  <p class="sub" style="margin-top:10px">The fidelity chip each form already carries is kept — it tells
+    you whether you are looking at the agency's own layout or our figures, and that distinction does not
+    change here.</p>
+</div>
+
+<div class="card">
+  <h2>What "Open form" asks for</h2>
+  <p class="sub">A monthly form asks for three things. The annual EA asks for two, then for people.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div class="lbl">Monthly form — e.g. Borang A</div>
+      <div class="modal">
+        <div style="font-weight:600;margin-bottom:9px">Generate Borang A</div>
+        <div class="mf" style="font-size:11.5px">Company</div><div class="sel" style="display:block;margin:3px 0 8px">ABC Sdn Bhd</div>
+        <div class="mf" style="font-size:11.5px">Payroll year</div><div class="sel" style="display:block;margin:3px 0 8px">2026</div>
+        <div class="mf" style="font-size:11.5px">Payroll month</div><div class="sel" style="display:block;margin:3px 0 12px">January</div>
+        <span class="btn btn-g">Cancel</span> <span class="btn btn-p">Generate form</span>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Annual form — C.P.8A (EA) <span class="pill good">no Month box</span></div>
+      <div class="modal">
+        <div style="font-weight:600;margin-bottom:9px">Generate C.P.8A (EA)</div>
+        <div class="mf" style="font-size:11.5px">Company</div><div class="sel" style="display:block;margin:3px 0 8px">ABC Sdn Bhd</div>
+        <div class="mf" style="font-size:11.5px">Payroll year</div><div class="sel" style="display:block;margin:3px 0 12px">2026</div>
+        <span class="btn btn-g">Cancel</span> <span class="btn btn-p">Continue</span>
+        <div class="mf" style="font-size:11.5px;margin-top:9px">…then choose which employees.</div>
+      </div>
+    </div>
+  </div>
+</div>

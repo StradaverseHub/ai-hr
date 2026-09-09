@@ -1,0 +1,140 @@
+<meta charset="utf-8">
+<title>4b909202 — Transaction Entry after a processed payroll</title>
+<!--
+  Mockup for 4b909202 (Payroll Process - Allow Transaction Entry After Payroll Has Been Processed).
+
+  MEASURED ON PRODUCTION, read-only, 2026-09-08. Nothing invented.
+    payroll_batch by status: 24 processed · 2 closed · 1 draft
+    scope: 12 runs scoped, 15 whole-company; of the SCOPED ones, 11 are processed and 1 draft
+    runs flagged needing recalc RIGHT NOW (needs_recalc_at not null): 6
+      2026-08 (1 employee) · 2026-07 (1) · 2026-06 (3) · 2026-05 (1) · 2026-04 (2) · 2026-03 (2)
+    payroll_reprocess_job rows: 103 completed
+  CODE, read 2026-09-08:
+    core/payroll-individual-txn.ts:688-690 — on ADD, `if (target.status === 'processed')` →
+      markBatchNeedsRecalc, in the same transaction as the insert (feature 49e7e0a2).
+      Same call on bulk save (876), edit (1063) and delete (1115).
+    core/payroll-individual-txn.ts:788-796 — C4, the SCOPE check, throws
+      EmploymentNotInBatchScopeError when the employment is outside the run's
+      departments-or-explicit-employments scope. It does NOT test status.
+    app/payroll/transactions/individual/actions.ts:69-70 maps that error to the key
+      `employeeNotInScope`, whose English text is the sentence the reporter quoted.
+    core/payroll.ts:150 — close is refused while any employee is pending recalculation.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - "Add this employee to the run" as a finished control. It is the one genuinely NEW piece of work
+      here and the plan describes it in words; drawing a confirmed design would promise a flow whose
+      scope rules (which departments, whose approval) have not been decided.
+    - Any change to Closed runs. Closed stays frozen; the request itself asks for that.
+  Money format from lib/money.ts (ISO prefix). Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;
+        --amber:#b45309;--amberbg:#fffbeb;--info:#eef2ff}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)}
+  .good{background:var(--goodbg);color:var(--goodfg)}
+  .warn{background:#fef3c7;color:var(--amber)}
+  .banner{border-radius:10px;padding:12px 14px;font-size:12.5px;display:flex;gap:10px;align-items:flex-start}
+  .b-bad{background:var(--badbg);border:1px solid #fecaca;color:#7f1d1d}
+  .b-good{background:var(--goodbg);border:1px solid #bbf7d0;color:#14532d}
+  .b-info{background:var(--info);border:1px solid #c7d2fe;color:#312e81}
+  .ico{font-weight:700;font-size:14px;line-height:1.2}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+  .mf{color:var(--mf)}
+  .btn{display:inline-block;padding:5px 11px;border-radius:8px;font-size:11.5px;font-weight:600}
+  .btn-p{background:var(--primary);color:#fff}
+  .btn-g{border:1px solid var(--border);color:var(--fg)}
+</style>
+
+<div class="card">
+  <h1>What already happens today — Individual Transaction on a Processed run</h1>
+  <p class="sub">Adding, editing and deleting transactions after processing is already allowed, and the
+    affected employee is already flagged for reprocessing. This is your own live data.</p>
+  <div class="banner b-good">
+    <span class="ico">✓</span>
+    <div><b>Bonus MYR 500.00 saved for Employee A.</b> January 2026 has already been processed, so
+      Employee A is now marked for reprocessing. The run cannot be closed until that is done.</div>
+  </div>
+  <table style="margin-top:12px">
+    <tr><th>Payroll run</th><th>Status</th><th class="r">Employees waiting to be reprocessed</th></tr>
+    <tr><td>August 2026</td><td>Processed</td><td class="r">1</td></tr>
+    <tr><td>July 2026</td><td>Processed</td><td class="r">1</td></tr>
+    <tr><td>June 2026</td><td>Processed</td><td class="r">3</td></tr>
+    <tr><td>May 2026</td><td>Processed</td><td class="r">1</td></tr>
+    <tr><td>April 2026</td><td>Processed</td><td class="r">2</td></tr>
+    <tr><td>March 2026</td><td>Processed</td><td class="r">2</td></tr>
+  </table>
+  <p class="sub" style="margin-top:8px">Six of your processed runs are carrying this flag right now, and
+    103 reprocess jobs have already run. Only the affected employee is recalculated — never the whole
+    company.</p>
+</div>
+
+<div class="card">
+  <h2>So what stopped you — and it was not the Processed status</h2>
+  <p class="sub">The message you saw comes from a different check: whether the employee is one of the
+    people that run covers. 12 of your 27 runs are limited to selected departments or a named list.</p>
+  <div class="cols">
+    <div>
+      <div class="lbl">Today <span class="pill bad">Says nothing about why, or what to do</span></div>
+      <div class="banner b-bad">
+        <span class="ico">✕</span>
+        <div>This employee is not included in the selected payroll run.</div>
+      </div>
+      <p class="sub" style="margin-top:8px">It reads as though the run being <i>Processed</i> is the
+        problem. It is not — the same message appears on a Draft run. It also does not say which run,
+        which employee, or what to do next.</p>
+    </div>
+    <div>
+      <div class="lbl">Proposed <span class="pill good">Names the real reason</span></div>
+      <div class="banner b-info">
+        <span class="ico">i</span>
+        <div><b>Employee A is not covered by the January 2026 Monthly run.</b><br>
+          That run was created for the Finance department only. You can still record this transaction —
+          choose how below.
+          <div style="margin-top:9px">
+            <span class="btn btn-p">Add Employee A to this run</span>
+            <span class="btn btn-g" style="margin-left:6px">Record it for the next run instead</span>
+            <span class="btn btn-g" style="margin-left:6px">Cancel</span>
+          </div>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:8px">The status is never the blocker. If the run is Processed, the
+        employee is flagged for reprocessing exactly as it works today.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Processed and Closed already behave differently</h2>
+  <p class="sub">This is the business rule in your request, and it is the rule the system already
+    follows.</p>
+  <table>
+    <tr><th>Run status</th><th>Add / edit / delete a transaction</th><th>Affected employee</th><th>Your runs</th></tr>
+    <tr>
+      <td><b>Draft</b></td><td>Allowed</td>
+      <td class="mf">Nothing to reprocess — the run has not calculated yet.</td><td>1</td>
+    </tr>
+    <tr>
+      <td><b>Processed</b></td><td><span class="pill good">Allowed today</span></td>
+      <td>Flagged for reprocessing; the run cannot be closed until it is done.</td><td>24</td>
+    </tr>
+    <tr>
+      <td><b>Closed</b></td><td><span class="pill warn">Refused</span></td>
+      <td class="mf">Finalised and frozen — unchanged by this request.</td><td>2</td>
+    </tr>
+  </table>
+</div>
