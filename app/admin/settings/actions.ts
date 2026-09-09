@@ -22,6 +22,8 @@ import {
   deleteCostCenter,
   deleteDepartment,
   deletePosition,
+  isDatabaseError,
+  labelFailureCode,
   LabelBulkError,
   setCompanySharedLabels,
   updateBusinessUnit,
@@ -269,6 +271,19 @@ function revalidateLabels() {
   for (const p of REVALIDATE_ALSO) revalidatePath(p);
 }
 
+/**
+ * WHAT A FAILED LABEL WRITE IS ALLOWED TO SAY (f1bbc572 round 2 — see lib/label-error-token.ts for the
+ * captured banner text that made this necessary).
+ *
+ * A refusal we recognise becomes a stable TOKEN the grid translates; anything else the DATABASE said
+ * becomes the generic token, because its text is SQL and parameter values; and an application error —
+ * LabelInUseError, DuplicateError, CrossCompanyError — keeps its own deliberate sentence, which is the
+ * only text on this path actually written for a reader.
+ */
+function labelFailureMessage(e: unknown): string {
+  return labelFailureCode(e) ?? (isDatabaseError(e) ? 'unexpectedError' : (e as Error).message);
+}
+
 export type GridSaveResult =
   | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
   | { ok: false; rowErrors: LabelRowError[]; message?: string };
@@ -284,8 +299,10 @@ export async function saveLabelsGridAction(
     revalidateLabels();
     return { ok: true, ...r };
   } catch (e) {
+    // A LabelBulkError already carries per-row errors (each with its own token where there is one), so
+    // it needs no banner message: the grid derives one from the rows it is about to highlight.
     if (e instanceof LabelBulkError) return { ok: false, rowErrors: e.rowErrors };
-    return { ok: false, rowErrors: [], message: (e as Error).message };
+    return { ok: false, rowErrors: [], message: labelFailureMessage(e) };
   }
 }
 
@@ -303,7 +320,7 @@ export async function assignLabelCompaniesAction(
     revalidateLabels();
     return { ok: true };
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -320,7 +337,7 @@ export async function unassignLabelCompaniesAction(
     return { ok: true };
   } catch (e) {
     if (e instanceof LabelInUseError) return { ok: false, message: e.message };
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -337,7 +354,7 @@ export async function setLabelGlobalAction(
     return { ok: true };
   } catch (e) {
     if (e instanceof LabelInUseError) return { ok: false, message: e.message };
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -355,7 +372,7 @@ export async function copyLabelsToCompaniesAction(
     revalidateLabels();
     return { ok: true };
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -370,7 +387,7 @@ export async function setCompanySharedLabelsAction(
     revalidateLabels();
     return { ok: true };
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -534,7 +551,7 @@ export async function restoreJobGradeGridAction(id: string): Promise<GradeGridRe
     revalidateGrades();
     return { ok: true, row };
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
 }
 
@@ -544,7 +561,7 @@ export async function removeJobGradeGridAction(id: string): Promise<ScopeActionR
   try {
     await deleteJobGrade(s, { id });
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: labelFailureMessage(e) };
   }
   revalidateGrades();
   return { ok: true };

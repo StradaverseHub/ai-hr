@@ -564,6 +564,10 @@ export function listDepartments(
         // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
         // BU dropdown. Null = unassigned (visible under every BU on the hire form).
         businessUnitId: department.businessUnitId,
+        // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
+        // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
+        // above already admits it; a picker that re-filtered on company_id alone threw it away again).
+        isGlobal: department.isGlobal,
         archivedAt: department.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
