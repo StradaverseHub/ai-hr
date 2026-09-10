@@ -27,15 +27,29 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(__dirname, '..');
 
-/** Every page.tsx under app/admin/leave/ (recursive), repo-relative. */
-function leavePages(dir = 'app/admin/leave'): string[] {
+/** Every page.tsx under one directory (recursive), repo-relative. */
+function pagesUnder(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...leavePages(rel));
+    if (entry.isDirectory()) out.push(...pagesUnder(rel));
     else if (entry.name === 'page.tsx') out.push(rel);
   }
   return out;
+}
+
+/**
+ * a6fe37fc ROUND 5 (cutover) — THE GLOB FOLLOWS THE MODULE.
+ *
+ * The convention this file owns is "no page-level width cap on a Leave Configuration screen". Leave
+ * Configuration is being replaced by a new module under `app/admin/leave-config/`, one screen per commit,
+ * so scanning only the old directory would let the cap reappear on every screen an administrator actually
+ * opens while the guard stayed green over a row of redirect stubs. Both trees are walked: the old one
+ * keeps its stubs covered (a stub can never grow a cap — cheap to keep) and the new one is where the
+ * screens are.
+ */
+function leavePages(): string[] {
+  return [...pagesUnder('app/admin/leave'), ...pagesUnder('app/admin/leave-config')];
 }
 
 // Tab-content components where a width cap could reappear unseen by the page glob: the entitlements
@@ -90,6 +104,16 @@ describe('leave configuration — no page-level width caps', () => {
         'app/admin/leave/payroll/page.tsx',
         'app/admin/leave/audit/page.tsx',
         'app/admin/leave/import/page.tsx',
+        // The new module — the screens these tabs are being replaced by (a6fe37fc Round 5).
+        'app/admin/leave-config/types/page.tsx',
+        'app/admin/leave-config/company-rules/page.tsx',
+        'app/admin/leave-config/entitlement-tables/page.tsx',
+        'app/admin/leave-config/approval-chains/page.tsx',
+        'app/admin/leave-config/generate/page.tsx',
+        'app/admin/leave-config/adjustments/page.tsx',
+        'app/admin/leave-config/import/page.tsx',
+        'app/admin/leave-config/records/entitlement/page.tsx',
+        'app/admin/leave-config/records/balances/page.tsx',
       ]),
     );
   });

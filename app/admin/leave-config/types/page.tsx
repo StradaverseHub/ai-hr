@@ -16,7 +16,7 @@ import {
 } from '../../leave/entitlements/templates/entitlement-tables-block';
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
-import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../approval-readout';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
@@ -213,7 +213,7 @@ export default async function LeaveConfigTypesPage({
             <Link href="/leave/employee-balances" className="text-sm underline">
               {t('employeeBalancesAction')}
             </Link>
-            <Link href="/admin/leave/import" className={btnPrimary}>
+            <Link href={leaveConfigScreenHref('importLeaveData')} className={btnPrimary}>
               {t('importAction')}
             </Link>
           </div>

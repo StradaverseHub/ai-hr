@@ -2,15 +2,15 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Button, PageHeader } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import { LeaveLedgerImport } from '../../leave/import/leave-ledger-import';
-import { LeaveConfigPreviewNote } from '../preview-note';
 
 /**
- * a6fe37fc ROUND 3 — IMPORT LEAVE DATA at its new address (`/admin/leave-config/import`).
+ * a6fe37fc — IMPORT LEAVE DATA (`/admin/leave-config/import`).
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/import` is untouched, still registered and still what the
- * menu links to; Round 5 empties that page and repoints its address here.
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/import` is an unguarded redirect
+ * stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, and the area map's
+ * `importLeaveData` entry names this address. The stub is never deleted — bookmarks are why it exists.
  *
  * ⚠️ THE IMPORTER IS NOT RE-IMPLEMENTED (IA §2.3). `LeaveLedgerImport` is the SAME client component the
  * old page mounts — F44's whole two-phase contract (validate, then commit) lives inside it, and a second
@@ -21,7 +21,10 @@ import { LeaveConfigPreviewNote } from '../preview-note';
  * acting admin's authority at PREVIEW time (`analyze()`'s authority check), so narrowing the screen would
  * describe a restriction the engine does not apply.
  *
- * A COMMIT MADE HERE LANDS ON THE OLD SCREEN — see `../preview-note.tsx`.
+ * THE HEADING IS THE MENU'S OWN STRING. `leaveConfigScreenTitle('importLeaveData')` renders the very
+ * key `LeaveConfigMap` shows for this screen, so the menu and the page can never drift — the defect
+ * IA §1.1 measured on four screens. The page's private `admin.leave.import.title` is no longer read
+ * here; the namespace itself stays, because `leave-ledger-import.tsx` renders the rest of it.
  */
 export default async function LeaveConfigImportPage() {
   const t = await getTranslations('admin.leave.import');
@@ -29,14 +32,12 @@ export default async function LeaveConfigImportPage() {
 
   return (
     <div className="space-y-6">
-      {/* r259 — `back` is resolved through the area map below, which is the module's ONE navigation
-          direction: OUT, at the screen that is live today, until Round 5 repoints the map. It read
-          `/admin/leave-config/types`, which left this page telling the administrator two different things
-          about where the leave type screen is. It is also the old page's own back-link, character for
-          character (app/admin/leave/import/page.tsx). */}
+      {/* r259 — `back` resolves through the area map below rather than through a literal, so the
+          back-link and the menu entry can never give two answers about where the leave type screen is.
+          The old page carried the literal the map now owns (app/admin/leave/import/page.tsx). */}
       <PageHeader
         back={{ href: leaveConfigScreenHref('leaveTypes'), label: t('backLabel') }}
-        title={t('title')}
+        title={await leaveConfigScreenTitle('importLeaveData')}
         description={t('description')}
         actions={
           <Button asChild>
@@ -46,7 +47,6 @@ export default async function LeaveConfigImportPage() {
       />
       {/* `current="importLeaveData"` because this IS that screen — the map names screens, not addresses. */}
       <LeaveConfigMap current="importLeaveData" />
-      <LeaveConfigPreviewNote />
       {/* F44 — validate then commit, MOUNTED. */}
       <LeaveLedgerImport />
     </div>

@@ -316,7 +316,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // separately below: the two screens are gated differently ON PURPOSE, because the sweeps must stay
     // reachable when the `toil` entitlement lapses and configuration must not.
     routes: [
-      '/admin/leave/import',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
+      // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
+      // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it
+      // left `routes` in the SAME commit that emptied the page — the /admin/leave (df00b85f) and
+      // /admin/leave/audit (f1b994e3) precedent. test/function-access.test.ts fails BOTH ways.
       '/admin/leave/entitlements',
       // 6e9a126e — the read-only record of the entitlement configuration the redesign's release three
       // clears. Same admin surface, same requireAdmin guard the leaveConfig screen declares, so it is a

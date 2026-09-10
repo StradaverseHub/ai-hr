@@ -43,7 +43,7 @@ import {
 // below are sliced from, so the card and each type's own Entitlement step can never disagree.
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
-import { LeaveConfigMap } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
 import {
   archiveLeaveTypeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
@@ -420,7 +420,7 @@ export default async function LeaveEntitlementsPage({
             <Link href="/leave/employee-balances" className="text-sm underline">
               {t('employeeBalancesAction')}
             </Link>
-            <Link href="/admin/leave/import" className={btnPrimary}>
+            <Link href={leaveConfigScreenHref('importLeaveData')} className={btnPrimary}>
               {t('importAction')}
             </Link>
           </div>
