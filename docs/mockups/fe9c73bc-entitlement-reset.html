@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<title>fe9c73bc — what a reset would clear, and what it must not</title>
+<!--
+  Mockup for fe9c73bc (reset/clear the Leave Balance Health configuration and data).
+
+  MEASURED ON PRODUCTION 2026-09-10, read-only through MIGRATION_DATABASE_URL. Every figure here is real.
+    entitlement_template          45 rows, 45 in force (valid_to IS NULL)
+    entitlement_eligibility_rule   5 rows,  4 in force
+    leave_ledger                 299 rows / 50 employments / 15 leave types:
+        accrual     201 rows  +3101.3 days   source_request_id NULL on all
+        adjustment   79 rows  +2094.3 days   source_request_id NULL on all
+        debit        19 rows   -16.5 days    source_request_id NOT NULL on ALL 19 (11 approved)
+    leave_type 18 · leave_request 42 (11 approved)
+    Templates in force by type: Annual 16, Medical 5, Examination/Maternity/Compassionate/Paternity/
+    Study/Graduation 3 each.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: debits are the only entry type attached to a real leave request,
+  and the reporter excluded historical leave transactions. Removing accruals while keeping debits leaves
+  negative balances BY CONSTRUCTION. There is no ordering of a full wipe that satisfies both instructions.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - The Leave Balance Health section itself. It stores nothing (lib/leave-config-health.ts: "It writes
+      nothing and it configures nothing"), so there is no health record to show being deleted.
+    - Employee names. The counts are real; nobody is named.
+    - A progress or confirmation dialog — the shape of the tool is not decided until this is approved.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;
+        --amberbg:#fffbeb;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:8px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .clear{background:var(--badbg);color:var(--badfg)}
+  .keep{background:var(--goodbg);color:var(--goodfg)}
+  .decide{background:var(--amberbg);color:var(--amber)}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#7c4a03}
+  .ok{background:var(--goodbg);border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#14532d}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  .step{border:1px solid var(--border);border-radius:10px;padding:10px;background:#fcfcfe}
+  .step b{font-size:12px} .step p{margin:4px 0 0;font-size:11px;color:var(--mf)}
+  .n{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;background:var(--primary);
+     color:#fff;font-size:10px;font-weight:700;margin-right:5px}
+</style>
+
+<div class="card">
+  <h1>Your leave balances are three different things, and only one came from the configuration</h1>
+  <p class="sub">Read from your live system on 10 September 2026. Every figure below is real.</p>
+  <table>
+    <tr><th>What it is</th><th class="r">Records</th><th class="r">Days</th><th>Where it came from</th><th>Proposed</th></tr>
+    <tr><td><b>Entitlement the system generated</b></td><td class="r">201</td><td class="r">+3,101.3</td>
+        <td>Your entitlement configuration</td><td><span class="pill clear">Cleared</span></td></tr>
+    <tr><td><b>Adjustments your HR team made by hand</b></td><td class="r">79</td><td class="r">+2,094.3</td>
+        <td>Deliberate decisions by your team</td><td><span class="pill keep">Kept</span></td></tr>
+    <tr><td><b>Leave people actually took</b></td><td class="r">19</td><td class="r">−16.5</td>
+        <td>Real leave requests — 11 approved</td><td><span class="pill keep">Kept</span></td></tr>
+  </table>
+  <div class="note" style="margin-top:12px">
+    <b>This is the thing that decides the shape of the work.</b> You asked us not to touch historical
+    leave transactions — and we agree. But if we clear the generated entitlement and keep the leave people
+    took, those employees are left having taken leave against a balance that no longer exists, so their
+    balance reads negative. Clearing the taken leave instead would erase leave they genuinely took.
+    <b>There is no way to wipe the balances that satisfies both instructions</b>, so we are telling you
+    rather than quietly picking one.
+  </div>
+</div>
+
+<div class="card">
+  <h2>The configuration side — this is what makes the screen change</h2>
+  <p class="sub">Leave Balance Health stores nothing of its own. It works out its verdict fresh every time
+    the page opens, so there is no health data to delete — clear the configuration and it reports
+    "not configured".</p>
+  <table>
+    <tr><th>Configuration</th><th class="r">In force</th><th>Proposed</th></tr>
+    <tr><td>Entitlement tables — Annual 16, Medical 5, and six other types with 3 each</td>
+        <td class="r">45</td><td><span class="pill clear">Cleared</span></td></tr>
+    <tr><td>Eligibility rules</td><td class="r">4 of 5</td><td><span class="pill clear">Cleared</span></td></tr>
+    <tr><td>Leave types (the master list)</td><td class="r">18</td><td><span class="pill keep">Untouched</span></td></tr>
+    <tr><td>Leave requests, employees, payroll, attendance, claims</td><td class="r">—</td>
+        <td><span class="pill keep">Untouched</span></td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>How we would do it</h2>
+  <div class="steps">
+    <div class="step"><b><span class="n">1</span>Write it down</b>
+      <p>A record of every table, rule and balance, as a listing you can open and download in your admin
+         screens. You already have those screens.</p></div>
+    <div class="step"><b><span class="n">2</span>Clear the configuration</b>
+      <p>The 45 tables and the rules. Balance Health now reports every leave type as unconfigured — the
+         result you asked for.</p></div>
+    <div class="step"><b><span class="n">3</span>Clear the generated entitlement</b>
+      <p>The 201 records. Done second, so you see the screen change before any balance moves.</p></div>
+    <div class="step"><b><span class="n">4</span>Set up again</b>
+      <p>Configure from scratch and generate. Balances return to positive as fresh entitlement lands.</p></div>
+  </div>
+  <div class="ok" style="margin-top:12px">
+    <b>We rehearse on a copy of your data first</b> and show you the before and after counts. Only once
+    you have seen those do we run it on your live system — and the written record is taken before
+    anything is cleared, not after.
+  </div>
+</div>
