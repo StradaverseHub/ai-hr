@@ -270,6 +270,33 @@ export class ShiftArrangementOnlyPeriodError extends Error {
 }
 
 /**
+ * a485afa1 (verify-fix) — ONLY THE NEWEST PERIOD MAY BE REMOVED, and this refusal is the whole reason the
+ * screen's Remove is safe to offer at all.
+ *
+ * Removal is UNDONE by saving the same arrangement back at the same date — and `assignEmployeeShiftDated`
+ * refuses any date earlier than the last one already on the ladder (ShiftBackInsertError; back-insert is
+ * out of scope for v1). So a MIDDLE period, once removed, cannot be put back at EITHER door: the entry
+ * below it is still there and blocks the re-save. Nothing is destroyed at row level — the row is
+ * superseded and a DomainEvent records it — but the stretch of time it governed permanently reverts to the
+ * earlier shift, and attendance and overtime for those days derive against that. A one-click, irreversible
+ * change to somebody's paid hours is not something a mis-click on a history row should be able to make.
+ *
+ * The NEWEST period has no such trap: with it gone the ladder's last date is the one before it, so saving
+ * it again is a forward-dated change and is accepted. Removal therefore means exactly "take back the most
+ * recent change", which is what an administrator who mis-typed one actually wants.
+ *
+ * `newestEffectiveFrom` names the entry that may be removed, so the sentence on screen can too.
+ */
+export class ShiftArrangementNotNewestError extends Error {
+  constructor(readonly newestEffectiveFrom: string) {
+    super(
+      `Only the most recent shift arrangement (${newestEffectiveFrom}) can be removed. An earlier one cannot be put back once taken away.`,
+    );
+    this.name = 'ShiftArrangementNotNewestError';
+  }
+}
+
+/**
  * a485afa1 — REMOVE one dated period from an employee's shift-arrangement ladder.
  *
  * WHY THIS IS A NEW FUNCTION AND NOT A SECOND WRITER. `assignEmployeeShiftDated` is the one way a period is
@@ -286,6 +313,13 @@ export class ShiftArrangementOnlyPeriodError extends Error {
  * one inherits the removed one's `valid_to` — null (open) when the removed period was the current one,
  * otherwise the day before whatever follows. Without this the ladder would carry a gap, and a date inside
  * it would resolve to the wrong side of the missing period.
+ *
+ * ⚠️ ONLY THE NEWEST PERIOD, AND ONLY IF IT IS NOT THE LAST ONE — three refusals, in this order: not on
+ * this ladder, the only one on file, not the newest. The third is the one to read before relaxing any of
+ * this: removal is undone by re-saving the same date, and the writer refuses a date earlier than the
+ * ladder's last, so removing a MIDDLE period is irreversible at every door. See
+ * ShiftArrangementNotNewestError. The screen renders Remove on the newest row only; this is the check that
+ * makes that true of a forged POST as well.
  */
 export async function removeShiftArrangement(
   ctx: SessionContext,
@@ -312,6 +346,8 @@ export async function removeShiftArrangement(
     const i = rows.findIndex((r) => r.id === p.arrangementId);
     if (i < 0) throw new ShiftArrangementNotFoundError();
     if (rows.length === 1) throw new ShiftArrangementOnlyPeriodError();
+    // `rows` is ascending by valid_from, so the newest live period is the last of them.
+    if (i !== rows.length - 1) throw new ShiftArrangementNotNewestError(rows[rows.length - 1].validFrom);
     const target = rows[i];
     const prev = i > 0 ? rows[i - 1] : undefined;
 

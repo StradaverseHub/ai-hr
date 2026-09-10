@@ -7910,6 +7910,13 @@
       "removeNotFound": "Sắp xếp đó không còn trong hồ sơ.",
       "savedNote": "Đã lưu sắp xếp ca làm việc.",
       "removedNote": "Đã gỡ sắp xếp.",
+      "historyRemoveNote": "Chỉ có thể gỡ thay đổi mới nhất, và chỉ khi vẫn còn một thay đổi trước đó trong hồ sơ: gỡ nó sẽ khôi phục sắp xếp đã có hiệu lực trước thay đổi này. Các thay đổi cũ hơn vẫn được giữ nguyên — muốn sửa một trong số đó, hãy lưu một thay đổi mới.",
+      "removeNotNewestRefused": "Chỉ có thể gỡ thay đổi mới nhất ({date}). Một thay đổi cũ hơn khi đã gỡ thì không thể khôi phục — hãy lưu một thay đổi mới thay vì gỡ.",
+      "removeConfirmTitle": "Gỡ thay đổi ca làm việc này?",
+      "removeConfirmSubject": "Thay đổi có hiệu lực từ {date}",
+      "removeConfirmBody": "Sắp xếp đã có hiệu lực trước thay đổi này sẽ có hiệu lực trở lại từ ngày đó, và chấm công cũng như làm thêm giờ của những ngày đó sẽ được tính theo sắp xếp ấy. Bạn có thể khôi phục thay đổi này bằng cách lưu lại nó.",
+      "badEmployment": "Không xác định được nhân viên đó. Hãy đóng bảng, mở lại từ danh sách và thử lại.",
+      "unexpectedError": "Không thể lưu thay đổi này. Hãy thử lại và báo cho quản trị viên hệ thống nếu vẫn tiếp diễn.",
       "empty": "Không có nhân viên nào khớp với các bộ lọc này.",
       "activeOnlyNote": "Chỉ nhân viên đang làm việc. Lịch sử ca của người đã nghỉ vẫn nằm trong hồ sơ của họ.",
       "filters": {

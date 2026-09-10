@@ -7910,6 +7910,13 @@
       "removeNotFound": "该安排已不在记录中。",
       "savedNote": "班次安排已保存。",
       "removedNote": "安排已移除。",
+      "historyRemoveNote": "只能移除最近一次变更，且必须仍有更早的变更在记录中：移除后，此次变更之前生效的安排会重新生效。更早的变更会保留在记录中——如需修改，请改为保存一次新的变更。",
+      "removeNotNewestRefused": "只能移除最近一次变更（{date}）。更早的变更一旦移除便无法恢复——请改为保存一次新的变更。",
+      "removeConfirmTitle": "确定移除此次班次变更？",
+      "removeConfirmSubject": "自 {date} 起生效的变更",
+      "removeConfirmBody": "此次变更之前生效的安排将自该日期起重新生效，这些日期的考勤与加班也将按其计算。您可以再次保存该变更以恢复它。",
+      "badEmployment": "无法识别该员工。请关闭面板，从列表中重新打开后再试。",
+      "unexpectedError": "无法保存此次变更。请重试；若持续出现，请通知系统管理员。",
       "empty": "没有符合这些筛选条件的员工。",
       "activeOnlyNote": "仅显示在职员工。离职员工的班次历史仍保留在其个人档案中。",
       "filters": {

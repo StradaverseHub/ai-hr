@@ -22,6 +22,7 @@ import {
   thCls,
 } from '@/components/ui';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from './actions';
 
@@ -54,6 +55,13 @@ import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from '.
  * partial unique index and the shared `pickArrangementOn` rule — not here, and not by sorting rows in
  * this file. See that function's header.
  *
+ * REMOVAL IS "TAKE BACK THE LAST CHANGE", NOT "DELETE ANY ROW", and the earlier note here that called it
+ * recoverable was only ever true of the newest period. A removal is undone by saving the same arrangement
+ * back at the same date; the writer refuses a date earlier than the ladder's last, so an OLDER period
+ * could never be put back — at this door or the personnel one. Remove is therefore offered on the newest
+ * history row only, said so on screen (`historyRemoveNote`), refused in core for a forged POST, and
+ * confirmed before it runs. See the history section below and ShiftArrangementNotNewestError.
+ *
  * THE PANEL IS URL-DRIVEN (`?assign=<employmentId>`), not client state: the filters are already in the
  * query string, so the open panel travels with them through every redirect the two actions perform, and
  * an administrator can bookmark or reload the row they are working on. It also keeps this page a plain
@@ -63,6 +71,17 @@ import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from '.
  * employee in the tenant. The menu is not what protects it (test/attendance-menu-relocation.test.ts).
  */
 const PAGE = '/admin/attendance/schedule-assignment';
+
+/**
+ * `?assign=` IS AN UNTRUSTED QUERY PARAM AND `employment.id` IS A UUID COLUMN. Handed to the shared read
+ * unchecked, a malformed value reaches `eq(employment.id, …)` and Postgres throws "invalid input syntax
+ * for type uuid" — which takes the whole page to a 500 and DEFEATS the `panelMissing` branch below that
+ * was written for exactly this case. So the shape is checked here, before the query, the same way
+ * lib/calendar-focus.ts checks the Leave Calendar's focus param ("Junk is dropped rather than rendered").
+ * Junk keeps the panel OPEN and falls through to `panelMissing`: a stale bookmark is told its employee is
+ * not on this list, never shown a crash.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function ScheduleAssignmentPage({
   searchParams,
@@ -89,6 +108,9 @@ export default async function ScheduleAssignmentPage({
     sp.status === 'current' || sp.status === 'scheduled' || sp.status === 'notRecorded' ? sp.status : undefined;
   const shiftId = sp.shiftId?.trim() || undefined;
   const assign = sp.assign?.trim() || undefined;
+  // The value the QUERY may see — `assign` still drives whether the panel is on screen, so a malformed
+  // one renders the "no longer on this list" sentence instead of being silently dropped.
+  const assignId = assign && UUID_RE.test(assign) ? assign : undefined;
 
   // ONE "today" for the whole render: the list's status buckets, the panel's row and the effective-date
   // default all answer to the same calendar day, in the tenant's timezone (never the UTC date — between
@@ -109,7 +131,7 @@ export default async function ScheduleAssignmentPage({
    * out of `rows`. Changing somebody's backup shift while the list is filtered by backup shift moves them
    * out of the filtered set, and the panel they are still standing in must not blank out mid-edit.
    */
-  const [panelRow] = assign ? await listShiftArrangements(s, { employmentId: assign, today }) : [];
+  const [panelRow] = assignId ? await listShiftArrangements(s, { employmentId: assignId, today }) : [];
   const history = panelRow ? await shiftArrangementHistory(s, panelRow.employmentId) : [];
   const panelShifts = panelRow
     ? libraryShifts.filter((sh) => !sh.archivedAt || sh.id === panelRow.shiftId)
@@ -274,11 +296,21 @@ export default async function ScheduleAssignmentPage({
               </form>
               <p className="px-4 pb-3 text-xs text-muted-foreground">{t('panelHint')}</p>
 
-              {/* PREVIOUS ARRANGEMENTS, and the place a wrong one is taken back off. LIVE periods only — a
-                  second save for the same date REPLACES its entry rather than adding a line, which is why
-                  a replaced entry is not here to remove. The Remove forms are SIBLINGS of the save form,
-                  never nested inside it: a form inside a form is invalid HTML and the inner one is
-                  dropped by the parser. */}
+              {/* PREVIOUS ARRANGEMENTS, and the place the most recent change is taken back off. LIVE
+                  periods only — a second save for the same date REPLACES its entry rather than adding a
+                  line, which is why a replaced entry is not here to remove. The Remove form is a SIBLING
+                  of the save form, never nested inside it: a form inside a form is invalid HTML and the
+                  inner one is dropped by the parser.
+
+                  ⚠️ REMOVE IS ON THE NEWEST ROW ONLY, and `historyRemoveNote` says so on screen. Removal
+                  is undone by saving the same arrangement back at the same date, and the writer refuses a
+                  date earlier than the ladder's last (ShiftBackInsertError, back-insert out of scope for
+                  v1) — so an OLDER row, once removed, could not be put back at either door, and the
+                  stretch of time it governed would permanently revert to the earlier shift with
+                  attendance and overtime deriving against that. core/shift-arrangement.ts enforces the
+                  same rule against a forged POST (ShiftArrangementNotNewestError); this only decides what
+                  is offered. The confirmation is the second half: even the recoverable removal moves
+                  somebody's paid hours, so it is not a single click. */}
               <section className="border-t border-border">
                 <div className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {t('historyTitle')}
@@ -300,7 +332,7 @@ export default async function ScheduleAssignmentPage({
                           </tr>
                         </thead>
                         <tbody className={tbodyCls}>
-                          {history.map((h) => (
+                          {history.map((h, i) => (
                             <tr key={h.id}>
                               <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">{h.effectiveFrom}</td>
                               <td className="px-3 py-2.5 text-muted-foreground">
@@ -314,23 +346,32 @@ export default async function ScheduleAssignmentPage({
                                 {h.recordedOnRelease ? t('historyRecordedOnRelease') : h.changedAt.slice(0, 10)}
                               </td>
                               <td className="px-3 py-2.5 text-right">
-                                <form action={removeScheduleArrangementAction}>
-                                  <input type="hidden" name="employmentId" value={panelRow.employmentId} />
-                                  <input type="hidden" name="arrangementId" value={h.id} />
-                                  <input type="hidden" name="returnTo" value={returnTo} />
-                                  <button
-                                    aria-label={t('removeAria', { date: h.effectiveFrom })}
-                                    className="text-xs font-medium text-destructive hover:underline"
-                                  >
-                                    {t('remove')}
-                                  </button>
-                                </form>
+                                {/* history is newest-first (core/shift-arrangement.ts
+                                    shiftArrangementHistory ends `.reverse()`), so row 0 IS the newest. */}
+                                {i === 0 && history.length > 1 ? (
+                                  <form action={removeScheduleArrangementAction}>
+                                    <input type="hidden" name="employmentId" value={panelRow.employmentId} />
+                                    <input type="hidden" name="arrangementId" value={h.id} />
+                                    <input type="hidden" name="returnTo" value={returnTo} />
+                                    <ConfirmSubmit
+                                      size="sm"
+                                      aria-label={t('removeAria', { date: h.effectiveFrom })}
+                                      title={t('removeConfirmTitle')}
+                                      subtitle={t('removeConfirmSubject', { date: h.effectiveFrom })}
+                                      description={t('removeConfirmBody')}
+                                      confirmLabel={t('remove')}
+                                    >
+                                      {t('remove')}
+                                    </ConfirmSubmit>
+                                  </form>
+                                ) : null}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                    <p className="pt-2 text-xs text-muted-foreground">{t('historyRemoveNote')}</p>
                   </div>
                 )}
               </section>

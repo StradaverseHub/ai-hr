@@ -7910,6 +7910,13 @@
       "removeNotFound": "That arrangement is no longer on file.",
       "savedNote": "Shift arrangement saved.",
       "removedNote": "Arrangement removed.",
+      "historyRemoveNote": "Only the most recent change can be removed, and only while an earlier one is still on file: removing it puts back the arrangement that was in force before it. Earlier changes stay as they are — to alter one of those, save a new change instead.",
+      "removeNotNewestRefused": "Only the most recent change ({date}) can be removed. An earlier one cannot be put back once it is taken away — save a new change instead.",
+      "removeConfirmTitle": "Remove this shift change?",
+      "removeConfirmSubject": "The change effective {date}",
+      "removeConfirmBody": "The arrangement that was in force before this change takes over again from that date, and attendance and overtime for those days are calculated against it. You can put this change back by saving it again.",
+      "badEmployment": "That employee could not be identified. Close the panel, open it again from the list and try once more.",
+      "unexpectedError": "The change could not be saved. Try again, and tell your system administrator if it keeps happening.",
       "empty": "No employee matches these filters.",
       "activeOnlyNote": "Active employees only. A leaver's shift history stays on their own profile.",
       "filters": {

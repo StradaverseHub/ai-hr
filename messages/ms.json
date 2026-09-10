@@ -7910,6 +7910,13 @@
       "removeNotFound": "Susunan itu tiada lagi dalam rekod.",
       "savedNote": "Susunan syif disimpan.",
       "removedNote": "Susunan dibuang.",
+      "historyRemoveNote": "Hanya perubahan terkini boleh dibuang, dan hanya selagi ada perubahan terdahulu dalam rekod: membuangnya akan mengembalikan susunan yang berkuat kuasa sebelum itu. Perubahan terdahulu kekal seperti sedia ada — untuk mengubah salah satu daripadanya, simpan perubahan baharu sebaliknya.",
+      "removeNotNewestRefused": "Hanya perubahan terkini ({date}) boleh dibuang. Perubahan terdahulu tidak boleh dikembalikan setelah dibuang — simpan perubahan baharu sebaliknya.",
+      "removeConfirmTitle": "Buang perubahan syif ini?",
+      "removeConfirmSubject": "Perubahan berkuat kuasa {date}",
+      "removeConfirmBody": "Susunan yang berkuat kuasa sebelum perubahan ini akan berkuat kuasa semula mulai tarikh tersebut, dan kehadiran serta kerja lebih masa bagi hari-hari itu dikira mengikutnya. Anda boleh mengembalikan perubahan ini dengan menyimpannya semula.",
+      "badEmployment": "Pekerja itu tidak dapat dikenal pasti. Tutup panel, buka semula dari senarai dan cuba lagi.",
+      "unexpectedError": "Perubahan itu tidak dapat disimpan. Cuba lagi, dan beritahu pentadbir sistem anda jika ia berterusan.",
       "empty": "Tiada pekerja sepadan dengan tapisan ini.",
       "activeOnlyNote": "Pekerja aktif sahaja. Sejarah syif pekerja yang telah berhenti kekal pada profil mereka sendiri.",
       "filters": {

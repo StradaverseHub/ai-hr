@@ -26,7 +26,24 @@
  *
  *     AND ITS THIRD OPERATION. Removal did not exist at either door — the panel is the first surface to
  *     offer it — so `removeShiftArrangement` is pinned here too: it supersedes rather than deletes, it
- *     re-opens the period it had closed, and it refuses to take away the last one on file.
+ *     re-opens the period it had closed, it refuses to take away the last one on file, and it refuses any
+ *     entry that is NOT the newest (removal is undone by re-saving the same date, and the writer will not
+ *     accept a date earlier than the ladder's last — so an older removal could not be undone at any door).
+ *
+ * ⚠️ READ BEFORE ADDING A `describe` TO THIS FILE — THE MOCKS ARE FILE-LEVEL, NOT PER-DESCRIBE.
+ * `vi.mock` of ../lib/authz, next/cache, next/navigation and next-intl/server sits at module scope below,
+ * and so do `beforeAll(migrateTestDb)` / `afterAll(closeAll)` (hoisted out of the first describe by
+ * a485afa1 because a second database-backed describe follows it and a per-describe afterAll would close
+ * the pool under it). EVERY describe in this file therefore inherits, whether it wants them or not:
+ *   · `requireAdmin` is a fake that returns the module-level `ADMIN` — a describe that does not assign
+ *     `ADMIN` in its own beforeEach gets whatever the previous describe left there, and NOTHING here
+ *     tests real authorization. An authz assertion must live in its own file.
+ *   · `redirect()` THROWS (`NEXT_REDIRECT`) and records into `LAST_REDIRECT` instead of navigating — code
+ *     after a redirect never runs, and an un-awaited action swallows the throw.
+ *   · `getTranslations` returns the KEY, not the sentence, so an assertion on user-facing copy here is
+ *     asserting a key name. Locale VALUES are asserted in the last describe, which reads messages/*.json
+ *     off disk instead.
+ * If a new describe needs any of these to be real, put it in a new file rather than un-mocking here.
  *
  *  3. THE LABELS. i18n-check.mjs proves a key EXISTS in all six locales; it cannot prove a value was
  *     updated, so a locale left saying "Plan OT" passes it silently. Every renamed value is therefore
@@ -66,11 +83,37 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NextIntlClientProvider } from 'next-intl';
 import {
   removeScheduleArrangementAction,
   saveScheduleAssignmentAction,
 } from '../app/admin/attendance/schedule-assignment/actions';
+import ScheduleAssignmentPage from '../app/admin/attendance/schedule-assignment/page';
 import { setDefaultShiftAction } from '../app/admin/personnel/[employmentId]/actions';
+
+/**
+ * The screen itself, rendered. A 200 is not a render check and neither is a source scan: the crash this
+ * pins (a malformed `?assign=`) passed tsc, the suite and `next build`, and only a real render found it.
+ *
+ * The SERVER strings come from the mocked `getTranslations` and are therefore KEY NAMES — the assertions
+ * below name keys where they mean sentences. The CLIENT islands in the tree (EmployeeShiftFields,
+ * ConfirmSubmit) call `useTranslations` instead, which needs a real provider, so they are given the real
+ * en.json and render real copy: a key missing from the catalogue would show up here rather than as a
+ * MISSING_MESSAGE on a live page.
+ */
+async function renderPage(searchParams: Record<string, string>): Promise<string> {
+  const tree = await ScheduleAssignmentPage({ searchParams: Promise.resolve(searchParams) });
+  return renderToStaticMarkup(
+    createElement(NextIntlClientProvider, {
+      locale: 'en',
+      timeZone: 'Asia/Kuala_Lumpur',
+      messages: JSON.parse(read('messages/en.json')),
+      children: tree as never,
+    }),
+  );
+}
 
 /** Run a server action to its redirect and return where it sent the browser. */
 async function runAction(action: (fd: FormData) => Promise<void>, fields: Record<string, string>) {
@@ -543,6 +586,152 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     // than core's English message being shown to the user.
     expect(back).toContain('error=removeOnlyRefused');
     expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.id), 'nothing was removed').toEqual([only.id]);
+  });
+
+  it('a malformed ?assign= renders the panel’s own sentence — it does not take the page down', async () => {
+    // THE VERIFIER'S 500. `?assign=not-a-uuid` reached eq(employment.id, …) on a uuid column, Postgres
+    // threw "invalid input syntax for type uuid", and the page — including the `panelMissing` branch
+    // written for exactly this ("a stale bookmark") — never rendered. A well-formed but unknown uuid was
+    // always handled; both are asserted so a future edit cannot fix one and lose the other.
+    const emp = await hire('Ivy Bookmark', 'E109');
+    await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: LIST_URL,
+    });
+
+    for (const junk of ['not-a-uuid', "'; drop table employment; --", '123', emp.slice(0, -1)]) {
+      const html = await renderPage({ assign: junk });
+      expect(html, `?assign=${junk} keeps the panel open and says the employee is not here`).toContain(
+        'panelMissing',
+      );
+      expect(html, 'and the list underneath it still rendered').toContain('Ivy Bookmark');
+    }
+
+    const unknown = await renderPage({ assign: '00000000-0000-4000-8000-000000000000' });
+    expect(unknown, 'a well-formed uuid nobody owns reads the same').toContain('panelMissing');
+
+    // And the panel still opens for a real one — the shape check narrows nothing it should not.
+    const real = await renderPage({ assign: emp });
+    expect(real, 'the employee the panel is open on').toContain('Ivy Bookmark');
+    expect(real, 'their arrangement is being edited, not reported missing').not.toContain('panelMissing');
+  });
+
+  it('an older change cannot be removed — only the newest, which is the only one that can be put back', async () => {
+    // THE VERIFIER'S SECOND FINDING. Removal is undone by saving the same arrangement back at the same
+    // date, and the writer refuses a date earlier than the ladder's last — so removing a MIDDLE period
+    // was irreversible at BOTH doors. Three periods, and the middle one is refused.
+    const emp = await hire('Jo Ladder', 'E110');
+    const MID = '2026-06-15';
+    for (const [shiftId, effectiveFrom] of [
+      [shiftA, PAST],
+      [shiftB, MID],
+      [shiftA, FUTURE],
+    ] as const) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId: emp,
+        shiftType: 'fixed',
+        shiftId,
+        effectiveFrom,
+        returnTo: LIST_URL,
+      });
+    }
+    const before = await shiftArrangementHistory(ADMIN, emp);
+    expect(before.map((h) => h.effectiveFrom), 'a three-period ladder, newest first').toEqual([
+      FUTURE,
+      MID,
+      PAST,
+    ]);
+
+    const refused = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: before[1].id,
+      returnTo: LIST_URL,
+    });
+    expect(refused, 'the middle period is refused, in the reader’s language').toContain(
+      'error=removeNotNewestRefused',
+    );
+    expect(
+      (await shiftArrangementHistory(ADMIN, emp)).map((h) => [h.effectiveFrom, h.effectiveTo]),
+      'and nothing on the ladder moved',
+    ).toEqual(before.map((h) => [h.effectiveFrom, h.effectiveTo]));
+
+    // WHY it is refused, shown rather than asserted in prose: the same date cannot be saved back while a
+    // later entry stands, so a removed middle period could never be put back at either door.
+    const blocked = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftB,
+      effectiveFrom: MID,
+      returnTo: LIST_URL,
+    });
+    expect(blocked, 'back-insert is out of scope for v1 — this is the door that would have to reopen').toContain(
+      'error=shiftBackInsertRefused',
+    );
+
+    // The NEWEST one, by contrast, is removable AND genuinely re-creatable — the claim this round makes.
+    const removed = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: before[0].id,
+      returnTo: LIST_URL,
+    });
+    expect(removed).toContain('removed=1');
+    const restored = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: FUTURE,
+      returnTo: LIST_URL,
+    });
+    expect(restored, 'saving it again puts it back').toContain('saved=1');
+    expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.effectiveFrom)).toEqual([
+      FUTURE,
+      MID,
+      PAST,
+    ]);
+  });
+
+  it('the panel offers Remove on the newest row only, and says so', async () => {
+    const emp = await hire('Kit Rows', 'E111');
+    for (const [shiftId, effectiveFrom] of [
+      [shiftA, PAST],
+      [shiftB, '2026-06-15'],
+      [shiftA, FUTURE],
+    ] as const) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId: emp,
+        shiftType: 'fixed',
+        shiftId,
+        effectiveFrom,
+        returnTo: LIST_URL,
+      });
+    }
+    const hist = await shiftArrangementHistory(ADMIN, emp);
+    const html = await renderPage({ assign: emp });
+    const offered = [...html.matchAll(/name="arrangementId" value="([0-9a-fA-F-]{36})"/g)].map((m) => m[1]);
+    expect(offered, 'three history rows, ONE Remove form, on the newest period').toEqual([hist[0].id]);
+    expect(html, 'and the screen says why the older rows have none').toContain('historyRemoveNote');
+  });
+
+  it('a malformed employmentId is refused by field, and no SQL reaches the screen', async () => {
+    // The banner used to print the whole statement — table, column list and bound parameters — because
+    // the id went to Postgres unchecked and the error's own message was reflected into the URL.
+    for (const action of [saveScheduleAssignmentAction, removeScheduleArrangementAction]) {
+      const back = await runAction(action, {
+        employmentId: 'junk',
+        arrangementId: randomUUID(),
+        shiftType: 'fixed',
+        shiftId: shiftA,
+        effectiveFrom: PAST,
+        returnTo: LIST_URL,
+      });
+      expect(back, 'no statement, no column list, no bound parameters reach the banner').not.toMatch(
+        /Failed|select|from%22|params|employment%22/i,
+      );
+      expect(back, 'and the field that was wrong is named instead').toContain('error=badEmployment');
+    }
   });
 
   it('an arrangement that is not on the named employee’s ladder is refused, not silently ignored', async () => {
