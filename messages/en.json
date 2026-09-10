@@ -8378,7 +8378,6 @@
       "allGrades": "All grades"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Medical & Hospitalisation balance record",
       "pageDescription": "A read-only record of every Medical Leave and Hospitalisation Leave balance record removed by the one-off reset, kept so the old figures are never lost.",
       "intro": "This is the written record taken immediately before the Medical Leave and Hospitalisation Leave reset removed anything. Each row shows who held the record, which leave type it belonged to, how many days it was worth, the date it took effect and why it was there.",
       "notAnUndo": "This is a record to read from, not an undo button. The rows listed here were removed and putting them back means entering them again.",

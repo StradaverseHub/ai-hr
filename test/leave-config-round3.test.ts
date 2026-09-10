@@ -117,7 +117,7 @@ const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: false },
   import: { to: '/admin/leave-config/import', cutOver: true },
   archive: { to: '/admin/leave-config/records/entitlement', cutOver: true },
-  ledgerArchive: { to: '/admin/leave-config/records/balances', cutOver: false },
+  ledgerArchive: { to: '/admin/leave-config/records/balances', cutOver: true },
 };
 
 /** The old address each of those screens answers on, so a stub can be checked against its own route. */

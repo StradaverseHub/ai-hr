@@ -8378,7 +8378,6 @@
       "allGrades": "Semua gred"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Rekod baki Cuti Sakit & Kemasukan Hospital",
       "pageDescription": "Rekod baca sahaja bagi setiap rekod baki Cuti Sakit dan Cuti Kemasukan Hospital yang dibuang oleh set semula sekali sahaja, disimpan supaya angka lama tidak hilang.",
       "intro": "Ini ialah rekod bertulis yang diambil sejurus sebelum set semula Cuti Sakit dan Cuti Kemasukan Hospital membuang apa-apa. Setiap baris menunjukkan pemegang rekod, jenis cuti berkenaan, berapa hari nilainya, tarikh ia berkuat kuasa dan sebab ia wujud.",
       "notAnUndo": "Ini rekod untuk dibaca, bukan butang buat asal. Baris di sini telah dibuang dan untuk mengembalikannya ia perlu dimasukkan semula.",

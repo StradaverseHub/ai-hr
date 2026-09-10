@@ -8378,7 +8378,6 @@
       "allGrades": "Tất cả ngạch"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Bản ghi số dư Nghỉ ốm & Nghỉ nằm viện",
       "pageDescription": "Bản ghi chỉ đọc của mọi bản ghi số dư Nghỉ ốm và Nghỉ nằm viện đã bị xoá bởi lần đặt lại một lần, được giữ lại để các số liệu cũ không bao giờ mất.",
       "intro": "Đây là bản ghi được lập ngay trước khi việc đặt lại Nghỉ ốm và Nghỉ nằm viện xoá bất cứ thứ gì. Mỗi dòng cho biết bản ghi thuộc về ai, loại nghỉ phép nào, trị giá bao nhiêu ngày, ngày có hiệu lực và lý do nó tồn tại.",
       "notAnUndo": "Đây là bản ghi để đọc, không phải nút hoàn tác. Các dòng liệt kê ở đây đã bị xoá và muốn khôi phục thì phải nhập lại.",
