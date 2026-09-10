@@ -338,9 +338,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // is `/admin/leave-config/entitlement-tables` now; the old address is an unguarded redirect stub,
       // and a stub is not a screen this grid can describe, so it left `routes` in the SAME commit that
       // emptied the page — test/function-access.test.ts fails BOTH ways.
-      // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
-      // screenKey (the /admin/personnel precedent above).
-      '/admin/leave/adjustments',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/adjustments'` (491c499f) STOOD HERE and is
+      // DELIBERATELY GONE. Adjustments is `/admin/leave-config/adjustments` now and the old address is an
+      // unguarded redirect stub, so it left `routes` in the SAME commit that emptied the page.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/generate'` (4b0e76ae) STOOD HERE and is DELIBERATELY
       // GONE. Generate Entitlement is `/admin/leave-config/generate` now — and it is still the ONLY way to
       // open a leave year, which is why the new route was registered (two lines up) in the round that

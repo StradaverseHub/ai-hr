@@ -219,7 +219,8 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // also left lib/permissions.ts's leaveConfig `routes` in the same change — test/function-access.test.ts
     // fails on a registered route with no guarded page on disk, which is why that is one move, not two.
     { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements', icon: ClipboardList },
-    { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
+    // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not (see the Generate row below).
+    { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
     // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
     // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts
     // in the same commit), so this row must name the new one: test/leave-flyout-nav.test.ts requires every

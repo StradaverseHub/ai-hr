@@ -58,7 +58,8 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // The two properties the removal has to keep are asserted below by their own tests rather than by this
   // list: the ROUTE still resolves (as a redirect stub, so no bookmark 404s) and Entitlements is now first.
   { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements' },
-  { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
+  { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments' },
   // a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The two properties this list guards are "no
   // destination lost" and "no re-sorting"; neither is about the literal address. The screen moved to
   // `/admin/leave-config/generate` and the old address is a redirect stub, so pinning the OLD href here

@@ -14,8 +14,9 @@ import { redirect } from 'next/navigation';
 
 /** The Leave Type configuration workspace (General / Condition / Entitlement / Custom Setting steps). */
 export const ENTITLEMENTS = '/admin/leave/entitlements';
-/** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts. */
-export const ADJUSTMENTS = '/admin/leave/adjustments';
+/** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
+export const ADJUSTMENTS = '/admin/leave-config/adjustments';
 /** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts.
  *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
 export const GENERATE = '/admin/leave-config/generate';
