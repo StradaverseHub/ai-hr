@@ -976,9 +976,12 @@ export default async function ApprovalsPage({
                         jsonb key: "bankAccountNo → 5566778899". With the widened field set that would
                         have been twenty-four raw keys an approver had to translate in their head, and
                         every select among them would have read as its stored code. */}
-                    {/* ONE FIELD PER LINE, for the same reason /admin/personnel is: the option labels
-                        an employee picks from contain ' · ' themselves ("2 · Married, spouse not
-                        working"), so joining the pairs with it made one field read as two. */}
+                    {/* ONE FIELD PER LINE, for the same reason the Personnel approval queue is: the
+                        option labels an employee picks from contain ' · ' themselves ("2 · Married,
+                        spouse not working"), so joining the pairs with it made one field read as two.
+                        (The sibling screen is deliberately named in words here: test/personnel-links.test.ts
+                        scans this file's RAW SOURCE for the retired admin path, and a source-scanning
+                        guard does not strip comments — AGENTS 27.) */}
                     <div className="text-xs text-muted-foreground">
                       {Object.entries((r.proposed ?? {}) as Record<string, unknown>).map(([k, v]) => {
                         const f = requestableField(k);
