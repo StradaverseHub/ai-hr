@@ -5,6 +5,10 @@ import { getSession } from '@/lib/session';
 import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance } from '@/core/read';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfileChangeRequests } from '@/core/profile';
+// r261 stage three — the tenant's field-by-field permission for change requests (ess.profile_change_fields).
+// The QUIET reader, and the closed fallback, for the reason spelled out where it is used below.
+import { getSettingOrFallback } from '@/core/entitlements';
+import { resolveAllowedRequestKeys } from '@/lib/profile-requestable-fields';
 import { myResignation } from '@/core/offboarding';
 import { isChildReliefEligible, childAgeYears } from '@/core/dependents';
 // ADR-0080 D9/D11 — through the leave pack's FACADE, never core/leave directly. The Personnel screen
@@ -193,6 +197,30 @@ export default async function MePage({
    * label. Nothing here reads the request store a second time: `profileRequests` is the employee's own
    * history, already scoped to `ctx.personId` by `myProfileChangeRequests`.
    */
+  /**
+   * r261 stage three — WHICH fields this tenant lets an employee ask to change. Resolved ONCE for the
+   * whole page and handed to both request cards, so the two tabs cannot end up reading two different
+   * answers, and read from the same tenant setting `core/profile.ts` enforces on the POST. The screen
+   * hiding a control and the service dropping the key are two independent statements of one policy.
+   *
+   * ⚠️ THE QUIET READER, AND THE CLOSED FALLBACK (r261 fix pass). This first shipped as
+   * `profileChangeAllowedKeys(s)` — the THROWING service form — which made /me, the home screen of the
+   * entire workforce, return 500 whenever the entitlement snapshot could not be resolved (a pool blip, a
+   * statement timeout, a code-ahead-of-migration deploy). There is no app/error.tsx, so the employee got
+   * a broken page instead of their payslips because a settings lookup failed. core/entitlements.ts draws
+   * the line: a PAGE read is a display decision and degrades; a SERVICE read is an authorization
+   * decision and stays loud — which `core/profile.ts` still is on the POST.
+   *
+   * THE DEGRADED ANSWER IS `[]`, i.e. CLOSED: during an incident this page offers NO field for a change
+   * request, rather than offering every field on a permission nobody could read. The employee loses one
+   * card for the duration and keeps their own record; the opposite mistake would invite a request
+   * against a field their employer may have deliberately shut. `'all'` — the catalog default, which
+   * means "this tenant never configured it" — is the right answer only when we actually read the
+   * snapshot and found nothing there, which is what `getSetting` returns on its own.
+   */
+  const allowedRequestKeys = resolveAllowedRequestKeys(
+    getSettingOrFallback<readonly string[]>(s, 'ess.profile_change_fields', []),
+  );
   const pendingValues = pendingProposedByKey(profileRequests, t);
   const pendingFor = (key: string) => {
     const value = pendingValues.get(key);
@@ -506,7 +534,7 @@ export default async function MePage({
           Profile tab's own request card: the fields it offers are exactly the ones read on this tab, so
           the control to correct a wrong passport number sits under the wrong passport number rather than
           three tabs away. lib/profile-requestable-fields.ts decides which those are. */}
-      <RequestChangeCard tab="profile" title={t('requestChangeProfileHeading')} requests={profileRequests} />
+      <RequestChangeCard tab="profile" title={t('requestChangeProfileHeading')} requests={profileRequests} allowedKeys={allowedRequestKeys} />
     </>
   );
 
@@ -638,7 +666,7 @@ export default async function MePage({
           offers — lib/profile-requestable-fields.ts, one declaration, read by the form, the action, the
           sanitiser and the applier — and that a rejection now carries a reason the employee is shown.
           The card renders only this tab's fields; the Profile tab has its own. */}
-      <RequestChangeCard tab="bankStatutory" title={t('approvalGatedHeading')} requests={profileRequests} />
+      <RequestChangeCard tab="bankStatutory" title={t('approvalGatedHeading')} requests={profileRequests} allowedKeys={allowedRequestKeys} />
     </>
   );
 

@@ -204,6 +204,45 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // surface in the product that sends employee-authored FREE TEXT to a model. Both are things a customer
   // opts into. Nothing it does can refuse a claim.
   { key: 'claims.input_triage_enabled', moduleCode: 'claims', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system read each new expense claim and ask the person who filed it about anything that does not fit. It can only ever ask a question — it can never refuse or change a claim.', sortOrder: 140 },
+  /**
+   * r261 stage three (board item 9583deac) — THE TWO EMPLOYEE-SELF-SERVICE SETTINGS THE PLAN PROMISED.
+   *
+   * `moduleCode: 'ess'` because Employee Self-Service is the module they govern, and `ess` is CORE — so
+   * these are not a purchase gate and cannot be lost by a tenant who stops paying for something. They are
+   * behaviour values on a module every tenant has, which is precisely what a `tenant` scope is for.
+   *
+   * ⚠️ `ess.profile_change_fields` DEFAULTS TO THE STRING `'all'`, NOT TO A LIST, and that is a decision
+   * rather than a shortcut. A list of the 24 field keys baked in here would be a second copy of
+   * lib/profile-requestable-fields.ts inside a catalog that no test compares against it, and it would rot
+   * the first time a field was added, renamed or withdrawn. `'all'` means "this tenant has not configured
+   * it — the declaration's own default applies", which is exactly stage two's shipped behaviour and is
+   * resolved in ONE place (`resolveAllowedRequestKeys`). A CONFIGURED tenant holds a json array of keys;
+   * `[]` is a legitimate configured value meaning nothing may be asked about.
+   *
+   * `ess.profile_change_approver` defaults to `'admin'` — stage two's authority, unchanged, so this round
+   * changes nothing for a tenant that never opens the screen. The only other value is `'group_admin'`,
+   * which NARROWS the decision to a group administrator, so a bank account or an IC is signed off by
+   * whoever holds the whole group rather than by whoever administers one company. It is still ONE
+   * decision by ONE person (the plan sold single-level approval and the reporter approved it as
+   * written), and it widens nothing about who may SEE another employee's request — that is
+   * `profile_change_request_rls`, untouched.
+   *
+   * ⚠️ THERE IS NO `'manager'` VALUE, AND THAT IS A CONSTRAINT OF THE DATABASE RATHER THAN A PREFERENCE
+   * (corrected in the r261 fix pass — this comment and the `description` beneath it both described an
+   * abandoned design, and `description` is written into production's `setting_definition` by
+   * scripts/seed-catalogs.ts on EVERY deploy, so the wrong sentence was customer-visible prose).
+   * Approving WRITES the master record, and `person_rls` (migration 0029) is
+   * `WITH CHECK (app.is_admin() OR app.is_self_person(id))`. A manager cannot write their report's person
+   * row on ANY path, so a manager approver would not have been a setting — it would have been a widening
+   * of master-record write access product-wide, reachable by routes that have nothing to do with this
+   * queue. Both values here are therefore administrators, and this setting can only ever NARROW who
+   * decides. `docs/me-profile-request-settings.md` says the same thing to the reporter in their words.
+   *
+   * Both are `defaultOnInstall: null`: there is nothing to write at provisioning time, because the
+   * absence of a row IS the default and the default is the shipped behaviour.
+   */
+  { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Not set means every field the product offers; otherwise exactly the fields listed.', sortOrder: 150 },
+  { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
 ];
 
 /*
@@ -344,6 +383,13 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // `null` — new in ADR-0084 §2.7 (r240), never a deployment flag, and kept out of
   // `legacyEnabledSettingsIn` so no backfill can start it messaging employees.
   'claims.input_triage_enabled': null,
+  // `null` — r261 stage three. Both settings are NEW behaviour values for a screen that ships in the same
+  // round; neither was ever a deployment flag, so there is no legacy value to honour and no env file that
+  // could turn one on. Keeping them out of `legacyEnabledSettingsIn` is also the right outcome on its own
+  // terms: a backfill must never decide, on a customer's behalf, which of their employees' fields are
+  // open to change requests or who signs one off.
+  'ess.profile_change_fields': null,
+  'ess.profile_change_approver': null,
 };
 
 /**

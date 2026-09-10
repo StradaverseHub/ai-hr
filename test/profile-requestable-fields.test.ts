@@ -24,11 +24,17 @@ import { describe, expect, it } from 'vitest';
 import {
   PROFILE_REQUESTABLE_FIELDS,
   PROFILE_REQUESTABLE_KEYS,
+  PROFILE_REQUEST_APPROVERS,
+  PROFILE_REQUEST_APPROVER_SETTING_KEY,
+  PROFILE_REQUEST_FIELDS_DEFAULT,
+  PROFILE_REQUEST_FIELDS_SETTING_KEY,
   formatProposedValue,
   maskAccountNumber,
+  offeredRequestableFieldsForTab,
   requestableField,
   requestableFieldsForTab,
 } from '../lib/profile-requestable-fields';
+import { SETTING_CATALOG } from '../packs/catalog';
 import { ME_VISIBLE_FIELD_LABEL_KEYS } from '../app/me/visible-fields';
 import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
 
@@ -382,5 +388,288 @@ describe('r260 — the requestable-field declaration', () => {
         'getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE)',
       );
     }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * r261 STAGE THREE — THE TWO SETTINGS, AS A RELATIONSHIP BETWEEN FILES
+ *
+ * The runtime behaviour of both settings is proved against a live cluster in
+ * test/me-profile-request-settings.test.ts. What is left here is what no runtime holds in hand at once:
+ * a catalog entry, a screen, a server action, a service and six message catalogues all having to agree
+ * about ONE permission over ONE set of field keys.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+const SETTINGS_PAGE = read('app/admin/settings/profile-requests/page.tsx');
+const SETTINGS_ACTIONS = read('app/admin/settings/profile-requests/actions.ts');
+const CORE_TENANT_SETTINGS = read('core/tenant-settings.ts');
+const DOC_SETTINGS = read('docs/me-profile-request-settings.md');
+
+describe('r261 — the two settings are catalogued, and catalogued the way they are read', () => {
+  it('both are TENANT-scoped, customer-visible, and arrive with nothing written at install', () => {
+    // A `platform` scope would put them out of the customer's reach entirely (0313's write policy);
+    // `customerVisible: false` would hide them from the very screen this round ships. `defaultOnInstall:
+    // null` is the third: there is nothing to write at provisioning time, because the ABSENCE of a row
+    // is the default and the default is stage two's shipped behaviour.
+    for (const key of [PROFILE_REQUEST_FIELDS_SETTING_KEY, PROFILE_REQUEST_APPROVER_SETTING_KEY]) {
+      const entry = SETTING_CATALOG.find((e) => e.key === key);
+      expect(entry, `${key} is not in SETTING_CATALOG — getSetting throws a bare Error for it`).toBeDefined();
+      expect(entry!.scope, `${key} scope`).toBe('tenant');
+      expect(entry!.customerVisible, `${key} customerVisible`).toBe(true);
+      expect(entry!.defaultOnInstall, `${key} defaultOnInstall`).toBeNull();
+    }
+  });
+
+  it('the field list defaults to the SENTINEL, never to a copy of the declaration', () => {
+    /**
+     * THE DECISION THIS CASE EXISTS TO KEEP. A catalog `defaultValue` listing the 24 field keys would be
+     * a second copy of PROFILE_REQUESTABLE_FIELDS in a file nothing compares against it, and it would rot
+     * the first time a field was added, renamed or withdrawn — silently, because a stale default reads as
+     * a working permission. `'all'` cannot rot: it means "not configured", and it is resolved against the
+     * declaration in exactly one place.
+     */
+    const entry = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_FIELDS_SETTING_KEY)!;
+    expect(entry.valueType).toBe('json');
+    expect(entry.defaultValue).toBe(PROFILE_REQUEST_FIELDS_DEFAULT);
+    expect(Array.isArray(entry.defaultValue), 'the default must NOT be a list of keys').toBe(false);
+
+    const approver = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_APPROVER_SETTING_KEY)!;
+    expect(approver.valueType).toBe('string');
+    expect(approver.defaultValue, "the default is stage two's authority, unchanged").toBe('admin');
+    expect(PROFILE_REQUEST_APPROVERS).toContain(approver.defaultValue);
+  });
+
+  it("the approver setting's CUSTOMER-VISIBLE description says what the setting actually does", () => {
+    /**
+     * ⚠️ THIS SENTENCE IS SHIPPED TO PRODUCTION, NOT A COMMENT (r261 fix pass). scripts/seed-catalogs.ts
+     * lists `description` in its `onConflictDoUpdate` SET clause and deploy/deploy.sh runs it after
+     * db:migrate, so EVERY deploy overwrites production's `setting_definition.description` with whatever
+     * is written here — and the entry is `customerVisible`. It first shipped describing an abandoned
+     * design ("an HR administrator only, or the employee's manager as well"), which contradicted the
+     * code, the six catalogues and the document the reporter reads: the shipped values are exactly
+     * ['admin', 'group_admin'], and `resolveRequestApprover` maps anything else to 'admin', so no
+     * manager can ever approve. A customer reading their own settings would have been told otherwise.
+     *
+     * NON-VACUITY: restore the word "manager" to that description and the second expectation goes red.
+     */
+    const approver = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_APPROVER_SETTING_KEY)!;
+    expect(approver.customerVisible, 'a customer can read this sentence, so it must be true').toBe(true);
+    expect(
+      approver.description,
+      'no configuration of this setting lets a manager approve — person_rls admits only an administrator',
+    ).not.toMatch(/manager/i);
+    // It must name BOTH values it actually offers, in the words the screen uses for them.
+    expect(approver.description).toMatch(/HR administrator/i);
+    expect(approver.description).toMatch(/group administrator/i);
+    // And the field allow-list's own description, which is the other half of what a deploy writes.
+    const fields = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_FIELDS_SETTING_KEY)!;
+    expect(fields.customerVisible).toBe(true);
+    expect(fields.description).toMatch(/ask to change/i);
+  });
+
+  it('the writer accepts the json shape the catalog declares — the policy would have accepted it silently', () => {
+    // 0313's tenant_setting_write admits `d.value_type = 'json'` with any shape, and the column has
+    // always been jsonb. Before r261 no TypeScript writer could express one, so a `json` catalog entry
+    // was unreachable from the product. This is the conjunct that keeps the two in step.
+    expect(CORE_TENANT_SETTINGS).toContain('settingValueType(p.value) !== entry.valueType');
+    expect(CORE_TENANT_SETTINGS).toContain("return Array.isArray(v) ? 'json' : typeof v;");
+  });
+});
+
+describe('r261 — a switched-off field is ABSENT from the employee\'s screen, not disabled on it', () => {
+  it('the /me card renders from the OFFERED list, and the page resolves it from the tenant setting', () => {
+    /**
+     * NON-VACUITY: reverting `offeredRequestableFieldsForTab(tab, allowedKeys)` to
+     * `requestableFieldsForTab(tab)` in the card fails the first expectation here, and the live-cluster
+     * file's "OMITTED, not offered disabled" case with it.
+     */
+    expect(REQUEST_CARD).toContain('offeredRequestableFieldsForTab(tab, allowedKeys)');
+    expect(REQUEST_CARD, 'the prop is required, so a caller cannot silently reopen every field').toContain(
+      'allowedKeys: ReadonlySet<string>;',
+    );
+    /**
+     * ⚠️ THE PAGE READS IT THE QUIET WAY, AND ITS DEGRADED ANSWER IS CLOSED (r261 fix pass).
+     * /me first shipped reading the THROWING service form, which turned an entitlement-resolution
+     * failure into a 500 on the home screen of the entire workforce — there is no app/error.tsx. Both
+     * halves are pinned because both matter: the quiet reader keeps the page rendering, and the `[]`
+     * fallback is what makes the degraded answer "no field may be requested" rather than "every field
+     * may be" (the catalog default for this key is the OPEN sentinel `'all'`).
+     */
+    expect(ME_PAGE).toContain("getSettingOrFallback<readonly string[]>(s, 'ess.profile_change_fields', [])");
+    expect(ME_PAGE).toContain('const allowedRequestKeys = resolveAllowedRequestKeys(');
+    // COMMENTS STRIPPED FIRST (AGENTS 27): both pages EXPLAIN what they used to call and why they no
+    // longer do, and a guard that tripped on the explanation would teach the next person to delete it.
+    const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(
+      strip(ME_PAGE).includes('profileChangeAllowedKeys('),
+      "the /me page must not read the throwing service form — that is a 500 on an employee's own record",
+    ).toBe(false);
+    // The approvals inbox is the same decision, and its degraded answer is the NARROWER approver.
+    expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
+    expect(
+      strip(APPROVALS_PAGE).includes('profileChangeApprover('),
+      'the approvals inbox must not read the throwing service form either',
+    ).toBe(false);
+    for (const tab of ['profile', 'bankStatutory']) {
+      expect(
+        ME_PAGE.includes(`<RequestChangeCard tab="${tab}"`) && ME_PAGE.includes('allowedKeys={allowedRequestKeys}'),
+        `the ${tab} card must be handed the tenant's allow-list`,
+      ).toBe(true);
+    }
+    // Two cards, two allow-list props — a page that resolved it once and passed it once would leave one
+    // tab reading the full declaration.
+    expect(ME_PAGE.split('allowedKeys={allowedRequestKeys}').length - 1).toBe(2);
+  });
+
+  it('offers NO inert control — the request card contains no disabled attribute at all', () => {
+    // "Assert it renders nothing rather than something inert." A disabled control still announces that
+    // the field exists and that somebody decided this employee may not touch it, and it is one removed
+    // attribute away from being submittable.
+    // COMMENTS STRIPPED FIRST (AGENTS 27): this file's own explanation of why nothing is disabled
+    // contains the word, and a source-scanning guard that tripped on prose would teach the next person
+    // to delete the explanation rather than keep the property.
+    const cardCode = REQUEST_CARD.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(cardCode, 'a request control must never render disabled — it must not render').not.toMatch(
+      /\bdisabled\b/,
+    );
+    // And the pure function says the same thing: an excluded key is absent from the list, not flagged in it.
+    const only = offeredRequestableFieldsForTab('profile', new Set(['fullName']));
+    expect(only.map((f) => f.key)).toEqual(['fullName']);
+    expect(offeredRequestableFieldsForTab('profile', new Set())).toEqual([]);
+  });
+
+  it('the service drops a disallowed key too — the screen is not the gate', () => {
+    expect(CORE_PROFILE).toContain('sanitizeProposed(p.proposed, profileChangeAllowedKeys(ctx))');
+    expect(CORE_PROFILE).toContain('if (!allowed.has(key)) continue;');
+    /**
+     * ⚠️ AND THE DECISION RE-ASKS (r261 fix pass). The request side and the sweep both run at a
+     * different moment from the decision, so neither can be the last word on whether the master record
+     * moves. The apply branch reads the tenant's CURRENT allow-list — the THROWING form, because this
+     * one is an authorization decision — and refuses outright. The live-cluster file proves the
+     * behaviour; this pins that the read is the loud one and that it sits inside the approve branch.
+     */
+    expect(CORE_PROFILE).toContain('const allowedNow = profileChangeAllowedKeys(ctx);');
+    expect(CORE_PROFILE).toContain('if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);');
+    expect(CORE_PROFILE).toContain('export class ProfileChangeFieldClosedError');
+    /**
+     * ⚠️ NO BLIND CAP OVER THE PENDING QUEUE. Both the sweep and the settings screen's "n waiting" badge
+     * used to read `LIMIT 1000` across ALL pending rows with no filter on the keys in question, so past a
+     * thousand waiting requests the matching row was never returned — a bank-account change was left
+     * pending, approved later, and the master account moved. Filtering in SQL is what makes the sweep
+     * converge by construction, and the cap must not come back.
+     */
+    const sweep = CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function pendingProfileChangeCountsByKey'));
+    expect(sweep, 'the pending queue must not be read behind a blind row cap').not.toContain('.limit(1000)');
+    expect(CORE_PROFILE, 'the locked keys are matched IN the database, not sifted in TypeScript').toContain(
+      'sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
+    );
+    expect(CORE_PROFILE, 'the counts are aggregated in SQL over every pending row').toContain(
+      'LATERAL jsonb_object_keys(r.proposed)',
+    );
+    // The HR-DIRECT setter is deliberately NOT narrowed by the employee's permission: switching a field
+    // off must not stop HR correcting it, which is the very act an employee is being told to ask for.
+    expect(CORE_PROFILE).toContain('EVERY_REQUESTABLE_KEY,');
+  });
+});
+
+describe('r261 — the settings screen speaks the declaration\'s own vocabulary', () => {
+  it('renders one control per DECLARED field, named by the shared people.detail key', () => {
+    expect(SETTINGS_PAGE).toContain('requestableFieldsForTab(tab).map');
+    expect(SETTINGS_PAGE, 'per FIELD, which is what the reporter asked for').toContain('value={f.key}');
+    expect(SETTINGS_PAGE, 'and named the way Personnel Management names it').toContain('{tp(f.labelKey)}');
+    // No second vocabulary: the screen must not invent a label key of its own for a field.
+    expect(SETTINGS_PAGE).not.toMatch(/t\(`field\./);
+  });
+
+  it('the action intersects the posted names with the declaration and never trusts them', () => {
+    /**
+     * ⚠️ THE FORM POSTS FIELD NAMES. A hand-rolled POST can name anything at all, and the dangerous
+     * shape is not a typo — it is a key the declaration deliberately EXCLUDES (an HR determination, or
+     * something on the withheld list an employee may not even see). Storing a permission over one of
+     * those would make it requestable the moment anybody widened the declaration.
+     */
+    expect(SETTINGS_ACTIONS).toContain('PROFILE_REQUESTABLE_KEYS.filter((k) => posted.includes(k)');
+    expect(SETTINGS_ACTIONS, 'and the setting key is a constant, never posted').not.toContain("formData.get('key')");
+    // The consequence of switching a field off is carried out in the same action, not left to a cron.
+    expect(SETTINGS_ACTIONS).toContain('withdrawProfileChangesForLockedFields(s, {');
+    expect(SETTINGS_ACTIONS, 'the setting is written FIRST, so a failure cannot withdraw under a permission that never changed').toMatch(
+      /setTenantSetting\(s, \{ key: PROFILE_REQUEST_FIELDS_SETTING_KEY[\s\S]*?withdrawPendingRequests|setTenantSetting\(s, \{ key: PROFILE_REQUEST_FIELDS_SETTING_KEY[\s\S]*?withdrawProfileChangesForLockedFields/,
+    );
+  });
+
+  it('the withdrawal writes the request row and NOTHING else — no master table, ever', () => {
+    const body = CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function withdrawProfileChangesForLockedFields('));
+    expect(body.length, 'withdrawProfileChangesForLockedFields could not be located').toBeGreaterThan(400);
+    for (const writer of ['.update(employeeStatutoryMy)', '.update(person)', '.delete(']) {
+      expect(body.includes(writer), `${writer} must not appear in the withdrawal path`).toBe(false);
+    }
+    expect(body).toContain(".set({ status: 'rejected'");
+    // Nobody judged it, so nobody is recorded as having judged it.
+    expect(body).toContain('decidedByEmploymentId: null');
+  });
+});
+
+describe('r261 — the reporter is told what the setting cannot do', () => {
+  it('the document states the manager-approval limit rather than leaving it as a silence', () => {
+    /**
+     * The plan's parent request described manager-then-HR approval. Stage three ships a setting that can
+     * only NARROW who approves, because approving WRITES the master record and `person_rls` admits only
+     * an administrator — so a manager approver would have been a widening of master-record write access
+     * to every manager, by every route. That is a constraint the reporter can act on (it is the shape of
+     * the next request), and a document that omitted it would read as if manager approval had simply
+     * been forgotten.
+     */
+    expect(DOC_SETTINGS).toMatch(/manager/i);
+    expect(DOC_SETTINGS).toMatch(/person_rls|master record/i);
+    expect(DOC_SETTINGS, 'single-level, as the reporter approved it').toMatch(/single/i);
+  });
+
+  it('every key the settings screen renders resolves in ALL SIX catalogues', () => {
+    const report: string[] = [];
+    const KEYS = [
+      'title',
+      'description',
+      'readOnlyNotice',
+      'approverHeading',
+      'approverHelp',
+      'singleLevelNote',
+      'saveApprover',
+      'savedApprover',
+      'unknownApprover',
+      'fieldsHeading',
+      'fieldsHelp',
+      'lockWithdrawsNotice',
+      'tabProfile',
+      'tabBankStatutory',
+      'waitingCount',
+      'saveFields',
+      'savedFields',
+      'savedFieldsWithdrew',
+      'withdrawnReason',
+    ];
+    for (const loc of LOCALES) {
+      for (const k of KEYS) {
+        const v = leaf(leaf(CATALOGS[loc], 'profileRequestSettings'), k);
+        if (typeof v !== 'string' || v === '') report.push(`${loc}: profileRequestSettings.${k}`);
+      }
+      // The dynamic per-option keys, and the typed refusal reasons the action resolves by name.
+      for (const a of PROFILE_REQUEST_APPROVERS) {
+        for (const ns of ['approverOption', 'approverOptionHelp']) {
+          const v = leaf(leaf(CATALOGS[loc], `profileRequestSettings.${ns}`), a);
+          if (typeof v !== 'string' || v === '') report.push(`${loc}: profileRequestSettings.${ns}.${a}`);
+        }
+      }
+      for (const r of ['not_group_admin', 'unknown_key', 'not_tenant_scoped', 'not_customer_visible', 'wrong_type']) {
+        const v = leaf(leaf(CATALOGS[loc], 'profileRequestSettings.refused'), r);
+        if (typeof v !== 'string' || v === '') report.push(`${loc}: profileRequestSettings.refused.${r}`);
+      }
+      // The nav label the sidebar AND the function-access grid resolve, and the /me card's own wording
+      // for a tab whose fields are all switched off.
+      for (const [ns, k] of [['nav', 'profileRequestSettings'], ['me', 'noRequestableFields']] as const) {
+        const v = leaf(leaf(CATALOGS[loc], ns), k);
+        if (typeof v !== 'string' || v === '') report.push(`${loc}: ${ns}.${k}`);
+      }
+    }
+    expect(report, report.join('\n')).toEqual([]);
   });
 });

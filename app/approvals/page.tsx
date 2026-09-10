@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin } from '@/lib/authz';
+import { isAdmin, isGroupAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
@@ -11,6 +11,10 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 import { dayTypesForPairs, listAttendanceCorrections } from '@/core/attendance';
 import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
+// r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
+// read the quiet page way and resolved by the one shared interpretation.
+import { getSettingOrFallback } from '@/core/entitlements';
+import { resolveRequestApprover } from '@/lib/profile-requestable-fields';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 import { ProfileChangeDecide } from '@/components/profile-change-decide';
@@ -138,6 +142,36 @@ export default async function ApprovalsPage({
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
+  /**
+   * r261 (board item 9583deac, stage three) — WHO carries the profile-change queue is now the tenant's
+   * own setting, and this is the ONE place the page asks.
+   *
+   * `admin` (the default and stage two's behaviour) keeps the queue exactly where it was: every HR
+   * administrator in scope. `group_admin` NARROWS it to a group administrator, so a company-scoped HR
+   * admin is no longer shown a queue they would be refused on — the "never tease an approver with items
+   * they cannot act on" rule this page already applies to delegation scope.
+   *
+   * ⚠️ IT CAN ONLY EVER NARROW. There is no configuration in which this hands the queue to somebody who
+   * did not already have it, because approving WRITES the master record and `person_rls` admits only an
+   * administrator. Every row still comes from `listProfileChangeRequests` under
+   * `profile_change_request_rls` (`app.can_see_employment`, 0029, untouched), and core/profile.ts remains
+   * the backstop for a raced decide.
+   *
+   * ⚠️ THE QUIET READER, AND THE NARROW FALLBACK (r261 fix pass). This first shipped as
+   * `profileChangeApprover(s)` — the throwing service form — and 500'd this whole inbox, leave and
+   * claims included, whenever the entitlement snapshot could not be resolved. A page read is a display
+   * decision (core/entitlements.ts), so it degrades; `core/profile.ts` keeps the loud form on the
+   * decision itself, which is where the authority is actually enforced.
+   *
+   * The degraded answer is `group_admin`, the NARROWER of the two: during an incident the queue is shown
+   * only to a group administrator — who may approve under either configuration — rather than teasing a
+   * company-scoped admin with items a service they cannot read the setting for might refuse.
+   */
+  const profileChangeApproverSetting = resolveRequestApprover(
+    getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
+  );
+  const profileChangeDecider =
+    admin && (profileChangeApproverSetting === 'admin' || isGroupAdmin(s));
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
@@ -188,7 +222,7 @@ export default async function ApprovalsPage({
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     // ADR-0069 Travel Request: same inbox, same decide flow.
     listTravelRequests(s, { companyIds: scopeIds, status: 'pending' }),
-    admin ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
+    profileChangeDecider ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(s),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
@@ -955,7 +989,7 @@ export default async function ApprovalsPage({
       </Card>
       )}
 
-      {admin && visible('profileChanges') && (
+      {profileChangeDecider && visible('profileChanges') && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('profileChanges')} count={profileChanges.length} />
           {profileChanges.length === 0 ? (

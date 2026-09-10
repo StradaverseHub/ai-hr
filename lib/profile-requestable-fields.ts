@@ -30,9 +30,9 @@
  * employee cannot see on their own record.
  *
  * ── WHAT IS DELIBERATELY NOT HERE, AND WHY THAT IS A STAGE-THREE ANSWER ─────────────────────────────
- * WHICH fields an employer allows is a SETTING, and the plan puts it in stage three: "A setting that
- * controls, field by field, which information an employee may ask to change." Until that exists there
- * has to be a default, so this list IS the default — the fields on the employee's own record whose
+ * WHICH fields an employer allows is a SETTING, and r261 stage three built it (see the block at the foot
+ * of this file, and core/tenant-settings.ts). This list is what an employer's answer is resolved AGAINST:
+ * a tenant that has never configured the setting gets exactly this list, so it remains the default — the fields on the employee's own record whose
  * master HR owns and which feed pay, statutory filing or an identity document. Three classes are left
  * out on purpose and the reporter is told so in docs/me-profile-change-requests.md:
  *   · HR determinations (SOCSO / EIS category, tax residency, HRDF, disability relief) — those are
@@ -236,4 +236,130 @@ export function formatProposedValue(
     return opt ? t(opt.labelKey) : String(value);
   }
   return String(value);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * STAGE THREE (r261, board item 9583deac) — THE TWO SETTINGS
+ *
+ * The plan's promise to the reporter, in its own words:
+ *
+ *   · "A setting that controls, field by field, which information an employee may ask to change."
+ *   · "A setting that controls who approves …"
+ *
+ * ── WHY THEY LIVE IN `tenant_setting` AND NOT IN A TABLE OF THEIR OWN ───────────────────────────────
+ * Both are TENANT CONFIGURATION — one value per tenant, read on every request, written by a group
+ * admin. That is exactly what `tenant_setting` is (ADR-0077 slice 1) and what `core/tenant-settings.ts`
+ * already writes, with 0313's `tenant_setting_write` policy behind it and a per-request snapshot in
+ * front of it. A new table would have needed its own migration, its own RLS policies, its own GRANT and
+ * its own reader, to hold two rows. Migration 0459 was allocated to this round and is deliberately NOT
+ * used: nothing here needs a column.
+ *
+ * ── THE FIELD KEYS ARE THE SAME KEYS, WHICH IS THE WHOLE POINT ──────────────────────────────────────
+ * A permission is granted over `PROFILE_REQUESTABLE_FIELDS[].key` — the key inside `proposed`, the key
+ * the /me form posts, the key `core/profile.ts` applies, the key the approver's queue names. So a
+ * permission and a request can never disagree about what a field is called, which is the drift stage
+ * one was raised about, and stage two's `labelKey` rule pins each of those keys to the ONE
+ * `people.detail.*` catalogue entry Personnel Management renders it under.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * WHICH fields an employee may ask to change. `SETTING_CATALOG` (packs/catalog.ts) declares it
+ * `valueType: 'json'` with the default `'all'`.
+ *
+ * TWO SHAPES, AND THE DIFFERENCE MATTERS:
+ *   · `'all'` — NOT CONFIGURED. The tenant has never opened the screen, so the declared default applies:
+ *     every field in `PROFILE_REQUESTABLE_FIELDS`. This is stage two's shipped behaviour, unchanged, and
+ *     it is why the default is a sentinel rather than a list — a list of 24 keys baked into the catalog
+ *     would silently rot the day a field is added or renamed.
+ *   · an ARRAY of field keys — CONFIGURED. Exactly those fields may be asked about, and nothing else.
+ *     `[]` is a legitimate configured value meaning "an employee may ask to change nothing".
+ *
+ * A consequence, stated rather than discovered later: a field ADDED to the declaration in a future round
+ * is allowed for a tenant that never configured this setting (their answer is still "the default"), and
+ * NOT allowed for a tenant that did (their answer is an explicit list that does not name it). That is
+ * the conservative direction for the tenant who made a decision, and no change at all for the tenant who
+ * has not.
+ */
+export const PROFILE_REQUEST_FIELDS_SETTING_KEY = 'ess.profile_change_fields' as const;
+
+/** The sentinel `PROFILE_REQUEST_FIELDS_SETTING_KEY` carries when a tenant has not configured it. */
+export const PROFILE_REQUEST_FIELDS_DEFAULT = 'all' as const;
+
+/** WHO decides a profile change request. Catalogued `valueType: 'string'`, default `'admin'`. */
+export const PROFILE_REQUEST_APPROVER_SETTING_KEY = 'ess.profile_change_approver' as const;
+
+/**
+ * SINGLE-LEVEL APPROVAL, and the plan told the reporter so: "We have planned a SINGLE approver to begin
+ * with … If you want multi-level from the start, reject this plan and say so." They approved it as
+ * written, so this is a choice of WHO decides, never a sequence of deciders.
+ *
+ *   · `admin`       — any HR administrator, including one whose grant covers a single company. Stage
+ *                     two's shipped behaviour and the default: nothing changes for a tenant that never
+ *                     opens the settings screen.
+ *   · `group_admin` — ONLY a group administrator (a super admin, or an HR admin granted group-wide).
+ *                     A change to a bank account or an IC is then signed off by the person who holds the
+ *                     whole group, not by whoever happens to administer one company.
+ *
+ * ⚠️ BOTH VALUES ARE ADMINISTRATORS, AND THAT IS A CONSTRAINT OF THE DATABASE RATHER THAN A PREFERENCE.
+ * Approving a request WRITES the master record, and `person_rls` (migration 0029) has always had
+ * `WITH CHECK (app.is_admin() OR app.is_self_person(id))` — `employment_rls` and the statutory tables
+ * likewise. A manager cannot write their report's person row through ANY path, so making a manager the
+ * approver would not have been a setting: it would have been a widening of master-record write access to
+ * every manager, reachable by routes that have nothing to do with this queue. That is not what the plan
+ * sold and it is not something a switch on a settings screen should be able to do, so this setting can
+ * only ever NARROW who decides. `docs/me-profile-request-settings.md` states the same thing to the
+ * reporter, in their words, so the limit is a decision they can act on rather than a silence.
+ *
+ * Neither value widens what anybody can SEE. Visibility is `profile_change_request_rls`
+ * (`app.can_see_employment`, migration 0029) and this round does not touch it.
+ */
+export type ProfileRequestApprover = 'admin' | 'group_admin';
+
+export const PROFILE_REQUEST_APPROVERS: readonly ProfileRequestApprover[] = ['admin', 'group_admin'];
+
+/**
+ * The stored approver value, resolved.
+ *
+ * Anything unrecognised resolves to `'admin'` — which is the CATALOG DEFAULT and stage two's shipped
+ * behaviour, not a widening: a tenant that has never configured this setting reads exactly the same
+ * answer, so a corrupt or half-written row can only ever land a tenant back on what they already had.
+ * Narrowing to `group_admin` is a decision, and a decision has to have been made.
+ */
+export function resolveRequestApprover(raw: unknown): ProfileRequestApprover {
+  return raw === 'group_admin' ? 'group_admin' : 'admin';
+}
+
+/**
+ * The stored allow-list, resolved to the set of keys an employee may ask about.
+ *
+ * ── THE ONE PLACE THE `'all'` SENTINEL IS INTERPRETED ───────────────────────────────────────────────
+ * Not an array (the `'all'` default, an absent row, or a value nothing in this product could have
+ * written) → the DECLARED DEFAULT, i.e. every requestable field. That is deliberately the OPEN answer
+ * and it is the opposite of the approver rule above, because the two failures are not symmetrical: an
+ * unconfigured tenant reading "nothing" would lose a feature they already have and were never told
+ * about, silently, on every /me screen in the product. A tenant that HAS configured the setting is
+ * holding an array, and an array is honoured exactly.
+ *
+ * Keys are intersected with the declaration, so a key left in a tenant's row for a field that has since
+ * been withdrawn from `PROFILE_REQUESTABLE_FIELDS` cannot resurrect it.
+ */
+export function resolveAllowedRequestKeys(raw: unknown): ReadonlySet<string> {
+  if (!Array.isArray(raw)) return new Set(PROFILE_REQUESTABLE_KEYS);
+  return new Set(raw.filter((k): k is string => typeof k === 'string' && BY_KEY.has(k)));
+}
+
+/**
+ * The fields one tab's request card may OFFER — the declaration for that tab, narrowed by the tenant's
+ * allow-list.
+ *
+ * ⚠️ A FIELD THAT IS NOT ALLOWED GETS NO CONTROL AT ALL — not a disabled input, not a greyed select,
+ * nothing. A disabled control still tells an employee the field exists and that somebody decided they
+ * may not touch it, and it is one attribute away from being submittable. The card renders from this
+ * list, so an excluded field has nothing to disable.
+ */
+export function offeredRequestableFieldsForTab(
+  tab: RequestableField['tab'],
+  allowed: ReadonlySet<string>,
+): readonly RequestableField[] {
+  return requestableFieldsForTab(tab).filter((f) => allowed.has(f.key));
 }

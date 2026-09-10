@@ -305,6 +305,7 @@
     "systemExplorer": "依赖关系浏览器",
     "movementSettings": "异动设置",
     "hiringDefaults": "入职默认设置",
+    "profileRequestSettings": "员工变更申请设置",
     "noticeBoard": "公告栏",
     "payrollIndividualPayslip": "个人工资单",
     "payrollBackPay": "补发工资",
@@ -2598,6 +2599,7 @@
     "bankAndTax": "银行与税务",
     "approvalGatedHeading": "银行、税务与个人",
     "changesNeedApproval": "变更需经管理员批准后方可影响您的薪酬。",
+    "noRequestableFields": "贵公司未开放此标签页中的任何字段供提交变更申请。",
     "bank": "银行",
     "account": "账号",
     "dependentChildren": "受抚养子女",
@@ -11795,6 +11797,42 @@
         "nothing_to_do": "未选择任何内容，因此未关闭任何内容。",
         "failed": "无法完成。未关闭任何内容。"
       }
+    }
+  },
+  "profileRequestSettings": {
+    "title": "员工变更申请设置",
+    "description": "员工可以就自己记录中的哪些字段提出更正申请，以及由谁审批。",
+    "readOnlyNotice": "您可以查看此配置但无法更改——只有集团管理员可以更改。",
+    "approverHeading": "由谁审批变更申请",
+    "approverHelp": "每份申请由一个人决定，任何人都不能审批自己的申请。两个选项都是管理员，因为批准会写入主记录，而只有管理员才有权写入——详见下方说明。",
+    "approverOption": {
+      "admin": "任何人力资源管理员",
+      "group_admin": "仅限集团管理员"
+    },
+    "approverOptionHelp": {
+      "admin": "包括权限仅覆盖一家公司的管理员。若不作更改，系统目前即按此运作。",
+      "group_admin": "超级管理员，或权限覆盖整个集团的人力资源管理员。仅负责单一公司的管理员将无法再审批。"
+    },
+    "singleLevelNote": "一份申请由一次决定了结，没有第二级审批；也不能把经理设为审批人——批准会写入员工记录本身，而只有管理员获准这样做。",
+    "saveApprover": "保存审批人",
+    "savedApprover": "审批人已保存",
+    "unknownApprover": "那不是可选的审批人之一。",
+    "fieldsHeading": "员工可申请更改的内容",
+    "fieldsHelp": "勾选某字段即允许员工请求更正。未勾选的字段根本不会出现在他们的屏幕上——不会留下一个让人猜疑的灰色输入框。",
+    "lockWithdrawsNotice": "关闭某字段同时会拒绝该字段上正在等待的申请。员工会在自己的页面上看到原因。记录不会被写入，申请也不会被删除。",
+    "tabProfile": "个人资料标签页",
+    "tabBankStatutory": "银行与法定标签页",
+    "waitingCount": "{count} 份待处理",
+    "saveFields": "保存字段",
+    "savedFields": "字段已保存",
+    "savedFieldsWithdrew": "字段已保存——已拒绝 {count} 份待处理申请",
+    "withdrawnReason": "此字段已不再接受变更申请。如仍需更正，请联系人力资源部。",
+    "refused": {
+      "not_group_admin": "只有集团管理员可以更改。",
+      "unknown_key": "该设置不存在。",
+      "not_tenant_scoped": "该设置不由你更改。",
+      "not_customer_visible": "该设置由 Stradaverse 管理。",
+      "wrong_type": "这不是该设置的有效值。"
     }
   }
 }

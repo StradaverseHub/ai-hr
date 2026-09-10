@@ -76,7 +76,15 @@ describe('the write re-states the policy rather than leaning on it', () => {
     expect(c, 'the key must be catalogued').toContain("if (!entry) throw new TenantSettingError('unknown_key')");
     expect(c, "and tenant-scoped — the policy's EXISTS clause").toContain("entry.scope !== 'tenant'");
     expect(c, 'customer-visible, which the policy does not check and the product must').toContain('!entry.customerVisible');
-    expect(c, 'and the declared value type').toContain('typeof p.value !== entry.valueType');
+    // r261 widened the writer to the `json` value type the catalog and 0313's CHECK have always
+    // carried (board item 9583deac stores a list of field keys), so the conjunct is now spelled through
+    // `settingValueType` — which answers 'json' for an array and `typeof` for everything else. The
+    // assertion follows the line rather than being dropped: what matters is that the DECLARED TYPE is
+    // still checked in TypeScript before the policy has to catch it silently.
+    expect(c, 'and the declared value type').toContain('settingValueType(p.value) !== entry.valueType');
+    expect(c, "…answering 'json' only for a list, never for an arbitrary object").toContain(
+      "return Array.isArray(v) ? 'json' : typeof v;",
+    );
   });
 
   it("writes source 'customer', on insert AND on update", () => {

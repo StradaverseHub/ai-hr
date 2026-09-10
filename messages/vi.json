@@ -305,6 +305,7 @@
     "systemExplorer": "Trình khám phá phụ thuộc",
     "movementSettings": "Cài đặt biến động",
     "hiringDefaults": "Mặc định tuyển dụng",
+    "profileRequestSettings": "Yêu cầu thay đổi của nhân viên",
     "noticeBoard": "Bảng thông báo",
     "payrollIndividualPayslip": "Phiếu lương cá nhân",
     "payrollBackPay": "Truy lĩnh",
@@ -2598,6 +2599,7 @@
     "bankAndTax": "Ngân hàng & thuế",
     "approvalGatedHeading": "Ngân hàng, thuế & cá nhân",
     "changesNeedApproval": "Các thay đổi cần được quản trị viên phê duyệt trước khi ảnh hưởng đến lương của bạn.",
+    "noRequestableFields": "Công ty của bạn chưa mở bất kỳ trường nào trong thẻ này cho yêu cầu thay đổi.",
     "bank": "Ngân hàng",
     "account": "Tài khoản",
     "dependentChildren": "Con phụ thuộc",
@@ -11795,6 +11797,42 @@
         "nothing_to_do": "Không có mục nào được chọn, nên không có gì bị đóng.",
         "failed": "Không thể hoàn tất. Không có gì bị đóng."
       }
+    }
+  },
+  "profileRequestSettings": {
+    "title": "Yêu cầu thay đổi của nhân viên",
+    "description": "Nhân viên được xin sửa những trường nào trên hồ sơ của chính họ, và ai là người quyết định.",
+    "readOnlyNotice": "Bạn xem được cấu hình này nhưng không thay đổi được — chỉ quản trị viên nhóm mới thay đổi được.",
+    "approverHeading": "Ai phê duyệt yêu cầu thay đổi",
+    "approverHelp": "Mỗi yêu cầu do một người quyết định, và không ai được quyết định yêu cầu của chính mình. Cả hai lựa chọn đều là quản trị viên vì việc phê duyệt sẽ ghi vào hồ sơ gốc, mà chỉ quản trị viên mới được ghi — xem ghi chú bên dưới.",
+    "approverOption": {
+      "admin": "Bất kỳ quản trị viên nhân sự nào",
+      "group_admin": "Chỉ quản trị viên nhóm"
+    },
+    "approverOptionHelp": {
+      "admin": "Bao gồm quản trị viên chỉ phụ trách một công ty. Nếu bạn không đổi gì, hệ thống đang chạy như vậy.",
+      "group_admin": "Quản trị viên cấp cao, hoặc quản trị viên nhân sự phụ trách toàn nhóm. Quản trị viên của một công ty sẽ không còn duyệt được các yêu cầu này."
+    },
+    "singleLevelNote": "Một quyết định là xong một yêu cầu. Không có cấp phê duyệt thứ hai, và không thể đặt quản lý làm người phê duyệt — việc phê duyệt ghi thẳng vào hồ sơ nhân viên, điều chỉ quản trị viên mới được phép làm.",
+    "saveApprover": "Lưu người phê duyệt",
+    "savedApprover": "Đã lưu người phê duyệt",
+    "unknownApprover": "Đó không phải một lựa chọn người phê duyệt.",
+    "fieldsHeading": "Nhân viên được xin sửa những gì",
+    "fieldsHelp": "Đánh dấu một trường để nhân viên được xin sửa trường đó. Trường không đánh dấu sẽ không hiện trên màn hình của họ — không có ô xám nào để phải thắc mắc.",
+    "lockWithdrawsNotice": "Tắt một trường cũng đồng thời từ chối mọi yêu cầu đang chờ trên trường đó. Nhân viên được cho biết lý do ngay trên màn hình của mình. Hồ sơ không bị ghi và không có gì bị xóa.",
+    "tabProfile": "Thẻ Hồ sơ",
+    "tabBankStatutory": "Thẻ Ngân hàng & Pháp định",
+    "waitingCount": "{count} đang chờ",
+    "saveFields": "Lưu các trường",
+    "savedFields": "Đã lưu các trường",
+    "savedFieldsWithdrew": "Đã lưu các trường — đã từ chối {count} yêu cầu đang chờ",
+    "withdrawnReason": "Trường này không còn nhận yêu cầu thay đổi. Nếu vẫn cần sửa, xin liên hệ bộ phận nhân sự.",
+    "refused": {
+      "not_group_admin": "Chỉ quản trị viên nhóm mới thay đổi được.",
+      "unknown_key": "Cài đặt đó không tồn tại.",
+      "not_tenant_scoped": "Cài đặt đó không thuộc quyền thay đổi của bạn.",
+      "not_customer_visible": "Cài đặt đó do Stradaverse quản lý.",
+      "wrong_type": "Đó không phải giá trị hợp lệ cho cài đặt này."
     }
   }
 }

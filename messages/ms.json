@@ -305,6 +305,7 @@
     "systemExplorer": "Peneroka kebergantungan",
     "movementSettings": "Tetapan Pergerakan",
     "hiringDefaults": "Tetapan Lalai Pengambilan",
+    "profileRequestSettings": "Permohonan Perubahan Pekerja",
     "noticeBoard": "Papan Notis",
     "payrollIndividualPayslip": "Slip Gaji Individu",
     "payrollBackPay": "Bayaran Tunggakan",
@@ -2598,6 +2599,7 @@
     "bankAndTax": "Bank & cukai",
     "approvalGatedHeading": "Bank, cukai & peribadi",
     "changesNeedApproval": "Perubahan memerlukan kelulusan pentadbir sebelum menjejaskan gaji anda.",
+    "noRequestableFields": "Majikan anda tidak membuka sebarang medan pada tab ini untuk permohonan perubahan.",
     "bank": "Bank",
     "account": "Akaun",
     "dependentChildren": "Anak tanggungan",
@@ -11795,6 +11797,42 @@
         "nothing_to_do": "Tiada apa-apa dipilih, jadi tiada apa-apa ditutup.",
         "failed": "Itu tidak dapat diselesaikan. Tiada apa-apa ditutup."
       }
+    }
+  },
+  "profileRequestSettings": {
+    "title": "Permohonan Perubahan Pekerja",
+    "description": "Medan mana pada rekod sendiri yang boleh dipohon perubahan oleh pekerja, dan siapa yang memutuskan.",
+    "readOnlyNotice": "Anda boleh melihat tetapan ini tetapi tidak boleh mengubahnya — hanya pentadbir kumpulan boleh.",
+    "approverHeading": "Siapa meluluskan permohonan perubahan",
+    "approverHelp": "Seorang sahaja memutuskan setiap permohonan, dan tiada sesiapa boleh memutuskan permohonan sendiri. Kedua-dua pilihan ialah pentadbir kerana kelulusan menulis ke rekod induk, dan hanya pentadbir boleh menulisnya — lihat nota di bawah.",
+    "approverOption": {
+      "admin": "Mana-mana pentadbir HR",
+      "group_admin": "Pentadbir kumpulan sahaja"
+    },
+    "approverOptionHelp": {
+      "admin": "Termasuk pentadbir yang aksesnya meliputi satu syarikat sahaja. Inilah cara sistem berfungsi hari ini jika anda tidak mengubah apa-apa.",
+      "group_admin": "Pentadbir utama, atau pentadbir HR yang aksesnya meliputi seluruh kumpulan. Pentadbir bagi satu syarikat sahaja tidak lagi boleh meluluskannya."
+    },
+    "singleLevelNote": "Satu keputusan menyelesaikan satu permohonan. Tiada peringkat kelulusan kedua, dan pengurus tidak boleh dijadikan pelulus — kelulusan menulis ke rekod pekerja itu sendiri, dan hanya pentadbir dibenarkan berbuat demikian.",
+    "saveApprover": "Simpan pelulus",
+    "savedApprover": "Pelulus disimpan",
+    "unknownApprover": "Itu bukan salah satu pilihan pelulus.",
+    "fieldsHeading": "Apa yang pekerja boleh pohon untuk diubah",
+    "fieldsHelp": "Tandakan medan untuk membenarkan pekerja memohon pembetulan. Medan yang tidak ditandakan langsung tidak dipaparkan pada skrin mereka — tiada kotak kelabu yang menimbulkan persoalan.",
+    "lockWithdrawsNotice": "Mematikan sesuatu medan juga menolak permohonan yang sedang menunggu untuk medan itu. Pekerja diberitahu sebabnya pada skrin mereka sendiri. Tiada apa-apa dikemas kini pada rekod dan tiada apa-apa dipadam.",
+    "tabProfile": "Tab Profil",
+    "tabBankStatutory": "Tab Bank & Statutori",
+    "waitingCount": "{count} menunggu",
+    "saveFields": "Simpan medan",
+    "savedFields": "Medan disimpan",
+    "savedFieldsWithdrew": "Medan disimpan — {count} permohonan yang menunggu ditolak",
+    "withdrawnReason": "Medan ini tidak lagi dibuka untuk permohonan perubahan. Sila hubungi HR jika ia masih perlu dibetulkan.",
+    "refused": {
+      "not_group_admin": "Hanya pentadbir kumpulan boleh mengubah ini.",
+      "unknown_key": "Tetapan itu tidak wujud.",
+      "not_tenant_scoped": "Tetapan itu bukan milik anda untuk diubah.",
+      "not_customer_visible": "Tetapan itu diuruskan oleh Stradaverse.",
+      "wrong_type": "Itu bukan nilai yang sah untuk tetapan ini."
     }
   }
 }
