@@ -705,11 +705,11 @@ export function LeaveTypeTabs({
                 updateTypeAction={updateTypeAction}
               />
 
-              {/* F39 — "Send to payroll module". IT ARRIVES HERE FROM THE PAYROLL IMPACT SCREEN because it
-                  is a property of the leave type and every other per-type setting is on the type. The
-                  Payroll impact screen KEEPS ITS COPY this round (both write the same column through the
-                  same action and the same `payrollImpact=1` marker); Round 5 is where it stops being
-                  editable in two places. */}
+              {/* F39 — "Send to payroll module". IT ARRIVED HERE FROM THE PAYROLL IMPACT SCREEN because
+                  it is a property of the leave type and every other per-type setting is on the type.
+                  This is now the ONLY place it is editable: a6fe37fc Round 5 (737f4356) emptied
+                  app/admin/leave/payroll/page.tsx into a redirect stub, so the second copy is gone and
+                  the `payrollImpact=1` marker on `updateTypeAction` has one caller. */}
               <div className="space-y-1.5">
                 <span className="text-xs font-medium text-muted-foreground">{t('payrollPerTypeTitle')}</span>
                 <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">

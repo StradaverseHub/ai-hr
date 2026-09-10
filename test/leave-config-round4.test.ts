@@ -175,10 +175,34 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     // through one extra hop. Asserted so the hop is a known, written-down cost rather than a discovery.
     expect(read('app/admin/leave-approval/actions.ts')).toContain("const PAGE = '/admin/leave/approval';");
     const stub = read('app/admin/leave/approval/page.tsx');
-    expect(stub, 'the extra hop is only harmless while the stub forwards the query string').toContain(
-      'URLSearchParams',
-    );
     expect(stub).toContain(ROUTE);
+    // ⚠️ ASSERTED AS THE LOOP, NOT AS THE TOKEN — and this is the ONE stub where that matters most.
+    // The first version of this case checked for the string `URLSearchParams`, exactly the shape
+    // test/leave-config-round3.test.ts already proved walk-through-able for the other nine stubs:
+    // deleting the forwarding LOOP while leaving `const usp = new URLSearchParams();` behind passed
+    // tsc and the whole suite. `/admin/leave/approval` is not in round3's CUTOVER table (it is Round
+    // 4's screen, not Round 3's), so this file is the only place the hole can be closed.
+    //
+    // WHY IT IS LOAD-BEARING HERE ABOVE ALL: this is the only stub an action still redirects INTO.
+    // `PAGE` above is the target of 17 redirects in app/admin/leave-approval/actions.ts — 8 success
+    // `?toast=` (escalation settings saved, template created / updated / duplicated / activated /
+    // deleted, default flow set or cleared, assignment added or removed) and 9 `?error=` — and
+    // `ToastFromQuery` in app/layout.tsx renders them from the query string ALONE. A stub that stops
+    // forwarding does not 404 and does not fail a render: it silently drops every approval-chain
+    // confirmation AND every approval-chain error. That is the Phase-B #14 class this round exists to
+    // prevent. All three halves are checked: the params are read, they are carried, and the query is
+    // appended to the redirect.
+    expect(stub, "the approval stub does not READ the incoming params — every ?toast= and ?error= from actions.ts's 17 redirect sites is dropped").toMatch(
+      /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
+    );
+    expect(stub, 'the approval stub does not carry the incoming params onto the destination').toMatch(
+      /usp\.set\(k, v\)/,
+    );
+    expect(stub, 'the approval stub does not append the query string to the redirect').toMatch(
+      /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+    );
+    // …and the redirect it builds is the destination one, not a bare literal that ignores `qs`.
+    expect(stub).toMatch(/redirect\(`\/admin\/leave-config\/approval-chains\$\{qs \? `\?\$\{qs\}` : ''\}`\)/);
   });
 });
 
@@ -459,7 +483,27 @@ describe('a6fe37fc R5 · the editor exists at exactly ONE address, and the other
     expect(read('packs/leave/index.ts')).not.toContain("href: '/admin/leave/approval'");
     // The OLDER stub (0d147b78, app/admin/leave-approval/page.tsx) was repointed in the same commit
     // rather than left chaining through this one.
-    expect(read('app/admin/leave-approval/page.tsx')).toContain(ROUTE);
+    const olderStub = read('app/admin/leave-approval/page.tsx');
+    expect(olderStub).toContain(ROUTE);
+    // …and it forwards, which it did NOT until r261's verify pass. It was the one leave address of the
+    // eleven that stripped the query string outright — no `searchParams` parameter, no loop, a bare
+    // `redirect('/admin/leave-config/approval-chains')` — so a bookmarked link carrying `?company=`
+    // opened on the wrong company and a `?toast=` was swallowed. Pinned as the loop rather than the
+    // token, for the same reason the case above is: deleting the loop and leaving the declaration
+    // behind passes tsc and everything else.
+    expect(olderStub, 'the 0d147b78 stub does not READ the incoming params').toMatch(
+      /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
+    );
+    expect(olderStub, 'the 0d147b78 stub does not carry them onto the destination').toMatch(/usp\.set\(k, v\)/);
+    expect(olderStub, 'the 0d147b78 stub does not append the query string to the redirect').toMatch(
+      /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+    );
+    // A chain of two stubs is what the repoint above removed; assert it did not come back. Over the
+    // STRIPPED source — the r134 rule: this stub's header names the address it used to point at, and an
+    // absence check over the raw file would report a correct, honest stub as wrong.
+    expect(stripComments(olderStub), 'the 0d147b78 stub chains through the other stub again').not.toContain(
+      '/admin/leave/approval',
+    );
   });
 
   it('the read-out lands at the new address only — it was never copied onto the old screen', () => {

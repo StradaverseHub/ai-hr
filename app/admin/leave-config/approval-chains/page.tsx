@@ -74,11 +74,16 @@ import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout'
  * It is a read-out, not that editor coming back — see `../approval-readout.tsx`'s header for the full
  * reasoning, and `test/leave-approval-page-restructure.test.ts` for the case that carries it.
  *
- * A SAVE MADE HERE LANDS ON THE OLD SCREEN — `app/admin/leave-approval/actions.ts` redirects to its own
- * `PAGE` constant (`/admin/leave/approval`) and Round 2's rule 2 still stands: no action changes
- * signature and no new action is written, because re-pointing that constant would move every save on the
- * OLD screen too, which is a Round 5 act. `../preview-note.tsx` says so out loud rather than letting it
- * look like a fault.
+ * A SAVE MADE HERE RETURNS THROUGH ONE HOP — `app/admin/leave-approval/actions.ts` still redirects to
+ * its own `PAGE` constant (`/admin/leave/approval`), which is a redirect stub as of a6fe37fc Round 5.
+ * Round 2's rule 2 stands: no action changes signature and no new action is written. The constant was
+ * left where it is deliberately — the migration order's Round 5 names the redirect constants it moves
+ * (app/admin/_redirects.ts's five, and app/admin/actions.ts's LEAVE_REPLACEMENT) and this private one is
+ * not among them. So the hop is real and its whole cost is that the stub must forward the query string,
+ * or all 17 `?toast=` / `?error=` returns land here blank. test/leave-config-round4.test.ts pins the
+ * forwarding loop by name rather than by token. (Before the cutover this was said out loud on the page
+ * itself by `../preview-note.tsx`; that component came off at the cutover and was deleted with it,
+ * because a real screen telling the administrator it is a preview is worse than no note.)
  *
  * SERVER COMPONENT, like the page it mirrors: the three client islands receive only serialisable props
  * and server actions, and the read-out is server-rendered markup (test/server-client-boundary.test.ts).

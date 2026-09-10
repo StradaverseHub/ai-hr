@@ -11,7 +11,27 @@ import { redirect } from 'next/navigation';
  * that turned `/admin/leave/approval` into a stub of its own. Two stubs in a chain still deliver the
  * bookmark, but through a hop that does not need to happen, and a stub whose destination is another
  * stub is one edit away from a loop.
+ *
+ * ⚠️ THE QUERY STRING IS FORWARDED, like all eleven of the other leave stubs. It was NOT, until r261's
+ * verify pass: this was the single leave address that stripped everything, so
+ * `/admin/leave-approval?toast=Saved&company=c1` arrived at Approval chains with no toast and on the
+ * wrong company. Harmless the day it was found — nothing links here WITH a query today — but it is the
+ * address 0d147b78's sidebar entry used, so it is a live bookmark, and `ToastFromQuery` in
+ * app/layout.tsx renders confirmations from the query string alone. Forwarding costs one loop and
+ * removes a whole class of silent drop; the contract is now the same at every leave address rather than
+ * true at ten of eleven. test/leave-config-round4.test.ts pins it.
  */
-export default function LeaveApprovalRedirect() {
-  redirect('/admin/leave-config/approval-chains');
+export default async function LeaveApprovalRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === 'string') usp.set(k, v);
+    else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
+  }
+  const qs = usp.toString();
+  redirect(`/admin/leave-config/approval-chains${qs ? `?${qs}` : ''}`);
 }
