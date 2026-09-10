@@ -54,10 +54,15 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // arrangement, which is exactly the confidentiality shape this file exists for — it is the row most
     // likely to be assumed safe because it only reads. It is not: it names every employee in the tenant,
     // so it carries its own requireAdmin below like the six beside it.
+    //
+    // 1c5602cc (r263) — EIGHT: Schedule, the tabbed working-pattern configuration screen. It reads the
+    // shift library and every in-scope company's working week, so it names tenant-wide configuration the
+    // same way its neighbours do, and it carries its own requireAdmin below rather than trusting the row.
     expect(adminRoutes).toEqual([
       '/admin/attendance',
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',
+      '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
       '/admin/locations',
@@ -74,6 +79,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/attendance',
     '/admin/attendance-policy',
     '/admin/attendance-policy/schedule',
+    '/admin/attendance/schedule',
     '/admin/attendance/schedule-assignment',
     '/admin/attendance-allowance',
     '/admin/locations',

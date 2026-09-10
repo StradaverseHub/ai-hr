@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CalendarCheck,
   CalendarClock,
+  CalendarCog,
   CalendarDays,
   CalendarRange,
   ClipboardList,
@@ -122,6 +123,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // Ungated like their four siblings — each screen shows the caller their OWN requests.
     { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
+    // 1c5602cc (r263) — Schedule: the tabbed configuration screen for an employee's working pattern
+    // (General built; Holiday / Overtime / Attendance / Request / Notification named and EMPTY). The
+    // SCREEN is new; almost nothing it shows is — it reads the shift library and the per-company working
+    // week from the tables that already hold them. It sits BESIDE "Work Schedule" and does not replace
+    // it: a later round is explicitly the cutover, so both rows are expected here at once.
+    { href: '/admin/attendance/schedule', labelKey: 'schedule', icon: CalendarCog, adminOnly: true },
   ] as const;
 
   /**
@@ -211,6 +218,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/admin/attendance', // Shift
       '/admin/attendance-policy', // Overtime Pattern
       '/admin/attendance-policy/schedule', // Work Schedule
+      // 1c5602cc (r263) — Schedule, immediately after the Work Schedule row it will eventually absorb.
+      // TWO rows on purpose, for now: the a6fe37fc playbook builds alongside and retires only in a round
+      // that is explicitly the cutover, and the reporter has been asked to steer whether it is absorbed
+      // at all. It leads Schedule Assignment for the 0bade264 reason in reverse — it CONFIGURES the
+      // working pattern, where Schedule Assignment is the screen that uses it.
+      '/admin/attendance/schedule', // Schedule (tabbed configuration)
       '/admin/attendance/schedule-assignment', // Schedule Assignment
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
@@ -455,6 +468,13 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/admin/attendance-policy': 'Overtime Pattern',
       // ad52212d round 1 — the third category. The screen is af7a8eb4's; the ROW is new.
       '/admin/attendance-policy/schedule': 'Work Schedule',
+      // 1c5602cc (r263) — the KEY is `nav.schedule` and it resolves to "Schedule", the page's own title.
+      // a324a4b3's whole lesson: a key that does not equal the string it resolves to is what got this
+      // module re-planned off a misreading, so the new row keeps them equal from the first commit.
+      // The uniqueness assertion below is doing real work here — "Schedule", "Work Schedule" and
+      // "Schedule Assignment" are three distinct rows, and the first two are expected to READ similarly
+      // only until the cutover round decides whether Work Schedule is absorbed.
+      '/admin/attendance/schedule': 'Schedule',
       // 0bade264 (r209) — the reporter's own name for the new screen. Both words matter: it is the
       // SCHEDULE (which shift) ASSIGNED (to whom), not another settings category.
       '/admin/attendance/schedule-assignment': 'Schedule Assignment',

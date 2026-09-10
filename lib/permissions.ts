@@ -513,9 +513,18 @@ export const SCREENS: readonly ScreenEntry[] = [
     // THIS column rather than minting one. It is a STATIC segment declared before '[shiftId]' here for
     // readability only — on disk Next resolves app/admin/attendance/schedule-assignment/page.tsx ahead
     // of the dynamic sibling either way, exactly as '/admin/attendance/new' already does.
+    // 1c5602cc (r263): '/admin/attendance/schedule' — the tabbed Schedule configuration screen (General
+    // built; the other five tabs named and empty). requireAdmin, the same guard and the same admin
+    // surface as the shift library it reads from, so it RIDES this column rather than minting a screen
+    // key: a second nav row does not make it a second screen, exactly as '/admin/attendance-policy/
+    // schedule' rides `attendancePolicyConfig` below. Registered in the SAME commit as the page —
+    // test/function-access.test.ts fails in BOTH directions, so neither half may land alone. Another
+    // STATIC segment declared ahead of '[shiftId]' for readability only; on disk Next resolves
+    // app/admin/attendance/schedule/page.tsx ahead of the dynamic sibling either way.
     routes: [
       '/admin/attendance',
       '/admin/attendance/new',
+      '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance/[shiftId]',
       '/attendance/import',
