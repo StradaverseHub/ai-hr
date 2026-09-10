@@ -5,6 +5,8 @@ import { getSession } from '@/lib/session';
 import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance } from '@/core/read';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfileChangeRequests } from '@/core/profile';
+// r261 stage three — the tenant's field-by-field permission for change requests (ess.profile_change_fields).
+import { profileChangeAllowedKeys } from '@/core/tenant-settings';
 import { myResignation } from '@/core/offboarding';
 import { isChildReliefEligible, childAgeYears } from '@/core/dependents';
 // ADR-0080 D9/D11 — through the leave pack's FACADE, never core/leave directly. The Personnel screen
@@ -193,6 +195,13 @@ export default async function MePage({
    * label. Nothing here reads the request store a second time: `profileRequests` is the employee's own
    * history, already scoped to `ctx.personId` by `myProfileChangeRequests`.
    */
+  /**
+   * r261 stage three — WHICH fields this tenant lets an employee ask to change. Resolved ONCE for the
+   * whole page and handed to both request cards, so the two tabs cannot end up reading two different
+   * answers, and read from the same tenant setting `core/profile.ts` enforces on the POST. The screen
+   * hiding a control and the service dropping the key are two independent statements of one policy.
+   */
+  const allowedRequestKeys = profileChangeAllowedKeys(s);
   const pendingValues = pendingProposedByKey(profileRequests, t);
   const pendingFor = (key: string) => {
     const value = pendingValues.get(key);
@@ -506,7 +515,7 @@ export default async function MePage({
           Profile tab's own request card: the fields it offers are exactly the ones read on this tab, so
           the control to correct a wrong passport number sits under the wrong passport number rather than
           three tabs away. lib/profile-requestable-fields.ts decides which those are. */}
-      <RequestChangeCard tab="profile" title={t('requestChangeProfileHeading')} requests={profileRequests} />
+      <RequestChangeCard tab="profile" title={t('requestChangeProfileHeading')} requests={profileRequests} allowedKeys={allowedRequestKeys} />
     </>
   );
 
@@ -638,7 +647,7 @@ export default async function MePage({
           offers — lib/profile-requestable-fields.ts, one declaration, read by the form, the action, the
           sanitiser and the applier — and that a rejection now carries a reason the employee is shown.
           The card renders only this tab's fields; the Profile tab has its own. */}
-      <RequestChangeCard tab="bankStatutory" title={t('approvalGatedHeading')} requests={profileRequests} />
+      <RequestChangeCard tab="bankStatutory" title={t('approvalGatedHeading')} requests={profileRequests} allowedKeys={allowedRequestKeys} />
     </>
   );
 

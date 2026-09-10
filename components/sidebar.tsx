@@ -36,6 +36,7 @@ import {
   Tags,
   Target,
   UserRound,
+  UserRoundCog,
   UserRoundPlus,
   Users,
   Wallet,
@@ -280,6 +281,17 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // CalendarDays is already imported (REPORTS_NODE's Leave report uses it) and no sibling in THIS node
     // carries it, so the collapsed rail has no glyph collision.
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
+    // r261 (board item 9583deac, stage three): Employee Change Requests — the two settings that decide
+    // which fields of their own record an employee may ask to change, and who signs one off. It belongs
+    // in System Settings for the same reason Hiring Defaults does: it is company-wide setup an
+    // administrator configures once, not a daily HR task, and there is nowhere on the Personnel record or
+    // on /approvals where a reader would look for a policy about every employee at once. This row is the
+    // OTHER HALF of its lib/permissions.ts registration and neither ships without the other.
+    //
+    // Placed after Holidays and before System Analysis, which stays last (it is a reference screen, not a
+    // setup step). UserRoundCog is unused elsewhere in this node, so the collapsed rail has no glyph
+    // collision with UserRoundPlus (Hiring Defaults).
+    { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
     // deec1691: System Analysis & Dependency Explorer. Alone among the rows of this node it is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed

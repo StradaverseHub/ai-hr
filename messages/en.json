@@ -305,6 +305,7 @@
     "systemExplorer": "Dependency explorer",
     "movementSettings": "Movement Settings",
     "hiringDefaults": "Hiring Defaults",
+    "profileRequestSettings": "Employee Change Requests",
     "noticeBoard": "Notice Board",
     "payrollIndividualPayslip": "Individual Payslip",
     "payrollBackPay": "Back Pay",
@@ -2598,6 +2599,7 @@
     "bankAndTax": "Bank & tax",
     "approvalGatedHeading": "Bank, tax & personal",
     "changesNeedApproval": "Changes need admin approval before they affect your pay.",
+    "noRequestableFields": "Your employer has not opened any field on this tab to change requests.",
     "bank": "Bank",
     "account": "Account",
     "dependentChildren": "Dependent children",
@@ -11804,6 +11806,42 @@
         "nothing_to_do": "Nothing was selected, so nothing was closed.",
         "failed": "That could not be completed. Nothing was closed."
       }
+    }
+  },
+  "profileRequestSettings": {
+    "title": "Employee Change Requests",
+    "description": "Which fields of their own record an employee may ask to change, and who decides.",
+    "readOnlyNotice": "You can see this configuration but not change it — only a group administrator can.",
+    "approverHeading": "Who approves a change request",
+    "approverHelp": "One person decides each request, and nobody can ever decide their own. Both choices are administrators because approving writes the master record, and only an administrator may write it — see the note below.",
+    "approverOption": {
+      "admin": "Any HR administrator",
+      "group_admin": "Only a group administrator"
+    },
+    "approverOptionHelp": {
+      "admin": "Including an administrator whose access covers one company. This is how the system behaves today if you change nothing.",
+      "group_admin": "A super administrator, or an HR administrator whose access covers the whole group. An administrator for a single company can no longer sign these off."
+    },
+    "singleLevelNote": "A request is settled by one decision. There is no second level of approval, and a manager cannot be made the approver — approving writes the employee record itself, which only an administrator is permitted to do.",
+    "saveApprover": "Save approver",
+    "savedApprover": "Approver saved",
+    "unknownApprover": "That is not one of the approver options.",
+    "fieldsHeading": "What an employee may ask to change",
+    "fieldsHelp": "Tick a field to let employees ask you to correct it. Unticked fields are simply not offered on their screen — there is no greyed-out box for them to wonder about.",
+    "lockWithdrawsNotice": "Switching a field off also refuses any request already waiting on it. The employee is told why, on their own screen. Nothing is applied to the record and nothing is deleted.",
+    "tabProfile": "Profile tab",
+    "tabBankStatutory": "Bank & Statutory tab",
+    "waitingCount": "{count} waiting",
+    "saveFields": "Save fields",
+    "savedFields": "Fields saved",
+    "savedFieldsWithdrew": "Fields saved — {count} waiting request(s) refused",
+    "withdrawnReason": "This field is no longer open to change requests. Please contact HR if it still needs correcting.",
+    "refused": {
+      "not_group_admin": "Only a group administrator can change this.",
+      "unknown_key": "That setting does not exist.",
+      "not_tenant_scoped": "That setting is not yours to change.",
+      "not_customer_visible": "That setting is managed by Stradaverse.",
+      "wrong_type": "That is not a valid value for this setting."
     }
   }
 }

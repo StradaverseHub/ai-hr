@@ -167,7 +167,9 @@ describe('R4 #2 — HR-set gender / marital status', () => {
     const a = adminCtx(b);
     const E = await hire('SelfServe');
     const uid = await createAppUser(b.tenantId, E.personId, 'employee');
-    const emp: SessionContext = { tenantId: b.tenantId, userId: uid, personId: E.personId, roles: ['employee'] };
+    // r261 — spread from adminCtx for the entitlement snapshot requestProfileChange now reads the
+    // tenant's field-permission setting from; the principal below is still a plain employee.
+    const emp: SessionContext = { ...a, userId: uid, personId: E.personId, roles: ['employee'] };
 
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,

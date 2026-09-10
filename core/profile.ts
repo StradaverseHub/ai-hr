@@ -34,9 +34,15 @@ import { assertCanDecide } from './approvals';
 // both screens, and which table/column an approval writes it to. See the header of that file.
 import {
   PROFILE_REQUESTABLE_FIELDS,
+  PROFILE_REQUESTABLE_KEYS,
   requestableField,
   type ProfileRequestTarget,
 } from '../lib/profile-requestable-fields';
+// r261 stage three — the tenant's own answers to "which fields may be asked about?" and "who decides?".
+// Read from the per-request entitlement snapshot; see core/tenant-settings.ts for why they throw rather
+// than degrade when the snapshot cannot answer.
+import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
+import { isGroupAdmin } from '../lib/authz';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
 import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
 // 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note
@@ -118,6 +124,10 @@ const isoDate = (v: unknown): string | null | undefined => {
   return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
 };
 
+/** The whole declaration, as a set. The HR-direct writer below passes this where the employee path
+ *  passes the tenant's allow-list — see setPersonComplianceFields for why the two differ. */
+const EVERY_REQUESTABLE_KEY: ReadonlySet<string> = new Set(PROFILE_REQUESTABLE_KEYS);
+
 /**
  * Keep only the recognised, sanitised keys — the bundle is a jsonb patch we later apply.
  *
@@ -127,12 +137,18 @@ const isoDate = (v: unknown): string | null | undefined => {
  * null-or-value. An unknown key is silently dropped, exactly as before — a form that posts junk gets
  * nothing stored rather than an error that tells a prober which names exist.
  */
-function sanitizeProposed(raw: ProfileChangeProposed): ProfileChangeProposed {
+function sanitizeProposed(raw: ProfileChangeProposed, allowed: ReadonlySet<string>): ProfileChangeProposed {
   const out: Record<string, string | number | null> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (value === undefined) continue;
     const field = requestableField(key);
     if (!field) continue;
+    // r261 stage three — AND THE TENANT MUST ALLOW IT. `allowed` is the tenant's own answer to "which
+    // fields may an employee ask to change?", and it is applied HERE rather than on the form, because the
+    // form is a suggestion and this is the gate: a POST naming a switched-off field is dropped exactly as
+    // an unknown key is, silently and with nothing stored. Silent, not an error, for the reason the
+    // unknown-key drop is silent — an error that named the field would tell a prober which names exist.
+    if (!allowed.has(key)) continue;
     if (field.input === 'select') {
       // The declaration's own option values, plus the two module master lists it mirrors — GENDERS and
       // MARITAL_STATUSES stay the authority for those two so a rule value elsewhere in the product
@@ -312,7 +328,11 @@ export async function requestProfileChange(
   p: { employmentId: string; proposed: ProfileChangeProposed },
 ) {
   if (!ctx.personId) throw new Error('This account is not linked to an employee profile.');
-  const proposed = sanitizeProposed(p.proposed);
+  // r261 stage three — the tenant's field-by-field permission, resolved BEFORE anything is stored. A
+  // field switched off has no control on /me (app/me/request-change-card.tsx renders none) and is
+  // dropped here as well, so hiding the control and enforcing the rule are two independent statements of
+  // the same policy rather than one of them dressed as both.
+  const proposed = sanitizeProposed(p.proposed, profileChangeAllowedKeys(ctx));
   if (Object.keys(proposed).length === 0) throw new Error('Nothing to change.');
   // A bank change is all-or-nothing: approving an account number against a stale bank name (or
   // vice versa) is exactly the half-update the approval gate exists to prevent.
@@ -378,10 +398,37 @@ export async function decideProfileChange(
     if (!req) throw new Error('profile change request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`profile change request is already ${req.status}`);
 
+    /**
+     * ── WHO MAY DECIDE, AND THE TWO HALVES OF IT ────────────────────────────────────────────────────
+     *
+     * `assertCanDecide` is the FLOOR and it is not configurable: it bans the subject from deciding their
+     * own request (the super_admin sole-admin escape hatch is pre-existing and untouched by this round),
+     * and it admits only an administrator, the subject's ACTIVE administrative manager, or a one-hop
+     * delegate of that manager. Every approval in this product passes through it.
+     *
+     * The ADMIN REQUIREMENT below is also not configurable, and it is the database's rule rather than a
+     * preference: approving WRITES the master record, and `person_rls` (0029) has always been
+     * `WITH CHECK (app.is_admin() OR app.is_self_person(id))`. A non-admin approver would pass this
+     * guard and then be refused by Postgres mid-transaction. So the setting can only NARROW.
+     *
+     * r261 stage three is that narrowing — the plan's "a setting that controls who approves". `admin`
+     * (the default, and stage two's behaviour) lets any HR administrator decide, including one granted
+     * over a single company. `group_admin` requires a GROUP administrator, so a bank account or an IC is
+     * signed off by whoever holds the whole group rather than by whoever administers one company.
+     *
+     * ⚠️ WHAT THIS DELIBERATELY DOES NOT DO. It does not add a second level — the plan sold single-level
+     * approval and invited a rejection if the reporter wanted multi-level; they approved it as written,
+     * so one decision by one person ends the request either way. It does not widen VISIBILITY by one row:
+     * `profile_change_request_rls` (0029) is `app.can_see_employment`, untouched. And it cannot widen
+     * AUTHORITY in any configuration — both branches below only ever refuse.
+     */
     await assertCanDecide(tx, ctx, req.employmentId, 'profile change'); // bans self
     const roles = ctx.roles ?? [];
     if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
       throw new Error('Only an admin can approve a profile change');
+    }
+    if (profileChangeApprover(ctx) === 'group_admin' && !isGroupAdmin(ctx)) {
+      throw new Error('Only a group administrator can approve a profile change');
     }
 
     if (p.decision === 'approved') {
@@ -530,11 +577,19 @@ export async function setPersonComplianceFields(
   // Reuse the module-private sanitiser (whitelist → null on unrecognised; DOB validated to ISO shape).
   // Only include a field in the write set when the caller provided it (undefined = leave as-is; explicit
   // null = clear). b4682879 adds date of birth to this compliance-gated setter (it drives EPF age bands).
-  const proposed = sanitizeProposed({
-    ...(p.gender !== undefined ? { gender: p.gender } : {}),
-    ...(p.maritalStatus !== undefined ? { maritalStatus: p.maritalStatus } : {}),
-    ...(p.dateOfBirth !== undefined ? { dateOfBirth: p.dateOfBirth } : {}),
-  });
+  // EVERY_REQUESTABLE_KEY, not the tenant's allow-list, and the argument is passed explicitly rather
+  // than defaulted so the difference is impossible to inherit by forgetting. `ess.profile_change_fields`
+  // answers "what may an EMPLOYEE ASK to change" — this is HR writing the record directly, the very act
+  // an employee is being told to ask for. Narrowing it by the employee's permission would mean switching
+  // a field off stopped HR from correcting it too, which is the opposite of what the setting is for.
+  const proposed = sanitizeProposed(
+    {
+      ...(p.gender !== undefined ? { gender: p.gender } : {}),
+      ...(p.maritalStatus !== undefined ? { maritalStatus: p.maritalStatus } : {}),
+      ...(p.dateOfBirth !== undefined ? { dateOfBirth: p.dateOfBirth } : {}),
+    },
+    EVERY_REQUESTABLE_KEY,
+  );
   const personSet: Record<string, string | null> = {};
   if (proposed.gender !== undefined) personSet.gender = proposed.gender;
   if (proposed.maritalStatus !== undefined) personSet.maritalStatus = proposed.maritalStatus;
@@ -654,4 +709,116 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
       .orderBy(desc(profileChangeRequest.createdAt))
       .limit(limit),
   );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * r261 stage three — WHAT HAPPENS TO A REQUEST ALREADY WAITING WHEN ITS FIELD IS SWITCHED OFF
+ *
+ * This is the blocker the round can produce, so the answer is a function rather than a paragraph.
+ *
+ * THE TWO OUTCOMES THAT WOULD BE DEFECTS:
+ *   · the request stays pending and is APPROVED LATER, writing a value into a field the employer has
+ *     since closed — the master record changed by a permission that no longer exists;
+ *   · the request DISAPPEARS, and the employee who asked is never told what became of it.
+ *
+ * WHAT ACTUALLY HAPPENS: the moment a field is switched off, every PENDING request naming that field is
+ * REJECTED with a stated reason, and the employee reads that reason under "My change requests" on their
+ * own screen — the surface stage two built for exactly this. Nothing is applied and nothing is deleted:
+ * the row survives with its `proposed` intact, its status, its timestamp and the sentence explaining it.
+ * `profile_change_status` has three values and none of them is 'withdrawn'; inventing one would be a
+ * migration to express something 'rejected' plus a reason already says truthfully.
+ *
+ * A request that names a locked field AND a still-open one is rejected WHOLE. The alternative — editing
+ * the employee's `proposed` down to the surviving keys — silently changes what somebody asked for, and
+ * an approver would then be deciding a request nobody submitted. The employee can ask again for the part
+ * that is still open, and the reason tells them why they need to.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * How many PENDING requests name each field key, so the settings screen can say what switching a field
+ * off would cost BEFORE it is switched off rather than only in the toast afterwards.
+ *
+ * RLS-scoped like every other read here: a group admin sees their tenant, and this returns counts, never
+ * values — the settings screen has no business printing somebody's proposed bank account number.
+ */
+export async function pendingProfileChangeCountsByKey(ctx: SessionContext): Promise<Map<string, number>> {
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({ proposed: profileChangeRequest.proposed })
+      .from(profileChangeRequest)
+      .where(eq(profileChangeRequest.status, 'pending'))
+      .limit(1000),
+  );
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    for (const key of Object.keys((r.proposed ?? {}) as Record<string, unknown>)) {
+      if (!requestableField(key)) continue;
+      out.set(key, (out.get(key) ?? 0) + 1);
+    }
+  }
+  return out;
+}
+
+/**
+ * Reject every pending request that names one of `lockedKeys`, with the reason the caller supplies.
+ *
+ * ── WHY THIS DOES NOT GO THROUGH `decideProfileChange`, AND WHY THAT IS SAFE ────────────────────────
+ * `decideProfileChange` is a DECISION ON THE MERITS: it can apply the proposal, so it must ban the
+ * subject from deciding their own (`assertCanDecide`) and it must know who decided. This is not that. It
+ * is the consequence of a configuration change, it can only ever refuse, and it writes NOTHING to
+ * `person` or `employee_statutory_my` — there is no approved branch to reach. Because it cannot apply
+ * anything, a group admin whose OWN request happens to name a locked field gains nothing by running it:
+ * the only thing they can do to their own request here is refuse it. That is why the self-ban is absent
+ * rather than forgotten, and `decidedByEmploymentId` is left NULL because no person judged the request.
+ *
+ * Group admin only, mirroring `setTenantSetting`: the same authority that may change the setting is the
+ * authority that may carry out its consequence, and nothing narrower would be able to finish the job it
+ * started.
+ */
+export async function withdrawProfileChangesForLockedFields(
+  ctx: SessionContext,
+  p: { lockedKeys: readonly string[]; reason: string },
+): Promise<{ withdrawn: number }> {
+  if (!isGroupAdmin(ctx)) throw new Error('Only a group administrator can change profile-request settings.');
+  const locked = new Set(p.lockedKeys.filter((k) => requestableField(k) != null));
+  const reason = clean(p.reason);
+  if (locked.size === 0 || reason === null) return { withdrawn: 0 };
+
+  return withTenant(ctx, async (tx) => {
+    const pending = await tx
+      .select({
+        id: profileChangeRequest.id,
+        employmentId: profileChangeRequest.employmentId,
+        proposed: profileChangeRequest.proposed,
+      })
+      .from(profileChangeRequest)
+      .where(eq(profileChangeRequest.status, 'pending'))
+      .limit(1000);
+
+    let withdrawn = 0;
+    for (const req of pending) {
+      const keys = Object.keys((req.proposed ?? {}) as Record<string, unknown>);
+      const hit = keys.filter((k) => locked.has(k));
+      if (hit.length === 0) continue;
+      await tx
+        .update(profileChangeRequest)
+        // status + reason + timestamp ONLY. No master table is touched anywhere in this function, which
+        // is the property test/me-profile-request-settings.test.ts reads the columns to prove.
+        .set({ status: 'rejected', decidedByEmploymentId: null, decidedAt: sql`now()`, decisionReason: reason })
+        .where(eq(profileChangeRequest.id, req.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'profile-change',
+        aggregateId: req.id,
+        eventType: 'profile-change.rejected',
+        actor: actorOf(ctx),
+        subjectEmploymentId: req.employmentId,
+        // Field NAMES and a provenance marker, never values and never the reason sentence — the same
+        // rule decideProfileChange follows, and single-line so the event-payload PII guard can scan it.
+        payload: { decision: 'rejected', via: 'field-locked', fields: hit, reasonGiven: true },
+      });
+      withdrawn += 1;
+    }
+    return { withdrawn };
+  });
 }

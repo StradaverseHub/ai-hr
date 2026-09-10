@@ -3,6 +3,7 @@ import { Button, Card, Field, SectionHeader, inputCls } from '@/components/ui';
 import { myRequestProfileChange } from './actions';
 import {
   formatProposedValue,
+  offeredRequestableFieldsForTab,
   requestableFieldsForTab,
   requestableField,
   type RequestableField,
@@ -105,28 +106,53 @@ export async function RequestChangeCard({
   tab,
   title,
   requests,
+  allowedKeys,
 }: {
   tab: RequestableField['tab'];
   /** The card's own heading — a `me.*` key resolved by the caller so the page owns its own wording. */
   title: string;
   /** The caller's WHOLE request history; this card filters it to its own fields. */
   requests: readonly MyProfileRequest[];
+  /**
+   * r261 stage three — the fields THIS TENANT allows a request for
+   * (`ess.profile_change_fields`, resolved once by the page).
+   *
+   * ⚠️ REQUIRED, not optional with a permissive default. An optional prop would mean a caller who forgot
+   * it rendered the WHOLE declaration — the failure would look like a working screen, and the thing it
+   * silently reopened is a permission an employer switched off on purpose.
+   */
+  allowedKeys: ReadonlySet<string>;
 }) {
   const t = await getTranslations('me');
   // Personnel Management's own field labels — the same catalogue entry the read card above uses, which
   // is why a request and a record can never call one field two things.
   const tp = await getTranslations('people.detail');
 
-  const fields = requestableFieldsForTab(tab);
-  const keysHere = new Set(fields.map((f) => f.key));
+  /**
+   * ── A FIELD THE TENANT HAS SWITCHED OFF GETS NO CONTROL AT ALL ─────────────────────────────────────
+   *
+   * Not a disabled input, not a greyed select with a tooltip — nothing renders for it. A disabled
+   * control still announces that the field exists and that somebody decided this employee may not touch
+   * it, and it is one removed attribute away from being submittable; `core/profile.ts` drops the key
+   * server-side either way, but a screen that offers an inert control is a screen that has to be trusted
+   * twice. `test/me-profile-request-settings.test.ts` asserts the ABSENCE by name.
+   *
+   * `fields` is what the form OFFERS. `keysHere` is what the tab OWNS, and it stays the full declared
+   * set on purpose: the history list below is filtered by it, and a request submitted before a field was
+   * switched off must still be readable by the employee who submitted it. Hiding the control is a rule
+   * about the future; hiding somebody's own past request would be losing their record of it.
+   */
+  const fields = offeredRequestableFieldsForTab(tab, allowedKeys);
+  const keysHere = new Set(requestableFieldsForTab(tab).map((f) => f.key));
   const mine = requests.filter((r) =>
     Object.keys((r.proposed ?? {}) as Record<string, unknown>).some((k) => keysHere.has(k)),
   );
 
   return (
     <Card id={`section-request-${tab}`} data-tour={tab === 'bankStatutory' ? 'me-bank' : undefined}>
-      <SectionHeader title={title} subtitle={t('changesNeedApproval')} />
+      <SectionHeader title={title} subtitle={fields.length > 0 ? t('changesNeedApproval') : t('noRequestableFields')} />
       <div className="p-4">
+        {fields.length > 0 ? (
         <details>
           <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('requestAChange')}
@@ -165,6 +191,7 @@ export async function RequestChangeCard({
             </div>
           </form>
         </details>
+        ) : null}
 
         {/* THE STATUS OF YOUR OWN REQUESTS — waiting, approved or rejected, and for a rejection the
             approver's own words. This list is the promise "you can see the status of your own

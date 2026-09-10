@@ -1623,9 +1623,13 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
 });
 
 describe('ESS — profile self-service (ADR-0012)', () => {
+  // r261 — spread from adminCtx so the fixture carries an entitlement SNAPSHOT, then override the
+  // principal. requestProfileChange reads the tenant's field-permission setting from that snapshot, and a
+  // context without one is a principal the application could never produce (see test/harness.ts on why
+  // adminCtx stopped carrying the exemption marker).
   const empCtxFor = async (personId: string): Promise<SessionContext> => {
     const uid = await createAppUser(base.tenantId, personId, 'employee');
-    return { tenantId: base.tenantId, userId: uid, personId, roles: ['employee'] };
+    return { ...adminCtx(base), userId: uid, personId, roles: ['employee'] };
   };
 
   it('an employee edits their own low-risk contact fields directly (RLS allows the self-write)', async () => {

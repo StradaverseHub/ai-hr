@@ -164,8 +164,10 @@ it, the one on the Identification & Tax card. It had been the one field on this 
 second wording of its own, which is exactly the drift this whole item was raised about. Same field, same
 value, HR's name for it.
 
-Stage three adds the setting that controls, field by field, what an employee may ask to change, and who
-approves it.
+**Stage three (r261) added the two settings** that control, field by field, what an employee may ask to
+change, and who approves it — `docs/me-profile-request-settings.md`. Neither changes anything on this
+document's withheld list: a field an employee may not SEE never becomes something they may ask about, and
+the build still fails if the two lists disagree.
 
 ---
 

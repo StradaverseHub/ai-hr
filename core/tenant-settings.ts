@@ -41,7 +41,15 @@ import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
 import { isGroupAdmin } from '../lib/authz';
 import { SETTING_CATALOG } from '../packs/catalog';
-import { isModuleEnabled, settingEnabled } from './entitlements';
+import { getSetting, isModuleEnabled, settingEnabled } from './entitlements';
+// r261 stage three — the two settings' keys, their shapes and the ONE interpretation of each. Declared
+// in the client-safe module beside the field list they govern, so the /me request card (a server
+// component that must not pull in the database) reads the same resolution this service does.
+import {
+  resolveAllowedRequestKeys,
+  resolveRequestApprover,
+  type ProfileRequestApprover,
+} from '../lib/profile-requestable-fields';
 import { resolveActiveAiConfig } from './ai-config';
 
 /** Refused before the database sees it, so a caller gets a reason rather than a silent no-op. */
@@ -55,6 +63,29 @@ export class TenantSettingError extends Error {
 const catalogEntry = (key: string) => SETTING_CATALOG.find((s) => s.key === key) ?? null;
 
 /**
+ * What a caller may write into a catalogued setting.
+ *
+ * ⚠️ `readonly string[]` IS NEW IN r261 AND IT IS NOT A LOOSENING. 0313's `tenant_setting_write` already
+ * admits a `json`-typed key with any shape (`d.value_type = 'json' OR jsonb_typeof(…) = d.value_type`),
+ * and the column has always been `jsonb`; what was missing was a TypeScript writer that could express
+ * one. Board item 9583deac's field allow-list is a list of field keys and is the first such setting, so
+ * the writer now carries the same four value types the catalog and the `setting_definition_value_type`
+ * CHECK have carried since 0313 — no policy changes, no migration.
+ */
+export type TenantSettingValue = boolean | number | string | readonly string[];
+
+/**
+ * The catalog `valueType` a value would satisfy. Arrays are the ONLY json shape this writer accepts:
+ * every catalogued json setting today is a list, and admitting an arbitrary object would mean a caller
+ * could store a shape no reader in the product knows how to interpret. Anything else answers with its
+ * own `typeof`, so a string written to a `json` key (or an array to a `string` key) is refused with the
+ * same typed `wrong_type` a mistyped boolean has always produced.
+ */
+function settingValueType(v: TenantSettingValue): string {
+  return Array.isArray(v) ? 'json' : typeof v;
+}
+
+/**
  * Write one tenant-scoped setting.
  *
  * Every guard below has a matching conjunct in `tenant_setting_write`; this exists so the refusal is a
@@ -62,7 +93,7 @@ const catalogEntry = (key: string) => SETTING_CATALOG.find((s) => s.key === key)
  */
 export async function setTenantSetting(
   ctx: SessionContext,
-  p: { key: string; value: boolean | number | string },
+  p: { key: string; value: TenantSettingValue },
 ): Promise<void> {
   // Mirrors app.is_group_admin(). A company-scoped admin is deliberately NOT enough: these switches are
   // tenant-wide, and a per-company admin flipping one would change behaviour for companies they do not
@@ -73,7 +104,7 @@ export async function setTenantSetting(
   if (!entry) throw new TenantSettingError('unknown_key');
   if (entry.scope !== 'tenant') throw new TenantSettingError('not_tenant_scoped');
   if (!entry.customerVisible) throw new TenantSettingError('not_customer_visible');
-  if (typeof p.value !== entry.valueType) throw new TenantSettingError('wrong_type');
+  if (settingValueType(p.value) !== entry.valueType) throw new TenantSettingError('wrong_type');
 
   await withTenant(ctx, async (tx) => {
     await tx
@@ -179,4 +210,35 @@ export async function aiAgentSwitches(ctx: SessionContext): Promise<AiAgentSwitc
     const providerMissing = a.needsProvider && !hasProvider;
     return { id: a.id, key: a.key, on, module: a.module, moduleHeld, providerMissing, effective: on && moduleHeld && !providerMissing };
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * r261 stage three (board item 9583deac) — THE PROFILE-CHANGE POLICY, READ FROM THE TENANT'S SETTINGS
+ *
+ * Two values, read from the same per-request entitlement snapshot every other setting is read from, and
+ * resolved by the two pure functions in `lib/profile-requestable-fields.ts` so that a screen, a server
+ * action and a core service cannot interpret one stored row three ways.
+ *
+ * ⚠️ BOTH THROW WHEN THE SNAPSHOT CANNOT ANSWER, and that is deliberate. `settingEnabledOrDefault`'s own
+ * header draws the line: a PAGE read is a display decision and may degrade quietly; a SERVICE read is an
+ * authorization decision and must be loud. These are the second kind — one decides which fields an
+ * employee may propose, the other decides who may approve one — so an unreadable snapshot is an
+ * incident, not a policy. `test/module-catalog-drift.test.ts` refuses the quiet forms outside `app/` for
+ * exactly this reason.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The fields THIS tenant lets an employee ask to change.
+ *
+ * The literal key is passed straight to `getSetting` (never a variable) for the reason
+ * AI_AGENT_SETTINGS records above: an uncatalogued key is a 500, not a disabled feature, and a literal
+ * is the only form the catalogue drift guard can see.
+ */
+export function profileChangeAllowedKeys(ctx: SessionContext): ReadonlySet<string> {
+  return resolveAllowedRequestKeys(getSetting(ctx, 'ess.profile_change_fields'));
+}
+
+/** Who THIS tenant lets decide a profile change request. One approver, never a chain. */
+export function profileChangeApprover(ctx: SessionContext): ProfileRequestApprover {
+  return resolveRequestApprover(getSetting(ctx, 'ess.profile_change_approver'));
 }

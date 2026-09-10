@@ -46,10 +46,19 @@ async function hire(name: string) {
   });
 }
 
-/** A plain employee principal: linked to a person, holding only the `employee` role. */
+/**
+ * A plain employee principal: linked to a person, holding only the `employee` role.
+ *
+ * ⚠️ SPREAD FROM `adminCtx` FOR THE ENTITLEMENT SNAPSHOT, and the roles/user/person are then overridden.
+ * r261 made `requestProfileChange` read the tenant's own field-permission setting, and a setting is read
+ * from the snapshot a real session carries. A hand-built context with no snapshot is not a lighter
+ * fixture — it is a principal the application could never produce, and `getSetting` refuses it loudly
+ * (EntitlementsUnresolvedError) rather than guessing. This is the same correction test/harness.ts records
+ * for `adminCtx` itself when the exemption marker was removed.
+ */
 async function employeeCtx(personId: string): Promise<SessionContext> {
   const userId = await createAppUser(b.tenantId, personId, 'employee');
-  return { tenantId: b.tenantId, userId, personId, roles: ['employee'] };
+  return { ...adminCtx(b), userId, personId, roles: ['employee'] };
 }
 
 /** The master columns this round can reach, read as the OWNER (no RLS) so the assertion is about the

@@ -282,6 +282,18 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/settings/hiring-defaults', '/admin/settings/hiring-defaults/[companyId]'],
   },
   {
+    // r261 (board item 9583deac, stage three) — Employee Change Requests. TENANT-WIDE configuration, so
+    // `requireAdmin` and not `scopedAdmin`: the two values it holds are `tenant_setting` rows, and 0313's
+    // write policy admits a GROUP admin only. A company-scoped admin therefore REACHES the screen (which
+    // is what this column reports) and is told on it that the write is not theirs — the same split the
+    // agent switchboard makes, and the reason the guard here is the page's own and not the writer's.
+    screenKey: 'profileRequestSettings',
+    href: '/admin/settings/profile-requests',
+    labelKey: 'nav.profileRequestSettings',
+    guard: 'requireAdmin',
+    routes: ['/admin/settings/profile-requests'],
+  },
+  {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).
     // fbdeee87: relocated INTO the System Labels surface as a tab — the catalog is unchanged (flat tenant-wide
     // table, requireAdmin), only its route moved under /admin/settings/system-labels/. The old standalone route

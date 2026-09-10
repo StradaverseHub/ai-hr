@@ -124,13 +124,20 @@ colleague's request by its identifier under a colleague's login and getting noth
 
 ---
 
-## Still to come in stage three
+## Stage three, and where it is written down
 
-- The setting that controls, **field by field**, which of the twenty-four above an employee may ask about.
-- The setting that controls **who approves**, and an approval screen showing the current value beside the
-  requested one for the approver as well as for the employee.
+Both settings are now **built** (r261) and have their own document, `me-profile-request-settings.md`:
 
-Neither is built. The approver's queue today names each proposed field by the same words the employee and
+- the setting that controls, **field by field**, which of the twenty-four above an employee may ask about —
+  including what happens to a request already waiting when you switch its field off;
+- the setting that controls **who approves**, which narrows the decision from any HR administrator to a
+  group administrator. It is still ONE approver, as you approved it, and that document also explains — in
+  plain terms — why the approver is an administrator rather than the employee's manager.
+
+Nothing in stage three changes for a company that never opens the settings screen: the list above is still
+the default, and an HR administrator still approves.
+
+The groundwork both of them stand on shipped with stage two. The approver's queue today names each proposed field by the same words the employee and
 HR both read it under, and prints the requested VALUE the same way too — where the employee sees
 “Married · spouse working”, so does the approver, rather than the tax code that is stored underneath.
 That is the groundwork for both settings: a permission, a request and a record cannot end up calling one

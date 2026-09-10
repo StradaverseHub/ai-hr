@@ -57,6 +57,10 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // 4509d2b8 — moved out of the Attendance settings node (packs/attendance/index.ts). It is company-wide
   // setup, not attendance config: one holiday list, read by leave, attendance and payroll alike.
   '/admin/holidays',
+  // r261 (9583deac stage three) — Employee Change Requests: which fields an employee may ask to change,
+  // and who approves. DECLARED here rather than tolerated, which is the whole point of asserting the
+  // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
+  '/admin/settings/profile-requests',
   '/admin/system-explorer',
 ] as const;
 
