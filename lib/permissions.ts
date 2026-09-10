@@ -336,11 +336,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // meant to. Its /export sibling is deliberately NOT listed: the reverse-completeness scan reads
       // page.tsx files only, and a route handler has no screen column to describe.
       '/admin/leave/entitlements/ledger-archive',
-      // 6e9a126e RELEASE TWO — the Entitlement Tables + Employee Eligibility editor. Same admin surface,
-      // same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one. Registering it
-      // is not paperwork: test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from
-      // REGISTERED_ROUTES, and a registered route with no page on disk.
-      '/admin/leave/entitlements/templates',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/templates'` (6e9a126e release two, the
+      // Entitlement Tables + Employee Eligibility editor) STOOD HERE and is DELIBERATELY GONE. The screen
+      // is `/admin/leave-config/entitlement-tables` now; the old address is an unguarded redirect stub,
+      // and a stub is not a screen this grid can describe, so it left `routes` in the SAME commit that
+      // emptied the page — test/function-access.test.ts fails BOTH ways.
       // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
       // screenKey (the /admin/personnel precedent above).
       '/admin/leave/adjustments',

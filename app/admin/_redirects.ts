@@ -20,8 +20,13 @@ export const ADJUSTMENTS = '/admin/leave/adjustments';
 export const GENERATE = '/admin/leave/generate';
 /** 6e9a126e release two — the Entitlement Tables + Employee Eligibility editor (the reporter's steps 1
  *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
- *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them. */
-export const ENTITLEMENT_TEMPLATES = '/admin/leave/entitlements/templates';
+ *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them.
+ *
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module. It named `/admin/leave/entitlements/templates`
+ *  until that page became a redirect stub; a save would still have ARRIVED through the stub, but through a
+ *  wasted hop, and a redirect constant naming an address that is no longer a screen is a statement about
+ *  where a screen lives that has stopped being true (the LEAVE_APPROVAL note below says the same thing). */
+export const ENTITLEMENT_TEMPLATES = '/admin/leave-config/entitlement-tables';
 /**
  * 9a65f808 — System Labels → Organisation, and the home of the Grade Groups editor.
  *

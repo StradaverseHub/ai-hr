@@ -88,7 +88,7 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     id: 'configure',
     items: [
       { id: 'leaveTypes', href: '/admin/leave/entitlements' },
-      { id: 'entitlementTables', href: '/admin/leave/entitlements/templates' },
+      { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },
       { id: 'approvalChain', href: '/admin/leave/approval' },
       { id: 'replacementLeave', href: '/admin/leave/replacement' },
       { id: 'payrollImpact', href: '/admin/leave/payroll' },

@@ -41,7 +41,14 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const BLOCK = '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 const CORE = '/core/entitlement-template.ts';
-const STANDALONE = '/app/admin/leave/entitlements/templates/page.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The standalone Entitlement Tables screen is
+ * `/admin/leave-config/entitlement-tables` now; the old address is a redirect stub that mounts nothing,
+ * so the file that has to keep mounting the shared block is the new page. ee6b7c69's property is
+ * unchanged and is the reason this constant exists: ONE block, two mount points — the standalone screen
+ * unfiltered, and each leave type's Entitlement step filtered to that type.
+ */
+const STANDALONE = '/app/admin/leave-config/entitlement-tables/page.tsx';
 const ENTITLEMENTS = '/app/admin/leave/entitlements/page.tsx';
 const PANEL = '/components/leave-type-panel.tsx';
 const ACTIONS = '/app/admin/leave/entitlements/templates/actions.ts';

@@ -3,20 +3,20 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
 } from '../../leave/entitlements/templates/entitlement-tables-block';
 import { EligibilityExplainPanel } from '../../leave/entitlements/templates/eligibility-explain';
-import { LeaveConfigPreviewNote } from '../preview-note';
 
 /**
- * a6fe37fc ROUND 3 — ENTITLEMENT TABLES at its new address (`/admin/leave-config/entitlement-tables`).
+ * a6fe37fc — ENTITLEMENT TABLES (`/admin/leave-config/entitlement-tables`).
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/entitlements/templates` is untouched, still registered and
- * still what the menu links to; the two are live side by side until Round 5 empties the old page and
- * repoints its address here (docs/design/a6fe37fc-migration-order.md, Round 3 / Round 5).
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/entitlements/templates` is an
+ * unguarded redirect stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, the map's
+ * `entitlementTables` entry names this address, and `ENTITLEMENT_TEMPLATES` (app/admin/_redirects.ts) —
+ * the target every table and eligibility save returns to — names it too. The stub is never deleted.
  *
  * ⚠️ THE FLOW IS NOT CHANGING, SO NOTHING IN IT IS RE-IMPLEMENTED. IA §2.0.2 says this screen was
  * rebuilt to an approved shape within the last year and nothing in the reporter's complaint is about it,
@@ -37,7 +37,10 @@ import { LeaveConfigPreviewNote } from '../preview-note';
  * could not see it go. It is carried here and §3.2 now lists it as F49 — the r258 lesson repeated: when a
  * surface is found missing, the DOCUMENT is half the fix.
  *
- * A SAVE MADE HERE LANDS ON THE OLD SCREEN — see `../preview-note.tsx` for why that is deliberate.
+ * THE HEADING IS THE MENU'S OWN STRING (`leaveConfigScreenTitle('entitlementTables')`), so the name in
+ * the menu and the name on the page cannot drift — the defect IA §1.1 measured. It renders the same words
+ * the old page's private `admin.entitlementTemplates.pageTitle` did, so nobody has to learn a second name;
+ * the namespace stays, because the block, the bands editor and the explain panel all read the rest of it.
  *
  * SERVER COMPONENT, like the page it mirrors: the block's two client islands receive only serialisable
  * props and the explain panel's search is a plain GET form, so nothing new crosses a boundary
@@ -65,14 +68,14 @@ export default async function LeaveConfigEntitlementTablesPage({
 
   return (
     <div className="space-y-6">
-      {/* The SAME heading the old screen renders, deliberately: "same behaviour at a new address" (IA §3)
-          means the administrator must not have to learn a second name for one screen. */}
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      {/* The SAME words the old screen rendered, now taken from the MENU's key rather than a private one
+          (IA §1.1): "same behaviour at a new address" means the administrator must not have to learn a
+          second name for one screen, and the menu and the heading must not be able to drift apart. */}
+      <PageHeader title={await leaveConfigScreenTitle('entitlementTables')} description={t('pageDescription')} />
       {/* The area map — without it a leave-config screen can reach no other leave-config screen at all.
           `current="entitlementTables"` because this IS that screen: the map names screens, not addresses,
-          and Round 5 repoints the entry here. */}
+          and the cutover repointed the entry here. */}
       <LeaveConfigMap current="entitlementTables" />
-      <LeaveConfigPreviewNote />
       <ErrorBanner message={sp.error} />
 
       <Card>
@@ -82,9 +85,8 @@ export default async function LeaveConfigEntitlementTablesPage({
           <p className="text-muted-foreground">{t('datedNote')}</p>
           {/* r259 — ONE navigation direction inside the preview module, and it is OUT until Round 5. The
               href comes from the SAME map this page renders above, so the back-link and the menu cannot
-              give two answers to "where is the leave type screen". It read `/admin/leave-config/types`
-              and that was the inconsistent half: the map on this very page walks the administrator to
-              `/admin/leave/…`. See components/leave-config-map.tsx → leaveConfigScreenHref. */}
+              give two answers to "where is the leave type screen". The cutover moves that ONE list and
+              this link follows it. See components/leave-config-map.tsx → leaveConfigScreenHref. */}
           <Link href={leaveConfigScreenHref('leaveTypes')} className="inline-block text-sm underline">
             {t('backToEntitlements')}
           </Link>

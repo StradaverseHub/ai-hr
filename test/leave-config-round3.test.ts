@@ -110,7 +110,7 @@ const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])
  */
 const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   leaveTypes: { to: '/admin/leave-config/types', cutOver: false },
-  templates: { to: '/admin/leave-config/entitlement-tables', cutOver: false },
+  templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
   payroll: { to: '/admin/leave-config/company-rules', cutOver: false },
   replacement: { to: '/admin/leave-config/company-rules', cutOver: false },
   generate: { to: '/admin/leave-config/generate', cutOver: false },
