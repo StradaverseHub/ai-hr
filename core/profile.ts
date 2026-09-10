@@ -203,6 +203,35 @@ export class ProfileChangeReasonRequiredError extends Error {
   }
 }
 
+/**
+ * ⚠️ AN APPROVAL NAMES A FIELD THE EMPLOYER HAS SINCE CLOSED — refused at the decision itself.
+ *
+ * r261 fix pass. Stage three's sweep (`withdrawProfileChangesForLockedFields`) rejects every waiting
+ * request the moment its field is switched off, and that is the ORDINARY path: the employee is told, in
+ * a sentence, on their own screen. This error is the path that is left when the sweep did not run for
+ * this row — a request raised in the seconds between the setting being written and the sweep finishing,
+ * a row created by a writer that is not the settings action, a sweep that failed and was refused to the
+ * admin. There is no configuration of this product in which such a request may APPLY, so the decision
+ * refuses it rather than trusting that something upstream caught it.
+ *
+ * WHY REFUSE THE WHOLE REQUEST RATHER THAN APPLY THE STILL-OPEN HALF OF IT: applying a subset would put
+ * a change into the master record that nobody submitted and nobody approved, and it is the same argument
+ * the sweep's own header makes for rejecting a mixed request whole. The approver is told to reject it,
+ * which sends the employee a reason and closes the row.
+ */
+export class ProfileChangeFieldClosedError extends Error {
+  /** The keys of `proposed` this tenant no longer allows. Field NAMES only — never a proposed value. */
+  readonly closedKeys: readonly string[];
+  constructor(closedKeys: readonly string[]) {
+    super(
+      'This request asks to change a field the employer no longer allows employees to request ' +
+        `(${closedKeys.join(', ')}). It cannot be approved — reject it with a reason instead.`,
+    );
+    this.name = 'ProfileChangeFieldClosedError';
+    this.closedKeys = closedKeys;
+  }
+}
+
 /** The caller's own profile: editable contact fields + a read-only summary of the
  *  pay-affecting statutory fields (the employee sees their own). */
 export function myProfile(ctx: SessionContext) {
@@ -433,6 +462,28 @@ export async function decideProfileChange(
 
     if (p.decision === 'approved') {
       const proposed = (req.proposed ?? {}) as Record<string, unknown>;
+      /**
+       * ⚠️ THE DECISION IS THE LAST GATE, AND IT RE-ASKS THE PERMISSION (r261 fix pass).
+       *
+       * `requestProfileChange` already refuses a key the tenant does not allow, and switching a field
+       * off sweeps every request waiting on it. Neither of those is enough on its own, because both run
+       * at a different moment from this one: a request raised in the same second the setting changed, a
+       * row written by anything other than the settings action, or a sweep that failed and was reported
+       * to the admin, all leave a pending row naming a field that is now closed. What decides whether
+       * the master record moves is THIS statement, so this statement asks the question — the tenant's
+       * CURRENT allow-list, read the same throwing way the request side reads it, against the keys the
+       * row actually carries.
+       *
+       * `profileChangeAllowedKeys` is already intersected with `PROFILE_REQUESTABLE_FIELDS`, so a key
+       * for a field the declaration has since withdrawn is closed by the same test — there is no path
+       * on which "the row says so" is an argument for writing a field the product no longer offers.
+       *
+       * REJECTION IS UNAFFECTED, deliberately: this sits inside the approve branch, so an approver can
+       * always clear such a request out of the queue with a reason the employee reads.
+       */
+      const allowedNow = profileChangeAllowedKeys(ctx);
+      const closedKeys = Object.keys(proposed).filter((k) => !allowedNow.has(k));
+      if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);
       /**
        * THE WRITE SETS ARE BUILT FROM THE DECLARATION, one entry per field, so a field added to
        * lib/profile-requestable-fields.ts is applied on approval without a second edit here. Before
@@ -740,21 +791,29 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
  *
  * RLS-scoped like every other read here: a group admin sees their tenant, and this returns counts, never
  * values — the settings screen has no business printing somebody's proposed bank account number.
+ *
+ * ⚠️ COUNTED IN SQL, OVER EVERY PENDING ROW, AND THAT IS THE FIX A REVIEW FORCED (r261 fix pass).
+ * This used to `SELECT … LIMIT 1000` and bucket the rows in TypeScript. Past a thousand pending requests
+ * — a number a tenant of any size reaches — the badge under-reported, and it under-reported hardest in
+ * exactly the situation it exists for: an employer switching a field off would be shown "nothing is
+ * waiting on this" while requests waited on it. One `jsonb_object_keys` per row inside the database
+ * counts all of them and ships back one row per key rather than one row per request, so there is no
+ * cap left to outgrow. `jsonb_typeof = 'object'` skips a row whose `proposed` is not an object at all
+ * (nothing in this product writes one, and a set-returning function would error rather than skip it).
  */
 export async function pendingProfileChangeCountsByKey(ctx: SessionContext): Promise<Map<string, number>> {
   const rows = await withTenant(ctx, (tx) =>
-    tx
-      .select({ proposed: profileChangeRequest.proposed })
-      .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.status, 'pending'))
-      .limit(1000),
+    tx.execute(sql`
+      SELECT k AS key, count(*)::int AS n
+        FROM ${profileChangeRequest} r,
+             LATERAL jsonb_object_keys(r.proposed) AS k
+       WHERE r.status = 'pending' AND jsonb_typeof(r.proposed) = 'object'
+       GROUP BY k`),
   );
   const out = new Map<string, number>();
-  for (const r of rows) {
-    for (const key of Object.keys((r.proposed ?? {}) as Record<string, unknown>)) {
-      if (!requestableField(key)) continue;
-      out.set(key, (out.get(key) ?? 0) + 1);
-    }
+  for (const r of rows as unknown as { key: string; n: number | string }[]) {
+    if (!requestableField(r.key)) continue;
+    out.set(r.key, Number(r.n));
   }
   return out;
 }
@@ -784,28 +843,52 @@ export async function withdrawProfileChangesForLockedFields(
   const reason = clean(p.reason);
   if (locked.size === 0 || reason === null) return { withdrawn: 0 };
 
+  const lockedKeys = [...locked];
+
   return withTenant(ctx, async (tx) => {
-    const pending = await tx
-      .select({
+    /**
+     * ⚠️ ONE STATEMENT, FILTERED IN SQL, WITH NO CAP — the fix a review forced (r261 fix pass).
+     *
+     * This used to read `SELECT … WHERE status = 'pending' LIMIT 1000` and sift the rows in TypeScript.
+     * Two things were wrong with that and the second is the serious one:
+     *   · the cap was on ALL pending rows rather than on the matching ones, so in a tenant with a
+     *     thousand unrelated requests waiting the matching row was simply never returned — proven on a
+     *     live cluster, where the request naming the bank account stayed `pending`, the toast said
+     *     "Fields saved" and an HR admin then approved it and moved the master account number;
+     *   · saving twice did not help, because nothing about the second save made the missed row any more
+     *     likely to be inside an unordered thousand.
+     * `?|` ("does this jsonb object have ANY of these keys?") does the matching in the database, so the
+     * statement touches exactly the rows it must refuse and converges by construction rather than by
+     * luck. RETURNING gives back the rows it actually changed, which is also what makes the count honest.
+     *
+     * status + reason + timestamp ONLY. No master table is touched anywhere in this function, which is
+     * the property test/me-profile-request-settings.test.ts reads the columns to prove.
+     */
+    const refused = await tx
+      .update(profileChangeRequest)
+      .set({ status: 'rejected', decidedByEmploymentId: null, decidedAt: sql`now()`, decisionReason: reason })
+      .where(
+        and(
+          eq(profileChangeRequest.status, 'pending'),
+          // ARRAY[$n, $n…], built with `sql.join` rather than by handing drizzle the JS array: a bare
+          // array parameter expands to a RECORD `($5, $6)`, which Postgres refuses to cast to text[]
+          // ("cannot cast type record to text[]"). Every key is still a bound parameter, never inlined.
+          sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(
+            lockedKeys.map((k) => sql`${k}`),
+            sql`, `,
+          )}]::text[]`,
+        ),
+      )
+      .returning({
         id: profileChangeRequest.id,
         employmentId: profileChangeRequest.employmentId,
         proposed: profileChangeRequest.proposed,
-      })
-      .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.status, 'pending'))
-      .limit(1000);
+      });
 
     let withdrawn = 0;
-    for (const req of pending) {
+    for (const req of refused) {
       const keys = Object.keys((req.proposed ?? {}) as Record<string, unknown>);
       const hit = keys.filter((k) => locked.has(k));
-      if (hit.length === 0) continue;
-      await tx
-        .update(profileChangeRequest)
-        // status + reason + timestamp ONLY. No master table is touched anywhere in this function, which
-        // is the property test/me-profile-request-settings.test.ts reads the columns to prove.
-        .set({ status: 'rejected', decidedByEmploymentId: null, decidedAt: sql`now()`, decisionReason: reason })
-        .where(eq(profileChangeRequest.id, req.id));
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'profile-change',

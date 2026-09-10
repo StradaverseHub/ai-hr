@@ -24,6 +24,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee, setReportingLine } from '../core/org';
 import {
+  ProfileChangeFieldClosedError,
   decideProfileChange,
   listProfileChangeRequests,
   myProfileChangeRequests,
@@ -322,6 +323,163 @@ describe('r261 — switching a field off, with a request already waiting on it',
     const [row] = await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id, requestId));
     expect(row.status).toBe('pending');
     expect(row.decisionReason).toBeNull();
+  });
+
+  it('CONVERGES PAST A THOUSAND WAITING REQUESTS — the cap that let a bank account through', async () => {
+    /**
+     * ⚠️ THE BLOCKER A REVIEW PROVED ON A LIVE CLUSTER, ASKED AS A TEST.
+     *
+     * The sweep used to read `WHERE status = 'pending' LIMIT 1000` with NO filter on the locked keys and
+     * NO ordering, and the "n waiting" badge counted the same capped set. In a tenant with a thousand
+     * unrelated requests waiting, the ONE request naming the bank account was never returned: the badge
+     * said nothing was waiting, the toast said "Fields saved", the row stayed `pending` — and an HR
+     * admin then approved it and the master account number moved. Saving a second time changed nothing,
+     * because nothing made the missed row any more likely to fall inside an unordered thousand.
+     *
+     * NON-VACUITY: restore `.limit(1000)` on the whole pending set (either function) and this goes red —
+     * `counts.get('bankAccountNo')` reads undefined instead of 1, and `withdrawn` reads 0 instead of 1.
+     */
+    const a = adminCtx(b);
+    const E = await hire('Volume');
+    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010191', bankName: 'OldBank', bankAccountNo: '111122223333' });
+    const emp = await freshCtx(await employeeCtx(E.personId));
+
+    // A thousand-and-a-hundred unrelated requests waiting AHEAD of the one that matters, seeded as the
+    // owner because the point is the volume rather than how they got there.
+    await owner.db.insert(profileChangeRequest).values(
+      Array.from({ length: 1100 }, () => ({
+        tenantId: b.tenantId,
+        employmentId: E.employmentId,
+        personId: E.personId,
+        proposed: { preferredName: 'Filler' },
+      })),
+    );
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+    });
+    const before = await masterSnapshot(E.personId);
+
+    // THE SCREEN TELLS THE TRUTH FIRST. Under the cap the bank fields reported nothing waiting, which is
+    // the reading an employer would have switched the field off on.
+    const counts = await pendingProfileChangeCountsByKey(groupAdminCtx());
+    expect(counts.get('bankName'), 'the badge must not under-report past the old cap').toBe(1);
+    expect(counts.get('bankAccountNo')).toBe(1);
+    expect(counts.get('preferredName'), 'and it counts every pending row, not the first thousand').toBe(1100);
+
+    await allowOnly(PROFILE_REQUESTABLE_KEYS.filter((k) => k !== 'bankName' && k !== 'bankAccountNo'));
+    const { withdrawn } = await withdrawProfileChangesForLockedFields(groupAdminCtx(), {
+      lockedKeys: ['bankName', 'bankAccountNo'],
+      reason: 'This field is no longer open to change requests.',
+    });
+    expect(withdrawn, 'the sweep converges by construction, not by luck').toBe(1);
+
+    const [row] = await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id, requestId));
+    expect(row.status).toBe('rejected');
+    // The 1100 unrelated requests are none of the sweep's business and are left exactly as they were.
+    const stillPending = await owner.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(profileChangeRequest)
+      .where(eq(profileChangeRequest.status, 'pending'));
+    expect(stillPending[0].n, 'only the rows naming a locked field are touched').toBe(1100);
+
+    await expect(decideProfileChange(a, { requestId, decision: 'approved' })).rejects.toThrow(/already rejected/);
+    expect(await masterSnapshot(E.personId), 'the master bank account never moved').toEqual(before);
+  });
+
+  it('THE DECISION IS THE LAST GATE: a field closed AFTER the request was raised cannot be approved', async () => {
+    /**
+     * ⚠️ THE SECOND, INDEPENDENT CAUSE OF THE SAME INCIDENT. Even with a sweep that converges, a request
+     * can outlive the permission it was raised under: one raised in the same second the setting was
+     * written, one whose sweep failed and was reported to the admin (the action writes the SETTING
+     * first, deliberately), one written by anything that is not the settings action. Before this fix
+     * `decideProfileChange` had no allow-list check at all, so any such row was approvable and the
+     * master record moved — proven on a live cluster with the setting written through the real
+     * policy-fenced writer and no sweep run at all, which is what this case reproduces.
+     *
+     * NON-VACUITY: delete `if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);`
+     * from core/profile.ts and the first expectation resolves instead of rejecting, and the master bank
+     * account below reads '999988887777'.
+     */
+    const a = adminCtx(b);
+    const E = await hire('Raced');
+    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010192', bankName: 'OldBank', bankAccountNo: '111122223333' });
+    const emp = await freshCtx(await employeeCtx(E.personId));
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+    });
+
+    // The permission is withdrawn through the REAL writer, and the sweep deliberately does not run.
+    await allowOnly(PROFILE_REQUESTABLE_KEYS.filter((k) => k !== 'bankName' && k !== 'bankAccountNo'));
+    const hr = await freshCtx(groupAdminCtx());
+
+    await expect(decideProfileChange(hr, { requestId, decision: 'approved' })).rejects.toBeInstanceOf(
+      ProfileChangeFieldClosedError,
+    );
+    const [after] = await owner.db
+      .select({ bankAccountNo: employeeStatutoryMy.bankAccountNo })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, E.personId));
+    expect(after.bankAccountNo, 'a closed field cannot be written by an approval').toBe('111122223333');
+    const [stillWaiting] = await owner.db
+      .select()
+      .from(profileChangeRequest)
+      .where(eq(profileChangeRequest.id, requestId));
+    expect(stillWaiting.status, 'a refused approval decides nothing').toBe('pending');
+
+    // AND THE APPROVER IS NOT STUCK WITH IT: rejecting still works, which is how the employee is told.
+    await decideProfileChange(hr, {
+      requestId,
+      decision: 'rejected',
+      reason: 'That field is no longer open to change requests.',
+    });
+    const [closed] = await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id, requestId));
+    expect(closed.status).toBe('rejected');
+    expect(closed.decisionReason).toBe('That field is no longer open to change requests.');
+    const [unchanged] = await owner.db
+      .select({ bankAccountNo: employeeStatutoryMy.bankAccountNo })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, E.personId));
+    expect(unchanged.bankAccountNo).toBe('111122223333');
+  });
+
+  it('a group admin sweeping their OWN waiting request can only refuse it, never apply it', async () => {
+    /**
+     * The sweep bypasses `assertCanDecide` on purpose (it is a consequence of a configuration change,
+     * not a decision on the merits, and nobody is recorded as having judged the request). That is only
+     * safe while it cannot APPLY anything — so the property is asked at runtime here rather than left to
+     * a source scan: the one principal with an incentive, a group admin with a pending request of their
+     * own, runs it against their own bank change and the master row does not move.
+     */
+    const selfPerson = await hire('SweeperSelf');
+    const selfGroupAdmin: SessionContext = {
+      ...adminCtx(b),
+      userId: await createAppUser(b.tenantId, selfPerson.personId, 'hr_admin'),
+      personId: selfPerson.personId,
+      roles: ['hr_admin'],
+      grants: [{ role: 'hr_admin', companyId: null }],
+    };
+    await setStatutoryProfileMY(adminCtx(b), {
+      personId: selfPerson.personId,
+      icNumber: '900101010193',
+      bankName: 'OldBank',
+      bankAccountNo: '111122223333',
+    });
+    const { requestId } = await requestProfileChange(await freshCtx(selfGroupAdmin), {
+      employmentId: selfPerson.employmentId,
+      proposed: { bankName: 'NewBank', bankAccountNo: '999988887777' },
+    });
+    const before = await masterSnapshot(selfPerson.personId);
+
+    const { withdrawn } = await withdrawProfileChangesForLockedFields(await freshCtx(selfGroupAdmin), {
+      lockedKeys: ['bankName', 'bankAccountNo'],
+      reason: 'This field is no longer open to change requests.',
+    });
+    expect(withdrawn).toBe(1);
+    const [row] = await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id, requestId));
+    expect(row.status, 'the only thing they can do to their own request here is refuse it').toBe('rejected');
+    expect(await masterSnapshot(selfPerson.personId), 'and no master column moved').toEqual(before);
   });
 
   it('only a group admin may carry out the consequence of the setting', async () => {

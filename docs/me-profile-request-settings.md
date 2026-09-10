@@ -47,6 +47,14 @@ request quietly deleted would leave an employee who asked you something and neve
 are not surprised by it, each field on the screen shows how many requests are waiting on it **before** you
 switch anything off, and the confirmation afterwards tells you how many were refused.
 
+**And the approval itself checks again.** Refusing the waiting requests when you switch a field off is
+the ordinary path — the employee is told, in a sentence, on their own screen. But a request can be raised
+in the same second you save the setting, and any request that somehow survives that moment would otherwise
+be sitting in the approval queue looking perfectly normal. So the approval itself asks the question one
+last time: if the request names a field you no longer allow, it **cannot be approved at all** — the
+administrator is told to reject it, and the record does not move. There is no configuration, and no timing,
+in which a field you have switched off can be written to somebody's record by an approval.
+
 A request that names a switched-off field **and** a field that is still open is refused whole, not trimmed.
 Editing somebody's request down to the parts that survive would mean an administrator later approving a
 request nobody actually submitted. The employee can ask again for the part that is still open, and the

@@ -52,6 +52,18 @@ export default async function ProfileRequestSettingsPage({
   const tp = await getTranslations('people.detail');
   const sp = await searchParams;
 
+  /**
+   * ⚠️ THIS SCREEN KEEPS THE THROWING READ, AND IT IS THE ONE PLACE UNDER app/ THAT SHOULD (r261 fix
+   * pass). /me and /approvals read these two settings the QUIET way — they DISPLAY a decision, so during
+   * an entitlement outage they degrade closed and keep rendering. This form is different in kind: the
+   * ticked boxes ARE the stored value, and `saveProfileRequestFieldsAction` posts back exactly what is
+   * shown. A degraded read here would render every box unticked, and one press of Save would write "an
+   * employee may ask to change nothing" as a real configuration — an incident turned into a customer
+   * decision nobody made. The action itself has the same reason: it reads the CURRENT allow-list to work
+   * out which fields are being switched off, and a quiet `[]` there would withdraw nothing while
+   * reporting success. So an unreadable snapshot fails loudly on this screen, which is reachable only by
+   * an administrator and never by an employee.
+   */
   const allowed = profileChangeAllowedKeys(s);
   const approver = profileChangeApprover(s);
   const pendingByKey = await pendingProfileChangeCountsByKey(s);

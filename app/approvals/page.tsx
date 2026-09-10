@@ -11,8 +11,10 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 import { dayTypesForPairs, listAttendanceCorrections } from '@/core/attendance';
 import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
-// r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver).
-import { profileChangeApprover } from '@/core/tenant-settings';
+// r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
+// read the quiet page way and resolved by the one shared interpretation.
+import { getSettingOrFallback } from '@/core/entitlements';
+import { resolveRequestApprover } from '@/lib/profile-requestable-fields';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 import { ProfileChangeDecide } from '@/components/profile-change-decide';
@@ -154,8 +156,22 @@ export default async function ApprovalsPage({
    * administrator. Every row still comes from `listProfileChangeRequests` under
    * `profile_change_request_rls` (`app.can_see_employment`, 0029, untouched), and core/profile.ts remains
    * the backstop for a raced decide.
+   *
+   * ⚠️ THE QUIET READER, AND THE NARROW FALLBACK (r261 fix pass). This first shipped as
+   * `profileChangeApprover(s)` — the throwing service form — and 500'd this whole inbox, leave and
+   * claims included, whenever the entitlement snapshot could not be resolved. A page read is a display
+   * decision (core/entitlements.ts), so it degrades; `core/profile.ts` keeps the loud form on the
+   * decision itself, which is where the authority is actually enforced.
+   *
+   * The degraded answer is `group_admin`, the NARROWER of the two: during an incident the queue is shown
+   * only to a group administrator — who may approve under either configuration — rather than teasing a
+   * company-scoped admin with items a service they cannot read the setting for might refuse.
    */
-  const profileChangeDecider = admin && (profileChangeApprover(s) === 'admin' || isGroupAdmin(s));
+  const profileChangeApproverSetting = resolveRequestApprover(
+    getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
+  );
+  const profileChangeDecider =
+    admin && (profileChangeApproverSetting === 'admin' || isGroupAdmin(s));
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).

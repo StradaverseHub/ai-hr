@@ -220,16 +220,29 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
    * `[]` is a legitimate configured value meaning nothing may be asked about.
    *
    * `ess.profile_change_approver` defaults to `'admin'` — stage two's authority, unchanged, so this round
-   * changes nothing for a tenant that never opens the screen. `'manager'` widens WHO may decide to the
-   * authority every other approval in the product already uses; it is still ONE decision by ONE person
-   * (the plan sold single-level approval and the reporter approved it as written), and it widens nothing
-   * about who may SEE another employee's request — that is `profile_change_request_rls`, untouched.
+   * changes nothing for a tenant that never opens the screen. The only other value is `'group_admin'`,
+   * which NARROWS the decision to a group administrator, so a bank account or an IC is signed off by
+   * whoever holds the whole group rather than by whoever administers one company. It is still ONE
+   * decision by ONE person (the plan sold single-level approval and the reporter approved it as
+   * written), and it widens nothing about who may SEE another employee's request — that is
+   * `profile_change_request_rls`, untouched.
+   *
+   * ⚠️ THERE IS NO `'manager'` VALUE, AND THAT IS A CONSTRAINT OF THE DATABASE RATHER THAN A PREFERENCE
+   * (corrected in the r261 fix pass — this comment and the `description` beneath it both described an
+   * abandoned design, and `description` is written into production's `setting_definition` by
+   * scripts/seed-catalogs.ts on EVERY deploy, so the wrong sentence was customer-visible prose).
+   * Approving WRITES the master record, and `person_rls` (migration 0029) is
+   * `WITH CHECK (app.is_admin() OR app.is_self_person(id))`. A manager cannot write their report's person
+   * row on ANY path, so a manager approver would not have been a setting — it would have been a widening
+   * of master-record write access product-wide, reachable by routes that have nothing to do with this
+   * queue. Both values here are therefore administrators, and this setting can only ever NARROW who
+   * decides. `docs/me-profile-request-settings.md` says the same thing to the reporter in their words.
    *
    * Both are `defaultOnInstall: null`: there is nothing to write at provisioning time, because the
    * absence of a row IS the default and the default is the shipped behaviour.
    */
   { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Not set means every field the product offers; otherwise exactly the fields listed.', sortOrder: 150 },
-  { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: an HR administrator only, or the employee's manager as well. One approver either way — never two levels.", sortOrder: 160 },
+  { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
 ];
 
 /*

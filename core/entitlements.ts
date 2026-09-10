@@ -889,3 +889,35 @@ export function settingEnabledOrDefault(ctx: EntitledContext, key: string): bool
     throw e;
   }
 }
+
+/**
+ * `getSetting`, degraded the same way — the NON-BOOLEAN member of the quiet-reader family, added in r261
+ * because the first setting whose value is not a boolean (`ess.profile_change_fields`, a list of field
+ * keys) was read from two employee-facing pages through the throwing form and turned an entitlement
+ * blip into a 500 on /me and /approvals for the whole workforce.
+ *
+ * ⚠️ THE CALLER STATES THE FALLBACK, and that is the difference from `settingEnabledOrDefault`. The
+ * boolean form can answer with the CATALOG DEFAULT because every catalogued default is the closed
+ * answer. That is not true in general: `ess.profile_change_fields` defaults to the sentinel `'all'`,
+ * which is the OPEN answer and exactly right for a tenant who has never configured it — and exactly
+ * wrong for a snapshot we could not read, where the honest degraded answer to "which fields may this
+ * employee ask to change?" is NONE. So the page names the value it wants during an incident, at the call
+ * site, where a reviewer can see whether it is the safe direction.
+ *
+ * Same boundary as the rest of the family: PAGES ONLY (test/module-catalog-drift.test.ts enforces it and
+ * names this function), because a service read is an authorization decision that must be loud —
+ * core/tenant-settings.ts's `profileChangeAllowedKeys` / `profileChangeApprover` keep the throwing form,
+ * and core/profile.ts decides on those.
+ *
+ * Only `EntitlementsResolutionFailedError` is swallowed, for the reasons `isModuleEnabledOrFalse` sets
+ * out at length: a malformed context, a tenant mismatch or an unknown setting key are wiring bugs and
+ * still throw.
+ */
+export function getSettingOrFallback<T>(ctx: EntitledContext, key: string, whenUnreadable: T): T {
+  try {
+    return getSetting<T>(ctx, key);
+  } catch (e) {
+    if (e instanceof EntitlementsResolutionFailedError) return whenUnreadable;
+    throw e;
+  }
+}

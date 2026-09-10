@@ -439,6 +439,34 @@ describe('r261 — the two settings are catalogued, and catalogued the way they 
     expect(PROFILE_REQUEST_APPROVERS).toContain(approver.defaultValue);
   });
 
+  it("the approver setting's CUSTOMER-VISIBLE description says what the setting actually does", () => {
+    /**
+     * ⚠️ THIS SENTENCE IS SHIPPED TO PRODUCTION, NOT A COMMENT (r261 fix pass). scripts/seed-catalogs.ts
+     * lists `description` in its `onConflictDoUpdate` SET clause and deploy/deploy.sh runs it after
+     * db:migrate, so EVERY deploy overwrites production's `setting_definition.description` with whatever
+     * is written here — and the entry is `customerVisible`. It first shipped describing an abandoned
+     * design ("an HR administrator only, or the employee's manager as well"), which contradicted the
+     * code, the six catalogues and the document the reporter reads: the shipped values are exactly
+     * ['admin', 'group_admin'], and `resolveRequestApprover` maps anything else to 'admin', so no
+     * manager can ever approve. A customer reading their own settings would have been told otherwise.
+     *
+     * NON-VACUITY: restore the word "manager" to that description and the second expectation goes red.
+     */
+    const approver = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_APPROVER_SETTING_KEY)!;
+    expect(approver.customerVisible, 'a customer can read this sentence, so it must be true').toBe(true);
+    expect(
+      approver.description,
+      'no configuration of this setting lets a manager approve — person_rls admits only an administrator',
+    ).not.toMatch(/manager/i);
+    // It must name BOTH values it actually offers, in the words the screen uses for them.
+    expect(approver.description).toMatch(/HR administrator/i);
+    expect(approver.description).toMatch(/group administrator/i);
+    // And the field allow-list's own description, which is the other half of what a deploy writes.
+    const fields = SETTING_CATALOG.find((e) => e.key === PROFILE_REQUEST_FIELDS_SETTING_KEY)!;
+    expect(fields.customerVisible).toBe(true);
+    expect(fields.description).toMatch(/ask to change/i);
+  });
+
   it('the writer accepts the json shape the catalog declares — the policy would have accepted it silently', () => {
     // 0313's tenant_setting_write admits `d.value_type = 'json'` with any shape, and the column has
     // always been jsonb. Before r261 no TypeScript writer could express one, so a `json` catalog entry
@@ -459,7 +487,29 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     expect(REQUEST_CARD, 'the prop is required, so a caller cannot silently reopen every field').toContain(
       'allowedKeys: ReadonlySet<string>;',
     );
-    expect(ME_PAGE).toContain('const allowedRequestKeys = profileChangeAllowedKeys(s);');
+    /**
+     * ⚠️ THE PAGE READS IT THE QUIET WAY, AND ITS DEGRADED ANSWER IS CLOSED (r261 fix pass).
+     * /me first shipped reading the THROWING service form, which turned an entitlement-resolution
+     * failure into a 500 on the home screen of the entire workforce — there is no app/error.tsx. Both
+     * halves are pinned because both matter: the quiet reader keeps the page rendering, and the `[]`
+     * fallback is what makes the degraded answer "no field may be requested" rather than "every field
+     * may be" (the catalog default for this key is the OPEN sentinel `'all'`).
+     */
+    expect(ME_PAGE).toContain("getSettingOrFallback<readonly string[]>(s, 'ess.profile_change_fields', [])");
+    expect(ME_PAGE).toContain('const allowedRequestKeys = resolveAllowedRequestKeys(');
+    // COMMENTS STRIPPED FIRST (AGENTS 27): both pages EXPLAIN what they used to call and why they no
+    // longer do, and a guard that tripped on the explanation would teach the next person to delete it.
+    const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(
+      strip(ME_PAGE).includes('profileChangeAllowedKeys('),
+      "the /me page must not read the throwing service form — that is a 500 on an employee's own record",
+    ).toBe(false);
+    // The approvals inbox is the same decision, and its degraded answer is the NARROWER approver.
+    expect(APPROVALS_PAGE).toContain("getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin')");
+    expect(
+      strip(APPROVALS_PAGE).includes('profileChangeApprover('),
+      'the approvals inbox must not read the throwing service form either',
+    ).toBe(false);
     for (const tab of ['profile', 'bankStatutory']) {
       expect(
         ME_PAGE.includes(`<RequestChangeCard tab="${tab}"`) && ME_PAGE.includes('allowedKeys={allowedRequestKeys}'),
@@ -491,6 +541,31 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
   it('the service drops a disallowed key too — the screen is not the gate', () => {
     expect(CORE_PROFILE).toContain('sanitizeProposed(p.proposed, profileChangeAllowedKeys(ctx))');
     expect(CORE_PROFILE).toContain('if (!allowed.has(key)) continue;');
+    /**
+     * ⚠️ AND THE DECISION RE-ASKS (r261 fix pass). The request side and the sweep both run at a
+     * different moment from the decision, so neither can be the last word on whether the master record
+     * moves. The apply branch reads the tenant's CURRENT allow-list — the THROWING form, because this
+     * one is an authorization decision — and refuses outright. The live-cluster file proves the
+     * behaviour; this pins that the read is the loud one and that it sits inside the approve branch.
+     */
+    expect(CORE_PROFILE).toContain('const allowedNow = profileChangeAllowedKeys(ctx);');
+    expect(CORE_PROFILE).toContain('if (closedKeys.length > 0) throw new ProfileChangeFieldClosedError(closedKeys);');
+    expect(CORE_PROFILE).toContain('export class ProfileChangeFieldClosedError');
+    /**
+     * ⚠️ NO BLIND CAP OVER THE PENDING QUEUE. Both the sweep and the settings screen's "n waiting" badge
+     * used to read `LIMIT 1000` across ALL pending rows with no filter on the keys in question, so past a
+     * thousand waiting requests the matching row was never returned — a bank-account change was left
+     * pending, approved later, and the master account moved. Filtering in SQL is what makes the sweep
+     * converge by construction, and the cap must not come back.
+     */
+    const sweep = CORE_PROFILE.slice(CORE_PROFILE.indexOf('export async function pendingProfileChangeCountsByKey'));
+    expect(sweep, 'the pending queue must not be read behind a blind row cap').not.toContain('.limit(1000)');
+    expect(CORE_PROFILE, 'the locked keys are matched IN the database, not sifted in TypeScript').toContain(
+      'sql`${profileChangeRequest.proposed} ?| ARRAY[${sql.join(',
+    );
+    expect(CORE_PROFILE, 'the counts are aggregated in SQL over every pending row').toContain(
+      'LATERAL jsonb_object_keys(r.proposed)',
+    );
     // The HR-DIRECT setter is deliberately NOT narrowed by the employee's permission: switching a field
     // off must not stop HR correcting it, which is the very act an employee is being told to ask for.
     expect(CORE_PROFILE).toContain('EVERY_REQUESTABLE_KEY,');

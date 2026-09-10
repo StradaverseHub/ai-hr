@@ -727,20 +727,29 @@ describe('module catalog — the pack correspondence, both directions', () => {
      * THE QUIET READERS ARE PAGE-ONLY, and until now that boundary was the one convention in this slice
      * stated in prose and enforced by nothing (review r3).
      *
-     * `isModuleEnabledOrFalse` / `settingEnabledOrDefault` swallow an infrastructure failure and answer
-     * "off". core/entitlements.ts draws the line sharply — "For PAGES … and never for a service entry
-     * point", because "using the quiet form in a service would convert an incident into a silent
-     * refusal that looks like a plan change". Every other convention here is ratcheted; this one was
-     * not, and the failure mode is quiet by construction: an authorization decision degrading into a
-     * refusal that renders as "not on your plan".
+     * `isModuleEnabledOrFalse` / `settingEnabledOrDefault` / `getSettingOrFallback` swallow an
+     * infrastructure failure and answer "off". core/entitlements.ts draws the line sharply — "For PAGES …
+     * and never for a service entry point", because "using the quiet form in a service would convert an
+     * incident into a silent refusal that looks like a plan change". Every other convention here is
+     * ratcheted; this one was not, and the failure mode is quiet by construction: an authorization
+     * decision degrading into a refusal that renders as "not on your plan".
+     *
+     * `getSettingOrFallback` JOINED THE FAMILY IN r261 and joins this ratchet in the same commit. It is
+     * the non-boolean member (the first setting whose value is a list, `ess.profile_change_fields`, is
+     * read by /me) and it takes the degraded answer as an argument rather than from the catalog, because
+     * that setting's catalog default is the OPEN answer. A form that lets the caller choose the fallback
+     * is exactly the one that must not be reachable from a service, so the regex names it: had it been
+     * omitted, the next quiet reader would have been invisible to this guard, which is how the throwing
+     * reads that 500'd /me and /approvals got past it in the first place.
      */
     const QUIET_READER_OWNERS: ReadonlySet<string> = new Set(['core/entitlements.ts']);
-    const quietReaderRe = /\b(?:isModuleEnabledOrFalse|settingEnabledOrDefault)\b/;
+    const quietReaderRe = /\b(?:isModuleEnabledOrFalse|settingEnabledOrDefault|getSettingOrFallback)\b/;
     for (const f of perFile) {
       if (f.rel.startsWith('app/') || QUIET_READER_OWNERS.has(f.rel)) continue;
       expect(
         quietReaderRe.test(stripComments(f.src)),
-        `${f.rel} references isModuleEnabledOrFalse/settingEnabledOrDefault outside app/. Those forms ` +
+        `${f.rel} references isModuleEnabledOrFalse/settingEnabledOrDefault/getSettingOrFallback ` +
+          'outside app/. Those forms ' +
           'swallow an infrastructure failure and answer "off" — correct for a page that must still ' +
           'render, wrong for a service, where it turns an incident into a silent refusal that looks ' +
           'like a plan change. Use isModuleEnabled/assertModuleEnabled/settingEnabled here.',
