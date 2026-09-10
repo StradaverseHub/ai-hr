@@ -301,6 +301,20 @@ a real round:
     table, list every writer of that table (`grep` for the table name), not just the ones your feature
     calls.
 
+38. **A KEY IS NOT A SCREEN: FINDING A STRING IN THE CATALOGUE DOES NOT TELL YOU WHICH PAGE RENDERS IT,
+    AND A PLAN BUILT ON THAT GUESS REACHES THE REPORTER AS FACT.** Planning 1c5602cc, the parent grepped
+    `admin.attendancePolicy.pageTitle` = "Shift settings", saw the nav row `workSchedule` pointing at
+    `/admin/attendance-policy/schedule`, and told the reporter — in an approved plan, and in a code
+    comment recommending a future rename — that "a menu row named Work Schedule opens a page named Shift
+    settings". It does not. That page renders `tr('scheduleSectionTitle')`; the "Shift settings" H1
+    belongs to `app/admin/attendance/page.tsx`, the row labelled **Shift**. The verify pass caught it by
+    fetching both pages and counting the string in the non-script DOM.
+    **Before asserting what a screen SAYS, find the component that renders the key and read its call**
+    (`grep -rn "t('thatKey')" app/ components/`), or fetch the page and strip `<script>` before counting —
+    the RSC flight payload contains every key in the namespace, so a naive grep of the response body
+    "confirms" whatever you hoped. Same family as rule 7: the premise you are about to write down is the
+    one to check hardest, and it is worse when the premise is your own correction of the reporter.
+
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
 depends on** → verify → mark deployed. `GET /` returning 401 is the healthy password gate. Proof of
