@@ -227,7 +227,10 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // child href to be a registered route with a real page, and a menu row pointing at a stub is a row
     // that reaches its screen through a wasted hop.
     { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
-    { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
+    // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not. The label key still says
+    // `leaveApprovalWorkflow` rather than `leaveApproval` for the reason stated above: `nav.leaveApproval`
+    // labels the SCREEN in lib/permissions.ts, and reusing it here would silently rename that column.
+    { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
     { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
     { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },
     // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE.

@@ -399,7 +399,12 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   {
     screenKey: 'leaveApproval',
-    href: '/admin/leave/approval',
+    // a6fe37fc ROUND 5 (cutover) — the canonical href is `/admin/leave-config/approval-chains` now.
+    // `/admin/leave/approval` is an unguarded redirect stub pointing there, and a stub is not a screen
+    // this grid can describe. THE SCREEN KEY IS NOT RENAMED (see this file's head: a key "may key stored
+    // role configs"), so every tenant's existing grant for this screen is untouched — only `href` and
+    // `routes` moved.
+    href: '/admin/leave-config/approval-chains',
     labelKey: 'nav.leaveApproval',
     guard: 'scopedSession',
     // R13 0d147b78: absorbed the standalone /admin/leave-approval into the leave tabs (old route now redirects).
@@ -422,7 +427,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Round 2's and Round 3's are (test/leave-config-map.test.ts carries the `/admin/leave-config/`
     // prefix exemption; test/leave-config-round4.test.ts pins the absence so it cannot happen by
     // accident).
-    routes: ['/admin/leave/approval', '/admin/leave-config/approval-chains'],
+    // `'/admin/leave/approval'` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): its page is now a
+    // redirect stub with no guard, so it left `routes` in the SAME commit that emptied it —
+    // test/function-access.test.ts fails BOTH ways, and the direction that bites here is "no stale
+    // routes". The df00b85f / f1b994e3 precedent.
+    routes: ['/admin/leave-config/approval-chains'],
     hasScopeNote: true,
   },
   {

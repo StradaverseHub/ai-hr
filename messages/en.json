@@ -9807,7 +9807,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Leave Approval Chain",
     "description": "Choose who signs off on leave, and in what order, for each company.",
     "emptyScope": "No companies in your scope.",
     "chain": "Approval order",

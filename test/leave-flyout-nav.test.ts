@@ -66,7 +66,8 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // would have required the menu to keep pointing at a stub — a bookmark that still works reached through
   // a wasted hop, and a menu row the "every destination is a registered route" case below would reject.
   { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate' },
-  { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
+  { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow' },
   { href: '/admin/leave/payroll', labelKey: 'leavePayroll' },
   { href: '/admin/leave/replacement', labelKey: 'leaveReplacement' },
   // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE, not lost,

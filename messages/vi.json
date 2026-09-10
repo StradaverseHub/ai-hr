@@ -9807,7 +9807,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Chuỗi phê duyệt nghỉ phép",
     "description": "Chọn ai phê duyệt nghỉ phép và theo thứ tự nào cho mỗi công ty.",
     "emptyScope": "Không có công ty nào trong phạm vi của bạn.",
     "chain": "Thứ tự phê duyệt",

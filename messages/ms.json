@@ -9807,7 +9807,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Rantaian Kelulusan Cuti",
     "description": "Pilih siapa yang meluluskan cuti, dan dalam susunan apa, bagi setiap syarikat.",
     "emptyScope": "Tiada syarikat dalam skop anda.",
     "chain": "Susunan kelulusan",

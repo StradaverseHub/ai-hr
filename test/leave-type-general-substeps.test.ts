@@ -37,7 +37,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 const subStepBarSrc = readFileSync(resolve(here, '../components/leave-sub-step-bar.tsx'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
-const approvalPageSrc = readFileSync(resolve(here, '../app/admin/leave/approval/page.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. e4238594's property is that the rows the deleted
+ * embed used to maintain are STILL maintained, by the assignment section on the approval screen — the
+ * "nothing is stranded" half of the removal. The approval screen is `/admin/leave-config/approval-chains`
+ * now and the old address is a redirect stub that maintains nothing, so the assertion follows the screen.
+ */
+const approvalPageSrc = readFileSync(
+  resolve(here, '../app/admin/leave-config/approval-chains/page.tsx'),
+  'utf8',
+);
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 

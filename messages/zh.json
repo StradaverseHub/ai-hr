@@ -9807,7 +9807,6 @@
     }
   },
   "leaveApproval": {
-    "title": "请假审批链",
     "description": "为每家公司选择由谁审批请假以及审批顺序。",
     "emptyScope": "您的范围内没有公司。",
     "chain": "审批顺序",

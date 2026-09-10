@@ -20,7 +20,13 @@ import { describe, expect, it } from 'vitest';
 import { groupTemplateAssignments } from '../app/admin/leave-approval/assignment-groups';
 
 const ROOT = path.resolve(__dirname, '..');
-const PAGE = path.join(ROOT, 'app/admin/leave/approval/page.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The Approval chain editor is
+ * `/admin/leave-config/approval-chains` now; `/admin/leave/approval` is a redirect stub that mounts
+ * nothing. Every property this file guards is about the SCREEN, not the address, so it follows the
+ * screen — asserted against a stub it would have gone quietly, permanently vacuous.
+ */
+const PAGE = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
 const MANAGER = path.join(ROOT, 'app/admin/leave-approval/template-manager.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
@@ -232,9 +238,15 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(page).toContain('<ApprovalTemplateManager');
     expect(page).toContain('<ApprovalAssignmentManager');
     expect(page).toContain('<LeaveEscalationEditor');
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave/approval/page.tsx'))).toBe(true);
-    // …and the nav entry that reaches it.
-    expect(fs.readFileSync(path.join(ROOT, 'packs/leave/index.ts'), 'utf8')).toContain("href: '/admin/leave/approval'");
+    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx'))).toBe(true);
+    // …and the nav entry that reaches it, at the address the cutover moved it to.
+    expect(fs.readFileSync(path.join(ROOT, 'packs/leave/index.ts'), 'utf8')).toContain(
+      "href: '/admin/leave-config/approval-chains'",
+    );
+    // …and the OLD address still answers, as a stub, so no saved approval bookmark 404s.
+    const stub = fs.readFileSync(path.join(ROOT, 'app/admin/leave/approval/page.tsx'), 'utf8');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/approval-chains');
   });
 
   /**

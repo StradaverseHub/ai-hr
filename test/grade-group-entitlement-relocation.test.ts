@@ -62,7 +62,13 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 
 const ROOT = path.resolve(__dirname, '..');
 const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave/entitlements/page.tsx');
-const APPROVAL = path.join(ROOT, 'app/admin/leave/approval/page.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 9a65f808's property is that the Grade Groups
+ * editor does not live on the approval screen and its READS left with it; the approval screen moved to
+ * `/admin/leave-config/approval-chains` and the old address is a redirect stub, which reads nothing at
+ * all — so asserting the absence there would be true forever and would mean nothing.
+ */
+const APPROVAL = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
 /** 9a65f808 — the editor's third and current home: beside Job Grades on the Organisation tab. */
 const SYSTEM_LABELS = path.join(ROOT, 'app/admin/settings/system-labels/page.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
