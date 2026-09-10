@@ -285,8 +285,20 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // a6fe37fc playbook: build alongside, prove the old behaviour unchanged, and only then move the menu
     // and retire what it replaces. The row above keeps working and is deliberately untouched here — a
     // later round is explicitly the cutover, and the reporter has been asked to steer whether "Work
-    // Schedule" is absorbed into these tabs (we recommend it: a row named Work Schedule that opens a page
-    // named "Shift settings" is the kind of thing that quietly costs people time).
+    // Schedule" is absorbed into these tabs. WE RECOMMEND ABSORBING IT, AND THE REASON IS THE CONTENTS,
+    // NOT THE NAME: /admin/attendance-policy/schedule already holds backup shift coverage
+    // (attendanceRule.coverageTitle), overtime rates (otRatesTitle), the per-company attendance policy and
+    // registered clocking devices (devicesTitle) — material that belongs to the Overtime and Attendance
+    // tabs of THIS screen. Two screens over one subject is what the cutover round is for.
+    //
+    // ⚠️ CORRECTION, r263 verify — DO NOT "FIX" A NAME THAT IS ALREADY RIGHT. The 1c5602cc plan told the
+    // reporter that the Work Schedule row opens a page headed "Shift settings", and an earlier draft of
+    // this comment repeated it. It is FALSE, checked in the rendered DOM: /admin/attendance-policy/schedule
+    // renders PageHeader title={tr('scheduleSectionTitle')} = "Company work schedule & overtime rates"
+    // (app/admin/attendance-policy/schedule/page.tsx:120-122). "Shift settings" is admin.attendancePolicy.
+    // pageTitle, the H1 of /admin/attendance — the row labelled "Shift" two rows up. The namespace was
+    // grepped without checking which page rendered it (AGENTS 7). There is no nav/title disagreement here
+    // to repair; the cutover is a consolidation of CONTENT.
     //
     // CalendarCog, not a fourth calendar-with-a-tick: the fly-out panel renders every child's glyph and
     // the collapsed rail renders glyphs ALONE, so a row sharing a sibling's picture is unreachable there.

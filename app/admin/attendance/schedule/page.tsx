@@ -80,6 +80,19 @@ export default async function ScheduleConfigPage({
     ? (sp.tab as ScheduleTabKey)
     : 'general';
 
+  // ⚠️ WHAT `visible` ACTUALLY MEANS HERE, because it is easy to read it as the opposite. `listCompanies`
+  // is scoped to the TENANT, not to the viewer (lib/scope.ts:24-28, feedback ab77dc1f), and `getScopeIds`
+  // returns its argument UNCHANGED when no `company_scope` cookie is set (lib/scope.ts:11-18). So this
+  // narrows by the multi-company SWITCHER only: a company-scoped hr_admin with no switcher selection sees
+  // EVERY company's working week on this card, not just the ones their grant reaches. The r263 risk note
+  // originally claimed the reverse ("a narrow scope sees only their companies"); it was wrong.
+  //
+  // Deliberately left as-is for this round rather than quietly tightened: /admin/attendance-policy/schedule
+  // — the screen this card reads from and links to — uses the byte-identical requireAdmin() → listCompanies
+  // → getScopeIds pattern over the SAME attendance_policy rows (its :46-52), so the same admin already sees
+  // the same list there. Read-only, no writes, RLS unchanged. Narrowing one screen and not the other would
+  // make two views of one table disagree; when this is tightened, tighten BOTH to `allowedCompanies`
+  // (lib/scope.ts scopedSession returns it alongside `allowedCount` for exactly this).
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   const visible = companies.filter((c) => scopeIds.includes(c.id));
