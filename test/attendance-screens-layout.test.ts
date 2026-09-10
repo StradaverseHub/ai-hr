@@ -66,6 +66,10 @@ const WIDE_LIST_SCREENS = [
   'app/admin/holidays/page.tsx',
   'app/admin/attendance-allowance/page.tsx',
   'app/admin/locations/page.tsx',
+  // 1c5602cc (r263) — the Schedule configuration screen. A list screen by shape (two wide tables of
+  // shifts and per-company working weeks, seven and six columns), so it takes the same full-width
+  // property its siblings do, pinned in the same place rather than left uncovered.
+  'app/admin/attendance/schedule/page.tsx',
   // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
   // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
   'app/attendance/requests/page.tsx',

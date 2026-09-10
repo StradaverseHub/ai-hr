@@ -55,6 +55,7 @@
 import {
   CalendarCheck,
   CalendarClock,
+  CalendarCog,
   CalendarRange,
   ClipboardList,
   Clock,
@@ -277,6 +278,20 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
     // row sharing its parent's or a sibling's icon is indistinguishable there.
     { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    // 1c5602cc (r263) — SCHEDULE: the tabbed configuration screen for an employee's working pattern
+    // (General built; Holiday / Overtime / Attendance / Request / Notification ship NAMED and EMPTY).
+    //
+    // IT SITS BESIDE "Work Schedule", NOT INSTEAD OF IT, AND THAT IS THE POINT OF THIS ROUND. The
+    // a6fe37fc playbook: build alongside, prove the old behaviour unchanged, and only then move the menu
+    // and retire what it replaces. The row above keeps working and is deliberately untouched here — a
+    // later round is explicitly the cutover, and the reporter has been asked to steer whether "Work
+    // Schedule" is absorbed into these tabs (we recommend it: a row named Work Schedule that opens a page
+    // named "Shift settings" is the kind of thing that quietly costs people time).
+    //
+    // CalendarCog, not a fourth calendar-with-a-tick: the fly-out panel renders every child's glyph and
+    // the collapsed rail renders glyphs ALONE, so a row sharing a sibling's picture is unreachable there.
+    // It is also the right picture — this is the settings screen for the shapes its neighbours use.
+    { href: '/admin/attendance/schedule', labelKey: 'schedule', icon: CalendarCog, adminOnly: true },
     // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list, with
     // View / Edit opening the SAME editor as Personnel Management › Employee › Attendance › Shift
     // arrangement (app/admin/personnel/[employmentId] ?tab=attendance#section-default-shift). Deliberately
