@@ -739,8 +739,23 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
           false,
         );
         // The query string is forwarded, so an in-flight ?toast= / ?error= still surfaces at the
-        // destination — the df00b85f / f1b994e3 stub contract, not a new one.
-        expect(s, `${name}'s stub drops the query string`).toContain('URLSearchParams');
+        // destination — the df00b85f / f1b994e3 stub contract, not a new one. For Company rules this is
+        // load-bearing rather than tidy: `?warning=` is the premium-equivalent BANKING-RISK warning.
+        //
+        // ⚠️ ASSERTED AS THE LOOP, NOT AS THE TOKEN. The first version of this case checked for the
+        // string `URLSearchParams`, and a deliberate break — deleting the forwarding loop while leaving
+        // `const usp = new URLSearchParams();` behind — PASSED it. A guard that a real regression walks
+        // through is not a guard. Both halves are checked now: the params are read, and the redirect is
+        // built from them.
+        expect(s, `${name}'s stub does not READ the incoming params`).toMatch(
+          /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
+        );
+        expect(s, `${name}'s stub does not carry them onto the destination`).toMatch(
+          /usp\.set\(k, v\)/,
+        );
+        expect(s, `${name}'s stub does not append the query string to the redirect`).toMatch(
+          /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+        );
       } else {
         expect(s.includes('redirect('), `${name} was emptied before its own cutover commit`).toBe(false);
         expect(s.length, `${name} was emptied`).toBeGreaterThan(500);
