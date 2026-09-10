@@ -114,7 +114,6 @@ import {
   GitBranch,
   Repeat2,
   SlidersHorizontal,
-  Wallet,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGroupDescriptor } from '../registry';
 
@@ -234,7 +233,12 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // `leaveApprovalWorkflow` rather than `leaveApproval` for the reason stated above: `nav.leaveApproval`
     // labels the SCREEN in lib/permissions.ts, and reusing it here would silently rename that column.
     { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
-    { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
+    // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/payroll', 'leavePayroll' }` STOOD HERE and is
+    // DELIBERATELY GONE, not lost. Payroll Related was two settings that were never one subject: the
+    // per-leave-type switch is on the Leave types row above (tab 1) and the encashment policy is on the
+    // Company rules row below. This list is an exact-set guard, so the only correct way to retire a
+    // destination is to delete its line in the commit that does it — and the ROUTE still resolves, as a
+    // stub, so no bookmark 404s. `nav.leavePayroll` is pruned in all six catalogues with the row.
     // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/replacement', 'leaveReplacement' }` STOOD HERE and is
     // DELIBERATELY GONE, replaced by the destination that absorbed it. Replacement-leave configuration is
     // a COMPANY rule (IA §2.0.3), and it now shares one screen with the half-day deduction, the

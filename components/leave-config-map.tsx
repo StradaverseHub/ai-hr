@@ -112,7 +112,12 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       // map entry of its own any more — two entries reaching one screen is what this component exists to
       // stop.
       { id: 'companyRules', href: '/admin/leave-config/company-rules' },
-      { id: 'payrollImpact', href: '/admin/leave/payroll' },
+      // a6fe37fc ROUND 5 (cutover) — `{ id: 'payrollImpact', href: '/admin/leave/payroll' }` STOOD HERE
+      // and is DELIBERATELY GONE. Payroll Related was never one subject: its per-leave-type "Send to
+      // payroll module" switch is a property of the TYPE (tab 1 of Leave types) and its encashment policy
+      // is a COMPANY rule (Company rules, one entry above). The id survives — nothing renders it as a
+      // section heading today, but it is the label key for a screen the customer knew by name, and
+      // deleting an id costs nothing to keep and something to get wrong.
     ],
   },
   {

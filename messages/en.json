@@ -245,7 +245,6 @@
     "leaveGenerate": "Generate Entitlement",
     "leaveApprovalWorkflow": "Approval Workflow",
     "leaveApproval": "Approval chain",
-    "leavePayroll": "Payroll Related",
     "leaveReplacement": "Replacement Leave",
     "leaveCompanyRules": "Company rules",
     "holidays": "Holidays",
@@ -8617,8 +8616,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
-      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
-      "introTwoEditors": "Each of them can still be changed on the screen it is on today. Both screens write the same record, and the older one is removed at the changeover."
+      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",

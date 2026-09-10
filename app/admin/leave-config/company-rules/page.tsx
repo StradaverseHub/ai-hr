@@ -51,17 +51,20 @@ const PAGE = '/admin/leave-config/company-rules';
  *     types, which is why r88 took it out of Benefit Schemes in the first place.
  *   · F38 — per-company REPLACEMENT LEAVE (TOIL) policy: accrual, eligibility, expiry.
  *
- * ⚠️ THE ROUND 5 CUTOVER REACHES THIS SCREEN IN THREE COMMITS, NOT ONE, BECAUSE IT ABSORBS THREE
- * SURFACES. Replacement leave's page is a redirect stub pointing here and `LEAVE_REPLACEMENT` names this
- * address, so the replacement policy below is now edited ONLY here. Payroll impact's encashment policy
- * and the two blocks on the old Leave types screen (half-day full deduction, shared leave groups) are
- * still ALSO editable at their old addresses until those two screens have their own commits — both write
- * the same record through the same action, and `introTwoEditors` in the copy below says so to the
- * administrator in plain words rather than leaving it to be discovered.
+ * ⚠️ THE ROUND 5 CUTOVER REACHED THIS SCREEN IN THREE COMMITS, BECAUSE IT ABSORBS THREE SURFACES, AND
+ * IT IS COMPLETE. Replacement leave and Payroll Related are redirect stubs pointing here, and the two
+ * blocks that used to sit on the Leave types screen (half-day full deduction, shared leave groups) are
+ * here rather than there. Every one of the four settings has exactly ONE editor, and it is this page:
+ * `LEAVE_REPLACEMENT` and the new `COMPANY_RULES` constant (app/admin/_redirects.ts) both name this
+ * address, so a save returns to the screen the change was made on. `introTwoEditors` — the paragraph that
+ * told the administrator each setting was still editable on its old screen — was TRUE for exactly three
+ * commits and came off with the last of them, along with its key in all six locales: an obsolete
+ * reassurance is worse than none, because it teaches the reader the screen is provisional.
  *
- * NOTHING IS STORED TWICE. Every control below posts the SAME server action, with the SAME field names,
- * writing the SAME column as the old surface does. Two editors, one record — which is the price of
- * "something works at every point" and is deliberate for exactly two rounds (migration order, Round 3).
+ * NOTHING IS STORED TWICE, AND NOTHING EVER WAS. Every control below posts the SAME server action, with
+ * the SAME field names, writing the SAME column the old surface wrote. Through Rounds 3–4 that meant two
+ * editors over one record — the deliberate price of "something works at every point" — and the cutover
+ * closed it: one editor, one record.
  *
  * ⚠️ NO NEW SERVER ACTION AND NO CHANGED SIGNATURE (Round 2's rule 2, still in force). What Round 5
  * changes is only where those actions RETURN: `LEAVE_REPLACEMENT` names this page now, and the
@@ -195,6 +198,7 @@ export default async function LeaveConfigCompanyRulesPage({
   // heading is the SAME string the map shows for the screen this section absorbs (IA §2.0 — Replacement
   // leave's address becomes a stub pointing at THIS page).
   const replacementTitle = await leaveConfigScreenTitle('replacementLeave');
+  const payrollTitle = await leaveConfigScreenTitle('payrollImpact');
   const companyOptions = [
     { value: ALL_COMPANIES, label: tr('companyFilterAll'), href: companyHref(ALL_COMPANIES) },
     ...visible.map((c) => ({ value: c.id, label: c.name, href: companyHref(c.id) })),
@@ -247,7 +251,6 @@ export default async function LeaveConfigCompanyRulesPage({
       <Card>
         <div className="space-y-2 p-4 text-sm">
           <p className="text-muted-foreground">{tPage('intro')}</p>
-          <p className="text-muted-foreground">{tPage('introTwoEditors')}</p>
         </div>
       </Card>
 
@@ -286,7 +289,11 @@ export default async function LeaveConfigCompanyRulesPage({
           Payroll impact card carries; carrying it means Round 5 repoints a route string rather than
           leaving a tour step that silently finds nothing. */}
       <Card data-tour="leave-encashment">
-        <SectionHeader title={t('encashmentSectionTitle')} count={companies.length} />
+        {/* The heading is the string the MENU used to show for the screen this section absorbs, exactly
+            as the Replacement leave section above uses `leaveConfigScreenTitle('replacementLeave')`. The
+            `payrollImpact` id outlived its map entry for this: an administrator who knew the setting as
+            "Payroll impact" finds the same words here. */}
+        <SectionHeader title={payrollTitle} count={companies.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">{t('encashmentHelp')}</p>
         <ul className="divide-y divide-border">
           {companies.map((c) => {

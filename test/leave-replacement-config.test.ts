@@ -89,7 +89,13 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // the position the reporter's team reads. The order promise is what was made and it is unchanged.
     expect(hrefs).toContain('/admin/leave-config/company-rules');
     const at = (href: string) => hrefs.indexOf(href);
-    expect(at('/admin/leave-config/company-rules')).toBeGreaterThan(at('/admin/leave/payroll'));
+    // a6fe37fc Round 5 — the Payroll Related row this position was measured against is GONE (its two
+    // settings were never one subject and went to two different destinations). Measuring against a row
+    // that no longer exists would make this pass on `> -1` forever, so the anchor moves to the row that
+    // is now directly above: Approval chains. The promise — Company rules sits at the END of the leave
+    // config menu, where Replacement Leave was put — is what is asserted, and it is asserted twice.
+    expect(at('/admin/leave-config/company-rules')).toBeGreaterThan(at('/admin/leave-config/approval-chains'));
+    expect(at('/admin/leave-config/company-rules')).toBe(hrefs.length - 1);
     // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
     // STOOD HERE. The Audit row is retired into the one central Audit Trail, so there is no longer an
     // entry after Replacement for it to sit before; the position this item actually promised (after

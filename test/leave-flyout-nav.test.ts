@@ -73,7 +73,12 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate' },
   // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
   { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow' },
-  { href: '/admin/leave/payroll', labelKey: 'leavePayroll' },
+  // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/payroll', 'leavePayroll' }` STOOD HERE and is
+  // DELIBERATELY GONE, not lost. Payroll Related was two settings that were never one subject: the
+  // per-leave-type "Send to payroll module" switch is on the Leave types row above (tab 1) and the
+  // encashment policy is on the Company rules row below. This list is an exact-set guard, so the only
+  // correct way to retire a destination is to delete its line in the commit that does it — which is what
+  // this is. The ROUTE still resolves as a stub and the label key is pruned, both asserted below.
   // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/replacement', 'leaveReplacement' }` STOOD HERE and is
   // DELIBERATELY REPLACED, not lost. Its screen was ABSORBED: a replacement-leave policy is a COMPANY
   // rule (IA §2.0.3), so the row now names Company rules — the destination that carries that policy plus
@@ -175,6 +180,21 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     for (const loc of LOCALES) {
       const nav = JSON.parse(read(`messages/${loc}.json`)).nav as Record<string, string>;
       expect(nav.leaveCompanyRules, `${loc}: the Company rules row needs its own label`).toBeTruthy();
+    }
+  });
+
+  it('/admin/leave/payroll survives as an UNGUARDED redirect stub, and nav.leavePayroll is pruned', () => {
+    // a6fe37fc Round 5, the last of the ten. Same contract as every other stub: the bookmark lands, the
+    // stub carries no page guard, the route left lib/permissions.ts in the same commit, and the label key
+    // retires WITH the row rather than lingering as an untranslatable orphan.
+    const stub = read('app/admin/leave/payroll/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/company-rules');
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/payroll',");
+    for (const loc of LOCALES) {
+      const nav = JSON.parse(read(`messages/${loc}.json`)).nav as Record<string, string>;
+      expect(nav.leavePayroll, `${loc}: nav.leavePayroll should be retired with the row`).toBeUndefined();
     }
   });
 

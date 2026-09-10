@@ -354,7 +354,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // built it and this one leaves in the round that empties the page. The old address is an unguarded
       // redirect stub; test/function-access.test.ts fails BOTH ways, so the two halves land together.
       // `/admin/leave/generate/export` (the per-run CSV) is a route handler, was never listed, and stays.
-      '/admin/leave/payroll',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/payroll'` STOOD HERE and is DELIBERATELY GONE. The
+      // screen is absorbed: F39 (send to payroll module) is on the leave TYPE screen's tab 1 and F40 (the
+      // encashment policy) is on Company rules. The old address is an unguarded redirect stub, so it left
+      // `routes` in the SAME commit that emptied the page.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/replacement'` (645e67c4 / 296fc027) STOOD HERE and is
       // DELIBERATELY GONE. Replacement-leave CONFIGURATION is on Company rules
       // (`/admin/leave-config/company-rules`) now and the old address is an unguarded redirect stub, so it

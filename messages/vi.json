@@ -245,7 +245,6 @@
     "leaveGenerate": "Tạo quyền lợi",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
     "leaveApproval": "Chuỗi phê duyệt",
-    "leavePayroll": "Liên quan bảng lương",
     "leaveReplacement": "Nghỉ bù",
     "leaveCompanyRules": "Quy định của công ty",
     "holidays": "Ngày lễ",
@@ -8617,8 +8616,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
-      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
-      "introTwoEditors": "Mỗi thiết lập trong số đó vẫn có thể thay đổi trên màn hình hiện đang chứa nó. Cả hai màn hình ghi vào cùng một dữ liệu, và màn hình cũ sẽ được gỡ bỏ khi chuyển đổi."
+      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",

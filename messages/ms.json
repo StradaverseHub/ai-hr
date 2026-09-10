@@ -245,7 +245,6 @@
     "leaveGenerate": "Jana Kelayakan",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
     "leaveApproval": "Rantaian kelulusan",
-    "leavePayroll": "Berkaitan Gaji",
     "leaveReplacement": "Cuti Ganti",
     "leaveCompanyRules": "Peraturan syarikat",
     "holidays": "Cuti umum",
@@ -8617,8 +8616,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
-      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
-      "introTwoEditors": "Setiap satu daripadanya masih boleh diubah pada skrin tempatnya berada hari ini. Kedua-dua skrin menulis ke rekod yang sama, dan skrin lama akan dibuang pada pertukaran nanti."
+      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",

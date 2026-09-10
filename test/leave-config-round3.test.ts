@@ -111,7 +111,7 @@ const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])
 const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   leaveTypes: { to: '/admin/leave-config/types', cutOver: true },
   templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
-  payroll: { to: '/admin/leave-config/company-rules', cutOver: false },
+  payroll: { to: '/admin/leave-config/company-rules', cutOver: true },
   replacement: { to: '/admin/leave-config/company-rules', cutOver: true },
   generate: { to: '/admin/leave-config/generate', cutOver: true },
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: true },
@@ -233,6 +233,9 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     if (CUTOVER.replacement.cutOver) expect(ids).not.toContain('replacementLeave');
     if (CUTOVER.payroll.cutOver) expect(ids).not.toContain('payrollImpact');
     expect(src.companyRules).toContain("leaveConfigScreenTitle('replacementLeave')");
+    // …and `payrollImpact`, the OTHER id whose screen this one absorbed. Both outlived their map entries
+    // so the administrator finds the words they knew each setting by.
+    expect(src.companyRules).toContain("leaveConfigScreenTitle('payrollImpact')");
   });
 
   it.each(KEYS)('%s renders the area map, so a new screen can reach its siblings', (k) => {
@@ -761,7 +764,11 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
     // pruned in all six catalogues rather than left as an orphan a copy-paste could revive.
     ['admin.leaveConfigCompanyRules', 'pageDescription'],
     ['admin.leaveConfigCompanyRules', 'intro'],
-    ['admin.leaveConfigCompanyRules', 'introTwoEditors'],
+    // `introTwoEditors` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5). It told the
+    // administrator each of the four settings was still editable on the screen it came from — true for
+    // exactly the three commits the cutover took to absorb them, and false the moment the last one
+    // landed. It came off the page with its key in all six catalogues: an obsolete reassurance teaches
+    // the reader the screen is provisional.
   ];
 
   const at = (bundle: unknown, dotted: string): unknown =>
