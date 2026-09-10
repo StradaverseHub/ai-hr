@@ -322,12 +322,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       // left `routes` in the SAME commit that emptied the page — the /admin/leave (df00b85f) and
       // /admin/leave/audit (f1b994e3) precedent. test/function-access.test.ts fails BOTH ways.
       '/admin/leave/entitlements',
-      // 6e9a126e — the read-only record of the entitlement configuration the redesign's release three
-      // clears. Same admin surface, same requireAdmin guard the leaveConfig screen declares, so it is a
-      // ROUTE on this screenKey rather than a new one (the /admin/leave/generate precedent below).
-      // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
-      // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
-      '/admin/leave/entitlements/archive',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/archive'` (6e9a126e, the read-only record
+      // of the entitlement configuration release three clears) STOOD HERE and is DELIBERATELY GONE. The
+      // record is `/admin/leave-config/records/entitlement` now and the old address is an unguarded
+      // redirect stub, so it left `routes` in the SAME commit that emptied the page. Its `/export` route
+      // handler is UNMOVED and was never listed here — the reverse-completeness scan reads page.tsx files
+      // only, and a route handler has no screen column to describe.
       // c8052ae3 — the read-only BALANCE record: what the Medical/Hospitalization ledger correction
       // archived before deleting it. Sibling of the configuration record one line up, same admin
       // surface, same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one.

@@ -105,7 +105,7 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   {
     id: 'history',
     items: [
-      { id: 'entitlementArchive', href: '/admin/leave/entitlements/archive' },
+      { id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' },
       { id: 'ledgerArchive', href: '/admin/leave/entitlements/ledger-archive' },
     ],
   },

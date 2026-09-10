@@ -116,7 +116,7 @@ const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   generate: { to: '/admin/leave-config/generate', cutOver: false },
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: false },
   import: { to: '/admin/leave-config/import', cutOver: true },
-  archive: { to: '/admin/leave-config/records/entitlement', cutOver: false },
+  archive: { to: '/admin/leave-config/records/entitlement', cutOver: true },
   ledgerArchive: { to: '/admin/leave-config/records/balances', cutOver: false },
 };
 

@@ -8353,7 +8353,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Entitlement configuration record",
       "pageDescription": "A read-only record of the Benefit Scheme and company / grade entitlement rules configured today.",
       "intro": "This is the written record of every entitlement figure currently configured, taken before anything can be cleared. Each row shows what was set up, who it applied to and what it was worth, so the figures can be read off here and retyped into the new entitlement tables rather than remembered.",
       "notAnUndo": "This is a listing to retype from, not an undo button. Restoring the old setup means entering it again.",

@@ -8353,7 +8353,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Bản ghi cấu hình quyền lợi",
       "pageDescription": "Bản ghi chỉ đọc của Chế độ phúc lợi và các quy tắc quyền lợi theo công ty / ngạch đang được cấu hình.",
       "intro": "Đây là bản ghi bằng văn bản của mọi con số quyền lợi hiện đang được cấu hình, được lập trước khi bất cứ thứ gì có thể bị xóa. Mỗi dòng cho biết những gì đã được thiết lập, áp dụng cho ai và giá trị bao nhiêu, để đọc lại và nhập vào các bảng quyền lợi mới.",
       "notAnUndo": "Đây là danh sách để nhập lại, không phải nút hoàn tác. Khôi phục thiết lập cũ nghĩa là nhập lại nó.",

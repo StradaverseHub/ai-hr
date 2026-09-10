@@ -4,14 +4,15 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listEntitlementArchiveCaptures, listEntitlementResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
 
 /**
- * a6fe37fc ROUND 3 — THE ENTITLEMENT CONFIGURATION RECORD at its new address
- * (`/admin/leave-config/records/entitlement`). IA §2 → RECORDS › Entitlement configuration record.
+ * a6fe37fc — THE ENTITLEMENT CONFIGURATION RECORD (`/admin/leave-config/records/entitlement`).
+ * IA §2 → RECORDS › Entitlement configuration record.
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/entitlements/archive` is untouched, still registered and
- * still what the menu links to; Round 5 empties that page and repoints its address here.
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/entitlements/archive` is an
+ * unguarded redirect stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, and the
+ * map's `entitlementArchive` entry names this address. The stub is never deleted.
  *
  * WHAT IT IS (6e9a126e, unchanged): the approved plan promised the reporter "a read-only listing inside
  * your admin screens that you can open and download, so you read the old figures off it while you retype
@@ -22,12 +23,19 @@ import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config
  * on the page is a GET that re-reads the page with a different `?capture=` — which is why this file needs
  * no preview note: nothing here saves, so nothing here can navigate somewhere surprising after saving.
  *
- * ⚠️ THE CSV LINK STILL POINTS AT THE OLD `/export` ROUTE HANDLER, ON PURPOSE. IA §3.2 F45 says the
- * handler moves WITH the screen — in Round 5. This round adds and removes nothing, so pointing at a
- * handler that does not exist yet would ship a download button that 404s.
+ * ⚠️ THE CSV LINK STILL POINTS AT THE OLD `/export` ROUTE HANDLER, AND IT STAYS THERE. The handler is
+ * NOT a page: it has no screen column, it was never in lib/permissions.ts, and nothing about the cutover
+ * requires it to move. Re-addressing it would break every download link an administrator has saved and
+ * would buy nothing — so `app/admin/leave/entitlements/archive/export/route.ts` is left exactly where it
+ * is, alongside the redirect stub, and this page links to it unchanged.
  *
  * F45 IS THE WHOLE OF THIS SCREEN and it is carried complete: the capture picker, the nine-column
  * listing, the "not an undo" sentence, and the CSV.
+ *
+ * THE HEADING IS THE MENU'S OWN STRING (`leaveConfigScreenTitle('entitlementArchive')`). The old page
+ * owned a private `admin.entitlementArchive.pageTitle` reading "Entitlement configuration record" while
+ * the menu called the same screen "Entitlement archive" — one of the four mismatches IA §1.1 measured.
+ * The key is DELETED in all six locales with the page that owned it, so the two can never drift again.
  */
 export default async function LeaveConfigEntitlementRecordPage({
   searchParams,
@@ -50,11 +58,15 @@ export default async function LeaveConfigEntitlementRecordPage({
 
   return (
     <div className="space-y-6">
-      {/* The SAME heading the old screen renders: "same behaviour at a new address" (IA §3) means the
-          administrator must not have to learn a second name for one record. */}
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      {/* The heading is the string the MENU shows for this screen (IA §1.1). It is not the old page's
+          private key: that one said "Entitlement configuration record" while the menu said "Entitlement
+          archive", which is exactly the defect — one screen, two names. */}
+      <PageHeader
+        title={await leaveConfigScreenTitle('entitlementArchive')}
+        description={t('pageDescription')}
+      />
       {/* `current="entitlementArchive"` because this IS that screen — the map names screens, not
-          addresses, and Round 5 repoints the entry here. */}
+          addresses, and the cutover repointed the entry here. */}
       <LeaveConfigMap current="entitlementArchive" />
 
       <Card>
@@ -96,8 +108,8 @@ export default async function LeaveConfigEntitlementRecordPage({
               {t('downloadCsv')}
             </a>
             {/* r259 — resolved through the area map above, so this record and the menu beside it point
-                at the same leave type screen. OUT of the preview module until Round 5 repoints the map;
-                see components/leave-config-map.tsx → leaveConfigScreenHref. */}
+                at the same leave type screen — one list, moved once by the cutover; see
+                components/leave-config-map.tsx → leaveConfigScreenHref. */}
             <Link href={leaveConfigScreenHref('leaveTypes')} className="ml-auto text-sm underline">
               {t('backToEntitlements')}
             </Link>

@@ -8353,7 +8353,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Rekod konfigurasi kelayakan",
       "pageDescription": "Rekod baca sahaja bagi Skim Faedah dan peraturan kelayakan syarikat / gred yang dikonfigurasikan hari ini.",
       "intro": "Ini ialah rekod bertulis bagi setiap angka kelayakan yang dikonfigurasikan sekarang, diambil sebelum apa-apa boleh dikosongkan. Setiap baris menunjukkan apa yang ditetapkan, kepada siapa ia dikenakan dan nilainya, supaya angka itu boleh dibaca di sini dan ditaip semula ke dalam jadual kelayakan baharu.",
       "notAnUndo": "Ini ialah senarai untuk ditaip semula, bukan butang buat asal. Memulihkan tetapan lama bermakna memasukkannya semula.",
