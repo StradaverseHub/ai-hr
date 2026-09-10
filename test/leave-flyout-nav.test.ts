@@ -59,7 +59,12 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // list: the ROUTE still resolves (as a redirect stub, so no bookmark 404s) and Entitlements is now first.
   { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements' },
   { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments' },
-  { href: '/admin/leave/generate', labelKey: 'leaveGenerate' },
+  // a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The two properties this list guards are "no
+  // destination lost" and "no re-sorting"; neither is about the literal address. The screen moved to
+  // `/admin/leave-config/generate` and the old address is a redirect stub, so pinning the OLD href here
+  // would have required the menu to keep pointing at a stub — a bookmark that still works reached through
+  // a wasted hop, and a menu row the "every destination is a registered route" case below would reject.
+  { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate' },
   { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow' },
   { href: '/admin/leave/payroll', labelKey: 'leavePayroll' },
   { href: '/admin/leave/replacement', labelKey: 'leaveReplacement' },

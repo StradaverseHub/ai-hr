@@ -16,8 +16,9 @@ import { redirect } from 'next/navigation';
 export const ENTITLEMENTS = '/admin/leave/entitlements';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts. */
 export const ADJUSTMENTS = '/admin/leave/adjustments';
-/** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts. */
-export const GENERATE = '/admin/leave/generate';
+/** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts.
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
+export const GENERATE = '/admin/leave-config/generate';
 /** 6e9a126e release two — the Entitlement Tables + Employee Eligibility editor (the reporter's steps 1
  *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
  *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them.

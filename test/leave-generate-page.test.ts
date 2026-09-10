@@ -24,8 +24,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '..');
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
 
-const GENERATE_ROUTE = '/admin/leave/generate';
-const GENERATE_PAGE = 'app/admin/leave/generate/page.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. Generate Entitlement is
+ * `/admin/leave-config/generate` now; `/admin/leave/generate` is a redirect stub that mounts nothing and
+ * has left lib/permissions.ts. This file's promise — the grant sweep is reachable from exactly ONE screen
+ * (the r106 lesson) — is unchanged and is now asserted against the file that IS that screen. Asserting it
+ * against the stub would have been the vacuous version: a stub can never call the action, so the
+ * one-caller case would pass forever while saying nothing.
+ */
+const GENERATE_ROUTE = '/admin/leave-config/generate';
+const GENERATE_PAGE = 'app/admin/leave-config/generate/page.tsx';
+/** The old address, kept in the file because two cases below still assert what became of it. */
+const OLD_GENERATE_PAGE = 'app/admin/leave/generate/page.tsx';
 const ACTIONS = 'app/admin/actions.ts';
 /** 93249794 grew the page into the five-step flow. Everything interactive — including the <form> and the
  *  year select — moved into this client component; the page stayed a server component and kept the import.
@@ -155,14 +165,18 @@ describe('4b0e76ae · openLeaveYearAction has EXACTLY ONE caller', () => {
     // addresses at once: `/admin/leave-config/generate` is the new module's copy, built ALONGSIDE the old
     // page and mounting the SAME `GenerateForm` with the SAME action, because the migration order
     // requires something that works at every point (docs/design/a6fe37fc-migration-order.md, Round 3).
-    // Round 5 empties `app/admin/leave/generate/page.tsx` into a redirect stub, at which point this list
-    // goes back to one entry — the NEW one. Until then, two entries, and no third.
-    const NEW_MODULE_GENERATE_PAGE = 'app/admin/leave-config/generate/page.tsx';
+    // ⚠️ ROUND 5 HAS HAPPENED AND THE SET IS BACK TO ONE. The old page is a redirect stub, so the
+    // Generate Entitlement screen exists at exactly one address again and the closed set is closed at
+    // one entry — the strongest this case has ever been.
     const callers = codeReferences('openLeaveYearAction').filter((f) => f !== ACTIONS);
     expect(
       callers,
-      'expected ONLY the two Generate Entitlement pages (old + a6fe37fc Round 3) to reach the grant sweep',
-    ).toEqual([NEW_MODULE_GENERATE_PAGE, GENERATE_PAGE].sort());
+      'expected ONLY the Generate Entitlement screen to reach the grant sweep (the r106 lesson)',
+    ).toEqual([GENERATE_PAGE]);
+    // …and the old address reaches it only by redirecting, never by calling it.
+    const stub = read(OLD_GENERATE_PAGE);
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain(GENERATE_ROUTE);
   });
 
   it('is ADMIN-gated — requireAdmin(), never getSession()', () => {

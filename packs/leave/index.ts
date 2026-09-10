@@ -220,7 +220,12 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // fails on a registered route with no guarded page on disk, which is why that is one move, not two.
     { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements', icon: ClipboardList },
     { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
-    { href: '/admin/leave/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
+    // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
+    // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts
+    // in the same commit), so this row must name the new one: test/leave-flyout-nav.test.ts requires every
+    // child href to be a registered route with a real page, and a menu row pointing at a stub is a row
+    // that reaches its screen through a wasted hop.
+    { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
     { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
     { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
     { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },

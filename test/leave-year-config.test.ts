@@ -11,7 +11,7 @@
  *
  * 1. THE GRANT SWEEP, RE-HOMED. `openLeaveYear` is the only thing in the system that posts a leave year's
  *    entitlement for every eligible employment. It was reachable ONLY through the deleted section's Start
- *    button. It is now reachable through `openLeaveYearAction` on /admin/leave/generate, and the sweep case
+ *    button. It is now reachable through `openLeaveYearAction` on /admin/leave-config/generate, and the sweep case
  *    below is the old "status→open runs the grant sweep" case pointed at that action instead of at
  *    setLeaveYearStatus. Same engine, same idempotency, same leave-year.opened event.
  *
@@ -195,7 +195,7 @@ describe('entitlementYearOptions — the ONE computed year list', () => {
 
 // ── The grant sweep, re-homed onto the Generate page's action ───────────────────────────────────
 describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
-  it('posts the year’s grants, is idempotent, emits leave-year.opened, and lands back on /admin/leave/generate', async () => {
+  it('posts the year’s grants, is idempotent, emits leave-year.opened, and lands back on the Generate screen', async () => {
     const { employmentId } = await hireEmployeeCtx(); // hired 2020 ⇒ eligible for a 2027 grant
     adminGuardCtx = adminCtx(b);
 
@@ -203,7 +203,9 @@ describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
     const target = await captureRedirect(() => openLeaveYearAction(fd({ year: '2027' })));
     // Re-homed: the action used to redirect to /admin/leave (and, through setLeaveYearStatusAction, to the
     // Entitlements tab). Its home is the Generate page now, and the counts ride back as a toast.
-    expect(target.startsWith('/admin/leave/generate')).toBe(true);
+    // a6fe37fc Round 5 repointed GENERATE at the new module; the contract — the grant counts come
+    // back to the screen the operator pressed the button on — is what is asserted, not the literal.
+    expect(target.startsWith('/admin/leave-config/generate')).toBe(true);
     expect(target).toContain('toast=');
 
     // The Jan-1 grant for 2027 was posted (balance increased for the pre-2027 hire).
@@ -236,7 +238,7 @@ describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
   it('refuses a year outside 2020..2100 and lands on the Generate page’s error banner', async () => {
     adminGuardCtx = adminCtx(b);
     const target = await captureRedirect(() => openLeaveYearAction(fd({ year: '1999' })));
-    expect(target.startsWith('/admin/leave/generate?error=')).toBe(true);
+    expect(target.startsWith('/admin/leave-config/generate?error=')).toBe(true);
   });
 });
 

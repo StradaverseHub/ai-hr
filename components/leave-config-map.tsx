@@ -97,7 +97,7 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   {
     id: 'run',
     items: [
-      { id: 'generateEntitlement', href: '/admin/leave/generate' },
+      { id: 'generateEntitlement', href: '/admin/leave-config/generate' },
       { id: 'adjustments', href: '/admin/leave/adjustments' },
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
     ],

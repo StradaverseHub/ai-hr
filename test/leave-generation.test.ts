@@ -452,7 +452,10 @@ describe('93249794 · D. no second entitlement definition, no second criteria en
   });
 
   it('both screens build their criteria from the ONE shared builder', () => {
-    for (const page of ['app/admin/leave/adjustments/page.tsx', 'app/admin/leave/generate/page.tsx']) {
+    // a6fe37fc Round 5 moved Generate Entitlement to /admin/leave-config/generate; the old page is a
+    // redirect stub that builds no criteria at all, so the assertion follows the screen. Adjustments
+    // moves in its own commit and this list follows it then.
+    for (const page of ['app/admin/leave/adjustments/page.tsx', 'app/admin/leave-config/generate/page.tsx']) {
       expect(read(page), `${page} must call the shared builder`).toContain('buildOrgCriteriaSections');
     }
     // …and the builder is the only place the section list lives.
