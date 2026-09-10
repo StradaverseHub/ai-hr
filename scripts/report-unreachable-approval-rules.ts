@@ -39,7 +39,12 @@
  */
 import { eq } from 'drizzle-orm';
 import { createDb } from '../db/client';
-import { replayApprovalRouting, type RoutingSubject } from '../core/leave-approval-consolidation';
+// THROUGH THE PACK FACADE, NOT core/ DIRECTLY (ADR-0080 D9/D11). packs/leave/service re-exports
+// core/leave-approval-consolidation wholesale, so this is the same function the replay uses — but
+// importing core/ from a new file trips test/leave-pack-drift.test.ts's ratchet, and the fix for
+// that is NEVER test/pack-drift-allowlist.json: that list is audited debt and only shrinks
+// (AGENTS 15). This file turned the gate red on exactly that.
+import { replayApprovalRouting, type RoutingSubject } from '../packs/leave/service';
 import {
   businessUnit,
   company,
