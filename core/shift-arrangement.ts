@@ -244,6 +244,157 @@ export async function assignEmployeeShiftDated(
   });
 }
 
+/**
+ * a485afa1 — the entry named for removal is not on this employee's LIVE ladder (already removed, replaced
+ * by a same-date save, or never theirs). A refusal rather than a silent no-op: two administrators on the
+ * same list must not both be told "removed" when only one removal happened.
+ */
+export class ShiftArrangementNotFoundError extends Error {
+  constructor() {
+    super('That shift arrangement is no longer on file.');
+    this.name = 'ShiftArrangementNotFoundError';
+  }
+}
+
+/**
+ * a485afa1 — the LAST remaining arrangement cannot be removed. Removing it would leave the employee with
+ * no dated period at all, and every resolver would silently fall back to employment.default_shift_id — the
+ * cache this ladder exists to replace. "Not recorded" is a state a NEW employee is in, not one an
+ * administrator can put an existing one back into by deleting their history. Change it instead.
+ */
+export class ShiftArrangementOnlyPeriodError extends Error {
+  constructor() {
+    super('The only shift arrangement on file cannot be removed. Change it instead.');
+    this.name = 'ShiftArrangementOnlyPeriodError';
+  }
+}
+
+/**
+ * a485afa1 (verify-fix) — ONLY THE NEWEST PERIOD MAY BE REMOVED, and this refusal is the whole reason the
+ * screen's Remove is safe to offer at all.
+ *
+ * Removal is UNDONE by saving the same arrangement back at the same date — and `assignEmployeeShiftDated`
+ * refuses any date earlier than the last one already on the ladder (ShiftBackInsertError; back-insert is
+ * out of scope for v1). So a MIDDLE period, once removed, cannot be put back at EITHER door: the entry
+ * below it is still there and blocks the re-save. Nothing is destroyed at row level — the row is
+ * superseded and a DomainEvent records it — but the stretch of time it governed permanently reverts to the
+ * earlier shift, and attendance and overtime for those days derive against that. A one-click, irreversible
+ * change to somebody's paid hours is not something a mis-click on a history row should be able to make.
+ *
+ * The NEWEST period has no such trap: with it gone the ladder's last date is the one before it, so saving
+ * it again is a forward-dated change and is accepted. Removal therefore means exactly "take back the most
+ * recent change", which is what an administrator who mis-typed one actually wants.
+ *
+ * `newestEffectiveFrom` names the entry that may be removed, so the sentence on screen can too.
+ */
+export class ShiftArrangementNotNewestError extends Error {
+  constructor(readonly newestEffectiveFrom: string) {
+    super(
+      `Only the most recent shift arrangement (${newestEffectiveFrom}) can be removed. An earlier one cannot be put back once taken away.`,
+    );
+    this.name = 'ShiftArrangementNotNewestError';
+  }
+}
+
+/**
+ * a485afa1 — REMOVE one dated period from an employee's shift-arrangement ladder.
+ *
+ * WHY THIS IS A NEW FUNCTION AND NOT A SECOND WRITER. `assignEmployeeShiftDated` is the one way a period is
+ * created or replaced, and it stays the one way; nothing here inserts a period. Removal simply did not
+ * exist — the Schedule Assignment screen (a485afa1) is the first surface to offer it — so this is the
+ * ladder's missing operation, added ONCE in core where both doors onto the record can call it.
+ *
+ * IT SUPERSEDES, IT DOES NOT DELETE, for the same reason the writer does (ADR-0001/0003): the row leaves
+ * the live partial unique index and every resolver stops seeing it, while the audit trail keeps the fact
+ * that it was ever there. `shiftArrangementHistory` reads live periods only, so the entry disappears from
+ * the screen exactly as a replaced one does.
+ *
+ * THE PREDECESSOR IS RE-OPENED. Each period runs until the next begins, so the period before the removed
+ * one inherits the removed one's `valid_to` — null (open) when the removed period was the current one,
+ * otherwise the day before whatever follows. Without this the ladder would carry a gap, and a date inside
+ * it would resolve to the wrong side of the missing period.
+ *
+ * ⚠️ ONLY THE NEWEST PERIOD, AND ONLY IF IT IS NOT THE LAST ONE — three refusals, in this order: not on
+ * this ladder, the only one on file, not the newest. The third is the one to read before relaxing any of
+ * this: removal is undone by re-saving the same date, and the writer refuses a date earlier than the
+ * ladder's last, so removing a MIDDLE period is irreversible at every door. See
+ * ShiftArrangementNotNewestError. The screen renders Remove on the newest row only; this is the check that
+ * makes that true of a forged POST as well.
+ */
+export async function removeShiftArrangement(
+  ctx: SessionContext,
+  p: { employmentId: string; arrangementId: string },
+): Promise<{ removedEffectiveFrom: string }> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: employmentShiftArrangement.id,
+        shiftType: employmentShiftArrangement.shiftType,
+        shiftId: employmentShiftArrangement.shiftId,
+        validFrom: employmentShiftArrangement.validFrom,
+        validTo: employmentShiftArrangement.validTo,
+      })
+      .from(employmentShiftArrangement)
+      .where(
+        and(
+          eq(employmentShiftArrangement.employmentId, p.employmentId),
+          isNull(employmentShiftArrangement.supersededAt),
+        ),
+      )
+      .orderBy(asc(employmentShiftArrangement.validFrom));
+
+    const i = rows.findIndex((r) => r.id === p.arrangementId);
+    if (i < 0) throw new ShiftArrangementNotFoundError();
+    if (rows.length === 1) throw new ShiftArrangementOnlyPeriodError();
+    // `rows` is ascending by valid_from, so the newest live period is the last of them.
+    if (i !== rows.length - 1) throw new ShiftArrangementNotNewestError(rows[rows.length - 1].validFrom);
+    const target = rows[i];
+    const prev = i > 0 ? rows[i - 1] : undefined;
+
+    await tx
+      .update(employmentShiftArrangement)
+      .set({ supersededAt: new Date() })
+      .where(eq(employmentShiftArrangement.id, target.id));
+    if (prev) {
+      await tx
+        .update(employmentShiftArrangement)
+        .set({ validTo: target.validTo })
+        .where(eq(employmentShiftArrangement.id, prev.id));
+    }
+
+    // The SAME cache refresh the writer performs, and it matters more here: removing the period in force
+    // today changes which shift the employee is on, and every reader still on employment.default_shift_id
+    // would otherwise keep answering with the period that was just taken away.
+    const after = await arrangementsForEmploymentTx(tx, p.employmentId);
+    const inForce = pickArrangementOn(after, todayInKualaLumpur());
+    if (inForce) {
+      await tx
+        .update(employment)
+        .set({ shiftType: inForce.shiftType, defaultShiftId: inForce.shiftId })
+        .where(eq(employment.id, p.employmentId));
+    }
+
+    // Same aggregate and the same before/after shape as the assign event, so the Others-tab Change History
+    // lists a removal in the one shift series. `.removed` classifies as a deletion in lib/audit-format.ts
+    // actionOf, which is what puts the high-impact accent on it.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.shift-arrangement.removed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        before: { shiftType: target.shiftType, defaultShiftId: target.shiftId },
+        after: inForce ? { shiftType: inForce.shiftType, defaultShiftId: inForce.shiftId } : null,
+        effectiveFrom: target.validFrom,
+      },
+    });
+
+    return { removedEffectiveFrom: target.validFrom };
+  });
+}
+
 /** One line of the Shift history list under the card. */
 export type ShiftArrangementHistoryRow = {
   id: string;
@@ -349,6 +500,14 @@ export type ShiftArrangementListRow = {
 
 /** Filters the Schedule Assignment screen posts as plain GET params. All optional; all narrowing. */
 export type ShiftArrangementListFilters = {
+  /**
+   * a485afa1 — ONE employment. The screen's edit panel needs the same resolved row the list shows (name,
+   * company, the arrangement in force and its status) for an employee who may not be among the filtered
+   * rows: change somebody's backup shift while the list is filtered by backup shift and they leave it,
+   * yet the panel they are editing in must not blank out. A narrowing filter on the shared read, so the
+   * panel and the row can never describe the same person differently.
+   */
+  employmentId?: string;
   /** Free text over employee ID and name. */
   q?: string;
   shiftType?: 'fixed' | 'roster';
@@ -392,6 +551,7 @@ export function listShiftArrangements(
     const today = filters.today ?? todayInKualaLumpur();
     const q = filters.q?.trim();
     const conds = [isNull(employment.terminatedOn)];
+    if (filters.employmentId) conds.push(eq(employment.id, filters.employmentId));
     if (q) {
       const pattern = `%${likeLiteral(q)}%`;
       // Non-null assertion: `or` is only undefined when given no arguments.

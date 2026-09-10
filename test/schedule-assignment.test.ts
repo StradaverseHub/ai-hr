@@ -1,5 +1,6 @@
 /**
- * r209 — Schedule Assignment (0bade264) and the Attendance menu rename (0bade264 + 6448574f).
+ * r209 — Schedule Assignment (0bade264) and the Attendance menu rename (0bade264 + 6448574f),
+ * r263 — the edit panel on that screen (a485afa1).
  *
  * WHAT THIS FILE PINS, AND WHY EACH HALF NEEDS PINNING SEPARATELY.
  *
@@ -12,9 +13,37 @@
  *
  *  2. THE CONTRACT BETWEEN TWO FILES. The request is that this screen and the per-employee card act on
  *     ONE record. That is not a property of either file alone — a unit test of the list passes whether
- *     or not a second editor exists, and so does a unit test of the card. So it is asserted across
- *     BOTH sources: the list must LINK into the personnel card's own anchor, that anchor and the
- *     shared control must still be there, and the list must contain no editor of its own.
+ *     or not a second writer exists, and so does a unit test of the card. So it is asserted across BOTH
+ *     sources, and a485afa1 CHANGED WHAT THAT MEANS without changing the property: r209 kept the two in
+ *     step by refusing the list an editor and linking into the card instead; r263 gave the list its own
+ *     panel because the link was the complaint, and keeps them in step by making the panel mount the
+ *     card's own control (components/employee-shift-fields.tsx) and call the card's own writer
+ *     (core/shift-arrangement.ts). So the assertions now read: the deep link is GONE, both screens
+ *     render the ONE control, the screen's action is an adapter and not a second writer, and the
+ *     personnel card is still standing. Plus a database-backed half r209 could not have: the history a
+ *     save from Attendance produces is compared, row for row, with the history the same save through
+ *     Personnel produces.
+ *
+ *     AND ITS THIRD OPERATION. Removal did not exist at either door — the panel is the first surface to
+ *     offer it — so `removeShiftArrangement` is pinned here too: it supersedes rather than deletes, it
+ *     re-opens the period it had closed, it refuses to take away the last one on file, and it refuses any
+ *     entry that is NOT the newest (removal is undone by re-saving the same date, and the writer will not
+ *     accept a date earlier than the ladder's last — so an older removal could not be undone at any door).
+ *
+ * ⚠️ READ BEFORE ADDING A `describe` TO THIS FILE — THE MOCKS ARE FILE-LEVEL, NOT PER-DESCRIBE.
+ * `vi.mock` of ../lib/authz, next/cache, next/navigation and next-intl/server sits at module scope below,
+ * and so do `beforeAll(migrateTestDb)` / `afterAll(closeAll)` (hoisted out of the first describe by
+ * a485afa1 because a second database-backed describe follows it and a per-describe afterAll would close
+ * the pool under it). EVERY describe in this file therefore inherits, whether it wants them or not:
+ *   · `requireAdmin` is a fake that returns the module-level `ADMIN` — a describe that does not assign
+ *     `ADMIN` in its own beforeEach gets whatever the previous describe left there, and NOTHING here
+ *     tests real authorization. An authz assertion must live in its own file.
+ *   · `redirect()` THROWS (`NEXT_REDIRECT`) and records into `LAST_REDIRECT` instead of navigating — code
+ *     after a redirect never runs, and an un-awaited action swallows the throw.
+ *   · `getTranslations` returns the KEY, not the sentence, so an assertion on user-facing copy here is
+ *     asserting a key name. Locale VALUES are asserted in the last describe, which reads messages/*.json
+ *     off disk instead.
+ * If a new describe needs any of these to be real, put it in a new file rather than un-mocking here.
  *
  *  3. THE LABELS. i18n-check.mjs proves a key EXISTS in all six locales; it cannot prove a value was
  *     updated, so a locale left saying "Plan OT" passes it silently. Every renamed value is therefore
@@ -25,11 +54,85 @@ import { and, eq, isNull } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import { createShift } from '../core/roster';
-import { assignEmployeeShiftDated, listShiftArrangements } from '../core/shift-arrangement';
+import {
+  assignEmployeeShiftDated,
+  listShiftArrangements,
+  shiftArrangementHistory,
+} from '../core/shift-arrangement';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+/**
+ * a485afa1 — the two server actions are exercised for real, so the parity case below compares what the
+ * two DOORS actually store rather than what two direct calls to the writer store (which would pass even
+ * if one door parsed its form differently). requireAdmin(), redirect() and the translator are the three
+ * things a server action needs from Next and cannot have here; the harness pattern is
+ * test/bank-custom-holder.test.ts's.
+ */
+let ADMIN: ReturnType<typeof adminCtx>;
+vi.mock('../lib/authz', () => ({ requireAdmin: async () => ADMIN }));
+let LAST_REDIRECT = '';
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => {
+    LAST_REDIRECT = url;
+    throw new Error('NEXT_REDIRECT');
+  },
+}));
+vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
+
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NextIntlClientProvider } from 'next-intl';
+import {
+  removeScheduleArrangementAction,
+  saveScheduleAssignmentAction,
+} from '../app/admin/attendance/schedule-assignment/actions';
+import ScheduleAssignmentPage from '../app/admin/attendance/schedule-assignment/page';
+import { setDefaultShiftAction } from '../app/admin/personnel/[employmentId]/actions';
+
+/**
+ * The screen itself, rendered. A 200 is not a render check and neither is a source scan: the crash this
+ * pins (a malformed `?assign=`) passed tsc, the suite and `next build`, and only a real render found it.
+ *
+ * The SERVER strings come from the mocked `getTranslations` and are therefore KEY NAMES — the assertions
+ * below name keys where they mean sentences. The CLIENT islands in the tree (EmployeeShiftFields,
+ * ConfirmSubmit) call `useTranslations` instead, which needs a real provider, so they are given the real
+ * en.json and render real copy: a key missing from the catalogue would show up here rather than as a
+ * MISSING_MESSAGE on a live page.
+ */
+async function renderPage(searchParams: Record<string, string>): Promise<string> {
+  const tree = await ScheduleAssignmentPage({ searchParams: Promise.resolve(searchParams) });
+  return renderToStaticMarkup(
+    createElement(NextIntlClientProvider, {
+      locale: 'en',
+      timeZone: 'Asia/Kuala_Lumpur',
+      messages: JSON.parse(read('messages/en.json')),
+      children: tree as never,
+    }),
+  );
+}
+
+/** Run a server action to its redirect and return where it sent the browser. */
+async function runAction(action: (fd: FormData) => Promise<void>, fields: Record<string, string>) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  LAST_REDIRECT = '';
+  await expect(action(fd)).rejects.toThrow('NEXT_REDIRECT');
+  return LAST_REDIRECT;
+}
+
+// ONE pool for the whole file: hoisted out of the first describe by a485afa1 because a second
+// database-backed describe follows it, and a per-describe afterAll would close the pool before that one
+// ran its first query.
+beforeAll(async () => {
+  await migrateTestDb();
+});
+afterAll(async () => {
+  await closeAll();
+});
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -45,9 +148,6 @@ describe('0bade264 — Schedule Assignment lists the LIVE arrangement, by the sh
   let shiftA: string;
   let shiftB: string;
 
-  beforeAll(async () => {
-    await migrateTestDb();
-  });
   beforeEach(async () => {
     await resetDb();
     b = await seedBase();
@@ -73,9 +173,6 @@ describe('0bade264 — Schedule Assignment lists the LIVE arrangement, by the sh
         weeklyPattern: [1, 2, 3, 4, 5],
       })
     ).id;
-  });
-  afterAll(async () => {
-    await closeAll();
   });
 
   /** An employment with a name and an Employee ID, hired long before every date in this file. */
@@ -288,40 +385,477 @@ describe('0bade264 — Schedule Assignment lists the LIVE arrangement, by the sh
   });
 });
 
-describe('0bade264 — ONE editor: the list links into the personnel card, it does not copy it', () => {
+describe('a485afa1 — the two doors write ONE record, and the panel can take one back off', () => {
+  const LIST_URL = '/admin/attendance/schedule-assignment';
+  let b: Base;
+  let shiftA: string;
+  let shiftB: string;
+
+  beforeEach(async () => {
+    await resetDb();
+    b = await seedBase();
+    // The mocked requireAdmin hands the actions this session — the same one the direct calls use, so a
+    // difference between the two histories can only come from the two code paths.
+    ADMIN = adminCtx(b);
+    shiftA = (
+      await createShift(ADMIN, {
+        companyId: b.companyId,
+        name: 'Morning',
+        code: 'AM',
+        startTime: '08:00:00',
+        endTime: '17:00:00',
+        breakMinutes: 60,
+        weeklyPattern: [1, 2, 3, 4, 5],
+      })
+    ).id;
+    shiftB = (
+      await createShift(ADMIN, {
+        companyId: b.companyId,
+        name: 'Evening',
+        code: 'PM',
+        startTime: '14:00:00',
+        endTime: '23:00:00',
+        breakMinutes: 60,
+        weeklyPattern: [1, 2, 3, 4, 5],
+      })
+    ).id;
+  });
+
+  async function hire(fullName: string, employeeCode: string) {
+    const [p] = await owner.db
+      .insert(schema.person)
+      .values({ tenantId: b.tenantId, fullName, primaryEmail: `${employeeCode}_${randomUUID()}@t.local` })
+      .returning({ id: schema.person.id });
+    const [e] = await owner.db
+      .insert(schema.employment)
+      .values({
+        tenantId: b.tenantId,
+        personId: p.id,
+        companyId: b.companyId,
+        employeeCode,
+        hiredOn: '2020-01-01',
+      })
+      .returning({ id: schema.employment.id });
+    return e.id;
+  }
+
+  /** The history with only its VOLATILE columns dropped — the row id and the wall-clock it was written. */
+  const shapeOf = (rows: Awaited<ReturnType<typeof shiftArrangementHistory>>) =>
+    rows.map(({ id, changedAt, ...rest }) => {
+      void id;
+      void changedAt;
+      return rest;
+    });
+
+  it('a save from the Attendance panel produces the record a save from Personnel produces', async () => {
+    // THE PLAN'S PROMISE, PINNED. "Two doors onto one record" is not provable from either screen alone:
+    // it is the claim that the SAME two saves, made at the two doors, leave the same thing behind. Both
+    // employees are moved identically — a dated period, then a second one — and the two ladders are
+    // compared row for row, previous-shift resolution and all.
+    const viaCard = await hire('Ana Personnel', 'E101');
+    const viaList = await hire('Bea Attendance', 'E102');
+
+    for (const [action, employmentId] of [
+      [setDefaultShiftAction, viaCard],
+      [saveScheduleAssignmentAction, viaList],
+    ] as const) {
+      await runAction(action, {
+        employmentId,
+        shiftType: 'fixed',
+        shiftId: shiftA,
+        effectiveFrom: PAST,
+        returnTo: LIST_URL,
+      });
+      await runAction(action, {
+        employmentId,
+        shiftType: 'roster',
+        shiftId: shiftB,
+        effectiveFrom: FUTURE,
+        returnTo: LIST_URL,
+      });
+    }
+
+    const fromCard = shapeOf(await shiftArrangementHistory(ADMIN, viaCard));
+    const fromList = shapeOf(await shiftArrangementHistory(ADMIN, viaList));
+    expect(fromList.length, 'two dated periods — the second save appended, it did not overwrite').toBe(2);
+    expect(fromList, 'the Attendance panel and the personnel card record the SAME arrangement').toEqual(fromCard);
+    // …and the effective dating is the ladder's, not an in-place update: the older period is closed the
+    // day before the newer one begins, at BOTH doors.
+    expect(fromList.map((h) => [h.effectiveFrom, h.effectiveTo])).toEqual([
+      [FUTURE, null],
+      [PAST, '2026-08-31'],
+    ]);
+  });
+
+  it('saving from the panel comes back to the list, filters and panel intact — the round trip is gone', async () => {
+    const emp = await hire('Cara Return', 'E103');
+    const back = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: `${LIST_URL}?status=current&assign=${emp}`,
+    });
+    expect(back, 'the save stays inside Attendance').not.toContain('/admin/personnel/');
+    expect(back).toContain(`${LIST_URL}?`);
+    expect(back, 'the filter the administrator was working under survives the save').toContain('status=current');
+    expect(back, 'and the panel stays open on the employee just saved').toContain(`assign=${emp}`);
+    expect(back).toContain('saved=1');
+
+    // The other door is untouched and still returns to the profile — Personnel Management keeps its copy.
+    const fromCard = await runAction(setDefaultShiftAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+    });
+    expect(fromCard).toContain(`/admin/personnel/${emp}`);
+  });
+
+  it('a forged returnTo cannot send the browser anywhere but this screen', async () => {
+    const emp = await hire('Dee Forged', 'E104');
+    const back = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: 'https://evil.example/steal',
+    });
+    expect(back, 'an off-site returnTo falls back to the bare page').toBe(`${LIST_URL}?saved=1#assign-panel`);
+  });
+
+  it('removing an arrangement supersedes it, re-opens the period before it, and moves the cache', async () => {
+    const emp = await hire('Eve Removed', 'E105');
+    for (const [shiftId, effectiveFrom] of [
+      [shiftA, PAST],
+      [shiftB, FUTURE],
+    ] as const) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId: emp,
+        shiftType: 'fixed',
+        shiftId,
+        effectiveFrom,
+        returnTo: LIST_URL,
+      });
+    }
+    const before = await shiftArrangementHistory(ADMIN, emp);
+    expect(before.map((h) => h.effectiveFrom), 'newest first').toEqual([FUTURE, PAST]);
+
+    const back = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: before[0].id,
+      returnTo: LIST_URL,
+    });
+    expect(back).toContain('removed=1');
+
+    const after = await shiftArrangementHistory(ADMIN, emp);
+    expect(after.map((h) => h.effectiveFrom), 'the removed period is gone from the live ladder').toEqual([PAST]);
+    expect(after[0].effectiveTo, 'the period it had closed runs on again').toBeNull();
+
+    // The list — the same shared read the screen renders — agrees.
+    const [row] = await listShiftArrangements(ADMIN, { today: TODAY, employmentId: emp });
+    expect([row.shiftCode, row.status]).toEqual(['AM', 'current']);
+
+    // And employment.default_shift_id, the cache every unmigrated reader still consults, followed it back.
+    const [cached] = await owner.db
+      .select({ shiftId: schema.employment.defaultShiftId, shiftType: schema.employment.shiftType })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, emp));
+    expect(cached.shiftId, 'the cache must not keep pointing at a period that was removed').toBe(shiftA);
+  });
+
+  it('the LAST arrangement on file is refused, in the reader’s own language', async () => {
+    // Removing it would leave the employee with no dated period at all and drop every resolver back onto
+    // the cache this ladder replaced — "not recorded" is a state a new employee is in, not one an
+    // administrator can put an existing one back into by deleting their history.
+    const emp = await hire('Fay Only', 'E106');
+    await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: LIST_URL,
+    });
+    const [only] = await shiftArrangementHistory(ADMIN, emp);
+    const back = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: only.id,
+      returnTo: LIST_URL,
+    });
+    // The mocked translator returns the key, so this asserts the LOCALIZED sentence was reached rather
+    // than core's English message being shown to the user.
+    expect(back).toContain('error=removeOnlyRefused');
+    expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.id), 'nothing was removed').toEqual([only.id]);
+  });
+
+  it('a malformed ?assign= renders the panel’s own sentence — it does not take the page down', async () => {
+    // THE VERIFIER'S 500. `?assign=not-a-uuid` reached eq(employment.id, …) on a uuid column, Postgres
+    // threw "invalid input syntax for type uuid", and the page — including the `panelMissing` branch
+    // written for exactly this ("a stale bookmark") — never rendered. A well-formed but unknown uuid was
+    // always handled; both are asserted so a future edit cannot fix one and lose the other.
+    const emp = await hire('Ivy Bookmark', 'E109');
+    await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: LIST_URL,
+    });
+
+    for (const junk of ['not-a-uuid', "'; drop table employment; --", '123', emp.slice(0, -1)]) {
+      const html = await renderPage({ assign: junk });
+      expect(html, `?assign=${junk} keeps the panel open and says the employee is not here`).toContain(
+        'panelMissing',
+      );
+      expect(html, 'and the list underneath it still rendered').toContain('Ivy Bookmark');
+    }
+
+    const unknown = await renderPage({ assign: '00000000-0000-4000-8000-000000000000' });
+    expect(unknown, 'a well-formed uuid nobody owns reads the same').toContain('panelMissing');
+
+    // And the panel still opens for a real one — the shape check narrows nothing it should not.
+    const real = await renderPage({ assign: emp });
+    expect(real, 'the employee the panel is open on').toContain('Ivy Bookmark');
+    expect(real, 'their arrangement is being edited, not reported missing').not.toContain('panelMissing');
+  });
+
+  it('an older change cannot be removed — only the newest, which is the only one that can be put back', async () => {
+    // THE VERIFIER'S SECOND FINDING. Removal is undone by saving the same arrangement back at the same
+    // date, and the writer refuses a date earlier than the ladder's last — so removing a MIDDLE period
+    // was irreversible at BOTH doors. Three periods, and the middle one is refused.
+    const emp = await hire('Jo Ladder', 'E110');
+    const MID = '2026-06-15';
+    for (const [shiftId, effectiveFrom] of [
+      [shiftA, PAST],
+      [shiftB, MID],
+      [shiftA, FUTURE],
+    ] as const) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId: emp,
+        shiftType: 'fixed',
+        shiftId,
+        effectiveFrom,
+        returnTo: LIST_URL,
+      });
+    }
+    const before = await shiftArrangementHistory(ADMIN, emp);
+    expect(before.map((h) => h.effectiveFrom), 'a three-period ladder, newest first').toEqual([
+      FUTURE,
+      MID,
+      PAST,
+    ]);
+
+    const refused = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: before[1].id,
+      returnTo: LIST_URL,
+    });
+    expect(refused, 'the middle period is refused, in the reader’s language').toContain(
+      'error=removeNotNewestRefused',
+    );
+    expect(
+      (await shiftArrangementHistory(ADMIN, emp)).map((h) => [h.effectiveFrom, h.effectiveTo]),
+      'and nothing on the ladder moved',
+    ).toEqual(before.map((h) => [h.effectiveFrom, h.effectiveTo]));
+
+    // WHY it is refused, shown rather than asserted in prose: the same date cannot be saved back while a
+    // later entry stands, so a removed middle period could never be put back at either door.
+    const blocked = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftB,
+      effectiveFrom: MID,
+      returnTo: LIST_URL,
+    });
+    expect(blocked, 'back-insert is out of scope for v1 — this is the door that would have to reopen').toContain(
+      'error=shiftBackInsertRefused',
+    );
+
+    // The NEWEST one, by contrast, is removable AND genuinely re-creatable — the claim this round makes.
+    const removed = await runAction(removeScheduleArrangementAction, {
+      employmentId: emp,
+      arrangementId: before[0].id,
+      returnTo: LIST_URL,
+    });
+    expect(removed).toContain('removed=1');
+    const restored = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: FUTURE,
+      returnTo: LIST_URL,
+    });
+    expect(restored, 'saving it again puts it back').toContain('saved=1');
+    expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.effectiveFrom)).toEqual([
+      FUTURE,
+      MID,
+      PAST,
+    ]);
+  });
+
+  it('the panel offers Remove on the newest row only, and says so', async () => {
+    const emp = await hire('Kit Rows', 'E111');
+    for (const [shiftId, effectiveFrom] of [
+      [shiftA, PAST],
+      [shiftB, '2026-06-15'],
+      [shiftA, FUTURE],
+    ] as const) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId: emp,
+        shiftType: 'fixed',
+        shiftId,
+        effectiveFrom,
+        returnTo: LIST_URL,
+      });
+    }
+    const hist = await shiftArrangementHistory(ADMIN, emp);
+    const html = await renderPage({ assign: emp });
+    const offered = [...html.matchAll(/name="arrangementId" value="([0-9a-fA-F-]{36})"/g)].map((m) => m[1]);
+    expect(offered, 'three history rows, ONE Remove form, on the newest period').toEqual([hist[0].id]);
+    expect(html, 'and the screen says why the older rows have none').toContain('historyRemoveNote');
+  });
+
+  it('a malformed employmentId is refused by field, and no SQL reaches the screen', async () => {
+    // The banner used to print the whole statement — table, column list and bound parameters — because
+    // the id went to Postgres unchecked and the error's own message was reflected into the URL.
+    for (const action of [saveScheduleAssignmentAction, removeScheduleArrangementAction]) {
+      const back = await runAction(action, {
+        employmentId: 'junk',
+        arrangementId: randomUUID(),
+        shiftType: 'fixed',
+        shiftId: shiftA,
+        effectiveFrom: PAST,
+        returnTo: LIST_URL,
+      });
+      expect(back, 'no statement, no column list, no bound parameters reach the banner').not.toMatch(
+        /Failed|select|from%22|params|employment%22/i,
+      );
+      expect(back, 'and the field that was wrong is named instead').toContain('error=badEmployment');
+    }
+  });
+
+  it('an arrangement that is not on the named employee’s ladder is refused, not silently ignored', async () => {
+    const one = await hire('Gus One', 'E107');
+    const two = await hire('Hal Two', 'E108');
+    for (const employmentId of [one, two]) {
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId,
+        shiftType: 'fixed',
+        shiftId: shiftA,
+        effectiveFrom: PAST,
+        returnTo: LIST_URL,
+      });
+      await runAction(saveScheduleAssignmentAction, {
+        employmentId,
+        shiftType: 'fixed',
+        shiftId: shiftB,
+        effectiveFrom: FUTURE,
+        returnTo: LIST_URL,
+      });
+    }
+    const [hals] = await shiftArrangementHistory(ADMIN, two);
+    const back = await runAction(removeScheduleArrangementAction, {
+      employmentId: one,
+      arrangementId: hals.id,
+      returnTo: LIST_URL,
+    });
+    expect(back).toContain('error=removeNotFound');
+    expect((await shiftArrangementHistory(ADMIN, two)).length, "Hal's ladder is untouched").toBe(2);
+    expect((await shiftArrangementHistory(ADMIN, one)).length, "and so is Gus's").toBe(2);
+  });
+});
+
+describe('a485afa1 — ONE record, TWO doors: the list edits in place, through the shared control and writer', () => {
   const LIST = 'app/admin/attendance/schedule-assignment/page.tsx';
+  const ACTIONS = 'app/admin/attendance/schedule-assignment/actions.ts';
   const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
   const list = read(LIST);
+  const actions = read(ACTIONS);
   const card = read(CARD);
+  /**
+   * CODE only — block comments and comment lines dropped. The page's header deliberately QUOTES the r209
+   * deep link it replaced (a comment that explains a removal has to name what was removed), and a source
+   * scan that cannot tell the two apart would either fail on the explanation or force the explanation out.
+   */
+  const withoutComments = (src: string) =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
+      .join('\n');
+  const listCode = withoutComments(list);
 
-  it('the list opens the personnel Attendance tab at the Shift arrangement card', () => {
-    // Both ends of the deep link, in one case, because either half alone is satisfiable while broken:
-    // the list can point at an anchor that does not exist, and the card can carry an anchor nobody uses.
-    expect(list, `${LIST} links to the per-employee card`).toContain(
+  it('the trip into Personnel Management is GONE — the row action opens a panel on this screen', () => {
+    // r209's deep link, asserted absent. This is the reporter's whole complaint: assigning a shift to
+    // twenty people was twenty round trips out of the Attendance module.
+    expect(listCode, `${LIST} must not send the administrator into Personnel Management`).not.toContain(
       '/admin/personnel/${employmentId}?tab=attendance#section-default-shift',
     );
-    expect(card, `${CARD} still has the anchor that link targets`).toContain('id="section-default-shift"');
-    expect(card, `${CARD} still renders the shared control`).toContain('<EmployeeShiftFields');
+    expect(listCode, `${LIST} must not link into the personnel profile at all`).not.toContain('/admin/personnel/');
+    // …and what replaced it: a URL-driven panel on this same screen.
+    expect(list, 'the row action opens the panel').toContain("hrefWith({ assign: employmentId })");
+    expect(list, 'the panel is a real anchor on this page').toContain('id="assign-panel"');
+  });
+
+  it('the panel MOUNTS the personnel card’s own control — it does not fork the three fields', () => {
+    // THE PROMISE IN ONE ASSERTION. The reporter was told the two screens "cannot drift apart" because
+    // they are two doors onto one record. A forked field list is exactly how that sentence stops being
+    // true, so the three controls must be declared in ONE file and rendered by BOTH screens.
+    expect(list, `${LIST} imports the shared control`).toContain("from '@/components/employee-shift-fields'");
+    expect(list, `${LIST} renders it`).toContain('<EmployeeShiftFields');
+    expect(card, `${CARD} still renders the same one`).toContain('<EmployeeShiftFields');
+    // No second copy of the fields anywhere in this screen's own folder.
+    for (const field of ['shiftType', 'shiftId', 'effectiveFrom']) {
+      expect(list, `${LIST} re-declares the ${field} control instead of mounting the shared one`).not.toContain(
+        `name="${field}"`,
+      );
+    }
+  });
+
+  it('there is still exactly ONE writer, and this screen is not a second one', () => {
+    // The r209 reasoning that survives a485afa1 intact: a second write path over one table is how the two
+    // surfaces would start to disagree. The screen's own action is an ADAPTER — it parses a form and picks
+    // a URL to come back to; everything that decides what is stored stays in core.
+    expect(actions, `${ACTIONS} writes through the shared dated writer`).toContain('assignEmployeeShiftDated(');
+    expect(actions, `${ACTIONS} must not touch the ladder table itself`).not.toContain('employmentShiftArrangement');
+    expect(actions, `${ACTIONS} must not open its own transaction`).not.toContain('withTenant(');
+    expect(list, `${LIST} must not write from the page`).not.toContain('assignEmployeeShiftDated(');
+    // The four fields are parsed into the same call shape the personnel action makes.
+    for (const arg of ['employmentId,', 'shiftType,', 'shiftId: rawShift || null,', 'effectiveFrom: rawEffective || null,']) {
+      expect(actions, `${ACTIONS} calls the writer with ${arg}`).toContain(arg);
+    }
+  });
+
+  it('Personnel Management KEEPS its copy — the first door is untouched', () => {
+    // "You asked for a second entry point, not for the first one to be taken away." An HR administrator
+    // working through somebody's whole record must still find the schedule where it has always been.
+    expect(card, `${CARD} still has the Shift arrangement card`).toContain('id="section-default-shift"');
     expect(card, `${CARD} still writes through the dated ladder writer`).toContain('setDefaultShiftAction');
-    // The tab key the link asks for is a real tab on that page.
     expect(card).toContain("{ key: 'attendance', label: t('tabs.attendance') }");
   });
 
-  it('the list has NO editor of its own — no form, no control, no writer', () => {
-    // THE REQUIREMENT IN ONE ASSERTION. "Both surfaces act on the same information" is only true while
-    // there is one write path; a second form here would be a second one, and the two would drift.
-    expect(list, 'no form element').not.toMatch(/<form\b/);
-    expect(list, 'does not render the shared shift control itself').not.toContain('<EmployeeShiftFields');
-    expect(list, 'does not import it either').not.toContain("from '@/components/employee-shift-fields'");
-    expect(list, 'no writer call').not.toContain('assignEmployeeShiftDated(');
-    expect(list, 'no server action').not.toContain("'use server'");
+  it('removal goes through core too, and re-opens the period it closed', () => {
+    const core = read('core/shift-arrangement.ts');
+    expect(actions, 'the screen calls the shared remover').toContain('removeShiftArrangement(');
+    const fn = core.slice(core.indexOf('export async function removeShiftArrangement'));
+    expect(fn, 'it supersedes rather than deletes').toContain('supersededAt: new Date()');
+    expect(fn, 'the predecessor inherits the removed period’s end').toContain('validTo: target.validTo');
+    expect(fn, 'and the employment cache is refreshed').toContain('pickArrangementOn(');
   });
 
-  it('the screen guards itself and is grantable in the function-access matrix', () => {
+  it('the screen guards itself, is grantable in the function-access matrix, and minted no new route', () => {
     expect(list, 'its own server-side admin guard').toMatch(/requireAdmin\(/);
+    expect(actions, 'and so does every write it offers').toMatch(/requireAdmin\(\)/);
     // Rule 20: a guarded page with no matrix column is a screen nobody can grant or revoke. It rides the
     // existing shift-library column — same guard, same admin surface.
     expect(read('lib/permissions.ts')).toContain("'/admin/attendance/schedule-assignment'");
+    // a485afa1 added an edit panel, NOT a sub-route: a new page.tsx here would need its own entry in the
+    // same commit (test/function-access.test.ts fails in both directions), so its absence is pinned.
+    const dir = path.join(root, 'app/admin/attendance/schedule-assignment');
+    expect(fs.readdirSync(dir).sort(), 'no sub-route was added under this screen').toEqual([
+      'actions.ts',
+      'page.tsx',
+    ]);
   });
 
   it('reads the ladder through the shared resolver rather than re-deciding "current"', () => {
