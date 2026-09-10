@@ -1,0 +1,121 @@
+<meta charset="utf-8">
+<title>f9afd1ce — one place, one record</title>
+<!--
+  Mockup for f9afd1ce (Redesign Clocking Location as centralized location settings).
+
+  MEASURED ON PRODUCTION AND ON main, 2026-09-10. Nothing invented.
+    db/schema.ts:420 — clocking_location.companyId is NOT NULL and references company. Its columns are
+      name, lat, lng, radiusM, locationId, address, remarks, archivedAt. THERE IS NO TIMEZONE COLUMN.
+    app/admin/personnel/[employmentId]/page.tsx:440 — listClockingLocations(s, [emp.companyId]). That
+      line is what makes it per-company in practice: an employee is only ever offered their own
+      company's sites. RLS is already the wider tenant-catalog READ pattern (ADR-0070 §2), so
+      visibility is not the constraint — ownership and this call are.
+    PRODUCTION, read-only: clocking_location 0 rows including archived; employee_clocking_location
+      0 rows. The feature is configured and entirely unused, so there is nothing to deduplicate.
+      (location, the separate holiday-calendar master, has 8 rows and is untouched by this.)
+
+  WHAT IS DELIBERATELY NOT DRAWN, and each for a stated reason:
+    - A MAP. It needs an outside provider, an account, a key and a decision about sending site
+      addresses to a third party. db/schema.ts:418 already records it as "Phase 2, deferred". Drawing
+      a map here would promise a thing this plan explicitly does not include.
+    - A TIMEZONE FIELD. lib/hr-date.ts hardcodes Asia/Kuala_Lumpur and every date decision resolves
+      through it, so a per-location timezone would read as a setting and change no calculation.
+      AGENTS 28: a control that appears to do something it does not is worse than an absent one.
+    - Real site names. "HQ Tower", "Plant 2" and the coordinates are placeholders.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+  .grp{border:1px solid var(--border);border-radius:10px;margin-bottom:9px;overflow:hidden}
+  .grph{background:var(--muted);padding:5px 10px;font-size:10.5px;font-weight:700;color:var(--mf);
+        text-transform:uppercase;letter-spacing:.04em}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:5px 9px}
+  td{padding:6px 9px;border-top:1px solid var(--border)}
+  .dup{background:var(--badbg)}
+  .usedby{font-size:10.5px;color:var(--mf)}
+  .chip{display:inline-block;background:var(--muted);border-radius:6px;padding:0 6px;font-size:10px;margin-right:3px}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+  .ok{background:var(--goodbg);border:1px solid #bbf7d0;border-radius:10px;padding:11px 13px;font-size:12px;color:#14532d}
+</style>
+
+<div class="card">
+  <h1>Clocking locations — one physical place, one record</h1>
+  <p class="sub">Sketch: wording, spacing and colours will differ. The fields shown are the ones a
+    clocking location holds today.</p>
+  <div class="cols">
+    <div>
+      <div class="lbl">Today <span class="pill bad">One record per company</span></div>
+      <div class="grp"><div class="grph">Demo Sdn Bhd</div>
+        <table>
+          <tr><th>Name</th><th>Coordinates</th><th>Radius</th></tr>
+          <tr class="dup"><td>HQ Tower — Main Gate</td><td>3.1390, 101.6869</td><td>150 m</td></tr>
+          <tr><td>Plant 2</td><td>3.0738, 101.5183</td><td>200 m</td></tr>
+        </table></div>
+      <div class="grp"><div class="grph">Demo Group Holdings Bhd</div>
+        <table>
+          <tr><th>Name</th><th>Coordinates</th><th>Radius</th></tr>
+          <tr class="dup"><td>HQ Tower — Main Gate</td><td>3.1390, 101.6869</td><td>150 m</td></tr>
+        </table></div>
+      <div class="grp"><div class="grph">Signature Manufacturing Sdn Bhd</div>
+        <table>
+          <tr><th>Name</th><th>Coordinates</th><th>Radius</th></tr>
+          <tr class="dup"><td>HQ Tower — Main Gate</td><td>3.1390, 101.6870</td><td>120 m</td></tr>
+        </table></div>
+      <p class="sub" style="margin-top:8px">One gate, three records. Note the third: the coordinates and
+        the radius have already drifted, because nothing keeps them in step.</p>
+    </div>
+    <div>
+      <div class="lbl">Proposed <span class="pill good">One record, shared</span></div>
+      <div class="grp"><div class="grph">Clocking locations</div>
+        <table>
+          <tr><th>Name</th><th>Coordinates</th><th>Radius</th><th>Used by</th></tr>
+          <tr><td>HQ Tower — Main Gate</td><td>3.1390, 101.6869</td><td>150 m</td>
+              <td class="usedby"><span class="chip">Demo Sdn Bhd</span><span class="chip">Demo Group</span><span class="chip">Signature</span></td></tr>
+          <tr><td>Plant 2</td><td>3.0738, 101.5183</td><td>200 m</td>
+              <td class="usedby"><span class="chip">Demo Sdn Bhd</span></td></tr>
+        </table></div>
+      <p class="sub" style="margin-top:8px">Set up once. Change the radius once, and every company that
+        uses the gate is changed with it.</p>
+      <div class="ok" style="margin-top:10px">
+        <b>Assigning does not change.</b> You still choose which locations an employee may clock at, in
+        the same place you do today — the difference is that every location is offered, not only those
+        of that employee's own company.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Two things this deliberately does not include, and why</h2>
+  <div class="note">
+    <b>The address search and map are a separate piece of work.</b> A map means an outside mapping
+    service — an account, a key, a running cost, and your site addresses being sent to that provider.
+    That is a decision to make on purpose, not one that should arrive inside a data change. Raise it and
+    we will cost it on its own.
+  </div>
+  <div class="note" style="margin-top:11px">
+    <b>Timezone is not a field we can honestly add right now.</b> The whole system works in Malaysian
+    time — every attendance day, every payroll period, every leave date. We could store a timezone
+    against a location tomorrow and it would change no calculation. A setting that looks like it does
+    something it does not is worse than not having it. If you have sites in another country, that is a
+    real and much larger piece of work, and worth doing properly.
+  </div>
+  <div class="ok" style="margin-top:11px">
+    <b>You have not created any clocking locations yet — so there is nothing to untangle.</b> Centralising
+    now costs nothing in data terms. After a rollout, somebody would have to decide by hand which
+    duplicates across your companies are really the same place.
+  </div>
+</div>

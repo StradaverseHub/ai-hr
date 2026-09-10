@@ -1,0 +1,114 @@
+<meta charset="utf-8">
+<title>a485afa1 — Schedule Assignment, without leaving Attendance</title>
+<!--
+  Mockup for a485afa1 (Redesign Schedule Assignment with an independent employee schedule screen).
+
+  MEASURED ON main, 2026-09-10. Nothing invented.
+    app/admin/attendance/schedule-assignment/page.tsx — 229 lines. Its table columns are exactly:
+      Employee ID · Name · Company · Shift Type · Backup Shift · Effective From · Status · (action).
+    :145 — editHref = `/admin/personnel/${employmentId}?tab=attendance#section-default-shift`, rendered
+      as the row's only action at :210-216. THE REPORTER IS RIGHT: View/Edit leaves the Attendance
+      module entirely and lands deep inside Personnel Management.
+    What it lands on (app/admin/personnel/[employmentId]/page.tsx:2235, card id="section-default-shift")
+      is a form of THREE fields — components/employee-shift-fields.tsx: shiftType (select), shiftId,
+      i.e. the backup shift (select), effectiveFrom (date) — posting setDefaultShiftAction, plus a
+      read-only Shift Arrangement history table.
+    The services are already shared: core/shift-arrangement.ts exports assignEmployeeShiftDated,
+      shiftArrangementHistory and listShiftArrangements. So "both screens must remain fully
+      synchronised" is not new work — it is what happens automatically when the same service is called.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - The Personnel screen's own layout. It is not changing; only the need to travel to it.
+    - Any new field. The proposal moves the same three fields, it does not add a fourth.
+    - Real employee data. Names and codes are placeholders in the reporter's own format.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 8px;background:var(--muted)}
+  td{padding:7px 8px;border-top:1px solid var(--border)}
+  .act{color:var(--primary);font-weight:600}
+  .away{background:var(--badbg);border:1px dashed #fca5a5;border-radius:10px;padding:12px;margin-top:10px;
+        font-size:12px;color:#7f1d1d;text-align:center}
+  .panel{border:1px solid var(--primary);border-radius:12px;padding:12px;margin-top:9px;
+         box-shadow:0 0 0 3px rgba(79,70,229,.08)}
+  .fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px}
+  .f{border:1px solid var(--border);border-radius:9px;padding:7px 9px;background:#fcfcfe}
+  .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+  .v{font-size:12.5px;margin-top:2px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 12px;
+       font-size:11.5px;font-weight:600;margin-top:9px}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+  .ok{background:var(--goodbg);border:1px solid #bbf7d0;border-radius:10px;padding:11px 13px;font-size:12px;color:#14532d}
+</style>
+
+<div class="card">
+  <h1>Attendance → Schedule Assignment</h1>
+  <p class="sub">Sketch: wording, spacing and colours will differ. The columns shown are the real ones.</p>
+  <div class="lbl">Today <span class="pill bad">Editing leaves the module</span></div>
+  <table>
+    <tr><th>Employee ID</th><th>Name</th><th>Company</th><th>Shift Type</th><th>Backup Shift</th>
+        <th>Effective From</th><th>Status</th><th></th></tr>
+    <tr><td>EMP-0021</td><td>Aisyah Rahman</td><td>Demo Sdn Bhd</td><td>Fixed</td><td>Normal 9–6</td>
+        <td>01 Jan 2026</td><td>Active</td><td class="act">View / Edit →</td></tr>
+    <tr><td>EMP-0034</td><td>Daniel Tan</td><td>Demo Sdn Bhd</td><td>Rotating</td><td>Night</td>
+        <td>01 Feb 2026</td><td>Active</td><td class="act">View / Edit →</td></tr>
+  </table>
+  <div class="away">Clicking View / Edit takes you to <b>Personnel Management → Employee → Attendance</b>,
+    a different module — and you come back by navigating back.</div>
+</div>
+
+<div class="card">
+  <div class="lbl">Proposed <span class="pill good">The same three fields, on this screen</span></div>
+  <table>
+    <tr><th>Employee ID</th><th>Name</th><th>Company</th><th>Shift Type</th><th>Backup Shift</th>
+        <th>Effective From</th><th>Status</th><th></th></tr>
+    <tr><td>EMP-0021</td><td>Aisyah Rahman</td><td>Demo Sdn Bhd</td><td>Fixed</td><td>Normal 9–6</td>
+        <td>01 Jan 2026</td><td>Active</td><td class="act">Edit</td></tr>
+  </table>
+  <div class="panel">
+    <b style="font-size:12.5px">Aisyah Rahman · EMP-0021</b>
+    <div class="fields">
+      <div class="f"><div class="k">Shift type</div><div class="v">Fixed ▾</div></div>
+      <div class="f"><div class="k">Backup shift</div><div class="v">Normal 9–6 ▾</div></div>
+      <div class="f"><div class="k">Effective from</div><div class="v">01 Jan 2026</div></div>
+    </div>
+    <span class="btn">Save</span>
+    <p class="sub" style="margin:10px 0 4px">Previous arrangements</p>
+    <table>
+      <tr><th>Effective</th><th>Previous</th><th>New</th><th>Changed by</th><th>Changed on</th></tr>
+      <tr><td>01 Jan 2026</td><td>Split AM</td><td>Normal 9–6</td><td>HR Admin</td><td>28 Dec 2025</td></tr>
+    </table>
+  </div>
+  <table style="margin-top:9px">
+    <tr><td>EMP-0034</td><td>Daniel Tan</td><td>Demo Sdn Bhd</td><td>Rotating</td><td>Night</td>
+        <td>01 Feb 2026</td><td>Active</td><td class="act">Edit</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Why the two screens cannot drift apart</h2>
+  <div class="ok">
+    <b>They are not two copies — they are two doors onto one record.</b> The Personnel screen and this one
+    would call the same underlying function to read and to save, so a change made in either place is the
+    same change, recorded once, with the same history. Keeping them "synchronised" is not something that
+    has to be maintained; it is what happens when there is only one place the information lives.
+  </div>
+  <div class="note" style="margin-top:11px">
+    <b>Personnel Management keeps its copy.</b> You asked for a second entry point, not for the first one
+    to be taken away — an HR administrator working through an employee's record should still find the
+    schedule where it is today. What goes away is being <i>sent</i> there from Attendance.
+  </div>
+</div>
