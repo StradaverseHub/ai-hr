@@ -247,6 +247,7 @@
     "leaveApproval": "审批链",
     "leavePayroll": "薪资相关",
     "leaveReplacement": "替假",
+    "leaveCompanyRules": "公司规则",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -8615,9 +8616,6 @@
         "application": "此类休假的申请必须满足的条件。每张卡片单独保存。",
         "approvers": "属于休假类型本身的审批设置。审批链在“审批链”页面创建和分配。"
       }
-    },
-    "leaveConfigPreview": {
-      "note": "这是新的休假配置页面，与菜单目前链接的页面并行运行。两者保存到同一份记录；在正式切换之前，在此保存后会返回到当前页面。"
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",

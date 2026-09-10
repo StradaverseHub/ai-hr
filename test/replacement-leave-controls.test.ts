@@ -1131,7 +1131,8 @@ describe('Payroll interaction under a PAYROLL PARTNER’s row-level security (AD
  * 20e759a0 · THE PAGE-LEVEL COMPANY FILTER.
  *
  * The reporter's screen printed all nine of their companies' policy forms one under the other — 20
- * settings and a Save button each. `app/admin/leave/replacement/page.tsx` now picks ONE via `?company=`.
+ * settings and a Save button each. The configuration screen picks ONE via `?company=` — that screen is
+ * `app/admin/leave-config/company-rules/page.tsx` since the a6fe37fc Round 5 cutover.
  * Two halves of that are easy to get wrong and are pinned here:
  *
  *   1. THE FALLBACK. Absent, junk, or an id that has since left the admin's scope must all land on a
@@ -1214,8 +1215,11 @@ describe('20e759a0 · company filter — the save redirect carries the selection
   }
 
   it('a clean save returns to the company that was being edited, not to the default one', async () => {
+    // a6fe37fc ROUND 5 (cutover) — the destination is Company rules now: `LEAVE_REPLACEMENT` was
+    // repointed there in the commit that emptied `/admin/leave/replacement`. What 20e759a0 promised —
+    // the `?company=` selection survives the save — is unchanged and is the half asserted below.
     const url = await redirectedTo(saveForm(b.companyId));
-    expect(url).toContain('/admin/leave/replacement?saved=1');
+    expect(url).toContain('/admin/leave-config/company-rules?saved=1');
     expect(url, 'without this the admin lands back on the first company after every save').toContain(
       `company=${encodeURIComponent(b.companyId)}`,
     );
@@ -1252,7 +1256,7 @@ describe('20e759a0 · company filter — the save redirect carries the selection
       const url = await redirectedTo(fd);
       expect(url.split('?').length, `two query strings in ${url}`).toBe(2);
       const parsed = new URL(url, 'https://example.test');
-      expect(parsed.pathname).toBe('/admin/leave/replacement');
+      expect(parsed.pathname).toBe('/admin/leave-config/company-rules');
       expect(parsed.searchParams.get('company')).toBe(b.companyId);
     }
   });

@@ -49,7 +49,20 @@ import { getTranslations } from 'next-intl/server';
 /** Every screen in the area. The id is also its label key and its page heading. */
 export type LeaveConfigScreenId =
   /**
-   * a6fe37fc ROUND 3 — `companyRules` IS A SCREEN ID WITH NO MAP ENTRY, AND THAT IS THE POINT.
+   * a6fe37fc — `companyRules` JOINED THE MAP AT THE ROUND 5 CUTOVER, one line, exactly as planned.
+   *
+   * Round 3 built it as a screen id with NO map entry: it is the one genuinely new destination in the
+   * redesign (IA §2.0.3) — four settings that belong to a company or the tenant, then spread across three
+   * screens and one step inside every leave type — and it was live ALONGSIDE those surfaces, so listing
+   * it beside the ones it would absorb would have put two entries for one job in front of the
+   * administrator. Carrying the id early is what made this a one-line addition rather than a rename of a
+   * screen the customer had already learned.
+   *
+   * `replacementLeave` and `payrollImpact` are now the ids with no map entry, for the mirror-image
+   * reason: their screens are gone and their settings are ON Company rules, so the ids survive only as
+   * the SECTION headings there (`leaveConfigScreenTitle('replacementLeave')`).
+   *
+   * ── the Round 3 note this replaces, kept because it explains why the id existed before the entry ──
    *
    * `/admin/leave-config/company-rules` is the one genuinely new destination in the redesign (IA §2.0.3):
    * four settings that belong to a company or the tenant, today spread across three screens and one step
@@ -90,7 +103,15 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       { id: 'leaveTypes', href: '/admin/leave/entitlements' },
       { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },
       { id: 'approvalChain', href: '/admin/leave-config/approval-chains' },
-      { id: 'replacementLeave', href: '/admin/leave/replacement' },
+      // a6fe37fc ROUND 5 (cutover) — `{ id: 'replacementLeave', href: '/admin/leave/replacement' }` STOOD
+      // HERE and is DELIBERATELY GONE, replaced by the screen that ABSORBED it. Replacement leave is a
+      // COMPANY rule, not a property of a leave type, and IA §2.0.3 gathers the four company/tenant
+      // settings onto one destination instead of leaving them on four surfaces. The id survives (the
+      // Company rules page renders `leaveConfigScreenTitle('replacementLeave')` as that section's
+      // heading, so the section is still called what the menu used to call the screen), it just has no
+      // map entry of its own any more — two entries reaching one screen is what this component exists to
+      // stop.
+      { id: 'companyRules', href: '/admin/leave-config/company-rules' },
       { id: 'payrollImpact', href: '/admin/leave/payroll' },
     ],
   },
@@ -132,7 +153,14 @@ export const LEAVE_CONFIG_MAP: Group[] = [
  * entry until the cutover, so asking this function for its address is a mistake tsc should refuse rather
  * than one this function should paper over with a guessed href.
  */
-export type MappedLeaveConfigScreenId = Exclude<LeaveConfigScreenId, 'companyRules'>;
+export type MappedLeaveConfigScreenId = Exclude<
+  LeaveConfigScreenId,
+  // a6fe37fc ROUND 5 — the exclusion INVERTED at the cutover. `companyRules` is on the map now;
+  // `replacementLeave` and `payrollImpact` are the ids whose screens were absorbed into it, so asking
+  // this function for their address is a mistake tsc should refuse rather than one this function should
+  // paper over with a guessed href.
+  'replacementLeave' | 'payrollImpact'
+>;
 
 const HREF_BY_ID = Object.fromEntries(
   LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),

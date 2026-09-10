@@ -348,7 +348,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // redirect stub; test/function-access.test.ts fails BOTH ways, so the two halves land together.
       // `/admin/leave/generate/export` (the per-run CSV) is a route handler, was never listed, and stays.
       '/admin/leave/payroll',
-      '/admin/leave/replacement',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/replacement'` (645e67c4 / 296fc027) STOOD HERE and is
+      // DELIBERATELY GONE. Replacement-leave CONFIGURATION is on Company rules
+      // (`/admin/leave-config/company-rules`) now and the old address is an unguarded redirect stub, so it
+      // left `routes` in the SAME commit that emptied the page. `toilPolicy` (/admin/toil) is untouched
+      // and stays registered separately: 296fc027 split that route in two ON PURPOSE — the ledger and the
+      // two settlement sweeps must stay reachable when the `toil` entitlement lapses, and configuration
+      // must not.
       // a6fe37fc ROUND 2 — the NEW Leave types screen, built alongside `/admin/leave/entitlements`
       // rather than replacing it (docs/design/a6fe37fc-migration-order.md). Same admin surface, same
       // `requireAdmin` guard, so it is a ROUTE on this screenKey rather than a new one — the

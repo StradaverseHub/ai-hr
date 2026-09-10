@@ -232,7 +232,13 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // labels the SCREEN in lib/permissions.ts, and reusing it here would silently rename that column.
     { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
     { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
-    { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },
+    // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/replacement', 'leaveReplacement' }` STOOD HERE and is
+    // DELIBERATELY GONE, replaced by the destination that absorbed it. Replacement-leave configuration is
+    // a COMPANY rule (IA §2.0.3), and it now shares one screen with the half-day deduction, the
+    // encashment policy and the shared leave groups. `nav.leaveReplacement` is NOT pruned — it labels the
+    // screen name inside components/leave/replacement-availability-notice.tsx, which is a different
+    // sentence to an employee about why they cannot request replacement leave.
+    { href: '/admin/leave-config/company-rules', labelKey: 'leaveCompanyRules', icon: Repeat2 },
     // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE.
     //
     // "The Audit submenu under Leave Configuration is unnecessary because the system already has a

@@ -247,6 +247,7 @@
     "leaveApproval": "Rantaian kelulusan",
     "leavePayroll": "Berkaitan Gaji",
     "leaveReplacement": "Cuti Ganti",
+    "leaveCompanyRules": "Peraturan syarikat",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
     "payrollGuide": "Panduan Aliran Kerja",
@@ -8615,9 +8616,6 @@
         "application": "Syarat yang mesti dipenuhi oleh permohonan cuti jenis ini. Setiap kad disimpan secara berasingan.",
         "approvers": "Tetapan kelulusan yang menjadi milik jenis cuti ini sendiri. Rantaian kelulusan dibina dan diumpukkan pada skrin Rantaian kelulusan."
       }
-    },
-    "leaveConfigPreview": {
-      "note": "Ini skrin Konfigurasi Cuti yang baharu, dibina seiring dengan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, penyimpanan di sini akan membawa anda kembali ke skrin semasa."
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",

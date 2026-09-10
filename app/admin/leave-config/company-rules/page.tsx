@@ -25,7 +25,6 @@ import {
   setToilPolicyAction,
   updateLeaveSharedGroupAction,
 } from '../../actions';
-import { LeaveConfigPreviewNote } from '../preview-note';
 
 /** Not exported: Next refuses unknown exports from a page module. The company picker's hrefs are built
  *  here on the server, so the choice rides in the address bar and the page stays a server render. */
@@ -52,19 +51,24 @@ const PAGE = '/admin/leave-config/company-rules';
  *     types, which is why r88 took it out of Benefit Schemes in the first place.
  *   · F38 — per-company REPLACEMENT LEAVE (TOIL) policy: accrual, eligibility, expiry.
  *
- * ⚠️ IT REPLACES NOTHING YET, AND THE FOUR OLD SURFACES KEEP THEIR COPY. `/admin/leave/replacement`,
- * `/admin/leave/payroll` and the two blocks on `/admin/leave/entitlements` are untouched and are still
- * what the menu links to. Round 5 empties those pages and repoints their addresses here (Replacement
- * leave and Payroll impact both become stubs pointing at THIS screen — IA §2.0's table).
+ * ⚠️ THE ROUND 5 CUTOVER REACHES THIS SCREEN IN THREE COMMITS, NOT ONE, BECAUSE IT ABSORBS THREE
+ * SURFACES. Replacement leave's page is a redirect stub pointing here and `LEAVE_REPLACEMENT` names this
+ * address, so the replacement policy below is now edited ONLY here. Payroll impact's encashment policy
+ * and the two blocks on the old Leave types screen (half-day full deduction, shared leave groups) are
+ * still ALSO editable at their old addresses until those two screens have their own commits — both write
+ * the same record through the same action, and `introTwoEditors` in the copy below says so to the
+ * administrator in plain words rather than leaving it to be discovered.
  *
  * NOTHING IS STORED TWICE. Every control below posts the SAME server action, with the SAME field names,
  * writing the SAME column as the old surface does. Two editors, one record — which is the price of
  * "something works at every point" and is deliberate for exactly two rounds (migration order, Round 3).
  *
- * ⚠️ NO NEW SERVER ACTION AND NO CHANGED SIGNATURE (Round 2's rule 2, still in force). All six actions
- * imported below redirect to module constants that still name the OLD addresses, so a save made here
- * lands on the screen it will replace. `LeaveConfigPreviewNote` says so out loud rather than letting it
- * look like a fault; re-pointing a redirect would move the save on the OLD screen too, which is Round 5.
+ * ⚠️ NO NEW SERVER ACTION AND NO CHANGED SIGNATURE (Round 2's rule 2, still in force). What Round 5
+ * changes is only where those actions RETURN: `LEAVE_REPLACEMENT` names this page now, and the
+ * half-day / shared-group / encashment constants follow in their own screens' commits. The shared
+ * `LeaveConfigPreviewNote` came off here in the same commit and the file was deleted with it — this was
+ * its last mount, and a screen the menu points at telling the administrator it is a preview is worse
+ * than no note at all.
  *
  * ⚠️ NO MIGRATION, AND NONE IS NEEDED. Four existing columns/tables, read and written exactly as today:
  * `company.leave_half_day_full_deduction`, the encashment policy row, `leave_shared_group`, and the TOIL
@@ -212,21 +216,23 @@ export default async function LeaveConfigCompanyRulesPage({
           ) : undefined
         }
       />
-      {/* The area map. `current="companyRules"` — a screen id that is deliberately NOT on the map yet:
-          the map is the customer's menu and the menu moves at the Round 5 cutover, so every one of the
-          ten entries below renders as a live link and none is marked as "here". Carrying the id now is
-          what makes Round 5 a one-line addition rather than a rename. */}
+      {/* The area map. `current="companyRules"` — and at the Round 5 cutover this id GAINED its map
+          entry, one line, which is what carrying the id from Round 3 bought: an addition rather than a
+          rename of a screen the customer had already learned. */}
       <LeaveConfigMap current="companyRules" />
-      <LeaveConfigPreviewNote />
 
       <ErrorBanner message={error} />
-      {/* ⚠️ THESE TWO BANNERS ARE DARK UNTIL ROUND 5, AND THAT IS NOT AN OVERSIGHT. `setToilPolicyAction`
-          redirects to the `/admin/leave/replacement` module constant, so today its `saved` / `warning`
-          land there. They are rendered here because the moment Round 5 repoints that constant the
-          premium-equivalent banking-risk warning must reach the person it is about — it was produced
-          since Phase-B #14 and silently dropped for months because the screen it landed on never read the
-          param. A screen that cannot show a warning it will be sent is the version of this worth
-          refusing. */}
+      {/* ⚠️ THESE THREE BANNERS ARE LIVE AS OF THE ROUND 5 CUTOVER, AND THAT IS THE WHOLE POINT OF
+          HAVING SHIPPED THEM DARK. `setToilPolicyAction` returns through the `LEAVE_REPLACEMENT` module
+          constant, which was repointed at THIS page in the same commit that emptied the old Replacement
+          leave screen, so `?saved=` / `?warning=` / `?error=` now arrive here.
+
+          `warning=` is the Phase-B #14 premium-equivalent BANKING-RISK warning. It was produced on every
+          qualifying save for months and silently dropped, because the screen it landed on never read the
+          param. Shipping the screen that ABSORBS Replacement leave without the banner would have set that
+          up to happen a second time at exactly this cutover — which is why they were built here, unread,
+          a round early, and why re-reading this page with each of the three params is part of the
+          cutover's own verification rather than a nicety. */}
       {saved !== undefined && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
           {tr('savedBanner')}

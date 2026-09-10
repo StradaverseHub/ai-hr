@@ -146,7 +146,13 @@ const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule';
 // (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to the Leave Config tab
 // below, which is where setToilPolicyAction now redirects. Both routes stay registered in lib/permissions.
 const TOIL_POLICY = '/admin/toil';
-const LEAVE_REPLACEMENT = '/admin/leave/replacement';
+// a6fe37fc ROUND 5 (cutover) — REPOINTED at Company rules, and this is the line that turns three
+// banners on that screen from dead markup into live UI. `setToilPolicyAction` returns through here with
+// `?saved=`, `?warning=` or `?error=`, and the `warning=` one carries the Phase-B #14 premium-equivalent
+// BANKING-RISK warning — produced on every qualifying save for months and silently dropped, because the
+// screen it landed on never read the param. Company rules was built reading all three precisely so this
+// repoint could not set that up to happen a second time.
+const LEAVE_REPLACEMENT = '/admin/leave-config/company-rules';
 const LOCATIONS = '/admin/locations';
 
 export async function createCompanyAction(formData: FormData) {

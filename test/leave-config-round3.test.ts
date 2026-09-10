@@ -36,7 +36,7 @@
  *      (test/function-access.test.ts fails both ways); a new route ON the map before Round 5 would put two
  *      entries for one job in front of the administrator.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -112,7 +112,7 @@ const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   leaveTypes: { to: '/admin/leave-config/types', cutOver: false },
   templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
   payroll: { to: '/admin/leave-config/company-rules', cutOver: false },
-  replacement: { to: '/admin/leave-config/company-rules', cutOver: false },
+  replacement: { to: '/admin/leave-config/company-rules', cutOver: true },
   generate: { to: '/admin/leave-config/generate', cutOver: true },
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: true },
   import: { to: '/admin/leave-config/import', cutOver: true },
@@ -219,12 +219,20 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     }
   });
 
-  it('Company rules is a screen id with NO map entry, which is what makes Round 5 a one-line change', () => {
-    // The id exists so the new page can render the map at all and take its heading from the same key the
-    // menu entry will use. It is deliberately absent from the list until the cutover.
+  it('Company rules joined the map as ONE line, and the ids it absorbed left it', () => {
+    // ROUND 3: "Company rules is a screen id with NO map entry, which is what makes Round 5 a one-line
+    // change." This IS that change, so the case is inverted rather than dropped — and the inversion is
+    // what proves the early id was worth carrying: an addition, not a rename of a screen the customer had
+    // already learned. The heading still comes from the same key the menu entry uses.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.id as string);
-    expect(ids).not.toContain('companyRules');
+    expect(ids).toContain('companyRules');
     expect(src.companyRules).toContain("leaveConfigScreenTitle('companyRules')");
+    // `replacementLeave` and `payrollImpact` are the ids with no map entry now: their screens were
+    // ABSORBED into this one, and two entries reaching one screen is what this component exists to stop.
+    // The ids themselves survive — Company rules renders them as its section headings.
+    if (CUTOVER.replacement.cutOver) expect(ids).not.toContain('replacementLeave');
+    if (CUTOVER.payroll.cutOver) expect(ids).not.toContain('payrollImpact');
+    expect(src.companyRules).toContain("leaveConfigScreenTitle('replacementLeave')");
   });
 
   it.each(KEYS)('%s renders the area map, so a new screen can reach its siblings', (k) => {
@@ -563,45 +571,36 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     );
   });
 
-  it('the three save banners on Company rules are DORMANT until Round 5, and this says so out loud', () => {
-    // ⚠️ THIS CASE IS A DISCLOSURE, NOT A FEATURE CLAIM, and it is here so nobody reads dead markup as
-    // live UI. The `?error=` / `?saved=` / `?warning=` params those banners read are produced by
-    // `setToilPolicyAction`, which redirects to the `LEAVE_REPLACEMENT` module constant — the OLD screen
-    // — so today all three land THERE, which does render them (app/admin/leave/replacement/page.tsx).
-    // None of the three can appear on this page: r259's verify pass rendered it 55 times and no banner
-    // path was ever taken. Nothing is lost meanwhile; the copy that is live is the old screen's.
+  it('the three save banners on Company rules are LIVE, and the banking-risk one reaches its reader', () => {
+    // ⚠️ ROUND 3 SHIPPED THIS CASE AS A DISCLOSURE — "these three banners are DORMANT until Round 5" —
+    // and told the cutover commit, in writing, that it would FAIL here and must re-point rather than
+    // delete. This is that re-point.
     //
-    // They are rendered here anyway, deliberately. `warning=` is the Phase-B #14 premium-equivalent
-    // BANKING-RISK warning, which was produced on every qualifying save for months and silently dropped
-    // because the screen it landed on did not read the param. Shipping the screen that absorbs
-    // Replacement leave WITHOUT the banner would set that up to happen a second time, at the exact
-    // moment Round 5 repoints the constant. A screen that cannot show a warning it is about to be sent
-    // is the version of this worth refusing.
+    // `setToilPolicyAction` returns through the `LEAVE_REPLACEMENT` module constant, and Round 5 pointed
+    // that constant at `/admin/leave-config/company-rules` in the same commit that emptied the old
+    // Replacement leave screen. So `?error=` / `?saved=` / `?warning=` now arrive HERE, and the markup
+    // that was unreachable is the live UI.
     //
-    // ⚠️ WHEN ROUND 5 REPOINTS `LEAVE_REPLACEMENT` AT `/admin/leave-config/company-rules`, THIS CASE
-    // FAILS — that is the whole point of asserting the old constant. It is the reminder that these three
-    // banners have just become live UI, not a defect to route around: update the assertion in the
-    // cutover commit (docs/design/a6fe37fc-migration-order.md → Round 5).
+    // `warning=` is the Phase-B #14 premium-equivalent BANKING-RISK warning. It was produced on every
+    // qualifying save for months and silently dropped, because the screen it landed on never read the
+    // param. Building the absorbing screen to read all three a round EARLY is what stopped that
+    // happening a second time at exactly this cutover; this case is what stops it happening a third.
     expect(src.companyRules).toContain('const { error, warning, saved, company } = await searchParams;');
     expect(src.companyRules).toContain('<ErrorBanner message={error} />');
     expect(src.companyRules).toContain("tr('savedBanner')");
     expect(src.companyRules).toContain('{warning}');
-    // The old screen still reads them, so the risk warning reaches an administrator TODAY.
-    expect(OLD.replacement).toContain('const { error, warning, saved, company } = await searchParams;');
-    // …and the action still returns there, which is what makes the copies above dormant. Both halves
-    // carry the same instruction, because either one is what a Round 5 commit trips over first.
-    const ROUND_5 =
-      'the `warning=` / `saved=` / `error=` params now land on /admin/leave-config/company-rules, so the ' +
-      'three banners asserted above have just become LIVE UI — including the premium-equivalent ' +
-      'banking-risk warning. Re-point this case at the new target and re-read the new screen; do not delete it.';
+    // The constant, and the helper that builds the return URL from it. Both halves are asserted because
+    // either one alone could be repointed while the other still named the old screen.
     expect(
-      actionsSrc.includes("const LEAVE_REPLACEMENT = '/admin/leave/replacement';"),
-      `LEAVE_REPLACEMENT no longer names the old Replacement leave screen — if Round 5 has repointed it, ${ROUND_5}`,
-    ).toBe(true);
-    expect(
-      /const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc),
-      `setToilPolicyAction no longer returns through LEAVE_REPLACEMENT — if Round 5 has repointed it, ${ROUND_5}`,
-    ).toBe(true);
+      actionsSrc,
+      'LEAVE_REPLACEMENT must name Company rules — otherwise the banking-risk warning lands on a stub ' +
+        'and reaches the administrator only after a bounce, or not at all if the stub ever stops ' +
+        'forwarding the query string',
+    ).toContain("const LEAVE_REPLACEMENT = '/admin/leave-config/company-rules';");
+    expect(/const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc)).toBe(true);
+    // The old screen is a stub now — it reads no params at all, which is why the constant HAD to move.
+    expect(OLD.replacement).not.toContain('const { error, warning, saved, company } = await searchParams;');
+    expect(OLD.replacement).toContain('redirect(');
   });
 });
 
@@ -754,7 +753,9 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
   // case skips them entirely and this is the pinning site.
   const NEW_KEYS: [string, string][] = [
     ['admin.leaveConfigMap', 'item.companyRules'],
-    ['admin.leaveConfigPreview', 'note'],
+    // `admin.leaveConfigPreview.note` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): its last
+    // mount came off Company rules at the cutover and the component was deleted with it, so the key is
+    // pruned in all six catalogues rather than left as an orphan a copy-paste could revive.
     ['admin.leaveConfigCompanyRules', 'pageDescription'],
     ['admin.leaveConfigCompanyRules', 'intro'],
     ['admin.leaveConfigCompanyRules', 'introTwoEditors'],
@@ -786,33 +787,21 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
     }
   });
 
-  it('the preview note is rendered by every screen that is STILL a preview, and by none that is not', () => {
-    // The note exists because a leave action redirects to a module constant that still names the OLD
-    // address, so a save made on a not-yet-cut-over screen navigates away from it. At that screen's
-    // cutover commit the constant is repointed AND the note comes off in the same change — a screen that
-    // is the real one telling the administrator it is a preview is worse than no note at all.
+  it('NOTHING in the module still calls itself a preview, and the note component is gone', () => {
+    // ROUND 3: "the preview note is rendered by every screen that can SAVE, and by none that cannot" —
+    // because every leave action redirected to a module constant naming the OLD address, so a save made
+    // on a new screen navigated away from it. Round 5 removed the note screen by screen, in the same
+    // commit that repointed that screen's constant, and Company rules was the last mount: a screen the
+    // menu points at telling the administrator it is a preview is worse than no note at all.
     //
-    // The two read-only records never carried it: they save nothing, so a note there would be furniture.
-    const STILL_A_PREVIEW: [ScreenKey, string][] = [
-      ['companyRules', 'replacement'],
-      ['entitlementTables', 'templates'],
-      ['generate', 'generate'],
-      ['adjustments', 'adjustments'],
-      ['import', 'import'],
-    ];
-    for (const [k, owner] of STILL_A_PREVIEW) {
-      if (CUTOVER[owner].cutOver) {
-        expect(src[k], `${k} is cut over — the preview note must come off in the same commit`).not.toContain(
-          '<LeaveConfigPreviewNote',
-        );
-      } else {
-        expect(src[k], `${k} still saves to the old address and must say so`).toContain(
-          '<LeaveConfigPreviewNote />',
-        );
-      }
+    // The component itself was DELETED with its last mount rather than left importable — an unused
+    // "this is a preview" banner is one copy-paste away from reappearing on a live screen.
+    for (const k of KEYS) {
+      expect(src[k], `${k} still renders the preview note`).not.toContain('<LeaveConfigPreviewNote');
     }
-    for (const k of ['recordsEntitlement', 'recordsBalances'] as const) {
-      expect(src[k]).not.toContain('<LeaveConfigPreviewNote');
-    }
+    expect(
+      existsSync(resolve(here, '..', 'app/admin/leave-config/preview-note.tsx')),
+      'preview-note.tsx outlived its last mount',
+    ).toBe(false);
   });
 });
