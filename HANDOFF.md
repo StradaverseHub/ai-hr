@@ -18,13 +18,13 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-10 (r226-r259 SHIPPED · BOARD HAS 2 APPROVED, BOTH MULTI-ROUND AND MID-FLIGHT · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
+## CURRENT STATE — snapshot 2026-09-10 (r226-r261 SHIPPED · **THE BOARD HAS NO APPROVED ITEM LEFT** · 3 OPEN AWAIT PLANS · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@afb6b785` IS WHAT RUNS ON PRODUCTION (r259, 2026-09-10)** — verified by an
+**r261 IS WHAT RUNS ON PRODUCTION (2026-09-10, the leave cutover)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines, read as TEXT. Not by
 `deploy.sh` succeeding, which is not proof; and not by a line count, which is not a change count.
 (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode and it is
-gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 05:48:51.
+gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, restarted 14:22:34.
 **373 migrations applied and `0457` IS STILL THE LAST ONE — neither r257 nor r258 carried a migration**, and
 `information_schema` on the box returns all three new `shift` columns with the promised defaults
 (`color` NULL, `flexible_break_enabled` false, `flexible_break_minutes` NULL). Its `RAISE NOTICE`
@@ -333,6 +333,54 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r261 (2026-09-10) — **THE LEAVE CONFIGURATION CUTOVER**, AND MY PROFILE FINISHED. DEPLOYED, no migration.
+
+**a6fe37fc AND 9583deac ARE BOTH CLOSED. THE BOARD HAS NO APPROVED ITEM LEFT.**
+
+**Round 5 shipped as ELEVEN commits — one per screen, ten times.** 89 files, 2,079 insertions,
+**6,472 deletions**, including `components/leave-type-panel.tsx` (3,367 lines) with its step bar,
+`STEP_KEYS`, `GENERAL_SUB_STEP_KEYS` and `ESS_SUB_STEP_KEYS`. `components/leave-sub-step-bar.tsx` was
+NOT deleted and a guard now pins why: `generate-form.tsx` and `adjustment-form.tsx` still mount it.
+
+**THE PROMISED GATE WAS RUN, ON PRODUCTION, BEFORE AND AFTER.**
+`--verify docs/baselines/a6fe37fc-approval-baseline.json` → **"✓ every baseline routing case still
+reaches the same approver — 0 failure(s), 0 routing case(s) changed"**, both times, over 2,808 cases.
+That is the sentence the approved plan promised the reporter, discharged against their live data.
+
+**No address 404s, and none ever will.** Ten stubs created, each verified on the box to carry exactly one
+`redirect()` at the right target; three older stubs repointed rather than left to chain. Query strings
+forward (`?warning=RISK9&company=c1` survives the hop). **Round 6 says no stub is ever deleted** — the
+reporter's bookmarks are the whole reason they exist.
+
+**THE BANKING-RISK BANNER REACHES ITS READER AT LAST.** Repointing `LEAVE_REPLACEMENT` is what turned the
+three dormant banners live. r259 had deliberately written a guard asserting the OLD constant **so that
+this commit would fail it** — and it did, and the failure message told this round the banners had become
+live UI. The warning carries the Phase-B #14 premium-equivalent risk that was produced on every
+qualifying save for months and silently dropped because the screen it landed on never read the param.
+**A test designed to fail at a future commit is a technique worth reusing.**
+
+**THE STAGE-THREE BLOCKER WOULD HAVE REWRITTEN A MASTER BANK ACCOUNT.** A pending request naming a field
+the employer had just switched OFF could still be approved: the withdrawal sweep used `.limit(1000)` with
+no filter on the locked keys and no ordering, so past 1000 pending rows the matching row was never
+returned — on ANY number of saves — and `decideProfileChange` had no allow-list check at all. Proven on a
+live cluster with 1000 seeded rows: `withdrawn: 0`, approve succeeded, account moved
+111122223333 → 999988887777. Fixed twice over: the sweep is now ONE `UPDATE … WHERE proposed ?| ARRAY[…]`
+matched in the database with no cap, so it converges by construction; and **the decision is the last gate
+and now checks the current allow-list**, refusing the whole request rather than trimming it to the
+still-open half.
+
+**ALSO CAUGHT: `/me` 500ing instead of rendering.** Stage three's were the first THROWING entitlement
+reads under `app/` — all 41 pre-existing ones use the quiet forms, and there is no `app/error.tsx`. Now
+`getSettingOrFallback`, falling back CLOSED on `/me` (no field requestable during an incident) and to the
+NARROWER approver on `/approvals`. The settings screen deliberately still throws, and says why in a
+comment: its ticked boxes ARE the stored value, so a degraded "closed" read plus one Save would write
+"an employee may ask to change nothing" as real customer configuration.
+
+**AND WRONG CUSTOMER-VISIBLE PROSE WAS ABOUT TO SHIP ON EVERY DEPLOY.** `packs/catalog.ts`'s description
+for the approver setting still described the abandoned manager design, it is `customerVisible: true`, and
+`seed-catalogs` writes `description` into production's `setting_definition` on every deploy. Corrected,
+and pinned by a guard that asserts it never matches `/manager/i`.
 
 ### r259 (2026-09-10) — LEAVE CONFIG ROUND 3 AND MY PROFILE STAGE ONE. **DEPLOYED `main@afb6b785`**, no migration.
 
