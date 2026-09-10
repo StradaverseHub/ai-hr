@@ -770,7 +770,11 @@ const readSrc = (rel: string) => readFileSync(root + rel, 'utf8');
 const codeOnly = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 describe('the Day Type select lives INSIDE the advance-notice sub-form', () => {
-  const panel = codeOnly(readSrc('components/leave-type-panel.tsx'));
+  const panel = codeOnly(
+    ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+      .map((f) => readSrc(f))
+      .join('\n'),
+  );
   /** The Advance notice card: from its section title down to the help line that closes it. */
   const subForm = (): string => {
     const from = panel.indexOf("{t('advanceNoticeSectionTitle')}");

@@ -57,7 +57,12 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // destination is to delete its line here in the same commit that deletes the row, which is what this is.
   // The two properties the removal has to keep are asserted below by their own tests rather than by this
   // list: the ROUTE still resolves (as a redirect stub, so no bookmark 404s) and Entitlements is now first.
-  { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted. The leave TYPE screen is
+  // `/admin/leave-config/types` (five tabs instead of four steps and six sub-steps, IA §2); the old page
+  // is a redirect stub and `components/leave-type-panel.tsx` was deleted with it. This list's promises
+  // are "no destination lost" and "no re-sorting", and both hold: same row, same label key, same
+  // position, and the old address still answers.
+  { href: '/admin/leave-config/types', labelKey: 'leaveEntitlements' },
   // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
   { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments' },
   // a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The two properties this list guards are "no
@@ -115,23 +120,39 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * `/admin/leave` leave lib/permissions.ts without test/function-access.test.ts reddening in either
    * direction; and the label key retires WITH the row instead of lingering as an untranslatable orphan.
    */
-  it('the Summary row is gone and Entitlements is first', () => {
+  it('the Summary row is gone and the leave TYPE screen is first', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave');
-    expect(NODE.children[0].href).toBe('/admin/leave/entitlements');
+    expect(NODE.children[0].href).toBe('/admin/leave-config/types');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveSummary'");
   });
 
   it('/admin/leave survives as an UNGUARDED redirect stub — bookmarks land, the grid stays honest', () => {
     const stub = read('app/admin/leave/page.tsx');
-    expect(stub, 'the route file must still exist').toContain("redirect(");
-    expect(stub).toContain('/admin/leave/entitlements');
+    expect(stub, 'the route file must still exist').toContain('redirect(');
+    // a6fe37fc Round 5 — repointed at the leave TYPE screen's new address IN THE SAME COMMIT that made
+    // `/admin/leave/entitlements` a stub of its own. A stub whose destination is another stub still
+    // delivers the bookmark, but through a hop that need not happen and one edit away from a loop.
+    expect(stub).toContain('/admin/leave-config/types');
     // A stub is not a guarded page. If it ever calls one of these, test/function-access.test.ts's
     // reverse-completeness check fails — because the route is (correctly) no longer registered.
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
     const permissions = read('lib/permissions.ts');
     expect(permissions).not.toContain("'/admin/leave',");
     // The screen column survives, re-pointed at the page a reader can actually open.
-    expect(permissions).toContain("href: '/admin/leave/entitlements'");
+    expect(permissions).toContain("href: '/admin/leave-config/types'");
+  });
+
+  it('/admin/leave/entitlements survives as an UNGUARDED redirect stub to the new leave TYPE screen', () => {
+    // a6fe37fc Round 5 — the most-bookmarked address in the area, so this stub matters more than the
+    // others and is asserted the same way.
+    const stub = read('app/admin/leave/entitlements/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/types');
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/entitlements',");
+    // The 3,367-line panel it mounted is GONE, not moved: the four steps and six sub-steps IA §1.2 names
+    // as the subject of the complaint are five tabs on the new screen.
+    expect(exists('components/leave-type-panel.tsx'), 'the old panel outlived its page').toBe(false);
   });
 
   /**

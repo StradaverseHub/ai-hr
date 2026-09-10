@@ -26,11 +26,7 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
  * the two-answers defect r259 found. Both leave TYPE screens are checked while both exist: the old page
  * comes out in its own commit, and this list shrinks with it.
  */
-const LEAVE_TYPE_PAGES = [
-  '/app/admin/leave/entitlements/page.tsx',
-  '/app/admin/leave-config/types/page.tsx',
-] as const;
-const entitlementsPage = read('/app/admin/leave/entitlements/page.tsx');
+const LEAVE_TYPE_PAGES = ['/app/admin/leave-config/types/page.tsx'] as const;
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 // Keys of the removed standalone Card — pruned everywhere.

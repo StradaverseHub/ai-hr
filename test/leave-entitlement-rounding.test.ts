@@ -68,6 +68,20 @@ import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedB
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2), which is what this whole item was raised about. The panel
+ * became three files, so what this guard scans is their concatenation — the property it pins is about the
+ * leave TYPE screen, not about one filename, and pinning it to a file that no longer exists would have
+ * taken the guard out rather than moved it.
+ */
+const LEAVE_TYPE_SCREEN = [
+  'app/admin/leave-config/types/page.tsx',
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+];
+
 let b: Base;
 const balance = (employmentId: string) => ledgerBalance(employmentId, b.annualLeaveTypeId);
 
@@ -551,8 +565,8 @@ describe('b81d3c52 · LEDGER AGREEMENT — the projection rounds exactly like th
 
 // ── (7) Static source guard ───────────────────────────────────────────────────────────────────────────
 describe('b81d3c52 · UI source guard — the dropdown-rendering form posts the tri-state marker; the other preserves', () => {
-  const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
-  const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+  const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
+  const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
   const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 
   it('EarningMethodForm renders the Rounding Method select AND posts the tri-state marker', () => {

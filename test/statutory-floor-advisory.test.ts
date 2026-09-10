@@ -113,7 +113,7 @@ describe('fa3f4ccb · the composition: configured wins, the minimum only flags',
  * WHY RETIRED AND NOT REPOINTED. The Preview Scenario checker is DELETED by this release, not moved: it
  * resolved ACTIVE `leave_policy` rows, so against the template layer it would have had nothing to resolve
  * and would have answered "—" to every question while still looking like a live checker
- * (app/admin/leave/entitlements/page.tsx records the decision). The component file and the warning key are
+ * (app/admin/leave-config/types/page.tsx records the decision). The component file and the warning key are
  * gone from all six locales with it. There is no surface left that renders a below-minimum warning, so
  * there is nothing to point these at; asserting a deleted component reads a deleted key would be a test
  * that cannot fail honestly.

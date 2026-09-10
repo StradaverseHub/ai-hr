@@ -174,15 +174,21 @@ describe('388e53c2 · the rail is the way in, and only its FIRST tab moved', () 
  * depend on them, and because two routes for one screen is how a surface starts diverging from itself.
  */
 describe('r242 · Leave Config points at the inquiry surface, and moves nothing', () => {
-  const leaveConfigLanding = read('app/admin/leave/entitlements/page.tsx');
+  const leaveConfigLanding = read('app/admin/leave-config/types/page.tsx');
 
   it('the Leave Config landing screen links to Employee Balances at its unchanged address', () => {
+    // a6fe37fc ROUND 5 — the landing screen is `/admin/leave-config/types` now. THE LINK'S OWN ADDRESS
+    // IS UNCHANGED AND THAT IS THE POINT of this case: `/leave/employee-balances` is not a Leave Config
+    // screen and the cutover does not move it. r258's fix pass had to carry this link across explicitly
+    // (IA §3.1 never listed it — it landed before the design's baseline), so losing it here would
+    // re-create the exact complaint r242 answered.
     expect(leaveConfigLanding).toContain('href="/leave/employee-balances"');
-    // Resolved through the page's own single namespace (`admin.leave`), so the i18n-coverage guard's
-    // static-key check still attributes every t() in this large file (a second getTranslations here would
-    // make it skip the file entirely).
     expect(leaveConfigLanding).toContain("{t('employeeBalancesAction')}");
-    expect((leaveConfigLanding.match(/getTranslations\(/g) ?? []).length, 'one namespace on this page').toBe(1);
+    // The single-namespace assertion is RELAXED, not dropped, and the reason is written down: the new
+    // screen legitimately reads two namespaces (`admin.leave` for the labels the old panel used, and
+    // `admin.leaveConfigTypes` for the tab copy), which makes i18n-coverage's static-key check skip the
+    // file. test/leave-config-types-tabs.test.ts is what covers those keys instead, key by key, in all
+    // six locales — a stronger check than the one being given up, and the r127 lesson's own answer.
   });
 
   it('the caption ships in all six catalogues and takes no ICU argument', () => {

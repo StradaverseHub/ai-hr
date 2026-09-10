@@ -49,8 +49,15 @@ const CORE = '/core/entitlement-template.ts';
  * unfiltered, and each leave type's Entitlement step filtered to that type.
  */
 const STANDALONE = '/app/admin/leave-config/entitlement-tables/page.tsx';
-const ENTITLEMENTS = '/app/admin/leave/entitlements/page.tsx';
-const PANEL = '/components/leave-type-panel.tsx';
+const ENTITLEMENTS = '/app/admin/leave-config/types/page.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2). The panel became three files, so what this guard reads is
+ * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
+ * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
+ */
+const PANEL_FILES = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx'];
 const ACTIONS = '/app/admin/leave/entitlements/templates/actions.ts';
 
 /** COMMENTS ARE NOT CODE (the r134 rule). Every removal here explains itself by NAMING what it removed,
@@ -62,7 +69,7 @@ const blockSrc = read(BLOCK);
 const coreCode = stripComments(read(CORE));
 const standaloneCode = stripComments(read(STANDALONE));
 const entitlementsCode = stripComments(read(ENTITLEMENTS));
-const panelCode = stripComments(read(PANEL));
+const panelCode = stripComments(PANEL_FILES.map((f) => read(f)).join('\n'));
 const actionsSrc = read(ACTIONS);
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -167,7 +174,10 @@ describe('§3 ee6b7c69 · the Open Entitlement tables link is gone from the step
   it('the standalone screen is STILL reachable from the page header — the plan promised it survives', () => {
     // Stated positively so a follow-up cleanup that removes the last route to it fails here. It is the
     // only place all 24 leave types' tables can be read side by side.
-    expect(entitlementsCode).toContain('href="/admin/leave/entitlements/templates"');
+    // a6fe37fc Round 5 — the standalone screen is `/admin/leave-config/entitlement-tables` now and the
+    // header link resolves through the area map (r259), so what is asserted is that the way in SURVIVES,
+    // which is what the plan promised — not the literal that would let the link and the menu disagree.
+    expect(entitlementsCode).toContain("leaveConfigScreenHref('entitlementTables')");
   });
 
   it('`tablesOpen` is retired from ALL SIX catalogues, and `tablesHint` still exists', () => {

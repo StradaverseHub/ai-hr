@@ -32,8 +32,15 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
 
-const PANEL = 'components/leave-type-panel.tsx';
-const PAGE = 'app/admin/leave/entitlements/page.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2). The panel became three files, so what this guard reads is
+ * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
+ * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
+ */
+const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
+const PAGE = 'app/admin/leave-config/types/page.tsx';
 
 describe('38f1fd40 — the Adjustments sub-step is gone', () => {
   // 6e9a126e RELEASE THREE — the Entitlement step no longer HAS sub-steps. It is a pointer to Entitlement
@@ -63,7 +70,7 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     for (const [rel, symbol] of [
       [PAGE, 'FestiveGrantCard'],
       [PAGE, 'festiveGrantSection'],
-      [PANEL, 'festiveGrantSection'],
+      ...PANEL_FILES.map((f) => [f, 'festiveGrantSection'] as const),
       ['core/admin.ts', 'export function listAdHocLeaveGrants'],
       ['core/leave.ts', 'export async function grantAdHocLeave'],
       ['core/leave.ts', 'export class AdHocLeaveGrantError'],
@@ -82,8 +89,17 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     // benefit_scheme, so its only consumer left with it (0 occurrences in the page now). The other
     // two still feed EarnedAccrualDialog, which is still mounted — so the guard still bites where
     // it matters. Removing the whole case would have dropped that.
-    for (const kept of ['festiveCompanies', 'canGroupWide']) {
-      expect(page.includes(kept), `${kept} must survive — it has another consumer`).toBe(true);
+    // a6fe37fc ROUND 5 — the two survivors are named by the page that mounts EarnedAccrualDialog, which
+    // is the new leave TYPE screen. The old page is a redirect stub and prepares nothing at all, so the
+    // "must survive" half of this case follows the consumer; the "must be gone" half above still reads
+    // both files, so a festive-grant symbol reappearing on either fails.
+    const liveScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
+    // `festiveCompanies` was the name the OLD page gave the list it fed EarnedAccrualDialog; the new
+    // screen calls the same list `accrualCompanies`, gated by the same `canGroupWide`. The rename is not
+    // the removal this case guards against — what matters is that the dialog is still fed a group-aware
+    // company list, and both halves of that are asserted by name.
+    for (const kept of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
+      expect(liveScreen.includes(kept), `${kept} must survive — it feeds Run Earned Accrual`).toBe(true);
     }
   });
 

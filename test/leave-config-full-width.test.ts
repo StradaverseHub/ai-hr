@@ -61,7 +61,11 @@ const TAB_CONTENT_COMPONENTS = [
   // cap it was scanned for cannot reappear in a file that no longer exists; the destinations it linked
   // to are all covered by the page glob above.
   'components/leave-type-workspace.tsx',
-  'components/leave-type-panel.tsx',
+  // a6fe37fc ROUND 5 (cutover) — `components/leave-type-panel.tsx` STOOD HERE and is DELETED with the
+  // page that mounted it. Its width cap cannot reappear in a file that no longer exists; the two files
+  // that replaced it are scanned instead, so the convention follows the screen rather than lapsing.
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
   'app/admin/leave/import/leave-ledger-import.tsx',
   'app/admin/leave-approval/editor.tsx',
   'app/admin/leave-approval/rule-builder.tsx',

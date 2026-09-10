@@ -2498,7 +2498,10 @@ export default async function EmployeePage({
               >
                 {tScheme('changeGrade')}
               </Link>
-              <Link href="/admin/leave/entitlements" className="text-primary hover:underline">
+              {/* a6fe37fc ROUND 5 (cutover) — the leave TYPE screen is /admin/leave-config/types now.
+                  The old address still answers (redirect stub), but a link whose job is "go and change
+                  the rules" should name where the rules are. */}
+              <Link href="/admin/leave-config/types" className="text-primary hover:underline">
                 {tScheme('changeRules')}
               </Link>
             </div>

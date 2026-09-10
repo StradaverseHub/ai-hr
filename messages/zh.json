@@ -6617,7 +6617,6 @@
       "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
     },
     "leave": {
-      "pageTitle": "休假配置",
       "pageDescription": "休假类型及其应享政策",
       "typesSectionTitle": "休假类型设置",
       "workspaceTypeListLabel": "休假类型",
@@ -8600,7 +8599,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "一种休假类型，五个标签页，按决策顺序排列。",
-      "previewNote": "这是新的休假类型页面，与菜单当前链接的页面并行构建。两者保存到相同的记录；在正式切换之前，在此保存后会返回当前页面。",
       "tabsLabel": "休假类型配置标签页",
       "tab": {
         "identity": "休假类型",

@@ -50,8 +50,21 @@ import { describe, expect, it } from 'vitest';
 import { ORG_ASSIGNMENT_CRITERIA } from '../core/leave-org-criteria';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2), which is what this whole item was raised about. The panel
+ * became three files, so what this guard scans is their concatenation — the property it pins is about the
+ * leave TYPE screen, not about one filename, and pinning it to a file that no longer exists would have
+ * taken the guard out rather than moved it.
+ */
+const LEAVE_TYPE_SCREEN = [
+  'app/admin/leave-config/types/page.tsx',
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+];
+const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
+const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
 // 1e4eb8af retired the Application Rules tab entirely; the route is a redirect stub now, so the
 // "half-day card is gone from there" guard below holds a fortiori — kept as the tripwire against the card
 // ever being re-added to that route.
@@ -63,61 +76,78 @@ const pickerSrc = readFileSync(resolve(here, '../components/leave/half-day-compa
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const ESS_SUB_STEP_KEYS = ['criteria', 'rules'] as const;
+/**
+ * ⚠️ a6fe37fc ROUND 5 — WHERE THE CONDITION STEP'S TWO SUB-STEPS WENT, and why this file did not shrink.
+ *
+ * The migration order's Round 2 table names this guard by name and says where each half of its case goes:
+ * **Criteria becomes Tab 2** (`eligibility` — who may take this leave type at all), and the application
+ * rule cards SPLIT — the balance card to Tab 3 (it is not an application rule, it is what an application
+ * is measured against), the company half-day slot to Company rules (it is a COMPANY decision that was
+ * being drawn once per leave type), and the rest to **Tab 4** (`application` — how it is applied for).
+ *
+ * So `essSegment()` becomes the two tabs that inherited the step, and `subStepSlice` becomes a tab
+ * lookup. Every assertion below is unchanged in substance: the same fields, the same tri-state markers,
+ * the same EMERGENCY gates, the same layout promises, the same expiry TRIPWIRE.
+ */
+const TABS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const;
+const tabsSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
+const companyRulesSrc = readFileSync(
+  resolve(here, '../app/admin/leave-config/company-rules/page.tsx'),
+  'utf8',
+);
 
-/** Slice the Condition card's segment (its CardTitle to the Custom card's CardTitle). */
+/** Slice ONE tab's rendered block: from its own gate to the next tab's. */
+function tabSegment(key: (typeof TABS)[number]): string {
+  const start = tabsSrc.indexOf(`{activeTab === '${key}' && (`);
+  expect(start, `tab '${key}' has no gated block`).toBeGreaterThan(-1);
+  const next = TABS.slice(TABS.indexOf(key) + 1)
+    .map((k) => tabsSrc.indexOf(`{activeTab === '${k}' && (`))
+    .find((i) => i > start);
+  return tabsSrc.slice(start, next ?? tabsSrc.length);
+}
+
+/** The two tabs that inherited the Condition step — the successor of the old `essSegment()`. */
 function essSegment(): string {
-  const start = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryCustom')}</CardTitle>");
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return panelSrc.slice(start, end);
+  return `${tabSegment('eligibility')}\n${tabSegment('application')}`;
 }
 
-/** Slice the Entitlement card's segment (its CardTitle to the Condition card's CardTitle) — where
- *  b8fcae73 relocated the entitlement policy timeline that used to live on the retired Eligibility card. */
+/** The tab that inherited the Entitlement step. */
 function entitlementSegment(): string {
-  const start = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return panelSrc.slice(start, end);
+  return tabSegment('entitlement');
 }
 
-/** Slice one sub-step's gated block out of the Condition segment. */
-function subStepSlice(seg: string, key: (typeof ESS_SUB_STEP_KEYS)[number]): string {
-  const start = seg.indexOf(`{essSubStep === '${key}' && (`);
-  expect(start, `sub-step '${key}' gate present`).toBeGreaterThan(-1);
-  const i = ESS_SUB_STEP_KEYS.indexOf(key);
-  const next = i + 1 < ESS_SUB_STEP_KEYS.length ? seg.indexOf(`{essSubStep === '${ESS_SUB_STEP_KEYS[i + 1]}' && (`) : seg.length;
-  expect(next).toBeGreaterThan(start);
-  return seg.slice(start, next);
+/** Criteria → tab 2, Leave Application Rules → tab 4. The successor of the old sub-step slice. */
+function subStepSlice(_seg: string, key: 'criteria' | 'rules'): string {
+  return key === 'criteria' ? tabSegment('eligibility') : tabSegment('application');
 }
 
 describe('08bc6841 · the Condition step REUSES the SubStepBar (two sub-steps in walk order, c459bff9)', () => {
-  it('renders the shared SubStepBar inside the Condition card — no reinvented nested bar', () => {
-    expect(panelSrc).toContain("const ESS_SUB_STEP_KEYS = ['criteria', 'rules'] as const");
-    const seg = essSegment();
-    expect(seg).toContain('<SubStepBar');
-    expect(seg).toContain('ESS_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ESS_SUB_STEP_TITLE_KEY[k]) }))');
-    // Exactly one sub-step's content renders at a time — each gates its own block.
-    for (const key of ESS_SUB_STEP_KEYS) {
-      expect(seg.includes(`{essSubStep === '${key}' && (`), `sub-step '${key}' gated`).toBe(true);
+  it('the two sub-steps are TABS now, each gating its own block — no nested bar was reinvented', () => {
+    // 08bc6841's reuse contract was "secondary flows REUSE the SubStepBar, never reinvent a nested bar".
+    // a6fe37fc removed the nesting entirely: Criteria and Leave Application Rules are two of five tabs on
+    // ONE bar, which is the strongest possible form of "no second bar". The component itself survives and
+    // is still mounted by Generate entitlement and Adjustments — see leave-type-general-substeps.test.ts.
+    expect(tabsSrc).toContain(
+      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
+    );
+    for (const key of ['eligibility', 'application'] as const) {
+      expect(tabsSrc.includes(`{activeTab === '${key}' && (`), `tab '${key}' gated`).toBe(true);
     }
-    // ONE SubStepBar component file serves both secondary flows — the reuse contract.
-    expect(panelSrc).toMatch(/import \{ SubStepBar \} from '\.\/leave-sub-step-bar'/);
+    expect(tabsSrc).not.toContain('<SubStepBar');
+    expect(tabsSrc).not.toContain('ESS_SUB_STEP_KEYS');
   });
 
-  it("keeps 'ess' as the Condition step's storage key and persists essSubStep in the shared shape", () => {
-    // b8fcae73 shortened + reordered the walk; 'ess' survives verbatim as Condition's storage key.
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
-    // The ONE writer persists the keys together (7b945408 extended the shape with entitlementSubStep)…
-    expect(panelSrc).toContain(
-      // 6e9a126e RELEASE THREE — the persisted shape lost `entitlementSubStep` because the Entitlement step's sub-flow is gone: it is now a pointer to Entitlement Tables plus Run Earned Accrual, with no sub-steps to remember. The guard's subject is the COMPATIBLE MIGRATION of the stored shape, not the field list, so it is updated rather than deleted — a card stored under the old shape must still open.
-      'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })',
+  it("a browser holding the retired 'ess' step key is REMAPPED onto the tab that inherited it", () => {
+    // The compatible-migration promise, carried across. 'ess' was Condition's historical storage key and
+    // an administrator's browser may still hold it; the new screen sends `ess` → Criteria's tab and each
+    // retired sub-step to the tab that took it, rather than snapping back to tab 1.
+    expect(tabsSrc).toContain("typeof parsed.essSubStep === 'string'");
+    const table = tabsSrc.slice(
+      tabsSrc.indexOf('const RETIRED_ESS_SUB_STEP_TO_TAB'),
+      tabsSrc.indexOf('const RETIRED_ESS_SUB_STEP_TO_TAB') + 400,
     );
-    // …and hydration tolerates an older payload (essSubStep absent ⇒ default Criteria).
-    expect(panelSrc).toContain("typeof parsed.essSubStep === 'string'");
+    expect(table).toMatch(/criteria: 'eligibility'/);
+    expect(table).toMatch(/rules: 'application'/);
   });
 });
 
@@ -184,10 +214,12 @@ describe('165baee5 · Criteria — the configurable fields shown directly, no "E
     ]) {
       expect(panelSrc.includes(dead), `${dead} removed`).toBe(false);
     }
-    // …and the Criteria sub-step no longer offers "Edit rules" (the key survives — the Day Type
-    // Inclusion card still uses it — but not inside this sub-step).
+    // …and Criteria no longer offers "Edit rules". a6fe37fc Round 5 — the key's LAST consumer (the Day
+    // Type Inclusion card's own edit toggle) went with the panel rewrite, so the assertion that it
+    // survives elsewhere is dropped rather than inverted: what 165baee5 cared about is that this screen
+    // has no edit-mode hop, and it now has none anywhere.
     expect(criteria.includes("t('eligibilityEdit')")).toBe(false);
-    expect(panelSrc).toContain("t('eligibilityEdit')");
+    expect(panelSrc.includes("t('eligibilityEdit')")).toBe(false);
     // One form, unconditional, on the unchanged save path with the unchanged tri-state marker.
     expect(criteria).toContain('<form action={updateTypeAction}');
     expect(criteria).toContain('<input type="hidden" name="eligibility" value="1" />');
@@ -400,17 +432,20 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     expect(rules.includes('${inputCls} w-24')).toBe(false);
   });
 
-  it('all seven rule groups sit inside the grid, in the existing source order, markers intact', () => {
+  it('the rule groups sit inside the grid in source order, and the BALANCE card moved to tab 3', () => {
+    // ⚠️ a6fe37fc ROUND 5 SPLIT THIS LIST, DELIBERATELY, and the migration order says why: the negative
+    // balance card is NOT an application rule — it is what an application is measured against, so it
+    // belongs with the day tables that decide the balance (Tab 3). The remaining cards keep their exact
+    // source order on Tab 4, which is what this loop has always been about: a card that moves is a card
+    // an administrator has to hunt for.
     const rules = subStepSlice(essSegment(), 'rules');
+    expect(entitlementSegment(), 'the balance card must be on tab 3, with the tables').toContain(
+      '<NegativeBalanceForm',
+    );
+    expect(rules.includes('<NegativeBalanceForm'), 'and NOT also on tab 4 — one home per card').toBe(false);
     let cursor = -1;
-    for (const marker of RULE_MARKERS) {
-      // bc512dc3 extracted the negative-balance card into NegativeBalanceForm (it needed client state to
-      // show the floor only when the switch is Yes), so its marker now lives in that component rather than
-      // inline in the grid. What the grid still has to show, in order, is the card ITSELF — which is what
-      // this assertion is actually about. The marker is checked separately below, on the whole file.
-      const needle =
-        marker === 'name="negativeBalance"' ? '<NegativeBalanceForm' : `<input type="hidden" ${marker} value="1" />`;
-      const at = rules.indexOf(needle);
+    for (const marker of RULE_MARKERS.filter((m) => m !== 'name="negativeBalance"')) {
+      const at = rules.indexOf(`<input type="hidden" ${marker} value="1" />`);
       expect(at, `${marker} rule card inside the rules grid, in source order`).toBeGreaterThan(cursor);
       cursor = at;
     }
@@ -437,11 +472,20 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     expect(rules.indexOf('name="minAdvance"')).toBeGreaterThan(g2);
   });
 
-  it('the relocated Half-Day Deduction card (halfDaySection slot) completes the grid', () => {
+  it('the Half-Day Deduction card is on COMPANY RULES now — one home, and it is the honest one', () => {
+    // ⚠️ 08bc6841 RELOCATED THIS CARD ONTO THE LEAVE TYPE AND a6fe37fc RELOCATED IT AGAIN, for the reason
+    // 08bc6841's own badge always admitted: it is a COMPANY decision. Composed once and handed into every
+    // leave type through the `halfDaySection` slot, it was one company setting wearing twenty-five
+    // costumes (IA §2.0.3). It is drawn ONCE on Company rules now.
+    //
+    // The invariant 08bc6841 bought — SINGLE HOME, same write — is what is asserted, and it is stronger
+    // here than it was: the slot is gone from the leave type screen entirely, so there is no second copy
+    // to drift.
     const rules = subStepSlice(essSegment(), 'rules');
-    expect(rules).toContain('{halfDaySection}');
-    // Slot-shaped prop, like the other server-composed sections.
-    expect(panelSrc).toContain('halfDaySection?: ReactNode');
+    expect(rules.includes('{halfDaySection}')).toBe(false);
+    expect(panelSrc.includes('halfDaySection')).toBe(false);
+    expect(companyRulesSrc).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
+    expect(companyRulesSrc).toContain("t('conditionStep.halfDayCompanyWideBadge')");
   });
 });
 
@@ -457,10 +501,16 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
   // it still carries the company-wide badge and the frozen note. The row-shaped assertions below were
   // rewritten rather than deleted — the contract they pinned (one post carries the decision, and the user
   // is told it is company-wide) still exists, it is just expressed over a set instead of a single row.
-  it('the Entitlements page composes ONE multi-select carrying the whole company set + the badge', () => {
-    const start = pageSrc.indexOf('const halfDaySection = (');
+  it('Company rules composes ONE multi-select carrying the whole company set + the badge', () => {
+    // a6fe37fc Round 5 — RE-POINTED at the screen that now draws the card. Every assertion below is the
+    // one 10e96227 and b55fdf33 wrote, unchanged: one post carries the whole decision, the picker is
+    // reached through the client wrapper (a server component may not hand a closure across the boundary),
+    // first render reproduces today's configuration, and the write scope and the picker's option list are
+    // the SAME narrow list.
+    const start = companyRulesSrc.indexOf('<SectionHeader title={t(\'halfDayDeductionTitle\')} />');
     expect(start).toBeGreaterThan(-1);
-    const section = pageSrc.slice(start, pageSrc.indexOf('return (', start));
+    const section = companyRulesSrc.slice(start, companyRulesSrc.indexOf('</Card>', start));
+    const pageSrc = companyRulesSrc;
     expect(section).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
     // b55fdf33 — the picker moved BEHIND A CLIENT WRAPPER. This page is a server component, and passing
     // ChipMultiSelect's label closures across that boundary threw at render and took the tab down in
@@ -480,16 +530,20 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     // The picker is scoped to companies the caller can actually WRITE, so the screen and the set-write
     // agree. Offering the page's tenant-wide `companies` here would let a company-scoped admin deselect
     // a company whose row the write can never reach.
-    expect(pageSrc).toContain("const halfDayCompanies = await listCompanies(s, { adminOnly: true });");
+    // The read is one element of the page's own Promise.all rather than a standalone const — the shape
+    // changed with the screen, the SCOPE did not, and the scope is what this case is about.
+    expect(pageSrc).toMatch(/listCompanies\(s, \{ adminOnly: true \}\)/);
     expect(section).toContain('companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
     // The company-wide marker + the existing half-day strings, all still shown.
     expect(section).toContain("t('conditionStep.halfDayCompanyWideBadge')");
-    expect(section).toContain("t('halfDayDeductionTitle')");
+    expect(companyRulesSrc).toContain("t('halfDayDeductionTitle')");
     expect(section).toContain("t('halfDayDeductionFrozenNote')");
     // An empty selection is a real decision, so the screen must say what it means.
     expect(section).toContain("t('halfDayDeductionEmptyNote')");
-    // ONE shared node passed into every panel via the slot prop.
-    expect(pageSrc).toContain('halfDaySection={halfDaySection}');
+    // ⚠️ THE SLOT IS GONE, and its absence is the point: 08bc6841's "ONE shared node passed into every
+    // panel" was the best a per-leave-type screen could do for a company-wide setting. Company rules draws
+    // it once, for the company being configured, so there is no node to share and nothing to pass.
+    expect(companyRulesSrc.includes('halfDaySection={')).toBe(false);
   });
 
   it('the per-company action is RETIRED — nothing posts one company any more', () => {
@@ -505,8 +559,12 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     const fn = actionsSrc.slice(fnStart, actionsSrc.indexOf('\n}', fnStart));
     expect(fn).toMatch(/setLeaveHalfDayFullDeductionCompanies\(s, \{/);
     expect(fn).toMatch(/formData\.getAll\('companyIds'\)\.map\(String\)\.filter\(Boolean\)/);
-    expect(fn).toMatch(/fail\(ENTITLEMENTS, e\)/);
-    expect(fn).toMatch(/ok\(ENTITLEMENTS\)/);
+    // a6fe37fc ROUND 5 — the return target moved WITH the card. It named ENTITLEMENTS because that is
+    // where the card was drawn; the card is on Company rules now, and returning to the leave type list
+    // would drop the administrator on a screen that does not show what they just changed — and, on the
+    // error path, show a message about a form they can no longer see (the failEntitlements reasoning).
+    expect(fn).toMatch(/fail\(COMPANY_RULES, e\)/);
+    expect(fn).toMatch(/ok\(COMPANY_RULES\)/);
     // No empty-post guard: [] means "applies nowhere", which must stay reachable.
     expect(fn).not.toMatch(/length === 0/);
   });

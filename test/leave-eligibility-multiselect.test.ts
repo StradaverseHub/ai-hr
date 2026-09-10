@@ -31,7 +31,14 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 /** Strip block comments so markup-shaped prose in doc comments can't satisfy (or trip) markup assertions. */
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
 
-const PANEL = 'components/leave-type-panel.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2). The panel became three files, so what this guard reads is
+ * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
+ * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
+ */
+const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
 const CHIP = 'components/ui/chip-multi-select.tsx';
 const ACTIONS = 'app/admin/actions.ts';
 const PERF = 'app/performance/new-cycle-form.tsx';
@@ -57,7 +64,7 @@ const KEPT_PERF_KEYS = [
 ] as const;
 
 describe('0af0729d · eligibility gender/marital become a checkbox popover', () => {
-  const panel = read(PANEL);
+  const panel = PANEL_FILES.map((f) => read(f)).join('\n');
   const chip = read(CHIP);
   const actions = read(ACTIONS);
   const perf = read(PERF);
@@ -103,7 +110,9 @@ describe('0af0729d · eligibility gender/marital become a checkbox popover', () 
   });
 
   it('the panel renders ChipMultiSelect for gender AND marital, not raw checkboxes', () => {
-    expect(panel).toMatch(/import \{ ChipMultiSelect \} from '\.\/ui\/chip-multi-select'/);
+    // a6fe37fc Round 5 — the leave TYPE screen lives under app/ now, so the import is the aliased path
+    // rather than the components-relative one the deleted panel used. Same component, same contract.
+    expect(panel).toMatch(/import \{ ChipMultiSelect \} from '@\/components\/ui\/chip-multi-select'/);
     expect(panel).toMatch(/<ChipMultiSelect\s+name="gender"/);
     expect(panel).toMatch(/<ChipMultiSelect\s+name="maritalStatus"/);
     // The old per-option checkbox inputs for these two fields are gone.

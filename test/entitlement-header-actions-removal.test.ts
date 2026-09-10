@@ -18,15 +18,25 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const entitlementsPage = read('/app/admin/leave/entitlements/page.tsx');
+const entitlementsPage = read('/app/admin/leave-config/types/page.tsx');
 
-// The header cluster: from <PageHeader to the next sibling (<LeaveTabs).
-const header = entitlementsPage.slice(entitlementsPage.indexOf('<PageHeader'), entitlementsPage.indexOf('<LeaveTabs'));
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The leave TYPE screen is
+ * `/admin/leave-config/types` and `<LeaveTabs>` (the retired horizontal strip) is not on it, so the
+ * header cluster is sliced to the area map that follows the header instead. 962077a8's property is
+ * unchanged: ONE action in the header, and both tools reachable only from their own sections.
+ */
+const header = entitlementsPage.slice(
+  entitlementsPage.indexOf('<PageHeader'),
+  entitlementsPage.indexOf('<LeaveConfigMap'),
+);
 
 describe('962077a8: the PageHeader keeps only the + Import action', () => {
   it('the actions slot renders the importer link and nothing else opens from the header', () => {
     expect(header).toMatch(/actions=\{/);
-    expect(header).toMatch(/<Link href="\/admin\/leave\/import" className=\{btnPrimary\}>/);
+    // r259 — the address comes from the area map, not a literal, so the button and the menu entry
+    // beside it cannot give two answers about where the importer is.
+    expect(header).toMatch(/<Link href=\{leaveConfigScreenHref\('importLeaveData'\)\} className=\{btnPrimary\}>/);
     expect(header).toMatch(/\{t\('importAction'\)\}/);
     // The two removed triggers are gone from the header cluster…
     expect(header.includes('<EarnedAccrualDialog')).toBe(false);
@@ -36,7 +46,9 @@ describe('962077a8: the PageHeader keeps only the + Import action', () => {
   });
 
   it('exactly one importer link remains page-wide (the header action; e8f2398f guard still holds)', () => {
-    expect(entitlementsPage.match(/href="\/admin\/leave\/import"/g)).toHaveLength(1);
+    expect(entitlementsPage.match(/href=\{leaveConfigScreenHref\('importLeaveData'\)\}/g)).toHaveLength(1);
+    // …and never as a literal, which would be a second answer the menu could drift from.
+    expect(entitlementsPage.match(/href="\/admin\/leave(-config)?\/import"/g) ?? []).toHaveLength(0);
   });
 });
 

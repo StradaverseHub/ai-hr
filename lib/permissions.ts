@@ -297,9 +297,13 @@ export const SCREENS: readonly ScreenEntry[] = [
   // ── Admin leave / attendance / claims config (requireAdmin) ──
   {
     screenKey: 'leaveConfig',
-    // df00b85f — the canonical href is ENTITLEMENTS now. `/admin/leave` retired its Summary listing and
-    // is an unguarded redirect stub pointing here, and a stub is not a screen this grid can describe.
-    href: '/admin/leave/entitlements',
+    // df00b85f — the canonical href moved off `/admin/leave` when that retired its Summary listing.
+    // a6fe37fc ROUND 5 (cutover) — it moves once more, to the leave type screen's new address. BOTH
+    // `/admin/leave` and `/admin/leave/entitlements` are unguarded redirect stubs pointing here now, and
+    // a stub is not a screen this grid can describe. THE SCREEN KEY IS NOT RENAMED: a key "may key stored
+    // role configs" (see this file's head), so renaming `leaveConfig` would silently drop every tenant's
+    // existing grant for the whole area. Only `href` and `routes` ever move.
+    href: '/admin/leave-config/types',
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
@@ -321,7 +325,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it
       // left `routes` in the SAME commit that emptied the page — the /admin/leave (df00b85f) and
       // /admin/leave/audit (f1b994e3) precedent. test/function-access.test.ts fails BOTH ways.
-      '/admin/leave/entitlements',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements'` STOOD HERE and is DELIBERATELY GONE.
+      // The leave type screen is `/admin/leave-config/types`; the old address is an unguarded redirect
+      // stub and `components/leave-type-panel.tsx` was deleted with the page that mounted it, so the
+      // route left `routes` in the SAME commit — test/function-access.test.ts fails BOTH ways.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/archive'` (6e9a126e, the read-only record
       // of the entitlement configuration release three clears) STOOD HERE and is DELIBERATELY GONE. The
       // record is `/admin/leave-config/records/entitlement` now and the old address is an unguarded

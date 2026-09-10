@@ -6617,7 +6617,6 @@
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {
-      "pageTitle": "Konfigurasi cuti",
       "pageDescription": "Jenis cuti dan dasar kelayakannya",
       "typesSectionTitle": "Tetapan jenis cuti",
       "workspaceTypeListLabel": "Jenis cuti",
@@ -8600,7 +8599,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "Satu jenis cuti, lima tab, mengikut susunan keputusan dibuat.",
-      "previewNote": "Ini skrin Jenis cuti yang baharu, dibina bersebelahan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, simpanan di sini akan membawa anda kembali ke skrin semasa.",
       "tabsLabel": "Tab konfigurasi jenis cuti",
       "tab": {
         "identity": "Jenis cuti",

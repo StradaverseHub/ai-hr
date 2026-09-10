@@ -109,7 +109,7 @@ const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])
  * (menu moved, route still registered) fail rather than pass quietly.
  */
 const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
-  leaveTypes: { to: '/admin/leave-config/types', cutOver: false },
+  leaveTypes: { to: '/admin/leave-config/types', cutOver: true },
   templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
   payroll: { to: '/admin/leave-config/company-rules', cutOver: false },
   replacement: { to: '/admin/leave-config/company-rules', cutOver: true },
@@ -681,7 +681,9 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
    * old page; after it, on the new one. Either way exactly one screen answers for it.
    */
   const NEW_FILE: Record<string, string> = {
-    leaveTypes: 'app/admin/leave-config/types/page.tsx',
+    // Half-day and shared groups leave the leave TYPE page for Company rules, so `leaveTypes` names the
+    // file those needles must ARRIVE in, which is Company rules — not the new leave type screen.
+    leaveTypes: 'app/admin/leave-config/company-rules/page.tsx',
     templates: 'app/admin/leave-config/entitlement-tables/page.tsx',
     payroll: 'app/admin/leave-config/company-rules/page.tsx',
     replacement: 'app/admin/leave-config/company-rules/page.tsx',
@@ -693,8 +695,8 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
   };
 
   it.each([
-    ['the half-day card', 'leaveTypes', 'setLeaveHalfDayFullDeductionCompaniesAction', 'payroll'],
-    ['shared leave groups', 'leaveTypes', '<LeaveSharedGroupConfig', 'payroll'],
+    ['the half-day card', 'leaveTypes', 'setLeaveHalfDayFullDeductionCompaniesAction', 'leaveTypes'],
+    ['shared leave groups', 'leaveTypes', '<LeaveSharedGroupConfig', 'leaveTypes'],
     ['leave encashment', 'payroll', 'setLeaveEncashmentPolicyAction', 'payroll'],
     ['the replacement policy', 'replacement', 'setToilPolicyAction', 'replacement'],
     ['the entitlement tables', 'templates', '<EntitlementTablesBlock', 'templates'],
@@ -707,9 +709,10 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
   ] as [string, keyof typeof OLD, string, string][])(
     '%s is live on exactly one screen (%s)',
     (_what, file, needle, absorbedBy) => {
-      // `absorbedBy` is the CUTOVER entry that owns the move: the half-day card and shared leave groups
-      // sit on the old leave TYPE screen but land on Company rules, which the Replacement/Payroll
-      // commits create — so their needle follows `payroll`, not `leaveTypes`.
+      // `absorbedBy` is the CUTOVER entry whose commit actually moves the needle, which is not always
+      // the screen the needle is FOUND on. The half-day card and shared leave groups sit on the old leave
+      // TYPE screen and land on Company rules, so they move when the leave type page is emptied — with
+      // `leaveTypes`, not with the Company rules screen's own absorbed entries.
       if (CUTOVER[absorbedBy].cutOver) {
         expect(read(NEW_FILE[absorbedBy]), `${_what} did not arrive at ${CUTOVER[absorbedBy].to}`).toContain(
           needle,

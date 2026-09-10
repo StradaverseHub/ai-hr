@@ -64,7 +64,14 @@ import {
 } from '../app/admin/leave/entitlements/templates/actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
-const ENTITLEMENTS = '/admin/leave/entitlements';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED. The leave TYPE workspace is `/admin/leave-config/types`; the
+ * old address is a redirect stub. This constant HAD to move rather than lean on the stub, and the reason
+ * is the very thing the case below pins: `okEntitlements` carries a `#type-<id>` FRAGMENT, and a fragment
+ * is never sent to the server — a save routed through a redirect would arrive with no leave type selected,
+ * which is 9b0503ac's original bug wearing a different address.
+ */
+const ENTITLEMENTS = '/admin/leave-config/types';
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED, and the reason is the whole point of this file.
  *

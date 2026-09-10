@@ -57,7 +57,7 @@ const IDENTITY_CARD = 'components/personnel-identity.tsx';
 const PERSONNEL_PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
-const LEAVE_PANEL = 'components/leave-type-panel.tsx';
+const LEAVE_PANEL = 'app/admin/leave-config/types/leave-type-tabs.tsx';
 
 let b: Base;
 

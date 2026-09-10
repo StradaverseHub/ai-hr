@@ -36,11 +36,18 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
 
 const CHIP = 'components/ui/chip-multi-select.tsx';
-const PANEL = 'components/leave-type-panel.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2). The panel became three files, so what this guard reads is
+ * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
+ * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
+ */
+const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
 
 describe('b9c30be0 · ChipMultiSelect standardized auto-close', () => {
   const chip = stripComments(read(CHIP));
-  const panel = stripComments(read(PANEL));
+  const panel = stripComments(PANEL_FILES.map((f) => read(f)).join('\n'));
 
   it('(a) the fixed inset-0 backdrop is gone; outside click closes via document mousedown on the root ref', () => {
     expect(chip).not.toMatch(/fixed inset-0/);

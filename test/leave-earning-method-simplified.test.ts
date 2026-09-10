@@ -58,7 +58,20 @@ import { leaveEntitlementBreakdown } from '../core/read';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2), which is what this whole item was raised about. The panel
+ * became three files, so what this guard scans is their concatenation — the property it pins is about the
+ * leave TYPE screen, not about one filename, and pinning it to a file that no longer exists would have
+ * taken the guard out rather than moved it.
+ */
+const LEAVE_TYPE_SCREEN = [
+  'app/admin/leave-config/types/page.tsx',
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+];
+const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
 const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 const leaveSrc = readFileSync(resolve(here, '../core/leave.ts'), 'utf8');
 

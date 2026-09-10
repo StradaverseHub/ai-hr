@@ -12,8 +12,27 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-/** The Leave Type configuration workspace (General / Condition / Entitlement / Custom Setting steps). */
-export const ENTITLEMENTS = '/admin/leave/entitlements';
+/**
+ * The Leave Type configuration workspace.
+ *
+ * a6fe37fc ROUND 5 (cutover) — REPOINTED at `/admin/leave-config/types`, and the parenthetical that used
+ * to name "General / Condition / Entitlement / Custom Setting steps" is gone with the steps themselves:
+ * the workspace is five TABS on the leave type now (IA §2), and `components/leave-type-panel.tsx` was
+ * deleted in this same commit. Every leave-TYPE save returns here, including the two helpers below that
+ * carry the `#type-<id>` anchor — which is why this constant had to move rather than lean on the stub: a
+ * fragment is never sent to the server, so a save routed through a redirect would arrive with no leave
+ * type selected.
+ */
+export const ENTITLEMENTS = '/admin/leave-config/types';
+/**
+ * a6fe37fc ROUND 5 (cutover) — COMPANY RULES, the destination the company- and tenant-wide leave settings
+ * were absorbed into (IA §2.0.3): the half-day full deduction, the shared leave groups and the encashment
+ * policy. It is a NEW constant rather than a reuse of ENTITLEMENTS, and the distinction is the point —
+ * those three writes used to return to the leave TYPE screen because that is where their cards happened
+ * to be drawn, and after the cutover they are not on it. Returning them to ENTITLEMENTS would leave an
+ * administrator who just saved a company rule looking at the leave type list, wondering whether it saved.
+ */
+export const COMPANY_RULES = '/admin/leave-config/company-rules';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
  *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
 export const ADJUSTMENTS = '/admin/leave-config/adjustments';

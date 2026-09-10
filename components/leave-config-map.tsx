@@ -100,7 +100,7 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   {
     id: 'configure',
     items: [
-      { id: 'leaveTypes', href: '/admin/leave/entitlements' },
+      { id: 'leaveTypes', href: '/admin/leave-config/types' },
       { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },
       { id: 'approvalChain', href: '/admin/leave-config/approval-chains' },
       // a6fe37fc ROUND 5 (cutover) — `{ id: 'replacementLeave', href: '/admin/leave/replacement' }` STOOD

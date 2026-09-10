@@ -571,7 +571,9 @@ const RANK_ERROR = 'Rank must be a whole number.';
 
 // Grades feed the Leave Config scope pickers, the benefit-scheme grade groups and the Personnel grade
 // selector, so a grade write revalidates those routes alongside System Labels.
-const GRADE_REVALIDATE_ALSO = ['/admin/leave/entitlements', '/admin/personnel'];
+// a6fe37fc ROUND 5 (cutover) — the leave TYPE screen moved. A revalidatePath of the OLD address would
+// clear the cache of a redirect stub and leave the screen an operator actually opens stale.
+const GRADE_REVALIDATE_ALSO = ['/admin/leave-config/types', '/admin/personnel'];
 function revalidateGrades() {
   revalidatePath(SYSTEM_LABELS);
   for (const p of GRADE_REVALIDATE_ALSO) revalidatePath(p);

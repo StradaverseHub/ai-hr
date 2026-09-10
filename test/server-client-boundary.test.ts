@@ -4,7 +4,7 @@
  * ⚠️ THIS FILE EXISTS BECAUSE r123 SHIPPED A BROKEN PAGE TO PRODUCTION AND NOTHING IN THE GATE SAW IT.
  *
  * 10e96227 dropped `ChipMultiSelect` (a 'use client' component) into
- * app/admin/leave/entitlements/page.tsx (a server component) and passed it two closures over the server's
+ * app/admin/leave-config/types/page.tsx (a server component) and passed it two closures over the server's
  * translator, `removeLabelFor` and `countLabelFor`. React cannot serialise a function across the boundary,
  * so it threw at RENDER time and the whole Entitlements tab returned "This page couldn't load". The
  * reporter raised it as b55fdf33.
@@ -141,10 +141,16 @@ describe('b55fdf33 · a server component may not pass functions to a client comp
     expect(offences, `server→client function props:\n${offences.join('\n')}`).toEqual([]);
   });
 
-  it('the Entitlements page reaches ChipMultiSelect through the client wrapper, not directly', () => {
+  it('the half-day card reaches ChipMultiSelect through the client wrapper, not directly', () => {
     // The specific regression. Kept alongside the general rule because the general scan is heuristic and
     // this one is exact — if the scan is ever weakened, this still fails.
-    const page = readFileSync(join(ROOT, 'app/admin/leave/entitlements/page.tsx'), 'utf8');
+    //
+    // a6fe37fc ROUND 5 (cutover) — RE-POINTED. The half-day full-deduction card is a COMPANY rule and
+    // moved to `/admin/leave-config/company-rules` (IA §2.0.3); the Entitlements page is a redirect stub
+    // now and `components/leave-type-panel.tsx`, the client component this file's header names as the
+    // reason the idiom LOOKED safe, was deleted with it. The regression this case pins is unchanged: a
+    // SERVER component may not hand a function across the boundary, and the wrapper is what stops it.
+    const page = readFileSync(join(ROOT, 'app/admin/leave-config/company-rules/page.tsx'), 'utf8');
     expect(page).not.toContain('<ChipMultiSelect');
     expect(page).not.toMatch(/from '@\/components\/ui\/chip-multi-select'/);
     expect(page).toContain('<HalfDayCompanyPicker');

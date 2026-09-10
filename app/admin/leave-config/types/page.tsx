@@ -28,30 +28,35 @@ import {
 } from '../../actions';
 
 /**
- * a6fe37fc ROUND 2 — LEAVE TYPES, the new module's first screen (`/admin/leave-config/types`).
+ * a6fe37fc — LEAVE TYPES (`/admin/leave-config/types`). The screen this whole item is about.
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/entitlements` and `components/leave-type-panel.tsx` are
- * untouched, still registered, still what the menu links to, and still where an administrator works.
- * The plan promised the reporter "something that works at every point", so this round ADDS a screen and
- * removes nothing: the two are live side by side until Round 5 deletes the old one and repoints its
- * address here (docs/design/a6fe37fc-migration-order.md).
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen, and the one it replaced is GONE.
+ * `app/admin/leave/entitlements/page.tsx` (731 lines) is an unguarded redirect stub pointing here and
+ * `components/leave-type-panel.tsx` (3,367 lines) was DELETED with it — the four steps, the two
+ * `SubStepBar` mountings and the six sub-step keys IA §1.2 names as the real subject of the complaint.
+ * The leaveConfig screen key's canonical `href`, the sidebar fly-out's first row, the area map's
+ * `leaveTypes` entry and the `ENTITLEMENTS` redirect constant all name this address now; the KEY itself
+ * is untouched, so no tenant's stored grant for the area was dropped.
  *
  * WHAT IS DIFFERENT, and it is the whole item: the four steps and six sub-steps of the old panel are
  * FIVE TABS in the order the decisions are made — what the leave type is · who is eligible · what they
  * are entitled to · how it is applied for · who approves it (IA §2). Two settings move onto the type
  * because that is what they are: *Send to payroll module* from Payroll impact (tab 1) and *Per-date
- * approval* from General setting (tab 5). NEITHER OLD SCREEN LOSES ITS COPY THIS ROUND — a setting
- * editable in two places for one round is deliberate, both write the same column through the same action
- * and the same marker, and Round 5 closes the window.
+ * approval* from General setting (tab 5). Both were editable in two places through Rounds 2–4, which was
+ * the deliberate price of "something works at every point"; the cutover closes that window — *Per-date
+ * approval* with this commit, *Send to payroll module* with Payroll impact's own.
  *
  * ⚠️ THE LEFT RAIL IS RE-CREATED, NOT DROPPED. It is the only way to choose a leave type, and the first
  * draft of this item's mockup quietly removed it. It is the SAME `LeaveTypeWorkspace` the old screen
  * mounts — one component, two mount points (IA §2.3's rule), not a second implementation to drift.
  *
- * ⚠️ A SAVE MADE HERE LANDS ON THE OLD SCREEN. Round 2's rule 2 is that no server action changes
- * signature and no new action is written, and every leave-type action redirects to a module constant
- * (`ENTITLEMENTS`, app/admin/_redirects.ts). Re-pointing it would move every save on the OLD screen too,
- * which is a Round 5 act. The note under the heading says so rather than letting it look like a fault.
+ * ⚠️ A SAVE MADE HERE LANDS HERE, ANCHOR AND ALL. Round 2's rule 2 still holds — no server action
+ * changed signature and no new action was written — and what the cutover changed is only where they
+ * RETURN: `ENTITLEMENTS` (app/admin/_redirects.ts) names this address, so `okEntitlements` /
+ * `failEntitlements` land back on the exact leave type that was being configured. That constant HAD to
+ * move rather than lean on the stub: those two helpers carry a `#type-<id>` fragment, and a fragment is
+ * never sent to the server, so a save routed through a redirect would arrive with nothing selected. The
+ * Rounds 2–4 preview note came off in the same commit.
  *
  * ⚠️ TWO PAGE-LEVEL SURFACES IA §3.1's TABLE NEVER LISTED, AND THIS SCREEN NEARLY LOST (r258 fix pass).
  * Both landed BEFORE the design's baseline (main@0c01befc) and the 32-function table was written without
@@ -61,12 +66,13 @@ import {
  *   · the "allowing a negative balance with no limit" list (r126 9861b8a4).
  * The area map and the tour anchor came across with them, for the reasons at their sites below.
  *
- * WHAT IS NOT HERE, and where it goes (IA §3.1, none of it dropped):
- *   · the company-wide Half-Day Deduction card and Shared Leave Groups — they are COMPANY / tenant
- *     rules, not properties of a leave type, and they land on Company rules in Round 3 (F4/F26, F3).
- *     Both are still live on the old screen meanwhile.
- *   · tab 5's read-only chain read-out (which chain reaches this type, its steps, its escalation) —
- *     Round 4, with the approval editor it reads from.
+ * WHAT IS NOT HERE, and where it IS (IA §3.1, none of it dropped):
+ *   · the company-wide Half-Day Deduction card and Shared Leave Groups are on Company rules
+ *     (`/admin/leave-config/company-rules`, F4/F26 and F3). They are a COMPANY and a TENANT rule, not
+ *     properties of a leave type — which is why one of them used to be drawn once per leave type. Their
+ *     three server actions were repointed at the new `COMPANY_RULES` constant in this same commit, so a
+ *     save returns to the screen the setting is actually on rather than to this list.
+ *   · tab 5's read-only chain read-out is here, and the chain EDITOR is Approval chains.
  */
 export default async function LeaveConfigTypesPage({
   searchParams,
@@ -191,15 +197,17 @@ export default async function LeaveConfigTypesPage({
         description={tTypes('pageDescription')}
         actions={
           <div className="flex items-center gap-3">
-            {/* IA §3.1 F5 — the header links. They point at TODAY'S addresses because that is where those
-                screens are until Round 3 builds their replacements and Round 5 repoints them. */}
-            <Link href="/admin/leave/entitlements/templates" className="text-sm underline">
+            {/* IA §3.1 F5 — the header links. r259: they resolve through the area map, which is the
+                module's ONE list of addresses, so a header link and the menu entry beside it can never
+                give two answers. Literals stood here through Rounds 2–4 (the screens were still at their
+                old addresses); the cutover moved the map and these followed it in the same commit. */}
+            <Link href={leaveConfigScreenHref('entitlementTables')} className="text-sm underline">
               {t('entitlementTablesAction')}
             </Link>
-            <Link href="/admin/leave/entitlements/archive" className="text-sm underline">
+            <Link href={leaveConfigScreenHref('entitlementArchive')} className="text-sm underline">
               {t('configurationRecordAction')}
             </Link>
-            <Link href="/admin/leave/entitlements/ledger-archive" className="text-sm underline">
+            <Link href={leaveConfigScreenHref('ledgerArchive')} className="text-sm underline">
               {t('balanceRecordAction')}
             </Link>
             {/* r242 3a3f5a2d — THE WAY IN THE REPORTER WENT LOOKING FOR, CARRIED ACROSS (r258 fix pass).
@@ -222,13 +230,8 @@ export default async function LeaveConfigTypesPage({
       {/* The area map, CARRIED ACROSS (r258 fix pass): without it this screen has no way to reach its
           sibling leave-config screens at all, which is a worse map than the one the old screen has.
           `current="leaveTypes"` because this IS that screen — the map names screens, not addresses, and
-          Round 5 repoints the entry here. ADDITIVE: everything below it is unchanged. */}
+          the cutover repointed the entry (and the sidebar row) here. */}
       <LeaveConfigMap current="leaveTypes" />
-      {/* Said out loud, because a screen that saves and then navigates somewhere else reads as broken.
-          Both halves are true only during Rounds 2–4 and the note goes with them at the cutover. */}
-      <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        {tTypes('previewNote')}
-      </p>
       <ErrorBanner message={error} />
 
       {/* Above the workspace on purpose: it answers "which of these can produce a balance at all", and

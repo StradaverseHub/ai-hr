@@ -1,7 +1,7 @@
 /**
  * Add Leave Type form — Leave Unit before Paid, Paid as a captioned Field (feedback dc3ec3c6).
  *
- * Reported defect: in the create-leave-type row (app/admin/leave/entitlements/page.tsx) the Paid tick-box sat
+ * Reported defect: in the create-leave-type row (app/admin/leave-config/types/page.tsx) the Paid tick-box sat
  * wedged between the Status and Leave Unit dropdowns, and it was the only control in the row without the small
  * grey caption above it (it used a bare inline <label>).
  *
@@ -23,7 +23,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
 
 /** Isolate the create-leave-type <form> (keyed by its action). The page contains other forms (and the string
  *  "leaveUnit" appears elsewhere, e.g. as a LeaveTypePanel prop), so a whole-file indexOf would pass whether

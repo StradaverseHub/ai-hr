@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
  * into each leave type's Custom Settings step (Leave Config → Leave Type → Custom Settings), beside that
  * type's Leave Year Type override, and the per-company Leave Cycle card was removed as a second way to
  * decide what that override already decides. This preserves old bookmarks and deep-links, forwarding to
- * the new canonical route. No guard here — the destination page enforces admin access; this stub only
+ * the new canonical route — `/admin/leave-config/types` since the a6fe37fc Round 5 cutover, repointed in
+ * the same commit that made `/admin/leave/entitlements` a stub, so this bookmark still arrives in one hop. No guard here — the destination page enforces admin access; this stub only
  * redirects (so it is intentionally NOT a function-access column, the fbdeee87 stub precedent). Query
  * string is preserved so an in-flight ?error= / ?toast= still surfaces at the destination.
  */
@@ -21,5 +22,5 @@ export default async function LeaveApplicationRulesRedirect({
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/leave/entitlements${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/leave-config/types${qs ? `?${qs}` : ''}`);
 }

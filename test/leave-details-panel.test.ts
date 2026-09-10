@@ -351,7 +351,9 @@ describe('ed17a4f9: the admin checklist is DERIVED from the panel, so the two ca
   });
 
   it('the admin checklist renders the GROUPS, not the flat key list', () => {
-    const src = read('/components/leave-type-panel.tsx');
+    const src = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+      .map((f) => read(f))
+      .join('\n');
     expect(src.includes('ESS_VIEW_CHECKLIST_GROUPS')).toBe(true);
     expect(src.includes('ESS_VIEW_COMPONENT_KEYS')).toBe(false);
     expect(src.includes("useTranslations('leave.breakdown')")).toBe(true);

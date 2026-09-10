@@ -140,7 +140,7 @@ describe('§1 4a1abc4a · clicking Edit is a client-side navigation, and the edi
     // redirect stub now and the screen is `/admin/leave-config/entitlement-tables`. The assertion is
     // stronger for following it — a stub can never grow a second editor, and the live page can.
     const mounts = [
-      'app/admin/leave/entitlements/page.tsx',
+      'app/admin/leave-config/types/page.tsx',
       'app/admin/leave-config/entitlement-tables/page.tsx',
       'app/admin/leave-config/types/page.tsx',
     ];

@@ -193,8 +193,11 @@ describe('4b0e76ae · openLeaveYearAction has EXACTLY ONE caller', () => {
 });
 
 describe('4b0e76ae · the Leave Year Configuration block is GONE from Custom Settings', () => {
-  const panel = () => read('components/leave-type-panel.tsx');
-  const entitlements = () => read('app/admin/leave/entitlements/page.tsx');
+  const panel = () =>
+    ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+      .map((f) => read(f))
+      .join('\n');
+  const entitlements = () => read('app/admin/leave-config/types/page.tsx');
 
   it('the panel no longer declares, destructures or renders the leaveYearSection slot', () => {
     const src = panel();
@@ -348,7 +351,7 @@ describe('4b0e76ae · the reset keeps the table, and the year list stops reading
   });
 
   it('the Run Earned Accrual selector now offers the shared computed range', () => {
-    const page = read('app/admin/leave/entitlements/page.tsx');
+    const page = read('app/admin/leave-config/types/page.tsx');
     expect(page).toContain('entitlementYearOptions(currentYear)');
     expect(page).toContain('leaveYears={earnedLeaveYears}');
     // The old fallback array built currentYear..+6 with no past years.

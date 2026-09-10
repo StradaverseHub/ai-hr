@@ -16,6 +16,10 @@ import { redirect } from 'next/navigation';
  *     globally mounted ToastFromQuery still shows the outcome at the destination;
  *   - the Leave Import page's back link.
  *
+ * a6fe37fc ROUND 5 (cutover) — REPOINTED at `/admin/leave-config/types`. `/admin/leave/entitlements` is
+ * itself a redirect stub now, and a stub whose destination is another stub delivers the bookmark through
+ * a hop that need not happen and is one edit away from a loop.
+ *
  * No guard here — the destination page enforces admin access; this stub only redirects, so it is
  * deliberately NOT a function-access column and `/admin/leave` was removed from lib/permissions.ts's
  * leaveConfig `routes` in the same commit (test/function-access.test.ts fails BOTH ways: a guarded
@@ -34,5 +38,5 @@ export default async function LeaveSummaryRedirect({
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/leave/entitlements${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/leave-config/types${qs ? `?${qs}` : ''}`);
 }
