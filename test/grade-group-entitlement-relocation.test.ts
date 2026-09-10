@@ -39,7 +39,7 @@
  * WHAT EACH GROUP OF CASES IS FOR:
  *   1. Static source — the editor is ABSENT from Entitlements and PRESENT on Approval. A mount is not
  *      something a behaviour test can see, and "absent" is the half a careless re-add would undo.
- *   2. The Promise.all arity check — app/admin/leave/entitlements/page.tsx's OWN comment warns that
+ *   2. The Promise.all arity check — app/admin/leave-config/types/page.tsx's OWN comment warns that
  *      removing a name from the destructure without its element (or the reverse) shifts every later
  *      variable by one slot, giving each one somebody else's value with no type error. That trap was
  *      live in this exact edit, so it is pinned rather than trusted.
@@ -61,10 +61,18 @@ import { createLeaveApprovalRule } from '../core/leave-approval-policy';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
-const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave/entitlements/page.tsx');
-const APPROVAL = path.join(ROOT, 'app/admin/leave/approval/page.tsx');
+const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave-config/types/page.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 9a65f808's property is that the Grade Groups
+ * editor does not live on the approval screen and its READS left with it; the approval screen moved to
+ * `/admin/leave-config/approval-chains` and the old address is a redirect stub, which reads nothing at
+ * all — so asserting the absence there would be true forever and would mean nothing.
+ */
+const APPROVAL = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
 /** 9a65f808 — the editor's third and current home: beside Job Grades on the Organisation tab. */
 const SYSTEM_LABELS = path.join(ROOT, 'app/admin/settings/system-labels/page.tsx');
+/** a6fe37fc Round 5 — the screen that absorbed the shared-group editor and the half-day card. */
+const COMPANY_RULES = path.join(ROOT, 'app/admin/leave-config/company-rules/page.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 const entitlementsSrc = fs.readFileSync(ENTITLEMENTS, 'utf8');
@@ -144,7 +152,12 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // Stated positively so an over-eager follow-up cleanup fails here rather than in production. The item
     // removed one card; entitlement configuration itself is untouched by design.
     expect(entitlementsCode).toContain('<LeaveTypeWorkspace');
-    expect(entitlementsCode).toContain('<LeaveSharedGroupConfig');
+    // a6fe37fc ROUND 5 — `<LeaveSharedGroupConfig` moved to Company rules, and the assertion follows it
+    // rather than being dropped. A shared leave group is a TENANT catalogue, not a property of a leave
+    // type; it sat at the foot of this screen for the same reason the half-day card did — that is where
+    // the code grew (IA §1.2/§2.0.3). What f12d77e5 cared about is that the editor still EXISTS on a real
+    // screen after a relocation, which is exactly what is checked here.
+    expect(stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'))).toContain('<LeaveSharedGroupConfig');
     // ee6b7c69 renamed this slot, and the rename IS the surface change: `entitlementTablesLink` held a
     // caption and a link to a separate screen; `entitlementTablesSection` holds the tables themselves,
     // filtered to the panel's leave type. Updated rather than loosened — the guard's job is to fail if the
@@ -157,12 +170,18 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // THE TRAP THIS EDIT WALKED INTO: this page's own comment warns that dropping a name from the
     // destructure without its element shifts every later variable by one slot — `sharedGroups` would
     // silently become the profile options, with no type error, because both sides are arrays.
+    // a6fe37fc ROUND 5 — `sharedGroups` left this destructure WITH the editor it fed, which is the very
+    // edit this case exists to police: drop a name without its element and every later variable shifts one
+    // slot, silently, because both sides are arrays. The expected shape is updated to the four that
+    // remain, and the arity + position assertions are unchanged — they are the guard.
     const { names, calls } = destructuredAwaitAll(entitlementsCode, 'const [types,');
-    expect(names).toEqual(['types', 'companies', 'grades', 'sharedGroups', 'profileOptionsActive']);
+    expect(names).toEqual(['types', 'companies', 'grades', 'profileOptionsActive']);
     expect(calls).toHaveLength(names.length);
     expect(calls[0]).toMatch(/^listLeaveTypes\(/);
-    expect(calls[names.indexOf('sharedGroups')]).toMatch(/^listLeaveSharedGroups\(/);
     expect(calls[names.indexOf('profileOptionsActive')]).toMatch(/^listAllProfileOptions\(/);
+    // …and the read went to the screen that now renders the editor, rather than being lost.
+    const companyRules = stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'));
+    expect(companyRules).toContain('listLeaveSharedGroups(');
   });
 });
 

@@ -173,7 +173,7 @@ describe('§C r224 · the three surfaces read the derivation rather than recompu
   const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
 
   it('the leave configuration landing screen flags each leave type in its own list', () => {
-    const page = read('app/admin/leave/entitlements/page.tsx');
+    const page = read('app/admin/leave-config/types/page.tsx');
     // Read from the SAME `configHealth` the card below the list already renders — a badge computed from a
     // second expression is how a list comes to flag a type the card calls healthy.
     expect(page).toContain('tablesReachNobody');
@@ -235,7 +235,7 @@ describe('§C r224 · the three surfaces read the derivation rather than recompu
   it('nothing in this stream creates an eligibility rule — the plan promised it would not', () => {
     // Which employees should receive which table is a policy decision, and guessing a criteria object
     // would silently widen or narrow who a table reaches. Every surface added here is read-only.
-    const page = read('app/admin/leave/entitlements/page.tsx');
+    const page = read('app/admin/leave-config/types/page.tsx');
     const card = read('components/leave/leave-config-health.tsx');
     for (const src of [page, card]) {
       expect(src).not.toContain('createEligibilityRule(');

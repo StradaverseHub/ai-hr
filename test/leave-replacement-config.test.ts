@@ -41,7 +41,15 @@ import { REGISTERED_ROUTES } from '../lib/permissions';
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-const PAGE_REL = 'app/admin/leave/replacement/page.tsx';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 296fc027's screen was ABSORBED: a replacement
+ * leave policy is a COMPANY rule, not a property of a leave type, so it now shares Company rules
+ * (`/admin/leave-config/company-rules`) with the half-day deduction, the encashment policy and the
+ * shared leave groups (IA §2.0.3). `/admin/leave/replacement` is a redirect stub. Every property this
+ * file guards — the four policy controls, the eligibility criteria, the company filter that must not
+ * touch the global scope cookie — is about the EDITOR, not the address, so it follows the editor.
+ */
+const PAGE_REL = 'app/admin/leave-config/company-rules/page.tsx';
 const TOIL_REL = 'app/admin/toil/page.tsx';
 const PICKER_REL = 'components/replacement-eligibility-picker.tsx';
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -55,11 +63,19 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   // ── The two guarantees carried over from the placeholder test ──────────────────────────────────────
   it('is still guarded by requireAdmin and still registered in the permission map', () => {
     expect(read(PAGE_REL)).toContain('requireAdmin()');
-    expect(REGISTERED_ROUTES.has('/admin/leave/replacement')).toBe(true);
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/company-rules')).toBe(true);
+    // The old address is a stub with no guard, which is why it left the registry with its page.
+    expect(REGISTERED_ROUTES.has('/admin/leave/replacement')).toBe(false);
+    const stub = read('app/admin/leave/replacement/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/company-rules');
   });
 
   it('BOTH routes stay registered — the move split one screen in two, it did not retire either', () => {
-    expect(REGISTERED_ROUTES.has('/admin/leave/replacement')).toBe(true);
+    // 296fc027 split CONFIGURATION from the ledger + settlement sweeps and gated them differently on
+    // purpose. a6fe37fc moved the configuration half again, to Company rules; /admin/toil is untouched
+    // and must stay reachable when the `toil` entitlement lapses.
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/company-rules')).toBe(true);
     expect(REGISTERED_ROUTES.has('/admin/toil')).toBe(true);
   });
 
@@ -69,9 +85,17 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // is re-made against the pack node that actually renders it.
     const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
     const hrefs = node.children.map((c) => c.href);
-    expect(hrefs).toContain('/admin/leave/replacement');
+    // a6fe37fc Round 5 — the ROW is now Company rules, the screen that absorbed this one, and it keeps
+    // the position the reporter's team reads. The order promise is what was made and it is unchanged.
+    expect(hrefs).toContain('/admin/leave-config/company-rules');
     const at = (href: string) => hrefs.indexOf(href);
-    expect(at('/admin/leave/replacement')).toBeGreaterThan(at('/admin/leave/payroll'));
+    // a6fe37fc Round 5 — the Payroll Related row this position was measured against is GONE (its two
+    // settings were never one subject and went to two different destinations). Measuring against a row
+    // that no longer exists would make this pass on `> -1` forever, so the anchor moves to the row that
+    // is now directly above: Approval chains. The promise — Company rules sits at the END of the leave
+    // config menu, where Replacement Leave was put — is what is asserted, and it is asserted twice.
+    expect(at('/admin/leave-config/company-rules')).toBeGreaterThan(at('/admin/leave-config/approval-chains'));
+    expect(at('/admin/leave-config/company-rules')).toBe(hrefs.length - 1);
     // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
     // STOOD HERE. The Audit row is retired into the one central Audit Trail, so there is no longer an
     // entry after Replacement for it to sit before; the position this item actually promised (after
@@ -185,7 +209,10 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   // deletion. Asserting the removal here as well as in the 1cf5b37c block above is deliberate — this is
   // the test that would otherwise be "fixed" by putting the link back.
   it('the legacy page still links HERE, and this page no longer links back', () => {
-    expect(read(TOIL_REL)).toContain('href="/admin/leave/replacement"');
+    // The link moved WITH the screen (a6fe37fc Round 5). Left at the old address it would still arrive,
+    // through the stub — but a link whose whole job is to say "configuration is over there" should name
+    // where it actually is.
+    expect(read(TOIL_REL)).toContain('href="/admin/leave-config/company-rules"');
     expect(read(PAGE_REL)).not.toContain('href="/admin/toil"');
   });
 

@@ -52,7 +52,12 @@ const page = read(NEW_PAGE);
 const readout = read(READOUT);
 const typesPage = read('app/admin/leave-config/types/page.tsx');
 const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
-/** The old screen, which this round must leave standing. Read, never written. */
+/**
+ * The old screen. Round 4 left it standing; a6fe37fc ROUND 5 (cutover) emptied it into a redirect stub,
+ * and the assertions below are re-pointed at that fact rather than deleted — "the editor is not
+ * duplicated" is still the property, and after the cutover it is stronger, because there is exactly one
+ * editor left instead of two.
+ */
 const oldApproval = read('app/admin/leave/approval/page.tsx');
 const policySrc = read('core/leave-approval-policy.ts');
 const consolidationSrc = read('core/leave-approval-consolidation.ts');
@@ -103,8 +108,12 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     ).not.toContain(ROUTE);
     // The key itself is never renamed (lib/permissions.ts: a key "may key stored role configs").
     expect(leaveApproval.screenKey).toBe('leaveApproval');
-    // …and the menu has NOT moved: the old screen is still what leaveApproval points at.
-    expect(leaveApproval.href).toBe('/admin/leave/approval');
+    // a6fe37fc ROUND 5 (cutover) — the menu HAS moved, and the href moved with it. Only `href` and
+    // `routes` ever move; the screen KEY above is what a stored role config is keyed on and is untouched.
+    expect(leaveApproval.href).toBe(ROUTE);
+    expect(leaveApproval.routes, 'the stub must have left the registry with its page').not.toContain(
+      '/admin/leave/approval',
+    );
   });
 
   it('calls the page guard the registry describes, and no other', () => {
@@ -141,23 +150,59 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     );
   });
 
-  it('is NOT on the leave config map — the menu moves at the Round 5 cutover, not now', () => {
+  it('IS on the leave config map now, at the new address, and the old one is off it', () => {
+    // Round 4 asserted the opposite ("the menu moves at the Round 5 cutover, not now"). This IS that
+    // cutover, so the case is inverted rather than dropped — both directions still fail loudly: a menu
+    // that never moved, and a menu that moved while the page was still live.
     const hrefs = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.href);
-    expect(hrefs).not.toContain(ROUTE);
-    // …and the old screen is still the one the map names.
-    expect(hrefs).toContain('/admin/leave/approval');
-    expect(leaveConfigScreenHref('approvalChain')).toBe('/admin/leave/approval');
+    expect(hrefs).toContain(ROUTE);
+    expect(hrefs).not.toContain('/admin/leave/approval');
+    expect(leaveConfigScreenHref('approvalChain')).toBe(ROUTE);
   });
 
-  it('renders the area map and the preview note, like every other screen in the module', () => {
+  it('renders the area map, and no longer calls itself a preview', () => {
     // Without the map a leave-config screen can reach no other leave-config screen at all (r258).
     expect(page).toContain('<LeaveConfigMap current="approvalChain" />');
-    // This screen SAVES — and every approval action redirects to `/admin/leave/approval`, so a save made
-    // here navigates to the old screen. The note is what makes that a known window rather than a bug.
-    expect(page).toContain('<LeaveConfigPreviewNote />');
-    expect(read('app/admin/leave-approval/actions.ts')).toContain(
-      "const PAGE = '/admin/leave/approval';",
+    // Round 4 required the preview note here because a save navigated to the screen this one replaces.
+    // It IS the screen now, so the note comes off — a real screen telling the administrator it is a
+    // preview is worse than no note.
+    expect(page).not.toContain('<LeaveConfigPreviewNote');
+    // ⚠️ STATED RATHER THAN GLOSSED: `app/admin/leave-approval/actions.ts` keeps its own private
+    // `PAGE = '/admin/leave/approval'` literal. The migration order's Round 5 names the redirect
+    // constants it moves (app/admin/_redirects.ts's five, and app/admin/actions.ts's LEAVE_REPLACEMENT)
+    // and this one is not among them, so it was left alone deliberately. A save still ARRIVES here: the
+    // old address is a stub that forwards the query string, so the ?toast= / ?error= reaches this screen
+    // through one extra hop. Asserted so the hop is a known, written-down cost rather than a discovery.
+    expect(read('app/admin/leave-approval/actions.ts')).toContain("const PAGE = '/admin/leave/approval';");
+    const stub = read('app/admin/leave/approval/page.tsx');
+    expect(stub).toContain(ROUTE);
+    // ⚠️ ASSERTED AS THE LOOP, NOT AS THE TOKEN — and this is the ONE stub where that matters most.
+    // The first version of this case checked for the string `URLSearchParams`, exactly the shape
+    // test/leave-config-round3.test.ts already proved walk-through-able for the other nine stubs:
+    // deleting the forwarding LOOP while leaving `const usp = new URLSearchParams();` behind passed
+    // tsc and the whole suite. `/admin/leave/approval` is not in round3's CUTOVER table (it is Round
+    // 4's screen, not Round 3's), so this file is the only place the hole can be closed.
+    //
+    // WHY IT IS LOAD-BEARING HERE ABOVE ALL: this is the only stub an action still redirects INTO.
+    // `PAGE` above is the target of 17 redirects in app/admin/leave-approval/actions.ts — 8 success
+    // `?toast=` (escalation settings saved, template created / updated / duplicated / activated /
+    // deleted, default flow set or cleared, assignment added or removed) and 9 `?error=` — and
+    // `ToastFromQuery` in app/layout.tsx renders them from the query string ALONE. A stub that stops
+    // forwarding does not 404 and does not fail a render: it silently drops every approval-chain
+    // confirmation AND every approval-chain error. That is the Phase-B #14 class this round exists to
+    // prevent. All three halves are checked: the params are read, they are carried, and the query is
+    // appended to the redirect.
+    expect(stub, "the approval stub does not READ the incoming params — every ?toast= and ?error= from actions.ts's 17 redirect sites is dropped").toMatch(
+      /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
     );
+    expect(stub, 'the approval stub does not carry the incoming params onto the destination').toMatch(
+      /usp\.set\(k, v\)/,
+    );
+    expect(stub, 'the approval stub does not append the query string to the redirect').toMatch(
+      /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+    );
+    // …and the redirect it builds is the destination one, not a bare literal that ignores `qs`.
+    expect(stub).toMatch(/redirect\(`\/admin\/leave-config\/approval-chains\$\{qs \? `\?\$\{qs\}` : ''\}`\)/);
   });
 });
 
@@ -412,29 +457,63 @@ describe('a6fe37fc R4 · tab 5 answers its own title, read-only (IA §2.2)', () 
 // 5. Nothing is removed this round
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('a6fe37fc R4 · this round adds and removes NOTHING', () => {
+describe('a6fe37fc R5 · the editor exists at exactly ONE address, and the other one still answers', () => {
   it.each([
     ['the template manager', '<ApprovalTemplateManager'],
     ['the assignment manager', '<ApprovalAssignmentManager'],
     ['the escalation editor', '<LeaveEscalationEditor'],
     ['the area map', '<LeaveConfigMap current="approvalChain" />'],
-  ])('%s is still live on the old approval screen', (_what, needle) => {
-    expect(oldApproval).toContain(needle);
-  });
-
-  it('the old page is untouched by this round — still a full screen, not a stub', () => {
-    expect(oldApproval.includes('redirect('), 'the old approval page became a stub — that is Round 5').toBe(
-      false,
+  ])('%s is live at the new address, and nowhere else', (_what, needle) => {
+    // Round 4 read "…is still live on the OLD approval screen", because that round removed nothing. The
+    // cutover closes the window: each of these is on the new page and gone from the old one. Both halves
+    // are asserted, so a cutover that emptied the page without the editor arriving fails here.
+    expect(page, `${_what} did not arrive at ${ROUTE}`).toContain(needle);
+    expect(oldApproval, `${_what} is still on the old screen — two editors over the same rows`).not.toContain(
+      needle,
     );
-    expect(oldApproval.length).toBeGreaterThan(500);
-    // And its nav entry is still the one the customer clicks.
-    expect(read('packs/leave/index.ts')).toContain("href: '/admin/leave/approval'");
   });
 
-  it('the old screen does NOT gain the read-out — the restoration lands at the new address only', () => {
-    // Adding it to both would put two copies of the same table in front of the administrator during the
-    // Rounds 4–5 window, which is the "two entries for one job" the map exemption exists to avoid.
+  it('the old page is a redirect stub aimed at the new address, and no bookmark 404s', () => {
+    expect(oldApproval).toContain('redirect(');
+    expect(oldApproval).toContain(ROUTE);
+    // A stub carries no page guard — which is what lets its route leave lib/permissions.ts.
+    expect(/scopedSession|requireAdmin|scopedAdmin/.test(oldApproval)).toBe(false);
+    // And the nav entry the customer clicks moved with it.
+    expect(read('packs/leave/index.ts')).toContain("href: '/admin/leave-config/approval-chains'");
+    expect(read('packs/leave/index.ts')).not.toContain("href: '/admin/leave/approval'");
+    // The OLDER stub (0d147b78, app/admin/leave-approval/page.tsx) was repointed in the same commit
+    // rather than left chaining through this one.
+    const olderStub = read('app/admin/leave-approval/page.tsx');
+    expect(olderStub).toContain(ROUTE);
+    // …and it forwards, which it did NOT until r261's verify pass. It was the one leave address of the
+    // eleven that stripped the query string outright — no `searchParams` parameter, no loop, a bare
+    // `redirect('/admin/leave-config/approval-chains')` — so a bookmarked link carrying `?company=`
+    // opened on the wrong company and a `?toast=` was swallowed. Pinned as the loop rather than the
+    // token, for the same reason the case above is: deleting the loop and leaving the declaration
+    // behind passes tsc and everything else.
+    expect(olderStub, 'the 0d147b78 stub does not READ the incoming params').toMatch(
+      /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
+    );
+    expect(olderStub, 'the 0d147b78 stub does not carry them onto the destination').toMatch(/usp\.set\(k, v\)/);
+    expect(olderStub, 'the 0d147b78 stub does not append the query string to the redirect').toMatch(
+      /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+    );
+    // A chain of two stubs is what the repoint above removed; assert it did not come back. Over the
+    // STRIPPED source — the r134 rule: this stub's header names the address it used to point at, and an
+    // absence check over the raw file would report a correct, honest stub as wrong.
+    expect(stripComments(olderStub), 'the 0d147b78 stub chains through the other stub again').not.toContain(
+      '/admin/leave/approval',
+    );
+  });
+
+  it('the read-out lands at the new address only — it was never copied onto the old screen', () => {
+    // Round 4's reasoning, unchanged: two copies of the same table in front of one administrator is the
+    // "two entries for one job" the map exemption existed to avoid. The stub cannot carry one either.
     expect(oldApproval).not.toContain('UntemplatedApprovalRules');
+    expect(oldApproval).not.toContain('<ApprovalRuleScopes');
+    // …and it IS at the new address: the IA §4.1 restoration is the one genuinely new thing Round 4
+    // added, so a cutover that lost it would be a regression the stub could hide.
+    expect(page).toContain('<ApprovalRuleScopes');
   });
 });
 

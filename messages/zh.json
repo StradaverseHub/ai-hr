@@ -245,8 +245,8 @@
     "leaveGenerate": "生成假期额度",
     "leaveApprovalWorkflow": "审批流程",
     "leaveApproval": "审批链",
-    "leavePayroll": "薪资相关",
     "leaveReplacement": "替假",
+    "leaveCompanyRules": "公司规则",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -6616,7 +6616,6 @@
       "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
     },
     "leave": {
-      "pageTitle": "休假配置",
       "pageDescription": "休假类型及其应享政策",
       "typesSectionTitle": "休假类型设置",
       "workspaceTypeListLabel": "休假类型",
@@ -8353,7 +8352,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "假期额度配置记录",
       "pageDescription": "当前已配置的福利方案与公司 / 职级额度规则的只读记录。",
       "intro": "这是当前所有额度数字的书面记录，在任何内容可被清除之前生成。每一行显示配置了什么、适用于谁、数值是多少，以便直接从这里读取数字并重新录入新的额度表。",
       "notAnUndo": "这是供重新录入的清单，不是撤销按钮。恢复旧配置意味着重新输入一遍。",
@@ -8379,7 +8377,6 @@
       "allGrades": "全部职级"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "病假与住院假余额记录",
       "pageDescription": "一次性重置所删除的每一条病假和住院假余额记录的只读记录，保留下来以确保旧数据不会遗失。",
       "intro": "这是在病假和住院假重置删除任何内容之前立即留存的书面记录。每一行显示记录属于谁、属于哪种假期类型、价值多少天、生效日期以及产生的原因。",
       "notAnUndo": "这是供查阅的记录，不是撤销按钮。此处列出的记录已被删除，若要恢复必须重新录入。",
@@ -8601,7 +8598,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "一种休假类型，五个标签页，按决策顺序排列。",
-      "previewNote": "这是新的休假类型页面，与菜单当前链接的页面并行构建。两者保存到相同的记录；在正式切换之前，在此保存后会返回当前页面。",
       "tabsLabel": "休假类型配置标签页",
       "tab": {
         "identity": "休假类型",
@@ -8618,13 +8614,9 @@
         "approvers": "属于休假类型本身的审批设置。审批链在“审批链”页面创建和分配。"
       }
     },
-    "leaveConfigPreview": {
-      "note": "这是新的休假配置页面，与菜单目前链接的页面并行运行。两者保存到同一份记录；在正式切换之前，在此保存后会返回到当前页面。"
-    },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
-      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
-      "introTwoEditors": "其中每一项目前仍可在其原有页面上修改。两个页面写入同一份记录，旧页面将在切换时移除。"
+      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",
@@ -9809,7 +9801,6 @@
     }
   },
   "leaveApproval": {
-    "title": "请假审批链",
     "description": "为每家公司选择由谁审批请假以及审批顺序。",
     "emptyScope": "您的范围内没有公司。",
     "chain": "审批顺序",

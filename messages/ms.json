@@ -245,8 +245,8 @@
     "leaveGenerate": "Jana Kelayakan",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
     "leaveApproval": "Rantaian kelulusan",
-    "leavePayroll": "Berkaitan Gaji",
     "leaveReplacement": "Cuti Ganti",
+    "leaveCompanyRules": "Peraturan syarikat",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
     "payrollGuide": "Panduan Aliran Kerja",
@@ -6616,7 +6616,6 @@
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {
-      "pageTitle": "Konfigurasi cuti",
       "pageDescription": "Jenis cuti dan dasar kelayakannya",
       "typesSectionTitle": "Tetapan jenis cuti",
       "workspaceTypeListLabel": "Jenis cuti",
@@ -8353,7 +8352,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Rekod konfigurasi kelayakan",
       "pageDescription": "Rekod baca sahaja bagi Skim Faedah dan peraturan kelayakan syarikat / gred yang dikonfigurasikan hari ini.",
       "intro": "Ini ialah rekod bertulis bagi setiap angka kelayakan yang dikonfigurasikan sekarang, diambil sebelum apa-apa boleh dikosongkan. Setiap baris menunjukkan apa yang ditetapkan, kepada siapa ia dikenakan dan nilainya, supaya angka itu boleh dibaca di sini dan ditaip semula ke dalam jadual kelayakan baharu.",
       "notAnUndo": "Ini ialah senarai untuk ditaip semula, bukan butang buat asal. Memulihkan tetapan lama bermakna memasukkannya semula.",
@@ -8379,7 +8377,6 @@
       "allGrades": "Semua gred"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Rekod baki Cuti Sakit & Kemasukan Hospital",
       "pageDescription": "Rekod baca sahaja bagi setiap rekod baki Cuti Sakit dan Cuti Kemasukan Hospital yang dibuang oleh set semula sekali sahaja, disimpan supaya angka lama tidak hilang.",
       "intro": "Ini ialah rekod bertulis yang diambil sejurus sebelum set semula Cuti Sakit dan Cuti Kemasukan Hospital membuang apa-apa. Setiap baris menunjukkan pemegang rekod, jenis cuti berkenaan, berapa hari nilainya, tarikh ia berkuat kuasa dan sebab ia wujud.",
       "notAnUndo": "Ini rekod untuk dibaca, bukan butang buat asal. Baris di sini telah dibuang dan untuk mengembalikannya ia perlu dimasukkan semula.",
@@ -8601,7 +8598,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "Satu jenis cuti, lima tab, mengikut susunan keputusan dibuat.",
-      "previewNote": "Ini skrin Jenis cuti yang baharu, dibina bersebelahan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, simpanan di sini akan membawa anda kembali ke skrin semasa.",
       "tabsLabel": "Tab konfigurasi jenis cuti",
       "tab": {
         "identity": "Jenis cuti",
@@ -8618,13 +8614,9 @@
         "approvers": "Tetapan kelulusan yang menjadi milik jenis cuti ini sendiri. Rantaian kelulusan dibina dan diumpukkan pada skrin Rantaian kelulusan."
       }
     },
-    "leaveConfigPreview": {
-      "note": "Ini skrin Konfigurasi Cuti yang baharu, dibina seiring dengan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, penyimpanan di sini akan membawa anda kembali ke skrin semasa."
-    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
-      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
-      "introTwoEditors": "Setiap satu daripadanya masih boleh diubah pada skrin tempatnya berada hari ini. Kedua-dua skrin menulis ke rekod yang sama, dan skrin lama akan dibuang pada pertukaran nanti."
+      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",
@@ -9809,7 +9801,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Rantaian Kelulusan Cuti",
     "description": "Pilih siapa yang meluluskan cuti, dan dalam susunan apa, bagi setiap syarikat.",
     "emptyScope": "Tiada syarikat dalam skop anda.",
     "chain": "Susunan kelulusan",

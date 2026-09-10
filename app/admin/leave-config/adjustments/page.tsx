@@ -17,13 +17,14 @@ import {
   previewLeaveAdjustmentAction,
   reverseLeaveAdjustmentAction,
 } from '../../leave/adjustments/actions';
-import { LeaveConfigPreviewNote } from '../preview-note';
 
 /**
- * a6fe37fc ROUND 3 — ADJUSTMENTS at its new address (`/admin/leave-config/adjustments`).
+ * a6fe37fc — ADJUSTMENTS (`/admin/leave-config/adjustments`).
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/adjustments` is untouched, still registered and still what
- * the menu links to; Round 5 empties that page and repoints its address here.
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/adjustments` is an unguarded
+ * redirect stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, and both menus name
+ * this address — the sidebar fly-out row and the area map's `adjustments` entry. The stub is never
+ * deleted; the reporter's bookmarks are why it exists.
  *
  * ⚠️ THE FOUR-STEP FLOW IS NOT RE-IMPLEMENTED (IA §2.3). `AdjustmentForm` is the SAME client component
  * the old page mounts (① Leave Type · ② Employee Selection · ③ Adjustment Details · ④ Review & Process),
@@ -43,8 +44,9 @@ import { LeaveConfigPreviewNote } from '../preview-note';
  * are deliberately not spelled out here: a source-scanning guard does not strip comments, and prose
  * explaining a rule that trips the guard enforcing it is a guard people delete — rule 27.)
  *
- * A SAVE MADE HERE LANDS ON THE OLD SCREEN — see `../preview-note.tsx`. The three actions redirect to the
- * `ADJUSTMENTS` module constant, which still names `/admin/leave/adjustments` until Round 5.
+ * A SAVE MADE HERE LANDS HERE. The three actions redirect to the `ADJUSTMENTS` module constant
+ * (app/admin/_redirects.ts), repointed at this address in the same commit that emptied the old page, so
+ * the toast carrying the two counts arrives on the screen the operator processed the batch on.
  *
  * SERVER COMPONENT. Everything interactive lives in `AdjustmentForm`, which receives only serialisable
  * props — r124 broke this tab in production by passing a translator closure across that boundary, and
@@ -93,7 +95,6 @@ export default async function LeaveConfigAdjustmentsPage({
       <PageHeader title={await leaveConfigScreenTitle('adjustments')} description={t('pageDescription')} />
       {/* `current="adjustments"` because this IS that screen — the map names screens, not addresses. */}
       <LeaveConfigMap current="adjustments" />
-      <LeaveConfigPreviewNote />
       <ErrorBanner message={error} />
 
       <Card>

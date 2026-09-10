@@ -12,16 +12,42 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-/** The Leave Type configuration workspace (General / Condition / Entitlement / Custom Setting steps). */
-export const ENTITLEMENTS = '/admin/leave/entitlements';
-/** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts. */
-export const ADJUSTMENTS = '/admin/leave/adjustments';
-/** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts. */
-export const GENERATE = '/admin/leave/generate';
+/**
+ * The Leave Type configuration workspace.
+ *
+ * a6fe37fc ROUND 5 (cutover) — REPOINTED at `/admin/leave-config/types`, and the parenthetical that used
+ * to name "General / Condition / Entitlement / Custom Setting steps" is gone with the steps themselves:
+ * the workspace is five TABS on the leave type now (IA §2), and `components/leave-type-panel.tsx` was
+ * deleted in this same commit. Every leave-TYPE save returns here, including the two helpers below that
+ * carry the `#type-<id>` anchor — which is why this constant had to move rather than lean on the stub: a
+ * fragment is never sent to the server, so a save routed through a redirect would arrive with no leave
+ * type selected.
+ */
+export const ENTITLEMENTS = '/admin/leave-config/types';
+/**
+ * a6fe37fc ROUND 5 (cutover) — COMPANY RULES, the destination the company- and tenant-wide leave settings
+ * were absorbed into (IA §2.0.3): the half-day full deduction, the shared leave groups and the encashment
+ * policy. It is a NEW constant rather than a reuse of ENTITLEMENTS, and the distinction is the point —
+ * those three writes used to return to the leave TYPE screen because that is where their cards happened
+ * to be drawn, and after the cutover they are not on it. Returning them to ENTITLEMENTS would leave an
+ * administrator who just saved a company rule looking at the leave type list, wondering whether it saved.
+ */
+export const COMPANY_RULES = '/admin/leave-config/company-rules';
+/** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
+export const ADJUSTMENTS = '/admin/leave-config/adjustments';
+/** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts.
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
+export const GENERATE = '/admin/leave-config/generate';
 /** 6e9a126e release two — the Entitlement Tables + Employee Eligibility editor (the reporter's steps 1
  *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
- *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them. */
-export const ENTITLEMENT_TEMPLATES = '/admin/leave/entitlements/templates';
+ *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them.
+ *
+ *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module. It named `/admin/leave/entitlements/templates`
+ *  until that page became a redirect stub; a save would still have ARRIVED through the stub, but through a
+ *  wasted hop, and a redirect constant naming an address that is no longer a screen is a statement about
+ *  where a screen lives that has stopped being true (the LEAVE_APPROVAL note below says the same thing). */
+export const ENTITLEMENT_TEMPLATES = '/admin/leave-config/entitlement-tables';
 /**
  * 9a65f808 — System Labels → Organisation, and the home of the Grade Groups editor.
  *

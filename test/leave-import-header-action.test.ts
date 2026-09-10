@@ -16,30 +16,48 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const entitlementsPage = read('/app/admin/leave/entitlements/page.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED.
+ *
+ * e8f2398f's property is "the way into the importer is a PageHeader action button, not a standalone
+ * signpost Card". Round 5 moved Import leave data to `/admin/leave-config/import` and put the button's
+ * href through the area map (`leaveConfigScreenHref('importLeaveData')`), so a literal address is no
+ * longer the right thing to assert — the map IS the address now, and asserting a literal would re-create
+ * the two-answers defect r259 found. Both leave TYPE screens are checked while both exist: the old page
+ * comes out in its own commit, and this list shrinks with it.
+ */
+const LEAVE_TYPE_PAGES = ['/app/admin/leave-config/types/page.tsx'] as const;
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 // Keys of the removed standalone Card — pruned everywhere.
 const PRUNED_KEYS = ['importTitle', 'importHelp', 'importLink'] as const;
 
 describe('e8f2398f: Import is a PageHeader action button', () => {
-  it('renders a btnPrimary Link to /admin/leave/import inside the PageHeader actions slot', () => {
+  it.each(LEAVE_TYPE_PAGES)('%s puts the import link in the PageHeader actions slot', (rel) => {
     // The header carries an actions slot with the import link, labelled by the importAction key.
-    const header = entitlementsPage.match(/<PageHeader[\s\S]*?\/>/)?.[0] ?? '';
+    const header = read(rel).match(/<PageHeader[\s\S]*?\/>/)?.[0] ?? '';
     expect(header).toMatch(/actions=\{/);
-    expect(header).toMatch(/<Link href="\/admin\/leave\/import" className=\{btnPrimary\}>/);
+    expect(header).toMatch(/<Link href=\{leaveConfigScreenHref\('importLeaveData'\)\} className=\{btnPrimary\}>/);
     expect(header).toMatch(/\{t\('importAction'\)\}/);
   });
 
-  it('drops the standalone import section from the page body', () => {
-    for (const key of PRUNED_KEYS) expect(entitlementsPage.includes(key)).toBe(false);
-    // Exactly ONE rendered link to the importer remains — the header action.
-    const links = entitlementsPage.match(/href="\/admin\/leave\/import"/g) ?? [];
+  it.each(LEAVE_TYPE_PAGES)('%s drops the standalone import section from the page body', (rel) => {
+    const page = read(rel);
+    for (const key of PRUNED_KEYS) expect(page.includes(key)).toBe(false);
+    // Exactly ONE rendered way into the importer remains — the header action.
+    const links = page.match(/href=\{leaveConfigScreenHref\('importLeaveData'\)\}/g) ?? [];
     expect(links).toHaveLength(1);
+    // …and none of them is a literal that could disagree with the menu (r259).
+    expect(page.match(/href="\/admin\/leave(-config)?\/import"/g) ?? []).toHaveLength(0);
   });
 
-  it('leaves the import flow itself untouched (the importer page still exists)', () => {
-    expect(() => read('/app/admin/leave/import/page.tsx')).not.toThrow();
+  it('leaves the import flow itself untouched — the importer page still exists, at its new address', () => {
+    expect(() => read('/app/admin/leave-config/import/page.tsx')).not.toThrow();
+    // And the old address still ANSWERS: it is a redirect stub, never deleted, because the reporter's
+    // bookmarks are the reason the stubs exist (migration order → Round 5/6).
+    const stub = read('/app/admin/leave/import/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/import');
   });
 });
 

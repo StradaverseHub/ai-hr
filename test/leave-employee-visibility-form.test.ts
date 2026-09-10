@@ -49,7 +49,16 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const panel = read('components/leave-type-panel.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2). The panel became three files, so what this guard reads is
+ * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
+ * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
+ */
+const panel = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+  .map((f) => read(f))
+  .join('\n');
 const actions = read('app/admin/actions.ts');
 
 /** Strip block + line comments. Every assertion about what the CODE does runs on this: the comments beside

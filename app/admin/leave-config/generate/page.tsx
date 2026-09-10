@@ -13,13 +13,14 @@ import { GenerateForm } from '@/components/leave/generate-form';
 import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import { openLeaveYearAction } from '../../actions';
 import { previewLeaveGenerationAction } from '../../leave/generate/actions';
-import { LeaveConfigPreviewNote } from '../preview-note';
 
 /**
- * a6fe37fc ROUND 3 — GENERATE ENTITLEMENT at its new address (`/admin/leave-config/generate`).
+ * a6fe37fc — GENERATE ENTITLEMENT (`/admin/leave-config/generate`).
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/generate` is untouched, still registered and still what the
- * menu links to; Round 5 empties that page and repoints its address here.
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/generate` is an unguarded redirect
+ * stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, and both menus name this
+ * address — the sidebar fly-out row and the area map's `generateEntitlement` entry. The stub is never
+ * deleted; the reporter's bookmarks are why it exists.
  *
  * ⚠️ THE FIVE-STEP WIZARD IS NOT RE-IMPLEMENTED (IA §2.3). `GenerateForm` is the SAME client component
  * the old page mounts, driven by the SAME two server actions — `openLeaveYearAction`, which is still the
@@ -43,8 +44,10 @@ import { LeaveConfigPreviewNote } from '../preview-note';
  * `leave_year_config` was emptied by migration 0385 and every writer to it deleted, so reading it would
  * render this dropdown permanently empty and permanently unfillable (the stale-anchor trap 4b0e76ae hit).
  *
- * A SAVE MADE HERE LANDS ON THE OLD SCREEN — see `../preview-note.tsx`. `openLeaveYearAction` redirects
- * to the `GENERATE` module constant, which still names `/admin/leave/generate` until Round 5.
+ * A SAVE MADE HERE LANDS HERE. `openLeaveYearAction` redirects to the `GENERATE` module constant
+ * (app/admin/_redirects.ts), which was repointed at this address in the same commit that emptied the old
+ * page — so the grant counts and any `?error=` arrive on the screen the operator pressed the button on,
+ * which is what the Round 3 preview note existed to apologise for. The note is gone with the apology.
  *
  * SERVER COMPONENT. Everything interactive lives in `GenerateForm`, which receives only serialisable
  * props — r123/r124 broke screens in production by passing a server translator CLOSURE across that
@@ -100,7 +103,6 @@ export default async function LeaveConfigGeneratePage({
       {/* `current="generateEntitlement"` because this IS that screen — the map names screens, not
           addresses, and Round 5 repoints the entry here. */}
       <LeaveConfigMap current="generateEntitlement" />
-      <LeaveConfigPreviewNote />
       <ErrorBanner message={error} />
 
       <Card>

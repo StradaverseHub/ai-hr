@@ -67,7 +67,10 @@ function sources(dirs: string[]): string[] {
 const FILES = [
   ...sources(['app/leave', 'app/admin/leave', 'components/leave']),
   path.join(ROOT, 'components/leave-duration-fields.tsx'),
-  path.join(ROOT, 'components/leave-type-panel.tsx'),
+  // a6fe37fc Round 5 — the panel became the three files of the new leave TYPE screen.
+  path.join(ROOT, 'app/admin/leave-config/types/page.tsx'),
+  path.join(ROOT, 'app/admin/leave-config/types/leave-type-tabs.tsx'),
+  path.join(ROOT, 'app/admin/leave-config/types/leave-type-sub-forms.tsx'),
   path.join(ROOT, 'components/leave-sub-step-bar.tsx'),
   // 38f1fd40 — this file was NOT in the original list, and the repo's own i18n-coverage guard caught what
   // that omission let through: deleting the festive key block also deleted three generic multi-select

@@ -35,8 +35,24 @@ describe('a6fe37fc — the leave configuration map', () => {
   });
 
   it('leaves the retired redirect stubs off the map', () => {
-    // df00b85f, 1e4eb8af and f1b994e3 retired these. They keep bookmarks working and are NOT screens.
-    const stubs = ['/admin/leave', '/admin/leave/application-rules', '/admin/leave/audit'];
+    // df00b85f, 1e4eb8af and f1b994e3 retired the first three; a6fe37fc Round 5 added ten more, one per
+    // commit. They keep bookmarks working and are NOT screens — listing a redirect as a destination is
+    // how a menu starts describing screens that do not exist. None of the fourteen is ever deleted.
+    const stubs = [
+      '/admin/leave',
+      '/admin/leave/application-rules',
+      '/admin/leave/audit',
+      '/admin/leave/entitlements',
+      '/admin/leave/entitlements/templates',
+      '/admin/leave/entitlements/archive',
+      '/admin/leave/entitlements/ledger-archive',
+      '/admin/leave/adjustments',
+      '/admin/leave/generate',
+      '/admin/leave/import',
+      '/admin/leave/payroll',
+      '/admin/leave/replacement',
+      '/admin/leave/approval',
+    ];
     const listed = mapItems.filter((i) => stubs.includes(i.href)).map((i) => i.href);
     expect(listed).toEqual([]);
   });
@@ -65,15 +81,37 @@ describe('a6fe37fc — the leave configuration map', () => {
     // IS on the map and this filter matches nothing. Each new screen's own shape test pins that it is
     // deliberately absent (test/leave-config-types-tabs.test.ts for the first of them), so the absence is
     // asserted somewhere rather than merely tolerated here.
-    const NEW_MODULE_PREFIX = '/admin/leave-config/';
+    // ⚠️ THE EXEMPTION RETIRED AT THE ROUND 5 CUTOVER, EXACTLY AS IT SAID IT WOULD: "it disappears when
+    // Round 5 moves the hrefs, at which point every `/admin/leave-config/` route IS on the map and this
+    // filter matches nothing." The filter matched nothing — and then the old module emptied too, so the
+    // non-exempt half went to zero and the non-vacuity assertion below it went red. That is the exemption
+    // asking to be removed rather than a defect, so it is removed and the case becomes the STRONGER thing
+    // it was always a placeholder for: every leaveConfig route is on the menu, full stop.
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     const onMap = new Set(mapItems.map((i) => i.href));
-    const missing = leaveConfig.routes
-      .filter((r) => !r.startsWith(NEW_MODULE_PREFIX))
-      .filter((r) => !onMap.has(r));
-    expect(missing).toEqual([]);
-    // …and the old module is still complete: every screen the map is supposed to reach is registered.
-    expect(leaveConfig.routes.filter((r) => !r.startsWith(NEW_MODULE_PREFIX)).length).toBeGreaterThan(0);
+    const missing = leaveConfig.routes.filter((r) => !onMap.has(r));
+    expect(
+      missing,
+      'a route on the leaveConfig screen key that the menu never reaches is a screen nobody can find — ' +
+        'the defect a6fe37fc exists to fix',
+    ).toEqual([]);
+    // Non-vacuity, asserted on the module that is actually live: the whole new module is registered.
+    expect(leaveConfig.routes.length).toBeGreaterThan(5);
+    expect(leaveConfig.routes.every((r) => r.startsWith('/admin/leave-config/'))).toBe(true);
+    // …and the ten old addresses are ALL off the registry, because every one of them is a stub now.
+    for (const stub of [
+      '/admin/leave/entitlements',
+      '/admin/leave/entitlements/templates',
+      '/admin/leave/entitlements/archive',
+      '/admin/leave/entitlements/ledger-archive',
+      '/admin/leave/adjustments',
+      '/admin/leave/generate',
+      '/admin/leave/import',
+      '/admin/leave/payroll',
+      '/admin/leave/replacement',
+    ]) {
+      expect(leaveConfig.routes, `${stub} is a redirect stub and must not be registered`).not.toContain(stub);
+    }
   });
 
   it('groups the screens by what the administrator is doing', () => {

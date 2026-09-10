@@ -245,8 +245,8 @@
     "leaveGenerate": "Generate Entitlement",
     "leaveApprovalWorkflow": "Approval Workflow",
     "leaveApproval": "Approval chain",
-    "leavePayroll": "Payroll Related",
     "leaveReplacement": "Replacement Leave",
+    "leaveCompanyRules": "Company rules",
     "holidays": "Holidays",
     "payroll": "Payroll",
     "payrollGuide": "Workflow Guide",
@@ -6616,7 +6616,6 @@
       "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },
     "leave": {
-      "pageTitle": "Leave configuration",
       "pageDescription": "Leave types and their entitlement policies",
       "typesSectionTitle": "Leave type settings",
       "workspaceTypeListLabel": "Leave types",
@@ -8353,7 +8352,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Entitlement configuration record",
       "pageDescription": "A read-only record of the Benefit Scheme and company / grade entitlement rules configured today.",
       "intro": "This is the written record of every entitlement figure currently configured, taken before anything can be cleared. Each row shows what was set up, who it applied to and what it was worth, so the figures can be read off here and retyped into the new entitlement tables rather than remembered.",
       "notAnUndo": "This is a listing to retype from, not an undo button. Restoring the old setup means entering it again.",
@@ -8379,7 +8377,6 @@
       "allGrades": "All grades"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Medical & Hospitalisation balance record",
       "pageDescription": "A read-only record of every Medical Leave and Hospitalisation Leave balance record removed by the one-off reset, kept so the old figures are never lost.",
       "intro": "This is the written record taken immediately before the Medical Leave and Hospitalisation Leave reset removed anything. Each row shows who held the record, which leave type it belonged to, how many days it was worth, the date it took effect and why it was there.",
       "notAnUndo": "This is a record to read from, not an undo button. The rows listed here were removed and putting them back means entering them again.",
@@ -8601,7 +8598,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "One leave type, five tabs, in the order the decisions are made.",
-      "previewNote": "This is the new Leave types screen, built alongside the one the menu still links to. Both save to the same records, and until the changeover a save made here returns you to the current screen.",
       "tabsLabel": "Leave type configuration tabs",
       "tab": {
         "identity": "The leave type",
@@ -8618,13 +8614,9 @@
         "approvers": "The approval settings that belong to the leave type itself. Approval chains are built and assigned on the Approval chain screen."
       }
     },
-    "leaveConfigPreview": {
-      "note": "This is a new Leave configuration screen, built alongside the one the menu still links to. Both save to the same records, and until the changeover a save made here returns you to the current screen."
-    },
     "leaveConfigCompanyRules": {
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
-      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
-      "introTwoEditors": "Each of them can still be changed on the screen it is on today. Both screens write the same record, and the older one is removed at the changeover."
+      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",
@@ -9809,7 +9801,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Leave Approval Chain",
     "description": "Choose who signs off on leave, and in what order, for each company.",
     "emptyScope": "No companies in your scope.",
     "chain": "Approval order",

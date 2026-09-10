@@ -36,7 +36,7 @@
  *      (test/function-access.test.ts fails both ways); a new route ON the map before Round 5 would put two
  *      entries for one job in front of the administrator.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -91,7 +91,49 @@ type ScreenKey = keyof typeof SCREENS_BUILT;
 const KEYS = Object.keys(SCREENS_BUILT) as ScreenKey[];
 const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])) as Record<ScreenKey, string>;
 
-/** The old screens, which this round must leave standing. Read, never written. */
+/**
+ * a6fe37fc ROUND 5 (cutover) — THE ONE TABLE THIS FILE NOW TURNS ON, AND THE REASON IT IS A TABLE.
+ *
+ * Round 3 built seven screens ALONGSIDE the ones they replace and this file pinned that nothing moved.
+ * Round 5 is the opposite act and it is deliberately **one commit per screen, ten times** (migration
+ * order → Round 5): the map entry, the inbound links, the permission route, the private title key and
+ * the emptying of the old page all land together for ONE screen, and the replay runs either side of it.
+ *
+ * So the round-3 assertions are not deleted — they are re-pointed at a switch. `cutOver: false` still
+ * asserts exactly what Round 3 asserted (old screen live, on the menu, registered, new screen carrying
+ * the preview note); `cutOver: true` asserts the cutover actually happened for that screen and happened
+ * WHOLE — the old page is a redirect stub aimed at `to`, its route has left lib/permissions.ts, the map
+ * names the new address, and the preview note is gone because the screen is no longer a preview.
+ *
+ * Flipping one line is the whole diff of a cutover commit here, which is what makes a half-done cutover
+ * (menu moved, route still registered) fail rather than pass quietly.
+ */
+const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
+  leaveTypes: { to: '/admin/leave-config/types', cutOver: true },
+  templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
+  payroll: { to: '/admin/leave-config/company-rules', cutOver: true },
+  replacement: { to: '/admin/leave-config/company-rules', cutOver: true },
+  generate: { to: '/admin/leave-config/generate', cutOver: true },
+  adjustments: { to: '/admin/leave-config/adjustments', cutOver: true },
+  import: { to: '/admin/leave-config/import', cutOver: true },
+  archive: { to: '/admin/leave-config/records/entitlement', cutOver: true },
+  ledgerArchive: { to: '/admin/leave-config/records/balances', cutOver: true },
+};
+
+/** The old address each of those screens answers on, so a stub can be checked against its own route. */
+const OLD_ROUTE: Record<string, string> = {
+  leaveTypes: '/admin/leave/entitlements',
+  templates: '/admin/leave/entitlements/templates',
+  payroll: '/admin/leave/payroll',
+  replacement: '/admin/leave/replacement',
+  generate: '/admin/leave/generate',
+  adjustments: '/admin/leave/adjustments',
+  import: '/admin/leave/import',
+  archive: '/admin/leave/entitlements/archive',
+  ledgerArchive: '/admin/leave/entitlements/ledger-archive',
+};
+
+/** The old screens. Read, never written. */
 const OLD = {
   leaveTypes: read('app/admin/leave/entitlements/page.tsx'),
   templates: read('app/admin/leave/entitlements/templates/page.tsx'),
@@ -122,12 +164,32 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
   it('all seven hang off the EXISTING leaveConfig screen key — a key rename would drop every stored grant', () => {
     // lib/permissions.ts records that a screen key "may key stored role configs". Renaming `leaveConfig`
     // would silently drop every tenant's existing grant for the whole area, which is why the migration
-    // order says only `href` and `routes` ever move.
+    // order says only `href` and `routes` ever move — and Round 5 moves them, one screen per commit.
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     expect(leaveConfig.guard).toBe('requireAdmin');
+    expect(leaveConfig.screenKey).toBe('leaveConfig');
     for (const k of KEYS) expect(leaveConfig.routes).toContain(SCREENS_BUILT[k].route);
-    // The href has NOT moved: the menu still points at the old leave type screen until Round 5.
-    expect(leaveConfig.href).toBe('/admin/leave/entitlements');
+    // The canonical href follows the leave TYPE screen, and moves in that screen's own commit.
+    expect(leaveConfig.href).toBe(CUTOVER.leaveTypes.cutOver ? '/admin/leave-config/types' : '/admin/leave/entitlements');
+  });
+
+  it('a cut-over screen has LEFT the route registry, in the same commit that emptied its page', () => {
+    // The direction test/function-access.test.ts bites on here is "no stale routes": a registered route
+    // whose page no longer calls a guard. A stub is not a screen the access grid can describe, so the
+    // route and the page move together or neither does — the /admin/leave (df00b85f) precedent.
+    for (const [name, { cutOver }] of Object.entries(CUTOVER)) {
+      const route = OLD_ROUTE[name];
+      if (cutOver) {
+        expect(
+          REGISTERED_ROUTES.has(route),
+          `${route} is a redirect stub now and must have left lib/permissions.ts in the SAME commit`,
+        ).toBe(false);
+      } else {
+        expect(REGISTERED_ROUTES.has(route), `${route} is still a full screen and must stay registered`).toBe(
+          true,
+        );
+      }
+    }
   });
 
   it.each(KEYS)('%s calls the page guard the registry describes', (k) => {
@@ -136,31 +198,44 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     expect(src[k]).toContain('requireAdmin()');
   });
 
-  it('none of the seven is on the leave config map — the menu moves at the Round 5 cutover, not now', () => {
+  it('the menu names the cut-over screens at their NEW address and the rest at their old one', () => {
+    // ROUND 3 asserted "none of the seven is on the map — the menu moves at the Round 5 cutover, not
+    // now". Round 5 IS that cutover, and it moves ONE entry per commit, so the assertion becomes a
+    // read of the CUTOVER table rather than a blanket absence. Both directions still fail loudly: a
+    // menu entry that moved before its page was emptied, and a page emptied while the menu still points
+    // at the stub (two hops to reach a screen, and the map lying about where it is).
     const hrefs = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.href);
-    for (const k of KEYS) expect(hrefs).not.toContain(SCREENS_BUILT[k].route);
-    // …and every old screen is still the one the menu names.
-    for (const old of [
-      '/admin/leave/entitlements',
-      '/admin/leave/entitlements/templates',
-      '/admin/leave/replacement',
-      '/admin/leave/payroll',
-      '/admin/leave/generate',
-      '/admin/leave/adjustments',
-      '/admin/leave/import',
-      '/admin/leave/entitlements/archive',
-      '/admin/leave/entitlements/ledger-archive',
-    ]) {
-      expect(hrefs).toContain(old);
+    for (const [name, { to, cutOver }] of Object.entries(CUTOVER)) {
+      if (cutOver) {
+        expect(hrefs, `${name} is cut over, so the menu must name ${to}`).toContain(to);
+        expect(hrefs, `${name} is cut over, so ${OLD_ROUTE[name]} must be off the menu`).not.toContain(
+          OLD_ROUTE[name],
+        );
+      } else {
+        expect(hrefs, `${name} is not cut over yet, so the menu still names ${OLD_ROUTE[name]}`).toContain(
+          OLD_ROUTE[name],
+        );
+      }
     }
   });
 
-  it('Company rules is a screen id with NO map entry, which is what makes Round 5 a one-line change', () => {
-    // The id exists so the new page can render the map at all and take its heading from the same key the
-    // menu entry will use. It is deliberately absent from the list until the cutover.
+  it('Company rules joined the map as ONE line, and the ids it absorbed left it', () => {
+    // ROUND 3: "Company rules is a screen id with NO map entry, which is what makes Round 5 a one-line
+    // change." This IS that change, so the case is inverted rather than dropped — and the inversion is
+    // what proves the early id was worth carrying: an addition, not a rename of a screen the customer had
+    // already learned. The heading still comes from the same key the menu entry uses.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.id as string);
-    expect(ids).not.toContain('companyRules');
+    expect(ids).toContain('companyRules');
     expect(src.companyRules).toContain("leaveConfigScreenTitle('companyRules')");
+    // `replacementLeave` and `payrollImpact` are the ids with no map entry now: their screens were
+    // ABSORBED into this one, and two entries reaching one screen is what this component exists to stop.
+    // The ids themselves survive — Company rules renders them as its section headings.
+    if (CUTOVER.replacement.cutOver) expect(ids).not.toContain('replacementLeave');
+    if (CUTOVER.payroll.cutOver) expect(ids).not.toContain('payrollImpact');
+    expect(src.companyRules).toContain("leaveConfigScreenTitle('replacementLeave')");
+    // …and `payrollImpact`, the OTHER id whose screen this one absorbed. Both outlived their map entries
+    // so the administrator finds the words they knew each setting by.
+    expect(src.companyRules).toContain("leaveConfigScreenTitle('payrollImpact')");
   });
 
   it.each(KEYS)('%s renders the area map, so a new screen can reach its siblings', (k) => {
@@ -499,45 +574,36 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     );
   });
 
-  it('the three save banners on Company rules are DORMANT until Round 5, and this says so out loud', () => {
-    // ⚠️ THIS CASE IS A DISCLOSURE, NOT A FEATURE CLAIM, and it is here so nobody reads dead markup as
-    // live UI. The `?error=` / `?saved=` / `?warning=` params those banners read are produced by
-    // `setToilPolicyAction`, which redirects to the `LEAVE_REPLACEMENT` module constant — the OLD screen
-    // — so today all three land THERE, which does render them (app/admin/leave/replacement/page.tsx).
-    // None of the three can appear on this page: r259's verify pass rendered it 55 times and no banner
-    // path was ever taken. Nothing is lost meanwhile; the copy that is live is the old screen's.
+  it('the three save banners on Company rules are LIVE, and the banking-risk one reaches its reader', () => {
+    // ⚠️ ROUND 3 SHIPPED THIS CASE AS A DISCLOSURE — "these three banners are DORMANT until Round 5" —
+    // and told the cutover commit, in writing, that it would FAIL here and must re-point rather than
+    // delete. This is that re-point.
     //
-    // They are rendered here anyway, deliberately. `warning=` is the Phase-B #14 premium-equivalent
-    // BANKING-RISK warning, which was produced on every qualifying save for months and silently dropped
-    // because the screen it landed on did not read the param. Shipping the screen that absorbs
-    // Replacement leave WITHOUT the banner would set that up to happen a second time, at the exact
-    // moment Round 5 repoints the constant. A screen that cannot show a warning it is about to be sent
-    // is the version of this worth refusing.
+    // `setToilPolicyAction` returns through the `LEAVE_REPLACEMENT` module constant, and Round 5 pointed
+    // that constant at `/admin/leave-config/company-rules` in the same commit that emptied the old
+    // Replacement leave screen. So `?error=` / `?saved=` / `?warning=` now arrive HERE, and the markup
+    // that was unreachable is the live UI.
     //
-    // ⚠️ WHEN ROUND 5 REPOINTS `LEAVE_REPLACEMENT` AT `/admin/leave-config/company-rules`, THIS CASE
-    // FAILS — that is the whole point of asserting the old constant. It is the reminder that these three
-    // banners have just become live UI, not a defect to route around: update the assertion in the
-    // cutover commit (docs/design/a6fe37fc-migration-order.md → Round 5).
+    // `warning=` is the Phase-B #14 premium-equivalent BANKING-RISK warning. It was produced on every
+    // qualifying save for months and silently dropped, because the screen it landed on never read the
+    // param. Building the absorbing screen to read all three a round EARLY is what stopped that
+    // happening a second time at exactly this cutover; this case is what stops it happening a third.
     expect(src.companyRules).toContain('const { error, warning, saved, company } = await searchParams;');
     expect(src.companyRules).toContain('<ErrorBanner message={error} />');
     expect(src.companyRules).toContain("tr('savedBanner')");
     expect(src.companyRules).toContain('{warning}');
-    // The old screen still reads them, so the risk warning reaches an administrator TODAY.
-    expect(OLD.replacement).toContain('const { error, warning, saved, company } = await searchParams;');
-    // …and the action still returns there, which is what makes the copies above dormant. Both halves
-    // carry the same instruction, because either one is what a Round 5 commit trips over first.
-    const ROUND_5 =
-      'the `warning=` / `saved=` / `error=` params now land on /admin/leave-config/company-rules, so the ' +
-      'three banners asserted above have just become LIVE UI — including the premium-equivalent ' +
-      'banking-risk warning. Re-point this case at the new target and re-read the new screen; do not delete it.';
+    // The constant, and the helper that builds the return URL from it. Both halves are asserted because
+    // either one alone could be repointed while the other still named the old screen.
     expect(
-      actionsSrc.includes("const LEAVE_REPLACEMENT = '/admin/leave/replacement';"),
-      `LEAVE_REPLACEMENT no longer names the old Replacement leave screen — if Round 5 has repointed it, ${ROUND_5}`,
-    ).toBe(true);
-    expect(
-      /const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc),
-      `setToilPolicyAction no longer returns through LEAVE_REPLACEMENT — if Round 5 has repointed it, ${ROUND_5}`,
-    ).toBe(true);
+      actionsSrc,
+      'LEAVE_REPLACEMENT must name Company rules — otherwise the banking-risk warning lands on a stub ' +
+        'and reaches the administrator only after a bounce, or not at all if the stub ever stops ' +
+        'forwarding the query string',
+    ).toContain("const LEAVE_REPLACEMENT = '/admin/leave-config/company-rules';");
+    expect(/const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc)).toBe(true);
+    // The old screen is a stub now — it reads no params at all, which is why the constant HAD to move.
+    expect(OLD.replacement).not.toContain('const { error, warning, saved, company } = await searchParams;');
+    expect(OLD.replacement).toContain('redirect(');
   });
 });
 
@@ -594,10 +660,13 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
         `${SCREENS_BUILT[k].file} lost its back-link to the leave type screen, or hard-coded it again`,
       ).toContain("leaveConfigScreenHref('leaveTypes')");
     }
-    // And the direction that resolves to: the live screen today, which is the map's own href for it.
+    // And the direction that resolves to: whatever the MAP says today, which is the point of resolving
+    // through it — the cutover moves the map entry and every back-link follows in the same commit.
     const fromMap = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'leaveTypes')!.href;
     expect(leaveConfigScreenHref('leaveTypes')).toBe(fromMap);
-    expect(leaveConfigScreenHref('leaveTypes')).toBe('/admin/leave/entitlements');
+    expect(leaveConfigScreenHref('leaveTypes')).toBe(
+      CUTOVER.leaveTypes.cutOver ? '/admin/leave-config/types' : '/admin/leave/entitlements',
+    );
   });
 });
 
@@ -605,32 +674,92 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
 // Nothing is removed this round
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('a6fe37fc R3 · this round adds and removes NOTHING — every old screen keeps its copy', () => {
+describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutover moved it whole', () => {
+  /**
+   * ROUND 3's version of this table read "%s is still live on the old screen": nothing was removed, and
+   * a setting editable in two places for two rounds was the deliberate price of "something works at
+   * every point". Round 5 CLOSES that window, one screen per commit, and the table is re-pointed rather
+   * than deleted — because the property worth guarding is not "the old page still has it", it is
+   * **the function did not evaporate in the move**. Before its screen's commit the needle must be on the
+   * old page; after it, on the new one. Either way exactly one screen answers for it.
+   */
+  const NEW_FILE: Record<string, string> = {
+    // Half-day and shared groups leave the leave TYPE page for Company rules, so `leaveTypes` names the
+    // file those needles must ARRIVE in, which is Company rules — not the new leave type screen.
+    leaveTypes: 'app/admin/leave-config/company-rules/page.tsx',
+    templates: 'app/admin/leave-config/entitlement-tables/page.tsx',
+    payroll: 'app/admin/leave-config/company-rules/page.tsx',
+    replacement: 'app/admin/leave-config/company-rules/page.tsx',
+    generate: 'app/admin/leave-config/generate/page.tsx',
+    adjustments: 'app/admin/leave-config/adjustments/page.tsx',
+    import: 'app/admin/leave-config/import/page.tsx',
+    archive: 'app/admin/leave-config/records/entitlement/page.tsx',
+    ledgerArchive: 'app/admin/leave-config/records/balances/page.tsx',
+  };
+
   it.each([
-    ['the half-day card', 'leaveTypes', 'setLeaveHalfDayFullDeductionCompaniesAction'],
-    ['shared leave groups', 'leaveTypes', '<LeaveSharedGroupConfig'],
-    ['leave encashment', 'payroll', 'setLeaveEncashmentPolicyAction'],
-    ['the replacement policy', 'replacement', 'setToilPolicyAction'],
-    ['the entitlement tables', 'templates', '<EntitlementTablesBlock'],
-    ['the explain panel', 'templates', '<EligibilityExplainPanel'],
-    ['the generate wizard', 'generate', '<GenerateForm'],
-    ['the adjustment flow', 'adjustments', '<AdjustmentForm'],
-    ['the importer', 'import', '<LeaveLedgerImport'],
-    ['the entitlement record', 'archive', 'listEntitlementResetArchive'],
-    ['the balance record', 'ledgerArchive', 'listLeaveLedgerResetArchive'],
-  ] as [string, keyof typeof OLD, string][])(
-    '%s is still live on the old screen (%s)',
-    (_what, file, needle) => {
-      // A setting editable in two places for two rounds is deliberate and is the price of "something
-      // works at every point". Both write the same column through the same action; Round 5 closes it.
-      expect(OLD[file]).toContain(needle);
+    ['the half-day card', 'leaveTypes', 'setLeaveHalfDayFullDeductionCompaniesAction', 'leaveTypes'],
+    ['shared leave groups', 'leaveTypes', '<LeaveSharedGroupConfig', 'leaveTypes'],
+    ['leave encashment', 'payroll', 'setLeaveEncashmentPolicyAction', 'payroll'],
+    ['the replacement policy', 'replacement', 'setToilPolicyAction', 'replacement'],
+    ['the entitlement tables', 'templates', '<EntitlementTablesBlock', 'templates'],
+    ['the explain panel', 'templates', '<EligibilityExplainPanel', 'templates'],
+    ['the generate wizard', 'generate', '<GenerateForm', 'generate'],
+    ['the adjustment flow', 'adjustments', '<AdjustmentForm', 'adjustments'],
+    ['the importer', 'import', '<LeaveLedgerImport', 'import'],
+    ['the entitlement record', 'archive', 'listEntitlementResetArchive', 'archive'],
+    ['the balance record', 'ledgerArchive', 'listLeaveLedgerResetArchive', 'ledgerArchive'],
+  ] as [string, keyof typeof OLD, string, string][])(
+    '%s is live on exactly one screen (%s)',
+    (_what, file, needle, absorbedBy) => {
+      // `absorbedBy` is the CUTOVER entry whose commit actually moves the needle, which is not always
+      // the screen the needle is FOUND on. The half-day card and shared leave groups sit on the old leave
+      // TYPE screen and land on Company rules, so they move when the leave type page is emptied — with
+      // `leaveTypes`, not with the Company rules screen's own absorbed entries.
+      if (CUTOVER[absorbedBy].cutOver) {
+        expect(read(NEW_FILE[absorbedBy]), `${_what} did not arrive at ${CUTOVER[absorbedBy].to}`).toContain(
+          needle,
+        );
+      } else {
+        expect(OLD[file], `${_what} left the old screen before its cutover commit`).toContain(needle);
+      }
     },
   );
 
-  it('the old pages are untouched by this round — they are still full screens, not stubs', () => {
+  it('an old page is a redirect stub aimed at its replacement, or it is still a full screen', () => {
+    // ⚠️ NO STUB IS EVER DELETED (migration order → Round 6): the reporter's bookmarks are the entire
+    // reason the ten of them exist, and "no address ever 404s" is rule 4 of the whole sequence.
     for (const [name, s] of Object.entries(OLD)) {
-      expect(s.includes('redirect('), `${name} was turned into a redirect stub — that is Round 5`).toBe(false);
-      expect(s.length, `${name} was emptied`).toBeGreaterThan(500);
+      const { to, cutOver } = CUTOVER[name];
+      if (cutOver) {
+        expect(s, `${name} is cut over but its page is not a redirect stub`).toContain('redirect(');
+        expect(s, `${name}'s stub does not aim at ${to}`).toContain(to);
+        // A stub carries no page guard, which is what lets its route leave lib/permissions.ts.
+        expect(/requireAdmin|scopedAdmin|scopedSession/.test(s), `${name}'s stub still calls a guard`).toBe(
+          false,
+        );
+        // The query string is forwarded, so an in-flight ?toast= / ?error= still surfaces at the
+        // destination — the df00b85f / f1b994e3 stub contract, not a new one. For Company rules this is
+        // load-bearing rather than tidy: `?warning=` is the premium-equivalent BANKING-RISK warning.
+        //
+        // ⚠️ ASSERTED AS THE LOOP, NOT AS THE TOKEN. The first version of this case checked for the
+        // string `URLSearchParams`, and a deliberate break — deleting the forwarding loop while leaving
+        // `const usp = new URLSearchParams();` behind — PASSED it. A guard that a real regression walks
+        // through is not a guard. Both halves are checked now: the params are read, and the redirect is
+        // built from them.
+        expect(s, `${name}'s stub does not READ the incoming params`).toMatch(
+          /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
+        );
+        expect(s, `${name}'s stub does not carry them onto the destination`).toMatch(
+          /usp\.set\(k, v\)/,
+        );
+        expect(s, `${name}'s stub does not append the query string to the redirect`).toMatch(
+          /\$\{qs \? `\?\$\{qs\}` : ''\}/,
+        );
+      } else {
+        expect(s.includes('redirect('), `${name} was emptied before its own cutover commit`).toBe(false);
+        expect(s.length, `${name} was emptied`).toBeGreaterThan(500);
+      }
     }
   });
 });
@@ -645,10 +774,16 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
   // case skips them entirely and this is the pinning site.
   const NEW_KEYS: [string, string][] = [
     ['admin.leaveConfigMap', 'item.companyRules'],
-    ['admin.leaveConfigPreview', 'note'],
+    // `admin.leaveConfigPreview.note` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): its last
+    // mount came off Company rules at the cutover and the component was deleted with it, so the key is
+    // pruned in all six catalogues rather than left as an orphan a copy-paste could revive.
     ['admin.leaveConfigCompanyRules', 'pageDescription'],
     ['admin.leaveConfigCompanyRules', 'intro'],
-    ['admin.leaveConfigCompanyRules', 'introTwoEditors'],
+    // `introTwoEditors` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5). It told the
+    // administrator each of the four settings was still editable on the screen it came from — true for
+    // exactly the three commits the cutover took to absorb them, and false the moment the last one
+    // landed. It came off the page with its key in all six catalogues: an obsolete reassurance teaches
+    // the reader the screen is provisional.
   ];
 
   const at = (bundle: unknown, dotted: string): unknown =>
@@ -677,17 +812,21 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
     }
   });
 
-  it('the preview note is rendered by every screen that can SAVE, and by none that cannot', async () => {
-    // The note exists because every leave action still redirects to the OLD address, so a save made on a
-    // new screen navigates away from it. The two read-only records save nothing, so a note there would be
-    // furniture — and furniture stops being read.
-    for (const k of ['companyRules', 'entitlementTables', 'generate', 'adjustments', 'import'] as const) {
-      expect(src[k]).toContain('<LeaveConfigPreviewNote />');
+  it('NOTHING in the module still calls itself a preview, and the note component is gone', () => {
+    // ROUND 3: "the preview note is rendered by every screen that can SAVE, and by none that cannot" —
+    // because every leave action redirected to a module constant naming the OLD address, so a save made
+    // on a new screen navigated away from it. Round 5 removed the note screen by screen, in the same
+    // commit that repointed that screen's constant, and Company rules was the last mount: a screen the
+    // menu points at telling the administrator it is a preview is worse than no note at all.
+    //
+    // The component itself was DELETED with its last mount rather than left importable — an unused
+    // "this is a preview" banner is one copy-paste away from reappearing on a live screen.
+    for (const k of KEYS) {
+      expect(src[k], `${k} still renders the preview note`).not.toContain('<LeaveConfigPreviewNote');
     }
-    for (const k of ['recordsEntitlement', 'recordsBalances'] as const) {
-      expect(src[k]).not.toContain('<LeaveConfigPreviewNote');
-    }
-    const note = read('app/admin/leave-config/preview-note.tsx');
-    expect(note).toContain("getTranslations('admin.leaveConfigPreview')");
+    expect(
+      existsSync(resolve(here, '..', 'app/admin/leave-config/preview-note.tsx')),
+      'preview-note.tsx outlived its last mount',
+    ).toBe(false);
   });
 });

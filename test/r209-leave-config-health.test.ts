@@ -404,7 +404,7 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     expect(block).toContain("t('ruleExpiredBadge')");
     expect(block).toContain("t('ruleExpiringBadge')");
     expect(block).toContain('ruleHeadIds.has(x.id)');
-    const page = read('app/admin/leave/entitlements/page.tsx');
+    const page = read('app/admin/leave-config/types/page.tsx');
     expect(page).toContain('leaveConfigHealthAll(');
     expect(page).toContain('<LeaveConfigHealthCard rows={configHealth} />');
   });

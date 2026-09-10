@@ -297,9 +297,13 @@ export const SCREENS: readonly ScreenEntry[] = [
   // ── Admin leave / attendance / claims config (requireAdmin) ──
   {
     screenKey: 'leaveConfig',
-    // df00b85f — the canonical href is ENTITLEMENTS now. `/admin/leave` retired its Summary listing and
-    // is an unguarded redirect stub pointing here, and a stub is not a screen this grid can describe.
-    href: '/admin/leave/entitlements',
+    // df00b85f — the canonical href moved off `/admin/leave` when that retired its Summary listing.
+    // a6fe37fc ROUND 5 (cutover) — it moves once more, to the leave type screen's new address. BOTH
+    // `/admin/leave` and `/admin/leave/entitlements` are unguarded redirect stubs pointing here now, and
+    // a stub is not a screen this grid can describe. THE SCREEN KEY IS NOT RENAMED: a key "may key stored
+    // role configs" (see this file's head), so renaming `leaveConfig` would silently drop every tenant's
+    // existing grant for the whole area. Only `href` and `routes` ever move.
+    href: '/admin/leave-config/types',
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
@@ -316,39 +320,51 @@ export const SCREENS: readonly ScreenEntry[] = [
     // separately below: the two screens are gated differently ON PURPOSE, because the sweeps must stay
     // reachable when the `toil` entitlement lapses and configuration must not.
     routes: [
-      '/admin/leave/import',
-      '/admin/leave/entitlements',
-      // 6e9a126e — the read-only record of the entitlement configuration the redesign's release three
-      // clears. Same admin surface, same requireAdmin guard the leaveConfig screen declares, so it is a
-      // ROUTE on this screenKey rather than a new one (the /admin/leave/generate precedent below).
-      // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
-      // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
-      '/admin/leave/entitlements/archive',
-      // c8052ae3 — the read-only BALANCE record: what the Medical/Hospitalization ledger correction
-      // archived before deleting it. Sibling of the configuration record one line up, same admin
-      // surface, same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one.
-      // It was added by a different workstream from the one that owned this file, which is exactly how
-      // it reached the integration gate unregistered — test/function-access.test.ts caught it, as it is
-      // meant to. Its /export sibling is deliberately NOT listed: the reverse-completeness scan reads
-      // page.tsx files only, and a route handler has no screen column to describe.
-      '/admin/leave/entitlements/ledger-archive',
-      // 6e9a126e RELEASE TWO — the Entitlement Tables + Employee Eligibility editor. Same admin surface,
-      // same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one. Registering it
-      // is not paperwork: test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from
-      // REGISTERED_ROUTES, and a registered route with no page on disk.
-      '/admin/leave/entitlements/templates',
-      // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
-      // screenKey (the /admin/personnel precedent above).
-      '/admin/leave/adjustments',
-      // 4b0e76ae — Generate Entitlement. Same admin surface, same requireAdmin guard the leaveConfig screen
-      // declares above, so it is a ROUTE on this screenKey rather than a new one (the /admin/leave/replacement
-      // precedent two lines up). REGISTERING IT IS NOT OPTIONAL AND IS NOT COSMETIC: this page is the ONLY
-      // way left to open a leave year after the Leave Year Configuration block was removed, and
-      // test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from REGISTERED_ROUTES, and
-      // a registered route with no page on disk — so the route and the page land in one commit or neither.
-      '/admin/leave/generate',
-      '/admin/leave/payroll',
-      '/admin/leave/replacement',
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
+      // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
+      // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it
+      // left `routes` in the SAME commit that emptied the page — the /admin/leave (df00b85f) and
+      // /admin/leave/audit (f1b994e3) precedent. test/function-access.test.ts fails BOTH ways.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements'` STOOD HERE and is DELIBERATELY GONE.
+      // The leave type screen is `/admin/leave-config/types`; the old address is an unguarded redirect
+      // stub and `components/leave-type-panel.tsx` was deleted with the page that mounted it, so the
+      // route left `routes` in the SAME commit — test/function-access.test.ts fails BOTH ways.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/archive'` (6e9a126e, the read-only record
+      // of the entitlement configuration release three clears) STOOD HERE and is DELIBERATELY GONE. The
+      // record is `/admin/leave-config/records/entitlement` now and the old address is an unguarded
+      // redirect stub, so it left `routes` in the SAME commit that emptied the page. Its `/export` route
+      // handler is UNMOVED and was never listed here — the reverse-completeness scan reads page.tsx files
+      // only, and a route handler has no screen column to describe.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/ledger-archive'` (c8052ae3, the read-only
+      // BALANCE record of what the Medical/Hospitalization ledger correction archived before deleting it)
+      // STOOD HERE and is DELIBERATELY GONE. The record is `/admin/leave-config/records/balances` now and
+      // the old address is an unguarded redirect stub, so it left `routes` in the SAME commit that emptied
+      // the page. Its `/export` sibling was never listed and has not moved.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/templates'` (6e9a126e release two, the
+      // Entitlement Tables + Employee Eligibility editor) STOOD HERE and is DELIBERATELY GONE. The screen
+      // is `/admin/leave-config/entitlement-tables` now; the old address is an unguarded redirect stub,
+      // and a stub is not a screen this grid can describe, so it left `routes` in the SAME commit that
+      // emptied the page — test/function-access.test.ts fails BOTH ways.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/adjustments'` (491c499f) STOOD HERE and is
+      // DELIBERATELY GONE. Adjustments is `/admin/leave-config/adjustments` now and the old address is an
+      // unguarded redirect stub, so it left `routes` in the SAME commit that emptied the page.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/generate'` (4b0e76ae) STOOD HERE and is DELIBERATELY
+      // GONE. Generate Entitlement is `/admin/leave-config/generate` now — and it is still the ONLY way to
+      // open a leave year, which is why the new route was registered (two lines up) in the round that
+      // built it and this one leaves in the round that empties the page. The old address is an unguarded
+      // redirect stub; test/function-access.test.ts fails BOTH ways, so the two halves land together.
+      // `/admin/leave/generate/export` (the per-run CSV) is a route handler, was never listed, and stays.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/payroll'` STOOD HERE and is DELIBERATELY GONE. The
+      // screen is absorbed: F39 (send to payroll module) is on the leave TYPE screen's tab 1 and F40 (the
+      // encashment policy) is on Company rules. The old address is an unguarded redirect stub, so it left
+      // `routes` in the SAME commit that emptied the page.
+      // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/replacement'` (645e67c4 / 296fc027) STOOD HERE and is
+      // DELIBERATELY GONE. Replacement-leave CONFIGURATION is on Company rules
+      // (`/admin/leave-config/company-rules`) now and the old address is an unguarded redirect stub, so it
+      // left `routes` in the SAME commit that emptied the page. `toilPolicy` (/admin/toil) is untouched
+      // and stays registered separately: 296fc027 split that route in two ON PURPOSE — the ledger and the
+      // two settlement sweeps must stay reachable when the `toil` entitlement lapses, and configuration
+      // must not.
       // a6fe37fc ROUND 2 — the NEW Leave types screen, built alongside `/admin/leave/entitlements`
       // rather than replacing it (docs/design/a6fe37fc-migration-order.md). Same admin surface, same
       // `requireAdmin` guard, so it is a ROUTE on this screenKey rather than a new one — the
@@ -399,7 +415,12 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   {
     screenKey: 'leaveApproval',
-    href: '/admin/leave/approval',
+    // a6fe37fc ROUND 5 (cutover) — the canonical href is `/admin/leave-config/approval-chains` now.
+    // `/admin/leave/approval` is an unguarded redirect stub pointing there, and a stub is not a screen
+    // this grid can describe. THE SCREEN KEY IS NOT RENAMED (see this file's head: a key "may key stored
+    // role configs"), so every tenant's existing grant for this screen is untouched — only `href` and
+    // `routes` moved.
+    href: '/admin/leave-config/approval-chains',
     labelKey: 'nav.leaveApproval',
     guard: 'scopedSession',
     // R13 0d147b78: absorbed the standalone /admin/leave-approval into the leave tabs (old route now redirects).
@@ -422,7 +443,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Round 2's and Round 3's are (test/leave-config-map.test.ts carries the `/admin/leave-config/`
     // prefix exemption; test/leave-config-round4.test.ts pins the absence so it cannot happen by
     // accident).
-    routes: ['/admin/leave/approval', '/admin/leave-config/approval-chains'],
+    // `'/admin/leave/approval'` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): its page is now a
+    // redirect stub with no guard, so it left `routes` in the SAME commit that emptied it —
+    // test/function-access.test.ts fails BOTH ways, and the direction that bites here is "no stale
+    // routes". The df00b85f / f1b994e3 precedent.
+    routes: ['/admin/leave-config/approval-chains'],
     hasScopeNote: true,
   },
   {

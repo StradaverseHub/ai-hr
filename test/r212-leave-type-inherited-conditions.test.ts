@@ -263,7 +263,10 @@ describe('r212 — every key these server components ask for resolves, in all si
   for (const file of [
     'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
     'app/admin/leave/entitlements/templates/eligibility-explain.tsx',
-    'app/admin/leave/entitlements/templates/page.tsx',
+    // a6fe37fc Round 5 — the standalone screen moved to /admin/leave-config/entitlement-tables and the
+    // old address is a redirect stub (which reads no i18n at all). The two mounted components above did
+    // NOT move; only the page around them did.
+    'app/admin/leave-config/entitlement-tables/page.tsx',
   ]) {
     it(`${file}`, () => {
       const src = readFileSync(join(ROOT, file), 'utf8');

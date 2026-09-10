@@ -163,7 +163,11 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
   });
 
   it('the band editor tidies at DAY precision, and its From column is DERIVED, not typed', () => {
-    const panel = codeOnly(read('/components/leave-type-panel.tsx'));
+    const panel = codeOnly(
+      ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+        .map((f) => read(f))
+        .join('\n'),
+    );
     // Bands print through the shared formatter at its default — no second precision passed anywhere.
     expect(panel).toMatch(/const bandText = \(v: number\) => formatDays\(v\);/);
     expect(panel).toMatch(/normalizeDayText\(e\.currentTarget\.value\)/);
@@ -225,7 +229,11 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     // The plan said this out loud rather than silently skipping it: "round up" / "round to nearest half
     // day" is a choice, not a number. The dropdown must stay a <select> over LeaveRoundingMethod, and the
     // day formatter must never be pointed at it.
-    const panel = codeOnly(read('/components/leave-type-panel.tsx'));
+    const panel = codeOnly(
+      ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+        .map((f) => read(f))
+        .join('\n'),
+    );
     // Still a <select> over the two LeaveRoundingMethod members, not a number box.
     expect(panel).toMatch(/name="roundingMethod"/);
     expect(panel).toMatch(/<option value="none">/);
@@ -258,7 +266,11 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/components/leave/leave-history-cards.tsx',
     '/components/leave/entitlement-bands-editor.tsx',
     '/components/leave-balance-card.tsx',
-    '/components/leave-type-panel.tsx',
+    // a6fe37fc Round 5 — `/components/leave-type-panel.tsx` stood here and was deleted with its page.
+    // The day figures it rendered (the rounding-band editor, the carry/expiry fields) are in the sub-forms
+    // file; `leave-type-tabs.tsx` composes them and renders no day count of its own, so listing it would
+    // demand an import it has no use for — the kind of false requirement that gets a guard relaxed later.
+    '/app/admin/leave-config/types/leave-type-sub-forms.tsx',
     '/app/leave/employee-balances/page.tsx',
     '/app/leave/employee-balances/export/route.ts',
     // ee6b7c69 — the Entitlement Tables' day cells moved OUT of templates/page.tsx into the shared block

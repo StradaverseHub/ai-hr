@@ -64,8 +64,24 @@ import {
 } from '../app/admin/leave/entitlements/templates/actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
-const ENTITLEMENTS = '/admin/leave/entitlements';
-const TEMPLATES = '/admin/leave/entitlements/templates';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED. The leave TYPE workspace is `/admin/leave-config/types`; the
+ * old address is a redirect stub. This constant HAD to move rather than lean on the stub, and the reason
+ * is the very thing the case below pins: `okEntitlements` carries a `#type-<id>` FRAGMENT, and a fragment
+ * is never sent to the server — a save routed through a redirect would arrive with no leave type selected,
+ * which is 9b0503ac's original bug wearing a different address.
+ */
+const ENTITLEMENTS = '/admin/leave-config/types';
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED, and the reason is the whole point of this file.
+ *
+ * 9b0503ac's contract is "an entitlement save returns the operator to the screen they saved on", and the
+ * screen moved: Entitlement Tables is `/admin/leave-config/entitlement-tables` now and the old address
+ * is a redirect stub. Leaving the old literal here would have kept the file GREEN while asserting the
+ * saves land on a page that renders nothing — the failure this test exists to catch, one address later.
+ * `ENTITLEMENT_TEMPLATES` in app/admin/_redirects.ts moved in the same commit; this follows it.
+ */
+const TEMPLATES = '/admin/leave-config/entitlement-tables';
 
 /** Run a server action that ends in redirect() (throws RedirectError here) and return the target path. */
 async function captureRedirect(run: () => Promise<void>): Promise<string> {

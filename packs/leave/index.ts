@@ -114,7 +114,6 @@ import {
   GitBranch,
   Repeat2,
   SlidersHorizontal,
-  Wallet,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGroupDescriptor } from '../registry';
 
@@ -218,12 +217,35 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // and the import page's back link all still land somewhere real. A stub is NOT a guarded page, so it
     // also left lib/permissions.ts's leaveConfig `routes` in the same change — test/function-access.test.ts
     // fails on a registered route with no guarded page on disk, which is why that is one move, not two.
-    { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements', icon: ClipboardList },
-    { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
-    { href: '/admin/leave/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
-    { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
-    { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
-    { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },
+    // a6fe37fc ROUND 5 (cutover) — the destination moved to the new module's leave TYPE screen, where the
+    // four steps and six sub-steps are five tabs (IA §2). The row, its label key and its position are
+    // unchanged: this is still the first thing in the menu and still called the same thing.
+    { href: '/admin/leave-config/types', labelKey: 'leaveEntitlements', icon: ClipboardList },
+    // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not (see the Generate row below).
+    { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
+    // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
+    // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts
+    // in the same commit), so this row must name the new one: test/leave-flyout-nav.test.ts requires every
+    // child href to be a registered route with a real page, and a menu row pointing at a stub is a row
+    // that reaches its screen through a wasted hop.
+    { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
+    // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not. The label key still says
+    // `leaveApprovalWorkflow` rather than `leaveApproval` for the reason stated above: `nav.leaveApproval`
+    // labels the SCREEN in lib/permissions.ts, and reusing it here would silently rename that column.
+    { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
+    // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/payroll', 'leavePayroll' }` STOOD HERE and is
+    // DELIBERATELY GONE, not lost. Payroll Related was two settings that were never one subject: the
+    // per-leave-type switch is on the Leave types row above (tab 1) and the encashment policy is on the
+    // Company rules row below. This list is an exact-set guard, so the only correct way to retire a
+    // destination is to delete its line in the commit that does it — and the ROUTE still resolves, as a
+    // stub, so no bookmark 404s. `nav.leavePayroll` is pruned in all six catalogues with the row.
+    // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/replacement', 'leaveReplacement' }` STOOD HERE and is
+    // DELIBERATELY GONE, replaced by the destination that absorbed it. Replacement-leave configuration is
+    // a COMPANY rule (IA §2.0.3), and it now shares one screen with the half-day deduction, the
+    // encashment policy and the shared leave groups. `nav.leaveReplacement` is NOT pruned — it labels the
+    // screen name inside components/leave/replacement-availability-notice.tsx, which is a different
+    // sentence to an employee about why they cannot request replacement leave.
+    { href: '/admin/leave-config/company-rules', labelKey: 'leaveCompanyRules', icon: Repeat2 },
     // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE.
     //
     // "The Audit submenu under Leave Configuration is unnecessary because the system already has a

@@ -36,7 +36,6 @@
     "app/roster/actions.ts",
     "app/roster/page.tsx",
     "components/earned-accrual-card.tsx",
-    "components/leave-type-panel.tsx",
     "core/admin.ts",
     "core/analytics.ts",
     "core/attendance.ts",

@@ -57,12 +57,37 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // destination is to delete its line here in the same commit that deletes the row, which is what this is.
   // The two properties the removal has to keep are asserted below by their own tests rather than by this
   // list: the ROUTE still resolves (as a redirect stub, so no bookmark 404s) and Entitlements is now first.
-  { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements' },
-  { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments' },
-  { href: '/admin/leave/generate', labelKey: 'leaveGenerate' },
-  { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow' },
-  { href: '/admin/leave/payroll', labelKey: 'leavePayroll' },
-  { href: '/admin/leave/replacement', labelKey: 'leaveReplacement' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted. The leave TYPE screen is
+  // `/admin/leave-config/types` (five tabs instead of four steps and six sub-steps, IA §2); the old page
+  // is a redirect stub and `components/leave-type-panel.tsx` was deleted with it. This list's promises
+  // are "no destination lost" and "no re-sorting", and both hold: same row, same label key, same
+  // position, and the old address still answers.
+  { href: '/admin/leave-config/types', labelKey: 'leaveEntitlements' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
+  { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments' },
+  // a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The two properties this list guards are "no
+  // destination lost" and "no re-sorting"; neither is about the literal address. The screen moved to
+  // `/admin/leave-config/generate` and the old address is a redirect stub, so pinning the OLD href here
+  // would have required the menu to keep pointing at a stub — a bookmark that still works reached through
+  // a wasted hop, and a menu row the "every destination is a registered route" case below would reject.
+  { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate' },
+  // a6fe37fc ROUND 5 (cutover) — re-pointed, not deleted (see the Generate entry below).
+  { href: '/admin/leave-config/approval-chains', labelKey: 'leaveApprovalWorkflow' },
+  // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/payroll', 'leavePayroll' }` STOOD HERE and is
+  // DELIBERATELY GONE, not lost. Payroll Related was two settings that were never one subject: the
+  // per-leave-type "Send to payroll module" switch is on the Leave types row above (tab 1) and the
+  // encashment policy is on the Company rules row below. This list is an exact-set guard, so the only
+  // correct way to retire a destination is to delete its line in the commit that does it — which is what
+  // this is. The ROUTE still resolves as a stub and the label key is pruned, both asserted below.
+  // a6fe37fc ROUND 5 (cutover) — `{ '/admin/leave/replacement', 'leaveReplacement' }` STOOD HERE and is
+  // DELIBERATELY REPLACED, not lost. Its screen was ABSORBED: a replacement-leave policy is a COMPANY
+  // rule (IA §2.0.3), so the row now names Company rules — the destination that carries that policy plus
+  // the half-day deduction, the encashment policy and the shared leave groups. This list is an exact-set
+  // guard, so the only correct way to record an absorption is to edit its line in the commit that does
+  // it, which is what this is. The ROUTE still resolves as a stub (asserted below) and the old label key
+  // is NOT pruned — `nav.leaveReplacement` names the screen inside
+  // components/leave/replacement-availability-notice.tsx, a different sentence to a different reader.
+  { href: '/admin/leave-config/company-rules', labelKey: 'leaveCompanyRules' },
   // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE, not lost,
   // for the reason the df00b85f note above states: this list is an exact-set guard, so the ONLY correct
   // way to retire a destination is to delete its line here in the same commit that deletes the row. The
@@ -100,23 +125,39 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * `/admin/leave` leave lib/permissions.ts without test/function-access.test.ts reddening in either
    * direction; and the label key retires WITH the row instead of lingering as an untranslatable orphan.
    */
-  it('the Summary row is gone and Entitlements is first', () => {
+  it('the Summary row is gone and the leave TYPE screen is first', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave');
-    expect(NODE.children[0].href).toBe('/admin/leave/entitlements');
+    expect(NODE.children[0].href).toBe('/admin/leave-config/types');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveSummary'");
   });
 
   it('/admin/leave survives as an UNGUARDED redirect stub — bookmarks land, the grid stays honest', () => {
     const stub = read('app/admin/leave/page.tsx');
-    expect(stub, 'the route file must still exist').toContain("redirect(");
-    expect(stub).toContain('/admin/leave/entitlements');
+    expect(stub, 'the route file must still exist').toContain('redirect(');
+    // a6fe37fc Round 5 — repointed at the leave TYPE screen's new address IN THE SAME COMMIT that made
+    // `/admin/leave/entitlements` a stub of its own. A stub whose destination is another stub still
+    // delivers the bookmark, but through a hop that need not happen and one edit away from a loop.
+    expect(stub).toContain('/admin/leave-config/types');
     // A stub is not a guarded page. If it ever calls one of these, test/function-access.test.ts's
     // reverse-completeness check fails — because the route is (correctly) no longer registered.
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
     const permissions = read('lib/permissions.ts');
     expect(permissions).not.toContain("'/admin/leave',");
     // The screen column survives, re-pointed at the page a reader can actually open.
-    expect(permissions).toContain("href: '/admin/leave/entitlements'");
+    expect(permissions).toContain("href: '/admin/leave-config/types'");
+  });
+
+  it('/admin/leave/entitlements survives as an UNGUARDED redirect stub to the new leave TYPE screen', () => {
+    // a6fe37fc Round 5 — the most-bookmarked address in the area, so this stub matters more than the
+    // others and is asserted the same way.
+    const stub = read('app/admin/leave/entitlements/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/types');
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/entitlements',");
+    // The 3,367-line panel it mounted is GONE, not moved: the four steps and six sub-steps IA §1.2 names
+    // as the subject of the complaint are five tabs on the new screen.
+    expect(exists('components/leave-type-panel.tsx'), 'the old panel outlived its page').toBe(false);
   });
 
   /**
@@ -127,9 +168,41 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * leave lib/permissions.ts without test/function-access.test.ts reddening in either direction; and the
    * label key retires WITH the row instead of lingering as an orphan.
    */
-  it('the Audit row is gone and Replacement is last', () => {
+  it('/admin/leave/replacement survives as an UNGUARDED redirect stub to Company rules', () => {
+    // a6fe37fc Round 5. Same contract as the two stubs above: the bookmark lands, the stub carries no
+    // page guard, and the route left lib/permissions.ts in the same commit.
+    const stub = read('app/admin/leave/replacement/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/company-rules');
+    expect(/requireAdmin|scopedAdmin|scopedSession/.test(stub)).toBe(false);
+    expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/replacement',");
+    // `nav.leaveCompanyRules` is the row's own key, in all six catalogues, with real translations.
+    for (const loc of LOCALES) {
+      const nav = JSON.parse(read(`messages/${loc}.json`)).nav as Record<string, string>;
+      expect(nav.leaveCompanyRules, `${loc}: the Company rules row needs its own label`).toBeTruthy();
+    }
+  });
+
+  it('/admin/leave/payroll survives as an UNGUARDED redirect stub, and nav.leavePayroll is pruned', () => {
+    // a6fe37fc Round 5, the last of the ten. Same contract as every other stub: the bookmark lands, the
+    // stub carries no page guard, the route left lib/permissions.ts in the same commit, and the label key
+    // retires WITH the row rather than lingering as an untranslatable orphan.
+    const stub = read('app/admin/leave/payroll/page.tsx');
+    expect(stub).toContain('redirect(');
+    expect(stub).toContain('/admin/leave-config/company-rules');
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/payroll',");
+    for (const loc of LOCALES) {
+      const nav = JSON.parse(read(`messages/${loc}.json`)).nav as Record<string, string>;
+      expect(nav.leavePayroll, `${loc}: nav.leavePayroll should be retired with the row`).toBeUndefined();
+    }
+  });
+
+  it('the Audit row is gone and Company rules is last', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
-    expect(NODE.children.at(-1)!.href).toBe('/admin/leave/replacement');
+    // a6fe37fc Round 5 — the last row is the screen that ABSORBED Replacement leave. The position the
+    // reporter's team reads is unchanged; only what sits in it moved.
+    expect(NODE.children.at(-1)!.href).toBe('/admin/leave-config/company-rules');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
   });
 

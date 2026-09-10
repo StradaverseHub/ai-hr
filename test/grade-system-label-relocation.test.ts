@@ -60,7 +60,7 @@ const read = (p: string) => readFileSync(resolve(here, p), 'utf8');
 const gridSrc = read('../components/system-labels-grid.tsx');
 const gradeGridSrc = read('../components/grade-labels-grid.tsx');
 const labelsPageSrc = read('../app/admin/settings/system-labels/page.tsx');
-const entitlementsPageSrc = read('../app/admin/leave/entitlements/page.tsx');
+const entitlementsPageSrc = read('../app/admin/leave-config/types/page.tsx');
 const adminActionsSrc = read('../app/admin/actions.ts');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

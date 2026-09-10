@@ -26,15 +26,22 @@ import {
   setTenantDefaultTemplateAction,
   unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
-import { LeaveConfigPreviewNote } from '../preview-note';
 import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout';
 
 /**
- * a6fe37fc ROUND 4 — APPROVAL CHAINS at its new address (`/admin/leave-config/approval-chains`).
+ * a6fe37fc — APPROVAL CHAINS (`/admin/leave-config/approval-chains`).
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/approval` is untouched, still registered and still what the
- * menu links to; the two are live side by side until Round 5 empties the old page and repoints its
- * address here (docs/design/a6fe37fc-migration-order.md → Round 4 / Round 5).
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/approval` is an unguarded redirect
+ * stub pointing here and has left lib/permissions.ts's `leaveApproval` routes; the screen key's `href`
+ * moved here too, the sidebar fly-out row and the area map's `approvalChain` entry name this address, and
+ * `app/admin/leave-approval/page.tsx` — the older 0d147b78 stub that used to point at the old page — was
+ * repointed here in the same commit rather than left chaining through a second stub. The stubs are never
+ * deleted; the reporter's bookmarks are why they exist.
+ *
+ * ⚠️ THE HEADING IS THE MENU'S OWN STRING and the old page's private `leaveApproval.title` ("Leave
+ * Approval Chain", against a menu entry reading "Approval chain") is DELETED in all six locales with the
+ * page that owned it — the third of the four mismatches IA §1.1 measured. The rest of the `leaveApproval`
+ * namespace stays: the template manager, the escalation editor and the Tab 5 read-out all read it.
  *
  * ⚠️ THE ONE PERMISSION EXCEPTION IN THE WHOLE NEW MODULE, AND IT IS DELIBERATE.
  * Every other `/admin/leave-config/` route hangs off the `leaveConfig` screen key behind `requireAdmin`.
@@ -67,11 +74,16 @@ import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout'
  * It is a read-out, not that editor coming back — see `../approval-readout.tsx`'s header for the full
  * reasoning, and `test/leave-approval-page-restructure.test.ts` for the case that carries it.
  *
- * A SAVE MADE HERE LANDS ON THE OLD SCREEN — `app/admin/leave-approval/actions.ts` redirects to its own
- * `PAGE` constant (`/admin/leave/approval`) and Round 2's rule 2 still stands: no action changes
- * signature and no new action is written, because re-pointing that constant would move every save on the
- * OLD screen too, which is a Round 5 act. `../preview-note.tsx` says so out loud rather than letting it
- * look like a fault.
+ * A SAVE MADE HERE RETURNS THROUGH ONE HOP — `app/admin/leave-approval/actions.ts` still redirects to
+ * its own `PAGE` constant (`/admin/leave/approval`), which is a redirect stub as of a6fe37fc Round 5.
+ * Round 2's rule 2 stands: no action changes signature and no new action is written. The constant was
+ * left where it is deliberately — the migration order's Round 5 names the redirect constants it moves
+ * (app/admin/_redirects.ts's five, and app/admin/actions.ts's LEAVE_REPLACEMENT) and this private one is
+ * not among them. So the hop is real and its whole cost is that the stub must forward the query string,
+ * or all 17 `?toast=` / `?error=` returns land here blank. test/leave-config-round4.test.ts pins the
+ * forwarding loop by name rather than by token. (Before the cutover this was said out loud on the page
+ * itself by `../preview-note.tsx`; that component came off at the cutover and was deleted with it,
+ * because a real screen telling the administrator it is a preview is worse than no note.)
  *
  * SERVER COMPONENT, like the page it mirrors: the three client islands receive only serialisable props
  * and server actions, and the read-out is server-rendered markup (test/server-client-boundary.test.ts).
@@ -225,9 +237,8 @@ export default async function LeaveConfigApprovalChainsPage({
         description={tr('pageDescription')}
       />
       {/* The area map. `current="approvalChain"` because this IS that screen — the map names screens, not
-          addresses, and Round 5 repoints the entry here. */}
+          addresses, and the cutover repointed the entry (and the sidebar row) here. */}
       <LeaveConfigMap current="approvalChain" />
-      <LeaveConfigPreviewNote />
       <ErrorBanner message={error} />
 
       {companies.length === 0 ? (

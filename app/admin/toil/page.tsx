@@ -112,13 +112,18 @@ export default async function ToilPolicyPage({
         differently on purpose, so they live on different screens.
 
         The read-only-not-hidden reasoning that used to sit here went WITH the form it was about; it is
-        reproduced in full at the top of app/admin/leave/replacement/page.tsx.
+        reproduced in full at the top of app/admin/leave-config/company-rules/page.tsx.
       */}
       <Card className="p-4">
         <h2 className="text-sm font-semibold text-foreground">{t('configMovedTitle')}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {t('configMovedHint')}{' '}
-          <Link href="/admin/leave/replacement" className="font-medium text-primary hover:underline">
+          {/* a6fe37fc ROUND 5 (cutover) — repointed at Company rules, which absorbed this configuration.
+              1cf5b37c made this link ONE-DIRECTIONAL on purpose: an admin who lands on the legacy page
+              still has to be told where configuration went, which is the half that stops a move reading
+              as a deletion. Left at the old address it would still arrive, through the stub — but a link
+              whose whole job is to say "it is over there" should name where it actually is. */}
+          <Link href="/admin/leave-config/company-rules" className="font-medium text-primary hover:underline">
             {t('configMovedLink')}
           </Link>
         </p>

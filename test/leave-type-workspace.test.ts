@@ -27,8 +27,21 @@ import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workspaceSrc = readFileSync(resolve(here, '../components/leave-type-workspace.tsx'), 'utf8');
-const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2), which is what this whole item was raised about. The panel
+ * became three files, so what this guard scans is their concatenation — the property it pins is about the
+ * leave TYPE screen, not about one filename, and pinning it to a file that no longer exists would have
+ * taken the guard out rather than moved it.
+ */
+const LEAVE_TYPE_SCREEN = [
+  'app/admin/leave-config/types/page.tsx',
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+];
+const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
+const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
 const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -44,7 +57,11 @@ describe('c979aa8b · entitlements page renders the two-pane workspace', () => {
     }
     // The panels slot map: every type's LeaveTypePanel, server actions bound as before.
     expect(pageSrc).toContain('panels={Object.fromEntries(');
-    expect(pageSrc).toContain('<LeaveTypePanel');
+    // a6fe37fc Round 5 — the slot's contents are `<LeaveTypeTabs>` now (`components/leave-type-panel.tsx`
+    // was deleted with the old page). c979aa8b's property is the SHAPE, which is unchanged: the page
+    // composes one server-rendered panel per type, server actions bound server-side, and hands the map to
+    // the workspace — the left rail knowing nothing about actions is what makes it a client component.
+    expect(pageSrc).toContain('<LeaveTypeTabs');
     // The Add Leave form is the EXISTING create form (a9c5870a's markup — its own layout tests still slice
     // it from this page), passed through untouched as the workspace's addForm slot.
     const addFormIdx = pageSrc.indexOf('addForm={');
@@ -178,22 +195,20 @@ describe('c979aa8b · hash deep-link still selects the type', () => {
 
 describe('c979aa8b · step bar: numbered 1–4, category labels, one section at a time', () => {
   it('renders the four steps in walk order with a numeric 1-based badge', () => {
-    // b8fcae73: the Eligibility step is gone and the walk reordered — 1 General · 2 Condition ('ess' is
-    // Condition's historical storage key) · 3 Entitlement · 4 Custom. The bar is ONE map over STEP_KEYS, so
-    // this array IS the numbering and the Previous/Next walk order.
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
-    // The visible number is the 1-based index of the map — step 1 General … step 4 Custom.
+    // ⚠️ a6fe37fc ROUND 5 — FOUR STEPS BECAME FIVE TABS, and this case is re-pointed rather than
+    // deleted because what c979aa8b actually pinned is the NUMBERING CONTRACT: one map over one ordered
+    // key list, so the badge a reader sees is the position in that list and the walk order cannot drift
+    // from the labels. That is unchanged; only the list is new, and it is new because grouping by how the
+    // code grew is the defect this whole item was raised about (IA §1.2).
+    expect(panelSrc).toContain(
+      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
+    );
+    // The visible number is the 1-based index of the map — tab 1 The leave type … tab 5 Who approves it.
     expect(panelSrc).toContain('{i + 1}');
-    // Labels reuse the existing category* title keys (all six locales already carry them).
-    for (const titleKey of [
-      "general: 'categoryGeneral'",
-      "entitlement: 'categoryEntitlement'",
-      "ess: 'categoryEssPolicy'",
-      "custom: 'categoryCustom'",
-    ]) {
-      expect(panelSrc).toContain(titleKey);
-    }
-    // The retired step's title mapping is gone with it.
+    // Each label is the tab key's own message key, one namespace, so a new tab cannot ship unlabelled.
+    expect(panelSrc).toContain('tTabs(`tab.${key}`)');
+    // The four retired STEP keys survive ONLY in the hydration remap — never as a rendered label.
+    expect(panelSrc.includes("general: 'categoryGeneral'")).toBe(false);
     expect(panelSrc.includes("eligibility: 'categoryEligibilityEntitlement'")).toBe(false);
   });
 });

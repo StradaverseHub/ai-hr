@@ -22,7 +22,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
 
 /** Isolate the create-leave-type <form> with an ANCHORED slice (keyed by its action). The page contains other
  *  forms — an unanchored lastIndexOf('<form') would grab the later setCompanyLeaveCycleAction form — so the

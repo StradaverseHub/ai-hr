@@ -245,8 +245,8 @@
     "leaveGenerate": "Tạo quyền lợi",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
     "leaveApproval": "Chuỗi phê duyệt",
-    "leavePayroll": "Liên quan bảng lương",
     "leaveReplacement": "Nghỉ bù",
+    "leaveCompanyRules": "Quy định của công ty",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
     "payrollGuide": "Hướng dẫn quy trình",
@@ -6616,7 +6616,6 @@
       "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
     },
     "leave": {
-      "pageTitle": "Cấu hình nghỉ phép",
       "pageDescription": "Các loại nghỉ phép và chính sách hưởng phép của chúng",
       "typesSectionTitle": "Cài đặt loại nghỉ phép",
       "workspaceTypeListLabel": "Loại nghỉ phép",
@@ -8353,7 +8352,6 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageTitle": "Bản ghi cấu hình quyền lợi",
       "pageDescription": "Bản ghi chỉ đọc của Chế độ phúc lợi và các quy tắc quyền lợi theo công ty / ngạch đang được cấu hình.",
       "intro": "Đây là bản ghi bằng văn bản của mọi con số quyền lợi hiện đang được cấu hình, được lập trước khi bất cứ thứ gì có thể bị xóa. Mỗi dòng cho biết những gì đã được thiết lập, áp dụng cho ai và giá trị bao nhiêu, để đọc lại và nhập vào các bảng quyền lợi mới.",
       "notAnUndo": "Đây là danh sách để nhập lại, không phải nút hoàn tác. Khôi phục thiết lập cũ nghĩa là nhập lại nó.",
@@ -8379,7 +8377,6 @@
       "allGrades": "Tất cả ngạch"
     },
     "leaveLedgerArchive": {
-      "pageTitle": "Bản ghi số dư Nghỉ ốm & Nghỉ nằm viện",
       "pageDescription": "Bản ghi chỉ đọc của mọi bản ghi số dư Nghỉ ốm và Nghỉ nằm viện đã bị xoá bởi lần đặt lại một lần, được giữ lại để các số liệu cũ không bao giờ mất.",
       "intro": "Đây là bản ghi được lập ngay trước khi việc đặt lại Nghỉ ốm và Nghỉ nằm viện xoá bất cứ thứ gì. Mỗi dòng cho biết bản ghi thuộc về ai, loại nghỉ phép nào, trị giá bao nhiêu ngày, ngày có hiệu lực và lý do nó tồn tại.",
       "notAnUndo": "Đây là bản ghi để đọc, không phải nút hoàn tác. Các dòng liệt kê ở đây đã bị xoá và muốn khôi phục thì phải nhập lại.",
@@ -8601,7 +8598,6 @@
     },
     "leaveConfigTypes": {
       "pageDescription": "Một loại nghỉ phép, năm thẻ, theo thứ tự các quyết định được đưa ra.",
-      "previewNote": "Đây là màn hình Loại nghỉ phép mới, được xây dựng song song với màn hình mà menu vẫn đang liên kết tới. Cả hai đều lưu vào cùng một dữ liệu, và cho đến khi chuyển đổi hoàn tất, khi lưu tại đây bạn sẽ được đưa về màn hình hiện tại.",
       "tabsLabel": "Các thẻ cấu hình loại nghỉ phép",
       "tab": {
         "identity": "Loại nghỉ phép",
@@ -8618,13 +8614,9 @@
         "approvers": "Các thiết lập phê duyệt thuộc về chính loại nghỉ phép. Chuỗi phê duyệt được tạo và gán ở màn hình Chuỗi phê duyệt."
       }
     },
-    "leaveConfigPreview": {
-      "note": "Đây là màn hình Cấu hình nghỉ phép mới, được xây dựng song song với màn hình mà menu vẫn đang liên kết tới. Cả hai lưu vào cùng một dữ liệu, và cho tới khi chuyển đổi hoàn tất, thao tác lưu tại đây sẽ đưa bạn về màn hình hiện tại."
-    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
-      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
-      "introTwoEditors": "Mỗi thiết lập trong số đó vẫn có thể thay đổi trên màn hình hiện đang chứa nó. Cả hai màn hình ghi vào cùng một dữ liệu, và màn hình cũ sẽ được gỡ bỏ khi chuyển đổi."
+      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",
@@ -9809,7 +9801,6 @@
     }
   },
   "leaveApproval": {
-    "title": "Chuỗi phê duyệt nghỉ phép",
     "description": "Chọn ai phê duyệt nghỉ phép và theo thứ tự nào cho mỗi công ty.",
     "emptyScope": "Không có công ty nào trong phạm vi của bạn.",
     "chain": "Thứ tự phê duyệt",

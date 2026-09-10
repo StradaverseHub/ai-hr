@@ -42,7 +42,18 @@ const formsSrc = read(FORMS);
 const pageSrc = read(PAGE);
 const newScreen = `${tabsSrc}\n${formsSrc}`;
 /** The screens that keep their copy of a moved setting for exactly one round. */
-const panelSrc = read('components/leave-type-panel.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — THE OLD PANEL IS DELETED, so the pair-wise comparisons below have nothing
+ * to compare against and become one-sided assertions about the surviving screen.
+ *
+ * Round 2 built this screen ALONGSIDE `components/leave-type-panel.tsx` and several cases here pinned
+ * that the two agreed — a field rendered on one and not the other would have been a setting that saved
+ * differently depending on which screen you used. That risk is gone with the second screen: there is one
+ * editor now. The assertions are kept and narrowed rather than deleted, because what they really pin is
+ * "this screen renders no editor for a field the action treats as absent", which is still true and still
+ * worth failing on.
+ */
+const OLD_PANEL_DELETED = true;
 const payrollPageSrc = read('app/admin/leave/payroll/page.tsx');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -368,12 +379,13 @@ describe('a6fe37fc R2 · rule 1 one level down — the marker’s form still pos
     // screen) are read by setLeaveTypeRulesAction but rendered by neither editor: absence means CLEAR for
     // the first and PRESERVE for the second, and that is today's behaviour on both screens. Pinned as an
     // equality so the pair cannot drift apart while the two screens are live side by side.
+    expect(OLD_PANEL_DELETED).toBe(true);
     for (const field of ['roundingThreshold', 'maxBalanceDays']) {
-      expect(panelSrc.includes(`name="${field}"`), `the old panel renders ${field}`).toBe(false);
       expect(
         newScreen.includes(`name="${field}"`),
-        `${field} is rendered on one of the two live screens and not the other`,
-      ).toBe(panelSrc.includes(`name="${field}"`));
+        `${field} has grown an editor on the leave type screen — absence means CLEAR for roundingThreshold ` +
+          `and PRESERVE for maxBalanceDays, so adding a control changes what a save does to a stored value`,
+      ).toBe(false);
     }
   });
 });
@@ -438,12 +450,23 @@ describe('a6fe37fc R2 · the two settings that move onto the leave type', () => 
     expect(tab5).toContain('name="perDateApproval"');
   });
 
-  it('NEITHER old screen loses its copy this round', () => {
-    // A setting editable in two places for one round is deliberate — both write the same column through
-    // the same action and the same marker, and Round 5 is where the old editor goes.
-    expect(panelSrc).toContain('name="partialApproval" value="1"');
-    expect(payrollPageSrc).toContain('name="payrollImpact" value="1"');
-    expect(payrollPageSrc).toContain('name="sendToPayroll"');
+  it('each of the two settings now has exactly ONE editor, and it is on this screen', () => {
+    // ROUND 2: "NEITHER old screen loses its copy this round" — a setting editable in two places for one
+    // round was the deliberate price of "something works at every point". ROUND 5 closes that window, and
+    // the case is inverted rather than deleted, because the property that matters is the one it was
+    // buying time against: ONE marker, ONE column, ONE editor. Per-date approval's other copy went with
+    // the leave type panel; Send to payroll module's goes with the Payroll impact screen's own commit,
+    // so that half follows the same CUTOVER switch the round-3 file uses.
+    expect(OLD_PANEL_DELETED).toBe(true);
+    expect(newScreen.match(/name="partialApproval" value="1"/g)).toHaveLength(1);
+    const payrollIsStub = payrollPageSrc.includes('redirect(');
+    if (payrollIsStub) {
+      expect(payrollPageSrc).not.toContain('name="sendToPayroll"');
+      expect(newScreen.match(/name="payrollImpact" value="1"/g)).toHaveLength(1);
+    } else {
+      expect(payrollPageSrc).toContain('name="payrollImpact" value="1"');
+      expect(payrollPageSrc).toContain('name="sendToPayroll"');
+    }
   });
 });
 
@@ -518,7 +541,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('href="/leave/employee-balances"');
     expect(pageSrc).toContain("t('employeeBalancesAction')");
     // The old screen keeps its copy until Round 5 deletes it — neither screen is the fix on its own.
-    expect(read('app/admin/leave/entitlements/page.tsx')).toContain('href="/leave/employee-balances"');
+    expect(read('app/admin/leave-config/types/page.tsx')).toContain('href="/leave/employee-balances"');
   });
 
   it('F48 the negative-balance-needs-a-limit list (r126) survived, predicate and all', () => {
@@ -561,8 +584,9 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     // Without the map this screen cannot reach any other leave-config screen at all; `current="leaveTypes"`
     // because it IS that screen — the map names screens, not addresses.
     expect(pageSrc).toContain('<LeaveConfigMap current="leaveTypes" />');
-    // lib/module-tours.json → leave · config anchors on this attribute. Its `route` still names the old
-    // address until Round 5, so carrying the anchor is what makes that repoint a one-line change.
+    // lib/module-tours.json → leave · config anchors on this attribute, and carrying the anchor from
+    // Round 2 is what made the cutover's repoint a ONE-LINE change to that file rather than a re-scripted
+    // tour. A tour step whose route no longer resolves to a screen is a tour that opens on a redirect.
     expect(pageSrc).toContain('data-tour="leave-config"');
     const tours = JSON.parse(read('lib/module-tours.json')) as Record<
       string,
@@ -572,8 +596,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
       .flatMap((m) => m.steps)
       .find((x) => x.target === '[data-tour="leave-config"]');
     expect(step, 'the leave-config tour step no longer anchors on this attribute').toBeTruthy();
-    // Still pointed at the OLD address: this round adds a screen and repoints nothing (Round 5 does).
-    expect(step!.route).toBe('/admin/leave/entitlements');
+    expect(step!.route).toBe('/admin/leave-config/types');
   });
 });
 
@@ -582,11 +605,14 @@ describe('a6fe37fc R2 · the route is registered and deliberately off the menu',
     expect(REGISTERED_ROUTES.has('/admin/leave-config/types')).toBe(true);
   });
 
-  it('is NOT on the leave config map — the menu moves at the Round 5 cutover, not now', () => {
+  it('IS on the leave config map now — the cutover moved the menu, one entry per commit', () => {
+    // ROUND 2 asserted the opposite ("the menu moves at the Round 5 cutover, not now"), which was the
+    // whole point of building this screen alongside the old one. Round 5 IS that cutover, so the case is
+    // inverted rather than dropped and both directions still fail loudly: a menu that never moved, and a
+    // menu still naming an address that renders a redirect stub.
     const hrefs = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.href);
-    expect(hrefs).not.toContain('/admin/leave-config/types');
-    // …and the old screen is still the one the menu names.
-    expect(hrefs).toContain('/admin/leave/entitlements');
+    expect(hrefs).toContain('/admin/leave-config/types');
+    expect(hrefs).not.toContain('/admin/leave/entitlements');
   });
 });
 
@@ -596,7 +622,9 @@ describe('a6fe37fc R2 · every new label ships in all six locales (the r127 less
   // i18n-coverage's static-key case skips them entirely and this is the pinning site.
   const KEYS = [
     'pageDescription',
-    'previewNote',
+    // `previewNote` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): the paragraph saying "a
+    // save made here returns you to the current screen" came off in the cutover commit, because the
+    // constants now return here, and the key is pruned in all six catalogues with it.
     'tabsLabel',
     'tab.identity',
     'tab.eligibility',

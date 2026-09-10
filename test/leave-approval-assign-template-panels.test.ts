@@ -49,7 +49,13 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 
 const ROOT = path.resolve(__dirname, '..');
 const MANAGER = path.join(ROOT, 'app/admin/leave-approval/template-manager.tsx');
-const PAGE = path.join(ROOT, 'app/admin/leave/approval/page.tsx');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The Approval chain editor is
+ * `/admin/leave-config/approval-chains` now; `/admin/leave/approval` is a redirect stub that mounts
+ * nothing. Every property this file guards is about the SCREEN, not the address, so it follows the
+ * screen — asserted against a stub it would have gone quietly, permanently vacuous.
+ */
+const PAGE = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 let b: Base;

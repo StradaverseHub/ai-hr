@@ -27,6 +27,25 @@
  * Static source guard (the repo convention for this DOM-runner-less component; see
  * leave-type-config-categories.test.ts). Engine behaviour for year_cycle_override lives in
  * leave-year-cycle-override.test.ts. Browser verification covers the interactive switching.
+ *
+ * ══ a6fe37fc ROUND 5 (cutover) — THIS GUARD PINNED THE OLD ARRANGEMENT AND CAME DUE. ═════════════════
+ *
+ * `components/leave-type-panel.tsx` is DELETED. The four steps and six sub-steps it carried — the thing
+ * IA §1.2 identifies as the actual subject of the reporter's complaint — are the FIVE TABS of
+ * `/admin/leave-config/types`. AGENTS 18: each case's REASONING is carried onto the new screen, not
+ * deleted, and the migration order's Round 2 table says where each half goes:
+ *
+ *   · Details and Leave Year Type answer "what is this leave type"      → TAB 1 `identity`
+ *   · Earning Method and Carry Forward answer "how many days", which is the same question the day tables
+ *     answer, so they join them                                          → TAB 3 `entitlement`
+ *   · Per-date approval answers "who approves it"                        → TAB 5 `approvers`
+ *   · the SubStepBar REUSE CONTRACT survives on the component itself, which is NOT deleted:
+ *     components/leave/generate-form.tsx and components/leave/adjustment-form.tsx still mount it.
+ *
+ * WHAT IS DELIBERATELY NOT RE-CREATED: the General sub-step WALK. There is no `GENERAL_SUB_STEP_KEYS`,
+ * no `generalSubStep === 'details'` gate and no second bar inside a tab, because the walk was the
+ * mechanism being replaced. The invariants those gates protected — one home per sub-form, one marker per
+ * form, one tab rendered at a time — are all still asserted below, against the tab that now holds each.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,32 +53,55 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
+ * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
+ * TABS of `/admin/leave-config/types` (IA §2), which is what this whole item was raised about. The panel
+ * became three files, so what this guard scans is their concatenation — the property it pins is about the
+ * leave TYPE screen, not about one filename, and pinning it to a file that no longer exists would have
+ * taken the guard out rather than moved it.
+ */
+const LEAVE_TYPE_SCREEN = [
+  'app/admin/leave-config/types/page.tsx',
+  'app/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+];
+const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
+const tabsSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
 const subStepBarSrc = readFileSync(resolve(here, '../components/leave-sub-step-bar.tsx'), 'utf8');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
-const approvalPageSrc = readFileSync(resolve(here, '../app/admin/leave/approval/page.tsx'), 'utf8');
+const generateFormSrc = readFileSync(resolve(here, '../components/leave/generate-form.tsx'), 'utf8');
+const adjustmentFormSrc = readFileSync(resolve(here, '../components/leave/adjustment-form.tsx'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
+/**
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. e4238594's property is that the rows the deleted
+ * embed used to maintain are STILL maintained, by the assignment section on the approval screen — the
+ * "nothing is stranded" half of the removal. The approval screen is `/admin/leave-config/approval-chains`
+ * now and the old address is a redirect stub that maintains nothing, so the assertion follows the screen.
+ */
+const approvalPageSrc = readFileSync(
+  resolve(here, '../app/admin/leave-config/approval-chains/page.tsx'),
+  'utf8',
+);
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-// e4238594 removed 'workflow' — the General walk ends at Carry Forward Policy.
-const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const;
+/** The five tabs, in the order the decisions are made (IA §2). Kept here as a literal rather than
+ *  imported, so a rename of a tab key is visible in the diff of a guard rather than absorbed silently. */
+const TABS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const;
 
-/** Slice the General card's segment (its CardTitle to the next card's CardTitle — the Entitlement card
- *  since b8fcae73 removed the Eligibility card that used to sit between them). */
-function generalSegment(): string {
-  const start = panelSrc.indexOf("<CardTitle>{t('categoryGeneral')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return panelSrc.slice(start, end);
-}
-
-/** 1e4eb8af — the Custom Settings card's segment (its CardTitle to the end of the panel: it is the last
- *  step card). The Leave Year Type sub-form now lives in here. */
-function customSegment(): string {
-  const start = panelSrc.indexOf("<CardTitle>{t('categoryCustom')}</CardTitle>");
-  expect(start).toBeGreaterThan(-1);
-  return panelSrc.slice(start);
+/**
+ * Slice ONE tab's rendered block out of leave-type-tabs.tsx: from its own `{activeTab === 'x' && (` gate
+ * to the next tab's. This is the direct successor of the old `generalSegment()` / `customSegment()`
+ * card-title slices — same technique, new container — and it is what lets every "…lives in THIS part of
+ * the screen, and only there" assertion below survive the rewrite intact.
+ */
+function tabSegment(key: (typeof TABS)[number]): string {
+  const start = tabsSrc.indexOf(`{activeTab === '${key}' && (`);
+  expect(start, `tab '${key}' has no gated block`).toBeGreaterThan(-1);
+  const next = TABS.slice(TABS.indexOf(key) + 1)
+    .map((k) => tabsSrc.indexOf(`{activeTab === '${k}' && (`))
+    .find((i) => i > start);
+  return tabsSrc.slice(start, next ?? tabsSrc.length);
 }
 
 describe('e1a51aea · reusable sub-step control', () => {
@@ -74,42 +116,70 @@ describe('e1a51aea · reusable sub-step control', () => {
     expect(subStepBarSrc).toContain('steps: SubStep[]');
   });
 
-  it('the panel renders the SubStepBar inside the General card with the sub-steps in walk order', () => {
-    expect(panelSrc).toMatch(/import \{ SubStepBar \} from '\.\/leave-sub-step-bar'/);
-    // 1e4eb8af dropped 'yearType' (moved to Custom Settings); feedback 4d6eae7b puts it BACK as sub-step 2,
-    // the reporter's stated order — the cycle is chosen before the rules that operate inside it.
-    expect(panelSrc).toContain(
-      "const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const",
-    );
-    const seg = generalSegment();
-    expect(seg).toContain('<SubStepBar');
-    // Exactly one sub-step's content renders at a time — each gates its own block.
-    for (const key of SUB_STEP_KEYS) {
-      expect(seg.includes(`{generalSubStep === '${key}' && (`), `sub-step '${key}' gated`).toBe(true);
-    }
+  it('the SubStepBar SURVIVES the cutover, because two live screens still mount it', () => {
+    // ⚠️ THE COMPONENT IS NOT DELETED WITH THE PANEL, and this is the case that says why. The General
+    // sub-step WALK is gone — it is the mechanism a6fe37fc replaced with five tabs — but
+    // `components/leave-sub-step-bar.tsx` is mounted by Generate entitlement and Adjustments, both of
+    // which are untouched by this item. Deleting it as "the panel's bar" would have broken two screens
+    // that have nothing to do with leave types.
+    expect(generateFormSrc).toMatch(/from '@\/components\/leave-sub-step-bar'|from '\.\.\/leave-sub-step-bar'/);
+    expect(adjustmentFormSrc).toMatch(/from '@\/components\/leave-sub-step-bar'|from '\.\.\/leave-sub-step-bar'/);
+    // …and the reuse contract itself, which is what made the component worth generalising: steps in as
+    // data, nothing leave-general-specific baked in.
+    expect(subStepBarSrc).toContain('steps: SubStep[]');
   });
 
-  it('persists the sub-step alongside activeStep in the leaveTypeCards shape (compatible migration)', () => {
-    // The ONE writer persists the keys together (08bc6841 extended the e1a51aea shape with essSubStep,
-    // 7b945408 with entitlementSubStep — the secondary flows ride the same persistence, see
-    // leave-condition-substeps.test.ts / leave-entitlement-substeps.test.ts)…
-    expect(panelSrc).toContain(
-      // 6e9a126e RELEASE THREE — the persisted shape lost `entitlementSubStep` because the Entitlement step's sub-flow is gone: it is now a pointer to Entitlement Tables plus Run Earned Accrual, with no sub-steps to remember. The guard's subject is the COMPATIBLE MIGRATION of the stored shape, not the field list, so it is updated rather than deleted — a card stored under the old shape must still open.
-      "JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })",
+  it('the leave type screen renders ONE bar, of five tabs, and gates exactly one at a time', () => {
+    // The successor of "the SubStepBar inside the General card with the sub-steps in walk order". What is
+    // asserted is unchanged in substance — one navigation control, every destination gated on its own key,
+    // no second bar nested inside a destination — and the destinations are the five tabs now.
+    expect(tabsSrc).toContain(
+      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
     );
-    // …and hydration tolerates an older payload: activeStep-only and the accordion { key: boolean } shape
-    // both still restore (the categories test separately pins parsed[k] === true).
-    expect(panelSrc).toContain("typeof parsed.generalSubStep === 'string'");
+    for (const key of TABS) {
+      expect(tabsSrc.includes(`{activeTab === '${key}' && (`), `tab '${key}' gated`).toBe(true);
+    }
+    // NO nested bar: the sub-step walk is the thing being replaced, so re-creating one inside a tab would
+    // reintroduce exactly the arrangement IA §1.2 names as the defect.
+    expect(tabsSrc).not.toContain('<SubStepBar');
+    expect(tabsSrc).not.toContain('GENERAL_SUB_STEP_KEYS');
+  });
+
+  it('a browser holding an OLD sub-step payload is remapped, never snapped back to tab 1', () => {
+    // The compatible-migration promise, carried across verbatim in intent. The old writer persisted
+    // `{ activeStep, generalSubStep, essSubStep }` under `leaveTypeCards:<id>`; the new screen reads its
+    // own key first and then those, so an administrator who was standing on Earning Method reopens on the
+    // tab that now holds it rather than being thrown back to the first tab.
+    expect(tabsSrc).toContain('activeTab');
+    expect(tabsSrc).toContain("typeof parsed.generalSubStep === 'string'");
+    // …and every retired STEP key has a destination in the remap table, or a stored payload naming it
+    // would fall through to tab 1 — the "snapped back" behaviour this case exists to forbid.
+    const table = tabsSrc.slice(
+      tabsSrc.indexOf('const RETIRED_STEP_TO_TAB'),
+      tabsSrc.indexOf('const RETIRED_GENERAL_SUB_STEP_TO_TAB'),
+    );
+    for (const retired of ['general', 'ess', 'entitlement', 'custom', 'eligibility']) {
+      expect(new RegExp(`\\b${retired}:`).test(table), `retired step key '${retired}' has no remap`).toBe(true);
+    }
   });
 });
 
-describe('e1a51aea · Details keeps the existing General content', () => {
-  it('the identity form, leave unit and per-date approval live in the details sub-step', () => {
-    const seg = generalSegment();
-    const details = seg.slice(seg.indexOf("generalSubStep === 'details'"), seg.indexOf("generalSubStep === 'yearType'"));
-    for (const needle of ['name="identity"', 'name="leaveUnit"', 'name="partialApproval"']) {
-      expect(details.includes(needle), `${needle} inside details`).toBe(true);
+describe('e1a51aea · Details keeps the existing General content — as tab 1', () => {
+  it('the identity form and the leave unit live on tab 1, which is what "the leave type" means', () => {
+    const identity = tabSegment('identity');
+    for (const needle of ['name="identity"', 'name="leaveUnit"']) {
+      expect(identity.includes(needle), `${needle} on tab 1`).toBe(true);
     }
+  });
+
+  it('per-date approval MOVED to tab 5, because it answers who approves it (IA §2)', () => {
+    // ⚠️ RE-POINTED, NOT DROPPED, and the third field of the old Details sub-step is the one that moved.
+    // The migration order names it explicitly: "Same form, same marker, same column — Tab 5". The
+    // invariant is ONE HOME: the whole screen carries exactly one of this marker, so two editors cannot
+    // write one column from two places.
+    expect(tabSegment('approvers')).toContain('name="partialApproval"');
+    expect(tabSegment('identity').includes('name="partialApproval"')).toBe(false);
+    expect(panelSrc.match(/name="partialApproval" value="1"/g)).toHaveLength(1);
   });
 });
 
@@ -131,9 +201,9 @@ describe('e1a51aea · Details keeps the existing General content', () => {
  * type, they carry an applies-company-wide badge, and putting them inside a per-type walk would say
  * something untrue about their scope.
  */
-describe('4d6eae7b · Leave Year Type (per-type cycle override) — back in the General walk', () => {
+describe('4d6eae7b · Leave Year Type (per-type cycle override) — on tab 1, with Details', () => {
   it('posts the yearCycle tri-state marker + the yearCycleValue select through updateTypeAction', () => {
-    const seg = generalSegment();
+    const seg = tabSegment('identity');
     expect(seg).toContain('<input type="hidden" name="yearCycle" value="1" />');
     expect(seg).toContain('name="yearCycleValue"');
     // The three cycle options + the company-default fallback.
@@ -145,7 +215,7 @@ describe('4d6eae7b · Leave Year Type (per-type cycle override) — back in the 
   // f3a64d90 switched Anniversary-to-Calendar ON (its engine semantics shipped with that item), so the
   // option is now SELECTABLE and its pending-engine note is gone — the inverse of the e1a51aea assertion.
   it('renders Anniversary-to-Calendar SELECTABLE with no pending-engine note (f3a64d90)', () => {
-    const seg = generalSegment();
+    const seg = tabSegment('identity');
     expect(seg).not.toMatch(/value="a2c" disabled/);
     expect(seg).toContain('<option value="a2c">');
     expect(seg).not.toContain("t('subStep.pendingEngineNote')");
@@ -154,15 +224,17 @@ describe('4d6eae7b · Leave Year Type (per-type cycle override) — back in the 
   });
 
   // ONE HOME — the invariant 1e4eb8af introduced, kept verbatim and simply pointed the other way.
-  it('lives ONLY in the General walk — Custom Settings no longer hosts a second copy', () => {
-    const custom = customSegment();
-    expect(custom.includes('name="yearCycleValue"')).toBe(false);
-    expect(custom.includes('name="yearCycle" value="1"')).toBe(false);
-    // The whole panel contains exactly ONE of each control, wherever it lives.
+  it('lives ONLY on tab 1 — no other tab hosts a second copy', () => {
+    // THE INVARIANT IS THE POINT AND IT IS UNCHANGED: this sub-form has exactly ONE home. Two copies
+    // would be two tri-state markers writing one column from different places, which is how a saved
+    // override silently gets reset. 1e4eb8af moved it, 4d6eae7b moved it back, a6fe37fc moved it onto a
+    // tab — three relocations, one invariant, and this is the assertion that survived all three.
+    for (const other of TABS.filter((k) => k !== 'identity')) {
+      expect(tabSegment(other).includes('name="yearCycleValue"'), `${other} has a second copy`).toBe(false);
+    }
+    // The whole screen contains exactly ONE of each control, wherever it lives.
     expect(panelSrc.match(/name="yearCycleValue"/g)).toHaveLength(1);
     expect(panelSrc.match(/name="yearCycle" value="1"/g)).toHaveLength(1);
-    // …and it is gated by its own sub-step, so exactly one sub-step's content renders at a time.
-    expect(generalSegment()).toContain("{generalSubStep === 'yearType' && (");
   });
 
   // 4b0e76ae REMOVED the block this case used to pin. The tenant-wide leave-year RECORDS no longer live in
@@ -181,9 +253,14 @@ describe('4d6eae7b · Leave Year Type (per-type cycle override) — back in the 
  * the calculation reads. The old assertions are not weakened here, they are inverted, and the invariant
  * they protected (these forms write ONE known place, never a second parallel store) is what is re-pinned.
  */
-describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE', () => {
-  it('both sub-steps post setTypeRulesAction, and no longer post updatePolicyAction', () => {
-    const seg = generalSegment();
+describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE — from tab 3', () => {
+  // ⚠️ a6fe37fc ROUND 5 — THEY MOVED TO TAB 3, AND THE MOVE IS THE POINT OF THE REDESIGN.
+  // Earning method and carry forward answer "how many days", which is the same question the entitlement
+  // day tables answer; they sat in the General *step* only because that is where the code grew (IA §1.2).
+  // Everything 9816a5ad pinned about them — one destination, per-half markers, no policy write — is
+  // asserted unchanged below, against the tab that now holds them.
+  it('both forms post setTypeRulesAction, and no longer post updatePolicyAction', () => {
+    const seg = tabSegment('entitlement');
     expect((seg.match(/action=\{setTypeRulesAction\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
     // The regression that matters: if either sub-step goes back to writing a policy row, it becomes a
     // control that saves and does nothing, which is worse than an absent one.
@@ -208,10 +285,10 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
   });
 
   it('the per-policy scope picker is gone, because there is no longer a scope', () => {
-    const seg = generalSegment();
     // One leave type, one set of rules — a company/grade picker here would imply per-scope rules again,
-    // which is the duplication the item exists to remove.
-    expect(seg).not.toContain('<PolicyFrontDoor');
+    // which is the duplication the item exists to remove. Asserted over the WHOLE screen now rather than
+    // one card: after the rewrite there is no card to hide it in.
+    expect(panelSrc).not.toContain('<PolicyFrontDoor');
   });
 
   it('each form marks WHICH half of the rule row it rendered, so the other half survives', () => {
@@ -219,10 +296,10 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
       panelSrc.indexOf('function EarningMethodForm'),
       panelSrc.indexOf('function CarryPolicyForm'),
     );
-    const carryForm = panelSrc.slice(
-      panelSrc.indexOf('function CarryPolicyForm'),
-      panelSrc.indexOf('function PolicyFrontDoor'),
-    );
+    // `PolicyFrontDoor` was the old end-marker for this slice and went with the panel (there is no
+    // per-policy front door any more — see the case above). The slice ends at the file's end instead,
+    // which is where CarryPolicyForm's own body ends in leave-type-sub-forms.tsx.
+    const carryForm = panelSrc.slice(panelSrc.indexOf('function CarryPolicyForm'));
     // Earning and Carry are two forms over ONE row. Without a marker naming the rendered half, an
     // earning-only save clears the carry configuration — the exact footgun the old front doors worked
     // around by re-posting the other half as hidden inputs.
@@ -279,10 +356,10 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
   });
 
   it('the carry front door reuses CarryExpiryFields (the existing days/months expiry switch)', () => {
-    const carryForm = panelSrc.slice(
-      panelSrc.indexOf('function CarryPolicyForm'),
-      panelSrc.indexOf('function PolicyFrontDoor'),
-    );
+    // `PolicyFrontDoor` was the old end-marker for this slice and went with the panel (there is no
+    // per-policy front door any more — see the case above). The slice ends at the file's end instead,
+    // which is where CarryPolicyForm's own body ends in leave-type-sub-forms.tsx.
+    const carryForm = panelSrc.slice(panelSrc.indexOf('function CarryPolicyForm'));
     expect(carryForm).toContain('<CarryExpiryFields');
     expect(carryForm).toContain("t('subStep.carryNone')");
     expect(carryForm).toContain("t('subStep.carryFixedMax')");
@@ -295,22 +372,43 @@ describe('e4238594 · the Approval Workflow sub-step is GONE, and nothing is str
   // home (templates are built and assigned there, and the full rule list is maintained there). These
   // assertions replace the embed's contract with its removal, and — more importantly — pin the reason the
   // removal is SAFE, which is the part a future reader will need.
-  it('the panel no longer renders an approval slot, and the sub-step key is gone', () => {
-    const seg = generalSegment();
-    expect(seg).not.toContain('approvalWorkflowSection');
-    expect(seg).not.toContain("{generalSubStep === 'workflow' && (");
-    expect(panelSrc).not.toContain('approvalWorkflowSection?: ReactNode');
+  it('no tab renders an approval EDITOR slot, and the retired sub-step key is nowhere', () => {
+    // a6fe37fc kept e4238594's removal and did not re-create it in the rewrite. Asserted over the whole
+    // screen rather than one card: after the rewrite there is no card for it to hide in.
+    expect(panelSrc).not.toContain('approvalWorkflowSection');
+    expect(panelSrc).not.toContain("generalSubStep === 'workflow'");
+  });
+
+  it('what tab 5 DOES carry is a READ-OUT, not the editor e4238594 removed', () => {
+    // ⚠️ THE DISTINCTION THIS CASE EXISTS FOR. Round 4 gave tab 5 a read-only view of which chain reaches
+    // this type, its ordered steps and its escalation — columns that route live requests and were shown
+    // NOWHERE after 706d34e8 (IA §4.1). That is a read-out over rows the assignment section maintains,
+    // not a second editor over them, and saying so here is what stops the next reader deleting it as a
+    // regression against e4238594.
+    const approvers = tabSegment('approvers');
+    // The read-out is server-composed and handed in as a slot (the page loads it; this file renders it),
+    // which is the same shape every other server-composed section on this screen uses.
+    expect(approvers).toContain('{approvalReadoutSection}');
+    expect(pageSrc).toContain('LeaveTypeApprovalReadout');
+    expect(approvers).not.toContain('WorkflowMatrix');
+    // A read-out has no write path: no form bound to an approval-rule action anywhere on the screen.
+    expect(panelSrc).not.toContain('saveLeaveApprovalRuleAction');
+    expect(panelSrc).not.toContain('archiveLeaveApprovalRuleAction');
   });
 
   it('NO LINK OR PLACEHOLDER stands in its place — the reporter rejected that explicitly', () => {
     // rev 1 offered to leave a pointer to the Approval tab; the reporter said no. A stub step would keep
-    // the duplication complaint alive while adding a step that does nothing.
-    const seg = generalSegment();
-    expect(seg).not.toContain("t('subStep.workflowUnavailable')");
-    expect(seg).not.toContain('href="/admin/leave/approval"');
+    // the duplication complaint alive while adding a step that does nothing. (Tab 5's read-out DOES link
+    // to Approval chains to change anything — that is a different thing: a read-out saying where the
+    // editor is, not a placeholder standing in for a deleted step.)
+    expect(panelSrc).not.toContain("t('subStep.workflowUnavailable')");
+    // And never a LITERAL address: r259's one-direction rule — every cross-screen link resolves through
+    // the map, so a link and the menu entry beside it cannot give two answers.
+    expect(panelSrc).not.toContain("href=\"/admin/leave/approval\"");
+    expect(panelSrc).not.toContain("href=\"/admin/leave-config/approval-chains\"");
   });
 
-  it('the Entitlements page stopped preparing approval data entirely', () => {
+  it('the leave TYPE screen prepares no approval EDITOR data', () => {
     // The embed cost a fan of reads on every render of this page (departments, positions, business units,
     // templates, and one policy + rule list PER COMPANY). All of it went with the sub-step.
     //

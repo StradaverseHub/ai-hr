@@ -241,11 +241,12 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    ready to take effect the day it does. `setToilPolicy` asserts the same server-side
     //    (test/toil.test.ts covers the refusal).
     //
-    //    296fc027 MOVED THE FORM, NOT THE RULE. The policy editor now lives on
-    //    app/admin/leave/replacement/page.tsx — Leave Config is the single place replacement leave is
-    //    configured — while the ledger and the two sweeps stay here, precisely because the two are gated
-    //    DIFFERENTLY and putting them on one screen is what made that easy to get wrong. So this section
-    //    now reads the OTHER file. Every assertion below is unchanged in substance; only the source is.
+    //    296fc027 MOVED THE FORM, NOT THE RULE, and a6fe37fc Round 5 moved it once more: the policy
+    //    editor lives on app/admin/leave-config/company-rules/page.tsx — a replacement-leave policy is a
+    //    COMPANY rule (IA §2.0.3) and now shares one screen with the other three — while the ledger and
+    //    the two sweeps stay HERE, precisely because the two halves are gated DIFFERENTLY and putting
+    //    them on one screen is what made that easy to get wrong. So this section reads the OTHER file.
+    //    Every assertion below is unchanged in substance; only the source path is.
     //    Sections 1–3 above still read this page, which is the half the wind-down argument protects.
     //
     //    READ-ONLY, NOT HIDDEN (review r3). The first version of this gate rendered `null`, and this
@@ -256,7 +257,10 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    an outstanding liability could not see the settings that govern HOW it settles. `toil` is in no
     //    parity set, so every existing tenant lands in this branch at the flip. What the entitlement
     //    withholds is the write, and that is what these assert.
-    const cfg = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave/replacement/page.tsx'), 'utf8');
+    const cfg = fs.readFileSync(
+      path.resolve(__dirname, '..', 'app/admin/leave-config/company-rules/page.tsx'),
+      'utf8',
+    );
     // The sweeps must NOT have followed the form onto the configuration screen — that would re-gate a
     // statutory settlement behind a page that is read-only without the module.
     //

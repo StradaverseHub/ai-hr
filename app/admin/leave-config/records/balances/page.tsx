@@ -4,14 +4,15 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveLedgerArchiveCaptures, listLeaveLedgerResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
 
 /**
- * a6fe37fc ROUND 3 — THE MEDICAL / HOSPITALISATION BALANCE RECORD at its new address
- * (`/admin/leave-config/records/balances`). IA §2 → RECORDS › balance record.
+ * a6fe37fc — THE MEDICAL / HOSPITALISATION BALANCE RECORD (`/admin/leave-config/records/balances`).
+ * IA §2 → RECORDS › balance record.
  *
- * ⚠️ IT REPLACES NOTHING YET. `/admin/leave/entitlements/ledger-archive` is untouched, still registered
- * and still what the menu links to; Round 5 empties that page and repoints its address here.
+ * ⚠️ ROUND 5 (cutover) HAS HAPPENED: this IS the screen. `/admin/leave/entitlements/ledger-archive` is an
+ * unguarded redirect stub pointing here, it has left lib/permissions.ts's leaveConfig `routes`, and the
+ * map's `ledgerArchive` entry names this address. The stub is never deleted.
  *
  * WHAT IT IS (c8052ae3, unchanged): "Before anything is removed, copy every affected record into a
  * permanent written record you can read on screen and download, so the old figures are never lost." This
@@ -25,12 +26,19 @@ import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config
  * would write an empty snapshot over the only copy. That absence is a feature and it is carried across
  * with the screen. Nothing here saves, so this page needs no preview note.
  *
- * ⚠️ THE CSV LINK STILL POINTS AT THE OLD `/export` ROUTE HANDLER, ON PURPOSE — IA §3.2 F46 moves the
- * handler with the screen in Round 5, and this round adds and removes nothing.
+ * ⚠️ THE CSV LINK STILL POINTS AT THE OLD `/export` ROUTE HANDLER, AND IT STAYS THERE. A route handler
+ * has no screen column, was never in lib/permissions.ts, and nothing about the cutover requires it to
+ * move — re-addressing it would break every saved download link and buy nothing.
  *
  * F46 IS THE WHOLE OF THIS SCREEN and it is carried complete: the capture picker, the two counts stated
  * plainly, the eight-column listing, the "no leave request behind this row" line on every ledger row, and
  * the CSV.
+ *
+ * THE HEADING IS THE MENU'S OWN STRING (`leaveConfigScreenTitle('ledgerArchive')`). The old page owned a
+ * private `admin.leaveLedgerArchive.pageTitle` reading "Medical & Hospitalisation balance record" while
+ * the menu called the same screen "Ledger archive" — one of the four mismatches IA §1.1 measured. The key
+ * is DELETED in all six locales with the page that owned it. The sentence it used to say is not lost: the
+ * `pageDescription` and the intro below both still say in full what this record is of.
  */
 export default async function LeaveConfigBalanceRecordPage({
   searchParams,
@@ -56,9 +64,13 @@ export default async function LeaveConfigBalanceRecordPage({
 
   return (
     <div className="space-y-6">
-      {/* The SAME heading the old screen renders — one record, one name, two addresses for one round. */}
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      {/* `current="ledgerArchive"` because this IS that screen — the map names screens, not addresses. */}
+      {/* The heading is the string the MENU shows for this screen (IA §1.1) — one screen, one name. */}
+      <PageHeader
+        title={await leaveConfigScreenTitle('ledgerArchive')}
+        description={t('pageDescription')}
+      />
+      {/* `current="ledgerArchive"` because this IS that screen — the map names screens, not addresses,
+          and the cutover repointed the entry here. */}
       <LeaveConfigMap current="ledgerArchive" />
 
       <Card>

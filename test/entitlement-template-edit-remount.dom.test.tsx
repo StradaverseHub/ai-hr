@@ -136,7 +136,14 @@ describe('§1 4a1abc4a · clicking Edit is a client-side navigation, and the edi
     // A second `<EntitlementBandsEditor` in an app/ page would be a second create/edit form writing the
     // same effective-dated lineage — and the copy without the key would lose tables exactly as the
     // original did, silently, while both still saved.
-    const mounts = ['app/admin/leave/entitlements/page.tsx', 'app/admin/leave/entitlements/templates/page.tsx'];
+    // a6fe37fc Round 5 re-pointed the standalone half: `/admin/leave/entitlements/templates` is a
+    // redirect stub now and the screen is `/admin/leave-config/entitlement-tables`. The assertion is
+    // stronger for following it — a stub can never grow a second editor, and the live page can.
+    const mounts = [
+      'app/admin/leave-config/types/page.tsx',
+      'app/admin/leave-config/entitlement-tables/page.tsx',
+      'app/admin/leave-config/types/page.tsx',
+    ];
     for (const f of mounts) {
       expect(read(f), `${f} must mount the shared block, never its own editor`).not.toContain(
         '<EntitlementBandsEditor',

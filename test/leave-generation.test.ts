@@ -452,7 +452,14 @@ describe('93249794 · D. no second entitlement definition, no second criteria en
   });
 
   it('both screens build their criteria from the ONE shared builder', () => {
-    for (const page of ['app/admin/leave/adjustments/page.tsx', 'app/admin/leave/generate/page.tsx']) {
+    // a6fe37fc Round 5 moved BOTH screens into /admin/leave-config/; the old pages are redirect stubs
+    // that build no criteria at all, so the assertion follows the screens. The property is unchanged and
+    // is the one that matters: two screens, ONE section list, so they cannot select different people
+    // from the same words.
+    for (const page of [
+      'app/admin/leave-config/adjustments/page.tsx',
+      'app/admin/leave-config/generate/page.tsx',
+    ]) {
       expect(read(page), `${page} must call the shared builder`).toContain('buildOrgCriteriaSections');
     }
     // …and the builder is the only place the section list lives.
