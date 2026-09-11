@@ -1,3 +1,38 @@
+## r265 (2026-09-11) — the Shift arrangement page of its own, and holidays in a dialog with a changeable National / State. `main@90e84803`, no migration. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (190 pages), applied nothing (376 stays), restarted; service active, `GET /` 401; `a485afa1` and `def44f29` marked deployed (ref 90e84803).
+
+**Gate:** 820 files as TWELVE FOREGROUND BATCHES of 69 at `VITEST_MAX_WORKERS=3` **without the per-batch
+cluster rebuild** (the r266 builder shared the cluster and a rebuild would have wiped its worker DBs).
+Eleven green; batch 12 red on 3 files with ZERO assertion errors (3 `Hook timed out`, one TRUNCATE
+deadlock — harness reset contention), all 3 green on re-run. `next build` clean (190 pages).
+
+**`a485afa1` rev 2 — View / Edit opens the employee's own Shift arrangement page.** New route
+`/admin/attendance/schedule-assignment/[employmentId]` on the existing requireAdmin column (no new
+screen key); one page views and edits; Save returns to the list with filters kept, `saved=1`,
+`focus=<id>` and the row highlighted; Cancel/Back return to the same row; the inline `?assign=` panel is
+gone and old links redirect; `returnTo` is a whitelist (pathname never from the field). Verify: SHIP,
+three minors fixed in one pass — **a refused save now keeps what was typed** (echoed as `typed*` params,
+shape-checked, never clobbering the list's `shiftId` filter) with the reason directly above the fields;
+a vacuous source pin sliced to the right action; the dead `removed=` branch dropped. Non-vacuity proven
+on three behaviours by the verifier and one by the builder. 74 rows on production; only 3 employees
+hold a dated arrangement.
+
+**`def44f29` — Add / Edit holiday in a dialog; National / State a dropdown of National + the 16 states,
+changeable on add AND edit.** `updateHoliday` accepts `state` (refused on company/group-scoped rows,
+validated against the row's country pack, audit `after.state` now the NEW state — it used to copy the
+old one); `createHoliday` validates it too (verify finding); the page's state list is pinned to the
+pack; ADR-0063 amended (scope was "immutable on update"). Verify: SHIP; the calendar consequence proven
+by a throwaway test (national → Sabah → national changes who sees it, no cache).
+**FACT found by the builder, confirmed by the verifier, worth remembering:** react-dom 19.2.4 disables
+event dispatch during its commit-phase `form.reset()`, so an `onReset` cancel on a `<form action>`
+NEVER runs; a controlled select snaps back after a refused save. The holiday island dispatches the
+`useActionState` action from `onSubmit` inside `startTransition` instead. **The movement-type dialog
+had the same latent defect** (behaviour select promotion → transfer after a refused save; a re-submit
+would have posted the wrong behaviour) and was fixed the same way with its own DOM test, inside this
+round.
+**Hazard still unraised (from the planner):** all four holiday groups on production are archetype
+`custom`, so staff resolved through them would get no national or state holidays; no location maps to
+them today.
+
 ## r264-plan (2026-09-11) — five items planned with mockups; two approved within the hour. NO CODE.
 
 Four planning agents, each verifying the premise on the live screen and code (production SELECT-only)
