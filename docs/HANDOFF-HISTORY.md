@@ -34,7 +34,17 @@ at every writer: openLeaveYear, accrue-earned, the hire grant, profile recalc). 
 the env loader could never run (db/client reads DATABASE_URL at import — the header's `set -a` form is
 mandatory), `--tenant` is uuid-checked, and the two reset events carry an audit label.
 **Board at close:** `f9afd1ce` deployed (ref 898dad7b) + note `487d179f`; `fe9c73bc` DONE, not deployed — the run is the deliverable; `492da418` PLANNED carries the go-ahead; **`a485afa1` came back CONTESTED the same day** (View/Edit must open a dedicated screen, not the inline panel r263 built — re-plan next, with a mockup); seven `open`.
-**Operator steps still owed:** the run plan is `492da418` (raised + planned; approve = run on live, config first, accruals second WITH the system-adjustment flag). The dry run on the box (2026-09-11, nothing written) found 34 templates (23 in force) / 3 rules (1 in force) / 201 accruals / **83 adjustments, ALL system-written (`sys:profile_recalc`, `sys:policy_recalc`, `sys:a2c_recalc`, `sys:carry_forward_cap`; 0 batched, 0 human)** / 19 debits; the approved plan's "79 adjustments your HR team made by hand" WAS WRONG and the run plan says so at the top and recommends clearing them too (`--include-system-adjustments`, opt-in). Rehearsal on a copy: the dump was taken on the box (`/home/ubuntu/aihr-prodcopy-2026-09-11.dump`, 157 MB, 2085 TOC entries, PG 16.15) but restoring it into a scratch database and copying it off the box were both refused by the session's permission classifier; the owner runs that step (commands in the round's recap).
+**THE RUN HAPPENED (2026-09-11, after the reporter approved `492da418` and the owner added an ssh allow
+rule).** Rehearsed first on a local restore of the box's dump (`ai_hr_prodcopy`, counts identical to
+live): config stage archived 34 + 3 and cleared them, every type read unconfigured; accruals stage with
+`--include-system-adjustments` archived 284 ledger + 120 recalc-audit rows and cleared them, 19 debits
+kept. Then LIVE, same two commands: `fe9c73bc-config-2026-09-11` holds 34 template + 3 rule rows,
+`entitlement_template` 0, `entitlement_eligibility_rule` 0; `fe9c73bc-accruals-2026-09-11` holds 284
+ledger + 120 recalc_audit rows, `leave_ledger` = 19 debits and nothing else, `leave_entitlement_recalc_audit`
+0, two `leave-config` events. The pre-reset backup stays on the box:
+`/home/ubuntu/aihr-prodcopy-2026-09-11.dump` (157 MB); the local copy was deleted. `fe9c73bc` and
+`492da418` marked deployed.
+**How it was owed before the run:** the run plan is `492da418` (raised + planned; approve = run on live, config first, accruals second WITH the system-adjustment flag). The dry run on the box (2026-09-11, nothing written) found 34 templates (23 in force) / 3 rules (1 in force) / 201 accruals / **83 adjustments, ALL system-written (`sys:profile_recalc`, `sys:policy_recalc`, `sys:a2c_recalc`, `sys:carry_forward_cap`; 0 batched, 0 human)** / 19 debits; the approved plan's "79 adjustments your HR team made by hand" WAS WRONG and the run plan says so at the top and recommends clearing them too (`--include-system-adjustments`, opt-in). Rehearsal on a copy: the dump was taken on the box (`/home/ubuntu/aihr-prodcopy-2026-09-11.dump`, 157 MB, 2085 TOC entries, PG 16.15) but restoring it into a scratch database and copying it off the box were both refused by the session's permission classifier; the owner runs that step (commands in the round's recap).
 **Two consequences the reporter hears in the run plan:** balances read negative for the 19 debit rows until
 regeneration; `expireCarriedLeave` short-circuits for a year with no accrual marker, so the 1-April sweep
 skips affected people until entitlement is regenerated (core/leave.ts ~8659).
