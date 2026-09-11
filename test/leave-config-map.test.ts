@@ -18,6 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { LEAVE_CONFIG_MAP, type LeaveConfigScreenId } from '../components/leave-config-map';
 import { SCREENS } from '../lib/permissions';
+import { leavePack } from '../packs/leave';
 
 const declaredRoutes = new Set(
   SCREENS.filter((s) => s.screenKey === 'leaveConfig' || s.screenKey === 'leaveApproval').flatMap(
@@ -114,13 +115,23 @@ describe('a6fe37fc — the leave configuration map', () => {
     }
   });
 
-  it('groups the screens by what the administrator is doing', () => {
-    // Pinned because the grouping IS the deliverable: a flat list is what the reporter complained about.
-    expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual(['configure', 'run', 'history']);
+  it('10b59703 — groups the screens by the five submenu rows, each group leading with its row\'s own href', () => {
+    // `groups the screens by what the administrator is doing` (configure / run / history) STOOD HERE and
+    // is DELIBERATELY REPLACED: the reporter's instruction was that the left submenu IS the navigation,
+    // so a group is now a submenu ROW. This is AGREEMENT, not derivation — the map's own header says why
+    // the list is declared rather than derived — and it is pinned in both directions: every group is a
+    // row of LEAVE_ADMIN_NAV (same order), and every row is a group. The first item of a group is the
+    // row's href, so the row and the tab it lands on are the same screen.
+    const rows = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(rows.map((r) => r.labelKey));
+    expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(rows.map((r) => r.href));
+    expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual(['entitlements', 'adjustments', 'generate', 'approval', 'companyRules']);
     const byGroup = Object.fromEntries(LEAVE_CONFIG_MAP.map((g) => [g.id, g.items.map((i) => i.id)]));
-    // History is read-only and must not acquire a screen that writes.
-    expect(byGroup.history).toEqual<LeaveConfigScreenId[]>(['entitlementArchive', 'ledgerArchive']);
-    expect(byGroup.run).toContain<LeaveConfigScreenId>('generateEntitlement');
-    expect(byGroup.configure).toContain<LeaveConfigScreenId>('leaveTypes');
+    // The two rows with tabs, exactly as the approved pictures draw them; the other three own one screen.
+    expect(byGroup.entitlements).toEqual<LeaveConfigScreenId[]>(['leaveTypes', 'entitlementTables', 'entitlementArchive']);
+    expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'ledgerArchive', 'importLeaveData']);
+    expect(byGroup.generate).toEqual<LeaveConfigScreenId[]>(['generateEntitlement']);
+    expect(byGroup.approval).toEqual<LeaveConfigScreenId[]>(['approvalChain']);
+    expect(byGroup.companyRules).toEqual<LeaveConfigScreenId[]>(['companyRules']);
   });
 });

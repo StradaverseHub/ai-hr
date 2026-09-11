@@ -1,22 +1,20 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { entitlementYearOptions } from '@/core/leave';
+import { requireAdmin } from '@/lib/authz';
+import { listLeaveTypes, listCompanies } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
 import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
-import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
 } from '../../leave/entitlements/templates/entitlement-tables-block';
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
-import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader, leaveConfigScreenHref } from '@/components/leave-config-map';
 import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../approval-readout';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
@@ -83,14 +81,14 @@ export default async function LeaveConfigTypesPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
-  const tTypes = await getTranslations('admin.leaveConfigTypes');
   const { error, editTemplate, editRule } = await searchParams;
+  const header = await leaveConfigPageHeader('leaveTypes');
 
-  const [types, companies, grades, profileOptionsActive] = await Promise.all([
+  // 10b59703 — the job-grade list LEFT this read with Run earned accrual, whose scope selector was its
+  // only consumer here; Generate Entitlement reads it for the dialog now (generate/page.tsx).
+  const [types, companies, profileOptionsActive] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listCompanies(s),
-    // The grade list feeds the Run Earned Accrual selector; `gradeOptions` filters archived rows itself.
-    listJobGrades(s, { includeArchived: true }),
     // The ACTIVE picker values for the eight org fields come from the SAME master list the profile
     // Organisation Assignment screen reads, so deleted/inactive values are never offered as new choices.
     listAllProfileOptions(s, { activeOnly: true }),
@@ -108,18 +106,7 @@ export default async function LeaveConfigTypesPage({
   const formulaTemplate = leaveFormulaTemplateFrom(
     types.map((lt) => lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
   );
-  const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
-  const effectiveGrants = withEffectiveGrants(s);
-  const canGroupWide = isGroupAdmin(effectiveGrants);
-  const accrualCompanies = canGroupWide
-    ? companyOptions
-    : companyOptions.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id));
-  const activeTypeOptions = types.filter((lt) => !lt.archivedAt).map((lt) => ({ id: lt.id, name: lt.name }));
-  // The Run-Earned-Accrual year range reaches three years BACK through six forward, so running earned
-  // accrual for a past year stays possible. `status` is informational only.
-  const currentYear = new Date().getUTCFullYear();
-  const earnedLeaveYears = entitlementYearOptions(currentYear).map((y) => ({ year: y, status: 'draft' }));
 
   // ⚠️ ELEVEN READS, ONCE, FOR THE WHOLE PAGE. The result is SLICED per type inside the block; a block
   // that loaded for itself would turn eleven queries into eleven times the number of leave types.
@@ -166,18 +153,20 @@ export default async function LeaveConfigTypesPage({
    * fix pass removed from the resolver (core/leave-approval-policy.ts's `ApprovalRuleSet` note).
    */
   const approvalReadout = await loadLeaveTypeApprovalReadout(s, companyOptions);
-  const accrualSection = (
-    <div className="space-y-1.5 border-t border-border pt-3">
-      <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
-      <p className="text-xs text-muted-foreground">{t('entitlementStep.accrualHint')}</p>
-      <EarnedAccrualDialog
-        companies={accrualCompanies}
-        grades={gradeOptions}
-        leaveTypes={activeTypeOptions}
-        leaveYears={earnedLeaveYears}
-        defaultYear={currentYear}
-      />
-    </div>
+  /**
+   * 10b59703 — RUN EARNED ACCRUAL LEFT THIS TAB. It runs a calculation across employees, so by the
+   * reporter's rule for this round it sits with the other run action, on Generate Entitlement, next to
+   * the generation log (generate/page.tsx). R64 (7b945408 + 962077a8) had tucked it in here at the
+   * reporter's earlier request; the plan says so and offers reject-and-say-so. What stays in the slot
+   * is a one-line pointer, resolved through the map so it and the submenu cannot disagree about where
+   * the tool is. Server-composed, like every other slot: a plain rendered node crosses the boundary.
+   */
+  const accrualPointer = (
+    <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+      <Link href={leaveConfigScreenHref('generateEntitlement')} className="font-medium text-primary hover:underline">
+        {t('entitlementStep.accrualMovedPointer')} →
+      </Link>
+    </p>
   );
 
   // The rail's order is decided here, on the server, so the desktop list and the mobile dropdown (one
@@ -191,46 +180,27 @@ export default async function LeaveConfigTypesPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        // The heading is the SAME string the menu shows for this screen — a separate title key per page
-        // is how a menu and a heading start disagreeing (components/leave-config-map.tsx).
-        title={await leaveConfigScreenTitle('leaveTypes')}
-        description={tTypes('pageDescription')}
+        // 10b59703 — the heading is the SUBMENU ROW that opened this page ("Entitlements"), and the
+        // description is the row's, read through the one helper every Leave Config page uses
+        // (components/leave-config-map.tsx). The map item label ("Leave types") is the TAB below.
+        title={header.title}
+        description={header.description}
         actions={
-          <div className="flex items-center gap-3">
-            {/* IA §3.1 F5 — the header links. r259: they resolve through the area map, which is the
-                module's ONE list of addresses, so a header link and the menu entry beside it can never
-                give two answers. Literals stood here through Rounds 2–4 (the screens were still at their
-                old addresses); the cutover moved the map and these followed it in the same commit. */}
-            <Link href={leaveConfigScreenHref('entitlementTables')} className="text-sm underline">
-              {t('entitlementTablesAction')}
-            </Link>
-            <Link href={leaveConfigScreenHref('entitlementArchive')} className="text-sm underline">
-              {t('configurationRecordAction')}
-            </Link>
-            <Link href={leaveConfigScreenHref('ledgerArchive')} className="text-sm underline">
-              {t('balanceRecordAction')}
-            </Link>
-            {/* r242 3a3f5a2d — THE WAY IN THE REPORTER WENT LOOKING FOR, CARRIED ACROSS (r258 fix pass).
-                An HR admin who wants to look one person's balances up came here, to Leave Config, and found
-                nothing pointing at Leave Inquiry; this link is the whole of that fix, and Employee Balances'
-                own rail carries the other two tabs, so one link reaches all three. Dropping it at the Round 5
-                cutover would re-create the exact complaint r242 answered — it was missing from IA §3.1
-                (it landed before the design's baseline, main@0c01befc) and §3.1 now lists it as F47.
-                THE ADDRESS IS UNCHANGED ON PURPOSE: /leave/employee-balances is not a Leave Config screen and
-                Round 5 does not move it. */}
-            <Link href="/leave/employee-balances" className="text-sm underline">
-              {t('employeeBalancesAction')}
-            </Link>
-            <Link href={leaveConfigScreenHref('importLeaveData')} className={btnPrimary}>
-              {t('importAction')}
-            </Link>
-          </div>
+          // 10b59703 — IA §3.1 F5's three header links (Entitlement tables · Configuration record ·
+          // Balance record) and the + Import button are GONE from the header: the first three are this
+          // page's tab row now, and Import is a tab under Leave Adjustments. What survives is the ONE link
+          // that leaves Leave Config — r242 3a3f5a2d's Employee Balances (F47), the way in the reporter
+          // went looking for, at its unchanged /leave/employee-balances address, which is a Leave
+          // Inquiry screen and not a tab of anything here.
+          <Link href="/leave/employee-balances" className="text-sm underline">
+            {t('employeeBalancesAction')} →
+          </Link>
         }
       />
-      {/* The area map, CARRIED ACROSS (r258 fix pass): without it this screen has no way to reach its
-          sibling leave-config screens at all, which is a worse map than the one the old screen has.
-          `current="leaveTypes"` because this IS that screen — the map names screens, not addresses, and
-          the cutover repointed the entry (and the sidebar row) here. */}
+      {/* 10b59703 — the page's own tab row (Leave types · Entitlement tables · Configuration record),
+          rendered by the same component that used to draw the nine-screen pill row on every page. The
+          left submenu is the only way BETWEEN rows now; this row only moves within Entitlements.
+          `current="leaveTypes"` because this IS that tab. */}
       <LeaveConfigMap current="leaveTypes" />
       <ErrorBanner message={error} />
 
@@ -377,7 +347,7 @@ export default async function LeaveConfigTypesPage({
                     .map((x) => ({ id: x.id, name: x.name }))}
                   formulaTemplate={formulaTemplate}
                   entitlementTablesSection={entitlementTablesSectionFor(lt.id)}
-                  accrualSection={accrualSection}
+                  accrualPointer={accrualPointer}
                   /* a6fe37fc Round 4 — tab 5's read-out, sliced per type from the ONE rule set read
                      above. Server-composed and handed across the boundary as a rendered node, exactly
                      like `entitlementTablesSection`: no closure crosses it (r123). */

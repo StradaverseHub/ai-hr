@@ -6707,7 +6707,8 @@
       "entitlementStep": {
         "gradesCompanyWideBadge": "适用于全公司",
         "tablesHint": "在下方设置本假期类型的天数、服务年资分段以及由谁享有。每张表按生效日期启用，并由适用规则决定适用对象。",
-        "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。"
+        "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。",
+        "accrualMovedPointer": "“运行已赚取累积”位于“生成假期额度”下"
       },
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
@@ -6904,14 +6905,12 @@
       "encashmentSave": "保存",
       "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
       "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。",
-      "importAction": "+ 导入",
       "employeeBalancesAction": "员工假期余额",
       "runAccrualAction": "运行累积",
       "close": "关闭",
       "import": {
         "title": "导入休假数据",
         "description": "粘贴休假交易（期初余额、结转、历史休假、临时额度），预览每一行，然后仅导入有效的行。",
-        "backLabel": "返回休假设置",
         "csvData": "休假数据（CSV）",
         "csvPlaceholder": "employee_id,leave_type,transaction_type,days,effective_date\nE1001,ANNUAL,adjustment,5,2026-01-01",
         "loadSample": "加载示例",
@@ -7269,8 +7268,6 @@
       "adjustmentsIssueNotEligible": "{count} 名员工在生效日期不符合 {leaveType} 的资格。",
       "adjustmentsIssueFrozen": "{count} 项 {leaveType} 余额已因兑现而冻结，将被跳过。",
       "adjustmentsRemarksNote": "系统没有单独的备注栏。上面的原因就是员工在假期记录中看到的内容，请写在那里。",
-      "configurationRecordAction": "配置记录",
-      "balanceRecordAction": "余额记录",
       "generateFlowAria": "生成额度步骤",
       "generateStepTypes": "假别选择",
       "generateStepSettings": "生成设置",
@@ -7316,8 +7313,7 @@
       "generateRunsHeading": "休假年度 {year}",
       "generateRunsLine": "已选 {selected} · 通过 {passed} · 失败 {failed} · 发放 {granted} 条记录 · 没收 {forfeits} 次",
       "generateRunsDownload": "下载日志",
-      "generateReviewEmployees": "本次运行将涉及的员工",
-      "entitlementTablesAction": "额度表"
+      "generateReviewEmployees": "本次运行将涉及的员工"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -8395,7 +8391,7 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageDescription": "当前已配置的福利方案与公司 / 职级额度规则的只读记录。",
+      "pageDescription": "在重置清除之前记录下来的额度表和福利方案的只读记录。",
       "intro": "这是当前所有额度数字的书面记录，在任何内容可被清除之前生成。每一行显示配置了什么、适用于谁、数值是多少，以便直接从这里读取数字并重新录入新的额度表。",
       "notAnUndo": "这是供重新录入的清单，不是撤销按钮。恢复旧配置意味着重新输入一遍。",
       "feedsNothing": "它不向任何计算提供数据，也不改变任何数字。本页面不影响任何余额、额度或休假记录。",
@@ -8404,7 +8400,6 @@
       "captureLabel": "记录生成于",
       "show": "显示",
       "downloadCsv": "下载为 CSV",
-      "backToEntitlements": "返回额度配置",
       "colLayer": "配置于",
       "colScheme": "福利方案",
       "colTemplateOrRule": "额度表 / 规则",
@@ -8433,7 +8428,6 @@
       "captureLabel": "记录时间",
       "show": "显示",
       "downloadCsv": "下载为 CSV",
-      "backToEntitlements": "返回假期额度",
       "counts": "本记录包含 {ledger} 条余额记录和 {audit} 条重新计算历史。",
       "colLayer": "记录类型",
       "colEmployee": "员工",
@@ -8453,7 +8447,6 @@
       "intro": "额度表列出您自己定义的服务年资区间以及每个区间对应的天数。只需编写一次并命名，就可以让任意多个福利方案指定它，无需在每个方案内重复录入同一张表。",
       "coexistNote": "当下方的福利方案涵盖某位员工时，它指定的额度表决定该员工的天数。只有一张额度表且没有方案的假期类型，会对所有人使用该表。",
       "datedNote": "表格和方案都带有生效日期，而这个日期决定了保存会做什么。不改动日期，你正在编辑的版本就会被就地更新，包括已经生效的版本。填入更晚的日期，正在运行的版本会在该日期结束并开始新版本，这样已结束年度的报表仍会读到当时生效的数字。尚未开始的版本一律就地修正。",
-      "backToEntitlements": "返回额度设置",
       "templatesTitle": "额度表",
       "templatesTitleForType": "{type} 额度表",
       "templatesNone": "尚无额度表。",
@@ -8630,12 +8623,7 @@
       }
     },
     "leaveConfigMap": {
-      "label": "休假配置页面",
-      "group": {
-        "configure": "配置",
-        "run": "执行",
-        "history": "历史"
-      },
+      "label": "本页的标签页",
       "item": {
         "leaveTypes": "休假类型",
         "companyRules": "公司规则",
@@ -8644,14 +8632,14 @@
         "replacementLeave": "替假",
         "payrollImpact": "薪资影响",
         "generateEntitlement": "生成额度",
-        "adjustments": "调整",
+        "adjustments": "调整余额",
         "importLeaveData": "导入休假数据",
-        "entitlementArchive": "额度归档",
-        "ledgerArchive": "台账归档"
+        "entitlementArchive": "配置记录",
+        "ledgerArchive": "余额记录"
       }
     },
     "leaveConfigTypes": {
-      "pageDescription": "一种休假类型，五个标签页，按决策顺序排列。",
+      "rowDescription": "每种假期类型、它赋予员工的额度，以及谁获得哪一张表。",
       "tabsLabel": "休假类型配置标签页",
       "tab": {
         "identity": "休假类型",
@@ -8671,9 +8659,17 @@
         "schemeExplainer": "资格（“谁有资格”标签）决定员工能否休这种假。额度由涵盖该员工的福利方案决定；每个方案指定一张额度表。"
       }
     },
+    "leaveConfigAdjustments": {
+      "pageDescription": "手动更改员工余额、查看更改记录，并从文件加载余额。"
+    },
+    "leaveConfigGenerate": {
+      "pageDescription": "运行某个假期年度的额度，先预览，再查看每次运行的日志。"
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
-      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。"
+      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
+      "whoQualifies": "谁可以休某种假期类型、谁获得哪一张额度表，在“假期额度”下设置，而不是这里。",
+      "whoQualifiesLink": "打开额度表"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",

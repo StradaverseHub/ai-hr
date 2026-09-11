@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Button, PageHeader } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { LeaveLedgerImport } from '../../leave/import/leave-ledger-import';
 
 /**
@@ -29,24 +29,28 @@ import { LeaveLedgerImport } from '../../leave/import/leave-ledger-import';
 export default async function LeaveConfigImportPage() {
   const t = await getTranslations('admin.leave.import');
   await requireAdmin();
+  // 10b59703 — a TAB of Leave Adjustments. What the importer loads is balance MOVEMENTS (opening
+  // balances, carry-forward, historical leave, ad-hoc credits — leave_ledger rows), the same kind of
+  // entry an adjustment writes, so it moved out of the Entitlements header and under this row. The
+  // heading and description are the row's; the back-link is gone with the header button that fed it.
+  const header = await leaveConfigPageHeader('importLeaveData');
 
   return (
     <div className="space-y-6">
-      {/* r259 — `back` resolves through the area map below rather than through a literal, so the
-          back-link and the menu entry can never give two answers about where the leave type screen is.
-          The old page carried the literal the map now owns (app/admin/leave/import/page.tsx). */}
       <PageHeader
-        back={{ href: leaveConfigScreenHref('leaveTypes'), label: t('backLabel') }}
-        title={await leaveConfigScreenTitle('importLeaveData')}
-        description={t('description')}
+        title={header.title}
+        description={header.description}
         actions={
           <Button asChild>
             <a href="#leave-import-form">{t('uploadFile')}</a>
           </Button>
         }
       />
-      {/* `current="importLeaveData"` because this IS that screen — the map names screens, not addresses. */}
+      {/* `current="importLeaveData"` because this IS that tab of the Leave Adjustments row. */}
       <LeaveConfigMap current="importLeaveData" />
+      {/* The tab's own sentence — what the file holds and what happens to it — now that the header
+          carries the row's. */}
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
       {/* F44 — validate then commit, MOUNTED. */}
       <LeaveLedgerImport />
     </div>

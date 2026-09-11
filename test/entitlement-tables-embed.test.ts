@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 
 import { scopeEntitlementTables } from '../lib/entitlement-tables-scope';
 
@@ -171,13 +172,19 @@ describe('§3 ee6b7c69 · the Open Entitlement tables link is gone from the step
     expect(entitlementsCode).not.toContain("entitlementStep.tablesOpen");
   });
 
-  it('the standalone screen is STILL reachable from the page header — the plan promised it survives', () => {
+  it('the standalone screen is STILL reachable from the page — the plan promised it survives', () => {
     // Stated positively so a follow-up cleanup that removes the last route to it fails here. It is the
     // only place all 24 leave types' tables can be read side by side.
-    // a6fe37fc Round 5 — the standalone screen is `/admin/leave-config/entitlement-tables` now and the
-    // header link resolves through the area map (r259), so what is asserted is that the way in SURVIVES,
-    // which is what the plan promised — not the literal that would let the link and the menu disagree.
-    expect(entitlementsCode).toContain("leaveConfigScreenHref('entitlementTables')");
+    // a6fe37fc Round 5 — the standalone screen is `/admin/leave-config/entitlement-tables` now.
+    // 10b59703 (r266) — the way in is no longer a header link: the screen is the SECOND TAB of the
+    // Entitlements row, and this page renders that row (`<LeaveConfigMap current="leaveTypes" />`).
+    // Updated rather than loosened: what is asserted is still that the way in SURVIVES, one click away,
+    // resolved through the one list — not a literal that would let the link and the menu disagree.
+    const entitlements = LEAVE_CONFIG_MAP.find((g) => g.id === 'entitlements')!;
+    expect(entitlements.items.map((i) => i.id)).toContain('entitlementTables');
+    expect(entitlements.items.find((i) => i.id === 'entitlementTables')!.href).toBe('/admin/leave-config/entitlement-tables');
+    expect(entitlementsCode).toContain('<LeaveConfigMap current="leaveTypes" />');
+    expect(entitlementsCode).not.toContain("leaveConfigScreenHref('entitlementTables')");
   });
 
   it('`tablesOpen` is retired from ALL SIX catalogues, and `tablesHint` still exists', () => {

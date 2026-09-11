@@ -1,9 +1,8 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
@@ -68,31 +67,25 @@ export default async function LeaveConfigEntitlementTablesPage({
   const tTypes = await getTranslations('admin.leaveConfigTypes');
   const sp = await searchParams;
   const data = await loadEntitlementTablesData(s);
+  // 10b59703 — this is a TAB of Entitlements: the heading and the description are the row's, and the
+  // tab row below says which tab. The back-link to the leave type screen is gone with it — the first tab
+  // of the same row is one click away and the submenu row stays lit here (ownedSubpaths).
+  const header = await leaveConfigPageHeader('entitlementTables');
 
   return (
     <div className="space-y-6">
-      {/* The SAME words the old screen rendered, now taken from the MENU's key rather than a private one
-          (IA §1.1): "same behaviour at a new address" means the administrator must not have to learn a
-          second name for one screen, and the menu and the heading must not be able to drift apart. */}
-      <PageHeader title={await leaveConfigScreenTitle('entitlementTables')} description={t('pageDescription')} />
-      {/* The area map — without it a leave-config screen can reach no other leave-config screen at all.
-          `current="entitlementTables"` because this IS that screen: the map names screens, not addresses,
-          and the cutover repointed the entry here. */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* `current="entitlementTables"` because this IS that tab of the Entitlements row. */}
       <LeaveConfigMap current="entitlementTables" />
       <ErrorBanner message={sp.error} />
 
       <Card>
         <div className="space-y-2 p-4 text-sm">
+          {/* The tab's own one-liner leads its content, now that the header carries the row's. */}
+          <p className="font-medium text-foreground">{t('pageDescription')}</p>
           <p className="text-muted-foreground">{t('intro')}</p>
           <p className="text-muted-foreground">{t('coexistNote')}</p>
           <p className="text-muted-foreground">{t('datedNote')}</p>
-          {/* r259 — ONE navigation direction inside the preview module, and it is OUT until Round 5. The
-              href comes from the SAME map this page renders above, so the back-link and the menu cannot
-              give two answers to "where is the leave type screen". The cutover moves that ONE list and
-              this link follows it. See components/leave-config-map.tsx → leaveConfigScreenHref. */}
-          <Link href={leaveConfigScreenHref('leaveTypes')} className="inline-block text-sm underline">
-            {t('backToEntitlements')}
-          </Link>
         </div>
       </Card>
 

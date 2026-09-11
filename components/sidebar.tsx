@@ -524,6 +524,10 @@ export function Sidebar({
   // Attendance highlighting that nobody asked about.
   const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) =>
     isNavRowActive(pathname, search, r);
+  // 10b59703 — the paths a fly-out child answers for: its own href plus any `ownedSubpaths` the pack
+  // declared (packs/registry.ts NavChildDescriptor). Fed to isParentActive so the parent node lights
+  // up on an owned tab exactly as it does on the child's own address. Highlighting only, never a gate.
+  const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];
   // The open module's node (permission-filtered children), resolved from the visible groups so a
   // stale openKey (e.g. after a role change) simply renders no panel.
   /** The section containing the current page — from the same predicates the rows light up with, so the
@@ -532,7 +536,7 @@ export function Sidebar({
     groups.find((g) =>
       g.items.some((r) =>
         isCollapsible(r)
-          ? isParentActive(pathname, r.children.filter(canSeeChild).map((c) => c.href))
+          ? isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths))
           : isNavRowActive(pathname, search, r),
       ),
     )?.labelKey ?? null;
@@ -550,7 +554,10 @@ export function Sidebar({
   // the viewer is on /payroll/setup, lighting it up next to "Settings". Ranking by path length picks
   // the more specific row; the rail's own parent highlighting (isParentActive) is unaffected.
   const activeChildHref = openChildren
-    .filter((c) => isActive(c.href))
+    // 10b59703 — a child that OWNS paths outside its own href (Entitlements owns the Entitlement tables
+    // and Configuration record tabs; Leave Adjustments owns Balance record and Import) is active on
+    // them too, through the same predicate the flat rows use.
+    .filter((c) => isRowActive(c))
     .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
 
   const toggle = () =>
@@ -670,7 +677,7 @@ export function Sidebar({
                       labelKey={item.labelKey}
                       icon={item.icon}
                       open={openKey === item.labelKey}
-                      active={isParentActive(pathname, children.map((c) => c.href))}
+                      active={isParentActive(pathname, children.flatMap(childPaths))}
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}

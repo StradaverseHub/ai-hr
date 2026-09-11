@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
-import { requireAdmin } from '@/lib/authz';
+import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { entitlementYearOptions } from '@/core/leave';
 import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
@@ -10,7 +10,8 @@ import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listLeaveGenerationRuns } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
-import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { openLeaveYearAction } from '../../actions';
 import { previewLeaveGenerationAction } from '../../leave/generate/actions';
 
@@ -93,15 +94,35 @@ export default async function LeaveConfigGeneratePage({
 
   const currentYear = new Date().getUTCFullYear();
   const years = entitlementYearOptions(currentYear);
+  // 10b59703 — the heading is the submenu ROW ("Generate Entitlement") and the description is this
+  // page's own; it used to borrow admin.leave.pageDescription, the Leave types sentence.
+  const header = await leaveConfigPageHeader('generateEntitlement');
+
+  /**
+   * 10b59703 — RUN EARNED ACCRUAL LIVES HERE NOW. It processes earned entitlement for a leave year over
+   * a scope: an execution, not a setting, so by the reporter's rule for this round it sits with the other
+   * run action, between the wizard and the run log. Until r266 it mounted ONLY inside every leave type's
+   * tab 3 (R64 7b945408 + 962077a8, at the reporter's earlier request; the plan says so). The dialog,
+   * the card it wraps and its two server actions are UNCHANGED — only the mount moved, and the tab it
+   * left keeps a one-line pointer here. Same scope inputs the leave type screen fed it: the grant-aware
+   * company list, active grades, active types, and the same year window (three back, six forward).
+   */
+  const effectiveGrants = withEffectiveGrants(s);
+  const canGroupWide = isGroupAdmin(effectiveGrants);
+  const accrualCompanies = (canGroupWide
+    ? companies
+    : companies.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id))
+  ).map((c) => ({ id: c.id, name: c.name }));
+  const accrualGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
+  const accrualTypes = types.map((lt) => ({ id: lt.id, name: lt.name }));
+  const earnedLeaveYears = years.map((y) => ({ year: y, status: 'draft' }));
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={await leaveConfigScreenTitle('generateEntitlement')}
-        description={t('pageDescription')}
-      />
-      {/* `current="generateEntitlement"` because this IS that screen — the map names screens, not
-          addresses, and Round 5 repoints the entry here. */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* One page under this row, so the tab row renders nothing; the mount stays so the module's
+          "every page renders the map" guard keeps one shape. `current="generateEntitlement"` because
+          this IS that screen. */}
       <LeaveConfigMap current="generateEntitlement" />
       <ErrorBanner message={error} />
 
@@ -120,6 +141,21 @@ export default async function LeaveConfigGeneratePage({
             defaultYear={currentYear}
             leaveTypes={types.map((x) => ({ value: x.id, label: x.name }))}
             criteriaSections={criteriaSections}
+          />
+        </div>
+      </Card>
+
+      {/* 10b59703 — F12, Run earned accrual, moved here from every leave type's tab 3. */}
+      <Card>
+        <SectionHeader title={t('runEarnedAccrual')} />
+        <div className="space-y-3 px-4 pb-4 pt-3">
+          <p className="max-w-2xl text-xs text-muted-foreground">{t('entitlementStep.accrualHint')}</p>
+          <EarnedAccrualDialog
+            companies={accrualCompanies}
+            grades={accrualGrades}
+            leaveTypes={accrualTypes}
+            leaveYears={earnedLeaveYears}
+            defaultYear={currentYear}
           />
         </div>
       </Card>

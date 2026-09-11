@@ -179,7 +179,7 @@ export function LeaveTypeTabs({
   balanceSourceOptions,
   formulaTemplate,
   entitlementTablesSection,
-  accrualSection,
+  accrualPointer,
   approvalReadoutSection,
   updateTypeAction,
   archiveTypeAction,
@@ -195,8 +195,10 @@ export function LeaveTypeTabs({
   /** THIS TYPE'S Entitlement Tables + eligibility rules — the SAME shared block the all-types screen
    *  mounts, filtered to one type (IA §2.3: one component, two mount points, never two implementations). */
   entitlementTablesSection?: ReactNode;
-  /** Run Earned Accrual — one server-composed node shared by every type. */
-  accrualSection?: ReactNode;
+  /** 10b59703 — WHERE Run Earned Accrual WENT. The dialog itself is on Generate Entitlement now (it runs
+   *  a calculation, so it sits with the other run action); this slot carries the one-line pointer the
+   *  page composes, so the tab still says where the tool is. Server-composed like the other slots. */
+  accrualPointer?: ReactNode;
   /**
    * a6fe37fc ROUND 4 — tab 5's READ-ONLY chain read-out: which chain reaches THIS leave type, its
    * ordered steps and the escalation, per company. Server-composed for the same reason
@@ -938,9 +940,10 @@ export function LeaveTypeTabs({
                 </form>
                 <p className="text-xs text-muted-foreground">{t('allowUplHelp')}</p>
               </div>
-              {/* F12 — Run Earned Accrual. It PROCESSES entitlement rather than defining it, so it sits
-                  last; this and the old screen's Entitlement step are its only mounts. */}
-              <div>{accrualSection}</div>
+              {/* F12 — Run Earned Accrual USED TO MOUNT HERE (R64). 10b59703 moved it to Generate
+                  Entitlement, because it processes entitlement rather than defining it; what sits last on
+                  this tab now is the pointer to it, where the button used to be. */}
+              <div>{accrualPointer}</div>
             </CardContent>
           </Card>
         )}

@@ -519,14 +519,21 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(newScreen).toContain(field);
   });
 
-  it('F11 the entitlement tables and F12 run accrual are MOUNTED, not re-implemented', () => {
+  it('F11 the entitlement tables are MOUNTED, not re-implemented; F12 run accrual left a pointer behind', () => {
     // IA §2.3: one component, two mount points. A filtered copy for the tab would be the second
     // implementation this item exists to remove.
     expect(pageSrc).toContain('<EntitlementTablesBlock');
     expect(pageSrc).toContain('leaveTypeId={leaveTypeId}');
-    expect(pageSrc).toContain('<EarnedAccrualDialog');
     expect(tabsSrc).toContain('{entitlementTablesSection}');
-    expect(tabsSrc).toContain('{accrualSection}');
+    // 10b59703 — F12 moved to Generate Entitlement (it runs a calculation); the tab keeps a one-line
+    // pointer in the slot the button occupied, resolved through the map. IA §3.1 F12 carries the date.
+    expect(pageSrc).not.toContain('<EarnedAccrualDialog');
+    expect(pageSrc).toContain("leaveConfigScreenHref('generateEntitlement')");
+    expect(pageSrc).toContain("t('entitlementStep.accrualMovedPointer')");
+    expect(pageSrc).toContain('accrualPointer={accrualPointer}');
+    expect(tabsSrc).toContain('{accrualPointer}');
+    expect(tabsSrc).not.toContain('{accrualSection}');
+    expect(read('app/admin/leave-config/generate/page.tsx')).toContain('<EarnedAccrualDialog');
   });
 
   it('F2 the health derivation is read, not recomputed', () => {
@@ -621,7 +628,9 @@ describe('a6fe37fc R2 · every new label ships in all six locales (the r127 less
   // a 200 and passes tsc, the suite and next build. These files call three namespaces, so
   // i18n-coverage's static-key case skips them entirely and this is the pinning site.
   const KEYS = [
-    'pageDescription',
+    // 10b59703 — `pageDescription` ("One leave type, five tabs…") became `rowDescription`: the heading is
+    // the submenu ROW (Entitlements) now and this sentence describes the row, for all three of its tabs.
+    'rowDescription',
     // `previewNote` STOOD HERE and is DELIBERATELY GONE (a6fe37fc Round 5): the paragraph saying "a
     // save made here returns you to the current screen" came off in the cutover commit, because the
     // constants now return here, and the key is pruned in all six catalogues with it.

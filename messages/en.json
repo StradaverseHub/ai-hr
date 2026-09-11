@@ -6707,7 +6707,8 @@
       "entitlementStep": {
         "gradesCompanyWideBadge": "Applies company-wide",
         "tablesHint": "Set this leave type's days, service ranges and who receives them below. Each table takes effect from a date, and an eligibility rule decides who it applies to.",
-        "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm."
+        "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm.",
+        "accrualMovedPointer": "Run earned accrual is under Generate Entitlement"
       },
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
@@ -6904,14 +6905,12 @@
       "encashmentSave": "Save",
       "encashmentEligibleTypesFixed": "Eligible leave: Annual Leave only.",
       "encashmentRoundingFixed": "Rounding: less than 0.5 day rounds down to 0; 0.5 day or more rounds up to the next whole day. The figure never goes below 0.",
-      "importAction": "+ Import",
       "employeeBalancesAction": "Employee Balances",
       "runAccrualAction": "Run Accrual",
       "close": "Close",
       "import": {
         "title": "Import leave data",
         "description": "Upload a CSV or Excel file of leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits) — or paste them — preview each row, then import only the valid ones.",
-        "backLabel": "Back to leave settings",
         "csvData": "Leave data (CSV)",
         "csvPlaceholder": "employee_id,leave_type,transaction_type,days,effective_date\nE1001,ANNUAL,adjustment,5,2026-01-01",
         "loadSample": "Load sample",
@@ -7269,8 +7268,6 @@
       "adjustmentsIssueNotEligible": "{count} employees do not qualify for {leaveType} on the effective date.",
       "adjustmentsIssueFrozen": "{count} {leaveType} balances are frozen for encashment and will be skipped.",
       "adjustmentsRemarksNote": "There is no separate remarks field. The reason above is what the employee sees on their leave record, so write it there.",
-      "configurationRecordAction": "Configuration record",
-      "balanceRecordAction": "Balance record",
       "generateFlowAria": "Generate entitlement steps",
       "generateStepTypes": "Leave Selection",
       "generateStepSettings": "Generation Settings",
@@ -7316,8 +7313,7 @@
       "generateRunsHeading": "Leave year {year}",
       "generateRunsLine": "{selected} selected · {passed} passed · {failed} failed · {granted} records granted · {forfeits} forfeit(s)",
       "generateRunsDownload": "Download log",
-      "generateReviewEmployees": "Employees this run will reach",
-      "entitlementTablesAction": "Entitlement tables"
+      "generateReviewEmployees": "Employees this run will reach"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -8395,7 +8391,7 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageDescription": "A read-only record of the Benefit Scheme and company / grade entitlement rules configured today.",
+      "pageDescription": "A read-only record of the entitlement tables and benefit schemes captured before a reset cleared them.",
       "intro": "This is the written record of every entitlement figure currently configured, taken before anything can be cleared. Each row shows what was set up, who it applied to and what it was worth, so the figures can be read off here and retyped into the new entitlement tables rather than remembered.",
       "notAnUndo": "This is a listing to retype from, not an undo button. Restoring the old setup means entering it again.",
       "feedsNothing": "It feeds nothing and changes no number. No balance, no entitlement and no leave record is affected by anything on this page.",
@@ -8404,7 +8400,6 @@
       "captureLabel": "Record taken",
       "show": "Show",
       "downloadCsv": "Download as CSV",
-      "backToEntitlements": "Back to Entitlements",
       "colLayer": "Configured in",
       "colScheme": "Benefit scheme",
       "colTemplateOrRule": "Entitlement table / rule",
@@ -8433,7 +8428,6 @@
       "captureLabel": "Record taken",
       "show": "Show",
       "downloadCsv": "Download as CSV",
-      "backToEntitlements": "Back to Entitlements",
       "counts": "{ledger} balance records and {audit} recalculation history entries in this record.",
       "colLayer": "Record type",
       "colEmployee": "Employee",
@@ -8453,7 +8447,6 @@
       "intro": "An entitlement table lists your own service ranges and the days each one earns. Write it once, name it, and let as many benefit schemes name it as you like, instead of retyping the same table inside every scheme.",
       "coexistNote": "Where a benefit scheme below covers an employee, the table it names decides their days. A leave type with a single table and no scheme applies that table to everyone.",
       "datedNote": "Both tables and schemes carry a start date, and that date decides what Save does. Leave the date alone and the version you are editing is updated in place, including one that is already in force. Give it a later date and the running version is closed on that date and a new one starts, so a report for a closed year still reads the figures that were in force back then. A version that has not started yet is always corrected in place.",
-      "backToEntitlements": "Back to Entitlements",
       "templatesTitle": "Entitlement tables",
       "templatesTitleForType": "Entitlement tables for {type}",
       "templatesNone": "No entitlement tables yet.",
@@ -8630,12 +8623,7 @@
       }
     },
     "leaveConfigMap": {
-      "label": "Leave configuration screens",
-      "group": {
-        "configure": "Configure",
-        "run": "Run",
-        "history": "History"
-      },
+      "label": "Tabs of this page",
       "item": {
         "leaveTypes": "Leave types",
         "companyRules": "Company rules",
@@ -8644,14 +8632,14 @@
         "replacementLeave": "Replacement leave",
         "payrollImpact": "Payroll impact",
         "generateEntitlement": "Generate entitlement",
-        "adjustments": "Adjustments",
+        "adjustments": "Adjust balances",
         "importLeaveData": "Import leave data",
-        "entitlementArchive": "Entitlement archive",
-        "ledgerArchive": "Ledger archive"
+        "entitlementArchive": "Configuration record",
+        "ledgerArchive": "Balance record"
       }
     },
     "leaveConfigTypes": {
-      "pageDescription": "One leave type, five tabs, in the order the decisions are made.",
+      "rowDescription": "Each leave type, what it entitles an employee to, and who receives which table.",
       "tabsLabel": "Leave type configuration tabs",
       "tab": {
         "identity": "The leave type",
@@ -8671,9 +8659,17 @@
         "schemeExplainer": "Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. Entitlement is decided by the benefit scheme that covers the employee; each scheme names one entitlement table."
       }
     },
+    "leaveConfigAdjustments": {
+      "pageDescription": "Change an employee's balance by hand, see what was changed, and load balances from a file."
+    },
+    "leaveConfigGenerate": {
+      "pageDescription": "Run the entitlement for a leave year, preview it first, and read the log of every run."
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
-      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens."
+      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
+      "whoQualifies": "Who may take a leave type, and who receives which entitlement table, is set under Entitlements, not here.",
+      "whoQualifiesLink": "Open Entitlement tables"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",

@@ -11,7 +11,7 @@ import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
   applyLeaveAdjustmentAction,
   previewLeaveAdjustmentAction,
@@ -90,10 +90,15 @@ export default async function LeaveConfigAdjustmentsPage({
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
   );
 
+  // 10b59703 — the heading is the submenu ROW ("Leave Adjustments") and the description is this row's
+  // own; it used to borrow admin.leave.pageDescription, the Leave types sentence.
+  const header = await leaveConfigPageHeader('adjustments');
+
   return (
     <div className="space-y-6">
-      <PageHeader title={await leaveConfigScreenTitle('adjustments')} description={t('pageDescription')} />
-      {/* `current="adjustments"` because this IS that screen — the map names screens, not addresses. */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* 10b59703 — this row's tab row: Adjust balances · Balance record · Import leave data.
+          `current="adjustments"` because this IS that tab. */}
       <LeaveConfigMap current="adjustments" />
       <ErrorBanner message={error} />
 

@@ -6707,7 +6707,8 @@
       "entitlementStep": {
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
         "tablesHint": "Đặt số ngày, các mốc thâm niên và ai được hưởng cho loại phép này ở bên dưới. Mỗi bảng có hiệu lực từ một ngày, và một quy tắc điều kiện quyết định bảng áp dụng cho ai.",
-        "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận."
+        "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận.",
+        "accrualMovedPointer": "Chạy tích lũy đã hưởng nằm trong mục Tạo quyền lợi"
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
@@ -6904,14 +6905,12 @@
       "encashmentSave": "Lưu",
       "encashmentEligibleTypesFixed": "Loại phép đủ điều kiện: Chỉ Phép năm.",
       "encashmentRoundingFixed": "Làm tròn: dưới 0,5 ngày làm tròn xuống 0; từ 0,5 ngày trở lên làm tròn lên ngày tiếp theo. Con số này không bao giờ thấp hơn 0.",
-      "importAction": "+ Nhập",
       "employeeBalancesAction": "Số dư phép của nhân viên",
       "runAccrualAction": "Chạy tích lũy",
       "close": "Đóng",
       "import": {
         "title": "Nhập dữ liệu nghỉ phép",
         "description": "Dán các giao dịch nghỉ phép (số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử, tín dụng đặc biệt), xem trước từng dòng, sau đó chỉ nhập các dòng hợp lệ.",
-        "backLabel": "Quay lại cài đặt nghỉ phép",
         "csvData": "Dữ liệu nghỉ phép (CSV)",
         "csvPlaceholder": "employee_id,leave_type,transaction_type,days,effective_date\nE1001,ANNUAL,adjustment,5,2026-01-01",
         "loadSample": "Tải mẫu",
@@ -7269,8 +7268,6 @@
       "adjustmentsIssueNotEligible": "{count} nhân viên không đủ điều kiện cho {leaveType} vào ngày hiệu lực.",
       "adjustmentsIssueFrozen": "{count} số dư {leaveType} đang bị đóng băng để quy đổi và sẽ bị bỏ qua.",
       "adjustmentsRemarksNote": "Không có ô ghi chú riêng. Lý do ở trên là điều nhân viên nhìn thấy trên hồ sơ nghỉ phép, hãy viết vào đó.",
-      "configurationRecordAction": "Bản ghi cấu hình",
-      "balanceRecordAction": "Bản ghi số dư",
       "generateFlowAria": "Các bước tạo quyền lợi",
       "generateStepTypes": "Chọn loại nghỉ",
       "generateStepSettings": "Cài đặt tạo",
@@ -7316,8 +7313,7 @@
       "generateRunsHeading": "Năm nghỉ phép {year}",
       "generateRunsLine": "{selected} đã chọn · {passed} đạt · {failed} không đạt · {granted} bản ghi được cấp · {forfeits} lần hủy",
       "generateRunsDownload": "Tải nhật ký",
-      "generateReviewEmployees": "Nhân viên lần chạy này sẽ xử lý",
-      "entitlementTablesAction": "Bảng định mức phép"
+      "generateReviewEmployees": "Nhân viên lần chạy này sẽ xử lý"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -8395,7 +8391,7 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageDescription": "Bản ghi chỉ đọc của Chế độ phúc lợi và các quy tắc quyền lợi theo công ty / ngạch đang được cấu hình.",
+      "pageDescription": "Bản ghi chỉ đọc của các bảng định mức và chế độ phúc lợi được lưu lại trước khi một lần đặt lại xóa chúng.",
       "intro": "Đây là bản ghi bằng văn bản của mọi con số quyền lợi hiện đang được cấu hình, được lập trước khi bất cứ thứ gì có thể bị xóa. Mỗi dòng cho biết những gì đã được thiết lập, áp dụng cho ai và giá trị bao nhiêu, để đọc lại và nhập vào các bảng quyền lợi mới.",
       "notAnUndo": "Đây là danh sách để nhập lại, không phải nút hoàn tác. Khôi phục thiết lập cũ nghĩa là nhập lại nó.",
       "feedsNothing": "Nó không cung cấp dữ liệu cho bất cứ thứ gì và không thay đổi con số nào. Không có số dư, quyền lợi hay hồ sơ nghỉ phép nào bị ảnh hưởng bởi trang này.",
@@ -8404,7 +8400,6 @@
       "captureLabel": "Bản ghi lập ngày",
       "show": "Hiển thị",
       "downloadCsv": "Tải xuống dạng CSV",
-      "backToEntitlements": "Quay lại Quyền lợi",
       "colLayer": "Cấu hình tại",
       "colScheme": "Chế độ phúc lợi",
       "colTemplateOrRule": "Bảng định mức / quy tắc",
@@ -8433,7 +8428,6 @@
       "captureLabel": "Bản ghi lập lúc",
       "show": "Hiển thị",
       "downloadCsv": "Tải xuống dạng CSV",
-      "backToEntitlements": "Quay lại Quyền lợi",
       "counts": "Bản ghi này có {ledger} bản ghi số dư và {audit} mục lịch sử tính lại.",
       "colLayer": "Loại bản ghi",
       "colEmployee": "Nhân viên",
@@ -8453,7 +8447,6 @@
       "intro": "Bảng định mức liệt kê các khoảng thâm niên do bạn tự đặt và số ngày tương ứng. Viết một lần, đặt tên, rồi cho bao nhiêu chế độ phúc lợi chỉ định cũng được, thay vì gõ lại cùng một bảng trong từng chế độ.",
       "coexistNote": "Khi một chế độ phúc lợi bên dưới áp dụng cho một nhân viên, bảng mà chế độ chỉ định quyết định số ngày của họ. Loại nghỉ phép chỉ có một bảng và không có chế độ sẽ áp dụng bảng đó cho tất cả mọi người.",
       "datedNote": "Cả bảng lẫn chế độ đều có ngày bắt đầu, và chính ngày đó quyết định việc Lưu làm gì. Giữ nguyên ngày thì phiên bản bạn đang sửa được cập nhật tại chỗ, kể cả phiên bản đang có hiệu lực. Nhập ngày muộn hơn thì phiên bản đang chạy được đóng vào ngày đó và một phiên bản mới bắt đầu, nhờ vậy báo cáo của năm đã đóng vẫn đọc đúng số liệu có hiệu lực khi ấy. Phiên bản chưa bắt đầu thì luôn được sửa tại chỗ.",
-      "backToEntitlements": "Quay lại Định mức phép",
       "templatesTitle": "Bảng định mức phép",
       "templatesTitleForType": "Bảng định mức phép cho {type}",
       "templatesNone": "Chưa có bảng định mức nào.",
@@ -8630,12 +8623,7 @@
       }
     },
     "leaveConfigMap": {
-      "label": "Các màn hình cấu hình nghỉ phép",
-      "group": {
-        "configure": "Cấu hình",
-        "run": "Chạy",
-        "history": "Lịch sử"
-      },
+      "label": "Các thẻ của trang này",
       "item": {
         "leaveTypes": "Loại nghỉ phép",
         "companyRules": "Quy định của công ty",
@@ -8644,14 +8632,14 @@
         "replacementLeave": "Nghỉ bù",
         "payrollImpact": "Ảnh hưởng lương",
         "generateEntitlement": "Tạo định mức",
-        "adjustments": "Điều chỉnh",
+        "adjustments": "Điều chỉnh số dư",
         "importLeaveData": "Nhập dữ liệu nghỉ phép",
-        "entitlementArchive": "Lưu trữ định mức",
-        "ledgerArchive": "Lưu trữ sổ cái"
+        "entitlementArchive": "Bản ghi cấu hình",
+        "ledgerArchive": "Bản ghi số dư"
       }
     },
     "leaveConfigTypes": {
-      "pageDescription": "Một loại nghỉ phép, năm thẻ, theo thứ tự các quyết định được đưa ra.",
+      "rowDescription": "Từng loại nghỉ phép, định mức mà nhân viên được hưởng, và ai nhận bảng nào.",
       "tabsLabel": "Các thẻ cấu hình loại nghỉ phép",
       "tab": {
         "identity": "Loại nghỉ phép",
@@ -8671,9 +8659,17 @@
         "schemeExplainer": "Điều kiện (thẻ Ai đủ điều kiện) quyết định nhân viên có được nghỉ loại phép này hay không. Định mức do chế độ phúc lợi áp dụng cho nhân viên quyết định; mỗi chế độ chỉ định một bảng định mức."
       }
     },
+    "leaveConfigAdjustments": {
+      "pageDescription": "Thay đổi số dư của nhân viên bằng tay, xem những gì đã thay đổi, và nạp số dư từ tệp."
+    },
+    "leaveConfigGenerate": {
+      "pageDescription": "Chạy định mức cho một năm nghỉ phép, xem trước rồi mới chạy, và đọc nhật ký của mọi lần chạy."
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
-      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình."
+      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
+      "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Quyền lợi, không phải ở đây.",
+      "whoQualifiesLink": "Mở Bảng định mức"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",

@@ -6707,7 +6707,8 @@
       "entitlementStep": {
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
         "tablesHint": "Tetapkan bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya bagi jenis cuti ini di bawah. Setiap jadual berkuat kuasa dari satu tarikh, dan peraturan kelayakan menentukan siapa yang terpakai.",
-        "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan."
+        "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan.",
+        "accrualMovedPointer": "Jalankan pengumpulan terkumpul berada di bawah Jana Kelayakan"
       },
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
@@ -6904,14 +6905,12 @@
       "encashmentSave": "Simpan",
       "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
       "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0.",
-      "importAction": "+ Import",
       "employeeBalancesAction": "Baki Cuti Pekerja",
       "runAccrualAction": "Jalankan Pengumpulan",
       "close": "Tutup",
       "import": {
         "title": "Import data cuti",
         "description": "Tampal transaksi cuti (baki pembukaan, bawa hadapan, cuti sejarah, kredit ad-hoc), pratonton setiap baris, kemudian import hanya baris yang sah.",
-        "backLabel": "Kembali ke tetapan cuti",
         "csvData": "Data cuti (CSV)",
         "csvPlaceholder": "employee_id,leave_type,transaction_type,days,effective_date\nE1001,ANNUAL,adjustment,5,2026-01-01",
         "loadSample": "Muat sampel",
@@ -7269,8 +7268,6 @@
       "adjustmentsIssueNotEligible": "{count} pekerja tidak layak untuk {leaveType} pada tarikh berkuat kuasa.",
       "adjustmentsIssueFrozen": "{count} baki {leaveType} dibekukan untuk penunaian dan akan dilangkau.",
       "adjustmentsRemarksNote": "Tiada medan catatan berasingan. Sebab di atas ialah apa yang dilihat pekerja pada rekod cuti mereka, jadi tulislah di situ.",
-      "configurationRecordAction": "Rekod konfigurasi",
-      "balanceRecordAction": "Rekod baki",
       "generateFlowAria": "Langkah menjana kelayakan",
       "generateStepTypes": "Pemilihan Cuti",
       "generateStepSettings": "Tetapan Penjanaan",
@@ -7316,8 +7313,7 @@
       "generateRunsHeading": "Tahun cuti {year}",
       "generateRunsLine": "{selected} dipilih · {passed} lulus · {failed} gagal · {granted} rekod diberikan · {forfeits} pelucutan",
       "generateRunsDownload": "Muat turun log",
-      "generateReviewEmployees": "Pekerja yang akan dicapai oleh larian ini",
-      "entitlementTablesAction": "Jadual kelayakan"
+      "generateReviewEmployees": "Pekerja yang akan dicapai oleh larian ini"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -8395,7 +8391,7 @@
       "empTypeIntern": "Intern"
     },
     "entitlementArchive": {
-      "pageDescription": "Rekod baca sahaja bagi Skim Faedah dan peraturan kelayakan syarikat / gred yang dikonfigurasikan hari ini.",
+      "pageDescription": "Rekod baca sahaja bagi jadual kelayakan dan skim faedah yang dirakam sebelum satu set semula mengosongkannya.",
       "intro": "Ini ialah rekod bertulis bagi setiap angka kelayakan yang dikonfigurasikan sekarang, diambil sebelum apa-apa boleh dikosongkan. Setiap baris menunjukkan apa yang ditetapkan, kepada siapa ia dikenakan dan nilainya, supaya angka itu boleh dibaca di sini dan ditaip semula ke dalam jadual kelayakan baharu.",
       "notAnUndo": "Ini ialah senarai untuk ditaip semula, bukan butang buat asal. Memulihkan tetapan lama bermakna memasukkannya semula.",
       "feedsNothing": "Ia tidak menyuap apa-apa dan tidak mengubah sebarang angka. Tiada baki, kelayakan atau rekod cuti terjejas oleh apa-apa di halaman ini.",
@@ -8404,7 +8400,6 @@
       "captureLabel": "Rekod diambil",
       "show": "Papar",
       "downloadCsv": "Muat turun sebagai CSV",
-      "backToEntitlements": "Kembali ke Kelayakan",
       "colLayer": "Dikonfigurasikan dalam",
       "colScheme": "Skim faedah",
       "colTemplateOrRule": "Jadual / peraturan kelayakan",
@@ -8433,7 +8428,6 @@
       "captureLabel": "Rekod diambil",
       "show": "Papar",
       "downloadCsv": "Muat turun sebagai CSV",
-      "backToEntitlements": "Kembali ke Kelayakan",
       "counts": "{ledger} rekod baki dan {audit} entri sejarah pengiraan semula dalam rekod ini.",
       "colLayer": "Jenis rekod",
       "colEmployee": "Pekerja",
@@ -8453,7 +8447,6 @@
       "intro": "Jadual kelayakan menyenaraikan julat tempoh perkhidmatan anda sendiri dan bilangan hari bagi setiap julat. Tulis sekali, berikan nama, dan biarkan seberapa banyak skim faedah menamakannya, tanpa perlu menaip semula jadual yang sama di dalam setiap skim.",
       "coexistNote": "Apabila skim faedah di bawah merangkumi seseorang pekerja, jadual yang dinamakannya menentukan hari mereka. Jenis cuti dengan satu jadual sahaja dan tiada skim menggunakan jadual itu untuk semua orang.",
       "datedNote": "Kedua-dua jadual dan skim mempunyai tarikh mula, dan tarikh itulah yang menentukan apa yang dilakukan oleh Simpan. Biarkan tarikh itu dan versi yang anda sunting dikemas kini di tempatnya, termasuk versi yang sudah berkuat kuasa. Beri tarikh yang lebih lewat dan versi yang sedang berjalan ditutup pada tarikh itu lalu versi baharu bermula, supaya laporan bagi tahun yang telah ditutup masih membaca angka yang berkuat kuasa ketika itu. Versi yang belum bermula sentiasa dibetulkan di tempatnya.",
-      "backToEntitlements": "Kembali ke Kelayakan",
       "templatesTitle": "Jadual kelayakan",
       "templatesTitleForType": "Jadual kelayakan untuk {type}",
       "templatesNone": "Belum ada jadual kelayakan.",
@@ -8630,12 +8623,7 @@
       }
     },
     "leaveConfigMap": {
-      "label": "Skrin konfigurasi cuti",
-      "group": {
-        "configure": "Konfigurasi",
-        "run": "Jalankan",
-        "history": "Sejarah"
-      },
+      "label": "Tab halaman ini",
       "item": {
         "leaveTypes": "Jenis cuti",
         "companyRules": "Peraturan syarikat",
@@ -8644,14 +8632,14 @@
         "replacementLeave": "Cuti ganti",
         "payrollImpact": "Kesan penggajian",
         "generateEntitlement": "Jana kelayakan",
-        "adjustments": "Pelarasan",
+        "adjustments": "Laraskan baki",
         "importLeaveData": "Import data cuti",
-        "entitlementArchive": "Arkib kelayakan",
-        "ledgerArchive": "Arkib lejar"
+        "entitlementArchive": "Rekod konfigurasi",
+        "ledgerArchive": "Rekod baki"
       }
     },
     "leaveConfigTypes": {
-      "pageDescription": "Satu jenis cuti, lima tab, mengikut susunan keputusan dibuat.",
+      "rowDescription": "Setiap jenis cuti, apa yang dilayakkan kepada pekerja, dan siapa yang menerima jadual yang mana.",
       "tabsLabel": "Tab konfigurasi jenis cuti",
       "tab": {
         "identity": "Jenis cuti",
@@ -8671,9 +8659,17 @@
         "schemeExplainer": "Kelayakan (tab Siapa yang layak) menentukan sama ada seseorang pekerja boleh mengambil jenis cuti ini. Bilangan hari yang diterima ditentukan oleh skim faedah yang merangkumi pekerja itu; setiap skim menamakan satu jadual kelayakan."
       }
     },
+    "leaveConfigAdjustments": {
+      "pageDescription": "Ubah baki pekerja secara manual, lihat apa yang diubah, dan muatkan baki daripada fail."
+    },
+    "leaveConfigGenerate": {
+      "pageDescription": "Jalankan kelayakan bagi satu tahun cuti, pratonton dahulu, dan baca log setiap larian."
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
-      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin."
+      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
+      "whoQualifies": "Siapa yang boleh mengambil sesuatu jenis cuti, dan siapa yang menerima jadual kelayakan yang mana, ditetapkan di bawah Kelayakan, bukan di sini.",
+      "whoQualifiesLink": "Buka Jadual kelayakan"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",

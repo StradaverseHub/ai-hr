@@ -220,9 +220,24 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // a6fe37fc ROUND 5 (cutover) — the destination moved to the new module's leave TYPE screen, where the
     // four steps and six sub-steps are five tabs (IA §2). The row, its label key and its position are
     // unchanged: this is still the first thing in the menu and still called the same thing.
-    { href: '/admin/leave-config/types', labelKey: 'leaveEntitlements', icon: ClipboardList },
+    // 10b59703 — the row OWNS its two other tabs, which live at their own addresses (no route moved, so
+    // bookmarks keep working) and would otherwise leave the row dark on arrival. Highlighting only; the
+    // list must agree with components/leave-config-map.tsx's `entitlements` group, and
+    // test/leave-flyout-nav.test.ts pins that it does.
+    {
+      href: '/admin/leave-config/types',
+      labelKey: 'leaveEntitlements',
+      icon: ClipboardList,
+      ownedSubpaths: ['/admin/leave-config/entitlement-tables', '/admin/leave-config/records/entitlement'],
+    },
     // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not (see the Generate row below).
-    { href: '/admin/leave-config/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
+    // 10b59703 — same for Leave Adjustments: Balance record and Import leave data are its tabs.
+    {
+      href: '/admin/leave-config/adjustments',
+      labelKey: 'leaveAdjustments',
+      icon: SlidersHorizontal,
+      ownedSubpaths: ['/admin/leave-config/records/balances', '/admin/leave-config/import'],
+    },
     // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
     // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts
     // in the same commit), so this row must name the new one: test/leave-flyout-nav.test.ts requires every
