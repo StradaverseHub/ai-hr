@@ -130,6 +130,12 @@ like no round; only check 1 sees it. What a round decided is in `docs/HANDOFF-HI
   run prints nothing until it finishes.
 - Never `source .env.local` in the shell that runs `gate:shadow`: the exported URL beats the file the
   script rewrites and the run reports a phantom silent skip.
+- **The harness kills a BACKGROUND command when system memory is low**, and this 18 GB machine sits
+  near 16 GB used before a test runs. A six-chunk background gate died in chunk 3 twice on 2026-09-11,
+  at 6 and at 4 workers. What ran clean: every chunk or batch in the FOREGROUND, ≤ 68 files at
+  `VITEST_MAX_WORKERS=3` (each under four minutes, inside one tool call), rebuilding the cluster before
+  each and adding the counted totals up to the full file count. Chunks 1-2 of a killed background gate
+  still count if their logs report exit 0 and the full file count; only re-run what never reported.
 - Green targeted tests and a green gate are claims about the tests, not about the work (§8).
 
 ## 5. Local database

@@ -1,3 +1,50 @@
+## r264 (2026-09-11) — shared clocking locations and the entitlement-reset tool. `main@898dad7b` deployed; `c114dd24` (the opt-in adjustment flag) synced script-only. Migrations `0459` + `0460`.
+
+**DEPLOYED 2026-09-11: `deploy.sh` compiled (190 pages), applied 0459 + 0460 (374 → 376 on the box, the 0459 NOTICE reporting 0 rows and no collisions), restarted; service active, `GET /` 401, `company_id` gone, four verb policies present, the archive CHECK admits four layers; dry-run afterwards = the not-yet-committed CLAUDE.md edit only.** Gate on the merged head: 816 files, ZERO assertion errors — chunks 1-2 of a
+six-chunk background gate (272 files), then the remaining 544 files in EIGHT FOREGROUND BATCHES of 68 at
+`VITEST_MAX_WORKERS=3`, because the harness killed the background gate TWICE for low system memory
+(18 GB machine, ~6.5 GB in the compressor before a single test ran). `next build` clean (190 pages);
+`gate:shadow` PASS 374 → 376, 0459's pre-flight NOTICE reporting 0 rows and no collisions.
+
+**`f9afd1ce` — clocking locations are a shared, tenant-level master. DEPLOYED.** `company_id` is DROPPED
+(not nullable), name unique per tenant, the 0144 FOR ALL policy replaced by four verb policies (read
+tenant-wide; INSERT/UPDATE/DELETE `app.is_group_admin()`), the service asserts group-admin authority in all
+five writers, the screen renders the forms for group admins only. Assignment offers every site;
+`employee_clocking_location`'s policy is untouched. Verify found and the fix pass closed: **0459 aborted with
+a raw 23505 on any database where two companies already shared a site name** — it now pre-flights
+collisions and stops with a sentence naming them (production had 0 rows); the four mutating writers use
+`.returning` and never event a no-op; 23505 on a site name is a typed banner; company-scoped admins see
+"Used by (companies you manage)" because the count runs through `can_see_employment`.
+**Decisions the plan did not settle, told to the reporter as ``487d179f``:** (1) the link to a holiday
+`location` is now OPTIONAL and may point at any company's location — a shared site cannot belong to one
+company's record; this changes what 1fff489c told them; (2) a site name is unique across the whole group;
+(3) the personnel-tab note no longer claims clock-in is unavailable when no point is linked.
+
+**`fe9c73bc` — the staged, archive-first entitlement-configuration reset tool. BUILT AND DEPLOYED; NOT RUN.**
+`scripts/reset-entitlement-configuration.ts`: survey (no `--tenant`) · dry run per stage · `--apply` per
+stage, one transaction each: archive → verify counts (throw) → delete → health verdict / survivor check →
+domain event on `leave-config`. Stage `config` clears every template version and rule; stage `accruals`
+clears `entry_type = 'accrual'` rows and the recalc-audit rows pointing at them; debits, adjustments and
+in_lieu rows are KEPT. Refuses on request-sourced accruals, toil references, encashment snapshots, a reused
+tag. **The builder found the blocker the brief missed: `entitlement_reset_archive.layer` had a CHECK
+admitting only scheme/policy (0397); `0460` widens it to template/rule** and the script preflights the
+constraint. Verify: SHIP, no majors; its own mutations were caught by the tests; the archive verify and
+the verdict rollback abort without deleting; nothing re-grants into an empty configuration (`noOpinion`
+at every writer: openLeaveYear, accrue-earned, the hire grant, profile recalc). Hand-fixed after verify:
+the env loader could never run (db/client reads DATABASE_URL at import — the header's `set -a` form is
+mandatory), `--tenant` is uuid-checked, and the two reset events carry an audit label.
+**Board at close:** `f9afd1ce` deployed (ref 898dad7b) + note `487d179f`; `fe9c73bc` DONE, not deployed — the run is the deliverable; `492da418` PLANNED carries the go-ahead; **`a485afa1` came back CONTESTED the same day** (View/Edit must open a dedicated screen, not the inline panel r263 built — re-plan next, with a mockup); seven `open`.
+**Operator steps still owed:** the run plan is `492da418` (raised + planned; approve = run on live, config first, accruals second WITH the system-adjustment flag). The dry run on the box (2026-09-11, nothing written) found 34 templates (23 in force) / 3 rules (1 in force) / 201 accruals / **83 adjustments, ALL system-written (`sys:profile_recalc`, `sys:policy_recalc`, `sys:a2c_recalc`, `sys:carry_forward_cap`; 0 batched, 0 human)** / 19 debits; the approved plan's "79 adjustments your HR team made by hand" WAS WRONG and the run plan says so at the top and recommends clearing them too (`--include-system-adjustments`, opt-in). Rehearsal on a copy: the dump was taken on the box (`/home/ubuntu/aihr-prodcopy-2026-09-11.dump`, 157 MB, 2085 TOC entries, PG 16.15) but restoring it into a scratch database and copying it off the box were both refused by the session's permission classifier; the owner runs that step (commands in the round's recap).
+**Two consequences the reporter hears in the run plan:** balances read negative for the 19 debit rows until
+regeneration; `expireCarriedLeave` short-circuits for a year with no accrual marker, so the 1-April sweep
+skips affected people until entitlement is regenerated (core/leave.ts ~8659).
+
+**Environment, durable:** the harness kills a BACKGROUND command when system memory is low, and this
+machine sits at ~16 GB used before a test runs. A chunked gate at 6 or 4 workers died in chunk 3 both
+times; foreground batches of 68 files at 3 workers, each under four minutes, ran the rest clean. Now in
+CLAUDE.md §4. Each on-disk rebuild still leaves a 4-6 GB `pg_wal` in a moved-aside cluster; 12 were
+cleared after this gate (41 GiB).
+
 ## 2026-09-11 — AGENTS.md and HANDOFF.md retired; CLAUDE.md rewritten from scratch. NO CODE SHIPPED.
 
 The owner retired all three instruction files as inefficient (HANDOFF.md had reached 1,786 lines against
