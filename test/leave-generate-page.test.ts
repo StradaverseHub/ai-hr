@@ -351,10 +351,14 @@ describe('4b0e76ae · the reset keeps the table, and the year list stops reading
   });
 
   it('the Run Earned Accrual selector now offers the shared computed range', () => {
-    const page = read('app/admin/leave-config/types/page.tsx');
+    // r266 (10b59703) moved the Run earned accrual dialog from every leave type's tab 3 to the Generate
+    // Entitlement page; the shared computed range moved with it. The types page keeps only a pointer.
+    const page = read('app/admin/leave-config/generate/page.tsx');
     expect(page).toContain('entitlementYearOptions(currentYear)');
     expect(page).toContain('leaveYears={earnedLeaveYears}');
     // The old fallback array built currentYear..+6 with no past years.
     expect(page.includes('Array.from({ length: 7 }')).toBe(false);
+    const types = read('app/admin/leave-config/types/page.tsx');
+    expect(types.includes('entitlementYearOptions(currentYear)'), 'the selector must not be built on the types page any more').toBe(false);
   });
 });
