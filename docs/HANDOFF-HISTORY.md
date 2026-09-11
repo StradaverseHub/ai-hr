@@ -1,3 +1,37 @@
+## r264-plan (2026-09-11) — five items planned with mockups; two approved within the hour. NO CODE.
+
+Four planning agents, each verifying the premise on the live screen and code (production SELECT-only)
+before writing, each plan plain text with one course of action, pictures rendered from the mockup
+script's logic through the installed Chrome because Playwright has no browser downloaded here
+(`pnpm exec playwright install chromium` restores the canonical path; ~150 MB, owner's call).
+- **`a485afa1` (contested → planned rev 2, APPROVED):** View / Edit opens a page of its own headed
+  "Shift arrangement" (list → `[employee]`, the shift library's own shape); one page views and edits;
+  Save/Cancel return to the list at the highlighted row with filters kept; the inline `?assign=` panel
+  goes, old links redirect. 74 rows on production; only 3 employees hold a dated arrangement.
+  **Decision:** one page, no separate read-only View page (offered as reject-and-say-so). r263's mockup
+  used placeholder names of which 2 of 3 matched real people; the new ones match nobody.
+- **`def44f29` (planned, APPROVED):** Add holiday opens a dialog over the list (the movement-type dialog
+  shape); rows become text with Edit/Remove; National / State becomes a dropdown of National + 16 states,
+  changeable on add AND edit (today the Add form posts no state, so every added holiday is national, and
+  scope is immutable). 21 holidays live (11 national, 10 state); only 8 of 83 employees resolve to a state.
+  **Decision:** ADR-0055's business-group picker is NOT restored (0 such rows); Country fixed on edit.
+  **Hazard found, not yet raised:** all four holiday groups on production are archetype `custom`, so any
+  staff resolved through them get NO national or state holidays (core/holidays.ts L30-31); no location is
+  mapped to them today, so no exposure yet — raise it before anyone maps one.
+- **`10b59703` (planned):** the five submenu rows already exist; what is wrong is the Entitlements screen
+  (14 navigation controls before content, screens named twice, three headings disagreeing with their rows,
+  two pages sharing a wrong description). Plan: submenu is the only navigation, headings = rows, three
+  tabs under Entitlements and three under Leave Adjustments, Run earned accrual moves to Generate.
+  **Decision:** eligibility rules stay with their tables, NOT under Company rules (told at the top).
+- **`e1683671` (planned, close-out):** covered and DONE by the reset that ran 14:19/14:20; the plan lists
+  what happened to Annual Leave specifically and says plainly that expectation 5 (other types untouched)
+  was overridden by the reporter's own approval.
+- **`6aee1d91` (planned):** premise wrong and said so: the profile's Benefit Scheme is read-only and IS the
+  winning eligibility rule under another name; removing the section would stop every multi-table leave
+  type granting anyone. Plan: keep the mechanism, rename "Employee eligibility" → "Benefit schemes",
+  one explainer line, a read-only note on the profile card, their two messages in scheme vocabulary.
+Three `open` items remain and are all ours (delivery notes `1d7c9908`, `ff8c0078`, `487d179f`).
+
 ## r264 (2026-09-11) — shared clocking locations and the entitlement-reset tool. `main@898dad7b` deployed; `c114dd24` (the opt-in adjustment flag) synced script-only. Migrations `0459` + `0460`.
 
 **DEPLOYED 2026-09-11: `deploy.sh` compiled (190 pages), applied 0459 + 0460 (374 → 376 on the box, the 0459 NOTICE reporting 0 rows and no collisions), restarted; service active, `GET /` 401, `company_id` gone, four verb policies present, the archive CHECK admits four layers; dry-run afterwards = the not-yet-committed CLAUDE.md edit only.** Gate on the merged head: 816 files, ZERO assertion errors — chunks 1-2 of a
