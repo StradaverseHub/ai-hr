@@ -93,7 +93,11 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     // is the new leave TYPE screen. The old page is a redirect stub and prepares nothing at all, so the
     // "must survive" half of this case follows the consumer; the "must be gone" half above still reads
     // both files, so a festive-grant symbol reappearing on either fails.
-    const liveScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
+    // 10b59703 (r266) — the dialog moved to Generate Entitlement, and the guard follows the consumer
+    // again: the group-aware company list is prepared on the page that mounts the dialog, by the same
+    // two names. The leave type screen keeps neither (a list prepared for a dialog it no longer mounts
+    // would be the e4238594 leftover this file exists to catch), only the pointer.
+    const liveScreen = stripComments(read('app/admin/leave-config/generate/page.tsx'));
     // `festiveCompanies` was the name the OLD page gave the list it fed EarnedAccrualDialog; the new
     // screen calls the same list `accrualCompanies`, gated by the same `canGroupWide`. The rename is not
     // the removal this case guards against — what matters is that the dialog is still fed a group-aware
@@ -101,6 +105,11 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     for (const kept of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
       expect(liveScreen.includes(kept), `${kept} must survive — it feeds Run Earned Accrual`).toBe(true);
     }
+    const typeScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
+    for (const gone of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
+      expect(typeScreen.includes(gone), `${gone} left the leave type screen with the dialog`).toBe(false);
+    }
+    expect(typeScreen).toContain('accrualPointer');
   });
 
   it('locale keys: the retired ones go, the Leave Balance Summary line STAYS', () => {

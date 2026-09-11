@@ -310,14 +310,14 @@ that is the cheaper direction.
 | F2 | Configuration health card (traffic light per type: no earning method, no table, no rule, table reaching nobody, rule expiring, grade with no table, zero maximum balance) | **Leave types** header (all types) **and Tab 3** (this type) — one derivation, two places, as today |
 | F3 | Shared leave groups (tenant-level combined limits) | **Company rules** |
 | F4 | Company-wide half-day full deduction | **Company rules** |
-| F5 | Header links: Import · Entitlement tables · Configuration record · Balance record | **Leave types** header, repointed at the new addresses |
+| F5 | Header links: Import · Entitlement tables · Configuration record · Balance record | **Leave types** header, repointed at the new addresses. *2026-09-11 (10b59703, r266): the three links became the Entitlements tab row (Leave types · Entitlement tables · Configuration record) and Import became a tab under Leave Adjustments; the header keeps only the Employee Balances link (F47).* |
 | F6 | Details: code, name, description, paid/unpaid, leave unit (day/hour) | **Tab 1 · The leave type** |
 | F7 | Per-date (partial) approval | **Tab 5 · Who approves it** — moved out of *General setting* |
 | F8 | Leave year type override (a2a / c2c / a2c) | **Tab 1 · The leave type** |
 | F9 | Earning method, accrual day, rounding method / threshold / bands | **Tab 3 · What they are entitled to** — moved out of *General setting* |
 | F10 | Carry forward: on/off, maximum, percentage, expiry mode / months / month / day, include earned | **Tab 3 · What they are entitled to** — moved out of *General setting* |
 | F11 | Entitlement tables + Employee eligibility, filtered to this type (create / edit / retire / delete, and the “how many employees does this rule reach” count) | **Tab 3 · What they are entitled to** — the same shared block, re-mounted |
-| F12 | Run earned accrual | **Tab 3 · What they are entitled to** (same behaviour) |
+| F12 | Run earned accrual | **Tab 3 · What they are entitled to** (same behaviour). *2026-09-11 (10b59703, r266): moved to **Generate Entitlement**, between the wizard and the run log — it runs a calculation, and the reporter's rule for that round put every run action apart from configuration. Tab 3 keeps a one-line pointer where the button was. R64's placement inside the tab was the reporter's own earlier request; the plan said so and offered reject-and-say-so.* |
 | F13 | Eligibility gate: gender · marital status · minimum service · probation status · the eight organisation-assignment axes | **Tab 2 · Who is eligible** |
 | F14 | Allowed durations: full day / half day AM / half day PM / hourly | **Tab 4 · How it is applied for** |
 | F15 | Supporting document: required, required only after N days, allowed file types, maximum size, employee remark required, HR remark required | **Tab 4 · How it is applied for** |

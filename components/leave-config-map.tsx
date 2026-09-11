@@ -11,12 +11,14 @@
  *     `/generate`, `/payroll` and `/replacement` each called `getTranslations('admin.leave')` and
  *     `t('pageTitle')`, so the heading could not tell you which screen you were on.
  *
- * ═══ ⚠️ THE LABEL AND THE PAGE HEADING ARE THE SAME STRING, ON PURPOSE ═══
+ * ═══ ⚠️ THE HEADING IS THE SUBMENU ROW'S LABEL; THE MAP ITEM IS THE TAB'S LABEL (10b59703) ═══
  *
- * Each screen's heading now reads `admin.leaveConfigMap.item.<id>` — the very key this map renders. A
- * separate title key per page would let the menu and the heading drift the first time either was edited,
- * and "the menu says one thing and the page says another" is the defect this component was built to end,
- * not one to reintroduce one level down.
+ * Until r266 each screen's heading was `admin.leaveConfigMap.item.<id>`, and the left submenu row that
+ * opened it said something else ("Entitlements" opened "Leave types"; "Approval Workflow" opened
+ * "Approval chain"). The rule is now: every page's heading is its ROW's `nav.*` label
+ * (`leaveConfigPageHeader` / `leaveConfigRowTitle`), and `admin.leaveConfigMap.item.<id>` names the TAB
+ * inside that row. Still one string per name, still resolved from one place — the drift this component
+ * was built to end is not reintroduced one level down; it is closed one level up.
  *
  * ═══ ⚠️ THE LIST IS DECLARED HERE AND IS **NOT** DERIVED FROM `lib/permissions.ts` ═══
  *
@@ -89,133 +91,182 @@ export type LeaveConfigScreenId =
   | 'entitlementArchive'
   | 'ledgerArchive';
 
-type Group = { id: 'configure' | 'run' | 'history'; items: { id: LeaveConfigScreenId; href: string }[] };
-
 /**
- * Grouped by WHAT YOU ARE DOING, which is the distinction the flat list lost: decide what the rules are,
- * run a one-off job, or read what already happened. `configure` first because it is where an administrator
- * spends their time; `history` last because it is the only read-only group.
+ * 10b59703 — GROUPED BY THE FIVE ROWS OF THE LEFT SUBMENU, and nothing else.
+ *
+ * Until r266 the groups were configure / run / history and the component rendered ALL nine screens as a
+ * pill row on every page — fourteen navigation controls on the Entitlements landing before the content
+ * started, five of them duplicating a submenu row beside them, and two screens each named twice on one
+ * page ("Configuration record" in the header, "Entitlement archive" in the pills). The reporter's
+ * instruction was that the submenu IS the navigation. So:
+ *
+ *   · a group is a submenu ROW (`packs/leave/index.ts` LEAVE_ADMIN_NAV, same order, same five);
+ *   · the first item of every group is the row's own href — that agreement is pinned by
+ *     test/leave-config-map.test.ts, not derived, for the same reason the permission registry is not
+ *     derived from (see the header above);
+ *   · `LeaveConfigMap` renders ONLY the current group's items, as the page's own tab row, and renders
+ *     nothing at all when the row owns one screen (Generate Entitlement, Approval Workflow, Company rules);
+ *   · the page HEADING is the ROW's label (`leaveConfigRowTitle`), and the map item label is the TAB's
+ *     label. One screen, one name, in exactly one place each.
+ *
+ * `leaveConfigScreenHref` is unchanged: every cross-screen link still resolves through the one list.
  */
+export type LeaveConfigGroupId = 'entitlements' | 'adjustments' | 'generate' | 'approval' | 'companyRules';
+
+/** The `nav.*` key of the submenu row each group IS — the heading of every page in the group. */
+export type LeaveConfigRowNavKey =
+  | 'leaveEntitlements'
+  | 'leaveAdjustments'
+  | 'leaveGenerate'
+  | 'leaveApprovalWorkflow'
+  | 'leaveCompanyRules';
+
+type Group = {
+  id: LeaveConfigGroupId;
+  navKey: LeaveConfigRowNavKey;
+  items: { id: LeaveConfigScreenId; href: string }[];
+};
+
 export const LEAVE_CONFIG_MAP: Group[] = [
   {
-    id: 'configure',
+    id: 'entitlements',
+    navKey: 'leaveEntitlements',
     items: [
       { id: 'leaveTypes', href: '/admin/leave-config/types' },
       { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },
-      { id: 'approvalChain', href: '/admin/leave-config/approval-chains' },
-      // a6fe37fc ROUND 5 (cutover) — `{ id: 'replacementLeave', href: '/admin/leave/replacement' }` STOOD
-      // HERE and is DELIBERATELY GONE, replaced by the screen that ABSORBED it. Replacement leave is a
-      // COMPANY rule, not a property of a leave type, and IA §2.0.3 gathers the four company/tenant
-      // settings onto one destination instead of leaving them on four surfaces. The id survives (the
-      // Company rules page renders `leaveConfigScreenTitle('replacementLeave')` as that section's
-      // heading, so the section is still called what the menu used to call the screen), it just has no
-      // map entry of its own any more — two entries reaching one screen is what this component exists to
-      // stop.
-      { id: 'companyRules', href: '/admin/leave-config/company-rules' },
-      // a6fe37fc ROUND 5 (cutover) — `{ id: 'payrollImpact', href: '/admin/leave/payroll' }` STOOD HERE
-      // and is DELIBERATELY GONE. Payroll Related was never one subject: its per-leave-type "Send to
-      // payroll module" switch is a property of the TYPE (tab 1 of Leave types) and its encashment policy
-      // is a COMPANY rule (Company rules, one entry above). The id survives — nothing renders it as a
-      // section heading today, but it is the label key for a screen the customer knew by name, and
-      // deleting an id costs nothing to keep and something to get wrong.
+      // 10b59703 — the read-only record stays under Entitlements: it is the record of entitlement
+      // tables and benefit schemes, which is what the reset it follows cleared.
+      { id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' },
     ],
   },
   {
-    id: 'run',
+    id: 'adjustments',
+    navKey: 'leaveAdjustments',
     items: [
-      { id: 'generateEntitlement', href: '/admin/leave-config/generate' },
       { id: 'adjustments', href: '/admin/leave-config/adjustments' },
+      // 10b59703 — the balance record is a record of LEDGER rows removed by a reset: the same kind of
+      // row an adjustment writes, so it lives beside the adjustment, not beside the configuration.
+      { id: 'ledgerArchive', href: '/admin/leave-config/records/balances' },
+      // 10b59703 — Import loads balance MOVEMENTS (opening balances, carry-forward, historical leave,
+      // ad-hoc credits — core/leave-import.ts writes leave_ledger rows). That is an adjustment by
+      // file, so it moved out of the Entitlements header and under this row.
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
     ],
   },
-  {
-    id: 'history',
-    items: [
-      { id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' },
-      { id: 'ledgerArchive', href: '/admin/leave-config/records/balances' },
-    ],
-  },
+  { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },
+  { id: 'approval', navKey: 'leaveApprovalWorkflow', items: [{ id: 'approvalChain', href: '/admin/leave-config/approval-chains' }] },
+  // a6fe37fc ROUND 5 (cutover) — `replacementLeave` and `payrollImpact` are DELIBERATELY absent: their
+  // screens were absorbed into Company rules, whose page renders `leaveConfigScreenTitle()` of each as a
+  // section heading. Two entries reaching one screen is what this component exists to stop.
+  { id: 'companyRules', navKey: 'leaveCompanyRules', items: [{ id: 'companyRules', href: '/admin/leave-config/company-rules' }] },
 ];
 
 /**
  * a6fe37fc ROUND 3 (r259 finding 3) — THE ADDRESS THE MAP GIVES A SCREEN, so a link to a screen can
- * never disagree with the menu entry for it.
+ * never disagree with the menu entry for it. Every cross-screen link inside the module resolves through
+ * here, so it points where the MAP points.
  *
- * ⚠️ THE PREVIEW MODULE HAD TWO NAVIGATION DIRECTIONS AT ONCE. The map on all seven new
- * `/admin/leave-config/` pages links to the OLD addresses, while four of those same pages' back-links
- * pointed back INTO the new module. Each half is defensible alone; together they put two answers to
- * "where is the leave type screen" on one page, and they would have made Round 5 move one set and leave
- * the other — the inverse of the cutover instinct.
- *
- * ⚠️ ONE DIRECTION NOW, AND IT IS **OUT** UNTIL ROUND 5: every cross-screen link inside the module
- * resolves through here, so it points where the MAP points — at the screen that is live today. That is
- * also the choice that survives the cutover untouched: Round 5 empties each old page into a redirect
- * stub aimed at the new module (docs/design/a6fe37fc-migration-order.md → Round 5), so a link resolved
- * here reaches the NEW screen the moment the old one goes, and the cutover moves `LEAVE_CONFIG_MAP`
- * alone rather than hunting inbound links.
- *
- * `companyRules` is excluded by TYPE, not by a runtime fallback: it is the one screen id with no map
- * entry until the cutover, so asking this function for its address is a mistake tsc should refuse rather
- * than one this function should paper over with a guessed href.
+ * `replacementLeave` and `payrollImpact` are excluded by TYPE, not by a runtime fallback: their screens
+ * were absorbed into Company rules, so asking this function for their address is a mistake tsc should
+ * refuse rather than one this function should paper over with a guessed href.
  */
-export type MappedLeaveConfigScreenId = Exclude<
-  LeaveConfigScreenId,
-  // a6fe37fc ROUND 5 — the exclusion INVERTED at the cutover. `companyRules` is on the map now;
-  // `replacementLeave` and `payrollImpact` are the ids whose screens were absorbed into it, so asking
-  // this function for their address is a mistake tsc should refuse rather than one this function should
-  // paper over with a guessed href.
-  'replacementLeave' | 'payrollImpact'
->;
+export type MappedLeaveConfigScreenId = Exclude<LeaveConfigScreenId, 'replacementLeave' | 'payrollImpact'>;
 
 const HREF_BY_ID = Object.fromEntries(
   LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),
 ) as Record<MappedLeaveConfigScreenId, string>;
 
+const GROUP_BY_ID = Object.fromEntries(
+  LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => [i.id, g] as const)),
+) as Record<MappedLeaveConfigScreenId, Group>;
+
 export function leaveConfigScreenHref(id: MappedLeaveConfigScreenId): string {
   return HREF_BY_ID[id];
 }
 
-/** The heading for one screen — the SAME string the map shows for it. */
+/** The submenu row a screen belongs to. */
+export function leaveConfigGroupOf(id: MappedLeaveConfigScreenId): Group {
+  return GROUP_BY_ID[id];
+}
+
+/** The TAB label for one screen — the string the tab row shows for it (and, on Company rules, the
+ *  section heading of an absorbed screen). Not a page heading any more: see `leaveConfigRowTitle`. */
 export async function leaveConfigScreenTitle(id: LeaveConfigScreenId): Promise<string> {
   const t = await getTranslations('admin.leaveConfigMap');
   return t(`item.${id}`);
 }
 
-export async function LeaveConfigMap({ current }: { current: LeaveConfigScreenId }) {
+/** The heading of every page in a group: the submenu ROW's own label, read from the same `nav` key the
+ *  sidebar renders, so the row that opened the page and the heading on it cannot disagree. */
+export async function leaveConfigRowTitle(groupId: LeaveConfigGroupId): Promise<string> {
+  const t = await getTranslations('nav');
+  return t(LEAVE_CONFIG_MAP.find((g) => g.id === groupId)!.navKey);
+}
+
+/**
+ * The one-line description of what a ROW is responsible for. One key per row, resolved here rather than
+ * on each page, so the three tabs of Entitlements (and the three of Leave Adjustments) describe their
+ * row in the same words: a tab is a part of the page, not a page with its own summary.
+ */
+const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: string]> = {
+  entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
+  adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
+  generate: ['admin.leaveConfigGenerate', 'pageDescription'],
+  approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],
+  companyRules: ['admin.leaveConfigCompanyRules', 'pageDescription'],
+};
+
+/** The PageHeader of any Leave Config screen: its row's title and its row's description. Every page in
+ *  the module reads its header through here (test/r266-leave-config-rows.test.ts), which is what makes
+ *  "the heading equals the submenu row" a property of the module rather than nine separate promises. */
+export async function leaveConfigPageHeader(
+  current: MappedLeaveConfigScreenId,
+): Promise<{ title: string; description: string }> {
+  const group = leaveConfigGroupOf(current);
+  const [namespace, key] = ROW_DESCRIPTION_KEY[group.id];
+  const t = await getTranslations(namespace);
+  return { title: await leaveConfigRowTitle(group.id), description: t(key) };
+}
+
+/**
+ * THE TAB ROW OF THE CURRENT PAGE — the current row's screens, and only those. Directly under the
+ * PageHeader. Renders nothing when the row owns a single screen: a tab row of one is furniture.
+ *
+ * The look is the leave-type tab strip's (app/admin/leave-config/types/leave-type-tabs.tsx `tabBtn`)
+ * without the step numbers, because these are places, not steps. SERVER COMPONENT, plain links, one
+ * `getTranslations`, and it must stay one (test/server-client-boundary.test.ts).
+ */
+export async function LeaveConfigMap({ current }: { current: MappedLeaveConfigScreenId }) {
+  const group = leaveConfigGroupOf(current);
+  if (group.items.length < 2) return null;
   const t = await getTranslations('admin.leaveConfigMap');
+  const tab = (active: boolean) =>
+    `flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+      active
+        ? 'border-transparent bg-accent font-semibold text-accent-foreground'
+        : 'border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+    }`;
 
   return (
-    <nav aria-label={t('label')} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm">
-      {LEAVE_CONFIG_MAP.map((g, gi) => (
-        <span key={g.id} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-          {/* A divider between groups, never before the first — a leading rule reads as a broken row. */}
-          {gi > 0 ? <span aria-hidden className="mx-1 hidden h-4 w-px bg-border sm:block" /> : null}
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t(`group.${g.id}`)}
-          </span>
-          {g.items.map((it) =>
-            it.id === current ? (
-              // The current screen is NOT a link. A link to where you already are is a dead control, and
-              // aria-current is what tells a screen reader which of eleven entries is the live one.
-              <span
-                key={it.id}
-                aria-current="page"
-                className="rounded-md border border-primary bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary"
-              >
+    <nav aria-label={t('label')} data-testid="leave-config-tabs">
+      <ol className="flex flex-wrap items-center gap-1.5">
+        {group.items.map((it, i) => (
+          <li key={it.id} className="flex items-center gap-1.5">
+            {i > 0 ? <span aria-hidden className="hidden h-px w-3 bg-border sm:block" /> : null}
+            {it.id === current ? (
+              // The current tab is NOT a link. A link to where you already are is a dead control, and
+              // aria-current is what tells a screen reader which tab is the live one.
+              <span aria-current="page" className={tab(true)}>
                 {t(`item.${it.id}`)}
               </span>
             ) : (
-              <Link
-                key={it.id}
-                href={it.href}
-                className="rounded-md border border-border bg-background px-2.5 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
-              >
+              <Link href={it.href} className={tab(false)}>
                 {t(`item.${it.id}`)}
               </Link>
-            ),
-          )}
-        </span>
-      ))}
+            )}
+          </li>
+        ))}
+      </ol>
     </nav>
   );
 }

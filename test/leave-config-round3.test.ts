@@ -226,7 +226,10 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     // already learned. The heading still comes from the same key the menu entry uses.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.id as string);
     expect(ids).toContain('companyRules');
-    expect(src.companyRules).toContain("leaveConfigScreenTitle('companyRules')");
+    // 10b59703 (r266) — the heading comes from the submenu ROW's key now (`leaveConfigPageHeader`),
+    // not the map item's; the two absorbed ids below still render as SECTION headings through the item
+    // key. Updated rather than loosened: the property is still "one string, one source".
+    expect(src.companyRules).toContain("leaveConfigPageHeader('companyRules')");
     // `replacementLeave` and `payrollImpact` are the ids with no map entry now: their screens were
     // ABSORBED into this one, and two entries reaching one screen is what this component exists to stop.
     // The ids themselves survive — Company rules renders them as its section headings.
@@ -653,12 +656,20 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
     ).toEqual([]);
   });
 
-  it('the four back-links resolve through the map, so the cutover moves ONE list', () => {
+  it('10b59703 — the four former back-links are GONE: those screens are tabs of a row now, not pages under Leave types', () => {
+    // r259 gave each of these four a back-link to the leave type screen, resolved through the map. r266
+    // made them TABS (Entitlements: Entitlement tables · Configuration record; Leave Adjustments: Balance
+    // record · Import), so a back-link would be a second navigation direction beside the tab row — the
+    // exact two-answers defect this describe exists to stop. Inverted rather than deleted: each page
+    // must read its header through the row helper and carry no back-link, literal or resolved.
     for (const k of ['entitlementTables', 'recordsEntitlement', 'recordsBalances', 'import'] as const) {
-      expect(
-        src[k],
-        `${SCREENS_BUILT[k].file} lost its back-link to the leave type screen, or hard-coded it again`,
-      ).toContain("leaveConfigScreenHref('leaveTypes')");
+      expect(src[k], `${SCREENS_BUILT[k].file} still links back to the leave type screen`).not.toContain(
+        "leaveConfigScreenHref('leaveTypes')",
+      );
+      expect(src[k], `${SCREENS_BUILT[k].file} still renders a PageHeader back-link`).not.toContain('back={{');
+      expect(src[k], `${SCREENS_BUILT[k].file} does not read its header through the row helper`).toContain(
+        'leaveConfigPageHeader(',
+      );
     }
     // And the direction that resolves to: whatever the MAP says today, which is the point of resolving
     // through it — the cutover moves the map entry and every back-link follows in the same commit.

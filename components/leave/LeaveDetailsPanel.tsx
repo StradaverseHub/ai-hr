@@ -449,7 +449,11 @@ export function LeaveDetailsPanel({
                 className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
               >
                 <p className="font-medium">{t(PANEL_STATUS_COPY[data.entitlementStatus]!.title)}</p>
-                <p className="mt-0.5">{t(PANEL_STATUS_COPY[data.entitlementStatus]!.body)}</p>
+                {/* 6aee1d91 — `typeName` is read by the no-scheme body only ("No benefit scheme covers you
+                    for {typeName}"); ICU ignores it on the others, so one call site serves every status. */}
+                <p className="mt-0.5">
+                  {t(PANEL_STATUS_COPY[data.entitlementStatus]!.body, { typeName: data.leaveType })}
+                </p>
                 {data.entitlementTemplateName && (
                   <p className="mt-0.5 opacity-80">
                     {t('statusEntitlementTable', { name: data.entitlementTemplateName })}

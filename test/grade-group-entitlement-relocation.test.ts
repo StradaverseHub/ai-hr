@@ -163,7 +163,11 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // filtered to the panel's leave type. Updated rather than loosened — the guard's job is to fail if the
     // Entitlement step loses its entitlement surface, which is exactly as true of the new name.
     expect(entitlementsCode).toContain('entitlementTablesSection');
-    expect(entitlementsCode).toContain('<EarnedAccrualDialog');
+    // 10b59703 (r266) — Run earned accrual moved to Generate Entitlement; what this screen keeps is the
+    // pointer to it. The assertion follows the mount rather than being dropped, for the reason above.
+    expect(entitlementsCode).toContain('accrualPointer');
+    expect(entitlementsCode).not.toContain('<EarnedAccrualDialog');
+    expect(stripComments(fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/generate/page.tsx'), 'utf8'))).toContain('<EarnedAccrualDialog');
   });
 
   it('the destructure and the Promise.all still have the SAME arity, in the same order', () => {
@@ -174,8 +178,11 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // edit this case exists to police: drop a name without its element and every later variable shifts one
     // slot, silently, because both sides are arrays. The expected shape is updated to the four that
     // remain, and the arity + position assertions are unchanged — they are the guard.
+    // 10b59703 (r266) — `grades` left this destructure WITH the accrual dialog it fed (Generate
+    // Entitlement reads its own grade list), the same shape of edit as `sharedGroups` above: the expected
+    // shape shrinks to the three that remain, and the arity + position assertions are unchanged.
     const { names, calls } = destructuredAwaitAll(entitlementsCode, 'const [types,');
-    expect(names).toEqual(['types', 'companies', 'grades', 'profileOptionsActive']);
+    expect(names).toEqual(['types', 'companies', 'profileOptionsActive']);
     expect(calls).toHaveLength(names.length);
     expect(calls[0]).toMatch(/^listLeaveTypes\(/);
     expect(calls[names.indexOf('profileOptionsActive')]).toMatch(/^listAllProfileOptions\(/);

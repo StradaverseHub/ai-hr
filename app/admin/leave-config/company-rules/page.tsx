@@ -16,7 +16,13 @@ import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
 import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
-import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import Link from 'next/link';
+import {
+  LeaveConfigMap,
+  leaveConfigPageHeader,
+  leaveConfigScreenHref,
+  leaveConfigScreenTitle,
+} from '@/components/leave-config-map';
 import {
   createLeaveSharedGroupAction,
   deleteLeaveSharedGroupAction,
@@ -207,7 +213,9 @@ export default async function LeaveConfigCompanyRulesPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={await leaveConfigScreenTitle('companyRules')}
+        // 10b59703 — the heading is the submenu ROW's label, like every Leave Config page; here the row
+        // and the old screen title happen to be the same words. Content unchanged.
+        title={(await leaveConfigPageHeader('companyRules')).title}
         description={tPage('pageDescription')}
         actions={
           visible.length > 0 ? (
@@ -251,6 +259,16 @@ export default async function LeaveConfigCompanyRulesPage({
       <Card>
         <div className="space-y-2 p-4 text-sm">
           <p className="text-muted-foreground">{tPage('intro')}</p>
+          {/* 10b59703 — the reporter's tree put eligibility rules under Company rules. They stay under
+              Entitlements (a benefit scheme names one entitlement table of one leave type; splitting the
+              two across pages is the "who qualifies is answered in three places" defect IA §1.2(e) just
+              removed), and this page says so with a plain pointer, resolved through the map. */}
+          <p className="text-muted-foreground">
+            {tPage('whoQualifies')}{' '}
+            <Link href={leaveConfigScreenHref('entitlementTables')} className="font-medium text-primary hover:underline">
+              {tPage('whoQualifiesLink')} →
+            </Link>
+          </p>
         </div>
       </Card>
 

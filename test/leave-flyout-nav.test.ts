@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
+import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -125,6 +126,26 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * `/admin/leave` leave lib/permissions.ts without test/function-access.test.ts reddening in either
    * direction; and the label key retires WITH the row instead of lingering as an untranslatable orphan.
    */
+  it('10b59703 — a row OWNS the tabs of its group, so it stays lit on them, and owns nothing else', () => {
+    // The four screens that hang off no row of their own (Entitlement tables, Configuration record,
+    // Balance record, Import leave data) are tabs of Entitlements and Leave Adjustments. `ownedSubpaths`
+    // is highlighting only (packs/registry.ts), and the two lists — the nav's and the map's — must not
+    // drift: a tab the row does not own goes dark on arrival, and a path the row owns that is not its
+    // tab lights the wrong row.
+    for (const group of LEAVE_CONFIG_MAP) {
+      const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
+      expect(row, `${group.navKey} has no fly-out row`).toBeTruthy();
+      const tabs = group.items.slice(1).map((i) => i.href);
+      expect(row.ownedSubpaths ?? [], `${group.navKey} ownedSubpaths must be exactly its other tabs`).toEqual(tabs);
+    }
+    // Non-vacuity: two rows own two tabs each, and the sidebar consults them (components/sidebar.tsx).
+    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(2);
+    const sidebar = read('components/sidebar.tsx');
+    expect(sidebar).toContain('const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];');
+    expect(sidebar).toContain('isParentActive(pathname, children.flatMap(childPaths))');
+    expect(sidebar).toContain('.filter((c) => isRowActive(c))');
+  });
+
   it('the Summary row is gone and the leave TYPE screen is first', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave');
     expect(NODE.children[0].href).toBe('/admin/leave-config/types');

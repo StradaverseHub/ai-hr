@@ -1,10 +1,9 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveLedgerArchiveCaptures, listLeaveLedgerResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 
 /**
  * a6fe37fc — THE MEDICAL / HOSPITALISATION BALANCE RECORD (`/admin/leave-config/records/balances`).
@@ -62,19 +61,21 @@ export default async function LeaveConfigBalanceRecordPage({
   const ledgerCount = rows.filter((r) => r.layer === 'ledger').length;
   const auditCount = rows.length - ledgerCount;
 
+  // 10b59703 — a TAB of Leave Adjustments ("Balance record", one name from now on; the pill called it
+  // "Ledger archive"). It is a record of ledger rows a reset removed — the same kind of row an
+  // adjustment writes — so it sits beside the adjustment. Heading and description are the row's; the
+  // tab's own sentence leads the intro card.
+  const header = await leaveConfigPageHeader('ledgerArchive');
+
   return (
     <div className="space-y-6">
-      {/* The heading is the string the MENU shows for this screen (IA §1.1) — one screen, one name. */}
-      <PageHeader
-        title={await leaveConfigScreenTitle('ledgerArchive')}
-        description={t('pageDescription')}
-      />
-      {/* `current="ledgerArchive"` because this IS that screen — the map names screens, not addresses,
-          and the cutover repointed the entry here. */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* `current="ledgerArchive"` because this IS that tab of the Leave Adjustments row. */}
       <LeaveConfigMap current="ledgerArchive" />
 
       <Card>
         <div className="space-y-3 p-4 text-sm">
+          <p className="font-medium text-foreground">{t('pageDescription')}</p>
           <p className="text-muted-foreground">{t('intro')}</p>
           {/* The sentence people most need to read twice, and truer here than on the configuration
               record: these rows were DELETED, not superseded. */}
@@ -112,12 +113,8 @@ export default async function LeaveConfigBalanceRecordPage({
             <a href={csvHref} className="text-sm underline">
               {t('downloadCsv')}
             </a>
-            {/* r259 — resolved through the area map above, so this record and the menu beside it point
-                at the same leave type screen. OUT of the preview module until Round 5 repoints the map;
-                see components/leave-config-map.tsx → leaveConfigScreenHref. */}
-            <Link href={leaveConfigScreenHref('leaveTypes')} className="ml-auto text-sm underline">
-              {t('backToEntitlements')}
-            </Link>
+            {/* 10b59703 — the back-link to the leave type screen stood here and is gone: this is a tab of
+                Leave Adjustments now, and the row stays lit on it. */}
           </form>
 
           {/* The two counts stated plainly: the whole point of the record is that the number of rows taken

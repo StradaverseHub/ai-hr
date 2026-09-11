@@ -269,7 +269,13 @@ export function EligibilityRuleForm({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label={t('ruleName')}>
-          <input className={inputCls} name="name" defaultValue={initial?.name ?? ''} required />
+          <input
+            className={inputCls}
+            name="name"
+            defaultValue={initial?.name ?? ''}
+            placeholder={t('ruleNamePlaceholder')}
+            required
+          />
         </Field>
         <Field label={t('ruleTemplate')}>
           <select className={inputCls} name="templateLineageId" defaultValue={initial?.templateLineageId ?? ''} required>
@@ -295,6 +301,10 @@ export function EligibilityRuleForm({
           />
         </Field>
       </div>
+
+      {/* 6aee1d91 — the criteria below are "who this scheme covers", in the words the approved picture uses;
+          the pickers themselves are the shared builder's and are unchanged. */}
+      <p className="text-sm font-medium">{t('ruleCoversTitle')}</p>
 
       {/* ── GRADE GROUP — this screen's own control, and the reason it stands OUTSIDE the section list ──
           It is not a field of the shared builder (see the header), so it cannot be rendered by the loop

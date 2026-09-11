@@ -253,6 +253,44 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
 }
 
 /**
+ * 6aee1d91 — WHY IS THIS BALANCE ZERO? Asked ONLY after the refusal above has already been thrown.
+ *
+ * A bare "Insufficient leave balance" collapses three situations an employee cannot tell apart, and only
+ * one of them is theirs to fix by applying for fewer days:
+ *   - `covered`   — a benefit scheme (or a sole table) reaches them and the days are genuinely spent;
+ *   - `no_scheme` — the leave type HAS entitlement tables and NO benefit scheme in force covers this
+ *                   employee, so nothing was ever granted (r209's "second zero");
+ *   - `no_table`  — the leave type has no entitlement table at all, so there was never a number to grant.
+ *
+ * This is a READ AFTER THE DECISION, not part of it: the refusal in `requestLeave` / `editLeaveRequest`
+ * is unchanged, and this function cannot make an application succeed or fail. It asks the ONE batched
+ * matcher the engines use (`buildTemplateEntitlementResolver`) for the pair and reads `hasTemplatesFor`
+ * and `winnerFor` — the same two facts core/read.ts separates the two zeroes with. No second matcher
+ * (core/entitlement-template.ts header).
+ *
+ * Measured on the RESOLVED BALANCE SOURCE (cdf9ca48), for the same reason `availableLeaveBalance` is: a
+ * type that spends another type's balance was refused over THAT balance, and telling the employee their
+ * own type "has no entitlement table" would send HR to create one nobody would ever spend.
+ */
+export type EntitlementCoverage = 'covered' | 'no_scheme' | 'no_table';
+
+export async function entitlementCoverageFor(
+  ctx: SessionContext,
+  p: { employmentId: string; leaveTypeId: string; asOf: string },
+): Promise<EntitlementCoverage> {
+  return withTenant(ctx, async (tx) => {
+    const sourceTypeId = await resolveBalanceSourceTypeId(tx, p.leaveTypeId);
+    const resolver = await buildTemplateEntitlementResolver(tx, {
+      employmentIds: [p.employmentId],
+      leaveTypeIds: [sourceTypeId],
+      asOf: p.asOf,
+    });
+    if (!resolver.hasTemplatesFor(sourceTypeId)) return 'no_table';
+    return resolver.winnerFor(p.employmentId, sourceTypeId) ? 'covered' : 'no_scheme';
+  });
+}
+
+/**
  * Maximum Negative Balance (feedback bc512dc3, migration 0352) — the type permits a negative balance, but
  * this application would take the employee past the configured floor.
  *

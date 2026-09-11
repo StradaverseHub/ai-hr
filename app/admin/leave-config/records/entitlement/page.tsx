@@ -1,10 +1,9 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { listEntitlementArchiveCaptures, listEntitlementResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenHref, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 
 /**
  * a6fe37fc — THE ENTITLEMENT CONFIGURATION RECORD (`/admin/leave-config/records/entitlement`).
@@ -60,21 +59,21 @@ export default async function LeaveConfigEntitlementRecordPage({
     ? `/admin/leave/entitlements/archive/export?capture=${encodeURIComponent(chosen)}`
     : '/admin/leave/entitlements/archive/export';
 
+  // 10b59703 — a TAB of Entitlements ("Configuration record", one name from now on: the header link
+  // that called it that and the pill that called it "Entitlement archive" are both gone). Heading and
+  // description are the row's; the tab's own sentence — corrected, it still described the Benefit Scheme
+  // layer release three removed — leads the intro card below.
+  const header = await leaveConfigPageHeader('entitlementArchive');
+
   return (
     <div className="space-y-6">
-      {/* The heading is the string the MENU shows for this screen (IA §1.1). It is not the old page's
-          private key: that one said "Entitlement configuration record" while the menu said "Entitlement
-          archive", which is exactly the defect — one screen, two names. */}
-      <PageHeader
-        title={await leaveConfigScreenTitle('entitlementArchive')}
-        description={t('pageDescription')}
-      />
-      {/* `current="entitlementArchive"` because this IS that screen — the map names screens, not
-          addresses, and the cutover repointed the entry here. */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* `current="entitlementArchive"` because this IS that tab of the Entitlements row. */}
       <LeaveConfigMap current="entitlementArchive" />
 
       <Card>
         <div className="space-y-3 p-4 text-sm">
+          <p className="font-medium text-foreground">{t('pageDescription')}</p>
           <p className="text-muted-foreground">{t('intro')}</p>
           {/* The sentence people most need to read twice: the record is a listing to retype from, not an
               undo button. */}
@@ -111,12 +110,8 @@ export default async function LeaveConfigEntitlementRecordPage({
             <a href={csvHref} className="text-sm underline">
               {t('downloadCsv')}
             </a>
-            {/* r259 — resolved through the area map above, so this record and the menu beside it point
-                at the same leave type screen — one list, moved once by the cutover; see
-                components/leave-config-map.tsx → leaveConfigScreenHref. */}
-            <Link href={leaveConfigScreenHref('leaveTypes')} className="ml-auto text-sm underline">
-              {t('backToEntitlements')}
-            </Link>
+            {/* 10b59703 — the back-link to the leave type screen stood here and is gone: the Leave types
+                tab is one click away in the row above and the submenu row stays lit on this tab. */}
           </form>
 
           <div className="overflow-x-auto">

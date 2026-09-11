@@ -27,6 +27,9 @@ import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
 // already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
 import { benefitSchemeView } from '@/core/entitlement-scheme-view';
+// 6aee1d91 fix pass (m3) — the card's two links to the Leave types screen resolve through the module's one
+// list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
+import { leaveConfigScreenHref } from '@/components/leave-config-map';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
@@ -2452,7 +2455,30 @@ export default async function EmployeePage({
       <SectionHeader title={tScheme('title')} />
       <div className="p-4">
         {scheme.perType.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{tScheme('empty')}</p>
+          <>
+            <p className="text-sm text-muted-foreground">{tScheme('empty')}</p>
+            {/* 6aee1d91 — SAY THAT THERE IS NOTHING TO SET HERE. The reporter read this read-only card as a
+                setting they had already configured; the note names where the scheme comes from and what
+                to change instead. Two states, two sentences (see the approved picture). */}
+            <p
+              role="note"
+              data-testid="benefit-scheme-derived-note"
+              className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
+            >
+              {tScheme('derivedNoteEmpty')}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs">
+              <Link
+                href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
+                className="text-primary hover:underline"
+              >
+                {tScheme('changeGrade')}
+              </Link>
+              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
+                {tScheme('setUpSchemes')}
+              </Link>
+            </div>
+          </>
         ) : (
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2479,6 +2505,16 @@ export default async function EmployeePage({
             {scheme.ambiguous && (
               <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">{tScheme('noneHint')}</p>
             )}
+
+            {/* 6aee1d91 — the same note as the empty state, in the covered-state wording: how to move this
+                employee to another scheme without a field that could disagree with the rules. */}
+            <p
+              role="note"
+              data-testid="benefit-scheme-derived-note"
+              className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
+            >
+              {tScheme('derivedNote')}
+            </p>
 
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
@@ -2516,7 +2552,7 @@ export default async function EmployeePage({
               {/* a6fe37fc ROUND 5 (cutover) — the leave TYPE screen is /admin/leave-config/types now.
                   The old address still answers (redirect stub), but a link whose job is "go and change
                   the rules" should name where the rules are. */}
-              <Link href="/admin/leave-config/types" className="text-primary hover:underline">
+              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
                 {tScheme('changeRules')}
               </Link>
             </div>

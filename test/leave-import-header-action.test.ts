@@ -2,57 +2,66 @@
  * Move Import Function as Action Button Instead of Standalone Section (R61 · feedback e8f2398f).
  *
  * The Entitlements tab used to render a whole standalone Card near the page bottom whose only job was
- * holding a link to /admin/leave/import. This change puts a "+ Import" btnPrimary Link into the
- * PageHeader actions slot (the standard top-right spot for page-level actions) and removes the
- * signpost Card. The import flow itself — screen, validation, templates — is untouched.
+ * holding a link to /admin/leave/import. e8f2398f put a "+ Import" btnPrimary Link into the PageHeader
+ * actions slot and removed the signpost Card.
  *
- * DB-free source guard (the suite has no DOM runner): the RSC page can't be rendered here, so we assert
- * the composition + the i18n pruning statically.
+ * ── 10b59703 (r266) — UPDATED, NOT LOOSENED ─────────────────────────────────────────────────────────
+ *
+ * The reporter's instruction for that round was that the left submenu IS the navigation and that each
+ * function has exactly one home. Import loads balance MOVEMENTS (opening balances, carry-forward,
+ * historical leave, ad-hoc credits — leave_ledger rows), so it is a tab of Leave Adjustments now, and
+ * the + Import button left the Entitlements header with the three links beside it. e8f2398f's real
+ * property — "the way into the importer is ONE deliberate entry, never a standalone signpost Card" —
+ * still holds and is what is pinned: one entry in the module (the tab), zero on the leave type screen,
+ * no signpost Card anywhere, and the `importAction` label pruned with the button that read it.
+ *
+ * DB-free source guard (the suite has no DOM runner): composition asserted statically.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-/**
- * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED.
- *
- * e8f2398f's property is "the way into the importer is a PageHeader action button, not a standalone
- * signpost Card". Round 5 moved Import leave data to `/admin/leave-config/import` and put the button's
- * href through the area map (`leaveConfigScreenHref('importLeaveData')`), so a literal address is no
- * longer the right thing to assert — the map IS the address now, and asserting a literal would re-create
- * the two-answers defect r259 found. Both leave TYPE screens are checked while both exist: the old page
- * comes out in its own commit, and this list shrinks with it.
- */
 const LEAVE_TYPE_PAGES = ['/app/admin/leave-config/types/page.tsx'] as const;
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-// Keys of the removed standalone Card — pruned everywhere.
-const PRUNED_KEYS = ['importTitle', 'importHelp', 'importLink'] as const;
+// Keys of the removed standalone Card (e8f2398f) and of the removed header button (10b59703) — pruned everywhere.
+const PRUNED_KEYS = ['importTitle', 'importHelp', 'importLink', 'importAction'] as const;
 
-describe('e8f2398f: Import is a PageHeader action button', () => {
-  it.each(LEAVE_TYPE_PAGES)('%s puts the import link in the PageHeader actions slot', (rel) => {
-    // The header carries an actions slot with the import link, labelled by the importAction key.
-    const header = read(rel).match(/<PageHeader[\s\S]*?\/>/)?.[0] ?? '';
-    expect(header).toMatch(/actions=\{/);
-    expect(header).toMatch(/<Link href=\{leaveConfigScreenHref\('importLeaveData'\)\} className=\{btnPrimary\}>/);
-    expect(header).toMatch(/\{t\('importAction'\)\}/);
+describe('e8f2398f → 10b59703: Import has exactly one home, the Leave Adjustments tab', () => {
+  it('the importer is the third tab of the Leave Adjustments row, and appears in no other group', () => {
+    const adjustments = LEAVE_CONFIG_MAP.find((g) => g.id === 'adjustments')!;
+    expect(adjustments.items.map((i) => i.id)).toEqual(['adjustments', 'ledgerArchive', 'importLeaveData']);
+    expect(adjustments.items.find((i) => i.id === 'importLeaveData')!.href).toBe('/admin/leave-config/import');
+    const elsewhere = LEAVE_CONFIG_MAP.filter((g) => g.id !== 'adjustments').flatMap((g) => g.items).map((i) => i.id);
+    expect(elsewhere).not.toContain('importLeaveData');
   });
 
-  it.each(LEAVE_TYPE_PAGES)('%s drops the standalone import section from the page body', (rel) => {
+  it.each(LEAVE_TYPE_PAGES)('%s has no importer entry left — not in the header, not as a section, not as a literal', (rel) => {
     const page = read(rel);
+    const header = page.match(/<PageHeader[\s\S]*?\/>/)?.[0] ?? '';
+    expect(header).toMatch(/actions=\{/);
+    expect(header).not.toContain("leaveConfigScreenHref('importLeaveData')");
+    expect(header).not.toContain('importAction');
     for (const key of PRUNED_KEYS) expect(page.includes(key)).toBe(false);
-    // Exactly ONE rendered way into the importer remains — the header action.
-    const links = page.match(/href=\{leaveConfigScreenHref\('importLeaveData'\)\}/g) ?? [];
-    expect(links).toHaveLength(1);
-    // …and none of them is a literal that could disagree with the menu (r259).
+    expect(page.match(/href=\{leaveConfigScreenHref\('importLeaveData'\)\}/g) ?? []).toHaveLength(0);
     expect(page.match(/href="\/admin\/leave(-config)?\/import"/g) ?? []).toHaveLength(0);
   });
 
-  it('leaves the import flow itself untouched — the importer page still exists, at its new address', () => {
-    expect(() => read('/app/admin/leave-config/import/page.tsx')).not.toThrow();
+  it('the importer page reads its header through the row helper, so its heading is "Leave Adjustments"', () => {
+    const page = read('/app/admin/leave-config/import/page.tsx');
+    expect(page).toContain("leaveConfigPageHeader('importLeaveData')");
+    expect(page).toContain('<LeaveConfigMap current="importLeaveData" />');
+    // The back-link that pointed at the leave type screen is gone with the header button that fed it.
+    expect(page).not.toContain('back={{');
+    expect(page).not.toContain("t('backLabel')");
+  });
+
+  it('leaves the import flow itself untouched — the importer page still exists, at its address', () => {
+    expect(read('/app/admin/leave-config/import/page.tsx')).toContain('<LeaveLedgerImport />');
     // And the old address still ANSWERS: it is a redirect stub, never deleted, because the reporter's
     // bookmarks are the reason the stubs exist (migration order → Round 5/6).
     const stub = read('/app/admin/leave/import/page.tsx');
@@ -61,17 +70,18 @@ describe('e8f2398f: Import is a PageHeader action button', () => {
   });
 });
 
-describe('e8f2398f: i18n — importAction added, standalone-card keys pruned, in all 6 locales', () => {
+describe('e8f2398f → 10b59703: i18n — the card keys AND the header-button label are pruned in all 6 locales', () => {
   for (const locale of LOCALES) {
-    it(`${locale}.json has importAction ("+ …") and no card keys`, () => {
+    it(`${locale}.json carries none of the retired import keys`, () => {
       const leave = JSON.parse(read(`/messages/${locale}.json`)).admin.leave as Record<string, unknown>;
-      expect(leave, `${locale}: importAction must exist`).toHaveProperty('importAction');
-      expect(String(leave.importAction).startsWith('+ '), `${locale}: importAction keeps the "+ " prefix`).toBe(true);
       for (const key of PRUNED_KEYS) expect(leave, `${locale}: ${key} should be pruned`).not.toHaveProperty(key);
       // History guard: a QW-wave commit once left an orphaned duplicate "importAction" line behind —
-      // JSON.parse silently keeps the LAST one, so assert the raw file carries the key exactly once.
+      // JSON.parse silently keeps the LAST one, so assert the raw file carries the key nowhere at all.
       const raw = read(`/messages/${locale}.json`);
-      expect(raw.match(/"importAction"/g) ?? [], `${locale}: importAction defined exactly once`).toHaveLength(1);
+      expect(raw.match(/"importAction"/g) ?? [], `${locale}: importAction must be gone`).toHaveLength(0);
+      // …while the tab's own label, which replaced it as the way in, is present.
+      const item = JSON.parse(raw).admin.leaveConfigMap.item as Record<string, string>;
+      expect(item.importLeaveData.trim().length).toBeGreaterThan(0);
     });
   }
 });

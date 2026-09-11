@@ -9,7 +9,7 @@ import {
   listTemplateAssignments,
 } from '@/core/leave-approval-template';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import {
   ApprovalAssignmentManager,
@@ -231,9 +231,11 @@ export default async function LeaveConfigApprovalChainsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        // The heading is the SAME string the menu shows for this screen — a separate title key per page
-        // is how a menu and a heading start disagreeing (components/leave-config-map.tsx).
-        title={await leaveConfigScreenTitle('approvalChain')}
+        // 10b59703 — the heading is the SUBMENU ROW that opened this page ("Approval Workflow"), through
+        // the one helper every Leave Config page uses (components/leave-config-map.tsx). The
+        // `leaveApproval` SCREEN label in lib/permissions.ts ("Approval chain") is a different surface
+        // and is untouched. The content of this page is unchanged.
+        title={(await leaveConfigPageHeader('approvalChain')).title}
         description={tr('pageDescription')}
       />
       {/* The area map. `current="approvalChain"` because this IS that screen — the map names screens, not
