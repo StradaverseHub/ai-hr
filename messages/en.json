@@ -8062,7 +8062,10 @@
       "clockingLocationLinkOptional": "Location (optional)",
       "clockingLocationNone": "No location link",
       "linkedOutOfScopeGroupTitle": "Linked to a location outside your company scope",
-      "noSharedSites": "No shared clocking locations yet."
+      "noSharedSites": "No shared clocking locations yet.",
+      "clockingNameTaken": "A clocking location named “{name}” already exists. Names are unique across all companies — one record per physical place — so edit that one or choose a different name.",
+      "usedByManaged": "Used by (companies you manage)",
+      "assignedCountManaged": "{count} assigned in companies you manage"
     },
     "systemLabelsTabs": {
       "organisation": "Organisation Labels",

@@ -8062,7 +8062,10 @@
       "clockingLocationLinkOptional": "สถานที่ (ไม่บังคับ)",
       "clockingLocationNone": "ไม่เชื่อมกับสถานที่",
       "linkedOutOfScopeGroupTitle": "เชื่อมกับสถานที่นอกขอบเขตบริษัทของคุณ",
-      "noSharedSites": "ยังไม่มีสถานที่ลงเวลาที่ใช้ร่วมกัน"
+      "noSharedSites": "ยังไม่มีสถานที่ลงเวลาที่ใช้ร่วมกัน",
+      "clockingNameTaken": "มีสถานที่ลงเวลาชื่อ “{name}” อยู่แล้ว ชื่อต้องไม่ซ้ำกันในทุกบริษัท — หนึ่งสถานที่จริงต่อหนึ่งรายการ — โปรดแก้ไขรายการนั้นหรือเลือกชื่ออื่น",
+      "usedByManaged": "ใช้โดย (บริษัทที่คุณดูแล)",
+      "assignedCountManaged": "กำหนดแล้ว {count} คนในบริษัทที่คุณดูแล"
     },
     "systemLabelsTabs": {
       "organisation": "ป้ายกำกับองค์กร",

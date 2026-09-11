@@ -96,7 +96,9 @@ export default async function LocationsPage({
           code: cl.locationCode,
           name: cl.locationName ?? '',
           companyName: cl.locationCompanyName,
-          archived: locations.some((l) => l.id === cl.locationId && !!l.archivedAt),
+          // From the row itself, not the scope-narrowed `locations` list — a location outside the
+          // cookie scope would otherwise always read as live.
+          archived: cl.locationArchivedAt != null,
           rows: [cl],
         });
       }
@@ -143,7 +145,14 @@ export default async function LocationsPage({
       </span>
     );
 
-  /** A clocking point as a COMPANY-SCOPED admin sees it: the mockup's columns, nothing editable. */
+  /**
+   * A clocking point as a COMPANY-SCOPED admin sees it: the mockup's columns, nothing editable.
+   *
+   * "Used by" and the assigned count are derived from employee_clocking_location, whose RLS is
+   * can_see_employment — so a company admin's figures cover only the companies THEY manage, while the
+   * note above says the site may be used by companies they do not. The captions say exactly that, rather
+   * than a SECURITY DEFINER read widening what a company admin may see about other companies' staff.
+   */
   const readOnlyPointRow = (cl: ClockingRow) => (
     <li
       key={cl.id}
@@ -158,10 +167,10 @@ export default async function LocationsPage({
         {cl.radiusM != null ? t('radiusMetres', { radius: cl.radiusM }) : '—'}
       </span>
       <span className="flex items-center gap-2 text-muted-foreground">
-        <span className="text-xs uppercase tracking-wide">{t('usedBy')}</span>
+        <span className="text-xs uppercase tracking-wide">{t('usedByManaged')}</span>
         {usedBy(cl)}
       </span>
-      <span className="text-xs text-muted-foreground">{t('assignedCount', { count: cl.assignedCount })}</span>
+      <span className="text-xs text-muted-foreground">{t('assignedCountManaged', { count: cl.assignedCount })}</span>
       {cl.archivedAt && (
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
           {t('statusArchived')}

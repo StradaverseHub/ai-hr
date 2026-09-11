@@ -74,6 +74,56 @@ function assertGroupAdmin(ctx: SessionContext): void {
   if (!isGroupAdmin(withEffectiveGrants(ctx))) throw new ClockingLocationAuthorityError();
 }
 
+/** 23505 anywhere in the cause chain. Same walk as core/location.ts / roster.ts / payroll-policy.ts. */
+function isUniqueViolation(e: unknown): boolean {
+  let cur = e as { code?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    if (cur.code === '23505') return true;
+    cur = cur.cause as { code?: string; cause?: unknown } | null | undefined;
+  }
+  return false;
+}
+
+/**
+ * A clocking location with this name already exists in the TENANT (clocking_location_name_uq is per
+ * tenant since 0459 — one record per physical place). Typed so app/admin/actions.ts can say so in the
+ * admin's language; without it `fail()` copies drizzle's "Failed query: insert into … params: …" into
+ * the banner, which is what the `location` master shipped with before 1fff489c.
+ */
+export class ClockingLocationNameTakenError extends Error {
+  constructor(public readonly siteName: string) {
+    super('clocking-location-name-taken');
+    this.name = 'ClockingLocationNameTakenError';
+  }
+}
+
+/** Map a unique-index violation to the typed error for its constraint; pass anything else through. */
+function clockingUniqueError(e: unknown, siteName: string): unknown {
+  if (!isUniqueViolation(e)) return e;
+  let msg = '';
+  let cur = e as { message?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    msg += cur.message ?? '';
+    cur = cur.cause as { message?: string; cause?: unknown } | null | undefined;
+  }
+  if (/clocking_location_name_uq/i.test(msg)) return new ClockingLocationNameTakenError(siteName);
+  // Unreachable while that is the only unique index on the table; kept so a future index cannot re-open
+  // the raw-SQL banner.
+  return new Error('A clocking location with this name already exists.');
+}
+
+/**
+ * The id of the ONE row a writer's UPDATE/DELETE actually touched. An RLS UPDATE/DELETE policy's USING
+ * clause FILTERS rows rather than throwing, so a write that reached no row would otherwise "succeed"
+ * and append a clocking-location.* event about nothing. Every mutating writer reads its `.returning()`
+ * through this before it appends.
+ */
+function touched(rows: { id: string }[]): string {
+  const row = rows[0];
+  if (!row) throw new Error('Clocking location not found, or you may not change it.');
+  return row.id;
+}
+
 /**
  * The per-site radius. REQUIRED on every create/update (the whole point of 1fff489c), a positive integer,
  * hard-capped at MAX_RADIUS_M. The 10..5000 band is NOT enforced here — see RADIUS_ADVISORY_MIN_M.
@@ -176,10 +226,16 @@ export async function createClockingLocation(
   const remarks = cleanOptional(p.remarks);
   return withTenant(ctx, async (tx) => {
     const locationId = await resolveLocationLink(tx, p.locationId);
-    const [row] = await tx
-      .insert(clockingLocation)
-      .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks })
-      .returning({ id: clockingLocation.id });
+    let row: { id: string };
+    try {
+      [row] = await tx
+        .insert(clockingLocation)
+        .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks })
+        .returning({ id: clockingLocation.id });
+    } catch (e) {
+      // A name already used anywhere in the tenant leaves as a typed error, never as raw SQL + params.
+      throw clockingUniqueError(e, name);
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
@@ -230,10 +286,17 @@ export async function updateClockingLocation(
       .limit(1);
     if (!before) throw new Error('Clocking location not found');
     const locationId = await resolveLocationLink(tx, p.locationId);
-    await tx
-      .update(clockingLocation)
-      .set({ name, lat, lng, radiusM, locationId, address, remarks })
-      .where(eq(clockingLocation.id, p.clockingLocationId));
+    let updated: { id: string }[];
+    try {
+      updated = await tx
+        .update(clockingLocation)
+        .set({ name, lat, lng, radiusM, locationId, address, remarks })
+        .where(eq(clockingLocation.id, p.clockingLocationId))
+        .returning({ id: clockingLocation.id });
+    } catch (e) {
+      throw clockingUniqueError(e, name);
+    }
+    touched(updated);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
@@ -249,10 +312,13 @@ export async function updateClockingLocation(
 export async function archiveClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
-    await tx
-      .update(clockingLocation)
-      .set({ archivedAt: new Date() })
-      .where(eq(clockingLocation.id, p.clockingLocationId));
+    touched(
+      await tx
+        .update(clockingLocation)
+        .set({ archivedAt: new Date() })
+        .where(eq(clockingLocation.id, p.clockingLocationId))
+        .returning({ id: clockingLocation.id }),
+    );
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
@@ -268,10 +334,13 @@ export async function archiveClockingLocation(ctx: SessionContext, p: { clocking
 export async function restoreClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
-    await tx
-      .update(clockingLocation)
-      .set({ archivedAt: null })
-      .where(eq(clockingLocation.id, p.clockingLocationId));
+    touched(
+      await tx
+        .update(clockingLocation)
+        .set({ archivedAt: null })
+        .where(eq(clockingLocation.id, p.clockingLocationId))
+        .returning({ id: clockingLocation.id }),
+    );
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
@@ -313,7 +382,12 @@ export async function deleteClockingLocation(ctx: SessionContext, p: { clockingL
       );
     const refs = (assignRefs?.n ?? 0) + (attRefs?.n ?? 0);
     if (refs > 0) throw new ClockingLocationInUseError(refs);
-    await tx.delete(clockingLocation).where(eq(clockingLocation.id, p.clockingLocationId));
+    touched(
+      await tx
+        .delete(clockingLocation)
+        .where(eq(clockingLocation.id, p.clockingLocationId))
+        .returning({ id: clockingLocation.id }),
+    );
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'clocking-location',
@@ -339,6 +413,8 @@ export type ClockingLocationRow = {
   locationName: string | null;
   /** The linked location's company (a `location` belongs to one company; a clocking site does not). */
   locationCompanyName: string | null;
+  /** The linked location's own archive stamp, so the group heading's pill never depends on a second list. */
+  locationArchivedAt: Date | null;
   address: string | null;
   remarks: string | null;
   archivedAt: Date | null;
@@ -390,6 +466,7 @@ export function listClockingLocations(
         locationCode: location.code,
         locationName: location.name,
         locationCompanyName: sql<string | null>`coalesce(${company.companyLabel}, ${company.legalName})`,
+        locationArchivedAt: location.archivedAt,
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
         archivedAt: clockingLocation.archivedAt,

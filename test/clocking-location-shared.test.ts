@@ -20,7 +20,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { closeAll, migrateTestDb, owner } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -84,6 +87,116 @@ describe('f9afd1ce — migration 0459 is journalled and says what it must', () =
     // No data step, said out loud, and the row count it found is REPORTED rather than assumed.
     expect(migration).toContain('RAISE NOTICE');
     expect(migration).toMatch(/SELECT count\(\*\)[\s\S]*FROM clocking_location/);
+  });
+});
+
+/**
+ * Verifier M1 — step 6's unique index would abort the file with a bare 23505 if two companies already
+ * held a same-named site. The DO block PRE-FLIGHTS that before step 1 and stops with a sentence naming the
+ * sites and companies. Pinned two ways: the shape (the query and the RAISE are in the file, before the
+ * first DDL) and the behaviour (the migration's OWN DO block text, run against the pre-0459 table shape
+ * with a real collision, raises that sentence — and does not raise without one).
+ */
+describe('f9afd1ce — 0459 pre-flights a same-name collision and stops with a sentence', () => {
+  /** The DO block exactly as the file carries it: from `DO $$` to the first `END $$;`. */
+  const doBlock = (() => {
+    const start = migration.indexOf('DO $$');
+    const end = migration.indexOf('END $$;', start);
+    if (start === -1 || end === -1) throw new Error('0459 has no DO block');
+    return migration.slice(start, end + 'END $$;'.length);
+  })();
+
+  it('the pre-flight is in the DO block, runs before the first DDL, and the header no longer claims the column drop is the only touch', () => {
+    expect(doBlock).toContain('GROUP BY cl.tenant_id, cl.name');
+    expect(doBlock).toContain('HAVING count(*) > 1');
+    expect(doBlock).toContain('RAISE EXCEPTION');
+    expect(doBlock).toMatch(/JOIN company c ON c\.id = cl\.company_id/);
+    // Before step 1 — the whole block precedes the first DROP POLICY.
+    expect(migration.indexOf('DO $$')).toBeLessThan(migration.indexOf('DROP POLICY "clocking_location_rls"'));
+    expect(migration).not.toContain('the column drop is the only thing');
+  });
+
+  /**
+   * BEHAVIOURAL, on this namespace's test DB, which is already migrated THROUGH 0459 (so the real table has
+   * no company_id). Temporary tables with the PRE-0459 shape shadow `clocking_location`, `company` and
+   * `employee_clocking_location` for one transaction (pg_temp is searched before public), the migration's
+   * own DO block text runs against them, and the transaction rolls back — nothing real is touched. This
+   * proves the pre-flight fires on a collision and names it; it does NOT re-run the drizzle migrator
+   * against a 0458 snapshot (the verifier did that on a scratch DB).
+   */
+  describe('behaviour', () => {
+    beforeAll(async () => {
+      await migrateTestDb();
+    });
+    afterAll(async () => {
+      await closeAll();
+    });
+
+    const shadow = async (tx: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }) => {
+      await tx.execute(
+        sql`CREATE TEMP TABLE clocking_location (tenant_id uuid NOT NULL, company_id uuid NOT NULL, name text NOT NULL, archived_at timestamptz) ON COMMIT DROP`,
+      );
+      await tx.execute(sql`CREATE TEMP TABLE company (id uuid PRIMARY KEY, company_label text, legal_name text NOT NULL) ON COMMIT DROP`);
+      await tx.execute(sql`CREATE TEMP TABLE employee_clocking_location (id uuid) ON COMMIT DROP`);
+    };
+    const messages = (e: unknown): string => {
+      let out = '';
+      let cur = e as { message?: string; cause?: unknown } | null | undefined;
+      for (let i = 0; cur && i < 4; i++) {
+        out += cur.message ?? '';
+        cur = cur.cause as { message?: string; cause?: unknown } | null | undefined;
+      }
+      return out;
+    };
+
+    it('STOPS with the colliding names and companies spelled out when two companies hold one name', async () => {
+      const tenant = randomUUID();
+      const alpha = randomUUID();
+      const beta = randomUUID();
+      const err: unknown = await owner.db
+        .transaction(async (tx) => {
+          await shadow(tx);
+          await tx.execute(sql`INSERT INTO company VALUES (${alpha}, NULL, 'Alpha Sdn Bhd'), (${beta}, 'Beta', 'Beta Sdn Bhd')`);
+          await tx.execute(
+            sql`INSERT INTO clocking_location (tenant_id, company_id, name, archived_at) VALUES
+              (${tenant}, ${alpha}, 'HQ Tower — Main Gate', NULL),
+              (${tenant}, ${beta}, 'HQ Tower — Main Gate', now()),
+              (${tenant}, ${alpha}, 'Plant 2', NULL)`,
+          );
+          await tx.execute(sql.raw(doBlock));
+        })
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(err, 'the DO block must raise on a same-name collision').toBeTruthy();
+      const text = messages(err);
+      expect(text).toContain('0459 STOPPED before changing anything');
+      // Both companies, by label where one is set, and the archived copy counts.
+      expect(text).toContain('"HQ Tower — Main Gate" (Alpha Sdn Bhd, Beta)');
+      expect(text).toContain('Rename the duplicates');
+      // A name held by one company only is not reported.
+      expect(text).not.toContain('Plant 2');
+    });
+
+    it('does NOT stop when every name is unique within its tenant — the same name in two TENANTS is fine', async () => {
+      const t1 = randomUUID();
+      const t2 = randomUUID();
+      const co1 = randomUUID();
+      const co2 = randomUUID();
+      await owner.db.transaction(async (tx) => {
+        await shadow(tx);
+        await tx.execute(sql`INSERT INTO company VALUES (${co1}, NULL, 'One Sdn Bhd'), (${co2}, NULL, 'Two Sdn Bhd')`);
+        await tx.execute(
+          sql`INSERT INTO clocking_location (tenant_id, company_id, name, archived_at) VALUES
+            (${t1}, ${co1}, 'HQ Tower — Main Gate', NULL),
+            (${t2}, ${co2}, 'HQ Tower — Main Gate', NULL),
+            (${t1}, ${co1}, 'Plant 2', NULL)`,
+        );
+        // Resolves: the NOTICE is printed, no exception.
+        await tx.execute(sql.raw(doBlock));
+      });
+    });
   });
 });
 

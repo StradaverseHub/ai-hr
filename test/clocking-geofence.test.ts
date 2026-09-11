@@ -41,6 +41,7 @@ import {
   ClockingLocationAuthorityError,
   ClockingLocationInUseError,
   ClockingLocationLinkError,
+  ClockingLocationNameTakenError,
   RADIUS_ADVISORY_MAX_M,
   RADIUS_ADVISORY_MIN_M,
 } from '../core/clocking-location';
@@ -1034,6 +1035,45 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     // The band edges themselves are inside it — the advisory is strictly outside 10..5000.
     expect(radiusWarning(RADIUS_ADVISORY_MIN_M)).toBeNull();
     expect(radiusWarning(RADIUS_ADVISORY_MAX_M)).toBeNull();
+  });
+
+  /** Verifier m3 — a duplicate name leaves as a typed error carrying the name, never as raw SQL + params. */
+  it('a duplicate site name is ClockingLocationNameTakenError, on create and on rename', async () => {
+    const a = adminCtx(b);
+    const { id: second } = await createClockingLocation(a, { name: 'Gate One', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
+    await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
+    const dup: unknown = await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.002, radiusM: 150 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(dup).toBeInstanceOf(ClockingLocationNameTakenError);
+    expect((dup as ClockingLocationNameTakenError).siteName).toBe('Gate Two');
+    expect((dup as Error).message).not.toMatch(/failed query|params:/i);
+    // Renaming Gate One to Gate Two hits the same index through the UPDATE path.
+    const ren: unknown = await updateClockingLocation(a, { clockingLocationId: second, name: 'Gate Two', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(ren).toBeInstanceOf(ClockingLocationNameTakenError);
+    expect((ren as ClockingLocationNameTakenError).siteName).toBe('Gate Two');
+  });
+
+  /**
+   * Verifier m2 — an UPDATE/DELETE policy's USING clause FILTERS rows rather than throwing, so a writer that
+   * did not read its `.returning()` would "succeed" and append a clocking-location.* event about nothing.
+   * The only zero-row path a group admin can reach is an id that is not a site; the assertion that matters
+   * is the absence of an event.
+   */
+  it('archive / restore / delete / update of an id that is not a site throw a plain error and append NO event', async () => {
+    const g = await groupAdmin();
+    const ghost = randomUUID();
+    await expect(archiveClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(restoreClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(deleteClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(
+      updateClockingLocation(g, { clockingLocationId: ghost, name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }),
+    ).rejects.toThrow(/not found/);
+    expect(await eventTypesFor(b.tenantId, ghost)).toEqual([]);
   });
 
   it('listClockingLocations carries the linked location’s code and name for the grouped render', async () => {

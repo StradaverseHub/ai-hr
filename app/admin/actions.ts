@@ -89,6 +89,7 @@ import {
   restoreClockingLocation,
   deleteClockingLocation,
   ClockingLocationInUseError,
+  ClockingLocationNameTakenError,
   type RadiusAdvisory,
 } from '@/packs/attendance/service';
 import { countEmployeesInScope } from '@/core/read';
@@ -2110,6 +2111,19 @@ async function okWithRadiusAdvisory(warning: RadiusAdvisory | null): Promise<nev
   );
 }
 
+/**
+ * f9afd1ce — the duplicate banner for a SHARED site name (unique per TENANT since 0459). The service
+ * turns the 23505 into ClockingLocationNameTakenError; the sentence is composed here, the failLocationSave
+ * way, because only this layer can reach getTranslations and `fail()` copies the message verbatim.
+ */
+async function failClockingSave(e: unknown): Promise<never> {
+  if (e instanceof ClockingLocationNameTakenError) {
+    const t = await getTranslations('admin.locations');
+    fail(LOCATIONS, new Error(t('clockingNameTaken', { name: e.siteName })));
+  }
+  fail(LOCATIONS, e);
+}
+
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   let warning: RadiusAdvisory | null = null;
@@ -2127,7 +2141,7 @@ export async function createClockingLocationAction(fd: FormData) {
       remarks: (fd.get('remarks') as string) || null,
     }));
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failClockingSave(e);
   }
   await okWithRadiusAdvisory(warning);
 }
@@ -2147,7 +2161,7 @@ export async function updateClockingLocationAction(fd: FormData) {
       remarks: (fd.get('remarks') as string) || null,
     }));
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failClockingSave(e);
   }
   await okWithRadiusAdvisory(warning);
 }

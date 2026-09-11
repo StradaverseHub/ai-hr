@@ -8062,7 +8062,10 @@
       "clockingLocationLinkOptional": "地点（可选）",
       "clockingLocationNone": "不链接地点",
       "linkedOutOfScopeGroupTitle": "已链接到您公司范围之外的地点",
-      "noSharedSites": "尚无共享打卡地点。"
+      "noSharedSites": "尚无共享打卡地点。",
+      "clockingNameTaken": "已存在名为“{name}”的打卡地点。名称在所有公司间唯一——每个实际地点一条记录——请编辑该记录或改用其他名称。",
+      "usedByManaged": "使用方（您管理的公司）",
+      "assignedCountManaged": "您管理的公司中已分配 {count} 人"
     },
     "systemLabelsTabs": {
       "organisation": "组织标签",

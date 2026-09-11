@@ -9,9 +9,13 @@
 -- ── NO DATA STEP, AND WHY THAT IS SAFE ───────────────────────────────────────────────────────────────
 -- Measured on production 2026-09-10 (read-only): clocking_location held 0 rows INCLUDING archived, and
 -- employee_clocking_location held 0 rows. There is nothing to consolidate and no judgement call about
--- which duplicates are the same place, so this migration carries no data step. The DO block below
--- REPORTS the row count it actually finds at apply time — so if a row appears between now and the
--- deploy, the release log says so and the column drop is the only thing that would have touched it.
+-- which duplicates are the same place, so this migration carries no data step. Rows COULD appear between
+-- now and the deploy, so the DO block below does two things before step 1: it PRE-FLIGHTS the one case
+-- that would bite — two companies holding a site of the same name, which step 6's unique index would
+-- refuse with a bare 23505 — and stops the whole file with the names and companies spelled out (nothing
+-- changed: it runs first, inside drizzle's single migration transaction); then it REPORTS the row count
+-- it found. Existing rows are otherwise touched by exactly two steps: the column drop (5) and the new
+-- unique index (6).
 --
 -- ── EACH STEP, IN THE ORDER POSTGRES REQUIRES ────────────────────────────────────────────────────────
 -- 1. DROP POLICY clocking_location_rls — the single FOR ALL policy from 0144, whose WITH CHECK tied the
@@ -29,7 +33,8 @@
 -- 6. CREATE UNIQUE INDEX clocking_location_name_uq (tenant_id, name). One name per physical place per
 --    tenant is exactly the "one gate, one record" the plan promises. Not partial on archived_at — the
 --    0144 index was not either, and an archived site keeping its name reserved is the intended behaviour
---    (restore brings the same record back rather than letting a duplicate be created meanwhile).
+--    (restore brings the same record back rather than letting a duplicate be created meanwhile). The
+--    pre-flight above counts archived copies for the same reason.
 -- 7. CREATE four verb policies. READ stays tenant-wide (every tenant member, ADR-0070 §2 — the clock-in
 --    screen and name resolution in attendance history depend on it). INSERT, UPDATE and DELETE require
 --    app.is_group_admin() (0016: super_admin, or hr_admin with company_id NULL). A shared record may be
@@ -49,11 +54,30 @@
 -- Journal entry: idx 459 (see meta/_journal.json).
 
 DO $$
-DECLARE total int; archived int; assigned int;
+DECLARE total int; archived int; assigned int; dupes text;
 BEGIN
+  -- PRE-FLIGHT. Step 6 makes (tenant_id, name) unique. If two companies already hold a site of the same
+  -- name (archived copies included — the index is not partial), that CREATE UNIQUE INDEX would abort the
+  -- file with a bare 23505: correct, but the release log would show a constraint name, not a sentence.
+  -- Detect it here, before anything is changed, and stop with the names and companies spelled out.
+  SELECT string_agg(format('"%s" (%s)', d.name, d.companies), '; ' ORDER BY d.name)
+    INTO dupes
+    FROM (
+      SELECT cl.name,
+             string_agg(coalesce(c.company_label, c.legal_name), ', ' ORDER BY coalesce(c.company_label, c.legal_name)) AS companies
+      FROM clocking_location cl
+      JOIN company c ON c.id = cl.company_id
+      GROUP BY cl.tenant_id, cl.name
+      HAVING count(*) > 1
+    ) d;
+  IF dupes IS NOT NULL THEN
+    RAISE EXCEPTION '0459 STOPPED before changing anything: a clocking location becomes one shared record per name per tenant, but the same site name exists in more than one company — %. Rename the duplicates (Attendance › Clocking location, in each company) so every name is unique within the tenant, or delete the copies, then deploy again.',
+      dupes;
+  END IF;
+
   SELECT count(*), count(*) FILTER (WHERE archived_at IS NOT NULL) INTO total, archived FROM clocking_location;
   SELECT count(*) INTO assigned FROM employee_clocking_location;
-  RAISE NOTICE '0459 clocking_location → shared master: % rows found (% archived), % employee assignments. Expected 0 / 0 / 0 (production measured 2026-09-10); no data step — company_id is dropped as-is.',
+  RAISE NOTICE '0459 clocking_location → shared master: % rows found (% archived), % employee assignments, no same-name collisions. Expected 0 / 0 / 0 (production measured 2026-09-10); no data step — company_id is dropped as-is.',
     total, archived, assigned;
 END $$;
 --> statement-breakpoint

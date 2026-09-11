@@ -8062,7 +8062,10 @@
       "clockingLocationLinkOptional": "Địa điểm (tùy chọn)",
       "clockingLocationNone": "Không liên kết địa điểm",
       "linkedOutOfScopeGroupTitle": "Liên kết với địa điểm ngoài phạm vi công ty của bạn",
-      "noSharedSites": "Chưa có địa điểm chấm công dùng chung."
+      "noSharedSites": "Chưa có địa điểm chấm công dùng chung.",
+      "clockingNameTaken": "Đã có địa điểm chấm công tên “{name}”. Tên là duy nhất trên mọi công ty — một bản ghi cho mỗi địa điểm thực tế — hãy sửa bản ghi đó hoặc chọn tên khác.",
+      "usedByManaged": "Được dùng bởi (các công ty bạn quản lý)",
+      "assignedCountManaged": "{count} đã gán trong các công ty bạn quản lý"
     },
     "systemLabelsTabs": {
       "organisation": "Nhãn tổ chức",

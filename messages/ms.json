@@ -8062,7 +8062,10 @@
       "clockingLocationLinkOptional": "Lokasi (pilihan)",
       "clockingLocationNone": "Tiada pautan lokasi",
       "linkedOutOfScopeGroupTitle": "Dipautkan ke lokasi di luar skop syarikat anda",
-      "noSharedSites": "Belum ada lokasi daftar masuk dikongsi."
+      "noSharedSites": "Belum ada lokasi daftar masuk dikongsi.",
+      "clockingNameTaken": "Lokasi daftar masuk bernama “{name}” sudah wujud. Nama adalah unik merentas semua syarikat — satu rekod bagi setiap tempat fizikal — jadi sunting rekod itu atau pilih nama lain.",
+      "usedByManaged": "Digunakan oleh (syarikat yang anda uruskan)",
+      "assignedCountManaged": "{count} ditetapkan dalam syarikat yang anda uruskan"
     },
     "systemLabelsTabs": {
       "organisation": "Label Organisasi",
