@@ -1,3 +1,42 @@
+## r268 (2026-09-11) — the two reset records leave the everyday tabs for one Reset records screen. `main@1dbd2c18`, no migration. DEPLOYED: `deploy.sh` compiled (192 pages), applied nothing (377 stays), restarted; service active, `GET /` 401; dry-run clean; `7f69bd71` marked deployed.
+
+**Gate:** 824 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no rebuild, ALL green, zero
+assertion errors. `next build` clean. No migration (`git diff -- db/` empty).
+
+**`7f69bd71` — THE REPORTER ASKED US TO DELETE THE CONFIGURATION RECORD PAGE AND WE DID NOT.** Their reading
+of it was accurate (read-only, no undo, feeds nothing) but it is the written record the 492da418 reset was
+approved on — that reset ran this morning and cannot be undone, and these two screens are the only place
+the old figures still exist. The plan said so at the top and honoured the real complaint instead:
+Entitlements drops to two tabs, Leave Adjustments to two, and both records move to one "Reset records"
+sub-screen (`/admin/leave-config/records?record=configuration|balances`) reached from a small
+"Records of past resets" link at the foot of Leave Adjustments. Four redirect stubs, one hop each, the
+`capture` query preserved; both CSV handlers untouched; the two record bodies moved mechanically (verify
+diffed them: only the guard, the prop and the removed per-tab header changed).
+**Verify: SHIP, 0 major** — it re-fetched all nine old addresses live (every one 307 → the right sub-tab,
+one hop, capture kept), both CSV handlers 200 with real bodies, and seeded two captures per archive to
+prove the rows render, then deleted them.
+**Hand-fixed after verify, and the first one mattered:** the Balance record's explanation still said
+"Nothing on either leave type had ever been taken" — true of the August Medical/Hospitalisation reset,
+meaningless for the September one, which covers every leave type and is production's DEFAULT capture, so
+the reporter would have opened the screen and read the wrong reset described. It now says every reset here
+kept the days people had actually taken, which is true of both. The four stubs also forwarded an incoming
+`?record=` over their own, so a saved link carrying one could land on the other record; the loop now skips
+it. Both pinned, the pin proven non-vacuous.
+**Left alone deliberately:** `admin.entitlementArchive.intro`'s present tense (sketch latitude, not in the
+promise) and `docs/design/a6fe37fc-leave-config-ia.md`'s old addresses (a historical IA document).
+
+**Raised by us this round:** `0e276da0` — **two of the four holiday calendars are EMPTY and all four are the
+stand-alone kind**, so attaching a work location to JOHOR OFFICE or JOHOR SITE would silently give its staff
+NO public holidays at all (each gazetted day becomes a working day: leave counts against it and overtime
+pays at the ordinary rate). Measured on production: JOHOR OFFICE 0 ticked, JOHOR SITE 0, KUALA LUMPUR HQ 13
+(omits Deepavali 2026-11-08), KUALA LUMPUR SITE 10 (omits the Malaysia Day replacement 2026-09-01); 11
+national days in the gazette; `location.holiday_group_id` is NOT NULL on **0** rows, so there is no live
+exposure. **Nothing warns**, because `EA_S60D_MINIMUM_HOLIDAYS = 11` is deliberately skipped for the
+stand-alone archetype (core/holidays.ts L139-144: "custom = exactly what HR loaded, so the warning is FALSE
+NOISE") — right for a populated calendar, wrong for an empty one. The plan proposes a warning at the moment
+a location is attached, naming the days its staff would lose; the empty calendars and the two missing days
+are the reporter's own data decision.
+
 ## r267 (2026-09-11) — the clocking-location page of its own, and a report label. `main@65c0f927`, migration `0461`. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (191 pages), applied 0461 (376 → 377 on the box, `report_label` present), restarted; service active, `GET /` 401; `f9afd1ce` marked deployed (ref 65c0f927).
 
 **Gate:** 823 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no rebuild, ALL green, zero
