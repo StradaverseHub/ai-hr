@@ -75,14 +75,14 @@ export function ClockingLocationForm({
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
           {/* The point keeps its OWN name (the reporter's "HQ — North Gate" / "HQ — South Gate" reading). */}
           <Field label={t('name')} required>
-            <input name="name" defaultValue={values.name} required placeholder={t('clockingNamePlaceholder')} className={inputCls} />
+            <input name="name" defaultValue={values.name} required maxLength={300} placeholder={t('clockingNamePlaceholder')} className={inputCls} />
           </Field>
           {/* NEW (0461): the short name the Attendance report prints; blank = the name is printed. */}
           <Field label={t('reportLabel')}>
             <input name="reportLabel" defaultValue={values.reportLabel} maxLength={MAX_REPORT_LABEL_CHARS} className={inputCls} />
           </Field>
           <Field label={t('address')} className="sm:col-span-2">
-            <textarea name="address" defaultValue={values.address} rows={2} className={textareaCls} />
+            <textarea name="address" defaultValue={values.address} rows={2} maxLength={1000} className={textareaCls} />
           </Field>
           {/* f9afd1ce — OPTIONAL, and any company's location: a site shared by five companies cannot be
               required to belong to one company's holiday-calendar record. */}
@@ -102,7 +102,7 @@ export function ClockingLocationForm({
             </select>
           </Field>
           <Field label={t('remarks')}>
-            <input name="remarks" defaultValue={values.remarks} className={inputCls} />
+            <input name="remarks" defaultValue={values.remarks} maxLength={1000} className={inputCls} />
           </Field>
         </div>
         <p className="px-4 pb-4 text-xs text-muted-foreground">{t('reportLabelHint')}</p>
