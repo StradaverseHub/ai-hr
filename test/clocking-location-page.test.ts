@@ -281,11 +281,12 @@ describe('f9afd1ce rev 2 — the actions land a save on the row and a refusal ba
 
 function toMarkup(tree: unknown): string {
   return renderToStaticMarkup(
-    createElement(
-      NextIntlClientProvider,
-      { locale: 'en', timeZone: 'Asia/Kuala_Lumpur', messages: JSON.parse(read('messages/en.json')) },
-      tree as never,
-    ),
+    createElement(NextIntlClientProvider, {
+      locale: 'en',
+      timeZone: 'Asia/Kuala_Lumpur',
+      messages: JSON.parse(read('messages/en.json')),
+      children: tree as never,
+    }),
   );
 }
 const renderList = async (sp: Record<string, string> = {}) => toMarkup(await LocationsPage({ searchParams: Promise.resolve(sp) }));
