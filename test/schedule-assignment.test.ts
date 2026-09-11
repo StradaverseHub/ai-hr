@@ -1,6 +1,8 @@
 /**
  * r209 — Schedule Assignment (0bade264) and the Attendance menu rename (0bade264 + 6448574f),
- * r263 — the edit panel on that screen (a485afa1).
+ * r263 — the edit panel on that screen (a485afa1),
+ * r265 — the panel becomes a page of its own, /admin/attendance/schedule-assignment/[employmentId]
+ *        (a485afa1 rev 2: the reporter contested the panel — it sat at the top of a 74-row list).
  *
  * WHAT THIS FILE PINS, AND WHY EACH HALF NEEDS PINNING SEPARATELY.
  *
@@ -18,11 +20,17 @@
  *     step by refusing the list an editor and linking into the card instead; r263 gave the list its own
  *     panel because the link was the complaint, and keeps them in step by making the panel mount the
  *     card's own control (components/employee-shift-fields.tsx) and call the card's own writer
- *     (core/shift-arrangement.ts). So the assertions now read: the deep link is GONE, both screens
- *     render the ONE control, the screen's action is an adapter and not a second writer, and the
- *     personnel card is still standing. Plus a database-backed half r209 could not have: the history a
- *     save from Attendance produces is compared, row for row, with the history the same save through
- *     Personnel produces.
+ *     (core/shift-arrangement.ts). r265 moved that panel onto its own page and changed NOTHING about the
+ *     property: the assertions now read: the deep link is GONE, the list is a list (no panel, no fields),
+ *     the DETAIL page renders the ONE control, the screen's action is an adapter and not a second writer,
+ *     and the personnel card is still standing. Plus a database-backed half r209 could not have: the
+ *     history a save from Attendance produces is compared, row for row, with the history the same save
+ *     through Personnel produces.
+ *
+ *     AND WHERE EVERY WAY OUT LEADS (r265, the reporter's three sentences): Save returns to the LIST with
+ *     the same filters, landed on the row just changed (`focus=<id>#row-<id>`, `saved=1`); Cancel and
+ *     Back are plain links to that same place and post nothing; a refused save stays on the DETAIL page
+ *     with the reason. Each is asserted on the real action's redirect or the real page's render.
  *
  *     AND ITS THIRD OPERATION. Removal did not exist at either door — the panel is the first surface to
  *     offer it — so `removeShiftArrangement` is pinned here too: it supersedes rather than deletes, it
@@ -91,7 +99,9 @@ import {
   saveScheduleAssignmentAction,
 } from '../app/admin/attendance/schedule-assignment/actions';
 import ScheduleAssignmentPage from '../app/admin/attendance/schedule-assignment/page';
+import ShiftArrangementPage from '../app/admin/attendance/schedule-assignment/[employmentId]/page';
 import { setDefaultShiftAction } from '../app/admin/personnel/[employmentId]/actions';
+import { todayInKualaLumpur } from '../lib/hr-date';
 
 /**
  * The screen itself, rendered. A 200 is not a render check and neither is a source scan: the crash this
@@ -103,14 +113,26 @@ import { setDefaultShiftAction } from '../app/admin/personnel/[employmentId]/act
  * en.json and render real copy: a key missing from the catalogue would show up here rather than as a
  * MISSING_MESSAGE on a live page.
  */
-async function renderPage(searchParams: Record<string, string>): Promise<string> {
-  const tree = await ScheduleAssignmentPage({ searchParams: Promise.resolve(searchParams) });
+function toMarkup(tree: unknown): string {
   return renderToStaticMarkup(
     createElement(NextIntlClientProvider, {
       locale: 'en',
       timeZone: 'Asia/Kuala_Lumpur',
       messages: JSON.parse(read('messages/en.json')),
       children: tree as never,
+    }),
+  );
+}
+/** The LIST, rendered. `?assign=<uuid>` makes it redirect instead (the mocked redirect throws). */
+async function renderPage(searchParams: Record<string, string>): Promise<string> {
+  return toMarkup(await ScheduleAssignmentPage({ searchParams: Promise.resolve(searchParams) }));
+}
+/** The DETAIL page, rendered — the `[employmentId]` segment is passed as-is, junk included. */
+async function renderDetail(employmentId: string, searchParams: Record<string, string> = {}): Promise<string> {
+  return toMarkup(
+    await ShiftArrangementPage({
+      params: Promise.resolve({ employmentId }),
+      searchParams: Promise.resolve(searchParams),
     }),
   );
 }
@@ -487,20 +509,25 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     ]);
   });
 
-  it('saving from the panel comes back to the list, filters and panel intact — the round trip is gone', async () => {
+  it('Save returns to the LIST, same filters, landed on the row just changed — not to the top', async () => {
+    // r265: the detail page posts its OWN url (filters riding along) as returnTo; the action sends a
+    // success back to the list, filters intact, with `focus=<id>` and the `#row-<id>` fragment the list
+    // renders on every row. That fragment is what lands the browser on the row instead of the top.
     const emp = await hire('Cara Return', 'E103');
     const back = await runAction(saveScheduleAssignmentAction, {
       employmentId: emp,
       shiftType: 'fixed',
       shiftId: shiftA,
       effectiveFrom: PAST,
-      returnTo: `${LIST_URL}?status=current&assign=${emp}`,
+      returnTo: `${LIST_URL}/${emp}?status=current`,
     });
     expect(back, 'the save stays inside Attendance').not.toContain('/admin/personnel/');
-    expect(back).toContain(`${LIST_URL}?`);
+    expect(back, 'it lands on the LIST, not back on the detail page').toMatch(new RegExp(`^${LIST_URL}\\?`));
     expect(back, 'the filter the administrator was working under survives the save').toContain('status=current');
-    expect(back, 'and the panel stays open on the employee just saved').toContain(`assign=${emp}`);
+    expect(back, 'the row just changed is the one to land on').toContain(`focus=${emp}`);
+    expect(back, 'and the browser is sent to that row, not the top').toMatch(new RegExp(`#row-${emp}$`));
     expect(back).toContain('saved=1');
+    expect(back, "r263's panel parameter is gone from every redirect").not.toContain('assign=');
 
     // The other door is untouched and still returns to the profile — Personnel Management keeps its copy.
     const fromCard = await runAction(setDefaultShiftAction, {
@@ -521,7 +548,50 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
       effectiveFrom: PAST,
       returnTo: 'https://evil.example/steal',
     });
-    expect(back, 'an off-site returnTo falls back to the bare page').toBe(`${LIST_URL}?saved=1#assign-panel`);
+    expect(back, 'an off-site returnTo falls back to the bare list, still landed on the row').toBe(
+      `${LIST_URL}?focus=${emp}&saved=1#row-${emp}`,
+    );
+    // …and neither may another screen's path smuggle its query in: only this list and its detail page
+    // are trusted for the filters.
+    const other = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: `/admin/personnel/${emp}?status=current`,
+    });
+    expect(other).toBe(`${LIST_URL}?focus=${emp}&saved=1#row-${emp}`);
+  });
+
+  it('a REFUSED save stays on the detail page, filters kept, with the reason — nothing typed is lost', async () => {
+    // The reporter's sentence: "you stay on the page with the reason shown next to the fields". The
+    // shift library's shift-actions.ts idiom (errTarget): a refusal lands on the form the operator filled
+    // in, never on a list that has forgotten every box they typed.
+    const emp = await hire('Gil Refused', 'E112');
+    await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftA,
+      effectiveFrom: PAST,
+      returnTo: `${LIST_URL}/${emp}`,
+    });
+    const before = await shiftArrangementHistory(ADMIN, emp);
+    // A date before the ladder's last — the back-insert refusal, one of the two the plan names.
+    const back = await runAction(saveScheduleAssignmentAction, {
+      employmentId: emp,
+      shiftType: 'fixed',
+      shiftId: shiftB,
+      effectiveFrom: '2026-04-01',
+      returnTo: `${LIST_URL}/${emp}?status=current&q=Gil`,
+    });
+    expect(back, 'stays on THIS employee\'s page').toMatch(new RegExp(`^${LIST_URL}/${emp}\\?`));
+    expect(back, 'the reason, localized, is on the url the page reads').toContain('error=shiftBackInsertRefused');
+    expect(back, 'the filters are still on it for the way back').toContain('status=current');
+    expect(back).toContain('q=Gil');
+    expect(back, 'a refusal is not a save').not.toContain('saved=1');
+    expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.id), 'and nothing was written').toEqual(
+      before.map((h) => h.id),
+    );
   });
 
   it('removing an arrangement supersedes it, re-opens the period before it, and moves the cache', async () => {
@@ -544,9 +614,13 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     const back = await runAction(removeScheduleArrangementAction, {
       employmentId: emp,
       arrangementId: before[0].id,
-      returnTo: LIST_URL,
+      returnTo: `${LIST_URL}/${emp}?status=current`,
     });
     expect(back).toContain('removed=1');
+    // r265: a removal STAYS on the detail page — the administrator is looking at the history they just
+    // changed — with the filters still on the url for the way back.
+    expect(back).toMatch(new RegExp(`^${LIST_URL}/${emp}\\?`));
+    expect(back).toContain('status=current');
 
     const after = await shiftArrangementHistory(ADMIN, emp);
     expect(after.map((h) => h.effectiveFrom), 'the removed period is gone from the live ladder').toEqual([PAST]);
@@ -588,11 +662,13 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.id), 'nothing was removed').toEqual([only.id]);
   });
 
-  it('a malformed ?assign= renders the panel’s own sentence — it does not take the page down', async () => {
-    // THE VERIFIER'S 500. `?assign=not-a-uuid` reached eq(employment.id, …) on a uuid column, Postgres
-    // threw "invalid input syntax for type uuid", and the page — including the `panelMissing` branch
-    // written for exactly this ("a stale bookmark") — never rendered. A well-formed but unknown uuid was
-    // always handled; both are asserted so a future edit cannot fix one and lose the other.
+  it('a malformed [employmentId] renders the page’s own sentence with the way back — never a 500', async () => {
+    // THE r263 VERIFIER'S 500, now on the url segment instead of `?assign=`: junk reached
+    // eq(employment.id, …) on a uuid column, Postgres threw "invalid input syntax for type uuid", and the
+    // page — including the `panelMissing` branch written for exactly this ("a stale bookmark") — never
+    // rendered. A well-formed but unknown uuid was always handled; both are asserted so a future edit
+    // cannot fix one and lose the other. And a terminated employment reads the same: the list read
+    // excludes leavers on purpose (their history stays on their own profile).
     const emp = await hire('Ivy Bookmark', 'E109');
     await runAction(saveScheduleAssignmentAction, {
       employmentId: emp,
@@ -601,22 +677,95 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
       effectiveFrom: PAST,
       returnTo: LIST_URL,
     });
+    const left = await hire('Lee Left', 'E113');
+    await owner.db.update(schema.employment).set({ terminatedOn: '2026-06-30' }).where(eq(schema.employment.id, left));
 
     for (const junk of ['not-a-uuid', "'; drop table employment; --", '123', emp.slice(0, -1)]) {
-      const html = await renderPage({ assign: junk });
-      expect(html, `?assign=${junk} keeps the panel open and says the employee is not here`).toContain(
-        'panelMissing',
-      );
-      expect(html, 'and the list underneath it still rendered').toContain('Ivy Bookmark');
+      const html = await renderDetail(junk, { status: 'current' });
+      expect(html, `/${junk} says the employee is not on the list`).toContain('panelMissing');
+      expect(html, 'and offers the way back, filters kept').toContain(`href="${LIST_URL}?status=current"`);
+      expect(html, 'no form is offered for nobody').not.toContain('name="effectiveFrom"');
+    }
+    for (const [who, id] of [
+      ['a well-formed uuid nobody owns', '00000000-0000-4000-8000-000000000000'],
+      ['a terminated employment', left],
+    ] as const) {
+      const html = await renderDetail(id);
+      expect(html, `${who} reads the same`).toContain('panelMissing');
+      expect(html, `${who} offers no form`).not.toContain('name="effectiveFrom"');
     }
 
-    const unknown = await renderPage({ assign: '00000000-0000-4000-8000-000000000000' });
-    expect(unknown, 'a well-formed uuid nobody owns reads the same').toContain('panelMissing');
-
-    // And the panel still opens for a real one — the shape check narrows nothing it should not.
-    const real = await renderPage({ assign: emp });
-    expect(real, 'the employee the panel is open on').toContain('Ivy Bookmark');
+    // And the page still opens for a real one — the shape check narrows nothing it should not.
+    const real = await renderDetail(emp);
+    expect(real, 'the employee the page is open on').toContain('Ivy Bookmark');
     expect(real, 'their arrangement is being edited, not reported missing').not.toContain('panelMissing');
+    expect(real, 'the shared control is mounted').toContain('name="effectiveFrom"');
+
+    // The LIST drops a malformed `?assign=` rather than forwarding it: it renders as if the param were
+    // not there — no redirect, no panel, no sentence.
+    const list = await renderPage({ assign: 'not-a-uuid' });
+    expect(list).toContain('Ivy Bookmark');
+    expect(list).not.toContain('panelMissing');
+    expect(list).not.toContain('assign-panel');
+  });
+
+  it('?assign=<uuid> — r263’s panel link — redirects to the employee’s page, filters and all', async () => {
+    // A bookmark or a link in a chat written before r265 must still open the same employee.
+    const emp = await hire('Mia Bookmarked', 'E114');
+    LAST_REDIRECT = '';
+    await expect(renderPage({ assign: emp, status: 'current', q: 'Mia' })).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toBe(`${LIST_URL}/${emp}?q=Mia&status=current`);
+  });
+
+  it('the summary block shows the SAME status the list row shows, from the same resolver', async () => {
+    // Both surfaces read `listShiftArrangements` for the same employment on the same `today`, so the chip
+    // on the page cannot disagree with the chip on the row behind it. Asserted on the RENDERED chips —
+    // the label key and its hint key — against what the resolver itself answers for the page's own
+    // "today" (the real clock, in the tenant's calendar: the page does not take a fixed date).
+    const today = todayInKualaLumpur();
+    const plusDays = (iso: string, n: number) => new Date(Date.parse(iso) + n * 86_400_000).toISOString().slice(0, 10);
+    const chip = (html: string) => {
+      const m = html.match(/title="(status\w+Hint)"[^>]*>(status\w+)<\/span>/);
+      return m ? { hint: m[1], label: m[2] } : null;
+    };
+
+    const nowOn = await hire('Nia Current', 'E115');
+    const laterOn = await hire('Ola Scheduled', 'E116');
+    const nothing = await hire('Pat Unrecorded', 'E117');
+    await assignEmployeeShiftDated(ADMIN, { employmentId: nowOn, shiftType: 'fixed', shiftId: shiftA, effectiveFrom: plusDays(today, -30) });
+    await assignEmployeeShiftDated(ADMIN, { employmentId: laterOn, shiftType: 'roster', shiftId: shiftB, effectiveFrom: plusDays(today, 30) });
+
+    const listHtml = await renderPage({});
+    for (const emp of [nowOn, laterOn, nothing]) {
+      const [resolved] = await listShiftArrangements(ADMIN, { employmentId: emp, today });
+      const expected = { label: `status${resolved.status[0].toUpperCase()}${resolved.status.slice(1)}` };
+      const onPage = chip(await renderDetail(emp));
+      const rowStart = listHtml.indexOf(`id="row-${emp}"`);
+      expect(rowStart, 'the list renders an anchor for this row').toBeGreaterThan(-1);
+      const onRow = chip(listHtml.slice(rowStart, listHtml.indexOf('</tr>', rowStart)));
+      expect(onPage?.label, `${resolved.name}: the page's chip is the resolver's answer`).toBe(expected.label);
+      expect(onRow, `${resolved.name}: the row's chip is the SAME chip`).toEqual(onPage);
+    }
+    // The fixture genuinely covered all three states — otherwise the loop proves less than it says.
+    const states = await Promise.all(
+      [nowOn, laterOn, nothing].map(async (e) => (await listShiftArrangements(ADMIN, { employmentId: e, today }))[0].status),
+    );
+    expect(states).toEqual(['current', 'scheduled', 'notRecorded']);
+  });
+
+  it('Back and Cancel are plain links to the list, filters kept, landed on the row — nothing is posted', async () => {
+    const emp = await hire('Quin Cancel', 'E118');
+    const html = await renderDetail(emp, { q: 'Quin', status: 'current', shiftType: 'fixed' });
+    // renderToStaticMarkup escapes & in attributes.
+    const back = `${LIST_URL}?q=Quin&amp;shiftType=fixed&amp;status=current&amp;focus=${emp}#row-${emp}`;
+    const links = html.split(`href="${back}"`).length - 1;
+    expect(links, 'Back (page header) and Cancel (beside Save) both point at that exact url').toBe(2);
+    expect(html, 'Back reads the page’s own key').toContain('detailBack');
+    expect(html, 'Cancel reads its own key').toContain('detailCancel');
+    // The way back is a link, not a form: the only forms on the page are Save and Remove.
+    expect(html.match(/<form /g)?.length ?? 0, 'one form — Save (no history to remove yet)').toBe(1);
+    // …and the form posts THIS page as its returnTo, filters riding along, so a refusal lands back here.
+    expect(html).toContain(`name="returnTo" value="${LIST_URL}/${emp}?q=Quin&amp;shiftType=fixed&amp;status=current"`);
   });
 
   it('an older change cannot be removed — only the newest, which is the only one that can be put back', async () => {
@@ -693,7 +842,7 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     ]);
   });
 
-  it('the panel offers Remove on the newest row only, and says so', async () => {
+  it('the page offers Remove on the newest row only, and says so', async () => {
     const emp = await hire('Kit Rows', 'E111');
     for (const [shiftId, effectiveFrom] of [
       [shiftA, PAST],
@@ -709,7 +858,7 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
       });
     }
     const hist = await shiftArrangementHistory(ADMIN, emp);
-    const html = await renderPage({ assign: emp });
+    const html = await renderDetail(emp);
     const offered = [...html.matchAll(/name="arrangementId" value="([0-9a-fA-F-]{36})"/g)].map((m) => m[1]);
     expect(offered, 'three history rows, ONE Remove form, on the newest period').toEqual([hist[0].id]);
     expect(html, 'and the screen says why the older rows have none').toContain('historyRemoveNote');
@@ -765,11 +914,13 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
   });
 });
 
-describe('a485afa1 — ONE record, TWO doors: the list edits in place, through the shared control and writer', () => {
+describe('a485afa1 — ONE record, TWO doors: the row opens its own page, through the shared control and writer', () => {
   const LIST = 'app/admin/attendance/schedule-assignment/page.tsx';
+  const DETAIL = 'app/admin/attendance/schedule-assignment/[employmentId]/page.tsx';
   const ACTIONS = 'app/admin/attendance/schedule-assignment/actions.ts';
   const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
   const list = read(LIST);
+  const detail = read(DETAIL);
   const actions = read(ACTIONS);
   const card = read(CARD);
   /**
@@ -784,32 +935,52 @@ describe('a485afa1 — ONE record, TWO doors: the list edits in place, through t
       .filter((l) => !/^\s*(\/\/|\*)/.test(l))
       .join('\n');
   const listCode = withoutComments(list);
+  const detailCode = withoutComments(detail);
 
-  it('the trip into Personnel Management is GONE — the row action opens a panel on this screen', () => {
+  it('the trip into Personnel Management is GONE — the row action opens the employee’s OWN page', () => {
     // r209's deep link, asserted absent. This is the reporter's whole complaint: assigning a shift to
     // twenty people was twenty round trips out of the Attendance module.
-    expect(listCode, `${LIST} must not send the administrator into Personnel Management`).not.toContain(
-      '/admin/personnel/${employmentId}?tab=attendance#section-default-shift',
+    for (const [name, code] of [
+      [LIST, listCode],
+      [DETAIL, detailCode],
+    ] as const) {
+      expect(code, `${name} must not send the administrator into Personnel Management`).not.toContain(
+        '/admin/personnel/${employmentId}?tab=attendance#section-default-shift',
+      );
+      expect(code, `${name} must not link into the personnel profile at all`).not.toContain('/admin/personnel/');
+    }
+    // …and what replaced it in r265: the row's own page, filters riding along, under this same route.
+    expect(list, 'the row action opens the detail page').toContain('hrefWith(`${PAGE}/${employmentId}`, {})');
+    // r263's panel is gone from the list — in CODE, not merely renamed: no anchor, no panel parameter
+    // driving a render, no fields, no history on the list.
+    expect(listCode, `${LIST} still renders the r263 panel anchor`).not.toContain('assign-panel');
+    expect(listCode, `${LIST} must not read the history — that is the detail page's`).not.toContain(
+      'shiftArrangementHistory',
     );
-    expect(listCode, `${LIST} must not link into the personnel profile at all`).not.toContain('/admin/personnel/');
-    // …and what replaced it: a URL-driven panel on this same screen.
-    expect(list, 'the row action opens the panel').toContain("hrefWith({ assign: employmentId })");
-    expect(list, 'the panel is a real anchor on this page').toContain('id="assign-panel"');
+    // Every row is an anchor the way back can land on.
+    expect(list, 'each row carries the id the detail page returns to').toContain('id={`row-${r.employmentId}`}');
   });
 
-  it('the panel MOUNTS the personnel card’s own control — it does not fork the three fields', () => {
+  it('the DETAIL page mounts the personnel card’s own control — the list mounts nothing', () => {
     // THE PROMISE IN ONE ASSERTION. The reporter was told the two screens "cannot drift apart" because
     // they are two doors onto one record. A forked field list is exactly how that sentence stops being
-    // true, so the three controls must be declared in ONE file and rendered by BOTH screens.
-    expect(list, `${LIST} imports the shared control`).toContain("from '@/components/employee-shift-fields'");
-    expect(list, `${LIST} renders it`).toContain('<EmployeeShiftFields');
+    // true, so the three controls must be declared in ONE file and rendered by BOTH doors.
+    expect(detail, `${DETAIL} imports the shared control`).toContain("from '@/components/employee-shift-fields'");
+    expect(detail, `${DETAIL} renders it`).toContain('<EmployeeShiftFields');
     expect(card, `${CARD} still renders the same one`).toContain('<EmployeeShiftFields');
-    // No second copy of the fields anywhere in this screen's own folder.
+    // No second copy of the fields anywhere in this screen's own folder — and the list renders none.
     for (const field of ['shiftType', 'shiftId', 'effectiveFrom']) {
-      expect(list, `${LIST} re-declares the ${field} control instead of mounting the shared one`).not.toContain(
-        `name="${field}"`,
-      );
+      for (const [name, src] of [
+        [LIST, list],
+        [DETAIL, detail],
+      ] as const) {
+        expect(src, `${name} re-declares the ${field} control instead of mounting the shared one`).not.toContain(
+          `name="${field}"`,
+        );
+      }
     }
+    expect(listCode, `${LIST} is a list again — it does not mount the control`).not.toContain('EmployeeShiftFields');
+    expect(listCode, `${LIST} offers no Remove`).not.toContain('ConfirmSubmit');
   });
 
   it('there is still exactly ONE writer, and this screen is not a second one', () => {
@@ -820,6 +991,8 @@ describe('a485afa1 — ONE record, TWO doors: the list edits in place, through t
     expect(actions, `${ACTIONS} must not touch the ladder table itself`).not.toContain('employmentShiftArrangement');
     expect(actions, `${ACTIONS} must not open its own transaction`).not.toContain('withTenant(');
     expect(list, `${LIST} must not write from the page`).not.toContain('assignEmployeeShiftDated(');
+    expect(detail, `${DETAIL} must not write from the page`).not.toContain('assignEmployeeShiftDated(');
+    expect(detail, `${DETAIL} posts to the adapter`).toContain('action={saveScheduleAssignmentAction}');
     // The four fields are parsed into the same call shape the personnel action makes.
     for (const arg of ['employmentId,', 'shiftType,', 'shiftId: rawShift || null,', 'effectiveFrom: rawEffective || null,']) {
       expect(actions, `${ACTIONS} calls the writer with ${arg}`).toContain(arg);
@@ -843,19 +1016,29 @@ describe('a485afa1 — ONE record, TWO doors: the list edits in place, through t
     expect(fn, 'and the employment cache is refreshed').toContain('pickArrangementOn(');
   });
 
-  it('the screen guards itself, is grantable in the function-access matrix, and minted no new route', () => {
-    expect(list, 'its own server-side admin guard').toMatch(/requireAdmin\(/);
+  it('both screens guard themselves, both are grantable in the function-access matrix, and no third route exists', () => {
+    expect(list, 'the list: its own server-side admin guard').toMatch(/requireAdmin\(/);
+    expect(detail, 'the detail page: its own server-side admin guard').toMatch(/requireAdmin\(/);
     expect(actions, 'and so does every write it offers').toMatch(/requireAdmin\(\)/);
-    // Rule 20: a guarded page with no matrix column is a screen nobody can grant or revoke. It rides the
-    // existing shift-library column — same guard, same admin surface.
-    expect(read('lib/permissions.ts')).toContain("'/admin/attendance/schedule-assignment'");
-    // a485afa1 added an edit panel, NOT a sub-route: a new page.tsx here would need its own entry in the
-    // same commit (test/function-access.test.ts fails in both directions), so its absence is pinned.
+    // Rule 20: a guarded page with no matrix column is a screen nobody can grant or revoke. Both ride the
+    // existing shift-library column — same guard, same admin surface — and the sub-page's entry landed
+    // in the same commit as its page.tsx (test/function-access.test.ts fails in both directions).
+    const permissions = read('lib/permissions.ts');
+    expect(permissions).toContain("'/admin/attendance/schedule-assignment'");
+    expect(permissions).toContain("'/admin/attendance/schedule-assignment/[employmentId]'");
+    // Exactly the two pages: a third page.tsx under this screen would need its own entry, so the folder
+    // shape is pinned. status-chip.tsx is the ONE chip both pages render (a page.tsx may export nothing
+    // but its default, and a second copy of the class map is the drift this file exists to refuse).
     const dir = path.join(root, 'app/admin/attendance/schedule-assignment');
-    expect(fs.readdirSync(dir).sort(), 'no sub-route was added under this screen').toEqual([
+    expect(fs.readdirSync(dir).sort(), 'the screen is a list, its actions, one chip and one sub-route').toEqual([
+      '[employmentId]',
       'actions.ts',
       'page.tsx',
+      'status-chip.tsx',
     ]);
+    expect(fs.readdirSync(path.join(dir, '[employmentId]')).sort()).toEqual(['page.tsx']);
+    expect(list, 'the list renders the shared chip').toContain('<StatusChip');
+    expect(detail, 'and so does the detail page').toContain('<StatusChip');
   });
 
   it('reads the ladder through the shared resolver rather than re-deciding "current"', () => {
