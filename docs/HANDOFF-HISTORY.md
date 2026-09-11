@@ -23,7 +23,7 @@ code or on the board, this is only where to look):
 - `transferEmployee` has zero production callers and is KEPT: the only writer of
   `assignment.transferred`, which `reverseLegTx` replays.
 
-### r263 (2026-09-10) — the Attendance Schedule screen and Schedule Assignment. MERGED, NOT DEPLOYED; the board still says `approved`.
+### r263 (2026-09-10) — the Attendance Schedule screen and Schedule Assignment. Merged 2026-09-10, **DEPLOYED 2026-09-11 (`main@56853e39`)**, no migration.
 
 No entry was written when it merged; these facts are from git, the board and a dry-run rsync on
 2026-09-11.
@@ -35,12 +35,23 @@ No entry was written when it merged; these facts are from git, the board and a d
   unreachable approval rules (`docs/reports/b2b31767-unreachable-approval-rules.md`). `1d7c9908` was
   raised to the reporter carrying two corrections to the approved plans (the "Shift settings" naming
   claim was wrong; Remove is limited to the undoable case).
-- NOT deployed: the dry-run rsync from mainwt lists the two schedule pages, `core/shift-arrangement.ts`,
-  `lib/permissions.ts`, all six catalogues, `packs/attendance/index.ts`, the report script and five
-  tests. Board on 2026-09-11 (`pnpm improve:status`): SIX `approved`, none with a `build-start` —
-  `1c5602cc`, `a485afa1`, `b2b31767` (built here, undeployed), `45f51d16` (My Profile close-out,
-  "already works"), and two approved plans NOT yet built: `fe9c73bc` (entitlement reset) and
-  `f9afd1ce` (centralised clocking locations), whose mockups are in `docs/mockups/`. Five `open`.
+- It sat merged and undeployed for a day with no round entry; the dry-run rsync was what surfaced it.
+  **Deployed 2026-09-11 from `main@56853e39`** (which also carries the instruction-file rebuild):
+  gate `CHUNKS=6 AIHR_RAMDISK_GB=0 VITEST_MAX_WORKERS=6`, 814 files — chunks 1-4 and 6 green, chunk 5
+  red with 12 files / ZERO AssertionErrors (12 `Hook timed out`, 3 TRUNCATE deadlocks) while the data
+  volume sat at 99%; all 12 green on re-run (128 tests) once the disk was cleared. `deploy.sh` built
+  (190 pages), applied nothing (374 stays), restarted; `GET /` 401; dry-run afterwards = `next-env.d.ts`
+  only. Board: `1c5602cc`, `a485afa1`, `b2b31767` marked deployed (ref 56853e39), `45f51d16` deployed
+  as `no-code-change`. **`b2b31767`'s deliverable was a document the reporter had never received** (it
+  lived only in `docs/reports/`); it was raised to them as `ff8c0078`, the report converted to plain
+  text grouped by company and leave type.
+- **THE DISK FINDING (durable):** the 116 moved-aside clusters `aihr-pg16.wedged-*` were holding
+  **497 GiB of dead `pg_wal`** — each on-disk rebuild moves aside a cluster whose WAL pool is 4-6 GB in
+  ~300 files. Deleting only the `pg_wal` directories inside them took under two minutes and freed the
+  lot; the data directories (millions of small files behind an on-access scanner) are what the slow
+  drain is for. Now in CLAUDE.md §5.
+- The two remaining approved plans, `fe9c73bc` (entitlement reset) and `f9afd1ce` (shared clocking
+  locations), went to build as r264 the same day.
 - UNKNOWN: whether a full gate ran on the merged head; no gate receipt is recorded. Gate before deploying.
 - Migration: none. The journal ends at `0458` (374 entries) and the box has 374 applied.
 - Production still has no AI provider (`.env.production` carries no provider key; `ai_provider_config`

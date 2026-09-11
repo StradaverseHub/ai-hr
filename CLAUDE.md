@@ -139,7 +139,11 @@ data dir `/opt/homebrew/var/aihr-pg16` symlinked to an 8 GB RAM disk. Disposable
 role `ai_hr_app` is `NOBYPASSRLS`. Misbehaving → `./scripts/dev-db-rebuild.sh` (under a minute; its
 header records why). Never copy its settings to a server. Before diagnosing code:
 `psql -p 5433 -U postgres -tAc 'select 1'`. A count taken as the app role with no tenant context
-returns 0 through RLS; read facts as the migration role.
+returns 0 through RLS; read facts as the migration role. Every rebuild moves the old cluster aside as
+`/opt/homebrew/var/aihr-pg16.wedged-<stamp>`; on disk each carries a 4-6 GB `pg_wal`, and 116 of them
+held 497 GiB on 2026-09-11 (a red chunk with zero assertion errors was the symptom). When the volume is
+tight, delete the `pg_wal` directory inside each moved-aside cluster first (seconds, few files); the
+data directories are what the slow background drain is for.
 
 ## 6. Migrations
 
