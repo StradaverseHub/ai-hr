@@ -156,6 +156,37 @@ Two deferrals recorded below are now CLOSED, and one decision here was reversed:
 - Still deferred: the embedded map picker (no tile provider is configured and the deployed host has
   no outbound key for one).
 
+## Amended 2026-09-11 (f9afd1ce) — a clocking location is a shared, tenant-level record
+Migration 0459. Three changes to the decision above; §1 (a separate table from `location`) stands.
+- **Shared, not company-owned.** `clocking_location.company_id` is DROPPED (not made nullable — a
+  nullable owner would be two kinds of row nobody asked for). One record per physical place per
+  tenant, available to every company; the name index becomes `(tenant_id, name)`. Assignment is no
+  longer scoped by company: an employee of company B may be assigned a gate that also serves
+  company A, and the `CrossCompanyClockingLocationError` guard is deleted. RLS on
+  `employee_clocking_location` (`can_admin_employment`) is unchanged and is the guard that matters
+  there. Measured on production 2026-09-10: both tables held 0 rows, so there was no data step and
+  no deduplication judgement; the migration reports the count it finds at apply time.
+- **§2's write authority moves from admin-of-the-site's-company to GROUP ADMINISTRATOR.** A shared
+  record may be in use by companies an administrator does not manage. The single `FOR ALL` policy
+  (whose `USING` alone governed DELETE, so the database never restricted who deletes) is split into
+  four verb policies: SELECT stays tenant-wide (unchanged reason: name resolution under non-admin
+  sessions); INSERT, UPDATE and DELETE require `app.is_group_admin()`. Enforced in three places on
+  purpose: RLS, the service (`assertGroupAdmin` in every writer — the one that answers in plain
+  English; an UPDATE policy's `USING` filters silently rather than throwing) and the screen (forms
+  rendered for group admins only; a company-scoped admin sees the register read-only with a note).
+  The page guard stays `requireAdmin`: company admins still manage their own `location` rows on the
+  same page and still assign sites on the personnel page.
+- **The `location` link (1fff489c) becomes OPTIONAL and may point at a non-archived location of ANY
+  company.** `location` is company-scoped; a site five companies share cannot honestly be required to
+  belong to one company's holiday-calendar record. Unlinked sites render under "Not linked to a
+  location"; a site linked to a location the caller's RLS cannot see renders under its own group
+  rather than as unlinked. The personnel pre-tick (sites whose `location_id` matches the employee's
+  resolved location) is kept; its empty state now reports how many sites are linked and that every
+  shared site is offered, and never claims clock-in is unavailable when shared sites exist.
+- Not done, as the plan said: no map, no address search, no timezone, no deduplication. "Used by"
+  on the admin screen is derived from assignments (distinct companies of assigned employees), never
+  stored.
+
 ## Consequences
 - Two site registries exist side by side (see §1); the nullable
   `clocking_location.location_id` convergence link is now BUILT (1fff489c, migration 0419).

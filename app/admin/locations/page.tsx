@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listLocations, listUnmappedBranches } from '@/core/location';
@@ -54,27 +54,66 @@ export default async function LocationsPage({
   const stateLabel = (st: string | null) => (st ? st : t('stateNational'));
 
   // ADR-0070 — Clocking Location Management: a SEPARATE site register from the holiday-calendar
-  // `location` list above (see ADR-0070 §1 for why). Tenant-catalog read (RLS lets every tenant member
+  // `location` list above (see ADR-0070 §1 for why). f9afd1ce (migration 0459): a SHARED, TENANT-LEVEL
+  // register — no company parameter, every site in the tenant, rendered ONCE below the per-company
+  // location sections rather than once per company. Tenant-catalog read (RLS lets every tenant member
   // through), but this admin-only route only ever renders it for an admin.
-  const clockingLocations = await listClockingLocations(s, visible.map((c) => c.id), { includeArchived: true });
-  const clockingByCompany = new Map<string, typeof clockingLocations>();
-  for (const cl of clockingLocations) {
-    const arr = clockingByCompany.get(cl.companyId);
-    if (arr) arr.push(cl);
-    else clockingByCompany.set(cl.companyId, [cl]);
-  }
+  const clockingLocations = await listClockingLocations(s, { includeArchived: true });
+  // f9afd1ce — WRITE authority is the group administrator's (core assertGroupAdmin + RLS
+  // app.is_group_admin()). The create/edit/archive/delete forms render for group admins only; a
+  // company-scoped admin sees the register read-only plus a one-line note. requireAdmin stays the page
+  // guard: company admins still manage their own `location` rows above and still assign sites on the
+  // personnel page.
+  const groupAdmin = isGroupAdmin(s);
+  // The location picker for the shared forms: every LIVE location the caller can see. Deliberately NOT the
+  // scope-cookie-narrowed `visible` list — the link may point at any company's location, and a group
+  // admin's RLS on `location` reaches every company.
+  const linkableLocations = groupAdmin ? await listLocations(s, [], {}) : [];
 
-  // 1fff489c — clocking points now sit GROUPED under the location they belong to (the mockup's "HQ · North
-  // Gate / South Gate" reading) instead of a flat list, so a compound with two entrances reads as one site.
-  // Keyed by locationId; the `null` bucket holds any point with no link, which cannot be created any more
-  // but must stay visible if one ever exists (see listClockingLocations' LEFT-join note).
-  const clockingByLocation = new Map<string | null, typeof clockingLocations>();
+  // 1fff489c — clocking points sit GROUPED under the location they are linked to (the mockup's "HQ · North
+  // Gate / South Gate" reading) so a compound with two entrances reads as one site. Three buckets, decided
+  // per row, because the link is now OPTIONAL and `location` is admin-only-read while this register is
+  // tenant-wide:
+  //   • locationId set AND the location resolved → under that location (code · name · company heading);
+  //   • locationId set BUT the location came back null → linked to a location this caller's RLS cannot
+  //     see (another company's, for a company-scoped admin). Its OWN group, so it is never mistaken for
+  //     "unlinked" and never silently re-homed by a Save;
+  //   • locationId null → the "Not linked to a location" group.
+  type ClockingRow = (typeof clockingLocations)[number];
+  type Group = { id: string; code: string; name: string; companyName: string | null; archived: boolean; rows: ClockingRow[] };
+  const byLinkedLocation = new Map<string, Group>();
+  const linkedOutOfScope: ClockingRow[] = [];
+  const unlinked: ClockingRow[] = [];
   for (const cl of clockingLocations) {
-    const key = cl.locationId ?? null;
-    const arr = clockingByLocation.get(key);
-    if (arr) arr.push(cl);
-    else clockingByLocation.set(key, [cl]);
+    if (!cl.locationId) unlinked.push(cl);
+    else if (cl.locationCode == null) linkedOutOfScope.push(cl);
+    else {
+      const g = byLinkedLocation.get(cl.locationId);
+      if (g) g.rows.push(cl);
+      else {
+        byLinkedLocation.set(cl.locationId, {
+          id: cl.locationId,
+          code: cl.locationCode,
+          name: cl.locationName ?? '',
+          companyName: cl.locationCompanyName,
+          archived: locations.some((l) => l.id === cl.locationId && !!l.archivedAt),
+          rows: [cl],
+        });
+      }
+    }
   }
+  // EMPTY GROUPS: every LIVE location in the caller's scope that holds no point yet still gets a heading,
+  // so the way out of that empty state ("Add a clocking point") stays where 1fff489c put it. An archived
+  // location appears only while it holds points (its history stays reachable); an archived, empty one is
+  // nobody's concern on this screen.
+  for (const l of locations) {
+    if (!l.archivedAt && !byLinkedLocation.has(l.id)) {
+      byLinkedLocation.set(l.id, { id: l.id, code: l.code, name: l.name, companyName: l.companyName, archived: false, rows: [] });
+    }
+  }
+  const groups = [...byLinkedLocation.values()].sort(
+    (a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name),
+  );
 
   // 1fff489c PHASE 2 — Branch. The dropdown is the tenant's ACTIVE profile_option 'branch' catalogue, the
   // same list the Employment tab writes employment.org_branch from; core/location.ts validates against it
@@ -89,6 +128,147 @@ export default async function LocationsPage({
     if (arr) arr.push(u);
     else unmappedByCompany.set(u.companyId, [u]);
   }
+
+  /** The "Used by" chips (f9afd1ce mockup): the companies whose employees are assigned here; a dash when none. */
+  const usedBy = (cl: ClockingRow) =>
+    cl.usedByCompanies.length === 0 ? (
+      <span className="text-xs text-muted-foreground">—</span>
+    ) : (
+      <span className="flex flex-wrap gap-1">
+        {cl.usedByCompanies.map((name) => (
+          <span key={name} className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+            {name}
+          </span>
+        ))}
+      </span>
+    );
+
+  /** A clocking point as a COMPANY-SCOPED admin sees it: the mockup's columns, nothing editable. */
+  const readOnlyPointRow = (cl: ClockingRow) => (
+    <li
+      key={cl.id}
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-3 text-sm ${cl.archivedAt ? 'opacity-60' : ''}`}
+    >
+      <span className="min-w-[10rem] font-medium">{cl.name}</span>
+      <span className="text-muted-foreground">
+        <span className="text-xs uppercase tracking-wide">{t('coordinates')}</span> {cl.lat}, {cl.lng}
+      </span>
+      <span className="text-muted-foreground">
+        <span className="text-xs uppercase tracking-wide">{t('radius')}</span>{' '}
+        {cl.radiusM != null ? t('radiusMetres', { radius: cl.radiusM }) : '—'}
+      </span>
+      <span className="flex items-center gap-2 text-muted-foreground">
+        <span className="text-xs uppercase tracking-wide">{t('usedBy')}</span>
+        {usedBy(cl)}
+      </span>
+      <span className="text-xs text-muted-foreground">{t('assignedCount', { count: cl.assignedCount })}</span>
+      {cl.archivedAt && (
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+          {t('statusArchived')}
+        </span>
+      )}
+      {cl.address && <span className="basis-full text-xs text-muted-foreground">{cl.address}</span>}
+    </li>
+  );
+
+  /** One clocking point for a GROUP admin: the inline edit form plus its archive / restore / delete controls. */
+  const pointRow = (cl: ClockingRow) => {
+    // A link the picker cannot offer (an archived location — a group admin sees every company's live
+    // rows) is kept as its own option so a plain Save cannot silently unlink the point. The service still
+    // refuses an archived link on save, and says so; the form just never LIES about what is linked.
+    const linkNotOffered = cl.locationId != null && !linkableLocations.some((l) => l.id === cl.locationId);
+    return (
+      <li
+        key={cl.id}
+        className={`flex flex-wrap items-end gap-2 border-t border-border px-4 py-3 ${cl.archivedAt ? 'opacity-60' : ''}`}
+      >
+        <form action={updateClockingLocationAction} className="flex flex-1 flex-wrap items-end gap-2">
+          <input type="hidden" name="clockingLocationId" value={cl.id} />
+          {/* The point keeps its OWN name. The spec asked for the name to be pulled read-only from
+              the linked location, but its own multi-point example calls them "HQ — North Gate" and
+              "HQ — South Gate", which are not the location's name. The business half of the plan
+              records that reading explicitly. */}
+          <Field label={t('name')}>
+            <input name="name" defaultValue={cl.name} required className={`${inputCls} min-w-[10rem]`} />
+          </Field>
+          <Field label={t('lat')}>
+            <input name="lat" type="number" step="any" defaultValue={cl.lat} required className={`${inputCls} w-28`} />
+          </Field>
+          <Field label={t('lng')}>
+            <input name="lng" type="number" step="any" defaultValue={cl.lng} required className={`${inputCls} w-28`} />
+          </Field>
+          {/* 1fff489c — the allowed distance, per site. Required by the form AND by the service;
+              min=1 is the DB CHECK, and the 10..5000 advisory is a toast, never a block. */}
+          <Field label={t('radius')}>
+            <input
+              name="radiusM"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={cl.radiusM ?? ''}
+              required
+              className={`${inputCls} w-24`}
+            />
+          </Field>
+          {/* f9afd1ce — OPTIONAL, and any company's location: a site shared by five companies cannot be
+              required to belong to one company's holiday-calendar record. */}
+          <Field label={t('clockingLocationLinkOptional')}>
+            <select name="locationId" defaultValue={cl.locationId ?? ''} className={`${inputCls} min-w-[10rem]`}>
+              <option value="">{t('clockingLocationNone')}</option>
+              {linkNotOffered && (
+                <option value={cl.locationId ?? ''}>
+                  {cl.locationCode ?? '?'} · {cl.locationName ?? '?'} · {t('statusArchived')}
+                </option>
+              )}
+              {linkableLocations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.code} · {l.name} · {l.companyName}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('address')}>
+            <input name="address" defaultValue={cl.address ?? ''} className={`${inputCls} min-w-[10rem]`} />
+          </Field>
+          <Field label={t('remarks')}>
+            <input name="remarks" defaultValue={cl.remarks ?? ''} className={`${inputCls} min-w-[8rem]`} />
+          </Field>
+          <span className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+            <span className="uppercase tracking-wide">{t('usedBy')}</span>
+            {usedBy(cl)}
+          </span>
+          <span className="pb-2 text-xs text-muted-foreground">{t('assignedCount', { count: cl.assignedCount })}</span>
+          <button className={btnGhost}>{t('save')}</button>
+        </form>
+        <div className="flex gap-2">
+          {cl.archivedAt ? (
+            <form action={restoreClockingLocationAction}>
+              <input type="hidden" name="clockingLocationId" value={cl.id} />
+              <button className={btnGhost}>{t('restore')}</button>
+            </form>
+          ) : (
+            <form action={archiveClockingLocationAction}>
+              <input type="hidden" name="clockingLocationId" value={cl.id} />
+              <button className={btnGhost}>{t('archive')}</button>
+            </form>
+          )}
+          <form action={deleteClockingLocationAction}>
+            <input type="hidden" name="clockingLocationId" value={cl.id} />
+            <ConfirmSubmit
+              title={t('deleteConfirmTitle')}
+              description={t('deleteConfirmDescription', { name: cl.name })}
+              confirmLabel={t('delete')}
+              size="sm"
+              variant="ghost"
+            >
+              {t('delete')}
+            </ConfirmSubmit>
+          </form>
+        </div>
+      </li>
+    );
+  };
+  const renderRow = groupAdmin ? pointRow : readOnlyPointRow;
 
   return (
     <div className={pageWideCls}>
@@ -256,236 +436,140 @@ export default async function LocationsPage({
       <p className="px-1 text-xs text-muted-foreground">{t('stateNote')}</p>
 
       {/* ADR-0070 — Clocking Location Management. Deliberately a SEPARATE register from the holiday-calendar
-          locations above (see ADR-0070 §1). Plain numeric lat/lng inputs — a map picker is Phase 2. */}
+          locations above (see ADR-0070 §1). f9afd1ce — ONE tenant-level block, not one per company: a
+          clocking location is created once and available to every company. Plain numeric lat/lng inputs —
+          a map picker is Phase 2 and its own item. */}
       <div className="pt-2">
         <PageHeader title={t('clockingHeading')} description={t('clockingDescription')} />
       </div>
-      {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
-      ) : (
-        visible.map((c) => {
-          const rows = clockingByCompany.get(c.id) ?? [];
-          // The location headers this company groups its points under. Archived locations still appear IF
-          // they hold points, so an archived site's history stays reachable; otherwise only live ones.
-          const companyLocations = (byCompany.get(c.id) ?? []).filter(
-            (l) => !l.archivedAt || (clockingByLocation.get(l.id) ?? []).length > 0,
-          );
-          const orphans = (clockingByLocation.get(null) ?? []).filter((cl) => cl.companyId === c.id);
-          // Only LIVE locations can take a new point (the service rejects an archived one), so the create
-          // form's picker and the "no locations at all" empty state both read from this list.
-          const assignableLocations = (byCompany.get(c.id) ?? []).filter((l) => !l.archivedAt);
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('clockingSharedTitle')} count={clockingLocations.length} />
 
-          /** One clocking point: the inline edit form plus its archive / restore / delete controls. */
-          const pointRow = (cl: (typeof rows)[number]) => (
-            <li
-              key={cl.id}
-              className={`flex flex-wrap items-end gap-2 border-t border-border px-4 py-3 ${cl.archivedAt ? 'opacity-60' : ''}`}
-            >
-              <form action={updateClockingLocationAction} className="flex flex-1 flex-wrap items-end gap-2">
-                <input type="hidden" name="clockingLocationId" value={cl.id} />
-                {/* The point keeps its OWN name. The spec asked for the name to be pulled read-only from
-                    the linked location, but its own multi-point example calls them "HQ — North Gate" and
-                    "HQ — South Gate", which are not the location's name. The business half of the plan
-                    records that reading explicitly. */}
-                <Field label={t('name')}>
-                  <input name="name" defaultValue={cl.name} required className={`${inputCls} min-w-[10rem]`} />
-                </Field>
-                <Field label={t('lat')}>
-                  <input name="lat" type="number" step="any" defaultValue={cl.lat} required className={`${inputCls} w-28`} />
-                </Field>
-                <Field label={t('lng')}>
-                  <input name="lng" type="number" step="any" defaultValue={cl.lng} required className={`${inputCls} w-28`} />
-                </Field>
-                {/* 1fff489c — the allowed distance, per site. Required by the form AND by the service;
-                    min=1 is the DB CHECK, and the 10..5000 advisory is a toast, never a block. */}
-                <Field label={t('radius')}>
-                  <input
-                    name="radiusM"
-                    type="number"
-                    min={1}
-                    step={1}
-                    defaultValue={cl.radiusM ?? ''}
-                    required
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                <Field label={t('clockingLocationLink')}>
-                  <select
-                    name="locationId"
-                    defaultValue={cl.locationId ?? ''}
-                    required
-                    className={`${inputCls} min-w-[10rem]`}
-                  >
-                    <option value="">{t('clockingLocationPick')}</option>
-                    {assignableLocations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.code} · {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('address')}>
-                  <input name="address" defaultValue={cl.address ?? ''} className={`${inputCls} min-w-[10rem]`} />
-                </Field>
-                <Field label={t('remarks')}>
-                  <input name="remarks" defaultValue={cl.remarks ?? ''} className={`${inputCls} min-w-[8rem]`} />
-                </Field>
-                <span className="pb-2 text-xs text-muted-foreground">{t('assignedCount', { count: cl.assignedCount })}</span>
-                <button className={btnGhost}>{t('save')}</button>
-              </form>
-              <div className="flex gap-2">
-                {cl.archivedAt ? (
-                  <form action={restoreClockingLocationAction}>
-                    <input type="hidden" name="clockingLocationId" value={cl.id} />
-                    <button className={btnGhost}>{t('restore')}</button>
-                  </form>
-                ) : (
-                  <form action={archiveClockingLocationAction}>
-                    <input type="hidden" name="clockingLocationId" value={cl.id} />
-                    <button className={btnGhost}>{t('archive')}</button>
-                  </form>
-                )}
-                <form action={deleteClockingLocationAction}>
-                  <input type="hidden" name="clockingLocationId" value={cl.id} />
-                  <ConfirmSubmit
-                    title={t('deleteConfirmTitle')}
-                    description={t('deleteConfirmDescription', { name: cl.name })}
-                    confirmLabel={t('delete')}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {t('delete')}
-                  </ConfirmSubmit>
-                </form>
-              </div>
-            </li>
-          );
+        {!groupAdmin && (
+          <p className="border-t border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+            {t('sharedManagedByGroupAdmin')}
+          </p>
+        )}
 
-          return (
-            <Card key={`clocking-${c.id}`} className="overflow-hidden">
-              <SectionHeader title={c.name} count={rows.length} />
+        {clockingLocations.length === 0 && groups.length === 0 && (
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t('noSharedSites')}</p>
+        )}
 
-              {/* EMPTY STATE 1 of 4 (spec section E): this company has no LIVE locations, so there is
-                  nothing to file a clocking point under and the create form below cannot be completed.
-                  Shown alongside any groups rather than instead of them — a company whose only locations
-                  are archived-but-still-holding-points must still see those points to fix them. */}
-              {assignableLocations.length === 0 && (
-                <p className="px-4 py-3 text-sm text-muted-foreground">{t('noLocationsForCompany')}</p>
-              )}
-              {(companyLocations.length > 0 || orphans.length > 0) && (
-                <div className="space-y-3 p-4">
-                  {companyLocations.map((l) => {
-                    const points = clockingByLocation.get(l.id) ?? [];
-                    return (
-                      <div key={l.id} className="overflow-hidden rounded-lg border border-border">
-                        <div className="flex flex-wrap items-center gap-2 bg-muted px-3 py-2 text-sm font-medium">
-                          <span>
-                            {l.code} · {l.name}
-                          </span>
-                          <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                            {l.branch ? t('branchPill', { branch: l.branch }) : t('branchPillUnmapped')}
-                          </span>
-                          <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                            {l.archivedAt ? t('statusArchived') : t('statusActive')}
-                          </span>
-                        </div>
-                        {points.length === 0 ? (
-                          /* EMPTY STATE 3 of 4: the location exists but nobody has dropped a gate under
-                             it, so nobody can clock in at this site however it is assigned. The mockup
-                             puts the way OUT of the empty state inside it — the link jumps to the create
-                             form below with this location already picked (a GET; nothing is written). An
-                             empty group is always a LIVE location, so the form it targets is always
-                             rendered (see the companyLocations filter above). */
-                          <p className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                            {t('groupNoPoints')}
-                            {/* btnGhost's tokens at this row's xs scale — the mockup draws a small
-                                bordered button here, and h-9 would double the height of the row. */}
-                            <Link
-                              href={`/admin/locations?addPoint=${l.id}#clocking-form-${c.id}`}
-                              className="inline-flex h-7 items-center rounded-md border border-input px-2 text-xs font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground"
-                            >
-                              {t('addPointCta')}
-                            </Link>
-                          </p>
-                        ) : (
-                          <ul>{points.map(pointRow)}</ul>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Only reachable for a row written before migration 0419 — none exist. Rendered rather
-                      than filtered so such a point can be edited back into a group instead of vanishing. */}
-                  {orphans.length > 0 && (
-                    <div className="overflow-hidden rounded-lg border border-dashed border-border">
-                      <div className="bg-muted px-3 py-2 text-sm font-medium">{t('unlinkedGroupTitle')}</div>
-                      <ul>{orphans.map(pointRow)}</ul>
-                    </div>
-                  )}
+        {(groups.length > 0 || linkedOutOfScope.length > 0 || unlinked.length > 0) && (
+          <div className="space-y-3 p-4">
+            {groups.map((g) => (
+              <div key={g.id} className="overflow-hidden rounded-lg border border-border">
+                <div className="flex flex-wrap items-center gap-2 bg-muted px-3 py-2 text-sm font-medium">
+                  <span>
+                    {g.code} · {g.name}
+                    {g.companyName ? ` · ${g.companyName}` : ''}
+                  </span>
+                  <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                    {g.archived ? t('statusArchived') : t('statusActive')}
+                  </span>
                 </div>
-              )}
+                {g.rows.length === 0 ? (
+                  /* EMPTY STATE (spec section E, state 3): the location exists but nobody has dropped a
+                     gate under it, so nobody can clock in at THIS site however it is assigned. The way
+                     OUT of the empty state sits inside it — for a group admin, the link jumps to the
+                     create form below with this location already picked (a GET; nothing is written).
+                     A company admin has no form to jump to, so they get the sentence alone. */
+                  <p className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                    {t('groupNoPoints')}
+                    {groupAdmin && (
+                      /* btnGhost's tokens at this row's xs scale — the mockup draws a small bordered
+                         button here, and h-9 would double the height of the row. */
+                      <Link
+                        href={`/admin/locations?addPoint=${g.id}#clocking-form`}
+                        className="inline-flex h-7 items-center rounded-md border border-input px-2 text-xs font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground"
+                      >
+                        {t('addPointCta')}
+                      </Link>
+                    )}
+                  </p>
+                ) : (
+                  <ul>{g.rows.map(renderRow)}</ul>
+                )}
+              </div>
+            ))}
 
-              {assignableLocations.length > 0 && (
-                <form
-                  action={createClockingLocationAction}
-                  id={`clocking-form-${c.id}`}
-                  // THE KEY IS LOAD-BEARING, not decoration. The Location <select> below is
-                  // UNCONTROLLED (defaultValue, no value), and "Add a clocking point" is a next/link
-                  // SOFT navigation to the same route — so React reuses this form at the same tree
-                  // position and never re-applies defaultValue (react-dom's update path skips
-                  // updateOptions when value == null). Without a key the pre-pick silently no-ops on
-                  // the exact path users take, and works only after a hard reload. Every other
-                  // searchParams-driven form in this repo carries one: /admin/attendance
-                  // key={editing?.id ?? 'new'}, pay-components/new, payroll-cycle, claims. Same
-                  // failure the entitlement bands editor shipped with (4a1abc4a).
-                  key={addPoint ?? 'new'}
-                  className="grid scroll-mt-6 grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-7"
-                >
-                  <input type="hidden" name="companyId" value={c.id} />
-                  <Field label={t('name')}>
-                    <input name="name" required placeholder={t('clockingNamePlaceholder')} className={inputCls} />
-                  </Field>
-                  <Field label={t('clockingLocationLink')}>
-                    {/* Pre-picked when the admin arrived from an empty group's "Add a clocking point"
-                        link, and only ever to a location THIS form can accept. */}
-                    <select
-                      name="locationId"
-                      defaultValue={assignableLocations.some((l) => l.id === addPoint) ? addPoint : ''}
-                      required
-                      className={inputCls}
-                    >
-                      <option value="">{t('clockingLocationPick')}</option>
-                      {assignableLocations.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.code} · {l.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label={t('lat')}>
-                    <input name="lat" type="number" step="any" required placeholder="3.1390" className={inputCls} />
-                  </Field>
-                  <Field label={t('lng')}>
-                    <input name="lng" type="number" step="any" required placeholder="101.6869" className={inputCls} />
-                  </Field>
-                  <Field label={t('radius')}>
-                    <input name="radiusM" type="number" min={1} step={1} required placeholder="150" className={inputCls} />
-                  </Field>
-                  <Field label={t('address')}>
-                    <input name="address" className={inputCls} />
-                  </Field>
-                  <Field label={t('remarks')}>
-                    <input name="remarks" className={inputCls} />
-                  </Field>
-                  <div>
-                    <button className={btnPrimary}>{t('add')}</button>
-                  </div>
-                </form>
-              )}
-            </Card>
-          );
-        })
-      )}
+            {/* Linked to a location this caller cannot see: `location` is admin-only-read per company,
+                this register is tenant-wide. Rendered as its own group so a company admin never reads a
+                sister company's site as "unlinked". */}
+            {linkedOutOfScope.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-dashed border-border">
+                <div className="bg-muted px-3 py-2 text-sm font-medium">{t('linkedOutOfScopeGroupTitle')}</div>
+                <ul>{linkedOutOfScope.map(renderRow)}</ul>
+              </div>
+            )}
+
+            {/* f9afd1ce — the link is OPTIONAL now, so this group is a normal home, not a legacy net. */}
+            {unlinked.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-dashed border-border">
+                <div className="bg-muted px-3 py-2 text-sm font-medium">{t('unlinkedGroupTitle')}</div>
+                <ul>{unlinked.map(renderRow)}</ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {groupAdmin && (
+          <form
+            action={createClockingLocationAction}
+            id="clocking-form"
+            // THE KEY IS LOAD-BEARING, not decoration. The Location <select> below is
+            // UNCONTROLLED (defaultValue, no value), and "Add a clocking point" is a next/link
+            // SOFT navigation to the same route — so React reuses this form at the same tree
+            // position and never re-applies defaultValue (react-dom's update path skips
+            // updateOptions when value == null). Without a key the pre-pick silently no-ops on
+            // the exact path users take, and works only after a hard reload. Every other
+            // searchParams-driven form in this repo carries one: /admin/attendance
+            // key={editing?.id ?? 'new'}, pay-components/new, payroll-cycle, claims. Same
+            // failure the entitlement bands editor shipped with (4a1abc4a).
+            key={addPoint ?? 'new'}
+            className="grid scroll-mt-6 grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-7"
+          >
+            <Field label={t('name')}>
+              <input name="name" required placeholder={t('clockingNamePlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('clockingLocationLinkOptional')}>
+              {/* Pre-picked when the admin arrived from an empty group's "Add a clocking point" link,
+                  and only ever to a location this form can accept. Every LIVE location the caller can
+                  see, across companies — the link is optional and not company-bound. */}
+              <select
+                name="locationId"
+                defaultValue={linkableLocations.some((l) => l.id === addPoint) ? addPoint : ''}
+                className={inputCls}
+              >
+                <option value="">{t('clockingLocationNone')}</option>
+                {linkableLocations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.code} · {l.name} · {l.companyName}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('lat')}>
+              <input name="lat" type="number" step="any" required placeholder="3.1390" className={inputCls} />
+            </Field>
+            <Field label={t('lng')}>
+              <input name="lng" type="number" step="any" required placeholder="101.6869" className={inputCls} />
+            </Field>
+            <Field label={t('radius')}>
+              <input name="radiusM" type="number" min={1} step={1} required placeholder="150" className={inputCls} />
+            </Field>
+            <Field label={t('address')}>
+              <input name="address" className={inputCls} />
+            </Field>
+            <Field label={t('remarks')}>
+              <input name="remarks" className={inputCls} />
+            </Field>
+            <div>
+              <button className={btnPrimary}>{t('add')}</button>
+            </div>
+          </form>
+        )}
+      </Card>
       <p className="px-1 text-xs text-muted-foreground">{t('clockingNote')}</p>
       <p className="px-1 text-xs text-muted-foreground">{t('radiusNote')}</p>
     </div>

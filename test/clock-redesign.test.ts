@@ -246,7 +246,6 @@ describe('attendancePunchesForRange — per-punch matched site + coordinates (af
     // company. Neither is what this test is about; both are supplied so the punch path still runs.
     const { id: locationId } = await createLocation(a, { companyId: b.companyId, code: 'MCH', name: 'Menara Chin Hin' });
     const { id: site } = await createClockingLocation(a, {
-      companyId: b.companyId,
       name: 'MENARA CHIN HIN',
       lat: HQ.lat,
       lng: HQ.lng,

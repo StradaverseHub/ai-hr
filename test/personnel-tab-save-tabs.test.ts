@@ -457,7 +457,6 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       const a = adminCtx(base);
       const loc = await createLocation(a, { companyId: base.companyId, code: 'SITE1', name: 'HQ' });
       const siteA = await createClockingLocation(a, {
-        companyId: base.companyId,
         name: 'Gate A',
         lat: 3.1,
         lng: 101.6,
@@ -465,7 +464,6 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
         locationId: loc.id,
       });
       const siteB = await createClockingLocation(a, {
-        companyId: base.companyId,
         name: 'Gate B',
         lat: 3.2,
         lng: 101.7,
