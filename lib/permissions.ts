@@ -569,7 +569,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'scopedAdmin',
     routes: ['/admin/attendance-allowance'],
   },
-  { screenKey: 'locations', href: '/admin/locations', labelKey: 'nav.locations', guard: 'requireAdmin', routes: ['/admin/locations'] },
+  {
+    screenKey: 'locations',
+    href: '/admin/locations',
+    labelKey: 'nav.locations',
+    guard: 'requireAdmin',
+    // f9afd1ce rev 2 (r267): a clocking location is added and edited on a page of its own (the loans
+    // list + new + [id] shape below) — same requireAdmin guard as the list, same screen column, no new
+    // grant. The page renders read-only for a company-scoped admin exactly as the list does; write
+    // authority is the group administrator's (core/clocking-location.ts assertGroupAdmin + RLS).
+    routes: ['/admin/locations', '/admin/locations/clocking/new', '/admin/locations/clocking/[id]'],
+  },
   // a324a4b3: nav.toilPolicy → nav.timeOffInLieu ("Time off in lieu", the page's own title). screenKey unchanged.
   { screenKey: 'toilPolicy', href: '/admin/toil', labelKey: 'nav.timeOffInLieu', guard: 'requireAdmin', routes: ['/admin/toil'] },
   {

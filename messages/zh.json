@@ -8075,7 +8075,19 @@
       "noSharedSites": "尚无共享打卡地点。",
       "clockingNameTaken": "已存在名为“{name}”的打卡地点。名称在所有公司间唯一——每个实际地点一条记录——请编辑该记录或改用其他名称。",
       "usedByManaged": "使用方（您管理的公司）",
-      "assignedCountManaged": "您管理的公司中已分配 {count} 人"
+      "assignedCountManaged": "您管理的公司中已分配 {count} 人",
+      "reportLabel": "地点报表标签",
+      "reportLabelHint": "报表标签是考勤报表“打卡地点”列中代替全名打印的内容。留空则使用名称。",
+      "addClocking": "添加打卡地点",
+      "edit": "编辑",
+      "newClockingTitle": "新建打卡地点",
+      "editClockingTitle": "编辑打卡地点",
+      "backToLocations": "返回地点",
+      "sectionInfo": "地点信息",
+      "sectionGps": "GPS 与打卡设置",
+      "radiusMetresLabel": "打卡半径（米）",
+      "cancel": "取消",
+      "saved": "打卡地点已保存。"
     },
     "systemLabelsTabs": {
       "organisation": "组织标签",

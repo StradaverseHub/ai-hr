@@ -8075,7 +8075,19 @@
       "noSharedSites": "Belum ada lokasi daftar masuk dikongsi.",
       "clockingNameTaken": "Lokasi daftar masuk bernama “{name}” sudah wujud. Nama adalah unik merentas semua syarikat — satu rekod bagi setiap tempat fizikal — jadi sunting rekod itu atau pilih nama lain.",
       "usedByManaged": "Digunakan oleh (syarikat yang anda uruskan)",
-      "assignedCountManaged": "{count} ditetapkan dalam syarikat yang anda uruskan"
+      "assignedCountManaged": "{count} ditetapkan dalam syarikat yang anda uruskan",
+      "reportLabel": "Label laporan lokasi",
+      "reportLabelHint": "Label laporan ialah apa yang dicetak oleh laporan Kehadiran dalam lajur Lokasi Daftar Masuk menggantikan nama penuh. Biarkan kosong dan nama akan digunakan.",
+      "addClocking": "Tambah lokasi daftar masuk",
+      "edit": "Sunting",
+      "newClockingTitle": "Lokasi daftar masuk baharu",
+      "editClockingTitle": "Sunting lokasi daftar masuk",
+      "backToLocations": "Kembali ke Lokasi",
+      "sectionInfo": "Maklumat lokasi",
+      "sectionGps": "Tetapan GPS dan daftar masuk",
+      "radiusMetresLabel": "Radius daftar masuk (meter)",
+      "cancel": "Batal",
+      "saved": "Lokasi daftar masuk disimpan."
     },
     "systemLabelsTabs": {
       "organisation": "Label Organisasi",

@@ -4,7 +4,7 @@
  * a recorded generation is persisted as an append-only `statutory_report` artefact + domain event
  * (audit / idempotency / reproducibility). Filed per legal entity — RLS gates on is_admin_for.
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -1439,7 +1439,11 @@ export async function attendanceDailyReport(
         storedEarlyOutMinutes: attendance.earlyOutMinutes,
         remarks: attendance.remarks,
         geofenceStatus: attendance.checkInGeofenceStatus,
-        clockingLocationName: clockingLocation.name,
+        // f9afd1ce rev 2 (r267) — the REPORT LABEL, when the site has one, else the name. This is the ONE
+        // place the label is printed; the list, the profile and the clock screen keep the name. The
+        // service stores NULL for a blank label, and nullif() keeps a '' written any other way from
+        // printing as an empty cell (there is no CHECK on the column by design).
+        clockingLocationName: sql<string | null>`coalesce(nullif(${clockingLocation.reportLabel}, ''), ${clockingLocation.name})`,
         // Replacement leave (TOIL, ADR-0033): at most one accrual per employee+worked-date (unique index),
         // so the left join cannot multiply rows. daysCredited = replacement-leave days banked for THIS day.
         toilDaysCredited: toilAccrual.daysCredited,

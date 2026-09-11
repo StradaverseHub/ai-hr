@@ -444,6 +444,11 @@ export const clockingLocation = pgTable(
     locationId: uuid('location_id').references((): AnyPgColumn => location.id),
     address: text('address'),
     remarks: text('remarks'),
+    // f9afd1ce rev 2 (r267, migration 0461) — the SHORT name the Attendance report's Clocking Location
+    // column prints instead of the full site name. NULL means "print the name" (core/reporting.ts reads
+    // coalesce(report_label, name) for that one column and nothing else does). The service stores NULL
+    // for a blank label, so the rule lives where it is decided rather than in a CHECK.
+    reportLabel: text('report_label'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
