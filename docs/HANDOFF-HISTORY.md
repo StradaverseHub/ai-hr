@@ -1,3 +1,37 @@
+## r266 (2026-09-11) — benefit-scheme vocabulary, and Leave Config reorganised around its submenu. `main@583d3ce8`, no migration. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (190 pages), applied nothing (376 stays), restarted; service active, `GET /` 401; dry-run clean; `6aee1d91` and `10b59703` marked deployed (ref 583d3ce8). **Board after:** `f9afd1ce` came back CONTESTED (the screen itself did not change; rev 2 planned, see below); nothing else open.
+
+**Gate:** 822 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no per-batch rebuild; ONE
+real failure — `test/leave-generate-page.test.ts` still pinned the Run earned accrual year range on the
+types page after the dialog moved to Generate — guard updated, re-run green. `next build` clean.
+**The integration run on main also caught two guards asserting opposite things**: the r266 fix pass had
+aligned the `leaveApproval` SCREEN label with the menu row on a verifier's note, and the 645e67c4 guard
+pins that they stay DISTINCT (a render check once caught the silent rename of the access-grid screen).
+The earlier decision stands; the alignment was reverted by hand. Neither was visible to targeted runs.
+
+**`6aee1d91` — the mechanism stays; the words change.** "Employee eligibility" → "Benefit schemes" on both
+mounts (Scheme name / Entitlement table / Covers / Effective from; "One scheme for everyone this leave
+type is available to"); the approved explainer sentence at the top of tab 3; tab 2 byte-identical; a
+read-only note on the profile's Benefit Scheme card in both states; the apply refusal for an uncovered
+employee now says which of three things is true (`entitlementCoverageFor`, a read AFTER the refusal,
+never a change to the decision; self and on-behalf wordings); health says "no benefit scheme in force".
+Verify FIX FIRST on one string: the shared status label said "No benefit scheme covers you" on three HR
+screens — now impersonal ("Not covered by any benefit scheme"), the stale "Settings, Leave,
+Entitlements" path corrected, the profile links resolved through the map. **Still second person on
+purpose:** the My Leave breakdown sentence the plan promised verbatim; if HR reads that panel on the
+personnel page the voice there is a pre-existing defect needing a viewer-aware prop, not a string.
+**Not done, disclosed:** HR edit-by-request-id, approvals and cancellations still return the plain
+"Insufficient leave balance" (no employment in scope there).
+
+**`10b59703` — the submenu is the only navigation.** The nine-pill map row and the four header links are
+gone from every Leave Config screen; every heading is its submenu row with its own description
+(`leaveConfigPageHeader`); Entitlements has three tabs (Leave types / Entitlement tables / Configuration
+record) plus the Employee Balances link; Leave Adjustments three (Adjust balances / Balance record /
+Import leave data); Run earned accrual lives on Generate Entitlement with a pointer left in tab 3; the
+sidebar's `ownedSubpaths` keep the row lit on sub-tabs (the fly-out did NOT honour them before — three
+lines in `components/sidebar.tsx`); no route moved, all 14 old redirects resolve. **Decision:** eligibility
+rules stay with their tables, not under Company rules (a pointer only). Verify SHIP; `admin.leave.pageDescription`
+pruned as an orphan; a behavioural case now pins heading = row for all nine ids.
+
 ## r265 (2026-09-11) — the Shift arrangement page of its own, and holidays in a dialog with a changeable National / State. `main@90e84803`, no migration. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (190 pages), applied nothing (376 stays), restarted; service active, `GET /` 401; `a485afa1` and `def44f29` marked deployed (ref 90e84803).
 
 **Gate:** 820 files as TWELVE FOREGROUND BATCHES of 69 at `VITEST_MAX_WORKERS=3` **without the per-batch
