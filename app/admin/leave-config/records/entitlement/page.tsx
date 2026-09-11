@@ -133,8 +133,18 @@ export default async function LeaveConfigEntitlementRecordPage({
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-t align-top">
+                    {/* fe9c73bc — two more layers, written by scripts/reset-entitlement-configuration.ts:
+                        'template' (an entitlement table) and 'rule' (an eligibility rule). The first two
+                        render exactly as before; a layer this page does not know falls through to the
+                        policy label, as it always did. */}
                     <td className="whitespace-nowrap px-3 py-2">
-                      {r.layer === 'scheme' ? t('layerScheme') : t('layerPolicy')}
+                      {r.layer === 'scheme'
+                        ? t('layerScheme')
+                        : r.layer === 'template'
+                          ? t('layerTemplate')
+                          : r.layer === 'rule'
+                            ? t('layerRule')
+                            : t('layerPolicy')}
                     </td>
                     <td className="px-3 py-2">
                       {r.schemeName ?? dash}
@@ -153,10 +163,12 @@ export default async function LeaveConfigEntitlementRecordPage({
                     <td className="px-3 py-2">
                       {r.companyName ?? (r.layer === 'policy' ? t('allCompanies') : dash)}
                     </td>
+                    {/* "All grades" is a POLICY fact (a null grade there meant every grade). A template or
+                        rule row carries its scope in the Entitlement column instead, so it shows a dash. */}
                     <td className="px-3 py-2">
-                      {r.layer === 'scheme'
-                        ? (r.schemeGradeGroupName ?? dash)
-                        : (r.gradeName ?? t('allGrades'))}
+                      {r.layer === 'policy'
+                        ? (r.gradeName ?? t('allGrades'))
+                        : (r.schemeGradeGroupName ?? dash)}
                       {r.schemeGradeGroupMembers ? (
                         <span className="block text-xs text-muted-foreground">{r.schemeGradeGroupMembers}</span>
                       ) : null}

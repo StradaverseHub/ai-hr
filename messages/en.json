@@ -8403,6 +8403,8 @@
       "colNote": "Note",
       "layerScheme": "Benefit scheme",
       "layerPolicy": "Company / grade rule",
+      "layerTemplate": "Entitlement table",
+      "layerRule": "Eligibility rule",
       "allCompanies": "All companies (group default)",
       "allGrades": "All grades"
     },

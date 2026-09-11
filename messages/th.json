@@ -8403,6 +8403,8 @@
       "colNote": "หมายเหตุ",
       "layerScheme": "แผนสวัสดิการ",
       "layerPolicy": "กฎบริษัท / ระดับ",
+      "layerTemplate": "ตารางสิทธิ",
+      "layerRule": "กฎคุณสมบัติ",
       "allCompanies": "ทุกบริษัท (ค่าเริ่มต้นของกลุ่ม)",
       "allGrades": "ทุกระดับ"
     },

@@ -8403,6 +8403,8 @@
       "colNote": "备注",
       "layerScheme": "福利方案",
       "layerPolicy": "公司 / 职级规则",
+      "layerTemplate": "额度表",
+      "layerRule": "资格规则",
       "allCompanies": "全部公司（集团默认）",
       "allGrades": "全部职级"
     },

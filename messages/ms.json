@@ -8403,6 +8403,8 @@
       "colNote": "Nota",
       "layerScheme": "Skim faedah",
       "layerPolicy": "Peraturan syarikat / gred",
+      "layerTemplate": "Jadual kelayakan",
+      "layerRule": "Peraturan kelayakan",
       "allCompanies": "Semua syarikat (lalai kumpulan)",
       "allGrades": "Semua gred"
     },
