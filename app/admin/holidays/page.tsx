@@ -2,7 +2,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listHolidays, listHolidayYears } from '@/core/admin';
-import { countryPacks } from '@/localization/registry';
 import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { rowActionCls, rowActionMutedCls, rowActionsCls } from '@/components/settings-list';
 import { HolidayTabs } from '@/components/holiday-tabs';
@@ -10,6 +9,7 @@ import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { Pager } from '@/components/pager';
 import { deleteHolidayAction } from '../actions';
 import { HolidayDialog, type HolidayDialogFilter, type HolidayDialogLabels } from './holiday-dialog';
+import { holidayStatesByCountry } from './holiday-state-options';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -76,10 +76,9 @@ export default async function HolidaysPage({
   const countryOptions = countries.length ? countries : ['MY'];
   const defaultCountry = country ?? countryOptions[0];
   // def44f29 — the National / State vocabulary, per country, from the registered packs (rung 5b, D6): the
-  // island lists the states of whichever country is selected. A country with no pack lists none.
-  const statesByCountry: Record<string, string[]> = Object.fromEntries(
-    countryPacks().map((p) => [p.country, [...p.states]]),
-  );
+  // island lists the states of whichever country is selected. A country with no pack lists none. The
+  // helper is pinned against the pack's own list by test/holiday-dialog-shape.test.ts.
+  const statesByCountry = holidayStatesByCountry();
 
   // Hidden fields echo the active filter AND the page so actions land back in the same view. A server
   // action cannot read the address it was posted from, so anything that must survive a Save or Remove has

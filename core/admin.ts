@@ -1603,6 +1603,10 @@ export async function createHoliday(
   // the DB CHECK holiday_scope_excl; thrown here so the user gets a clear message before the constraint).
   if ([state, companyId, holidayGroupId].filter(Boolean).length > 1)
     throw new Error('A holiday is scoped to a state, a company, or a holiday group — pick at most one.');
+  // def44f29 — the label must be one of the country pack's states, exactly as updateHoliday requires. A
+  // row for a state no employee can resolve to reaches nobody, and the edit dialog would show it as
+  // national and silently clear it on the next Save; better refused at the door, in the same words.
+  if (state && !statesForCountries([country]).has(state)) throw new Error(`Unknown state “${state}”.`);
   return withTenant(ctx, async (tx) => {
     let companyName: string | null = null;
     if (companyId) {

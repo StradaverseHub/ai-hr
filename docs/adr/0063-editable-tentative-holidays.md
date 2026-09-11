@@ -46,3 +46,24 @@ landed (and the #15 completeness guard would warn that the state had fewer than 
 - Tentative is intentionally NOT a resolver input — leave/payroll behaviour is unchanged for both states of
   the flag. If a future requirement needs "exclude unconfirmed dates from payroll", that is a separate ADR.
 - Editing keeps scope fixed; a genuine scope change is still delete + recreate (its own create/delete events).
+
+## Amended 2026-09-11 (def44f29)
+
+Decision 2's "scope is immutable here" and the last consequence above are **reversed for the state axis
+only**. The reporter's complaint was exactly the delete-and-recreate this ADR prescribed: the Holidays
+screen offered no way to set National / State when adding, and no way to change it afterwards. Now:
+
+- `createHoliday` and `updateHoliday` both take `state` (`undefined` on update = unchanged; `null` or `''`
+  = national; a label = that state). A label is validated against the row's country pack
+  (`statesForCountries([country])`), on create and on update alike, so a dormant row for a state nobody
+  can resolve to cannot be written.
+- A row scoped to a business group (`companyId`) or a holiday group (`holidayGroupId`) is **refused** a
+  state with a plain sentence. The single-axis `holiday_scope_excl` CHECK is what made immutability cheap,
+  and it is kept by narrowing the change to the one axis the screen edits; for those rows, and for a change
+  of `country`, delete + recreate still applies (the dialog shows their scope fixed and Country read-only).
+- The `holiday.updated` payload's `after.state` is the NEW state (it copied `before.state` until now), so a
+  national ↔ state move is readable from the ledger. A move that collides with an existing row is a
+  `DuplicateError` naming the target scope.
+- UI: the inline row forms of Decision 4 are gone. Add and Edit open one dialog over the list
+  (`app/admin/holidays/holiday-dialog.tsx`) with National / State as a dropdown fed from the country pack's
+  state list; `createHolidayAction` / `updateHolidayAction` became the value-returning `saveHolidayAction`.

@@ -272,4 +272,13 @@ describe('def44f29 — National / State is editable on update', () => {
     await expect(updateHoliday(adminCtx(b), { id, state: 'Atlantis' })).rejects.toThrow(/Unknown state/);
     expect((await scopeOf(id)).s).toBeNull();
   });
+
+  it('createHoliday refuses the same unknown state, in the same words — no dormant row at the door', async () => {
+    // Verifier finding: create accepted any label while update refused it, so a forged POST could write a
+    // row that reaches nobody and that Edit would silently clear to national.
+    await expect(
+      createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'Nowhere Day', state: 'Atlantis' }),
+    ).rejects.toThrow(/^Unknown state “Atlantis”\.$/);
+    expect((await listHolidays(adminCtx(b), {})).find((h) => h.name === 'Nowhere Day')).toBeUndefined();
+  });
 });

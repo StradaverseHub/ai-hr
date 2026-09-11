@@ -29,6 +29,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { holidayStatesByCountry } from '../app/admin/holidays/holiday-state-options';
+import { MY_STATES } from '../localization/my/holidays';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -41,6 +43,7 @@ const rawPage = read('app/admin/holidays/page.tsx');
 const rawDialog = read('app/admin/holidays/holiday-dialog.tsx');
 const page = codeOnly(rawPage);
 const dialog = codeOnly(rawDialog);
+const helper = codeOnly(read('app/admin/holidays/holiday-state-options.ts'));
 const actions = codeOnly(read('app/admin/actions.ts'));
 const service = codeOnly(read('core/admin.ts'));
 
@@ -182,6 +185,9 @@ describe('def44f29 — Add / Edit holiday is a dialog over the list', () => {
     expect(update).toContain('if (before.companyId || before.holidayGroupId)');
     expect(update).toContain('business group or holiday group');
     expect(update).toContain('statesForCountries([before.country])');
+    // …and create validates against the same vocabulary, so no path writes a state the pack lacks.
+    const create = between(service, 'export async function createHoliday(', 'export async function updateHoliday(', 'createHoliday');
+    expect(create).toContain('statesForCountries([country])');
     // …and the audit payload carries the NEW state (it used to copy before.state on both sides).
     expect(update).toMatch(/after = \{[\s\S]*?state: nextState !== undefined \? nextState : before\.state,/);
     expect(update).not.toMatch(/after: \{[\s\S]*?state: before\.state/);
@@ -189,14 +195,24 @@ describe('def44f29 — Add / Edit holiday is a dialog over the list', () => {
     expect(page).toContain('fixedScope={fixedScopeOf(h)}');
   });
 
-  it('6. the state list comes from the country pack, never a hand-typed copy', () => {
-    expect(page).toContain("from '@/localization/registry'");
-    expect(page).toContain('countryPacks()');
-    for (const src of [page, dialog]) {
+  it('6. the state list comes from the country pack, never a hand-typed copy — and it is the WHOLE list', () => {
+    // The page reads the list through its own helper module (a page file may export nothing extra), and
+    // the helper reads the registry.
+    expect(page).toContain("from './holiday-state-options'");
+    expect(page).toMatch(/const statesByCountry = holidayStatesByCountry\(\)/);
+    expect(page).toMatch(/statesByCountry=\{statesByCountry\}/);
+    expect(helper).toContain("from '@/localization/registry'");
+    expect(helper).toContain('countryPacks()');
+    for (const src of [page, dialog, helper]) {
       expect(src).not.toMatch(/'Sabah'|'Sarawak'|'Selangor'|'Kuala Lumpur'/);
       expect(src).not.toContain('MY_STATES');
     }
-    expect(page).toMatch(/statesByCountry=\{statesByCountry\}/);
+    // BEHAVIOURAL, not a source pin: what the page actually hands the dialog for MY is the pack's list,
+    // entry for entry and in the pack's order. A slice, a filter or a stale copy fails here — the
+    // verifier showed that slicing the list to three states passed every source guard.
+    const offered = holidayStatesByCountry();
+    expect(offered.MY).toEqual([...MY_STATES]);
+    expect(offered.MY).toHaveLength(16);
   });
 
   it('7. the filter rides inside the dialog and holidaysPath reads exactly those fields', () => {
