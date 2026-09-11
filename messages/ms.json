@@ -7394,7 +7394,16 @@
       "inactiveBadge": "Tidak aktif",
       "nationalStateColumn": "Kebangsaan / Negeri",
       "statusLabel": "Status",
-      "actionLabel": "Tindakan"
+      "actionLabel": "Tindakan",
+      "editTitle": "Sunting cuti",
+      "editHint": "Ubah mana-mana butiran di sini dan Simpan. Negara kekal seperti yang direkodkan. Cuti dan kehadiran mengikut cuti yang disimpan secara automatik.",
+      "nationalStateLabel": "Kebangsaan / Negeri",
+      "nationalStateHint": "Kebangsaan terpakai kepada semua orang. Pilih negeri untuk mengenakan cuti ini hanya kepada kakitangan yang bekerja di negeri itu.",
+      "scopeFixedHint": "Cuti ini milik kumpulan perniagaan atau kumpulan cuti. Kebangsaan / Negeri tidak boleh ditukar di sini.",
+      "edit": "Sunting",
+      "cancel": "Batal",
+      "saving": "Menyimpan…",
+      "close": "Tutup"
     },
     "users": {
       "title": "Pengguna & peranan",

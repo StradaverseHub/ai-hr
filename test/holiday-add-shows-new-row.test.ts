@@ -8,34 +8,33 @@
  * got a success and an unchanged table — the product appearing to do nothing.
  *
  * WHY THIS IS A DATABASE TEST AND NOT A SOURCE ASSERTION. The claim spans three files that a unit test of
- * any one of them satisfies: the page posts filterPage/filterSize, the action decides the redirect, and
+ * any one of them satisfies: the page posts filterPage/filterSize, the action decides the address, and
  * the screen re-renders the list from that address. So each case here runs the REAL server action against
  * a real holiday master, then rebuilds the list exactly as app/admin/holidays/page.tsx does from the
- * address the action redirected to, and asks the only question that matters: IS THE ROW ON THAT PAGE.
+ * address the action answered with, and asks the only question that matters: IS THE ROW ON THAT PAGE.
  *
- * The redirect helpers are mocked the way test/entitlement-save-stay.test.ts mocks them — redirect()
- * throws in real Next.js to abort the request, so the sentinel carries the target path.
+ * def44f29 — the action RETURNS the address now instead of redirecting to it. Add and Edit moved into a
+ * dialog over the list (holiday-dialog.tsx), and a redirect would navigate the route out from under it;
+ * so saveHolidayAction answers `{ ok: true, path }` and the island navigates. The question this file asks
+ * is unchanged — the path just arrives as a value rather than as a thrown redirect. The refusal path is
+ * new and pinned here too: `{ ok: false, error }` and nothing written.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let actionCtx: import('../db/client').SessionContext | null = null;
-class RedirectError extends Error {
-  constructor(public path: string) {
-    super(`NEXT_REDIRECT:${path}`);
-  }
-}
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => actionCtx) }));
 vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => actionCtx) }));
 vi.mock('next/navigation', () => ({
+  // The save must never redirect (the dialog would lose its typing); make one loud if it ever does.
   redirect: (p: string): never => {
-    throw new RedirectError(p);
+    throw new Error(`NEXT_REDIRECT:${p}`);
   },
   notFound: vi.fn(() => undefined),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import { createHolidayAction, updateHolidayAction } from '../app/admin/actions';
+import { saveHolidayAction } from '../app/admin/actions';
 import { createHoliday, listHolidays } from '../core/admin';
 import { paginateRows, parsePageQuery } from '../lib/pagination';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -60,15 +59,11 @@ const form = (fields: Record<string, string>) => {
   return fd;
 };
 
-/** Run an action that ends in redirect() and hand back the address it sent the admin to. */
-async function capture(run: () => Promise<void>): Promise<string> {
-  try {
-    await run();
-  } catch (e) {
-    if (e instanceof RedirectError) return e.path;
-    throw e;
-  }
-  throw new Error('expected the action to redirect, but it did not');
+/** Run the save the way the dialog does and hand back the address it tells the island to navigate to. */
+async function save(fields: Record<string, string>): Promise<string> {
+  const result = await saveHolidayAction(null, form(fields));
+  if (!result.ok) throw new Error(`expected the save to succeed, it was refused: ${result.error}`);
+  return result.path;
 }
 
 /**
@@ -102,20 +97,17 @@ describe('adding a holiday shows the new row', () => {
     await seedCalendar();
     // The admin is on page one of the whole master and adds a holiday for NEXT year: ordered by date it
     // belongs at the very end, three pages away from the form they typed it into.
-    const path = await capture(() =>
-      createHolidayAction(
-        form({
-          name: 'Next-year holiday',
-          holidayDate: '2027-06-15',
-          holidayType: 'public',
-          country: 'MY',
-          active: 'on',
-          filterCountry: '',
-          filterYear: '',
-          filterPage: '0',
-        }),
-      ),
-    );
+    const path = await save({
+      name: 'Next-year holiday',
+      holidayDate: '2027-06-15',
+      holidayType: 'public',
+      country: 'MY',
+      state: '',
+      active: 'on',
+      filterCountry: '',
+      filterYear: '',
+      filterPage: '0',
+    });
 
     const all = await listHolidays(actionCtx!);
     const created = all.find((h) => h.name === 'Next-year holiday')!;
@@ -129,20 +121,17 @@ describe('adding a holiday shows the new row', () => {
 
   it('drops a year filter that would hide the new row, and keeps the country filter that would not', async () => {
     await seedCalendar();
-    const path = await capture(() =>
-      createHolidayAction(
-        form({
-          name: 'Filtered-out holiday',
-          holidayDate: '2027-03-01',
-          holidayType: 'public',
-          country: 'MY',
-          active: 'on',
-          filterCountry: 'MY',
-          filterYear: '2026',
-          filterPage: '1',
-        }),
-      ),
-    );
+    const path = await save({
+      name: 'Filtered-out holiday',
+      holidayDate: '2027-03-01',
+      holidayType: 'public',
+      country: 'MY',
+      state: '',
+      active: 'on',
+      filterCountry: 'MY',
+      filterYear: '2026',
+      filterPage: '1',
+    });
 
     const created = (await listHolidays(actionCtx!)).find((h) => h.name === 'Filtered-out holiday')!;
     expect(await rowsOnScreen(path)).toContain(created.id);
@@ -156,20 +145,17 @@ describe('adding a holiday shows the new row', () => {
     // Move the FIRST row of page one to the end of the calendar. Before this fix the admin was returned to
     // page one, where the row they had just edited was no longer present — an edit that reads as a delete.
     const moved = ids[0];
-    const path = await capture(() =>
-      updateHolidayAction(
-        form({
-          id: moved,
-          holidayDate: '2027-12-31',
-          name: 'Day 0',
-          holidayType: 'public',
-          active: 'on',
-          filterCountry: '',
-          filterYear: '',
-          filterPage: '0',
-        }),
-      ),
-    );
+    const path = await save({
+      id: moved,
+      holidayDate: '2027-12-31',
+      name: 'Day 0',
+      holidayType: 'public',
+      state: '',
+      active: 'on',
+      filterCountry: '',
+      filterYear: '',
+      filterPage: '0',
+    });
     expect(await rowsOnScreen(path)).toContain(moved);
   });
 
@@ -177,24 +163,76 @@ describe('adding a holiday shows the new row', () => {
     const ids = await seedCalendar();
     // Row 30 sits on page two. Renaming it must not move the admin — the round trip this round shipped.
     const stayed = ids[30];
-    const path = await capture(() =>
-      updateHolidayAction(
-        form({
-          id: stayed,
-          holidayDate: '2026-01-31',
-          name: 'Renamed in place',
-          holidayType: 'public',
-          active: 'on',
-          filterCountry: '',
-          filterYear: '',
-          filterPage: '1',
-        }),
-      ),
-    );
+    const path = await save({
+      id: stayed,
+      holidayDate: '2026-01-31',
+      name: 'Renamed in place',
+      holidayType: 'public',
+      state: '',
+      active: 'on',
+      filterCountry: '',
+      filterYear: '',
+      filterPage: '1',
+    });
     expect(path).toContain('page=1');
     expect(await rowsOnScreen(path)).toContain(stayed);
     // The reader chose no rows-per-page, so the address must not claim they did (the hidden field carries
     // the resolved default whether or not anyone picked it).
     expect(path).not.toContain('size=');
+  });
+});
+
+describe('def44f29 — the save answers the dialog instead of redirecting', () => {
+  it('a state chosen in the dialog reaches the row, on Add and on Edit', async () => {
+    const ids = await seedCalendar();
+    await save({
+      name: 'Pesta Kaamatan',
+      holidayDate: '2026-05-30',
+      holidayType: 'public',
+      country: 'MY',
+      state: 'Sabah',
+      active: 'on',
+      filterCountry: '',
+      filterYear: '',
+      filterPage: '0',
+    });
+    await save({
+      id: ids[0],
+      holidayDate: '2026-01-01',
+      name: 'Day 0',
+      holidayType: 'public',
+      state: 'Sarawak',
+      active: 'on',
+      filterCountry: '',
+      filterYear: '',
+      filterPage: '0',
+    });
+    const all = await listHolidays(actionCtx!);
+    expect(all.find((h) => h.name === 'Pesta Kaamatan')?.state).toBe('Sabah');
+    expect(all.find((h) => h.id === ids[0])?.state).toBe('Sarawak');
+  });
+
+  it('a refused save returns the reason, writes nothing, and never redirects', async () => {
+    await seedCalendar();
+    // Day 0 already sits on 2026-01-01 at national scope: a second national holiday there is a duplicate.
+    const result = await saveHolidayAction(
+      null,
+      form({
+        name: 'Duplicate New Year',
+        holidayDate: '2026-01-01',
+        holidayType: 'public',
+        country: 'MY',
+        state: '',
+        active: 'on',
+        filterCountry: '',
+        filterYear: '',
+        filterPage: '0',
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('unreachable');
+    // The service's own words — what the dialog paints, and what the admin reads.
+    expect(result.error).toMatch(/2026-01-01 already exists/);
+    expect(await listHolidays(actionCtx!)).toHaveLength(60);
   });
 });

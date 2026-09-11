@@ -961,62 +961,69 @@ async function holidayFollowPath(
   return holidaysPath(formData, { country, year, page });
 }
 
-export async function createHolidayAction(formData: FormData) {
-  const s = await getSession();
-  const path = holidaysPath(formData);
+/** What a holiday save tells the dialog (def44f29). Returned, never redirected — see saveHolidayAction. */
+export type HolidaySaveResult = { ok: true; path: string } | { ok: false; error: string };
+
+/**
+ * def44f29 — Add or Edit a holiday from the dialog over the list (app/admin/holidays/holiday-dialog.tsx).
+ * One action for both: no `id` posted means an insert, an `id` means an update of that row. It REPLACED
+ * createHolidayAction + updateHolidayAction, which redirected — the shape the movement-type dialog
+ * (1b87e8a0) retired for the same reason: a redirect navigates the route out from under an open dialog,
+ * and on a REFUSAL (a duplicate date, a state the pack does not know, a scope the row cannot take) it
+ * would close the dialog and throw away everything the admin had typed. Returning `{ ok: false, error }`
+ * keeps the dialog open with the typing intact and paints the reason inside it.
+ *
+ * ON SUCCESS THE PATH COMES BACK instead of being redirected to, and the island navigates there itself.
+ * It is the same holidayFollowPath the redirect used to carry (9da61c86: land on the page that SHOWS the
+ * row, dropping only a filter that would hide it), so adding next year's holiday from page 1 still puts
+ * the new row in front of the admin. The hidden filter fields (filterCountry / filterYear / filterPage /
+ * filterSize) travel inside the dialog's form for that reason — holidaysPath reads them from formData.
+ *
+ * NATIONAL / STATE. `state` posted as '' means national; a state label means that state. NOT POSTED AT ALL
+ * means "leave it alone": the edit dialog omits the field on a business-group / holiday-group row, whose
+ * scope is fixed — and updateHoliday refuses a change on such a row independently, so a forged field
+ * cannot get past this presence check. On an insert an absent field is simply national.
+ *
+ * 66b8f5a8 / 3e831868 — Holiday Code + Description are not collected: omitting them makes the service
+ * PRESERVE their stored values (updateHoliday treats undefined as "leave unchanged").
+ *
+ * `requireAdmin()` stays OUTSIDE the try: a caller with no admin role is not a message to paint in a
+ * dialog, it is a request that must fail.
+ */
+export async function saveHolidayAction(
+  _prev: HolidaySaveResult | null,
+  formData: FormData,
+): Promise<HolidaySaveResult> {
+  const s = await requireAdmin();
+  const id = String(formData.get('id') ?? '').trim();
   const country = String(formData.get('country') ?? 'MY');
   const holidayDate = String(formData.get('holidayDate') ?? '');
-  let createdId = '';
-  // 66b8f5a8 — the simplified Holiday-master form no longer collects Scope / State / Business-group /
-  // Holiday-group. Every holiday added here is a plain national-country master record; the scope columns
-  // stay in the DB (backward compatible) but default to null. The form now collects the master fields.
-  // 3e831868 — Holiday Code + Description are no longer collected in the UI; the nullable columns stay in
-  // the DB (backward compatible) and simply default to null on new rows.
+  const state = formData.has('state') ? String(formData.get('state') ?? '').trim() || null : undefined;
+  const fields = {
+    holidayDate,
+    name: String(formData.get('name') ?? ''),
+    holidayType: String(formData.get('holidayType') ?? 'public'),
+    active: formData.get('active') === 'on',
+    // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
+    tentative: formData.get('tentative') === 'on',
+  };
+  let rowId = id;
   try {
-    const created = await createHoliday(s, {
-      country,
-      holidayDate,
-      name: String(formData.get('name') ?? ''),
-      holidayType: String(formData.get('holidayType') ?? 'public'),
-      active: formData.get('active') === 'on',
-      // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
-      tentative: formData.get('tentative') === 'on',
-    });
-    createdId = created.id;
+    if (id) {
+      await updateHoliday(s, { id, ...fields, state });
+    } else {
+      const created = await createHoliday(s, { country, ...fields, state: state ?? null });
+      rowId = created.id;
+    }
   } catch (e) {
-    fail(path, e);
+    return { ok: false, error: (e as Error).message };
   }
-  // Land on the page the new row is ON, not the page the form was posted from (the redirect stays OUTSIDE
-  // the try so its NEXT_REDIRECT is not caught as a failure).
-  ok(await holidayFollowPath(s, formData, createdId, country, holidayDate));
-}
-
-/** ADR-0063 + 66b8f5a8 + 3e831868: edit a holiday's date + name + type + active + tentative flag. Scope
- *  (state/company/holiday-group) stays fixed on existing rows. Holiday Code + Description are no longer
- *  edited from the UI — omitting them here makes the service PRESERVE their stored values (updateHoliday
- *  treats undefined as "leave unchanged"), so the removed columns keep their data. */
-export async function updateHolidayAction(formData: FormData) {
-  const s = await getSession();
-  const path = holidaysPath(formData);
-  const id = String(formData.get('id'));
-  const holidayDate = String(formData.get('holidayDate') ?? '');
-  try {
-    await updateHoliday(s, {
-      id,
-      holidayDate,
-      name: String(formData.get('name') ?? ''),
-      holidayType: String(formData.get('holidayType') ?? 'public'),
-      active: formData.get('active') === 'on',
-      tentative: formData.get('tentative') === 'on',
-    });
-  } catch (e) {
-    fail(path, e);
-  }
+  revalidatePath(HOLIDAYS);
   // Editing a DATE moves the row: the master is ordered by date, so a corrected holiday can leave the page
   // it was saved from (and, with a year filter on, the view entirely). Follow it — an edit that appears to
-  // delete the row is the same failure as an Add that appears to do nothing. Scope is immutable on update,
-  // so the country filter cannot be the one that hides it.
-  ok(await holidayFollowPath(s, formData, id, undefined, holidayDate));
+  // delete the row is the same failure as an Add that appears to do nothing. Country is fixed on update,
+  // so the country filter cannot be the one that hides an edited row.
+  return { ok: true, path: await holidayFollowPath(s, formData, rowId, id ? undefined : country, holidayDate) };
 }
 
 export async function deleteHolidayAction(formData: FormData) {

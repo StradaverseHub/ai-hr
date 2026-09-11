@@ -144,9 +144,11 @@ describe('editing a holiday returns to the page you were on', () => {
     // …and they are the values actually in use, not a hard-coded first page.
     expect(src).toMatch(/name="filterPage" value=\{String\(pq\.page\)\}/);
     expect(src).toMatch(/name="filterSize" value=\{String\(pq\.size\)\}/);
-    // Both maps must slice the SAME page: the detached edit forms and the rows that attach to them by
-    // `form=`. A form rendered for a row that is not on screen is a Save that does nothing.
-    expect([...src.matchAll(/pageRows\.map\(/g)]).toHaveLength(2);
+    // ONE map over the page's rows. It was two — the detached `form=` edit forms and the rows attaching
+    // to them had to slice the SAME page or a Save silently did nothing. def44f29 retired the detached
+    // forms (Edit opens a dialog carrying the row's own values), so the second map is gone and a second
+    // one appearing again is the old shape growing back.
+    expect([...src.matchAll(/pageRows\.map\(/g)]).toHaveLength(1);
     expect(src).not.toMatch(/\{holidays\.map\(/);
   });
 

@@ -103,14 +103,18 @@ describe('holiday master simplification (3e831868)', () => {
     expect(src).toContain("const HOLIDAY_TYPES = ['public', 'company', 'optional']");
   });
 
-  it('action source: create/update no longer read holidayCode / description', () => {
+  it('action source: the save no longer reads holidayCode / description', () => {
+    // def44f29 — createHolidayAction + updateHolidayAction became ONE value-returning saveHolidayAction
+    // (the dialog over the list). Same pin, new block: the slice must be non-empty, or a renamed action
+    // would make both negatives pass on an empty string.
     const src = read('app/admin/actions.ts');
-    const createBlock = src.slice(src.indexOf('createHolidayAction'), src.indexOf('updateHolidayAction'));
-    const updateBlock = src.slice(src.indexOf('export async function updateHolidayAction'), src.indexOf('deleteHolidayAction'));
-    for (const block of [createBlock, updateBlock]) {
-      expect(block).not.toMatch(/formData\.get\('holidayCode'\)/);
-      expect(block).not.toMatch(/formData\.get\('description'\)/);
-    }
+    const start = src.indexOf('export async function saveHolidayAction');
+    const end = src.indexOf('export async function deleteHolidayAction');
+    expect(start, 'saveHolidayAction exists').toBeGreaterThan(-1);
+    expect(end, 'deleteHolidayAction follows it').toBeGreaterThan(start);
+    const block = src.slice(start, end);
+    expect(block).not.toMatch(/formData\.get\('holidayCode'\)/);
+    expect(block).not.toMatch(/formData\.get\('description'\)/);
   });
 
   it('i18n: company relabelled to Replacement holiday; dropdown values unchanged; new keys in 6 locales', () => {

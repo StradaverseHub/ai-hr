@@ -7394,7 +7394,16 @@
       "inactiveBadge": "停用",
       "nationalStateColumn": "全国 / 州属",
       "statusLabel": "状态",
-      "actionLabel": "操作"
+      "actionLabel": "操作",
+      "editTitle": "编辑假期",
+      "editHint": "在此更改任何详情并保存。国家保持原记录。休假和考勤会自动跟随已保存的假期。",
+      "nationalStateLabel": "全国 / 州属",
+      "nationalStateHint": "全国适用于所有人。选择州属后，此假期仅适用于在该州工作的员工。",
+      "scopeFixedHint": "此假期属于业务集团或假期组。其全国 / 州属无法在此更改。",
+      "edit": "编辑",
+      "cancel": "取消",
+      "saving": "正在保存…",
+      "close": "关闭"
     },
     "users": {
       "title": "用户与角色",

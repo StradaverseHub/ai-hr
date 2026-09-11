@@ -7394,7 +7394,16 @@
       "inactiveBadge": "Inactive",
       "nationalStateColumn": "National / State",
       "statusLabel": "Status",
-      "actionLabel": "Action"
+      "actionLabel": "Action",
+      "editTitle": "Edit holiday",
+      "editHint": "Change any detail here and Save. Country stays as recorded. Leave and attendance follow the saved holiday automatically.",
+      "nationalStateLabel": "National / State",
+      "nationalStateHint": "National applies to everyone. Choose a state to apply this holiday only to staff working in that state.",
+      "scopeFixedHint": "This holiday belongs to a business group or holiday group. Its National / State cannot be changed here.",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "close": "Close"
     },
     "users": {
       "title": "Users & roles",
