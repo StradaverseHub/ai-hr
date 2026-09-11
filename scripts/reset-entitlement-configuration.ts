@@ -112,18 +112,6 @@ export const STAGES: readonly Stage[] = ['config', 'accruals'];
 /** The English catalogue the criteria words are labelled from — the product's own strings, off disk. */
 const EN_MESSAGES_PATH = fileURLToPath(new URL('../messages/en.json', import.meta.url));
 
-function loadEnv() {
-  try {
-    process.loadEnvFile('.env.production');
-  } catch {
-    try {
-      process.loadEnvFile('.env.local');
-    } catch {
-      // env supplied directly
-    }
-  }
-}
-
 /**
  * A Postgres uuid[] bound from a JS array. ⚠️ `sql`${ids}::uuid[]`` does NOT work — drizzle spreads the
  * array into one placeholder per element and Postgres answers `malformed array literal`. Found by
@@ -1016,17 +1004,30 @@ export function formatReport(r: EntitlementResetReport): string {
   return out.join('\n');
 }
 
+/** The shape a tenant id must have before it is handed to Postgres. `--tenant --stage=config` (the space
+ *  form with the value forgotten) would otherwise pass `--stage=config` as the id and die inside the
+ *  driver with a stack trace instead of a sentence. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 if (process.argv[1]?.endsWith('reset-entitlement-configuration.ts')) {
-  loadEnv();
+  // The env is NOT loaded here, and cannot be: db/client reads DATABASE_URL at import time, before any
+  // line of this file runs. Source it first, exactly as the header documents (set -a; . ./.env.production).
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) {
-    console.error('reset-entitlement-configuration requires MIGRATION_DATABASE_URL (owner role).');
+    console.error(
+      'reset-entitlement-configuration requires MIGRATION_DATABASE_URL (owner role). Source the env first:\n' +
+        '  cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts …',
+    );
     process.exit(1);
   }
   const tenantId = argOf('--tenant');
   const stageArg = argOf('--stage');
   const apply = process.argv.includes('--apply');
   const run = async () => {
+    if (tenantId && !UUID_SHAPE.test(tenantId)) {
+      console.error(`--tenant must be a uuid; got '${tenantId}'. Nothing was written.`);
+      process.exit(1);
+    }
     if (!tenantId) {
       if (apply || stageArg) {
         console.error('--tenant=<uuid> is required with --stage / --apply. Run without arguments for the survey.');
