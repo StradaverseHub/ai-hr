@@ -8394,6 +8394,7 @@
       "backToEntitlements": "返回额度配置",
       "colLayer": "配置于",
       "colScheme": "福利方案",
+      "colTemplateOrRule": "额度表 / 规则",
       "colLeaveType": "假期类型",
       "colCompany": "公司",
       "colGrade": "职级",

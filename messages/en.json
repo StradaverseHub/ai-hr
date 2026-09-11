@@ -8394,6 +8394,7 @@
       "backToEntitlements": "Back to Entitlements",
       "colLayer": "Configured in",
       "colScheme": "Benefit scheme",
+      "colTemplateOrRule": "Entitlement table / rule",
       "colLeaveType": "Leave type",
       "colCompany": "Company",
       "colGrade": "Grade",

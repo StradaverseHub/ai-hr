@@ -52,6 +52,10 @@ export default async function LeaveConfigEntitlementRecordPage({
   const rows = await listEntitlementResetArchive(s, { captureTag: chosen });
 
   const dash = '—';
+  // fe9c73bc — a capture written by the entitlement-configuration reset holds template / rule rows, whose
+  // first column is a table or rule NAME, not a benefit scheme. The header follows the rows on show; an
+  // older scheme / policy capture keeps reading "Benefit scheme" exactly as before.
+  const holdsTemplateOrRule = rows.some((r) => r.layer === 'template' || r.layer === 'rule');
   const csvHref = chosen
     ? `/admin/leave/entitlements/archive/export?capture=${encodeURIComponent(chosen)}`
     : '/admin/leave/entitlements/archive/export';
@@ -120,7 +124,7 @@ export default async function LeaveConfigEntitlementRecordPage({
               <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">{t('colLayer')}</th>
-                  <th className="px-3 py-2">{t('colScheme')}</th>
+                  <th className="px-3 py-2">{holdsTemplateOrRule ? t('colTemplateOrRule') : t('colScheme')}</th>
                   <th className="px-3 py-2">{t('colLeaveType')}</th>
                   <th className="px-3 py-2">{t('colCompany')}</th>
                   <th className="px-3 py-2">{t('colGrade')}</th>

@@ -13,12 +13,11 @@
  * taken leave and manual adjustments KEPT, a written record in the archive tables FIRST, and the archive
  * VERIFIED inside the transaction (a short copy rolls the whole stage back).
  *
- * ⚠️ THE SCHEMA SCAFFOLD, STATED PLAINLY. entitlement_reset_archive.layer carries a CHECK from migration 0397
- * admitting only 'scheme' and 'policy'. The config stage writes 'template' and 'rule', and item fe9c73bc
- * carries NO migration — so the script refuses (pinned below) until one ships. To exercise the stage itself,
- * `beforeAll` widens that CHECK on this worker's database and `afterAll` puts back EXACTLY the definition it
- * found, whatever it was. That block stands in for the pending migration and nothing else; when the
- * migration lands the widening becomes a no-op and the block can go.
+ * THE LAYER CHECK. entitlement_reset_archive.layer carried a CHECK from migration 0397 admitting only 'scheme'
+ * and 'policy'; migration 0460 widens it to admit 'template' and 'rule', and the test database is migrated
+ * fresh so it carries 0460. The script still PREFLIGHTS that CHECK and refuses while it is narrow — the
+ * fail-closed guard for any environment 0460 has not reached — and one test below pins that by narrowing the
+ * constraint back to 0397's definition inside the test and restoring exactly what it found.
  */
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -58,32 +57,25 @@ const URL_ = process.env.TEST_MIGRATION_DATABASE_URL!;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 let b: Base;
-let originalLayerCheck: string | null = null;
 
+/** The CHECK as the database currently defines it — read, never assumed, so the refusal test restores it exactly. */
 const CHECK_SQL = sql`select pg_get_constraintdef(oid) as def from pg_constraint
   where conrelid = 'entitlement_reset_archive'::regclass and conname = 'entitlement_reset_archive_layer_check'`;
 const dropCheck = () =>
   owner.db.execute(sql`ALTER TABLE entitlement_reset_archive DROP CONSTRAINT IF EXISTS entitlement_reset_archive_layer_check`);
 const addCheck = (def: string) =>
   owner.db.execute(sql.raw(`ALTER TABLE entitlement_reset_archive ADD CONSTRAINT entitlement_reset_archive_layer_check ${def}`));
-const NARROW_DEF = "CHECK (layer IN ('scheme', 'policy'))";
-const WIDE_DEF = "CHECK (layer IN ('scheme', 'policy', 'template', 'rule'))";
+/** Migration 0397's definition, verbatim — what every environment without 0460 still has. */
+const NARROW_DEF_0397 = "CHECK (layer IN ('scheme', 'policy'))";
 
 beforeAll(async () => {
   await migrateTestDb();
-  const rows = (await owner.db.execute(CHECK_SQL)) as unknown as { def: string }[];
-  originalLayerCheck = rows[0]?.def ?? null;
-  // STANDING IN FOR THE PENDING MIGRATION — see the file header. Restored exactly in afterAll.
-  await dropCheck();
-  await addCheck(WIDE_DEF);
 });
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
 });
 afterAll(async () => {
-  await dropCheck();
-  if (originalLayerCheck) await addCheck(originalLayerCheck);
   await closeAll();
 });
 
@@ -491,10 +483,18 @@ describe('fe9c73bc — stage config: configuration cleared, archived first, heal
     expect(csv.content).not.toContain('Company / grade rule');
   });
 
-  it('REFUSES, writing nothing, while the layer CHECK still admits only scheme and policy (no migration in this item)', async () => {
+  it('the migrated database admits the two layers (0460), and the script agrees', async () => {
+    const rows = (await owner.db.execute(CHECK_SQL)) as unknown as { def: string }[];
+    expect(rows[0]?.def).toBe("CHECK ((layer = ANY (ARRAY['scheme'::text, 'policy'::text, 'template'::text, 'rule'::text])))");
+    expect(await layerCheckAdmits(owner.db, ['template', 'rule'])).toBe(true);
+  });
+
+  it("REFUSES, writing nothing, where the layer CHECK is still 0397's (an environment 0460 has not reached)", async () => {
     await seedFixture();
+    const found = ((await owner.db.execute(CHECK_SQL)) as unknown as { def: string }[])[0]?.def;
+    expect(found).toBeTruthy();
     await dropCheck();
-    await addCheck(NARROW_DEF);
+    await addCheck(NARROW_DEF_0397);
     try {
       expect(await layerCheckAdmits(owner.db, ['template', 'rule'])).toBe(false);
       const before = await snapshot();
@@ -506,7 +506,7 @@ describe('fe9c73bc — stage config: configuration cleared, archived first, heal
       expect(formatReport(r)).toContain('REFUSED — nothing was written');
     } finally {
       await dropCheck();
-      await addCheck(WIDE_DEF);
+      await addCheck(found!);
     }
   });
 
@@ -752,6 +752,29 @@ describe('fe9c73bc — the reader knows the two new layers (source shape)', () =
     expect(reader).toContain("export type EntitlementArchiveLayer = 'scheme' | 'policy' | 'template' | 'rule';");
     expect(reader).toContain("template: 'Entitlement table'");
     expect(reader).toContain("rule: 'Eligibility rule'");
+  });
+
+  it('migration 0460 widens the CHECK to all four layers, and the journal carries it', () => {
+    const mig = fs.readFileSync(path.join(ROOT, 'db/migrations/0460_entitlement_reset_archive_layers.sql'), 'utf8');
+    expect(mig).toContain('DROP CONSTRAINT IF EXISTS entitlement_reset_archive_layer_check');
+    expect(mig).toContain('ADD CONSTRAINT entitlement_reset_archive_layer_check');
+    expect(mig).toMatch(/CHECK \(layer IN \('scheme', 'policy', 'template', 'rule'\)\)/);
+    for (const layer of ['scheme', 'policy', 'template', 'rule']) expect(mig).toContain(`'${layer}'`);
+    const journal = JSON.parse(fs.readFileSync(path.join(ROOT, 'db/migrations/meta/_journal.json'), 'utf8')) as {
+      entries: { idx: number; when: number; tag: string }[];
+    };
+    const entry = journal.entries.find((e) => e.tag === '0460_entitlement_reset_archive_layers');
+    expect(entry).toMatchObject({ idx: 460, when: 1781862560000 });
+  });
+
+  it('the first column header names the new layers when the chosen capture holds them, and stays "Benefit scheme" otherwise', () => {
+    expect(page).toContain("rows.some((r) => r.layer === 'template' || r.layer === 'rule')");
+    expect(page).toContain("t('colTemplateOrRule')");
+    expect(page).toContain("t('colScheme')");
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const m = JSON.parse(fs.readFileSync(path.join(ROOT, `messages/${loc}.json`), 'utf8'));
+      expect(typeof m.admin.entitlementArchive.colTemplateOrRule, loc).toBe('string');
+    }
   });
 
   it('all six locales carry layerTemplate and layerRule under admin.entitlementArchive', () => {
