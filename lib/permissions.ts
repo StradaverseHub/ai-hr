@@ -508,11 +508,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // library is now a list + two sub-pages, matching the notice-board / pay-components shape above.
     // Both call requireAdmin, the same guard as their parent, so they ride THIS screen.
     // 0bade264 (r209): '/admin/attendance/schedule-assignment' — every employee's current shift
-    // arrangement in one list, with View / Edit opening the per-employee card on the personnel profile.
+    // arrangement in one list. View / Edit went to the personnel card in r209, to an inline panel on the
+    // list in r263 (a485afa1), and since r265 (a485afa1 rev 2) opens the row's OWN page,
+    // '/admin/attendance/schedule-assignment/[employmentId]' — registered on this same line set, in the
+    // SAME commit as its page.tsx (test/function-access.test.ts fails in both directions), because it is
+    // the same guard (requireAdmin) and the same admin surface as the list that links to it: a sub-page
+    // of a screen is not a second screen, exactly as '[shiftId]' rides the shift library below.
     // requireAdmin, same guard and same admin surface as the shift library it sits beside, so it rides
     // THIS column rather than minting one. It is a STATIC segment declared before '[shiftId]' here for
     // readability only — on disk Next resolves app/admin/attendance/schedule-assignment/page.tsx ahead
-    // of the dynamic sibling either way, exactly as '/admin/attendance/new' already does.
+    // of the dynamic sibling either way, exactly as '/admin/attendance/new' already does; and a
+    // '[employmentId]' nested UNDER that static segment does not collide with '[shiftId]' beside it.
     // 1c5602cc (r263): '/admin/attendance/schedule' — the tabbed Schedule configuration screen (General
     // built; the other five tabs named and empty). requireAdmin, the same guard and the same admin
     // surface as the shift library it reads from, so it RIDES this column rather than minting a screen
@@ -526,6 +532,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/attendance/new',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
+      '/admin/attendance/schedule-assignment/[employmentId]',
       '/admin/attendance/[shiftId]',
       '/attendance/import',
       '/roster/import',
