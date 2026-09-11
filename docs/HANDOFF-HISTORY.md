@@ -1,3 +1,47 @@
+## r268-plan (2026-09-11, evening) — four items planned with pictures. NO CODE. ⚠️ ONE IS TIME-CRITICAL.
+
+⚠️ **THE REPORTER'S ANNUAL LEAVE CONFIGURATION SWITCHES ITSELF OFF AT MIDNIGHT TONIGHT.** At 19:56 they
+stopped BOTH the only entitlement table ("Grade Permanent 16 - 19") and the only scheme
+("Permanent 16 - 19 (New)") from 2026-09-12. `inForce` is half-open (`validTo > on`), so both count today
+and neither counts tomorrow, and from tomorrow nobody resolves to anything. **We have NOT restarted them:
+they stopped their own configuration three minutes after filing `76ffdcf2`, which may well have been
+deliberate.** The plan asks. If they say restart, it is two `validTo` clears.
+
+**`76ffdcf2` ("Benefit Scheme must not determine entitlement") — WE WROTE THE SENTENCE THEY ARE OBJECTING
+TO, AND IT SHIPPED THIS MORNING.** `git log -S` on the quoted sentence returns exactly one commit:
+`3a14035e`, the r266 rename. It replaced "No entitlement tables reach this employee yet." with "No benefit
+scheme covers this employee yet, so no entitlement table reaches them and no days have been granted" — a
+chain of cause and effect the engine does not follow. Eight other strings got the same treatment. The plan
+apologises in those words.
+**Their own data disproves "no scheme ⇒ zero days":** at 17:57 they created one table with NO scheme in
+existence and the engine immediately granted Annual Leave to 28 employees (`soleTableApplies`). At 19:01
+one scheme narrowed the same table to 6 people, and **34 employees currently hold 2026 Annual Leave days
+while their profile says none have been granted** — the shipped sentence is false for them today.
+**The one real gap:** with two or more tables and no matching scheme, nothing is chosen, because the engine
+refuses to guess (r193). The plan's answer is a reporter-chosen DEFAULT table per leave type, so the system
+still never invents days. Five of their seven "must never" bullets are already true; 3 and 7 are the gap.
+Their effective-date idea (a per-employee entitlement service date) is a separate smaller item, to be raised.
+**Decision: keep the noun "benefit scheme"** (they asked for it one round ago; a third name in three rounds
+reads as thrashing), delete every causal claim, and make the noun true with the fallback.
+
+**`9e2a89e9` (Job Grade on the entitlement table):** grade, employment type and service years ARE already
+criteria — the reporter used Job Grade themselves at 19:01 — and re-evaluation on a grade change already
+runs on three paths; "no match ⇒ assign nothing, never zero" is already enforced. What is missing is the
+RECORD: the history row names no grades, is always dated today rather than the change's effective date, and
+says nothing when a new grade matches no table. **47 of 74 active employments have NO job grade recorded**,
+so grade-matching can reach at most 27 people — no engine work fixes that. The plan declines their
+"retain the previous entitlement for the period before the change" as written (a true mid-cycle re-banding
+rebuilds the entitlement kernel four engines share) and offers the dated, grade-named history instead.
+
+**`5ca446db` (Employee Balances → an Employee Leave Inquiry row):** their screenshot shows it is a corner
+LINK, not a tab, and the screen already sits in a three-screen Leave Inquiry area under Manage. **They asked
+for this row once before** — deployed item `1ff969ed` opens "add a new function under Leave Config: Leave
+Inquiry" and names the same three tabs; the screens shipped, the row did not. The plan adds the sixth row
+and says which half of r266's reasoning it reverses. Their screenshot is one deploy stale (it still shows
+the Configuration record tab r268 moved).
+
+**`0e276da0` (our own raise):** the two empty holiday calendars — see the r268 entry.
+
 ## r268 (2026-09-11) — the two reset records leave the everyday tabs for one Reset records screen. `main@1dbd2c18`, no migration. DEPLOYED: `deploy.sh` compiled (192 pages), applied nothing (377 stays), restarted; service active, `GET /` 401; dry-run clean; `7f69bd71` marked deployed.
 
 **Gate:** 824 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no rebuild, ALL green, zero
