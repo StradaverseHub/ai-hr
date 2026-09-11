@@ -8403,6 +8403,7 @@
       "backToEntitlements": "กลับไปที่สิทธิ์",
       "colLayer": "ตั้งค่าไว้ใน",
       "colScheme": "แผนสวัสดิการ",
+      "colTemplateOrRule": "ตารางสิทธิ / กฎ",
       "colLeaveType": "ประเภทการลา",
       "colCompany": "บริษัท",
       "colGrade": "ระดับ",
@@ -8412,6 +8413,8 @@
       "colNote": "หมายเหตุ",
       "layerScheme": "แผนสวัสดิการ",
       "layerPolicy": "กฎบริษัท / ระดับ",
+      "layerTemplate": "ตารางสิทธิ",
+      "layerRule": "กฎคุณสมบัติ",
       "allCompanies": "ทุกบริษัท (ค่าเริ่มต้นของกลุ่ม)",
       "allGrades": "ทุกระดับ"
     },

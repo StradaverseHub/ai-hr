@@ -8403,6 +8403,7 @@
       "backToEntitlements": "உரிமைத்தொகைக்குத் திரும்பு",
       "colLayer": "உள்ளமைக்கப்பட்ட இடம்",
       "colScheme": "சலுகைத் திட்டம்",
+      "colTemplateOrRule": "உரிமை அட்டவணை / விதி",
       "colLeaveType": "விடுப்பு வகை",
       "colCompany": "நிறுவனம்",
       "colGrade": "தரம்",
@@ -8412,6 +8413,8 @@
       "colNote": "குறிப்பு",
       "layerScheme": "சலுகைத் திட்டம்",
       "layerPolicy": "நிறுவனம் / தரம் விதி",
+      "layerTemplate": "உரிமை அட்டவணை",
+      "layerRule": "தகுதி விதி",
       "allCompanies": "அனைத்து நிறுவனங்களும் (குழு இயல்புநிலை)",
       "allGrades": "அனைத்து தரங்களும்"
     },

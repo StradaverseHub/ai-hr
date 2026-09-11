@@ -72,6 +72,8 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string; 
   'leave-encashment-policy': { label: 'Encashment policy' },
   'leave-grant': { label: 'Leave grant' },
   'leave-ledger-import': { label: 'Leave balance import' },
+  // fe9c73bc — the entitlement-configuration reset tool records one event per stage on this aggregate.
+  'leave-config': { label: 'Leave configuration' },
   'job-grade': { label: 'Job grade' },
   holiday: { label: 'Holiday' },
   'holiday-group': { label: 'Holiday group' },

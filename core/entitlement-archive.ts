@@ -31,11 +31,20 @@ import { withTenant, type SessionContext } from '../db/client';
 import { entitlementResetArchive } from '../db/schema';
 import { toCsv } from '../lib/csv';
 
+/**
+ * 'scheme' | 'policy' — migration 0398's capture of the tables 0405 dropped.
+ * 'template' | 'rule' — fe9c73bc: scripts/reset-entitlement-configuration.ts's capture of entitlement_template
+ * and entitlement_eligibility_rule, written into the SAME table so the same reader shows it. ⚠️ The DB CHECK
+ * `entitlement_reset_archive_layer_check` (0397) still admits only the first two until a migration widens it;
+ * the script refuses to write until then, and this union is what the reader is ready for.
+ */
+export type EntitlementArchiveLayer = 'scheme' | 'policy' | 'template' | 'rule';
+
 export type EntitlementArchiveRow = {
   id: string;
   capturedAt: Date;
   captureTag: string;
-  layer: 'scheme' | 'policy';
+  layer: EntitlementArchiveLayer;
   schemeName: string | null;
   schemeCategory: string | null;
   leaveTypeName: string | null;
@@ -99,17 +108,25 @@ export async function listEntitlementResetArchive(
       .orderBy(
         // 'policy' < 'scheme' alphabetically, so sort on the reversed flag rather than the column: the
         // scheme layer is the one the reporter retypes first.
-        sql`case when ${entitlementResetArchive.layer} = 'scheme' then 0 else 1 end`,
+        sql`case when ${entitlementResetArchive.layer} in ('scheme', 'template') then 0 else 1 end`,
         entitlementResetArchive.schemeName,
         entitlementResetArchive.leaveTypeName,
         entitlementResetArchive.companyName,
         entitlementResetArchive.validFromText,
       );
-    return rows.map((r) => ({ ...r, layer: r.layer as 'scheme' | 'policy' }));
+    return rows.map((r) => ({ ...r, layer: r.layer as EntitlementArchiveLayer }));
   });
 }
 
 /** The CSV the reporter downloads and retypes from. Same rows, same order, as the screen. */
+/** The English layer label the CSV prints — the screen's own words for each layer (admin.entitlementArchive). */
+const CSV_LAYER_LABEL: Record<EntitlementArchiveLayer, string> = {
+  scheme: 'Benefit scheme',
+  policy: 'Company / grade rule',
+  template: 'Entitlement table',
+  rule: 'Eligibility rule',
+};
+
 export async function entitlementResetArchiveCsv(
   ctx: SessionContext,
   p?: { captureTag?: string },
@@ -132,7 +149,7 @@ export async function entitlementResetArchiveCsv(
     'Note',
   ];
   const body = rows.map((r) => [
-    r.layer === 'scheme' ? 'Benefit scheme' : 'Company / grade rule',
+    CSV_LAYER_LABEL[r.layer] ?? r.layer,
     r.schemeName ?? '',
     r.schemeCategory ?? '',
     r.leaveTypeName ?? '',

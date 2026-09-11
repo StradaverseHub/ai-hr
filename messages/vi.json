@@ -8403,6 +8403,7 @@
       "backToEntitlements": "Quay lại Quyền lợi",
       "colLayer": "Cấu hình tại",
       "colScheme": "Chế độ phúc lợi",
+      "colTemplateOrRule": "Bảng định mức / quy tắc",
       "colLeaveType": "Loại nghỉ phép",
       "colCompany": "Công ty",
       "colGrade": "Ngạch",
@@ -8412,6 +8413,8 @@
       "colNote": "Ghi chú",
       "layerScheme": "Chế độ phúc lợi",
       "layerPolicy": "Quy tắc công ty / ngạch",
+      "layerTemplate": "Bảng định mức",
+      "layerRule": "Quy tắc điều kiện",
       "allCompanies": "Tất cả công ty (mặc định tập đoàn)",
       "allGrades": "Tất cả ngạch"
     },

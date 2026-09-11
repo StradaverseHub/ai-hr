@@ -8403,6 +8403,7 @@
       "backToEntitlements": "返回额度配置",
       "colLayer": "配置于",
       "colScheme": "福利方案",
+      "colTemplateOrRule": "额度表 / 规则",
       "colLeaveType": "假期类型",
       "colCompany": "公司",
       "colGrade": "职级",
@@ -8412,6 +8413,8 @@
       "colNote": "备注",
       "layerScheme": "福利方案",
       "layerPolicy": "公司 / 职级规则",
+      "layerTemplate": "额度表",
+      "layerRule": "资格规则",
       "allCompanies": "全部公司（集团默认）",
       "allGrades": "全部职级"
     },

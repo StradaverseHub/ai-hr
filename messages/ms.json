@@ -8403,6 +8403,7 @@
       "backToEntitlements": "Kembali ke Kelayakan",
       "colLayer": "Dikonfigurasikan dalam",
       "colScheme": "Skim faedah",
+      "colTemplateOrRule": "Jadual / peraturan kelayakan",
       "colLeaveType": "Jenis cuti",
       "colCompany": "Syarikat",
       "colGrade": "Gred",
@@ -8412,6 +8413,8 @@
       "colNote": "Nota",
       "layerScheme": "Skim faedah",
       "layerPolicy": "Peraturan syarikat / gred",
+      "layerTemplate": "Jadual kelayakan",
+      "layerRule": "Peraturan kelayakan",
       "allCompanies": "Semua syarikat (lalai kumpulan)",
       "allGrades": "Semua gred"
     },
