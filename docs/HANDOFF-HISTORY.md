@@ -1,3 +1,34 @@
+## r267 (2026-09-11) — the clocking-location page of its own, and a report label. `main@65c0f927`, migration `0461`. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (191 pages), applied 0461 (376 → 377 on the box, `report_label` present), restarted; service active, `GET /` 401; `f9afd1ce` marked deployed (ref 65c0f927).
+
+**Gate:** 823 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no rebuild, ALL green, zero
+assertion errors. `gate:shadow` PASS 376 → 377 (0461's NOTICE: 0 rows keep a NULL label). `next build`
+clean (190 pages).
+
+**`f9afd1ce` rev 2 — built on the OWNER'S narrowed scope** (the reporter contested rev 1 after the shared
+record shipped because the screen itself had not changed): the Clocking location menu row lands on the
+clocking register (it now renders FIRST on `/admin/locations`, the holiday register below it — a page-order
+change, not a fragment, because the fly-out matches hrefs on `?` only and three guards pin the href
+verbatim); list rows are read-only (name, report label, coordinates, radius, used-by, assigned, address)
+with Edit, an "Add clocking location" button, Archive/Restore/Delete still on the row; `/admin/locations/
+clocking/new` and `/clocking/[id]` are server-rendered two-section pages (Location information · GPS and
+clocking settings) on the existing `locations` screen key, Save → list at the highlighted row, Cancel a
+plain link, a refused save echoes all eight typed fields (shape-checked), junk/unknown ids 404, company-
+scoped admins get the page read-only. `clocking_location.report_label` (0461, nullable, 60-char cap in the
+service) prints ONLY in the Attendance daily report's Clocking Location column via
+`coalesce(nullif(report_label,''), name)`; list, profile and clock-in keep the name. **Address search, map
+preview, Map / Satellite and timezone are NOT built**; the planner's keyless-OpenStreetMap findings sit in
+the planning notes for the follow-up item once the owner picks a provider.
+Verify: SHIP; the migration proven on a database with rows; authority for scoped admins and employees proven
+from both sides; three mutations caught. Hand-fixed after verify: field `maxLength`s match the echo
+reader's caps, two Malay strings ("Sunting"); a lint-motivated test idiom was tried and REVERTED because
+it did not typecheck — correctness over lint. **A latent defect fixed in passing:** the old action saved
+`Number('')` = 0 for a blank latitude/longitude; the page now reaches the service's "must be a number".
+
+**Board at close:** `7f69bd71` PLANNED (the reporter asked to remove the Configuration record page; the plan
+says at the top that the record is the written safeguard two irreversible resets were approved on and
+recommends moving both reset records out of the everyday tabs into one "Reset records" screen reached
+from the foot of Leave Adjustments, with "delete it outright" only as reject-and-say-so).
+
 ## r266 (2026-09-11) — benefit-scheme vocabulary, and Leave Config reorganised around its submenu. `main@583d3ce8`, no migration. **DEPLOYED 2026-09-11:** `deploy.sh` compiled (190 pages), applied nothing (376 stays), restarted; service active, `GET /` 401; dry-run clean; `6aee1d91` and `10b59703` marked deployed (ref 583d3ce8). **Board after:** `f9afd1ce` came back CONTESTED (the screen itself did not change). **Rev 2 pushed 2026-09-11 with two pictures, on the OWNER'S decision: the full-width two-section page and a report label only; address search and map preview deferred to their own item once the owner picks a map provider** (the planner's evidence on the keyless OpenStreetMap route — no key, attribution required, search text and coordinates sent to OSM, no availability guarantee, no keyless satellite imagery, Esri needs an account — is kept in the planning notes for that item). Timezone stays out. Nothing else open.
 
 **Gate:** 822 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, no per-batch rebuild; ONE
