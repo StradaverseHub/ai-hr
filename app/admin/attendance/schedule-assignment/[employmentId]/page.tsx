@@ -50,8 +50,12 @@ import { StatusChip } from '../status-chip';
  * query string (`?q=&shiftType=&shiftId=&status=`), untouched. Back and Cancel are plain links to the
  * list with those filters plus `focus=<id>#row-<id>`: the browser lands on the row, highlighted, and
  * nothing was posted. Save posts `returnTo` (this page's own URL) and the action sends a success to the
- * list the same way with `saved=1`, and a refusal back here with the reason. Remove stays here with
- * `removed=1`: the administrator is looking at the history they just changed.
+ * list the same way with `saved=1`, and a refusal back here with the reason — shown immediately above
+ * the fields — AND with what was typed echoed in the url (`typedShiftType` / `typedShiftId` /
+ * `typedEffectiveFrom`; the backup shift cannot ride under `shiftId`, which is the list's FILTER of the
+ * same name), so the form re-renders with the operator's own values rather than what is on file:
+ * "nothing you entered is lost". Remove stays here with `removed=1`: the administrator is looking at the
+ * history they just changed.
  *
  * `[employmentId]` IS AN UNTRUSTED URL SEGMENT AND `employment.id` IS A UUID COLUMN. Its shape is
  * checked BEFORE any query (the r263 verifier's 500: junk reached `eq(employment.id, …)` and Postgres
@@ -66,6 +70,7 @@ import { StatusChip } from '../status-chip';
  */
 const PAGE = '/admin/attendance/schedule-assignment';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function ShiftArrangementPage({
   params,
@@ -79,6 +84,9 @@ export default async function ShiftArrangementPage({
     status?: string;
     error?: string;
     removed?: string;
+    typedShiftType?: string;
+    typedShiftId?: string;
+    typedEffectiveFrom?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -149,6 +157,15 @@ export default async function ShiftArrangementPage({
     notRecorded: t('statusNotRecordedHint'),
   };
 
+  // WHAT WAS TYPED, echoed by a refused save (../actions.ts). Untrusted url values, each shape-checked;
+  // a malformed one silently falls back to what is on file. A well-formed backup shift that is not in
+  // the dropdown (archived since, or forged) selects nothing, which the `required` control then refuses.
+  const typedType =
+    sp.typedShiftType === 'fixed' || sp.typedShiftType === 'roster' ? sp.typedShiftType : undefined;
+  const typedShiftId = sp.typedShiftId && UUID_RE.test(sp.typedShiftId) ? sp.typedShiftId : undefined;
+  const typedEffectiveFrom =
+    sp.typedEffectiveFrom && ISO_DATE_RE.test(sp.typedEffectiveFrom) ? sp.typedEffectiveFrom : undefined;
+
   /** Back and Cancel: the list, same filters, landed on this employee's row. Nothing is posted. */
   const listHref = hrefWith(PAGE, { focus: row.employmentId }, `#row-${row.employmentId}`);
   /** What the two actions get back: THIS page, with the filters still on it. See ../actions.ts backTo. */
@@ -162,7 +179,6 @@ export default async function ShiftArrangementPage({
         back={{ href: listHref, label: t('detailBack') }}
       />
 
-      <ErrorBanner message={sp.error} />
       {!sp.error && sp.removed ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
           {t('removedNote')}
@@ -200,13 +216,20 @@ export default async function ShiftArrangementPage({
           exactly as the card resolves it. */}
       <Card>
         <SectionHeader title={t('changeTitle')} />
+        {/* THE REASON A SAVE WAS REFUSED sits immediately above the fields it is about — not under the
+            page header, two cards away from the boxes the operator has to change. */}
+        {sp.error ? (
+          <div className="px-4 pt-4">
+            <ErrorBanner message={sp.error} />
+          </div>
+        ) : null}
         <form action={saveScheduleAssignmentAction} className="space-y-3 p-4">
           <input type="hidden" name="employmentId" value={row.employmentId} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <EmployeeShiftFields
-            defaultType={row.shiftType}
-            defaultShiftId={row.shiftId}
-            defaultEffectiveFrom={today}
+            defaultType={typedType ?? row.shiftType}
+            defaultShiftId={typedShiftId ?? row.shiftId}
+            defaultEffectiveFrom={typedEffectiveFrom ?? today}
             shifts={shifts.map((sh) => ({
               id: sh.id,
               label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,

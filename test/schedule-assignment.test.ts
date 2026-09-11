@@ -564,9 +564,11 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
   });
 
   it('a REFUSED save stays on the detail page, filters kept, with the reason — nothing typed is lost', async () => {
-    // The reporter's sentence: "you stay on the page with the reason shown next to the fields". The
-    // shift library's shift-actions.ts idiom (errTarget): a refusal lands on the form the operator filled
-    // in, never on a list that has forgotten every box they typed.
+    // The reporter's sentence: "you stay on the page with the reason shown next to the fields, so nothing
+    // you entered is lost". The shift library's shift-actions.ts idiom (errTarget): a refusal lands on
+    // the form the operator filled in, never on a list that has forgotten every box they typed. TWO
+    // halves, each asserted: the redirect carries what was TYPED, and the page renders those as the
+    // form's defaults — not what is on file, which is what the operator was trying to change.
     const emp = await hire('Gil Refused', 'E112');
     await runAction(saveScheduleAssignmentAction, {
       employmentId: emp,
@@ -576,10 +578,11 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
       returnTo: `${LIST_URL}/${emp}`,
     });
     const before = await shiftArrangementHistory(ADMIN, emp);
-    // A date before the ladder's last — the back-insert refusal, one of the two the plan names.
+    // A date before the ladder's last — the back-insert refusal, one of the two the plan names. Every
+    // typed value differs from what is on file (fixed / AM / today) so the echo is provably the echo.
     const back = await runAction(saveScheduleAssignmentAction, {
       employmentId: emp,
-      shiftType: 'fixed',
+      shiftType: 'roster',
       shiftId: shiftB,
       effectiveFrom: '2026-04-01',
       returnTo: `${LIST_URL}/${emp}?status=current&q=Gil`,
@@ -592,6 +595,42 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     expect((await shiftArrangementHistory(ADMIN, emp)).map((h) => h.id), 'and nothing was written').toEqual(
       before.map((h) => h.id),
     );
+    // HALF ONE: what was typed rides back on the url. NOT under `shiftId` — that key is the list's
+    // backup-shift filter riding on the same url, and `shiftId=<filter>` must survive untouched.
+    expect(back).toContain('typedShiftType=roster');
+    expect(back).toContain(`typedShiftId=${shiftB}`);
+    expect(back).toContain('typedEffectiveFrom=2026-04-01');
+    expect(back, 'the echo does not clobber the filter of the same name').not.toContain(`shiftId=${shiftB}&`);
+
+    // HALF TWO: the page renders THOSE as the form's defaults. The option marked selected in each
+    // <select>, and the date box's value — read off the real render.
+    const selected = (html: string, name: string) => {
+      const start = html.indexOf(`name="${name}"`);
+      expect(start, `a <select name="${name}"> is on the page`).toBeGreaterThan(-1);
+      return html.slice(start, html.indexOf('</select>', start)).match(/<option value="([^"]*)" selected/)?.[1];
+    };
+    const params = Object.fromEntries(new URL(`http://x${back}`).searchParams);
+    const html = await renderDetail(emp, params);
+    expect(selected(html, 'shiftType'), 'shift type: what was typed, not what is on file').toBe('roster');
+    expect(selected(html, 'shiftId'), 'backup shift: what was typed').toBe(shiftB);
+    expect(html, 'effective date: what was typed').toMatch(/name="effectiveFrom"[^>]*value="2026-04-01"/);
+    // …and the reason sits immediately above those fields: after the "In force today" block, before the
+    // form — not under the page header two cards away.
+    const reasonAt = html.indexOf('shiftBackInsertRefused');
+    expect(reasonAt).toBeGreaterThan(html.indexOf('summaryTitle'));
+    expect(reasonAt).toBeLessThan(html.indexOf('<form'));
+    expect(html.indexOf('<form'), 'a form is on the page').toBeGreaterThan(-1);
+
+    // A malformed echo (a forged or mangled url) is ignored field by field: what is on file comes back.
+    const junk = await renderDetail(emp, {
+      error: 'x',
+      typedShiftType: 'weird',
+      typedShiftId: 'not-a-uuid',
+      typedEffectiveFrom: 'yesterday',
+    });
+    expect(selected(junk, 'shiftType')).toBe('fixed');
+    expect(selected(junk, 'shiftId')).toBe(shiftA);
+    expect(junk).toMatch(new RegExp(`name="effectiveFrom"[^>]*value="${todayInKualaLumpur()}"`));
   });
 
   it('removing an arrangement supersedes it, re-opens the period before it, and moves the cache', async () => {

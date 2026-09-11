@@ -60,7 +60,11 @@ const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status'] as const;
  *
  *   save succeeded  → the LIST, same filters, `focus=<id>` and the `#row-<id>` fragment, `saved=1` —
  *                     the administrator lands on the row they just changed, highlighted, not at the top.
- *   save refused    → the DETAIL page, same filters, `error=<reason>` — the reason sits beside the fields.
+ *   save refused    → the DETAIL page, same filters, `error=<reason>` — the reason sits beside the fields —
+ *                     plus what was TYPED (`typedShiftType`, `typedShiftId`, `typedEffectiveFrom`) so the
+ *                     page re-renders the form with the operator's values, not what is on file. Not under
+ *                     `shiftId`: that key is the list's backup-shift FILTER riding on the same url. The
+ *                     page shape-checks each echoed value before using it.
  *   remove succeeded → the DETAIL page, `removed=1` — they are looking at the history they just changed.
  *   remove refused  → the DETAIL page, `error=<reason>`.
  *   a malformed employmentId → the LIST with `error=`: there is no detail page for an id that is not one.
@@ -70,8 +74,8 @@ const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status'] as const;
  * off-site URL, another screen — contributes nothing and the outcome lands on the bare list or the bare
  * detail page. The pathname is never taken from the field: a form field that can name any URL is an open
  * redirect, and this one is submitted by an admin session. Of the query, only the four filter keys are
- * kept, which also strips the previous outcome (error / saved / removed / focus) so a second save cannot
- * land on a page still showing the first one's error.
+ * kept, which also strips the previous outcome (error / saved / removed / focus / typed*) so a second save
+ * cannot land on a page still showing the first one's error or the first one's typed values.
  */
 function backTo(
   formData: FormData,
@@ -172,8 +176,20 @@ export async function saveScheduleAssignmentAction(formData: FormData) {
       effectiveFrom: rawEffective || null,
     });
   } catch (e) {
-    // Refused: stay on the page, reason beside the fields, nothing typed is lost.
-    redirect(backTo(formData, { list: false, employmentId }, { error: await messageFor(e) }));
+    // Refused: stay on the page, reason beside the fields, and what was typed echoed back so nothing
+    // entered is lost. Blank fields are not echoed — the page falls back to what is on file for those.
+    redirect(
+      backTo(
+        formData,
+        { list: false, employmentId },
+        {
+          error: await messageFor(e),
+          typedShiftType: shiftType,
+          ...(rawShift ? { typedShiftId: rawShift } : {}),
+          ...(rawEffective ? { typedEffectiveFrom: rawEffective } : {}),
+        },
+      ),
+    );
   }
   revalidateBothDoors(employmentId);
   // Saved: back to the list, same filters, landed on this employee's row.

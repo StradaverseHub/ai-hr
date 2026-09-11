@@ -40,6 +40,14 @@ const ACTIONS = 'app/admin/attendance/schedule-assignment/actions.ts';
 const ROUTE = '/admin/attendance/schedule-assignment/[employmentId]';
 const LIST_ROUTE = '/admin/attendance/schedule-assignment';
 
+/** The index of `needle` in `src`, asserted PRESENT first — `indexOf` returns -1 for an absent needle,
+ *  and -1 is less than every other index, so a bare `toBeLessThan` passes when the thing is missing. */
+const at = (src: string, needle: string) => {
+  const i = src.indexOf(needle);
+  expect(i, `${JSON.stringify(needle)} is in the source`).toBeGreaterThan(-1);
+  return i;
+};
+
 /** CODE only — the pages' headers deliberately QUOTE what they replaced. */
 const withoutComments = (src: string) =>
   src
@@ -61,6 +69,9 @@ describe('a485afa1 rev 2 — the list is a list again', () => {
       expect(code, `the list re-declares the ${field} control`).not.toContain(`name="${field}"`);
     }
     expect(code, 'nothing is posted from the list').not.toContain('<form');
+    // A removal stays on the detail page (r265), so nothing lands on the list with `removed=` and the
+    // list carries no note for it — a note nothing can trigger is a promise nothing keeps.
+    expect(code, 'the list reads no removed= and renders no removedNote').not.toContain('removed');
   });
 
   it('View / Edit is a link to the row’s own page, and every row is an anchor the way back lands on', () => {
@@ -76,8 +87,9 @@ describe('a485afa1 rev 2 — the list is a list again', () => {
     expect(code, 'shape-checked, then redirected, before any read').toMatch(
       /if \(assign && UUID_RE\.test\(assign\)\) redirect\(editHref\(assign\)\)/,
     );
-    // …and it happens BEFORE the list's reads, so a redirect costs no query.
-    expect(code.indexOf('redirect(editHref(assign))')).toBeLessThan(code.indexOf('listShiftArrangements(s,'));
+    // …and it happens BEFORE the list's reads, so a redirect costs no query. Both indexes are asserted
+    // present first: with the redirect deleted, indexOf gives -1 and a bare less-than would still pass.
+    expect(at(code, 'redirect(editHref(assign))')).toBeLessThan(at(code, 'listShiftArrangements(s,'));
   });
 });
 
@@ -110,10 +122,17 @@ describe('a485afa1 rev 2 — the page of its own', () => {
     expect(code, 'the form tells the action where this page is').toContain('<input type="hidden" name="returnTo" value={returnTo} />');
     expect(code, 'the way back lands on the row').toContain('`#row-${row.employmentId}`');
     // The three blocks, in the reporter's order: in force today, change it, history.
-    const at = (s: string) => code.indexOf(s);
-    expect(at("t('summaryTitle')")).toBeGreaterThan(-1);
-    expect(at("t('summaryTitle')")).toBeLessThan(at("t('changeTitle')"));
-    expect(at("t('changeTitle')")).toBeLessThan(at("t('historyTitle')"));
+    expect(at(code, "t('summaryTitle')")).toBeLessThan(at(code, "t('changeTitle')"));
+    expect(at(code, "t('changeTitle')")).toBeLessThan(at(code, "t('historyTitle')"));
+    // The reason a save was refused sits immediately above the fields — inside the change card, after
+    // its heading and before the form — not under the page header two cards away.
+    expect(at(code, '<ErrorBanner message={sp.error} />')).toBeGreaterThan(at(code, "t('changeTitle')"));
+    expect(at(code, '<ErrorBanner message={sp.error} />')).toBeLessThan(at(code, 'action={saveScheduleAssignmentAction}'));
+    expect(code.match(/<ErrorBanner /g)?.length, 'one banner, in that one place').toBe(1);
+    // …and the form's defaults are what was TYPED when a refusal echoed it, else what is on file.
+    expect(code).toContain('defaultType={typedType ?? row.shiftType}');
+    expect(code).toContain('defaultShiftId={typedShiftId ?? row.shiftId}');
+    expect(code).toContain('defaultEffectiveFrom={typedEffectiveFrom ?? today}');
     // The shared control and the shared chip — no fork of either.
     expect(code).toContain('<EmployeeShiftFields');
     expect(code).toContain('<StatusChip');
@@ -122,18 +141,37 @@ describe('a485afa1 rev 2 — the page of its own', () => {
 
   it('a bad segment is shape-checked before any query and renders the sentence, never notFound()', () => {
     expect(code).toContain('const employmentId = UUID_RE.test(rawId) ? rawId : undefined;');
-    expect(code.indexOf('UUID_RE.test(rawId)')).toBeLessThan(code.indexOf('listShiftArrangements(s,'));
+    expect(at(code, 'UUID_RE.test(rawId)')).toBeLessThan(at(code, 'listShiftArrangements(s,'));
+    // The echoed typed values are untrusted url values too: each shape-checked, none reaches a query.
+    expect(code).toContain("sp.typedShiftType === 'fixed' || sp.typedShiftType === 'roster'");
+    expect(code).toContain('UUID_RE.test(sp.typedShiftId)');
+    expect(code).toContain('ISO_DATE_RE.test(sp.typedEffectiveFrom)');
     expect(code).toContain("t('panelMissing')");
     expect(code).not.toContain('notFound(');
   });
 
   it('the actions send a success to the LIST and every refusal back to the PAGE', () => {
     const code = withoutComments(actions);
-    expect(code, 'save success → list, landed on the row').toContain("{ list: true, employmentId }, { saved: '1' }");
-    expect(code, 'save refusal → the page, reason beside the fields').toContain(
-      '{ list: false, employmentId }, { error: await messageFor(e) }',
-    );
-    expect(code, 'remove success → stays on the page').toContain("{ list: false, employmentId }, { removed: '1' }");
+    // Each action's OWN body — a string that both actions contain would pass for the wrong one (the
+    // verifier's finding: the save refusal was briefly sent to the list and this pin stayed green).
+    const saveAt = at(code, 'export async function saveScheduleAssignmentAction');
+    const removeAt = at(code, 'export async function removeScheduleArrangementAction');
+    expect(removeAt).toBeGreaterThan(saveAt);
+    const save = code.slice(saveAt, removeAt);
+    const remove = code.slice(removeAt);
+    const REFUSAL_TO_PAGE = /\{ list: false, employmentId \},\s*\{\s*error: await messageFor\(e\)/;
+
+    expect(save, 'save success → list, landed on the row').toContain("{ list: true, employmentId }, { saved: '1' }");
+    expect(save, 'save refusal → the page, reason beside the fields').toMatch(REFUSAL_TO_PAGE);
+    expect(save, 'a refusal of a real id never goes to the list').not.toMatch(/\{ list: true, employmentId \},\s*\{\s*error/);
+    // …and it echoes what was typed, under keys that cannot collide with the list's filters.
+    expect(save).toContain('typedShiftType: shiftType');
+    expect(save).toContain('typedShiftId: rawShift');
+    expect(save).toContain('typedEffectiveFrom: rawEffective');
+
+    expect(remove, 'remove success → stays on the page').toContain("{ list: false, employmentId }, { removed: '1' }");
+    expect(remove, 'remove refusal → the page').toMatch(REFUSAL_TO_PAGE);
+    expect(remove, 'a removal never lands on the list').not.toContain('{ list: true, employmentId }');
     // returnTo is trusted for its QUERY only, and only on this list's two paths.
     expect(code).toContain('DETAIL_RE.test(raw)');
     expect(code, 'the pathname is never taken from the posted field').not.toMatch(/redirect\(\s*raw/);

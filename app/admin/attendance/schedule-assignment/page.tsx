@@ -80,7 +80,6 @@ export default async function ScheduleAssignmentPage({
     assign?: string;
     error?: string;
     saved?: string;
-    removed?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -219,10 +218,12 @@ export default async function ScheduleAssignmentPage({
         labels={filterLabels}
       />
 
+      {/* `saved=1` is what a save returns with; a removal stays on the detail page (r265), so nothing
+          lands here with `removed=` any more and the list carries no note for it. */}
       <ErrorBanner message={sp.error} />
-      {!sp.error && (sp.saved || sp.removed) ? (
+      {!sp.error && sp.saved ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-          {sp.removed ? t('removedNote') : t('savedNote')}
+          {t('savedNote')}
         </p>
       ) : null}
 
