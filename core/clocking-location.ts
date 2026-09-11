@@ -16,6 +16,13 @@
  *   • ASSIGNMENT IS NOT SCOPED BY COMPANY. An employee of company B may be assigned a site that also serves
  *     company A. RLS on employee_clocking_location (can_admin_employment) is unchanged and is the guard that
  *     matters there: who may edit THIS employment's assignments, not which sites exist.
+ *
+ * f9afd1ce rev 2 (r267, migration 0461) — REPORT LABEL. A site carries an optional short label that the
+ * Attendance report's Clocking Location column prints instead of the full name (core/reporting.ts reads
+ * coalesce(report_label, name) for that one column). BLANK MEANS THE NAME, and the rule is enforced HERE:
+ * `cleanReportLabel` trims and stores NULL for an empty label, so the report's coalesce is never fooled by
+ * a row holding '' (there is deliberately no CHECK — CLAUDE.md §6). Every other reader — the locations
+ * list, the employee's profile, the clock-in screen — keeps the name; the list shows the label beside it.
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -198,6 +205,21 @@ function cleanOptional(v: string | null | undefined): string | null {
   return s || null;
 }
 
+/**
+ * f9afd1ce rev 2 — the report label. A report COLUMN value, so it is one line: inner whitespace collapsed,
+ * trimmed, and capped — the cap is the sanity limit for something meant to be shorter than the name, not a
+ * display width. Blank (or omitted) → NULL, which the report's coalesce reads as "print the name".
+ */
+export const MAX_REPORT_LABEL_CHARS = 60;
+function cleanReportLabel(v: string | null | undefined): string | null {
+  const s = (v ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  if (s.length > MAX_REPORT_LABEL_CHARS) {
+    throw new Error(`Report label must be ${MAX_REPORT_LABEL_CHARS} characters or fewer — it is a short name for the report column, not a second address.`);
+  }
+  return s;
+}
+
 export type CreateClockingLocationInput = {
   name: string;
   lat: number;
@@ -208,6 +230,8 @@ export type CreateClockingLocationInput = {
   locationId?: string | null;
   address?: string | null;
   remarks?: string | null;
+  /** f9afd1ce rev 2 — OPTIONAL. The short name the Attendance report prints; blank = the name is printed. */
+  reportLabel?: string | null;
 };
 
 /** Every write returns the site id plus an optional SOFT advisory about the radius (never a refusal). */
@@ -224,13 +248,14 @@ export async function createClockingLocation(
   const radiusM = cleanRadius(p.radiusM);
   const address = cleanOptional(p.address);
   const remarks = cleanOptional(p.remarks);
+  const reportLabel = cleanReportLabel(p.reportLabel);
   return withTenant(ctx, async (tx) => {
     const locationId = await resolveLocationLink(tx, p.locationId);
     let row: { id: string };
     try {
       [row] = await tx
         .insert(clockingLocation)
-        .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks })
+        .values({ tenantId: ctx.tenantId, name, lat, lng, radiusM, locationId, address, remarks, reportLabel })
         .returning({ id: clockingLocation.id });
     } catch (e) {
       // A name already used anywhere in the tenant leaves as a typed error, never as raw SQL + params.
@@ -242,7 +267,7 @@ export async function createClockingLocation(
       aggregateId: row.id,
       eventType: 'clocking-location.created',
       actor: actorOf(ctx),
-      payload: { name, lat, lng, radiusM, locationId, address, remarks },
+      payload: { name, lat, lng, radiusM, locationId, address, remarks, reportLabel },
     });
     return { id: row.id, warning: radiusWarning(radiusM) };
   });
@@ -257,6 +282,8 @@ export type UpdateClockingLocationInput = {
   locationId?: string | null;
   address?: string | null;
   remarks?: string | null;
+  /** f9afd1ce rev 2 — OPTIONAL. Blank clears the label, and the report goes back to printing the name. */
+  reportLabel?: string | null;
 };
 
 export async function updateClockingLocation(
@@ -270,6 +297,7 @@ export async function updateClockingLocation(
   const radiusM = cleanRadius(p.radiusM);
   const address = cleanOptional(p.address);
   const remarks = cleanOptional(p.remarks);
+  const reportLabel = cleanReportLabel(p.reportLabel);
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
@@ -280,6 +308,7 @@ export async function updateClockingLocation(
         locationId: clockingLocation.locationId,
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
+        reportLabel: clockingLocation.reportLabel,
       })
       .from(clockingLocation)
       .where(eq(clockingLocation.id, p.clockingLocationId))
@@ -290,7 +319,7 @@ export async function updateClockingLocation(
     try {
       updated = await tx
         .update(clockingLocation)
-        .set({ name, lat, lng, radiusM, locationId, address, remarks })
+        .set({ name, lat, lng, radiusM, locationId, address, remarks, reportLabel })
         .where(eq(clockingLocation.id, p.clockingLocationId))
         .returning({ id: clockingLocation.id });
     } catch (e) {
@@ -303,7 +332,7 @@ export async function updateClockingLocation(
       aggregateId: p.clockingLocationId,
       eventType: 'clocking-location.updated',
       actor: actorOf(ctx),
-      payload: { before, after: { name, lat, lng, radiusM, locationId, address, remarks } },
+      payload: { before, after: { name, lat, lng, radiusM, locationId, address, remarks, reportLabel } },
     });
     return { id: p.clockingLocationId, warning: radiusWarning(radiusM) };
   });
@@ -417,6 +446,8 @@ export type ClockingLocationRow = {
   locationArchivedAt: Date | null;
   address: string | null;
   remarks: string | null;
+  /** f9afd1ce rev 2 — the Attendance report's short name for the site; null = the report prints the name. */
+  reportLabel: string | null;
   archivedAt: Date | null;
   assignedCount: number;
   /**
@@ -469,6 +500,7 @@ export function listClockingLocations(
         locationArchivedAt: location.archivedAt,
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
+        reportLabel: clockingLocation.reportLabel,
         archivedAt: clockingLocation.archivedAt,
         assignedCount: sql<number>`(
           select count(*)::int from employee_clocking_location ecl
