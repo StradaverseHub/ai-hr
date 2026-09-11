@@ -67,6 +67,7 @@ export default async function NewClockingLocationPage({
         back={{ href: LOCATIONS_LIST, label: t('backToLocations') }}
       />
       <ClockingLocationForm
+        t={t}
         mode="new"
         values={values}
         linkableLocations={linkableLocations.map((l) => ({ id: l.id, code: l.code, name: l.name, companyName: l.companyName }))}

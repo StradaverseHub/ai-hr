@@ -97,6 +97,7 @@ export default async function EditClockingLocationPage({
     <div className={pageWideCls}>
       <PageHeader title={t('editClockingTitle')} description={site.name} back={{ href: listHref, label: t('backToLocations') }} />
       <ClockingLocationForm
+        t={t}
         mode="edit"
         clockingLocationId={site.id}
         values={values}

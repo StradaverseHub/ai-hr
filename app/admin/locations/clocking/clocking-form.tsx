@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { MAX_REPORT_LABEL_CHARS } from '@/packs/attendance/service';
 import { createClockingLocationAction, updateClockingLocationAction } from '../../actions';
@@ -27,8 +26,13 @@ import { type ClockingFormValues } from './form-fields';
  * NO PLACEHOLDER FOR THE FUTURE SEARCH AND MAP (owner's decision 2026-09-11; AGENTS 28: no inert
  * control). The section order simply leaves room for them: a search under Location information, a map
  * preview under GPS and clocking settings.
+ *
+ * SYNCHRONOUS, taking the page's translator as a prop (the app/payroll/multi-cycle-worksheet idiom):
+ * both callers are server components, so a function prop crosses no client boundary, and a sync component
+ * is what lets test/clocking-location-page.test.ts render the real page with renderToStaticMarkup.
  */
-export async function ClockingLocationForm({
+export function ClockingLocationForm({
+  t,
   mode,
   clockingLocationId,
   values,
@@ -37,6 +41,8 @@ export async function ClockingLocationForm({
   error,
   cancelHref,
 }: {
+  /** The page's `getTranslations('admin.locations')`. */
+  t: (key: string, values?: Record<string, string | number>) => string;
   mode: 'new' | 'edit';
   clockingLocationId?: string;
   /** The form's defaults: what was typed when a refusal echoed it, else what is on file, else blank. */
@@ -52,7 +58,6 @@ export async function ClockingLocationForm({
   error?: string;
   cancelHref: string;
 }) {
-  const t = await getTranslations('admin.locations');
   const textareaCls = inputCls.replace('h-9', 'min-h-[4.5rem] py-2');
   return (
     <form

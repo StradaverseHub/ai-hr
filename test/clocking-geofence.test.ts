@@ -19,6 +19,7 @@ import {
   adminCtx,
   closeAll,
   eventTypesFor,
+  latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
@@ -42,9 +43,11 @@ import {
   ClockingLocationInUseError,
   ClockingLocationLinkError,
   ClockingLocationNameTakenError,
+  MAX_REPORT_LABEL_CHARS,
   RADIUS_ADVISORY_MAX_M,
   RADIUS_ADVISORY_MIN_M,
 } from '../core/clocking-location';
+import { attendanceDailyReport } from '../core/reporting';
 import { archiveLocation, createLocation } from '../core/location';
 import {
   checkIn,
@@ -125,7 +128,7 @@ async function defaultLocationFor(ctx: SessionContext, companyId: string): Promi
 }
 async function mkSite(
   ctx: SessionContext,
-  p: { name: string; lat: number; lng: number; radiusM?: number; locationId?: string; linkCompanyId?: string },
+  p: { name: string; lat: number; lng: number; radiusM?: number; locationId?: string; linkCompanyId?: string; reportLabel?: string },
 ) {
   const locationId = p.locationId ?? (await defaultLocationFor(ctx, p.linkCompanyId ?? b.companyId));
   return createClockingLocation(ctx, {
@@ -134,6 +137,7 @@ async function mkSite(
     lng: p.lng,
     radiusM: p.radiusM ?? 300,
     locationId,
+    reportLabel: p.reportLabel,
   });
 }
 
@@ -189,6 +193,9 @@ describe('clocking_location CRUD (ADR-0070)', () => {
     // 1fff489c — the two new columns are persisted, not silently dropped.
     expect(row.radiusM).toBe(300);
     expect(row.locationId).toBe(loc);
+    // f9afd1ce rev 2 (0461) — no label given ⇒ NULL, and the read model says so.
+    expect(row.reportLabel).toBeNull();
+    expect((await listClockingLocations(a)).find((l) => l.id === id)?.reportLabel).toBeNull();
 
     await updateClockingLocation(a, {
       clockingLocationId: id,
@@ -199,12 +206,15 @@ describe('clocking_location CRUD (ADR-0070)', () => {
       locationId: loc,
       address: '123 Jalan Test',
       remarks: 'main site',
+      reportLabel: 'HQ',
     });
     const [u] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(u.name).toBe('HQ Tower 2');
     expect(u.address).toBe('123 Jalan Test');
     expect(u.remarks).toBe('main site');
     expect(u.radiusM).toBe(250);
+    expect(u.reportLabel).toBe('HQ');
+    expect((await listClockingLocations(a)).find((l) => l.id === id)?.reportLabel).toBe('HQ');
   });
 
   it('rejects blank name and out-of-range coordinates', async () => {
@@ -1091,5 +1101,96 @@ describe('1fff489c — the radius is required; f9afd1ce — the location link is
     expect(row.locationCode).toBe('HQ');
     expect(row.locationName).toBe('Headquarters');
     expect(row.radiusM).toBe(150);
+  });
+});
+
+/**
+ * f9afd1ce rev 2 (r267, migration 0461) — THE REPORT LABEL. A site may carry a short name that the
+ * Attendance report's Clocking Location column prints INSTEAD of the full name; blank means the name.
+ * The rule is enforced in the service (stored NULL, never ''), carried in the event payloads, and read
+ * by exactly one consumer: core/reporting.ts attendanceDailyReport. The clock screen and the personnel
+ * list keep the name (their reads never select the column — see core/attendance.ts:locationName).
+ */
+describe('f9afd1ce rev 2 — the report label: trimmed, blank → NULL, capped, in the events, and printed by the Attendance report only', () => {
+  it('create and update carry the label: whitespace collapsed and trimmed, blank stored as NULL', async () => {
+    const a = adminCtx(b);
+    const { id } = await mkSite(a, { name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, reportLabel: '  HQ   North ' });
+    let [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(row.reportLabel).toBe('HQ North');
+
+    const base = { clockingLocationId: id, name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
+    for (const blank of ['', '   ', null, undefined]) {
+      await updateClockingLocation(a, { ...base, reportLabel: blank });
+      [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+      expect(row.reportLabel, `a label of ${JSON.stringify(blank)} clears the column`).toBeNull();
+    }
+    await updateClockingLocation(a, { ...base, reportLabel: 'HQ' });
+    [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(row.reportLabel).toBe('HQ');
+  });
+
+  it('a label over the cap is refused with a sentence, on create and on update; nothing is written', async () => {
+    const a = adminCtx(b);
+    const long = 'L'.repeat(MAX_REPORT_LABEL_CHARS + 1);
+    await expect(mkSite(a, { name: 'Long Label', lat: HQ.lat, lng: HQ.lng, reportLabel: long })).rejects.toThrow(/characters or fewer/);
+    expect((await listClockingLocations(a)).some((l) => l.name === 'Long Label')).toBe(false);
+    const { id } = await mkSite(a, { name: 'Short Label', lat: HQ.lat, lng: HQ.lng, reportLabel: 'SL' });
+    await expect(
+      updateClockingLocation(a, { clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: long }),
+    ).rejects.toThrow(/characters or fewer/);
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(row.reportLabel).toBe('SL');
+    // Exactly the cap is fine.
+    await updateClockingLocation(a, { clockingLocationId: id, name: 'Short Label', lat: HQ.lat, lng: HQ.lng, radiusM: 300, reportLabel: 'L'.repeat(MAX_REPORT_LABEL_CHARS) });
+  });
+
+  it('the created and updated events carry the label (before and after)', async () => {
+    const a = adminCtx(b);
+    const { id } = await mkSite(a, { name: 'EvLabel', lat: HQ.lat, lng: HQ.lng, reportLabel: 'EL' });
+    const created = await latestEventPayload(b.tenantId, id, 'clocking-location.created');
+    expect(created).toMatchObject({ reportLabel: 'EL' });
+    await updateClockingLocation(a, {
+      clockingLocationId: id,
+      name: 'EvLabel',
+      lat: HQ.lat,
+      lng: HQ.lng,
+      radiusM: 300,
+      locationId: await defaultLocationFor(a, b.companyId),
+      reportLabel: 'EL2',
+    });
+    const updated = await latestEventPayload(b.tenantId, id, 'clocking-location.updated');
+    expect(updated).toMatchObject({ before: { reportLabel: 'EL' }, after: { reportLabel: 'EL2' } });
+  });
+
+  /**
+   * THE ONE PLACE THE LABEL IS PRINTED. A geofenced check-in stamps the matched site on the attendance
+   * row; the daily report's Clocking Location column reads coalesce(report_label, name) off that site.
+   * Set → the label; cleared → the name again, on the SAME punch. (Non-vacuity: with the coalesce
+   * dropped from core/reporting.ts the first assertion prints the name and fails.)
+   */
+  it('the Attendance daily report prints the label when set and the name when blank', async () => {
+    const a = adminCtx(b);
+    const { id: site } = await mkSite(a, { name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, reportLabel: 'HQ' });
+    const e = await hire(a, b.companyId, b.deptA, 'Report Emp');
+    await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
+    await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
+    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
+    expect((await attendanceRow(e.employmentId, '2026-07-06')).checkInClockingLocationId, 'the punch matched the site').toBe(site);
+
+    // The report's rows carry no employmentId (the final map strips it for the registry); the name is the key.
+    const rowFor = async () =>
+      (await attendanceDailyReport(a, { month: '2026-07', companyIds: [b.companyId] })).find((r) => r.name === 'Report Emp');
+
+    expect((await rowFor())?.clockingLocation, 'the report prints the LABEL, not the name').toBe('HQ');
+
+    const base = { clockingLocationId: site, name: 'HQ Tower — North Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
+    await updateClockingLocation(a, { ...base, reportLabel: '' });
+    expect((await rowFor())?.clockingLocation, 'blank label ⇒ the name is printed').toBe('HQ Tower — North Gate');
+
+    // The clock screen's read keeps the NAME whatever the label says.
+    await updateClockingLocation(a, { ...base, reportLabel: 'HQ' });
+    const assigned = await listEmployeeClockingLocations(a, e.employmentId);
+    expect(assigned.map((l) => l.name)).toEqual(['HQ Tower — North Gate']);
+    expect(assigned[0]).not.toHaveProperty('reportLabel');
   });
 });
