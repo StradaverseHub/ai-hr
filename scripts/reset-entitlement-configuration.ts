@@ -9,13 +9,13 @@
  *
  *   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
  *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=config
- *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=accruals
+ *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=accruals [--include-system-adjustments]
  *       → DRY RUN of one stage: the full census per leave type, every refusal check, and the sentence
  *         "Nothing was written." Exit 1 if the stage WOULD be refused, so a rehearsal fails loudly.
  *
  *   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
  *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=config   --apply [--tag <text>]
- *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=accruals --apply [--tag <text>]
+ *     /opt/node20/bin/node --import tsx scripts/reset-entitlement-configuration.ts --tenant=<uuid> --stage=accruals --apply [--tag <text>] [--include-system-adjustments]
  *       → THE RESET, one stage, ONE transaction: archive → VERIFY → delete → event.
  *
  * REPORT-ONLY BY DEFAULT, like scripts/reset-medical-hospitalization-ledger.ts (c8052ae3, "the r180 script"),
@@ -59,6 +59,23 @@
  *   ORDER: archive → verify → delete audit rows → delete accrual rows → survivor check (no accrual left,
  *   and exactly the kept rows remain) → ONE domain event `entitlement-accruals.reset`.
  *
+ *   ── `--include-system-adjustments` (OPT-IN, accruals stage only) ──────────────────────────────────
+ *   The production dry run found that EVERY adjustment row on the tenant carries a SYSTEM reason
+ *   (sys:profile_recalc:<id>, sys:policy_recalc:<id>, sys:a2c_recalc:<id>, sys:carry_forward_cap), none
+ *   has a batch id and none has a human reason: they were written by recalculations driven by the very
+ *   configuration the config stage clears, so keeping them would leave configuration-derived days behind.
+ *   The approved plan, however, promised in so many words that "adjustments your HR team made by hand"
+ *   are KEPT, and clearing system-written ones is a change of shape the reporter has to approve — which is
+ *   why it is a FLAG and not the default. With the flag, the stage's scope is the accrual rows PLUS the
+ *   adjustment rows whose reason starts with `sys:` AND whose adjustment_batch_id IS NULL; an adjustment
+ *   with a human reason, no reason, or a batch id is ALWAYS kept. The recalc-audit rows in scope are those
+ *   whose ledger_id points at ANY row in the widened set. Census, refusals, archive, verify, delete, the
+ *   survivor check and the event payload all follow ONE scope predicate (`scopeCond` / `scopeSqlLl`), and
+ *   the event records `includeSystemAdjustments` true / false. WITHOUT the flag the stage is byte-for-byte
+ *   what it was before the flag existed (pinned by the test file). The dry run always shows the split
+ *   "system-written / human or no reason / with a batch id" per leave type, and its footer says what the
+ *   flag WOULD clear.
+ *
  * ── REFUSALS — fail closed: nothing written, the counts printed ─────────────────────────────────────
  *   · any to-be-deleted accrual carrying a source_request_id (an accrual sourced from a leave request is
  *     not "generated from configuration"; production shows none, and if one appears a human decides);
@@ -82,7 +99,7 @@
  * ledger reads what it reads because the rows are gone, not because something granted zero.
  */
 import { fileURLToPath } from 'node:url';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
 import {
@@ -162,6 +179,18 @@ export function forceStatus(row: { validFrom: string; validTo: string | null }, 
 }
 
 export type LedgerKindCount = { entryType: string; rows: number; days: number };
+/** A bucket of adjustment rows: how many and how many signed days. */
+export type RowsDays = { rows: number; days: number };
+/**
+ * The three kinds of adjustment row, decided by ONE rule everywhere: a batch id makes it `batched`
+ * (whatever its reason); otherwise a reason starting `sys:` makes it `system`; otherwise it is `human`
+ * (a human reason OR no reason at all). Only `system` can ever enter the accruals stage's scope.
+ */
+export type AdjustmentSplit = {
+  system: RowsDays & { reasons: { reason: string; rows: number; days: number }[] };
+  human: RowsDays;
+  batched: RowsDays;
+};
 export type PerLeaveType = {
   /** null = rules whose template lineage no longer has any version (orphans — still archived and cleared). */
   leaveTypeId: string | null;
@@ -180,6 +209,11 @@ export type PerLeaveType = {
   adjustmentsWithBatch: number;
   adjustmentsWithoutBatch: number;
   adjustmentReasons: { reason: string; rows: number; days: number }[];
+  /** The split the flag decides on — see `AdjustmentSplit`. */
+  adjustments: AdjustmentSplit;
+  /** System-written adjustment rows this type would lose under --include-system-adjustments. */
+  systemAdjustmentRows: number;
+  systemAdjustmentDays: number;
   debitRows: number;
   debitsOnApprovedRequests: number;
   auditRowsInScope: number;
@@ -201,6 +235,8 @@ export type EntitlementResetReport = {
   stage: Stage;
   tag: string;
   apply: boolean;
+  /** accruals stage: was --include-system-adjustments set? Always false on the config stage. */
+  includeSystemAdjustments: boolean;
   today: string;
   types: PerLeaveType[];
   totals: {
@@ -212,6 +248,13 @@ export type EntitlementResetReport = {
     accrualRows: number;
     accrualDays: number;
     adjustmentRows: number;
+    /** The three-way split, tenant-wide. `system` is what the flag would (or does) clear. */
+    systemAdjustmentRows: number;
+    systemAdjustmentDays: number;
+    humanAdjustmentRows: number;
+    batchedAdjustmentRows: number;
+    /** Ledger rows the accruals stage will archive and delete under the CURRENT flag setting. */
+    scopeLedgerRows: number;
     debitRows: number;
     debitsOnApprovedRequests: number;
     inLieuRows: number;
@@ -241,7 +284,15 @@ export type EntitlementResetReport = {
  */
 export type ResetTestHooks = { afterArchive?: (tx: Tx) => Promise<void> };
 
-export type ResetOptions = { tenantId: string; stage: Stage; apply: boolean; tag?: string; testHooks?: ResetTestHooks };
+export type ResetOptions = {
+  tenantId: string;
+  stage: Stage;
+  apply: boolean;
+  tag?: string;
+  /** accruals stage only — see the header. Ignored on the config stage. */
+  includeSystemAdjustments?: boolean;
+  testHooks?: ResetTestHooks;
+};
 
 type Db = ReturnType<typeof createDb>['db'];
 
@@ -305,6 +356,22 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const tag = opts.tag?.trim() || defaultTag(opts.stage, today);
   const tenantId = opts.tenantId;
   const refusals: string[] = [];
+  const includeSys = opts.stage === 'accruals' && opts.includeSystemAdjustments === true;
+
+  // ── THE ONE SCOPE PREDICATE for the accruals stage, in drizzle form and in raw-SQL form (alias `ll`).
+  //    Everything that selects, archives, deletes or checks survivors uses one of these two and nothing
+  //    else, so the flag cannot widen one step and not another. Without the flag both read exactly
+  //    `entry_type = 'accrual'`, which is what they read before the flag existed.
+  const systemAdjustmentCond = and(
+    eq(leaveLedger.entryType, 'adjustment'),
+    like(leaveLedger.reason, 'sys:%'),
+    isNull(leaveLedger.adjustmentBatchId),
+  );
+  const scopeCond = includeSys ? or(eq(leaveLedger.entryType, 'accrual'), systemAdjustmentCond) : eq(leaveLedger.entryType, 'accrual');
+  const scopeSqlLl = includeSys
+    ? sql`(ll.entry_type = 'accrual' or (ll.entry_type = 'adjustment' and ll.reason like 'sys:%' and ll.adjustment_batch_id is null))`
+    : sql`ll.entry_type = 'accrual'`;
+  const scopeNoun = includeSys ? 'row(s) in scope (accruals or system-written adjustments)' : 'accrual row(s)';
 
   // ── 1. IDENTITY. The tenant is echoed back by NAME so a wrong uuid is caught by a human reading it. ──
   const [t] = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant).where(eq(tenant.id, tenantId));
@@ -373,6 +440,19 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'adjustment')))
     .groupBy(leaveLedger.leaveTypeId, sql`coalesce(${leaveLedger.reason}, '(no reason)')`)
     .orderBy(asc(leaveLedger.leaveTypeId), sql`2`);
+  // The three-way split, per type: batch id → batched; else reason like 'sys:%' → system; else human.
+  const bucketSql = sql<string>`case when ${leaveLedger.adjustmentBatchId} is not null then 'batched'
+    when ${leaveLedger.reason} like 'sys:%' then 'system' else 'human' end`;
+  const adjustmentsSplit = await owner.db
+    .select({
+      leaveTypeId: leaveLedger.leaveTypeId,
+      bucket: bucketSql,
+      rows: sql<number>`count(*)::int`,
+      days: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+    })
+    .from(leaveLedger)
+    .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'adjustment')))
+    .groupBy(leaveLedger.leaveTypeId, bucketSql);
   const debitsOnApproved = await owner.db
     .select({ leaveTypeId: leaveLedger.leaveTypeId, rows: sql<number>`count(*)::int` })
     .from(leaveLedger)
@@ -382,15 +462,18 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     )
     .groupBy(leaveLedger.leaveTypeId);
 
-  // The accrual scope, by id — what stage two archives and removes, and what the audit scope hangs off.
-  const accruals = await owner.db
-    .select({ id: leaveLedger.id, leaveTypeId: leaveLedger.leaveTypeId })
+  // The stage-two scope, by id — what it archives and removes, and what the audit scope hangs off.
+  // `scopeCond` is the accruals alone without the flag; with it, the system-written adjustments too.
+  const scopeRows = await owner.db
+    .select({ id: leaveLedger.id, leaveTypeId: leaveLedger.leaveTypeId, entryType: leaveLedger.entryType })
     .from(leaveLedger)
-    .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'accrual')))
+    .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond))
     .orderBy(asc(leaveLedger.id));
-  const accrualIds = accruals.map((a) => a.id);
+  const scopeIds = scopeRows.map((a) => a.id);
+  const accrualIds = scopeRows.filter((a) => a.entryType === 'accrual').map((a) => a.id);
+  const systemAdjustmentIdsInScope = scopeRows.filter((a) => a.entryType === 'adjustment').map((a) => a.id);
   const audits =
-    accrualIds.length === 0
+    scopeIds.length === 0
       ? []
       : await owner.db
           .select({ id: leaveEntitlementRecalcAudit.id, leaveTypeId: leaveEntitlementRecalcAudit.leaveTypeId })
@@ -398,7 +481,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           .where(
             and(
               eq(leaveEntitlementRecalcAudit.tenantId, tenantId),
-              inArray(leaveEntitlementRecalcAudit.ledgerId, accrualIds),
+              inArray(leaveEntitlementRecalcAudit.ledgerId, scopeIds),
             ),
           )
           .orderBy(asc(leaveEntitlementRecalcAudit.id));
@@ -420,18 +503,12 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const [sourcedRow] = await owner.db
     .select({ n: sql<number>`count(*)::int` })
     .from(leaveLedger)
-    .where(
-      and(
-        eq(leaveLedger.tenantId, tenantId),
-        eq(leaveLedger.entryType, 'accrual'),
-        sql`${leaveLedger.sourceRequestId} is not null`,
-      ),
-    );
+    .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond, sql`${leaveLedger.sourceRequestId} is not null`));
   const requestSourcedAccruals = Number(sourcedRow?.n ?? 0);
   const [toilRow] = (await owner.db.execute(
     sql`select count(*)::int as n from toil_accrual ta
         join leave_ledger ll on ll.id = ta.ledger_entry_id
-        where ll.tenant_id = ${tenantId}::uuid and ll.entry_type = 'accrual'`,
+        where ll.tenant_id = ${tenantId}::uuid and ${scopeSqlLl}`,
   )) as unknown as { n: number }[];
   const toilReferences = Number(toilRow?.n ?? 0);
   const [snapRow] = (await owner.db.execute(
@@ -454,11 +531,11 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   if (opts.stage === 'accruals') {
     if (requestSourcedAccruals > 0) {
       refusals.push(
-        `${requestSourcedAccruals} accrual row(s) carry a source_request_id — an accrual sourced from a leave request is not "generated from configuration". Stopping.`,
+        `${requestSourcedAccruals} ${scopeNoun} carry a source_request_id — a row sourced from a leave request is not "generated from configuration". Stopping.`,
       );
     }
     if (toilReferences > 0) {
-      refusals.push(`${toilReferences} toil_accrual row(s) reference an accrual this stage would delete. Stopping.`);
+      refusals.push(`${toilReferences} toil_accrual row(s) reference a ledger row this stage would delete. Stopping.`);
     }
   }
   if (encashmentSnapshots > 0) {
@@ -503,6 +580,21 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     const h = leaveTypeId ? healthByType.get(leaveTypeId) : undefined;
     const count = (arr: { validFrom: string; validTo: string | null }[], s: ForceStatus) =>
       arr.filter((x) => forceStatus(x, today) === s).length;
+    const bucket = (name: 'system' | 'human' | 'batched'): RowsDays => {
+      const row = adjustmentsSplit.find((a) => a.leaveTypeId === leaveTypeId && a.bucket === name);
+      return { rows: Number(row?.rows ?? 0), days: Number(row?.days ?? 0) };
+    };
+    const split: AdjustmentSplit = {
+      system: {
+        ...bucket('system'),
+        // Which system reasons, so the reporter reads "sys:profile_recalc 3, sys:carry_forward_cap 1".
+        reasons: adjustmentsByReason
+          .filter((a) => a.leaveTypeId === leaveTypeId && a.reason.startsWith('sys:'))
+          .map((a) => ({ reason: a.reason, rows: Number(a.rows), days: Number(a.days) })),
+      },
+      human: bucket('human'),
+      batched: bucket('batched'),
+    };
     return {
       leaveTypeId,
       code,
@@ -524,6 +616,9 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       adjustmentReasons: adjustmentsByReason
         .filter((a) => a.leaveTypeId === leaveTypeId)
         .map((a) => ({ reason: a.reason, rows: Number(a.rows), days: Number(a.days) })),
+      adjustments: split,
+      systemAdjustmentRows: split.system.rows,
+      systemAdjustmentDays: split.system.days,
       debitRows: Number(debit?.rows ?? 0),
       debitsOnApprovedRequests: Number(debitsOnApproved.find((d) => d.leaveTypeId === leaveTypeId)?.rows ?? 0),
       auditRowsInScope: audits.filter((a) => a.leaveTypeId === leaveTypeId).length,
@@ -541,6 +636,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     stage: opts.stage,
     tag,
     apply: opts.apply,
+    includeSystemAdjustments: includeSys,
     today,
     types: typeLines,
     totals: {
@@ -552,6 +648,11 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       accrualRows: accrualIds.length,
       accrualDays: ledgerByKind.filter((x) => x.entryType === 'accrual').reduce((n, x) => n + Number(x.days), 0),
       adjustmentRows: sumKind('adjustment'),
+      systemAdjustmentRows: typeLines.reduce((n, x) => n + x.adjustments.system.rows, 0),
+      systemAdjustmentDays: typeLines.reduce((n, x) => n + x.adjustments.system.days, 0),
+      humanAdjustmentRows: typeLines.reduce((n, x) => n + x.adjustments.human.rows, 0),
+      batchedAdjustmentRows: typeLines.reduce((n, x) => n + x.adjustments.batched.rows, 0),
+      scopeLedgerRows: scopeIds.length,
       debitRows: sumKind('debit'),
       debitsOnApprovedRequests: debitsOnApproved.reduce((n, x) => n + Number(x.rows), 0),
       inLieuRows: sumKind('in_lieu_accrual'),
@@ -715,10 +816,13 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   }
 
   // stage === 'accruals'
-  if (accrualIds.length === 0) {
+  if (scopeIds.length === 0) {
     report.nothingInScope = true;
     return report;
   }
+  const auditNote = includeSys
+    ? 'Describes a ledger row (an accrual or a system-written adjustment) removed by the same reset (fe9c73bc).'
+    : 'Describes an accrual row removed by the same reset (fe9c73bc).';
   await owner.db.transaction(async (tx) => {
     // ── LEDGER LAYER — migration 0416's rendering, copied, scoped to the accrual ids and nothing else. ──
     await tx.execute(sql`
@@ -760,8 +864,8 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       LEFT JOIN leave_type lt ON lt.id = ll.leave_type_id
       LEFT JOIN leave_request lr ON lr.id = ll.source_request_id
       WHERE ll.tenant_id = ${tenantId}::uuid
-        AND ll.entry_type = 'accrual'
-        AND ll.id = ANY (${uuidArray(accrualIds)})`);
+        AND ${scopeSqlLl}
+        AND ll.id = ANY (${uuidArray(scopeIds)})`);
     // ── RECALC-AUDIT LAYER — the rows that DESCRIBE those accruals, by id. ─────────────────────────────
     if (auditIds.length > 0) {
       await tx.execute(sql`
@@ -787,7 +891,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           'previous ' || ra.previous_entitlement::text || ' → new ' || ra.new_entitlement::text
             || ' (delta ' || ra.delta::text || ')',
           ra.created_at::text,
-          'Describes an accrual row removed by the same reset (fe9c73bc).'
+          ${auditNote}
         FROM leave_entitlement_recalc_audit ra
         JOIN employment em ON em.id = ra.employment_id
         LEFT JOIN person pe ON pe.id = em.person_id
@@ -800,9 +904,9 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
 
     // THE VERIFY.
     const archivedLedger = await countLedgerArchive(tx, tenantId, tag, 'ledger');
-    if (archivedLedger !== accrualIds.length) {
+    if (archivedLedger !== scopeIds.length) {
       throw new Error(
-        `ARCHIVE INCOMPLETE: ${archivedLedger} ledger row(s) captured under tag '${tag}' but ${accrualIds.length} accrual row(s) exist. Nothing deleted.`,
+        `ARCHIVE INCOMPLETE: ${archivedLedger} ledger row(s) captured under tag '${tag}' but ${scopeIds.length} ${scopeNoun} exist. Nothing deleted.`,
       );
     }
     const archivedAudit = await countLedgerArchive(tx, tenantId, tag, 'recalc_audit');
@@ -812,8 +916,9 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       );
     }
 
-    // Audit rows first (they describe the ledger rows), then the accruals — by id AND by entry type, so a
-    // row that changed kind between census and delete is left alone and caught by the survivor check.
+    // Audit rows first (they describe the ledger rows), then the ledger rows — by id AND by the scope
+    // predicate, so a row that changed kind between census and delete is left alone and caught by the
+    // survivor check.
     const deletedAudit =
       auditIds.length === 0
         ? []
@@ -823,26 +928,24 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
             .returning({ id: leaveEntitlementRecalcAudit.id });
     const deletedLedger = await tx
       .delete(leaveLedger)
-      .where(
-        and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'accrual'), inArray(leaveLedger.id, accrualIds)),
-      )
+      .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond, inArray(leaveLedger.id, scopeIds)))
       .returning({ id: leaveLedger.id });
 
-    // Belt to the braces: no accrual may survive, and EXACTLY the kept rows must remain.
-    const [accrualsLeft] = (await tx
+    // Belt to the braces: nothing in scope may survive, and EXACTLY the kept rows must remain.
+    const [scopeLeft] = (await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(leaveLedger)
-      .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'accrual')))) as { n: number }[];
-    if (Number(accrualsLeft?.n ?? 0) !== 0) {
-      throw new Error(`${accrualsLeft?.n} accrual row(s) survived the delete — rolling back.`);
+      .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond))) as { n: number }[];
+    if (Number(scopeLeft?.n ?? 0) !== 0) {
+      throw new Error(`${scopeLeft?.n} ${scopeNoun} survived the delete — rolling back.`);
     }
     const [ledgerLeft] = (await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(leaveLedger)
       .where(eq(leaveLedger.tenantId, tenantId))) as { n: number }[];
-    if (Number(ledgerLeft?.n ?? 0) !== ledgerRowsBefore - accrualIds.length) {
+    if (Number(ledgerLeft?.n ?? 0) !== ledgerRowsBefore - scopeIds.length) {
       throw new Error(
-        `${ledgerLeft?.n} ledger row(s) remain but ${ledgerRowsBefore - accrualIds.length} were expected to be kept — rolling back.`,
+        `${ledgerLeft?.n} ledger row(s) remain but ${ledgerRowsBefore - scopeIds.length} were expected to be kept — rolling back.`,
       );
     }
 
@@ -856,16 +959,24 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
         item: 'fe9c73bc',
         stage: 'accruals',
         captureTag: tag,
+        includeSystemAdjustments: includeSys,
+        scope: { accrualRows: accrualIds.length, systemAdjustmentRows: systemAdjustmentIdsInScope.length },
         archived: { ledger: archivedLedger, recalcAudit: archivedAudit },
         deleted: { ledger: deletedLedger.length, recalcAudit: deletedAudit.length },
         kept: {
-          adjustment: report.totals.adjustmentRows,
+          adjustment: report.totals.adjustmentRows - (includeSys ? systemAdjustmentIdsInScope.length : 0),
           debit: report.totals.debitRows,
           inLieuAccrual: report.totals.inLieuRows,
         },
         perLeaveType: report.types
-          .filter((x) => x.leaveTypeId && x.accrualRows > 0)
-          .map((x) => ({ leaveTypeId: x.leaveTypeId, code: x.code, accrualRows: x.accrualRows, accrualDays: x.accrualDays })),
+          .filter((x) => x.leaveTypeId && (x.accrualRows > 0 || (includeSys && x.systemAdjustmentRows > 0)))
+          .map((x) => ({
+            leaveTypeId: x.leaveTypeId,
+            code: x.code,
+            accrualRows: x.accrualRows,
+            accrualDays: x.accrualDays,
+            ...(includeSys ? { systemAdjustmentRows: x.systemAdjustmentRows, systemAdjustmentDays: x.systemAdjustmentDays } : {}),
+          })),
       },
     });
 
@@ -932,7 +1043,8 @@ export function formatSurvey(rows: TenantSurveyRow[]): string {
 
 export function formatReport(r: EntitlementResetReport): string {
   const out: string[] = [];
-  out.push(`\nfe9c73bc entitlement-configuration reset — stage=${r.stage} mode=${r.apply ? 'APPLY' : 'DRY RUN'}`);
+  const flag = r.stage === 'accruals' ? ` include-system-adjustments=${r.includeSystemAdjustments ? 'yes' : 'no'}` : '';
+  out.push(`\nfe9c73bc entitlement-configuration reset — stage=${r.stage} mode=${r.apply ? 'APPLY' : 'DRY RUN'}${flag}`);
   out.push(`tenant ${r.tenantId} "${r.tenantName}", capture tag '${r.tag}', today ${r.today} (Kuala Lumpur)\n`);
   for (const x of r.types) {
     const flag = x.archived ? ' (archived leave type)' : '';
@@ -943,8 +1055,13 @@ export function formatReport(r: EntitlementResetReport): string {
     );
     if (x.healthNow) out.push(`    health now: ${x.healthNow.status} (${x.healthNow.findings.join(', ') || 'no findings'})`);
     for (const k of x.ledger) out.push(`    ledger ${k.entryType.padEnd(16)} ${pad(k.rows, 5)} rows  ${pad(fmtDays(k.days), 10)} days`);
-    if (x.adjustmentsWithBatch + x.adjustmentsWithoutBatch > 0) {
-      out.push(`    adjustments: ${x.adjustmentsWithBatch} with a batch id / ${x.adjustmentsWithoutBatch} without`);
+    const adj = x.adjustments;
+    if (adj.system.rows + adj.human.rows + adj.batched.rows > 0) {
+      out.push(
+        `    adjustments: system-written (sys:…) ${adj.system.rows} rows ${fmtDays(adj.system.days)} days` +
+          ` / human or no reason ${adj.human.rows} rows ${fmtDays(adj.human.days)} days` +
+          ` / with a batch id ${adj.batched.rows} rows ${fmtDays(adj.batched.days)} days`,
+      );
       for (const a of x.adjustmentReasons) out.push(`      reason "${a.reason}": ${a.rows} rows ${fmtDays(a.days)} days`);
     }
     if (x.debitRows > 0) out.push(`    debits: ${x.debitRows} rows, ${x.debitsOnApprovedRequests} on an approved request — KEPT`);
@@ -955,8 +1072,17 @@ export function formatReport(r: EntitlementResetReport): string {
   out.push(`  entitlement_template rows        : ${t.templates} (${t.templatesInForce} in force)`);
   out.push(`  entitlement_eligibility_rule rows: ${t.rules} (${t.rulesInForce} in force)`);
   out.push(`  leave_ledger rows                : ${t.ledgerRows}`);
-  out.push(`    accrual (stage accruals scope) : ${t.accrualRows} rows ${fmtDays(t.accrualDays)} days`);
-  out.push(`    adjustment (kept)              : ${t.adjustmentRows}`);
+  out.push(`    accrual                        : ${t.accrualRows} rows ${fmtDays(t.accrualDays)} days`);
+  out.push(
+    `    adjustment                     : ${t.adjustmentRows} — system-written (sys:…) ${t.systemAdjustmentRows} (${fmtDays(t.systemAdjustmentDays)} days)` +
+      ` / human or no reason ${t.humanAdjustmentRows} / with a batch id ${t.batchedAdjustmentRows}`,
+  );
+  if (r.stage === 'accruals') {
+    out.push(
+      `    IN SCOPE for this stage        : ${t.scopeLedgerRows} row(s) = accruals` +
+        (r.includeSystemAdjustments ? ` + ${t.systemAdjustmentRows} system-written adjustment(s)` : ' only'),
+    );
+  }
   out.push(`    debit (kept)                   : ${t.debitRows} (${t.debitsOnApprovedRequests} on an approved request)`);
   out.push(`    in_lieu_accrual (kept)         : ${t.inLieuRows}`);
   out.push(`  approved leave requests (kept)   : ${t.approvedRequests}`);
@@ -975,10 +1101,33 @@ export function formatReport(r: EntitlementResetReport): string {
     return out.join('\n');
   }
   if (!r.apply) {
+    if (r.stage === 'accruals') {
+      const byReason = new Map<string, { rows: number; days: number }>();
+      for (const x of r.types) {
+        for (const a of x.adjustments.system.reasons) {
+          const cur = byReason.get(a.reason) ?? { rows: 0, days: 0 };
+          byReason.set(a.reason, { rows: cur.rows + a.rows, days: cur.days + a.days });
+        }
+      }
+      const reasons = [...byReason.entries()].map(([k, v]) => `${k} ${v.rows} (${fmtDays(v.days)})`).join(', ');
+      if (r.includeSystemAdjustments) {
+        out.push(
+          `\n  --include-system-adjustments IS SET: this stage ALSO clears ${t.systemAdjustmentRows} system-written adjustment row(s)` +
+            ` (${fmtDays(t.systemAdjustmentDays)} days)${reasons ? `: ${reasons}` : ''}.` +
+            ` Human-reason, no-reason and batched adjustments are always kept.`,
+        );
+      } else {
+        out.push(
+          `\n  --include-system-adjustments WOULD also clear ${t.systemAdjustmentRows} system-written adjustment row(s)` +
+            ` (${fmtDays(t.systemAdjustmentDays)} days)${reasons ? `: ${reasons}` : ''}; without it EVERY adjustment is kept.` +
+            ` Human-reason, no-reason and batched adjustments are always kept either way.`,
+        );
+      }
+    }
     const what =
       r.stage === 'config'
         ? `archive these ${t.templates} template(s) and ${t.rules} rule(s) into entitlement_reset_archive and then remove them`
-        : `archive these ${t.accrualRows} accrual row(s) and ${t.auditRowsInScope} recalc-audit row(s) into leave_ledger_reset_archive and then remove them`;
+        : `archive these ${t.scopeLedgerRows} ledger row(s) in scope and ${t.auditRowsInScope} recalc-audit row(s) into leave_ledger_reset_archive and then remove them`;
     out.push(`\n  Nothing was written. Re-run with --apply to ${what}.`);
     return out.join('\n');
   }
@@ -998,8 +1147,16 @@ export function formatReport(r: EntitlementResetReport): string {
     }
   } else {
     out.push('  Read the record at /admin/leave-config/records/balances.');
-    out.push('  Debits and manual adjustments were KEPT; balances of anyone who took leave now read negative until');
-    out.push('  new configuration generates fresh entitlement (plan fe9c73bc). NO entitlement generation was run.');
+    if (r.includeSystemAdjustments) {
+      out.push(
+        `  ${t.systemAdjustmentRows} system-written adjustment row(s) were cleared WITH the accruals (--include-system-adjustments);`,
+      );
+      out.push('  debits, human-reason, no-reason and batched adjustments were KEPT.');
+    } else {
+      out.push('  Debits and every adjustment were KEPT (system-written ones too — --include-system-adjustments was not set).');
+    }
+    out.push('  Balances of anyone who took leave now read negative until new configuration generates fresh');
+    out.push('  entitlement (plan fe9c73bc). NO entitlement generation was run.');
   }
   return out.join('\n');
 }
@@ -1023,6 +1180,7 @@ if (process.argv[1]?.endsWith('reset-entitlement-configuration.ts')) {
   const tenantId = argOf('--tenant');
   const stageArg = argOf('--stage');
   const apply = process.argv.includes('--apply');
+  const includeSystemAdjustments = process.argv.includes('--include-system-adjustments');
   const run = async () => {
     if (tenantId && !UUID_SHAPE.test(tenantId)) {
       console.error(`--tenant must be a uuid; got '${tenantId}'. Nothing was written.`);
@@ -1040,11 +1198,16 @@ if (process.argv[1]?.endsWith('reset-entitlement-configuration.ts')) {
       console.error('--stage=config | accruals is required with --tenant.');
       process.exit(1);
     }
+    if (includeSystemAdjustments && stageArg !== 'accruals') {
+      console.error('--include-system-adjustments applies to --stage=accruals only. Nothing was written.');
+      process.exit(1);
+    }
     const r = await runEntitlementReset(url, {
       tenantId,
       stage: stageArg as Stage,
       apply,
       tag: argOf('--tag') ?? undefined,
+      includeSystemAdjustments,
     });
     const text = formatReport(r);
     if (r.refusals.length > 0) {

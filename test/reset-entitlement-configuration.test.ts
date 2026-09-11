@@ -5,9 +5,16 @@
  * tool takes its tenant on the command line and is therefore EXECUTED here, stage by stage, on a fixture
  * that carries one of every kind of row the approved plan names:
  *   · three entitlement tables (two in force, one ended) across two leave types, and two eligibility rules;
- *   · for two employees: three accruals (one dated at hire), two adjustments (one with a batch id), one
- *     debit attached to a real APPROVED leave request, one in_lieu_accrual;
- *   · two recalc-audit rows — one whose ledger_id points at an accrual, one with ledger_id NULL.
+ *   · for two employees: three accruals (one dated at hire), THREE adjustments — one system-written
+ *     (sys:profile_recalc:<id>, no batch), one with a human reason, one with a batch id — one debit
+ *     attached to a real APPROVED leave request, one in_lieu_accrual;
+ *   · three recalc-audit rows — one whose ledger_id points at an accrual, one pointing at the
+ *     system-written adjustment, one with ledger_id NULL.
+ *
+ * `--include-system-adjustments` is OPT-IN (see the script header): without it the accruals stage is
+ * byte-for-byte what it was before the flag existed, and the "default keeps all three" test pins that;
+ * with it only the system-written adjustment joins the scope, its audit row goes with it, and the balance
+ * moves by exactly that row's days.
  *
  * The plan's verdict per record kind is the assertion: configuration and generated entitlement CLEARED,
  * taken leave and manual adjustments KEPT, a written record in the archive tables FIRST, and the archive
@@ -85,8 +92,11 @@ type Fx = {
   sickTypeId: string;
   gradeId: string;
   emp1: string; // ANNUAL: two accruals (one at hire) + one debit on an approved request
-  emp2: string; // SICK: one accrual, two adjustments (one batched), one in_lieu_accrual
+  emp2: string; // SICK: one accrual, three adjustments (system / human / batched), one in_lieu_accrual
   accrual1Id: string;
+  /** The sys:profile_recalc adjustment — the ONLY adjustment --include-system-adjustments may clear. */
+  sysAdjId: string;
+  sysAdjReason: string;
   tplA: { lineageId: string; name: string };
   tplB: { lineageId: string; name: string };
   batchId: string;
@@ -197,6 +207,8 @@ async function seedFixture(): Promise<Fx> {
   await row(e2.employmentId, sick.id, 'accrual', '10.00', addDaysIso(today, -30));
   await row(e2.employmentId, sick.id, 'adjustment', '2.00', addDaysIso(today, -20), { adjustmentBatchId: batch.id, reason: 'Bonus days' });
   await row(e2.employmentId, sick.id, 'adjustment', '3.00', addDaysIso(today, -15), { reason: 'CNY 2026' });
+  const sysAdjReason = `sys:profile_recalc:${e2.employmentId}`;
+  const [sysAdj] = await row(e2.employmentId, sick.id, 'adjustment', '-4.00', addDaysIso(today, -12), { reason: sysAdjReason });
   await row(e2.employmentId, sick.id, 'in_lieu_accrual', '1.00', addDaysIso(today, -5));
 
   await owner.db.insert(schema.leaveEntitlementRecalcAudit).values([
@@ -210,6 +222,17 @@ async function seedFixture(): Promise<Fx> {
       reason: 'employment_changed',
       effectiveOn: hiredOn,
       ledgerId: accrual1.id,
+    },
+    {
+      tenantId: b.tenantId,
+      employmentId: e2.employmentId,
+      leaveTypeId: sick.id,
+      previousEntitlement: '10.00',
+      newEntitlement: '6.00',
+      delta: '-4.00',
+      reason: 'employment_changed',
+      effectiveOn: addDaysIso(today, -12),
+      ledgerId: sysAdj.id,
     },
     {
       tenantId: b.tenantId,
@@ -231,6 +254,8 @@ async function seedFixture(): Promise<Fx> {
     emp1: e1.employmentId,
     emp2: e2.employmentId,
     accrual1Id: accrual1.id,
+    sysAdjId: sysAdj.id,
+    sysAdjReason,
     tplA: { lineageId: tplA.lineageId, name: 'Annual — Executive' },
     tplB: { lineageId: tplB.lineageId, name: 'Medical — All' },
     batchId: batch.id,
@@ -304,12 +329,12 @@ describe('fe9c73bc — the fixture is what the plan counted', () => {
     expect(await snapshot()).toEqual({
       templates: 3,
       rules: 2,
-      ledger: 7,
+      ledger: 8,
       accrual: 3,
-      adjustment: 2,
+      adjustment: 3,
       debit: 1,
       in_lieu_accrual: 1,
-      audit: 2,
+      audit: 3,
       entArchive: 0,
       ledArchive: 0,
     });
@@ -319,7 +344,7 @@ describe('fe9c73bc — the fixture is what the plan counted', () => {
     await seedFixture();
     const rows = await surveyTenants(URL_);
     const mine = rows.find((r) => r.tenantId === b.tenantId)!;
-    expect(mine).toMatchObject({ name: 'Acme Group', templates: 3, rules: 2, accrualRows: 3, ledgerRows: 7 });
+    expect(mine).toMatchObject({ name: 'Acme Group', templates: 3, rules: 2, accrualRows: 3, ledgerRows: 8 });
     expect(await cnt.entArchive()).toBe(0);
     expect(await cnt.ledArchive()).toBe(0);
   });
@@ -362,25 +387,43 @@ describe('fe9c73bc — the dry run counts and writes nothing', () => {
       rulesInForce: 1,
       accrualRows: 1,
       adjustmentsWithBatch: 1,
-      adjustmentsWithoutBatch: 1,
+      adjustmentsWithoutBatch: 2,
       debitRows: 0,
-      auditRowsInScope: 0,
+      auditRowsInScope: 0, // the sys-adjustment's audit row is NOT in scope without the flag
     });
-    expect(sick.adjustmentReasons.map((a) => a.reason).sort()).toEqual(['Bonus days', 'CNY 2026']);
+    expect(sick.adjustmentReasons.map((a) => a.reason).sort()).toEqual(['Bonus days', 'CNY 2026', fx.sysAdjReason]);
+    // THE SPLIT the flag decides on: system-written / human or no reason / with a batch id, rows AND days.
+    expect(sick.adjustments).toEqual({
+      system: { rows: 1, days: -4, reasons: [{ reason: fx.sysAdjReason, rows: 1, days: -4 }] },
+      human: { rows: 1, days: 3 },
+      batched: { rows: 1, days: 2 },
+    });
     expect(sick.ledger.map((k) => k.entryType).sort()).toEqual(['accrual', 'adjustment', 'in_lieu_accrual']);
+    expect(r.includeSystemAdjustments).toBe(false);
     expect(r.totals).toMatchObject({
       templates: 3,
       templatesInForce: 2,
       rules: 2,
       rulesInForce: 2,
-      ledgerRows: 7,
+      ledgerRows: 8,
       accrualRows: 3,
-      adjustmentRows: 2,
+      adjustmentRows: 3,
+      systemAdjustmentRows: 1,
+      systemAdjustmentDays: -4,
+      humanAdjustmentRows: 1,
+      batchedAdjustmentRows: 1,
+      scopeLedgerRows: 3,
       debitRows: 1,
       inLieuRows: 1,
       approvedRequests: 1,
       auditRowsInScope: 1,
     });
+    // The dry-run footer says what the flag WOULD clear, by reason, and that everything else is kept.
+    const text = formatReport(r);
+    expect(text).toContain('include-system-adjustments=no');
+    expect(text).toContain(`--include-system-adjustments WOULD also clear 1 system-written adjustment row(s) (-4.00 days): ${fx.sysAdjReason} 1 (-4.00)`);
+    expect(text).toContain('system-written (sys:…) 1 rows -4.00 days / human or no reason 1 rows +3.00 days / with a batch id 1 rows +2.00 days');
+    expect(text).toContain('Nothing was written');
     // The health verdict on the CURRENT configuration rides along — both types are configured today.
     expect(annual.healthNow?.templateCount).toBe(1);
     expect(sick.healthNow?.templateCount).toBe(1);
@@ -539,23 +582,28 @@ describe('fe9c73bc — stage accruals: generated entitlement cleared, taken leav
     expect(after).toMatchObject({
       templates: 3, // configuration untouched by this stage
       rules: 2,
-      ledger: 4,
+      ledger: 5,
       accrual: 0,
-      adjustment: 2, // KEPT — manual decisions
+      adjustment: 3, // KEPT — all three, the system-written one included: the flag was not set
       debit: 1, // KEPT — leave actually taken
       in_lieu_accrual: 1, // KEPT — never in scope
-      audit: 1,
+      audit: 2,
       ledArchive: 4,
     });
     expect(await cnt.ledArchive('ledger')).toBe(3);
     expect(await cnt.ledArchive('recalc_audit')).toBe(1);
 
-    // The audit row that pointed at an accrual is gone; the NULL-linked one remains.
+    // The audit row that pointed at an accrual is gone; the NULL-linked one and the one pointing at the
+    // (kept) system-written adjustment remain.
     const audits = await owner.db
       .select({ ledgerId: schema.leaveEntitlementRecalcAudit.ledgerId, reason: schema.leaveEntitlementRecalcAudit.reason })
       .from(schema.leaveEntitlementRecalcAudit)
-      .where(eq(schema.leaveEntitlementRecalcAudit.tenantId, b.tenantId));
-    expect(audits).toEqual([{ ledgerId: null, reason: 'grade_changed' }]);
+      .where(eq(schema.leaveEntitlementRecalcAudit.tenantId, b.tenantId))
+      .orderBy(schema.leaveEntitlementRecalcAudit.reason);
+    expect(audits).toEqual([
+      { ledgerId: fx.sysAdjId, reason: 'employment_changed' },
+      { ledgerId: null, reason: 'grade_changed' },
+    ]);
 
     // The archive rows are rendered as the r180 capture renders them.
     const arch = await owner.db
@@ -576,9 +624,9 @@ describe('fe9c73bc — stage accruals: generated entitlement cleared, taken leav
     const balances = await leaveBalances(adminCtx(b), fx.emp1);
     const annual = balances.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!;
     expect(annual.balance).toBe(-1);
-    // …and Ahmad keeps what HR gave by hand and what he worked for: 2 + 3 + 1.
+    // …and Ahmad keeps what HR gave by hand, what he worked for AND the system clawback: 2 + 3 + 1 - 4.
     const ahmad = (await leaveBalances(adminCtx(b), fx.emp2)).find((x) => x.leaveTypeId === fx.sickTypeId)!;
-    expect(ahmad.balance).toBe(6);
+    expect(ahmad.balance).toBe(2);
 
     const events = await eventTypesFor(b.tenantId, b.tenantId);
     expect(events.filter((e) => e === 'entitlement-accruals.reset')).toHaveLength(1);
@@ -586,9 +634,11 @@ describe('fe9c73bc — stage accruals: generated entitlement cleared, taken leav
       item: 'fe9c73bc',
       stage: 'accruals',
       captureTag: 'fe9c73bc-test-accruals',
+      includeSystemAdjustments: false,
+      scope: { accrualRows: 3, systemAdjustmentRows: 0 },
       archived: { ledger: 3, recalcAudit: 1 },
       deleted: { ledger: 3, recalcAudit: 1 },
-      kept: { adjustment: 2, debit: 1, inLieuAccrual: 1 },
+      kept: { adjustment: 3, debit: 1, inLieuAccrual: 1 },
     });
   });
 
@@ -599,15 +649,126 @@ describe('fe9c73bc — stage accruals: generated entitlement cleared, taken leav
     expect(await snapshot()).toEqual({
       templates: 0,
       rules: 0,
-      ledger: 4,
+      ledger: 5,
       accrual: 0,
-      adjustment: 2,
+      adjustment: 3,
       debit: 1,
       in_lieu_accrual: 1,
-      audit: 1,
+      audit: 2,
       entArchive: 5,
       ledArchive: 4,
     });
+  });
+});
+
+describe('fe9c73bc — --include-system-adjustments is OPT-IN; without it the stage is byte-for-byte what it was', () => {
+  it('default: all three adjustment kinds survive, the archive holds accruals only, the event says false', async () => {
+    const fx = await seedFixture();
+    const r = await run('accruals', true);
+    expect(r.includeSystemAdjustments).toBe(false);
+    expect(r.totals.scopeLedgerRows).toBe(3);
+    expect(r.archived).toEqual({ ledger: 3, recalc_audit: 1 });
+    const remaining = await owner.db
+      .select({ id: schema.leaveLedger.id, reason: schema.leaveLedger.reason, batch: schema.leaveLedger.adjustmentBatchId })
+      .from(schema.leaveLedger)
+      .where(and(eq(schema.leaveLedger.tenantId, b.tenantId), eq(schema.leaveLedger.entryType, 'adjustment')))
+      .orderBy(schema.leaveLedger.reason);
+    expect(remaining.map((x) => x.reason)).toEqual(['Bonus days', 'CNY 2026', fx.sysAdjReason]);
+    expect(remaining.find((x) => x.id === fx.sysAdjId)).toBeTruthy();
+    const arch = await owner.db
+      .select({ entryType: schema.leaveLedgerResetArchive.entryType, layer: schema.leaveLedgerResetArchive.layer })
+      .from(schema.leaveLedgerResetArchive)
+      .where(eq(schema.leaveLedgerResetArchive.captureTag, 'fe9c73bc-test-accruals'));
+    expect(arch.filter((x) => x.layer === 'ledger').every((x) => x.entryType === 'accrual')).toBe(true);
+    expect((await latestEventPayload(b.tenantId, b.tenantId, 'entitlement-accruals.reset'))?.includeSystemAdjustments).toBe(false);
+  });
+
+  it('with the flag: ONLY the sys: adjustment joins the scope — archived, deleted, its audit row gone, the balance moves by exactly its days', async () => {
+    const fx = await seedFixture();
+    const r = await run('accruals', true, { includeSystemAdjustments: true });
+    expect(r.refusals).toEqual([]);
+    expect(r.includeSystemAdjustments).toBe(true);
+    expect(r.totals.scopeLedgerRows).toBe(4);
+    expect(r.totals.auditRowsInScope).toBe(2);
+    expect(r.archived).toEqual({ ledger: 4, recalc_audit: 2 });
+    expect(r.deleted).toEqual({ ledger: 4, recalc_audit: 2 });
+
+    expect(await snapshot()).toMatchObject({
+      ledger: 4,
+      accrual: 0,
+      adjustment: 2, // the human-reason one and the batched one — ALWAYS kept
+      debit: 1,
+      in_lieu_accrual: 1,
+      audit: 1, // only the NULL-linked row is left
+      ledArchive: 6,
+    });
+    const remaining = await owner.db
+      .select({ id: schema.leaveLedger.id, reason: schema.leaveLedger.reason })
+      .from(schema.leaveLedger)
+      .where(and(eq(schema.leaveLedger.tenantId, b.tenantId), eq(schema.leaveLedger.entryType, 'adjustment')))
+      .orderBy(schema.leaveLedger.reason);
+    expect(remaining.map((x) => x.reason)).toEqual(['Bonus days', 'CNY 2026']);
+    expect(remaining.find((x) => x.id === fx.sysAdjId)).toBeUndefined();
+    const audits = await owner.db
+      .select({ ledgerId: schema.leaveEntitlementRecalcAudit.ledgerId, reason: schema.leaveEntitlementRecalcAudit.reason })
+      .from(schema.leaveEntitlementRecalcAudit)
+      .where(eq(schema.leaveEntitlementRecalcAudit.tenantId, b.tenantId));
+    expect(audits).toEqual([{ ledgerId: null, reason: 'grade_changed' }]);
+
+    // The archive carries the adjustment row as the r180 capture renders it, reason verbatim.
+    const arch = await owner.db
+      .select()
+      .from(schema.leaveLedgerResetArchive)
+      .where(eq(schema.leaveLedgerResetArchive.captureTag, 'fe9c73bc-test-accruals'));
+    const ledgerRows = arch.filter((x) => x.layer === 'ledger');
+    expect(ledgerRows.map((x) => x.entryType).sort()).toEqual(['accrual', 'accrual', 'accrual', 'adjustment']);
+    const adjRow = ledgerRows.find((x) => x.entryType === 'adjustment')!;
+    expect(adjRow.reason).toBe(fx.sysAdjReason);
+    expect(adjRow.daysText).toBe('-4.00');
+    expect(adjRow.sourceRowId).toBe(fx.sysAdjId);
+    const auditRows = arch.filter((x) => x.layer === 'recalc_audit');
+    expect(auditRows.map((x) => x.entitlementText).sort()).toEqual([
+      'previous 0.00 → new 14.00 (delta 14.00)',
+      'previous 10.00 → new 6.00 (delta -4.00)',
+    ]);
+    expect(auditRows.every((x) => /accrual or a system-written adjustment/.test(x.note ?? ''))).toBe(true);
+
+    // The balance moves by EXACTLY the cleared row's days: 2 (default run) → 6, i.e. +4 for a -4.00 row.
+    const ahmad = (await leaveBalances(adminCtx(b), fx.emp2)).find((x) => x.leaveTypeId === fx.sickTypeId)!;
+    expect(ahmad.balance).toBe(6);
+    const meiLing = (await leaveBalances(adminCtx(b), fx.emp1)).find((x) => x.leaveTypeId === b.annualLeaveTypeId)!;
+    expect(meiLing.balance).toBe(-1);
+
+    expect(await latestEventPayload(b.tenantId, b.tenantId, 'entitlement-accruals.reset')).toMatchObject({
+      includeSystemAdjustments: true,
+      scope: { accrualRows: 3, systemAdjustmentRows: 1 },
+      archived: { ledger: 4, recalcAudit: 2 },
+      deleted: { ledger: 4, recalcAudit: 2 },
+      kept: { adjustment: 2, debit: 1, inLieuAccrual: 1 },
+    });
+    expect(formatReport(r)).toContain('1 system-written adjustment row(s) were cleared WITH the accruals');
+  });
+
+  it('dry run with the flag: the scope and footer say so, and still nothing is written', async () => {
+    const fx = await seedFixture();
+    const before = await snapshot();
+    const r = await run('accruals', false, { includeSystemAdjustments: true });
+    expect(r.includeSystemAdjustments).toBe(true);
+    expect(r.totals.scopeLedgerRows).toBe(4);
+    expect(r.totals.auditRowsInScope).toBe(2);
+    expect(r.types.find((x) => x.leaveTypeId === fx.sickTypeId)?.auditRowsInScope).toBe(1);
+    const text = formatReport(r);
+    expect(text).toContain('include-system-adjustments=yes');
+    expect(text).toContain('--include-system-adjustments IS SET: this stage ALSO clears 1 system-written adjustment row(s) (-4.00 days)');
+    expect(text).toContain('IN SCOPE for this stage        : 4 row(s) = accruals + 1 system-written adjustment(s)');
+    expect(text).toContain('Nothing was written');
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('the flag is ignored on the config stage', async () => {
+    await seedFixture();
+    const r = await run('config', false, { includeSystemAdjustments: true });
+    expect(r.includeSystemAdjustments).toBe(false);
   });
 });
 
