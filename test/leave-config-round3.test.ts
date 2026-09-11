@@ -40,7 +40,9 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LEAVE_CONFIG_MAP, leaveConfigScreenHref } from '../components/leave-config-map';
+import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORD_LABEL_ID, leaveConfigScreenHref } from '../components/leave-config-map';
+// 7f69bd71 — `LEAVE_CONFIG_RECORDS_HREF` is asserted by NAME in the adjustments page source below, not
+// imported: the case pins that the page resolves the address through the map's constant.
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,14 +77,18 @@ const SCREENS_BUILT = {
     route: '/admin/leave-config/import',
     mapId: 'importLeaveData',
   },
+  // 7f69bd71 — the two records are SUB-TABS of the Reset records sub-screen now, each a server component
+  // mounted by ONE guarded page (`RECORDS_PAGE`). `file` is the component that carries the function
+  // (F45 / F46), `route` is the sub-screen's; the component has no map mount and no guard of its own —
+  // the page it is mounted on has both jobs, and the cases below read it there.
   recordsEntitlement: {
-    file: 'app/admin/leave-config/records/entitlement/page.tsx',
-    route: '/admin/leave-config/records/entitlement',
+    file: 'components/leave/reset-record-configuration.tsx',
+    route: '/admin/leave-config/records',
     mapId: 'entitlementArchive',
   },
   recordsBalances: {
-    file: 'app/admin/leave-config/records/balances/page.tsx',
-    route: '/admin/leave-config/records/balances',
+    file: 'components/leave/reset-record-balances.tsx',
+    route: '/admin/leave-config/records',
     mapId: 'ledgerArchive',
   },
 } as const;
@@ -90,6 +96,10 @@ const SCREENS_BUILT = {
 type ScreenKey = keyof typeof SCREENS_BUILT;
 const KEYS = Object.keys(SCREENS_BUILT) as ScreenKey[];
 const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])) as Record<ScreenKey, string>;
+/** 7f69bd71 — the sub-screen page that guards and mounts the two record components. */
+const RECORDS_PAGE = 'app/admin/leave-config/records/page.tsx';
+const RECORD_KEYS = ['recordsEntitlement', 'recordsBalances'] as const;
+const isRecord = (k: ScreenKey): k is (typeof RECORD_KEYS)[number] => (RECORD_KEYS as readonly string[]).includes(k);
 
 /**
  * a6fe37fc ROUND 5 (cutover) — THE ONE TABLE THIS FILE NOW TURNS ON, AND THE REASON IT IS A TABLE.
@@ -116,9 +126,15 @@ const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   generate: { to: '/admin/leave-config/generate', cutOver: true },
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: true },
   import: { to: '/admin/leave-config/import', cutOver: true },
-  archive: { to: '/admin/leave-config/records/entitlement', cutOver: true },
-  ledgerArchive: { to: '/admin/leave-config/records/balances', cutOver: true },
+  // 7f69bd71 — repointed ONE HOP: the two records moved again, to the sub-tabs of the Reset records
+  // sub-screen, and these older stubs aim straight at it (`record` first, then the forwarded query)
+  // rather than at the stubs `records/entitlement` and `records/balances` became.
+  archive: { to: '/admin/leave-config/records', cutOver: true },
+  ledgerArchive: { to: '/admin/leave-config/records', cutOver: true },
 };
+/** 7f69bd71 — the sub-tab each older record stub names, and the reason the sub-screen is off the menu. */
+const RECORD_OF: Record<string, 'configuration' | 'balances'> = { archive: 'configuration', ledgerArchive: 'balances' };
+const OFF_MENU_SUB_SCREEN = '/admin/leave-config/records';
 
 /** The old address each of those screens answers on, so a stub can be checked against its own route. */
 const OLD_ROUTE: Record<string, string> = {
@@ -195,7 +211,9 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
   it.each(KEYS)('%s calls the page guard the registry describes', (k) => {
     // function-access.test.ts finds a page by grepping for the guard call; a page that reaches the
     // registry without one fails the no-stale-routes direction instead.
-    expect(src[k]).toContain('requireAdmin()');
+    // 7f69bd71 — a record COMPONENT carries no guard: the sub-screen page that mounts it does, once.
+    expect(isRecord(k) ? read(RECORDS_PAGE) : src[k]).toContain('requireAdmin()');
+    if (isRecord(k)) expect(src[k]).not.toContain('requireAdmin()');
   });
 
   it('the menu names the cut-over screens at their NEW address and the rest at their old one', () => {
@@ -204,10 +222,15 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     // read of the CUTOVER table rather than a blanket absence. Both directions still fail loudly: a
     // menu entry that moved before its page was emptied, and a page emptied while the menu still points
     // at the stub (two hops to reach a screen, and the map lying about where it is).
+    // 7f69bd71 — ONE destination is deliberately OFF the menu: the Reset records sub-screen, reached
+    // from the foot of Adjust balances. A menu entry for it would put the records back where the
+    // reporter said they did not belong; the link is what makes it reachable, so the link is asserted.
     const hrefs = LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => i.href);
+    expect(hrefs).not.toContain(OFF_MENU_SUB_SCREEN);
+    expect(src.adjustments).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
     for (const [name, { to, cutOver }] of Object.entries(CUTOVER)) {
       if (cutOver) {
-        expect(hrefs, `${name} is cut over, so the menu must name ${to}`).toContain(to);
+        if (to !== OFF_MENU_SUB_SCREEN) expect(hrefs, `${name} is cut over, so the menu must name ${to}`).toContain(to);
         expect(hrefs, `${name} is cut over, so ${OLD_ROUTE[name]} must be off the menu`).not.toContain(
           OLD_ROUTE[name],
         );
@@ -244,6 +267,19 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
   it.each(KEYS)('%s renders the area map, so a new screen can reach its siblings', (k) => {
     // Without it a leave-config screen can reach no other leave-config screen at all — a worse map than
     // the old screens have, which is the r258 finding on Round 2's first draft.
+    // 7f69bd71 — the two records are sub-tabs of a SUB-SCREEN, not tabs of a row: no map mount on the
+    // component and none on the page that mounts it. The page reaches the module through its back link
+    // to Leave Adjustments instead, and the record id survives only as the sub-tab's label.
+    if (isRecord(k)) {
+      const page = read(RECORDS_PAGE);
+      expect(src[k]).not.toContain('<LeaveConfigMap');
+      expect(page).not.toContain('<LeaveConfigMap');
+      expect(page).toContain("back={{ href: leaveConfigScreenHref('adjustments'), label: tNav('leaveAdjustments') }}");
+      // The id labels its sub-tab: the page reads the label through the map's record → id table.
+      expect(page).toContain('LEAVE_CONFIG_RECORD_LABEL_ID[id]');
+      expect(Object.values(LEAVE_CONFIG_RECORD_LABEL_ID)).toContain(SCREENS_BUILT[k].mapId);
+      return;
+    }
     expect(src[k]).toContain(`<LeaveConfigMap current="${SCREENS_BUILT[k].mapId}" />`);
   });
 });
@@ -361,7 +397,9 @@ describe('a6fe37fc R3 · nothing the six unchanged screens do was dropped in the
       expect(src[k]).toContain('name="capture"');
       expect(src[k]).toContain("t('downloadCsv')");
       // An unknown ?capture is ignored rather than rendering an empty table for a tag that does not exist.
-      expect(src[k]).toContain('captures.find((c) => c.captureTag === sp.capture)?.captureTag');
+      // 7f69bd71 — the capture arrives as a prop from the sub-screen page, which reads `sp.capture`.
+      expect(src[k]).toContain('captures.find((c) => c.captureTag === capture)?.captureTag');
+      expect(read(RECORDS_PAGE)).toContain('capture={sp.capture}');
     }
     // The export handlers stay at their old addresses this round — they move with the screens in Round 5.
     expect(src.recordsEntitlement).toContain('/admin/leave/entitlements/archive/export');
@@ -662,7 +700,7 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
     // record · Import), so a back-link would be a second navigation direction beside the tab row — the
     // exact two-answers defect this describe exists to stop. Inverted rather than deleted: each page
     // must read its header through the row helper and carry no back-link, literal or resolved.
-    for (const k of ['entitlementTables', 'recordsEntitlement', 'recordsBalances', 'import'] as const) {
+    for (const k of ['entitlementTables', 'import'] as const) {
       expect(src[k], `${SCREENS_BUILT[k].file} still links back to the leave type screen`).not.toContain(
         "leaveConfigScreenHref('leaveTypes')",
       );
@@ -671,6 +709,18 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
         'leaveConfigPageHeader(',
       );
     }
+    // 7f69bd71 — the two records LEFT this loop: they are sub-tabs of the Reset records sub-screen, which
+    // is a page under the Leave Adjustments row and therefore DOES carry a back link — to Leave
+    // Adjustments, never to the leave type screen — and reads its own heading, not the row helper's.
+    for (const k of RECORD_KEYS) {
+      expect(src[k]).not.toContain("leaveConfigScreenHref('leaveTypes')");
+      expect(src[k]).not.toContain('back={{');
+      expect(src[k]).not.toContain('leaveConfigPageHeader(');
+    }
+    const recordsPage = read(RECORDS_PAGE);
+    expect(recordsPage).toContain("back={{ href: leaveConfigScreenHref('adjustments'), label: tNav('leaveAdjustments') }}");
+    expect(recordsPage).not.toContain("leaveConfigScreenHref('leaveTypes')");
+    expect(recordsPage).not.toContain('leaveConfigPageHeader(');
     // And the direction that resolves to: whatever the MAP says today, which is the point of resolving
     // through it — the cutover moves the map entry and every back-link follows in the same commit.
     const fromMap = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'leaveTypes')!.href;
@@ -704,8 +754,9 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
     generate: 'app/admin/leave-config/generate/page.tsx',
     adjustments: 'app/admin/leave-config/adjustments/page.tsx',
     import: 'app/admin/leave-config/import/page.tsx',
-    archive: 'app/admin/leave-config/records/entitlement/page.tsx',
-    ledgerArchive: 'app/admin/leave-config/records/balances/page.tsx',
+    // 7f69bd71 — the two records live in the components the Reset records sub-screen mounts.
+    archive: 'components/leave/reset-record-configuration.tsx',
+    ledgerArchive: 'components/leave/reset-record-balances.tsx',
   };
 
   it.each([
@@ -745,6 +796,12 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
       if (cutOver) {
         expect(s, `${name} is cut over but its page is not a redirect stub`).toContain('redirect(');
         expect(s, `${name}'s stub does not aim at ${to}`).toContain(to);
+        // 7f69bd71 — a record stub names its sub-tab FIRST, so `?capture=` rides along behind it and the
+        // link lands on the right record; and it aims at the sub-screen, never at the newer stub.
+        if (RECORD_OF[name]) {
+          expect(s, `${name}'s stub does not name its sub-tab`).toContain(`new URLSearchParams({ record: '${RECORD_OF[name]}' })`);
+          expect(s, `${name}'s stub chains through another stub`).not.toMatch(/redirect\(`\/admin\/leave-config\/records\/(entitlement|balances)/);
+        }
         // A stub carries no page guard, which is what lets its route leave lib/permissions.ts.
         expect(/requireAdmin|scopedAdmin|scopedSession/.test(s), `${name}'s stub still calls a guard`).toBe(
           false,

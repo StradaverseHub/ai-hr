@@ -45,6 +45,7 @@ vi.mock('next-intl/server', () => ({
 
 import {
   LEAVE_CONFIG_MAP,
+  LEAVE_CONFIG_RECORDS_HREF,
   leaveConfigGroupOf,
   leaveConfigPageHeader,
   type MappedLeaveConfigScreenId,
@@ -60,7 +61,7 @@ type Dict = Record<string, unknown>;
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
-/** Every guarded page of the module, walked from disk so a page added later cannot skip this. */
+/** Every page of the module, walked from disk so a page added later cannot skip this. */
 function pages(dir = 'app/admin/leave-config', out: string[] = []): string[] {
   for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     const p = `${dir}/${e.name}`;
@@ -69,7 +70,16 @@ function pages(dir = 'app/admin/leave-config', out: string[] = []): string[] {
   }
   return out;
 }
-const PAGES = pages();
+/**
+ * 7f69bd71 — three files under the module are NOT row pages and are named here rather than tolerated:
+ * the Reset records SUB-SCREEN (its own heading and a back link, no tab row — a sub-screen of the Leave
+ * Adjustments row reached from a link, the r265 Shift-arrangement shape) and the two redirect STUBS the
+ * old tab addresses became. Each is asserted to be what it claims below, so a row page cannot hide in
+ * this list, and everything else on disk is still held to the heading-equals-row rule.
+ */
+const SUB_SCREEN = 'app/admin/leave-config/records/page.tsx';
+const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin/leave-config/records/balances/page.tsx'];
+const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
 const ROWS = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
@@ -84,18 +94,38 @@ describe('§A · the map is the five submenu rows, in the submenu\'s order', () 
   it('every leaveConfig route is on exactly one row, and no route moved (bookmarks keep working)', () => {
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     const onMap = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href));
-    for (const r of leaveConfig.routes) expect(onMap.filter((h) => h === r), r).toHaveLength(1);
+    // 7f69bd71 — ONE named route is reached from a LINK rather than a tab: the Reset records sub-screen.
+    // It is on the key (guarded page), on no row, and linked from Adjust balances. The two tab addresses
+    // it replaced are stubs and off the key. Every other route is on exactly one row, as before.
+    expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
+    for (const r of leaveConfig.routes) {
+      expect(onMap.filter((h) => h === r), r).toHaveLength(r === LEAVE_CONFIG_RECORDS_HREF ? 0 : 1);
+    }
+    expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
+    expect(read('app/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
     expect(onMap).toEqual([
       '/admin/leave-config/types',
       '/admin/leave-config/entitlement-tables',
-      '/admin/leave-config/records/entitlement',
       '/admin/leave-config/adjustments',
-      '/admin/leave-config/records/balances',
       '/admin/leave-config/import',
       '/admin/leave-config/generate',
       '/admin/leave-config/approval-chains',
       '/admin/leave-config/company-rules',
     ]);
+  });
+
+  it('7f69bd71 — the three named non-row files are what they claim: a sub-screen with a back link, and two redirect stubs', () => {
+    const sub = read(SUB_SCREEN);
+    expect(sub).toContain('requireAdmin()');
+    expect(sub).not.toContain('<LeaveConfigMap');
+    expect(sub).not.toContain('leaveConfigPageHeader(');
+    expect(sub).toContain("back={{ href: leaveConfigScreenHref('adjustments'), label: tNav('leaveAdjustments') }}");
+    for (const rel of STUBS) {
+      const s = read(rel);
+      expect(s, `${rel} is a redirect stub`).toContain('redirect(`/admin/leave-config/records${qs ? `?${qs}` : \'\'}`)');
+      expect(/requireAdmin|scopedAdmin|scopedSession/.test(s), `${rel} carries no guard`).toBe(false);
+      expect(s).not.toContain('<LeaveConfigMap');
+    }
   });
 });
 
@@ -128,19 +158,23 @@ describe('§B · no Leave Config page renders the nine-screen pill row', () => {
     }
   });
 
-  it('the rows with tabs are exactly Entitlements and Leave Adjustments, three each', () => {
+  it('the rows with tabs are exactly Entitlements and Leave Adjustments, two each', () => {
+    // 7f69bd71 — two, not three: the Configuration record and the Balance record left their rows for
+    // the Reset records sub-screen (test/reset-records-screen.test.ts).
     const withTabs = LEAVE_CONFIG_MAP.filter((g) => g.items.length > 1).map((g) => [g.id, g.items.length]);
     expect(withTabs).toEqual([
-      ['entitlements', 3],
-      ['adjustments', 3],
+      ['entitlements', 2],
+      ['adjustments', 2],
     ]);
   });
 });
 
 describe('§C · every page\'s heading is its submenu row, and its description is the row\'s', () => {
-  it('m4 — leaveConfigPageHeader(id) resolves, for all nine ids, to the ROW\'s nav label and the row\'s description', async () => {
+  it('m4 — leaveConfigPageHeader(id) resolves, for all seven ids, to the ROW\'s nav label and the row\'s description', async () => {
+    // 7f69bd71 — seven, not nine: the two record ids have no row any more (they label the sub-tabs of the
+    // Reset records sub-screen and are excluded from MappedLeaveConfigScreenId by type).
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.id as MappedLeaveConfigScreenId));
-    expect(ids).toHaveLength(9);
+    expect(ids).toHaveLength(7);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -150,11 +184,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
         expect(header.title, id).not.toBe(getPath(en, `admin.leaveConfigMap.item.${id}`));
       expect(header.description.length, id).toBeGreaterThan(0);
     }
-    // The three tabs of a row share one heading and one description.
-    const ent = await Promise.all((['leaveTypes', 'entitlementTables', 'entitlementArchive'] as const).map(leaveConfigPageHeader));
+    // The two tabs of a row share one heading and one description.
+    const ent = await Promise.all((['leaveTypes', 'entitlementTables'] as const).map(leaveConfigPageHeader));
     expect(new Set(ent.map((h) => `${h.title}|${h.description}`)).size).toBe(1);
     expect(ent[0].title).toBe('Entitlements');
-    const adj = await Promise.all((['adjustments', 'ledgerArchive', 'importLeaveData'] as const).map(leaveConfigPageHeader));
+    const adj = await Promise.all((['adjustments', 'importLeaveData'] as const).map(leaveConfigPageHeader));
     expect(new Set(adj.map((h) => `${h.title}|${h.description}`)).size).toBe(1);
     expect(adj[0].title).toBe('Leave Adjustments');
     expect((await leaveConfigPageHeader('approvalChain')).title).toBe('Approval Workflow');
@@ -250,10 +284,13 @@ describe('§D · the moves, and what deliberately did not move', () => {
       expect(companyRules).toContain(needle);
   });
 
-  it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs', () => {
+  it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs (plus the named sub-screen)', () => {
+    // 7f69bd71 — Leave Adjustments also owns the Reset records sub-screen, so the row stays lit on it and
+    // on the two records/* stubs on the way through. Nothing else is owned by anyone.
+    const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
     for (const g of LEAVE_CONFIG_MAP) {
       const row = ROWS.find((r) => r.labelKey === g.navKey)!;
-      expect(row.ownedSubpaths ?? []).toEqual(g.items.slice(1).map((i) => i.href));
+      expect(row.ownedSubpaths ?? []).toEqual([...g.items.slice(1).map((i) => i.href), ...(SUB_SCREENS[g.navKey] ?? [])]);
     }
   });
 

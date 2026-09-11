@@ -134,9 +134,11 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     items: [
       { id: 'leaveTypes', href: '/admin/leave-config/types' },
       { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },
-      // 10b59703 — the read-only record stays under Entitlements: it is the record of entitlement
-      // tables and benefit schemes, which is what the reset it follows cleared.
-      { id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' },
+      // 7f69bd71 — `{ id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' }` STOOD
+      // HERE (10b59703's third tab) and is DELIBERATELY GONE: the reporter's complaint was that a
+      // read-only record has no business sitting beside the two tabs somebody uses every day. The record
+      // is the Configuration sub-tab of the Reset records sub-screen now (`leaveConfigRecordHref`), and
+      // the old address is a redirect stub that lands there with `?capture=` kept.
     ],
   },
   {
@@ -144,9 +146,11 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     navKey: 'leaveAdjustments',
     items: [
       { id: 'adjustments', href: '/admin/leave-config/adjustments' },
-      // 10b59703 — the balance record is a record of LEDGER rows removed by a reset: the same kind of
-      // row an adjustment writes, so it lives beside the adjustment, not beside the configuration.
-      { id: 'ledgerArchive', href: '/admin/leave-config/records/balances' },
+      // 7f69bd71 — `{ id: 'ledgerArchive', href: '/admin/leave-config/records/balances' }` STOOD HERE
+      // (10b59703's second tab) and is DELIBERATELY GONE for the same reason as its sibling above. The
+      // balance record is the Balances sub-tab of the Reset records sub-screen, reached from one small
+      // link at the foot of Adjust balances — still one click away on the day somebody needs a figure
+      // from before a reset, and out of the way every other day.
       // 10b59703 — Import loads balance MOVEMENTS (opening balances, carry-forward, historical leave,
       // ad-hoc credits — core/leave-import.ts writes leave_ledger rows). That is an adjustment by
       // file, so it moved out of the Entitlements header and under this row.
@@ -169,8 +173,58 @@ export const LEAVE_CONFIG_MAP: Group[] = [
  * `replacementLeave` and `payrollImpact` are excluded by TYPE, not by a runtime fallback: their screens
  * were absorbed into Company rules, so asking this function for their address is a mistake tsc should
  * refuse rather than one this function should paper over with a guessed href.
+ *
+ * 7f69bd71 — `entitlementArchive` and `ledgerArchive` join that exclusion: they are no longer tabs of any
+ * row, so they have no group, no row heading and no map href. The ids survive as the LABELS of the two
+ * sub-tabs on the Reset records sub-screen (`leaveConfigScreenTitle`, which takes the wider union), and
+ * the address of each record resolves through `leaveConfigRecordHref` below — one source, as before.
  */
-export type MappedLeaveConfigScreenId = Exclude<LeaveConfigScreenId, 'replacementLeave' | 'payrollImpact'>;
+export type MappedLeaveConfigScreenId = Exclude<
+  LeaveConfigScreenId,
+  'replacementLeave' | 'payrollImpact' | 'entitlementArchive' | 'ledgerArchive'
+>;
+
+/**
+ * 7f69bd71 — THE RESET RECORDS SUB-SCREEN (`/admin/leave-config/records`). Not a row and not a tab: a
+ * sub-screen of the Leave Adjustments row, reached from one small link at the foot of Adjust balances,
+ * with a back link at the top. It holds the two read-only records as sub-tabs selected by `?record=`:
+ *
+ *   configuration — the Configuration record (`entitlementArchive`): entitlement tables, eligibility
+ *                   rules and, in the older captures, benefit schemes, captured before a reset cleared them;
+ *   balances      — the Balance record (`ledgerArchive`): the ledger rows a reset removed.
+ *
+ * Why a sub-screen and not a third row: the records are records of REMOVALS — the adjustments domain —
+ * and the reporter's instruction was that the submenu carries what is used day to day. Why `?record=`
+ * and not two routes: one guarded page is one route on the `leaveConfig` key, the picker form on either
+ * sub-tab GETs back to the same address, and the two retired tab addresses redirect here with the
+ * record named in the query, so `?capture=` rides along unchanged.
+ *
+ * The Leave Adjustments row owns this path (`ownedSubpaths`, packs/leave/index.ts) so it stays lit
+ * while the sub-screen — or either stub on the way through — is open.
+ */
+export const LEAVE_CONFIG_RECORDS_HREF = '/admin/leave-config/records';
+export const LEAVE_CONFIG_RECORD_IDS = ['configuration', 'balances'] as const;
+export type LeaveConfigRecordId = (typeof LEAVE_CONFIG_RECORD_IDS)[number];
+
+/** The screen id whose `admin.leaveConfigMap.item.*` string labels each sub-tab. */
+export const LEAVE_CONFIG_RECORD_LABEL_ID: Record<LeaveConfigRecordId, LeaveConfigScreenId> = {
+  configuration: 'entitlementArchive',
+  balances: 'ledgerArchive',
+};
+
+/** The address of one record's sub-tab. The stubs, the foot link and the sub-tab strip all resolve
+ *  through here, so no file spells the address twice. */
+export function leaveConfigRecordHref(record: LeaveConfigRecordId): string {
+  return `${LEAVE_CONFIG_RECORDS_HREF}?record=${record}`;
+}
+
+/** `?record=` as typed, or the Configuration record for anything else — including nothing at all. An
+ *  unknown value is ignored rather than answered with an empty page. */
+export function leaveConfigRecordOf(raw: string | undefined): LeaveConfigRecordId {
+  return (LEAVE_CONFIG_RECORD_IDS as readonly string[]).includes(raw ?? '')
+    ? (raw as LeaveConfigRecordId)
+    : 'configuration';
+}
 
 const HREF_BY_ID = Object.fromEntries(
   LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),
@@ -205,7 +259,7 @@ export async function leaveConfigRowTitle(groupId: LeaveConfigGroupId): Promise<
 
 /**
  * The one-line description of what a ROW is responsible for. One key per row, resolved here rather than
- * on each page, so the three tabs of Entitlements (and the three of Leave Adjustments) describe their
+ * on each page, so the two tabs of Entitlements (and the two of Leave Adjustments) describe their
  * row in the same words: a tab is a part of the page, not a page with its own summary.
  */
 const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: string]> = {

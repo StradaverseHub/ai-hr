@@ -1,9 +1,14 @@
 import { redirect } from 'next/navigation';
 
 /**
- * a6fe37fc ROUND 5 (cutover) — redirect stub. The Medical / Hospitalisation balance record lives at
- * `/admin/leave-config/records/balances` now (IA §2 → RECORDS), and this address exists only so no saved
+ * a6fe37fc ROUND 5 (cutover) — redirect stub. The Medical / Hospitalisation balance record used to live at
+ * `/admin/leave-config/records/balances` (IA §2 → RECORDS), and this address exists only so no saved
  * link 404s.
+ *
+ * 7f69bd71 — REPOINTED ONE HOP. The record moved again, to the Balances sub-tab of the Reset records
+ * sub-screen (`/admin/leave-config/records?record=balances`), and `records/balances` became a stub of its
+ * own. A stub aimed at another stub is a hop that need not happen and one edit away from a loop, so this
+ * one aims straight at the sub-screen: `record` first, then the forwarded query.
  *
  * The page that stood here (c8052ae3) was the "read on screen" half of the promise the approved plan made
  * the reporter: "copy every affected record into a permanent written record you can read on screen and
@@ -31,11 +36,14 @@ export default async function LeaveLedgerArchiveRedirect({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const usp = new URLSearchParams();
+  const usp = new URLSearchParams({ record: 'balances' });
   for (const [k, v] of Object.entries(sp)) {
+    // `record` is THIS stub's own identity: a saved link that carries one must not be able to send the
+    // bookmark to the other record. Everything else (notably `capture`) rides along unchanged.
+    if (k === 'record') continue;
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/leave-config/records/balances${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/leave-config/records${qs ? `?${qs}` : ''}`);
 }

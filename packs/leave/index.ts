@@ -220,23 +220,32 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // a6fe37fc ROUND 5 (cutover) — the destination moved to the new module's leave TYPE screen, where the
     // four steps and six sub-steps are five tabs (IA §2). The row, its label key and its position are
     // unchanged: this is still the first thing in the menu and still called the same thing.
-    // 10b59703 — the row OWNS its two other tabs, which live at their own addresses (no route moved, so
+    // 10b59703 — the row OWNS its other tab, which lives at its own address (no route moved, so
     // bookmarks keep working) and would otherwise leave the row dark on arrival. Highlighting only; the
     // list must agree with components/leave-config-map.tsx's `entitlements` group, and
     // test/leave-flyout-nav.test.ts pins that it does.
+    // 7f69bd71 — `'/admin/leave-config/records/entitlement'` STOOD HERE and is DELIBERATELY GONE: the
+    // Configuration record is no longer a tab of this row. It is a sub-tab of the Reset records
+    // sub-screen under Leave Adjustments, so that row lights on it (and on this stub's address on the
+    // way through — `isNavRowActive` prefix-matches `/admin/leave-config/records`).
     {
       href: '/admin/leave-config/types',
       labelKey: 'leaveEntitlements',
       icon: ClipboardList,
-      ownedSubpaths: ['/admin/leave-config/entitlement-tables', '/admin/leave-config/records/entitlement'],
+      ownedSubpaths: ['/admin/leave-config/entitlement-tables'],
     },
     // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not (see the Generate row below).
-    // 10b59703 — same for Leave Adjustments: Balance record and Import leave data are its tabs.
+    // 10b59703 — same for Leave Adjustments: Import leave data is its other tab.
+    // 7f69bd71 — `'/admin/leave-config/records/balances'` (the Balance record tab) STOOD HERE and is
+    // replaced by `'/admin/leave-config/records'`: the Reset records SUB-SCREEN, reached from the foot
+    // of Adjust balances, holding both records as sub-tabs. The row owns it so it stays lit while the
+    // sub-screen is open; the prefix match also covers the two `records/*` redirect stubs on the way
+    // through. Highlighting only, never a gate; test/leave-flyout-nav.test.ts pins the list.
     {
       href: '/admin/leave-config/adjustments',
       labelKey: 'leaveAdjustments',
       icon: SlidersHorizontal,
-      ownedSubpaths: ['/admin/leave-config/records/balances', '/admin/leave-config/import'],
+      ownedSubpaths: ['/admin/leave-config/import', '/admin/leave-config/records'],
     },
     // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
     // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts

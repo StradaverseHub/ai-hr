@@ -1,9 +1,15 @@
 import { redirect } from 'next/navigation';
 
 /**
- * a6fe37fc ROUND 5 (cutover) — redirect stub. The Entitlement configuration record lives at
- * `/admin/leave-config/records/entitlement` now (IA §2 → RECORDS), and this address exists only so no
+ * a6fe37fc ROUND 5 (cutover) — redirect stub. The Entitlement configuration record used to live at
+ * `/admin/leave-config/records/entitlement` (IA §2 → RECORDS), and this address exists only so no
  * saved link 404s.
+ *
+ * 7f69bd71 — REPOINTED ONE HOP. The record moved again, to the Configuration sub-tab of the Reset records
+ * sub-screen (`/admin/leave-config/records?record=configuration`), and `records/entitlement` became a
+ * stub of its own. A stub whose destination is another stub still delivers the bookmark, but through a
+ * hop that need not happen and one edit away from a loop, so this one aims straight at the sub-screen:
+ * `record` first, then the forwarded query.
  *
  * The page that stood here (6e9a126e release one) was the read-only listing the approved plan promised
  * the reporter: "you read the old figures off it while you retype them rather than working from memory.
@@ -30,11 +36,14 @@ export default async function EntitlementArchiveRedirect({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const usp = new URLSearchParams();
+  const usp = new URLSearchParams({ record: 'configuration' });
   for (const [k, v] of Object.entries(sp)) {
+    // `record` is THIS stub's own identity: a saved link that carries one must not be able to send the
+    // bookmark to the other record. Everything else (notably `capture`) rides along unchanged.
+    if (k === 'record') continue;
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/leave-config/records/entitlement${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/leave-config/records${qs ? `?${qs}` : ''}`);
 }

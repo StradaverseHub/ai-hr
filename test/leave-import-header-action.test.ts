@@ -32,9 +32,10 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const PRUNED_KEYS = ['importTitle', 'importHelp', 'importLink', 'importAction'] as const;
 
 describe('e8f2398f → 10b59703: Import has exactly one home, the Leave Adjustments tab', () => {
-  it('the importer is the third tab of the Leave Adjustments row, and appears in no other group', () => {
+  it('the importer is the second tab of the Leave Adjustments row, and appears in no other group', () => {
     const adjustments = LEAVE_CONFIG_MAP.find((g) => g.id === 'adjustments')!;
-    expect(adjustments.items.map((i) => i.id)).toEqual(['adjustments', 'ledgerArchive', 'importLeaveData']);
+    // 7f69bd71 — second, not third: the Balance record left the row for the Reset records sub-screen.
+    expect(adjustments.items.map((i) => i.id)).toEqual(['adjustments', 'importLeaveData']);
     expect(adjustments.items.find((i) => i.id === 'importLeaveData')!.href).toBe('/admin/leave-config/import');
     const elsewhere = LEAVE_CONFIG_MAP.filter((g) => g.id !== 'adjustments').flatMap((g) => g.items).map((i) => i.id);
     expect(elsewhere).not.toContain('importLeaveData');
