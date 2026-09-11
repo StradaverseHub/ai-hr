@@ -17,7 +17,8 @@ import {
 import { ArchivedShiftError, BackupShiftRequiredError, ShiftHasNoWorkingPatternError } from '@/core/roster';
 
 /**
- * a485afa1 — the Schedule Assignment screen's own Save and Remove.
+ * a485afa1 — the Schedule Assignment screens' own Save and Remove (posted from ./[employmentId]/page.tsx
+ * since r265; from the inline panel on the list before that).
  *
  * ⚠️ THESE ARE ADAPTERS, NOT WRITERS, AND THE DISTINCTION IS THE ITEM. The reporter was promised that the
  * Attendance screen and the personnel card "cannot drift apart" because they are two doors onto ONE record.
@@ -48,24 +49,54 @@ const PAGE = '/admin/attendance/schedule-assignment';
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The detail page's own URL: PAGE/<uuid>, optionally with the list's filters as a query. */
+const DETAIL_RE = /^\/admin\/attendance\/schedule-assignment\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?|$)/i;
+/** The only query keys carried from one screen to the other: the list's four filters. */
+const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status'] as const;
+
 /**
- * Back to the list the administrator was actually looking at — same filters, same open panel — with the
- * outcome of this save on it.
+ * WHERE EACH OUTCOME LANDS (a485afa1 rev 2, r265 — the shift library's shift-actions.ts idiom: success
+ * back to the list, a refusal back onto the form the operator filled in, so nothing typed is lost):
  *
- * `returnTo` IS A POSTED FIELD AND SO IS UNTRUSTED. It is accepted only when it IS this page or begins
- * `<this page>?`, and anything else falls back to the bare page: a form field that can name any URL is an
- * open redirect, and this one is submitted by an admin session. The three outcome params are cleared before
- * the new one is set so a second save cannot land on a page still showing the first one's error.
+ *   save succeeded  → the LIST, same filters, `focus=<id>` and the `#row-<id>` fragment, `saved=1` —
+ *                     the administrator lands on the row they just changed, highlighted, not at the top.
+ *   save refused    → the DETAIL page, same filters, `error=<reason>` — the reason sits beside the fields —
+ *                     plus what was TYPED (`typedShiftType`, `typedShiftId`, `typedEffectiveFrom`) so the
+ *                     page re-renders the form with the operator's values, not what is on file. Not under
+ *                     `shiftId`: that key is the list's backup-shift FILTER riding on the same url. The
+ *                     page shape-checks each echoed value before using it.
+ *   remove succeeded → the DETAIL page, `removed=1` — they are looking at the history they just changed.
+ *   remove refused  → the DETAIL page, `error=<reason>`.
+ *   a malformed employmentId → the LIST with `error=`: there is no detail page for an id that is not one.
+ *
+ * `returnTo` IS A POSTED FIELD AND SO IS UNTRUSTED. Only its QUERY is read, and only when its path IS
+ * this list or this list's detail page (PAGE, PAGE?…, PAGE/<uuid>, PAGE/<uuid>?…); anything else — an
+ * off-site URL, another screen — contributes nothing and the outcome lands on the bare list or the bare
+ * detail page. The pathname is never taken from the field: a form field that can name any URL is an open
+ * redirect, and this one is submitted by an admin session. Of the query, only the four filter keys are
+ * kept, which also strips the previous outcome (error / saved / removed / focus / typed*) so a second save
+ * cannot land on a page still showing the first one's error or the first one's typed values.
  */
-function backTo(formData: FormData, outcome: Record<string, string>): string {
+function backTo(
+  formData: FormData,
+  target: { list: true; employmentId: string | null } | { list: false; employmentId: string },
+  outcome: Record<string, string>,
+): string {
   const raw = String(formData.get('returnTo') ?? '');
-  const safe = raw === PAGE || raw.startsWith(`${PAGE}?`) ? raw : PAGE;
-  const [pathname, query = ''] = safe.split('#')[0].split('?');
-  const params = new URLSearchParams(query);
-  for (const stale of ['error', 'saved', 'removed']) params.delete(stale);
+  const trusted = raw === PAGE || raw.startsWith(`${PAGE}?`) || DETAIL_RE.test(raw);
+  const query = trusted ? (raw.split('#')[0].split('?')[1] ?? '') : '';
+  const posted = new URLSearchParams(query);
+  const params = new URLSearchParams();
+  for (const k of FILTER_KEYS) {
+    const v = posted.get(k);
+    if (v) params.set(k, v);
+  }
+  if (target.list && target.employmentId) params.set('focus', target.employmentId);
   for (const [k, v] of Object.entries(outcome)) params.set(k, v);
   const qs = params.toString();
-  return `${pathname}${qs ? `?${qs}` : ''}#assign-panel`;
+  const pathname = target.list ? PAGE : `${PAGE}/${target.employmentId}`;
+  const fragment = target.list && target.employmentId ? `#row-${target.employmentId}` : '';
+  return `${pathname}${qs ? `?${qs}` : ''}${fragment}`;
 }
 
 /** A bad field on the posted form, in the reader's language — no query was attempted. */
@@ -114,10 +145,18 @@ async function messageFor(e: unknown): Promise<string> {
   return ts('unexpectedError');
 }
 
+/** Both doors onto the record, and the list, are re-read after a write. */
+function revalidateBothDoors(employmentId: string) {
+  revalidatePath(PAGE);
+  revalidatePath(`${PAGE}/${employmentId}`);
+  // The other door onto the same record: its cached page would otherwise still show the old arrangement.
+  revalidatePath(`/admin/personnel/${employmentId}`);
+}
+
 /**
- * ADD or CHANGE the employee's shift arrangement from the Attendance list. Parsed exactly as the personnel
- * card parses it, including the `rawType === 'fixed' ? 'fixed' : 'roster'` default and the blank-to-null
- * coercions, so the same form posted at either door produces the same call.
+ * ADD or CHANGE the employee's shift arrangement from the Attendance screens. Parsed exactly as the
+ * personnel card parses it, including the `rawType === 'fixed' ? 'fixed' : 'roster'` default and the
+ * blank-to-null coercions, so the same form posted at either door produces the same call.
  */
 export async function saveScheduleAssignmentAction(formData: FormData) {
   const s = await requireAdmin();
@@ -127,7 +166,7 @@ export async function saveScheduleAssignmentAction(formData: FormData) {
   const rawShift = String(formData.get('shiftId') ?? '').trim();
   const rawEffective = String(formData.get('effectiveFrom') ?? '').trim();
   if (!UUID_RE.test(employmentId)) {
-    redirect(backTo(formData, { error: await badField('badEmployment') }));
+    redirect(backTo(formData, { list: true, employmentId: null }, { error: await badField('badEmployment') }));
   }
   try {
     await assignEmployeeShiftDated(s, {
@@ -137,12 +176,24 @@ export async function saveScheduleAssignmentAction(formData: FormData) {
       effectiveFrom: rawEffective || null,
     });
   } catch (e) {
-    redirect(backTo(formData, { error: await messageFor(e) }));
+    // Refused: stay on the page, reason beside the fields, and what was typed echoed back so nothing
+    // entered is lost. Blank fields are not echoed — the page falls back to what is on file for those.
+    redirect(
+      backTo(
+        formData,
+        { list: false, employmentId },
+        {
+          error: await messageFor(e),
+          typedShiftType: shiftType,
+          ...(rawShift ? { typedShiftId: rawShift } : {}),
+          ...(rawEffective ? { typedEffectiveFrom: rawEffective } : {}),
+        },
+      ),
+    );
   }
-  revalidatePath(PAGE);
-  // The other door onto the same record: its cached page would otherwise still show the old arrangement.
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(backTo(formData, { saved: '1' }));
+  revalidateBothDoors(employmentId);
+  // Saved: back to the list, same filters, landed on this employee's row.
+  redirect(backTo(formData, { list: true, employmentId }, { saved: '1' }));
 }
 
 /**
@@ -158,19 +209,19 @@ export async function removeScheduleArrangementAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId') ?? '').trim();
   const arrangementId = String(formData.get('arrangementId') ?? '').trim();
   if (!UUID_RE.test(employmentId)) {
-    redirect(backTo(formData, { error: await badField('badEmployment') }));
+    redirect(backTo(formData, { list: true, employmentId: null }, { error: await badField('badEmployment') }));
   }
   // A malformed arrangement id never reaches SQL (the ladder is matched in JS), but it can only have come
   // from a forged form, and "no longer on file" is the same true sentence the service would give.
   if (!UUID_RE.test(arrangementId)) {
-    redirect(backTo(formData, { error: await badField('removeNotFound') }));
+    redirect(backTo(formData, { list: false, employmentId }, { error: await badField('removeNotFound') }));
   }
   try {
     await removeShiftArrangement(s, { employmentId, arrangementId });
   } catch (e) {
-    redirect(backTo(formData, { error: await messageFor(e) }));
+    redirect(backTo(formData, { list: false, employmentId }, { error: await messageFor(e) }));
   }
-  revalidatePath(PAGE);
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(backTo(formData, { removed: '1' }));
+  revalidateBothDoors(employmentId);
+  // Removed: stay on the page — the administrator is looking at the history they just changed.
+  redirect(backTo(formData, { list: false, employmentId }, { removed: '1' }));
 }

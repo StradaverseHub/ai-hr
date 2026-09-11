@@ -304,11 +304,13 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // the collapsed rail renders glyphs ALONE, so a row sharing a sibling's picture is unreachable there.
     // It is also the right picture — this is the settings screen for the shapes its neighbours use.
     { href: '/admin/attendance/schedule', labelKey: 'schedule', icon: CalendarCog, adminOnly: true },
-    // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list, with
-    // View / Edit opening the SAME editor as Personnel Management › Employee › Attendance › Shift
-    // arrangement (app/admin/personnel/[employmentId] ?tab=attendance#section-default-shift). Deliberately
-    // a link into that card and not a second form: the request is that both surfaces act on one record,
-    // and a duplicate editor is precisely how the two would drift.
+    // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list.
+    // View / Edit has moved twice since: r209 linked into the personnel card, r263 (a485afa1) opened a
+    // panel on the list, and r265 (a485afa1 rev 2) opens the employee's OWN page under this route
+    // (app/admin/attendance/schedule-assignment/[employmentId]). It is still one record with the
+    // personnel card — the page mounts the card's own control and calls the card's own writer — which
+    // is how both surfaces act on one record without a duplicate editor drifting. No nav row for the
+    // sub-page: it is reached from the list, exactly as a shift's edit page is reached from the library.
     //
     // It sits FOURTH — after the reporter's three named settings categories, ahead of the 5cb199b3 tail —
     // because it is the screen that USES the shift library the three above configure, not a fourth

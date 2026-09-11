@@ -1,11 +1,8 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import {
-  listShiftArrangements,
-  shiftArrangementHistory,
-  type ShiftArrangementListRow,
-} from '@/core/shift-arrangement';
+import { listShiftArrangements, type ShiftArrangementListRow } from '@/core/shift-arrangement';
 import { listShiftsForTenant } from '@/core/roster';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
@@ -14,58 +11,49 @@ import {
   ErrorBanner,
   PageHeader,
   SectionHeader,
-  btnPrimary,
   pageWideCls,
   tableWrapCls,
   tbodyCls,
   theadCls,
   thCls,
 } from '@/components/ui';
-import { EmployeeShiftFields } from '@/components/employee-shift-fields';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from './actions';
+import { StatusChip } from './status-chip';
 
 /**
- * Schedule Assignment (feedback 0bade264 r209; edited in place by a485afa1 r263) — every employee's shift
- * arrangement in ONE list, and now editable from that list.
+ * Schedule Assignment (feedback 0bade264 r209; edited in place by a485afa1 r263; a page of its own for
+ * each row by a485afa1 rev 2, r265) — every employee's shift arrangement in ONE list.
  *
  * THE ITEM IN ONE LINE. The arrangement already existed and was already maintained per employee, under
  * Personnel Management › Employee › Attendance › Shift arrangement. What did not exist was a place to
  * see everybody's at once: the only way to answer "who is on which shift" was to open employees one at
  * a time.
  *
- * ⚠️ a485afa1 REVERSED THE ROW ACTION, AND THE REASONING BELOW IT — read this before restoring the link.
+ * ⚠️ THE ROW ACTION HAS MOVED TWICE — read this before restoring either earlier link.
  * r209 sent View / Edit to `/admin/personnel/<id>?tab=attendance#section-default-shift` on the argument
  * that a second form here would be a second write path over one table. The reporter came back: assigning a
- * shift to twenty people was twenty round trips out of the Attendance module and back. The argument was
- * sound about WRITERS and wrong about FORMS — so what this screen gained is the personnel card's own
- * control and the personnel card's own writer, not copies of them:
- *   · <EmployeeShiftFields> is the SAME component the card renders (components/employee-shift-fields.tsx).
- *     Its three controls are declared once, so a field added there appears at both doors or at neither.
- *   · ./actions.ts calls core/shift-arrangement.ts assignEmployeeShiftDated with the identical argument
- *     shape the personnel action uses. There is still exactly ONE writer, and the validation r209 worried
- *     about copying (start-date floor, no back-insert, same-date replace) is enforced inside it for both.
- *   · The history under the panel is `shiftArrangementHistory` — the same read the card renders.
- * The personnel card KEEPS its copy: an HR administrator working through somebody's whole record should
- * still find the schedule where it has always been. What went away is being SENT there from Attendance.
- * test/schedule-assignment.test.ts pins both halves — one writer, and both doors still standing.
+ * shift to twenty people was twenty round trips out of the Attendance module and back. r263 answered with
+ * a panel ABOVE this list (`?assign=<id>#assign-panel`) — sound about WRITERS (still one, in core) but the
+ * panel sat at the top of a 74-row list, so View / Edit on a row near the bottom jumped the browser to the
+ * top and Close put the administrator back at the top, not at the row. The reporter contested that too.
+ * r265: View / Edit opens ./[employmentId]/page.tsx, a page of its own, and this file is a list again.
+ * What r263 established is unchanged and pinned by test/schedule-assignment.test.ts: the page over there
+ * mounts the personnel card's own control (components/employee-shift-fields.tsx) and calls the card's own
+ * writer through ./actions.ts; the personnel card KEEPS its copy.
  *
  * WHAT "CURRENT" MEANS is decided in core/shift-arrangement.ts listShiftArrangements, off the live
  * partial unique index and the shared `pickArrangementOn` rule — not here, and not by sorting rows in
  * this file. See that function's header.
  *
- * REMOVAL IS "TAKE BACK THE LAST CHANGE", NOT "DELETE ANY ROW", and the earlier note here that called it
- * recoverable was only ever true of the newest period. A removal is undone by saving the same arrangement
- * back at the same date; the writer refuses a date earlier than the ladder's last, so an OLDER period
- * could never be put back — at this door or the personnel one. Remove is therefore offered on the newest
- * history row only, said so on screen (`historyRemoveNote`), refused in core for a forged POST, and
- * confirmed before it runs. See the history section below and ShiftArrangementNotNewestError.
+ * COMING BACK TO THE ROW. Every row is `id="row-<employmentId>"`, and the detail page's Back, Cancel and
+ * Save all return to this list with the filters unchanged plus `?focus=<id>#row-<id>`: the browser lands
+ * on that row and it is highlighted. If a save moved the employee OUT of the filtered set (filtered by
+ * backup shift, then the backup shift was changed), the saved note still shows and no row is highlighted
+ * — the note is true, and the row is simply not in this view any more.
  *
- * THE PANEL IS URL-DRIVEN (`?assign=<employmentId>`), not client state: the filters are already in the
- * query string, so the open panel travels with them through every redirect the two actions perform, and
- * an administrator can bookmark or reload the row they are working on. It also keeps this page a plain
- * server component — the only client island is the shared field control.
+ * `?assign=<id>` — r263's panel parameter — is honoured as a REDIRECT to the detail page, filters and
+ * all, so a link or bookmark written before r265 still opens the same employee. A malformed value is
+ * dropped: the list renders as if it were not there.
  *
  * requireAdmin(), like every other row of the Attendance menu it hangs under: the list names every
  * employee in the tenant. The menu is not what protects it (test/attendance-menu-relocation.test.ts).
@@ -73,13 +61,10 @@ import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from '.
 const PAGE = '/admin/attendance/schedule-assignment';
 
 /**
- * `?assign=` IS AN UNTRUSTED QUERY PARAM AND `employment.id` IS A UUID COLUMN. Handed to the shared read
- * unchecked, a malformed value reaches `eq(employment.id, …)` and Postgres throws "invalid input syntax
- * for type uuid" — which takes the whole page to a 500 and DEFEATS the `panelMissing` branch below that
- * was written for exactly this case. So the shape is checked here, before the query, the same way
- * lib/calendar-focus.ts checks the Leave Calendar's focus param ("Junk is dropped rather than rendered").
- * Junk keeps the panel OPEN and falls through to `panelMissing`: a stale bookmark is told its employee is
- * not on this list, never shown a crash.
+ * `?assign=` IS AN UNTRUSTED QUERY PARAM AND `employment.id` IS A UUID COLUMN. It never reaches a query
+ * from this file any more — it only decides WHERE to redirect — but the detail page it redirects to
+ * checks the same shape before its own query, and a junk value is dropped here rather than forwarded
+ * (lib/calendar-focus.ts: "Junk is dropped rather than rendered").
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -91,10 +76,10 @@ export default async function ScheduleAssignmentPage({
     shiftType?: string;
     shiftId?: string;
     status?: string;
+    focus?: string;
     assign?: string;
     error?: string;
     saved?: string;
-    removed?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -107,35 +92,39 @@ export default async function ScheduleAssignmentPage({
   const status =
     sp.status === 'current' || sp.status === 'scheduled' || sp.status === 'notRecorded' ? sp.status : undefined;
   const shiftId = sp.shiftId?.trim() || undefined;
-  const assign = sp.assign?.trim() || undefined;
-  // The value the QUERY may see — `assign` still drives whether the panel is on screen, so a malformed
-  // one renders the "no longer on this list" sentence instead of being silently dropped.
-  const assignId = assign && UUID_RE.test(assign) ? assign : undefined;
-
-  // ONE "today" for the whole render: the list's status buckets, the panel's row and the effective-date
-  // default all answer to the same calendar day, in the tenant's timezone (never the UTC date — between
-  // 00:00 and 08:00 MYT that names yesterday).
-  const today = todayInKualaLumpur();
-
-  const [rows, libraryShifts] = await Promise.all([
-    listShiftArrangements(s, { q, shiftType, shiftId, status, today }),
-    // WITH archived rows, then filtered per use: a currently-assigned-but-later-archived shift must still
-    // render as the selected option in the panel (instead of silently showing the placeholder), exactly as
-    // the personnel card loads it. New assignments of archived shifts are refused by the service.
-    listShiftsForTenant(s, { includeArchived: true }),
-  ]);
-  const shifts = libraryShifts.filter((sh) => !sh.archivedAt);
+  // The row to land on and highlight after a trip to the detail page. Compared against row ids only —
+  // it is never queried, so a junk value highlights nothing and harms nothing.
+  const focus = sp.focus?.trim() || undefined;
 
   /**
-   * The panel's row is read with the SAME function the list uses, narrowed to one employment — not picked
-   * out of `rows`. Changing somebody's backup shift while the list is filtered by backup shift moves them
-   * out of the filtered set, and the panel they are still standing in must not blank out mid-edit.
+   * Every link carries the FILTERS the administrator is working under. Opening a row's page, and every
+   * way back from it, must all come to the same list — a screen that resets its filters on save is the
+   * twenty-round-trips complaint in a different costume.
    */
-  const [panelRow] = assignId ? await listShiftArrangements(s, { employmentId: assignId, today }) : [];
-  const history = panelRow ? await shiftArrangementHistory(s, panelRow.employmentId) : [];
-  const panelShifts = panelRow
-    ? libraryShifts.filter((sh) => !sh.archivedAt || sh.id === panelRow.shiftId)
-    : [];
+  const hrefWith = (pathname: string, extra: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, ...extra })) {
+      if (v) params.set(k, v);
+    }
+    const qs = params.toString();
+    return `${pathname}${qs ? `?${qs}` : ''}`;
+  };
+  /** The row action: the employee's own Shift arrangement page, filters riding along. */
+  const editHref = (employmentId: string) => hrefWith(`${PAGE}/${employmentId}`, {});
+
+  // r263's `?assign=<id>` — a link written before r265 opens the same employee on the new page.
+  const assign = sp.assign?.trim();
+  if (assign && UUID_RE.test(assign)) redirect(editHref(assign));
+
+  // ONE "today" for the whole render: the status buckets all answer to the same calendar day, in the
+  // tenant's timezone (never the UTC date — between 00:00 and 08:00 MYT that names yesterday).
+  const today = todayInKualaLumpur();
+
+  const [rows, shifts] = await Promise.all([
+    listShiftArrangements(s, { q, shiftType, shiftId, status, today }),
+    // Live shifts only: the backup-shift filter offers what can be assigned today.
+    listShiftsForTenant(s),
+  ]);
 
   const SHIFT_TYPE_LABEL: Record<ShiftArrangementListRow['shiftType'], string> = {
     fixed: t('shiftTypeFixed'),
@@ -150,11 +139,6 @@ export default async function ScheduleAssignmentPage({
     current: t('statusCurrentHint'),
     scheduled: t('statusScheduledHint'),
     notRecorded: t('statusNotRecordedHint'),
-  };
-  const STATUS_STYLE: Record<ShiftArrangementListRow['status'], string> = {
-    current: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-    scheduled: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-    notRecorded: 'bg-muted text-muted-foreground',
   };
 
   // All strings PRE-TRANSLATED: FilterPanel/FilterChips are client islands and must not call t() (the
@@ -213,25 +197,6 @@ export default async function ScheduleAssignmentPage({
     activeCount: t('filters.activeCount', { count: activeCount }),
   };
 
-  /**
-   * Every link and every form return carries the FILTERS the administrator is working under. Opening a
-   * panel, closing it, saving and removing must all come back to the same list — a screen that resets its
-   * filters on save is the twenty-round-trips complaint in a different costume.
-   */
-  const hrefWith = (extra: Record<string, string | undefined>) => {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, ...extra })) {
-      if (v) params.set(k, v);
-    }
-    const qs = params.toString();
-    return `${PAGE}${qs ? `?${qs}` : ''}`;
-  };
-  /** The row action. No longer a trip into Personnel Management — it opens the panel on this screen. */
-  const editHref = (employmentId: string) => `${hrefWith({ assign: employmentId })}#assign-panel`;
-  const closeHref = hrefWith({ assign: undefined });
-  /** Where the two server actions come back to — the exact list, with this panel still open. */
-  const returnTo = hrefWith({ assign });
-
   return (
     <div className={pageWideCls}>
       <PageHeader
@@ -253,135 +218,13 @@ export default async function ScheduleAssignmentPage({
         labels={filterLabels}
       />
 
+      {/* `saved=1` is what a save returns with; a removal stays on the detail page (r265), so nothing
+          lands here with `removed=` any more and the list carries no note for it. */}
       <ErrorBanner message={sp.error} />
-      {!sp.error && (sp.saved || sp.removed) ? (
+      {!sp.error && sp.saved ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-          {sp.removed ? t('removedNote') : t('savedNote')}
+          {t('savedNote')}
         </p>
-      ) : null}
-
-      {assign ? (
-        <Card id="assign-panel">
-          {panelRow ? (
-            <>
-              <SectionHeader
-                title={t('panelTitle')}
-                subtitle={[panelRow.name, panelRow.employeeCode ?? '—', panelRow.company].join(' · ')}
-              />
-              {/* THE SAME THREE CONTROLS THE PERSONNEL CARD RENDERS, from the same file, posting to the
-                  same writer. `defaultEffectiveFrom` is today in the tenant's calendar, resolved on the
-                  server exactly as the card resolves it. */}
-              <form action={saveScheduleAssignmentAction} className="space-y-3 p-4">
-                <input type="hidden" name="employmentId" value={panelRow.employmentId} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <EmployeeShiftFields
-                  defaultType={panelRow.shiftType}
-                  defaultShiftId={panelRow.shiftId}
-                  defaultEffectiveFrom={today}
-                  shifts={panelShifts.map((sh) => ({
-                    id: sh.id,
-                    label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
-                  }))}
-                />
-                <div className="flex items-center gap-3">
-                  <button className={btnPrimary}>{t('panelSave')}</button>
-                  <Link
-                    href={closeHref}
-                    aria-label={t('panelCloseAria')}
-                    className="text-xs font-medium text-muted-foreground hover:underline"
-                  >
-                    {t('panelClose')}
-                  </Link>
-                </div>
-              </form>
-              <p className="px-4 pb-3 text-xs text-muted-foreground">{t('panelHint')}</p>
-
-              {/* PREVIOUS ARRANGEMENTS, and the place the most recent change is taken back off. LIVE
-                  periods only — a second save for the same date REPLACES its entry rather than adding a
-                  line, which is why a replaced entry is not here to remove. The Remove form is a SIBLING
-                  of the save form, never nested inside it: a form inside a form is invalid HTML and the
-                  inner one is dropped by the parser.
-
-                  ⚠️ REMOVE IS ON THE NEWEST ROW ONLY, and `historyRemoveNote` says so on screen. Removal
-                  is undone by saving the same arrangement back at the same date, and the writer refuses a
-                  date earlier than the ladder's last (ShiftBackInsertError, back-insert out of scope for
-                  v1) — so an OLDER row, once removed, could not be put back at either door, and the
-                  stretch of time it governed would permanently revert to the earlier shift with
-                  attendance and overtime deriving against that. core/shift-arrangement.ts enforces the
-                  same rule against a forged POST (ShiftArrangementNotNewestError); this only decides what
-                  is offered. The confirmation is the second half: even the recoverable removal moves
-                  somebody's paid hours, so it is not a single click. */}
-              <section className="border-t border-border">
-                <div className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {t('historyTitle')}
-                </div>
-                {history.length === 0 ? (
-                  <p className="px-4 pb-4 pt-2 text-sm text-muted-foreground">{t('historyEmpty')}</p>
-                ) : (
-                  <div className="px-4 pb-4 pt-2">
-                    <div className={tableWrapCls}>
-                      <table className="w-full text-sm">
-                        <thead className={theadCls}>
-                          <tr>
-                            <th className={thCls}>{t('historyColEffective')}</th>
-                            <th className={thCls}>{t('historyColPrevious')}</th>
-                            <th className={thCls}>{t('historyColNew')}</th>
-                            <th className={thCls}>{t('historyColChangedBy')}</th>
-                            <th className={thCls}>{t('historyColChangedOn')}</th>
-                            <th className={thCls}></th>
-                          </tr>
-                        </thead>
-                        <tbody className={tbodyCls}>
-                          {history.map((h, i) => (
-                            <tr key={h.id}>
-                              <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">{h.effectiveFrom}</td>
-                              <td className="px-3 py-2.5 text-muted-foreground">
-                                {h.previousShiftName
-                                  ? `${h.previousShiftCode ?? '—'} — ${h.previousShiftName}`
-                                  : '—'}
-                              </td>
-                              <td className="px-3 py-2.5">{`${h.shiftCode ?? '—'} — ${h.shiftName}`}</td>
-                              <td className="px-3 py-2.5 text-muted-foreground">{h.changedByName ?? '—'}</td>
-                              <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-                                {h.recordedOnRelease ? t('historyRecordedOnRelease') : h.changedAt.slice(0, 10)}
-                              </td>
-                              <td className="px-3 py-2.5 text-right">
-                                {/* history is newest-first (core/shift-arrangement.ts
-                                    shiftArrangementHistory ends `.reverse()`), so row 0 IS the newest. */}
-                                {i === 0 && history.length > 1 ? (
-                                  <form action={removeScheduleArrangementAction}>
-                                    <input type="hidden" name="employmentId" value={panelRow.employmentId} />
-                                    <input type="hidden" name="arrangementId" value={h.id} />
-                                    <input type="hidden" name="returnTo" value={returnTo} />
-                                    <ConfirmSubmit
-                                      size="sm"
-                                      aria-label={t('removeAria', { date: h.effectiveFrom })}
-                                      title={t('removeConfirmTitle')}
-                                      subtitle={t('removeConfirmSubject', { date: h.effectiveFrom })}
-                                      description={t('removeConfirmBody')}
-                                      confirmLabel={t('remove')}
-                                    >
-                                      {t('remove')}
-                                    </ConfirmSubmit>
-                                  </form>
-                                ) : null}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="pt-2 text-xs text-muted-foreground">{t('historyRemoveNote')}</p>
-                  </div>
-                )}
-              </section>
-            </>
-          ) : (
-            /* `?assign=` naming somebody the tenant cannot see here — a terminated employment, or a stale
-               bookmark. Say so rather than rendering an empty panel. */
-            <p className="px-4 py-6 text-sm text-muted-foreground">{t('panelMissing')}</p>
-          )}
-        </Card>
       ) : null}
 
       <Card>
@@ -406,7 +249,11 @@ export default async function ScheduleAssignmentPage({
                 </thead>
                 <tbody className={tbodyCls}>
                   {rows.map((r) => (
-                    <tr key={r.employmentId} className={r.employmentId === assign ? 'bg-muted/50' : undefined}>
+                    <tr
+                      key={r.employmentId}
+                      id={`row-${r.employmentId}`}
+                      className={r.employmentId === focus ? 'bg-muted/50' : undefined}
+                    >
                       <td className="px-3 py-2.5">
                         {r.employeeCode ? <EmployeeCode code={r.employeeCode} /> : '—'}
                       </td>
@@ -418,12 +265,7 @@ export default async function ScheduleAssignmentPage({
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">{r.effectiveFrom ?? '—'}</td>
                       <td className="px-3 py-2.5">
-                        <span
-                          title={STATUS_HINT[r.status]}
-                          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLE[r.status]}`}
-                        >
-                          {STATUS_LABEL[r.status]}
-                        </span>
+                        <StatusChip status={r.status} label={STATUS_LABEL[r.status]} hint={STATUS_HINT[r.status]} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <Link
