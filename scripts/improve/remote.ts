@@ -189,6 +189,22 @@ export const pullApproved = (): RemoteFeedback[] => selectFeedback(`'approved'`)
 /** Approved but waiting on something outside the item — see the `blocked` status note in db/schema.ts. */
 export const pullBlocked = (): RemoteFeedback[] => selectFeedback(`'blocked'`);
 
+export type BoardStatusRow = { status: string; count: number; ids: string[] };
+
+/**
+ * Every status with its count and its item ids, newest first. This is the one read that shows
+ * `planned`, `building` and `done` — the statuses the pull commands deliberately hide — so a session can
+ * see the whole board in one call instead of inferring the hidden statuses from memory.
+ */
+export function boardStatus(): BoardStatusRow[] {
+  const sql = `select coalesce(json_agg(t), '[]'::json) from (
+    select status, count(*)::int as count,
+           array_agg(left(id::text, 8) order by updated_at desc) as ids
+    from feedback_request group by status order by status) t`;
+  const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(sql)}`).trim();
+  return JSON.parse(out || '[]') as BoardStatusRow[];
+}
+
 /**
  * Raise a NEW feedback item on the deployed board on a reporter's behalf (operator-side), for when a
  * decision the pipeline uncovered needs the reporter to own it — e.g. two approved items that turned out

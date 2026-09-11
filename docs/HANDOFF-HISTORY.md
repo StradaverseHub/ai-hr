@@ -1,3 +1,327 @@
+## 2026-09-11 — AGENTS.md and HANDOFF.md retired; CLAUDE.md rewritten from scratch. NO CODE SHIPPED.
+
+The owner retired all three instruction files as inefficient (HANDOFF.md had reached 1,786 lines against
+its own 700-line cap, and its snapshot disagreed with the box and the board on the same day it was
+written). `CLAUDE.md` in mainwt is now the ONLY instruction file. Live state is read from git, the
+server and the board with the commands in its §3, never from a document; this file is the only
+hand-written record, one entry per shipped round. The retired text is in git: HANDOFF.md at
+`e6e3a56f`, AGENTS.md at `ba2560b5`. The r255–r261 entries HANDOFF.md still held are filed below,
+unchanged. Also this round: `pnpm improve:status` (one line per board status, with ids) — the read
+that shows `planned`, `building` and `done`, which the pull commands hide.
+
+**Decisions carried forward** (the retired file's "do not reopen" list, condensed; each is pinned in
+code or on the board, this is only where to look):
+- `fa3f4ccb` statutory-minimum removal is SETTLED — the reporter asked twice. Scope: entitlement DAYS
+  only; `floorDays` stays in the return shape (`core/leave-compute.ts`, the floor is advisory).
+- ANNUAL carry-forward expiry is 6 months (`0333`, r85): "my carried leave disappeared early" is intended.
+- `c33d9bbb` is parked by the owner (`cancelled` on the board); a rev 2 would reopen a settled decision.
+- `reporter_label` is DISPLAY ONLY; `raiseFeedback` stamps `'CLAUDE AI'`. Never replace it with a
+  synthetic person + employment: `reporter_employment_id` drives RLS `can_see_employment()`.
+- The entitlement page header stays empty (`962077a8`; `test/entitlement-header-actions-removal.test.ts`).
+- Never edit an applied migration. `0333`'s header mislabels itself as the guard (it is `0334`); left so.
+- Per-band carry-forward columns / JSONB / readers are retained (r85); do not tidy them away.
+- `transferEmployee` has zero production callers and is KEPT: the only writer of
+  `assignment.transferred`, which `reverseLegTx` replays.
+
+### r263 (2026-09-10) — the Attendance Schedule screen and Schedule Assignment. MERGED, NOT DEPLOYED; the board still says `approved`.
+
+No entry was written when it merged; these facts are from git, the board and a dry-run rsync on
+2026-09-11.
+- Merged to `main` at 16:01 (`c62117fc` sched-assign, `3f78780a` sched-config), workflows committed as
+  run (`8c401600`); `b2b31767`'s report script was moved onto the pack facade at `b6dce65d` (00:54,
+  2026-09-11).
+- Items: `1c5602cc` Schedule screen under Attendance (General tab built, five tabs named and empty);
+  `a485afa1` Schedule Assignment edits the arrangement on its own screen; `b2b31767` the report of 171
+  unreachable approval rules (`docs/reports/b2b31767-unreachable-approval-rules.md`). `1d7c9908` was
+  raised to the reporter carrying two corrections to the approved plans (the "Shift settings" naming
+  claim was wrong; Remove is limited to the undoable case).
+- NOT deployed: the dry-run rsync from mainwt lists the two schedule pages, `core/shift-arrangement.ts`,
+  `lib/permissions.ts`, all six catalogues, `packs/attendance/index.ts`, the report script and five
+  tests. Board on 2026-09-11 (`pnpm improve:status`): SIX `approved`, none with a `build-start` —
+  `1c5602cc`, `a485afa1`, `b2b31767` (built here, undeployed), `45f51d16` (My Profile close-out,
+  "already works"), and two approved plans NOT yet built: `fe9c73bc` (entitlement reset) and
+  `f9afd1ce` (centralised clocking locations), whose mockups are in `docs/mockups/`. Five `open`.
+- UNKNOWN: whether a full gate ran on the merged head; no gate receipt is recorded. Gate before deploying.
+- Migration: none. The journal ends at `0458` (374 entries) and the box has 374 applied.
+- Production still has no AI provider (`.env.production` carries no provider key; `ai_provider_config`
+  has 0 rows), so every LLM surface remains inert there. That is configuration, not a defect.
+
+### r261 (2026-09-10) — **THE LEAVE CONFIGURATION CUTOVER**, AND MY PROFILE FINISHED. DEPLOYED, no migration.
+
+**a6fe37fc AND 9583deac ARE BOTH CLOSED. THE BOARD HAS NO APPROVED ITEM LEFT.**
+
+**Round 5 shipped as ELEVEN commits — one per screen, ten times.** 89 files, 2,079 insertions,
+**6,472 deletions**, including `components/leave-type-panel.tsx` (3,367 lines) with its step bar,
+`STEP_KEYS`, `GENERAL_SUB_STEP_KEYS` and `ESS_SUB_STEP_KEYS`. `components/leave-sub-step-bar.tsx` was
+NOT deleted and a guard now pins why: `generate-form.tsx` and `adjustment-form.tsx` still mount it.
+
+**THE PROMISED GATE WAS RUN, ON PRODUCTION, BEFORE AND AFTER.**
+`--verify docs/baselines/a6fe37fc-approval-baseline.json` → **"✓ every baseline routing case still
+reaches the same approver — 0 failure(s), 0 routing case(s) changed"**, both times, over 2,808 cases.
+That is the sentence the approved plan promised the reporter, discharged against their live data.
+
+**No address 404s, and none ever will.** Ten stubs created, each verified on the box to carry exactly one
+`redirect()` at the right target; three older stubs repointed rather than left to chain. Query strings
+forward (`?warning=RISK9&company=c1` survives the hop). **Round 6 says no stub is ever deleted** — the
+reporter's bookmarks are the whole reason they exist.
+
+**THE BANKING-RISK BANNER REACHES ITS READER AT LAST.** Repointing `LEAVE_REPLACEMENT` is what turned the
+three dormant banners live. r259 had deliberately written a guard asserting the OLD constant **so that
+this commit would fail it** — and it did, and the failure message told this round the banners had become
+live UI. The warning carries the Phase-B #14 premium-equivalent risk that was produced on every
+qualifying save for months and silently dropped because the screen it landed on never read the param.
+**A test designed to fail at a future commit is a technique worth reusing.**
+
+**THE STAGE-THREE BLOCKER WOULD HAVE REWRITTEN A MASTER BANK ACCOUNT.** A pending request naming a field
+the employer had just switched OFF could still be approved: the withdrawal sweep used `.limit(1000)` with
+no filter on the locked keys and no ordering, so past 1000 pending rows the matching row was never
+returned — on ANY number of saves — and `decideProfileChange` had no allow-list check at all. Proven on a
+live cluster with 1000 seeded rows: `withdrawn: 0`, approve succeeded, account moved
+111122223333 → 999988887777. Fixed twice over: the sweep is now ONE `UPDATE … WHERE proposed ?| ARRAY[…]`
+matched in the database with no cap, so it converges by construction; and **the decision is the last gate
+and now checks the current allow-list**, refusing the whole request rather than trimming it to the
+still-open half.
+
+**ALSO CAUGHT: `/me` 500ing instead of rendering.** Stage three's were the first THROWING entitlement
+reads under `app/` — all 41 pre-existing ones use the quiet forms, and there is no `app/error.tsx`. Now
+`getSettingOrFallback`, falling back CLOSED on `/me` (no field requestable during an incident) and to the
+NARROWER approver on `/approvals`. The settings screen deliberately still throws, and says why in a
+comment: its ticked boxes ARE the stored value, so a degraded "closed" read plus one Save would write
+"an employee may ask to change nothing" as real customer configuration.
+
+**AND WRONG CUSTOMER-VISIBLE PROSE WAS ABOUT TO SHIP ON EVERY DEPLOY.** `packs/catalog.ts`'s description
+for the approver setting still described the abandoned manager design, it is `customerVisible: true`, and
+`seed-catalogs` writes `description` into production's `setting_definition` on every deploy. Corrected,
+and pinned by a guard that asserts it never matches `/manager/i`.
+
+### r259 (2026-09-10) — LEAVE CONFIG ROUND 3 AND MY PROFILE STAGE ONE. **DEPLOYED `main@afb6b785`**, no migration.
+
+**Verified:** zero-line `rsync -azi --dry-run`; service active, `GET /` -> 401, `BUILD_ID` 05:48:51, **373
+migrations — still nothing since `0457`**, zero `MISSING_MESSAGE` since restart. Gate: **810 files, all
+six chunks exit=0.** And, for the first time, the routing proof ran AFTER a deploy:
+**"✓ every baseline routing case still reaches the same approver — 0 failure(s), 0 changed"** across 2,808
+cases.
+
+**Shipped:** `a6fe37fc` Round 3 — the remaining seven leave-config screens, `company-rules` being the one
+genuinely new one (it gathers four settings that live on four different surfaces today) · `9583deac`
+stage one — My Profile rebuilt in the Personnel record's shape, a READ surface, with the field-visibility
+list written down as a deliverable.
+
+⚠️ **THE DEPLOY RSYNC ATE THE BASELINE, AND THE VERIFY THAT WOULD HAVE PROVEN THE DEPLOY SAFE IS WHAT
+FOUND OUT.** r258 wrote it to `/opt/ai-hr/approval-baseline.json` — the path the script's own header
+documented. `--delete` removes anything on the box that is not in the tree (AGENTS 8), so the next deploy
+deleted it and `--verify` failed with "no such baseline file". Nothing was lost only because it had
+already been committed to `docs/baselines/`. The documented invocation now names the repo path, which is
+what the design meant by "commit it": version-controlled, carried by every deploy, tamper-evident.
+
+**THE MY PROFILE BLOCKER WAS A CARD SHOWING TWO ADDRESSES WITH A SAVE BUTTON THAT CHANGED NEITHER.** The
+verifier proved it live with planted sentinels, not by reading code: the read-only bands bound
+`person.permanent*` / `person.correspondence*` (what Personnel writes) while the fold-out beneath bound
+the legacy `address_line1..country` (what `updateOwnContact` writes) — so an employee edited their
+address, saved, and the address on the same card did not move, while phone and personal email on that
+same card DID, because those columns are shared. The fix took the harder option: DROP the two Personnel
+bands rather than render the legacy one read-only too, because two column families on one card is exactly
+the "second copy of anybody's information" the approved plan promised the reporter would never exist.
+
+**AND THE FORKED FIELD LIST WAS THE DRIFT THE ITEM WAS RAISED ABOUT, ONE LEVEL DOWN.** Stage one was
+briefed to reuse the Personnel section components; the build re-listed every field by hand, sharing only
+the label KEYS. A field added to a Personnel group would silently never appear on /me and nothing would
+go red. Closed with the guard that runs in the Personnel -> /me direction: every field Personnel renders
+must be on /me or on the withheld list. Proved by adding a field to Personnel and watching it fail.
+
+**ALSO RESTORED: pay that had gone missing for concurrent employments.** For an employee with two active
+employments the old Overview tab showed "Basic + allowance" per position; the rebuild dropped the figures
+and showed one unlabelled figure for the primary employment. The second employment's pay rendered
+nowhere — on neither the withheld list nor notBuilt. Restored, labelled by company.
+
+**A GUARD THAT FAILS ON PURPOSE AT ROUND 5.** company-rules renders `?saved=` / `?warning=` / `?error=`
+banners — including a banking-risk warning — that cannot appear there yet, because the action still
+redirects to the old screen. Rather than wire it (a Round 5 act) or delete it, the round added a case that
+asserts the redirect constant still points at the old screen. **The Round 5 commit that repoints it will
+FAIL that test**, and the failure message tells that round the banners have just become live UI and must
+be re-read on the new screen.
+
+### r258 (2026-09-10) — THREE ITEMS, PLUS THE PRODUCTION BASELINE. **DEPLOYED `main@073fc745`**, no migration.
+
+**Verified:** zero-line `rsync -azi --dry-run` read as text; service active, `GET /` -> 401, `BUILD_ID`
+03:41:41, **373 migrations — still no migration since `0457`**, zero `MISSING_MESSAGE` since restart.
+Gate: **803 files, 6 chunks, all exit=0.**
+
+**Shipped:** `759dfc7d` the draft employee record moved off the five-step wizard onto the SAME tab shell
+an activated employee uses · `4df29517` the duplicate Loans menu row removed · `a6fe37fc` **Round 2 of 6**,
+the new leave type screen at `/admin/leave-config/types` built ALONGSIDE the old one, which is untouched
+and still what the menu links to.
+
+⚠️ **THE PRODUCTION APPROVAL BASELINE IS CAPTURED AND COMMITTED** (`docs/baselines/a6fe37fc-approval-baseline.json`),
+which completes Round 1's exit condition. **The reporter approved `8c9ba51a` first** — that item existed
+only to get their answer, and carried the correction that the approved plan had told them this check runs
+against a copy when both design documents say it reads production. Nothing was pointed at their database
+until they said yes. The run reported "0 failure(s). Nothing was written to the database." The file holds
+UUIDs, employment-type enums and role tokens only — checked before committing, no personal data.
+
+**AND IT FOUND SOMETHING WORTH MORE THAN THE BASELINE.** Coverage over the live configuration: **245
+active approval rules, 74 ever win, 171 NEVER do**, and of 2,808 routing decisions only 962 are decided
+by a rule while **1,846 fall through to the built-in chain**. Two thirds of leave approvals are not
+routed by the customer's rules at all. Raised as `b2b31767`. This is the same shape as the r254 audit
+finding (16 entitlement tables in force against 2 rules): **the configuration is the problem, not the
+code**, and it is now measured rather than asserted.
+
+**THE VERIFY PASS CAUGHT A BUILD REPORTING A GUARD IT NEVER RAN.** `leave-types` reported "52 files green,
+including every directory-walking guard" while `test/leave-pack-drift.test.ts` was RED: the three new
+files import `core/leave*` and `ALWAYS_ALLOWED` had `app/admin/leave/` but nothing for
+`app/admin/leave-config/`. Hand-fixed structurally — the new prefix declared beside its sibling, NOT added
+to `test/pack-drift-allowlist.json`, which is audited debt that may only shrink (AGENTS 15). The decision
+had to happen this round: IA §2.0 puts all ten screens under that path, so Rounds 3-5 inherit it.
+
+**THE OTHER MAJOR WAS A STALE DESIGN DOCUMENT, WHICH IS WORSE THAN STALE CODE.** Two live surfaces of the
+screen being replaced were absent from the new one and recorded NOWHERE — the Employee Balances link
+(r242's own fix for "an HR admin came here and found nothing pointing at it") and the
+negative-balance-with-no-limit list (r126's "THE LIST THE PLAN PROMISED"). Both landed BEFORE the design's
+baseline, so IA §3.1's function table never listed them — **and the round's anti-drop guard is keyed to
+that table, so it could not see them go.** A table-keyed guard is only as complete as its table. Both
+surfaces were carried onto the new screen, the table corrected 46 -> 48 functions with a dated note, and
+the guard extended.
+
+**ALSO FIXED, AND IT IS THE DEFECT CLASS THIS WHOLE ITEM EXISTS TO AVOID:** the marker guard pinned that
+each sub-form posts its marker, id and name — but not that it still posts the FIELDS that marker's action
+branch READS. A field lost from a marker-carrying form saves and wipes its own column with the suite
+green. `MARKER_FIELDS` now maps all 27 markers to the fields their branch actually reads, asserted in both
+directions.
+
+**`759dfc7d`'s survival test is the shape to copy:** it reads the property names off the draft schema
+types and fails if any is missing from a table naming the column it lands in — so it cannot go stale as
+fields are added, which is exactly how a field gets silently dropped at Activate.
+
+### r257 (2026-09-10) — THREE APPROVED ITEMS BUILT, TWO RETURNED AS PLANS. **DEPLOYED `main@9cc51ea2`**, no migration.
+
+**Verified on the box:** `rsync -azi --delete --dry-run` returned ZERO lines read as TEXT; service active,
+`GET localhost:3000/` -> 401, `BUILD_ID` fresh 01:20:04, **373 migrations — UNCHANGED, this round carried
+no migration**, and zero `MISSING_MESSAGE` since restart. Gate: **801 files, 6 chunks, all exit=0.**
+
+**THE BOARD HAD FIVE APPROVED AND ONLY THREE COULD BE BUILT.** `420ebab5`, `759dfc7d`, `2983802f` and
+`9583deac` all rebuild `app/admin/personnel/[employmentId]`'s shared tab sections; r253 cost a five-file
+hand-resolved conflict from two branches there. Built the three that are genuinely disjoint
+(`a6fe37fc` leave · `420ebab5` personnel · `2983802f` import); pushed `759dfc7d` and `9583deac` back as
+plans with mockups. **The reporter approved both within the hour** — they are the next round's work.
+
+**TWO PREMISES CHECKED BEFORE WRITING TO THE REPORTER, AND BOTH WERE WRONG:**
+  · `759dfc7d`'s hard half is ALREADY BUILT. Family on drafts is live end to end — `DRAFT_STEPS` carries
+    `family`, `core/employee-draft.ts:586-594` validates it before anything is created, and
+    `materialiseDependents` writes the real rows at Activate. Only the tabbed layout is left.
+  · **OUR OWN previous build note for `9583deac` was wrong.** It said stage two "needs a request store …
+    allocate the migration centrally". `profile_change_request` (schema:4659) and ADR-0012's
+    approve-before-it-applies path have existed all along for bank, dependants and PCB category. The
+    correction went at the TOP of the new plan, in the reporter's favour (AGENTS 31). The one real gap is
+    the rejection REASON, which genuinely is not stored.
+
+**`420ebab5` IS CLOSED, AND THE BUILD CHANGED NO PRODUCTION CODE.** Four rounds had already built it; this
+one measured it promise by promise, added the four guards that had no test capable of failing, and closed
+the Discard race. Family and Qualification cannot have one Save button — every form on both is a child
+record — and that sentence is the one thing the reporter is still owed.
+
+**THE ADVERSARIAL VERIFY EARNED ITS KEEP AGAIN — ALL THREE CAME BACK `fix-first`, WITH TWO BLOCKERS:**
+  1. **The cutover harness could certify a false pass.** `a6fe37fc` Round 1 exists to prove all 261
+     approval rules still reach the same approver before Round 5 deletes ten screens. The verifier proved
+     at runtime it printed the tick and exited 0 while a live employee's approver had moved: the baseline
+     sampled ONE representative per routing group, and when that person left, the whole group dropped out
+     of the comparison. Now matched by routing TUPLE, `gone` only when nobody active is left, an
+     unassociable case FAILS, and cost went from `4 × grid cells` queries to a CONSTANT EIGHT per tenant.
+  2. **The importer diverges from the approved plan.** The plan promised create-if-not-found; a section
+     file carries no name, email, department, join date or salary, so it cannot. The engineering call was
+     kept and the product now says so in four places BEFORE upload; the correction went to the board as
+     `afdf71e2` rather than closing the item as if the promise were kept.
+
+**THREE DATA-INTEGRITY DEFECTS THE IMPORT VERIFY FOUND, ALL PRE-DATING THE FEATURE:** one file could give
+two employees the same WORK EMAIL — which is the LOGIN identity and has **no unique index** behind it; two
+rows could claim one NRIC and the second died mid-run; and four Employment columns wrote legacy fields the
+tab stopped reading at migration `0213`, so an import could report success and change nothing visible.
+Also PDPA: raw driver error text — statement AND bound parameters, an NRIC among them — was persisted into
+`employee_import_run.errors` and rendered to the admin. Fixed in `core/import-sections.ts`; **still present
+in `core/import.ts:1118`/`:1231` for the wide importer and owed its own round.**
+
+**THE GATE WENT RED ONCE, ON A REAL BUG, AND IT WAS A GUARD THAT CAUGHT IT.**
+`test/today-in-myt-drift.test.ts` flagged `core/import-sections.ts`: the reporting-line edge a Direct
+Superior column opens was stamped `new Date().toISOString().slice(0, 10)` — a UTC date. At UTC+8 that
+names YESTERDAY between 00:00 and 08:00 MYT, so an early-morning import opened the new manager's edge a
+day early, silently rewriting one day of who reported to whom — the exact history rewrite the line's own
+comment said it was avoiding. Hand-fixed with `todayInKualaLumpur()` (AGENTS 23b: one fix pass, then the
+parent).
+
+**RAISED BACK TO THE REPORTER:** `8c9ba51a` — the approved plan's build notes said the 261-rule replay
+"runs against a COPY, not production"; both design documents say the opposite, emphatically. It reads
+their LIVE database. **Nothing has been pointed at production and nothing will be until they answer.**
+That is Round 1's remaining exit condition; Round 2 waits on it. `afdf71e2` — the import correction above.
+
+
+### r256 (2026-09-09) — EIGHT WORKSTREAMS, SEVEN ITEMS CLOSED. **DEPLOYED `main@69b6dc38`**, migration `0457`.
+
+**Verified on the box, not assumed:** `rsync -azi --delete --dry-run` from mainwt returned ZERO lines
+(read as TEXT — a line count is not a change count, r253's trap). Service active, `GET localhost:3000/`
+-> 401, `BUILD_ID` written 22:28:08 and the service Ready 7s later. **373 migrations applied, `0457` is
+the watermark**, and all three new `shift` columns are present with the defaults the plan promised.
+
+**`0457` shipped INERT and the migration says so out loud.** Its `RAISE NOTICE` reported, on production:
+**11 shifts, 0 with a colour, 0 with a flexible break.** That is the whole safety property — the flexible
+break moves worked minutes, worked minutes feed overtime, and overtime is what payroll reads, so the
+switch is installed OFF by DEFAULT rather than by a backfill that could be wrong. Rehearsed twice before
+it went: `gate:shadow` (373/373 against production's live-shaped schema) and, because a schema-only dump
+has no rows, a populated table by hand — 3 shifts survived with `break_minutes` intact, all three CHECKs
+rejected bad states, and a legitimate colour + allowance was accepted.
+
+⚠️ **AN EARLIER PRODUCTION READ SAID `0 shifts` AND IT WAS RLS, NOT AN EMPTY TABLE.** `select count(*)
+from shift` as the APP role returns 0 with no tenant context. The real answer (11) came from
+`MIGRATION_DATABASE_URL`. Do not conclude "nothing to migrate" from a count taken through RLS.
+
+**Items closed:** `f1bbc572` global labels (the filter tested the label's ORIGIN company and never
+consulted `isGlobal`, so 59 Global labels behaved as company-specific) · `fbf6abd0` the topbar identity ·
+`b372e923` the reprocess screen's employee name becomes the link the run screen already had ·
+`0b326d5f` Reprocess Required · `4b909202` one prompt instead of a refusal plus a button ·
+`6340aecb` shift colour + flexible break · `858a1128` statutory forms.
+**`420ebab5` (Personnel tabs) IS DELIBERATELY STILL `approved`** — third round running; it has been built
+three times and closed none of them.
+
+**TWO PARENT HAND-FIXES, BOTH CAUGHT BY THE GATE RATHER THAN BY A BUILDER:**
+
+1. **A TEST THAT PINNED A POSITION INSTEAD OF AN INVARIANT IS A TIME BOMB.** r254's
+   `test/pay-item-orp-711adcd2.test.ts` asserted `0456` was the LAST journal entry. `0457` broke it —
+   one AssertionError, chunk 5, on code that was completely correct. Rewritten to pin what actually
+   matters (the entry exists, everything before it has a lower idx, everything after a higher one), so
+   the next migration cannot break it. **Assert the append-only property, never the tail.**
+
+2. **THE NEW BROWSER TEST COULD NEVER RUN, AND IT FAILED IN A WAY THAT BLAMED THE COMPONENT.**
+   `test/topbar-identity-width.browser.test.tsx` reaches `UserMenu` through `await import(...)` — it has
+   to, so `vi.mock('@/app/auth-actions')` lands before `lib/session` -> `db/client` opens a connection.
+   That hides the component's import graph from Vite's STATIC dep scanner, so `lucide-react` was
+   discovered at RUNTIME, forcing a SECOND optimize pass and a SECOND copy of React: react-dom installed
+   the hook dispatcher on one copy and lucide-react read the other, giving nine
+   `TypeError: Cannot read properties of null (reading 'useContext')` thrown from inside a library that
+   had nothing to do with it. On a cold cache it was worse — all three browser files failed to IMPORT
+   ("Vite unexpectedly reloaded a test"), so the suite reported red having run zero assertions.
+   Fixed in `vitest.browser.config.ts` with `resolve.dedupe` + `optimizeDeps.include`.
+   **Those nine geometry assertions — name and Employee ID whole at 1280/1440/1512 — had never once
+   executed. They pass now, so `fbf6abd0` has real-browser evidence for the first time.**
+
+**Gate:** 799 files across 6 chunks, every chunk exit=0, run with `AIHR_RAMDISK_GB=0` (the 8GB RAM disk
+IS memory on an 18GB machine and OOM-killed three gates last round). Locale audit base-aware: +71 keys,
+**0 dropped edits, 0 untranslated**. Rule 19 freeze re-checked twice — all eight `r256/*` branches at
+`ahead=0` before the gate AND again before the rsync.
+
+### r255 (2026-09-09) — THREE ITEMS. **DEPLOYED `main@8cce048f`**. The money one was hand-fixed, not delegated.
+
+**`core/payroll.ts` was deducting zakat OUTSIDE the EA 1955 s.24 net-floor clamp.** `statDeductions`
+summed EPF + SOCSO + SKBBK + EIS + PCB and simply omitted `st.zakat`, so the clamp that exists to stop
+statutory deductions driving net pay below the floor never saw it. Hand-fixed per rule 23b (**anything
+money-affecting is hand-fixed on the first pass, never delegated**): zakat moved into the clamp chain
+**after CP38**, because a court order outranks a voluntary election. It is carried as its own term
+(`slipZakat`) rather than folded into `slipExtraDeduct` — that becomes `otherDeductions` and would have
+double-counted in the pivot.
+
+**Historical payslips must not silently change shape.** `core/payslip-zakat-line.ts` gates on a literal
+`zakatInTotal === true` stamp, so a payslip issued before the fix renders EXACTLY as it did. Same family
+as `payslipEmployerBorne` / `payslipAbsenceLines`: **read the payslip's own blob, never re-derive from
+today's flags.**
+
+
 ## r250 (2026-09-07) — a customer-readiness audit in a real browser; two defects found and fixed; the Leave Config map shipped. `main@82c2b816`.
 
 **DEPLOYED.** tsc clean · **full gate GREEN, 767 files / 5 chunks** · `next build` clean · no migration ·

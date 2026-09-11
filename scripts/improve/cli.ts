@@ -24,6 +24,7 @@
 import { basename, extname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import {
+  boardStatus,
   markBlocked,
   markBuildCompleted,
   markBuildStarted,
@@ -73,6 +74,16 @@ async function main() {
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;
+    case 'status': {
+      // The whole board at a glance: one line per status. Ids are printed for the live statuses only;
+      // the closed ones (deployed / rejected / cancelled) run to hundreds and their ids say nothing.
+      const closed = new Set(['deployed', 'rejected', 'cancelled']);
+      for (const row of boardStatus()) {
+        const ids = closed.has(row.status) ? '' : row.ids.slice(0, 12).join(' ') + (row.ids.length > 12 ? ` +${row.ids.length - 12}` : '');
+        process.stdout.write(`${row.status.padEnd(10)} ${String(row.count).padStart(4)}  ${ids}\n`);
+      }
+      break;
+    }
     case 'pull-blocked':
       process.stdout.write(JSON.stringify(pullBlocked(), null, 2) + '\n');
       break;

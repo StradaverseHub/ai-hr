@@ -26,6 +26,7 @@
     "usage:capture": "node --env-file=.env.local --import tsx scripts/capture-usage.ts",
     "feedback:plan": "node --env-file=.env.local --import tsx scripts/feedback-plan.ts",
     "improve:pull": "node --import tsx scripts/improve/cli.ts pull",
+    "improve:status": "node --import tsx scripts/improve/cli.ts status",
     "improve:raise": "node --import tsx scripts/improve/cli.ts raise",
     "improve:pull-approved": "node --import tsx scripts/improve/cli.ts pull-approved",
     "improve:pull-blocked": "node --import tsx scripts/improve/cli.ts pull-blocked",
