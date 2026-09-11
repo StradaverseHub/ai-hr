@@ -187,6 +187,21 @@ Migration 0459. Three changes to the decision above; §1 (a separate table from 
   on the admin screen is derived from assignments (distinct companies of assigned employees), never
   stored.
 
+## Amended 2026-09-11 (f9afd1ce rev 2, r267) — a page of its own, and a report label
+Migration 0461. The shared record above is unchanged; two things are added around it.
+- **`clocking_location.report_label` (nullable text).** A short name the Attendance report's Clocking
+  Location column prints INSTEAD of the full site name; blank means the name is printed
+  (`core/reporting.ts` reads `coalesce(report_label, name)` for that one column). Every other reader —
+  the locations list, the employee's profile, the clock-in screen — keeps the name. The blank-means-name
+  rule is enforced in the service (`cleanReportLabel` stores NULL for an empty label), not as a CHECK.
+- **The screen.** A clocking location is added and edited on a dedicated full-width page
+  (`/admin/locations/clocking/new`, `/admin/locations/clocking/[id]`, registered on the existing
+  `locations` screen column) in two sections in the reporter's order — Location information, then GPS
+  and clocking settings. The list's rows are read-only with Edit; Archive / Restore / Delete stay on the
+  row. The clocking register now leads the Locations page so the "Clocking location" menu row lands on
+  it. Address search and a map preview are a separate item, planned once a map provider is chosen; the
+  page's section order leaves room for them and carries no placeholder.
+
 ## Consequences
 - Two site registries exist side by side (see §1); the nullable
   `clocking_location.location_id` convergence link is now BUILT (1fff489c, migration 0419).

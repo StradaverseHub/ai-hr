@@ -8075,7 +8075,19 @@
       "noSharedSites": "Chưa có địa điểm chấm công dùng chung.",
       "clockingNameTaken": "Đã có địa điểm chấm công tên “{name}”. Tên là duy nhất trên mọi công ty — một bản ghi cho mỗi địa điểm thực tế — hãy sửa bản ghi đó hoặc chọn tên khác.",
       "usedByManaged": "Được dùng bởi (các công ty bạn quản lý)",
-      "assignedCountManaged": "{count} đã gán trong các công ty bạn quản lý"
+      "assignedCountManaged": "{count} đã gán trong các công ty bạn quản lý",
+      "reportLabel": "Nhãn báo cáo của địa điểm",
+      "reportLabelHint": "Nhãn báo cáo là nội dung báo cáo Chấm công in trong cột Địa điểm chấm công thay cho tên đầy đủ. Để trống thì tên sẽ được dùng.",
+      "addClocking": "Thêm địa điểm chấm công",
+      "edit": "Sửa",
+      "newClockingTitle": "Địa điểm chấm công mới",
+      "editClockingTitle": "Sửa địa điểm chấm công",
+      "backToLocations": "Quay lại Địa điểm",
+      "sectionInfo": "Thông tin địa điểm",
+      "sectionGps": "Cài đặt GPS và chấm công",
+      "radiusMetresLabel": "Bán kính chấm công (mét)",
+      "cancel": "Hủy",
+      "saved": "Đã lưu địa điểm chấm công."
     },
     "systemLabelsTabs": {
       "organisation": "Nhãn tổ chức",

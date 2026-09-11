@@ -90,8 +90,17 @@ import {
   deleteClockingLocation,
   ClockingLocationInUseError,
   ClockingLocationNameTakenError,
+  type ClockingLocationWriteResult,
   type RadiusAdvisory,
 } from '@/packs/attendance/service';
+import {
+  CLOCKING_FIELDS,
+  CLOCKING_NEW_PAGE,
+  UUID_RE,
+  clockingEditPage,
+  typedKey,
+  type ClockingFormValues,
+} from './locations/clocking/form-fields';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
@@ -2099,78 +2108,119 @@ export async function restoreLocationAction(fd: FormData) {
 // ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route. f9afd1ce (0459): a clocking
 // location is a SHARED, tenant-level record with no owner company, so there is no companyId on create and
 // the WRITE is a group administrator's — the service's assertGroupAdmin throws a plain-English refusal
-// that reaches the banner through fail(), and RLS (app.is_group_admin() on INSERT/UPDATE/DELETE) says
-// the same thing underneath. Assigning a site to an employee (personnel actions) is unchanged.
-/**
- * 1fff489c — the radius advisory. The write ALREADY SUCCEEDED when this runs: an unusual radius is a
- * warning, never a refusal (spec section B — some sites genuinely need a bigger circle), so it returns
- * through a success toast rather than the ?error= banner. Null advisory ⇒ the plain ok() redirect,
- * byte-identical to before.
- */
-async function okWithRadiusAdvisory(warning: RadiusAdvisory | null): Promise<never> {
-  if (!warning) ok(LOCATIONS);
-  const t = await getTranslations('admin.locations');
-  okToast(
-    LOCATIONS,
-    warning.code === 'tight'
-      ? t('radiusWarningTight', { radius: warning.radiusM })
-      : t('radiusWarningWide', { radius: warning.radiusM }),
-  );
+// that reaches the banner, and RLS (app.is_group_admin() on INSERT/UPDATE/DELETE) says the same thing
+// underneath. Assigning a site to an employee (personnel actions) is unchanged.
+//
+// f9afd1ce rev 2 (r267) — THE FORM LIVES ON A PAGE OF ITS OWN NOW (app/admin/locations/clocking/new and
+// …/clocking/[id]); the list renders no inline forms. WHERE A SAVE LANDS, the r265 schedule-assignment idiom:
+//   saved   → the LIST with `saved=1`, `focus=<id>` and the `#row-<id>` fragment — the administrator lands
+//             on the row they just saved, highlighted, not at the top. A radius advisory (1fff489c) rides
+//             along as `toast=`, read by the same global ToastFromQuery that read it before: the write
+//             already SUCCEEDED, an unusual radius is a warning, never a refusal.
+//   refused → the PAGE the form was on, `error=<reason>` beside the fields, plus EVERYTHING typed echoed
+//             under the `typed*` keys of app/admin/locations/clocking/form-fields.ts (blank included — on
+//             the new page "what is on file" is nothing, and a link the operator cleared must not come back
+//             pre-picked), so the page re-renders the operator's own values rather than what is on file.
+//             The page shape-checks each echoed value before rendering it.
+// THE PAGE IS DERIVED FROM THE POSTED ID, NEVER FROM A POSTED URL. `clockingLocationId` is an untrusted
+// posted field addressing a uuid column: it is shape-checked here, BEFORE any query, and a malformed one
+// lands on the list with the service's own "not found" sentence — there is no page for an id that is not
+// one. No redirect below can leave the Locations screens (test/clocking-location-page.test.ts).
+
+/** The eight fields as posted, raw strings — what the service is given AND what a refusal echoes back. */
+function clockingFieldsOf(fd: FormData): ClockingFormValues {
+  const out = {} as ClockingFormValues;
+  for (const field of CLOCKING_FIELDS) out[field] = String(fd.get(field) ?? '');
+  return out;
 }
 
+/** A posted coordinate: blank must reach the service's "must be a number", not become 0 (Number('') is 0). */
+const coord = (v: string): number => (v.trim() === '' ? NaN : Number(v));
+
 /**
- * f9afd1ce — the duplicate banner for a SHARED site name (unique per TENANT since 0459). The service
- * turns the 23505 into ClockingLocationNameTakenError; the sentence is composed here, the failLocationSave
- * way, because only this layer can reach getTranslations and `fail()` copies the message verbatim.
+ * The refusal, in the admin's language where the service has a typed error for it. The duplicate-name
+ * sentence (unique per TENANT since 0459) is composed here because only this layer can reach
+ * getTranslations; the service's other refusals already read as sentences and are shown verbatim.
  */
-async function failClockingSave(e: unknown): Promise<never> {
+async function clockingRefusalMessage(e: unknown): Promise<string> {
   if (e instanceof ClockingLocationNameTakenError) {
     const t = await getTranslations('admin.locations');
-    fail(LOCATIONS, new Error(t('clockingNameTaken', { name: e.siteName })));
+    return t('clockingNameTaken', { name: e.siteName });
   }
-  fail(LOCATIONS, e);
+  return (e as Error).message;
+}
+
+/** Refused: back onto the page the form was on, the reason beside the fields, everything typed echoed. */
+async function clockingRefused(page: string, typed: ClockingFormValues, e: unknown): Promise<never> {
+  const params = new URLSearchParams();
+  params.set('error', await clockingRefusalMessage(e));
+  for (const field of CLOCKING_FIELDS) params.set(typedKey(field), typed[field]);
+  redirect(`${page}?${params.toString()}`);
+}
+
+/** Saved: the list, landed on the row, highlighted; a radius advisory rides along as the toast it always was. */
+async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promise<never> {
+  revalidatePath(LOCATIONS);
+  const params = new URLSearchParams({ saved: '1', focus: id });
+  if (warning) {
+    const t = await getTranslations('admin.locations');
+    params.set(
+      'toast',
+      warning.code === 'tight'
+        ? t('radiusWarningTight', { radius: warning.radiusM })
+        : t('radiusWarningWide', { radius: warning.radiusM }),
+    );
+  }
+  redirect(`${LOCATIONS}?${params.toString()}#row-${id}`);
 }
 
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
-  let warning: RadiusAdvisory | null = null;
+  const typed = clockingFieldsOf(fd);
+  let saved: ClockingLocationWriteResult | null = null;
   try {
-    ({ warning } = await createClockingLocation(user, {
-      name: String(fd.get('name') ?? ''),
-      lat: Number(fd.get('lat')),
-      lng: Number(fd.get('lng')),
+    saved = await createClockingLocation(user, {
+      name: typed.name,
+      lat: coord(typed.lat),
+      lng: coord(typed.lng),
       // 1fff489c — the radius is REQUIRED by the service, passed as the raw form string so a blank field
       // reaches the "Radius is required" message rather than becoming NaN. f9afd1ce — the location link
-      // is OPTIONAL; a blank select posts '' and the service stores null.
-      radiusM: String(fd.get('radiusM') ?? ''),
-      locationId: String(fd.get('locationId') ?? ''),
-      address: (fd.get('address') as string) || null,
-      remarks: (fd.get('remarks') as string) || null,
-    }));
+      // is OPTIONAL; a blank select posts '' and the service stores null. rev 2 — so is the report label.
+      radiusM: typed.radiusM,
+      locationId: typed.locationId,
+      address: typed.address || null,
+      remarks: typed.remarks || null,
+      reportLabel: typed.reportLabel || null,
+    });
   } catch (e) {
-    await failClockingSave(e);
+    await clockingRefused(CLOCKING_NEW_PAGE, typed, e);
   }
-  await okWithRadiusAdvisory(warning);
+  // clockingRefused never returns; a refusal has already redirected.
+  await clockingSaved(saved!.id, saved!.warning);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
-  let warning: RadiusAdvisory | null = null;
+  const clockingLocationId = String(fd.get('clockingLocationId') ?? '').trim();
+  if (!UUID_RE.test(clockingLocationId)) fail(LOCATIONS, new Error('Clocking location not found'));
+  const typed = clockingFieldsOf(fd);
+  let saved: ClockingLocationWriteResult | null = null;
   try {
-    ({ warning } = await updateClockingLocation(user, {
-      clockingLocationId: String(fd.get('clockingLocationId') ?? ''),
-      name: String(fd.get('name') ?? ''),
-      lat: Number(fd.get('lat')),
-      lng: Number(fd.get('lng')),
-      radiusM: String(fd.get('radiusM') ?? ''),
-      locationId: String(fd.get('locationId') ?? ''),
-      address: (fd.get('address') as string) || null,
-      remarks: (fd.get('remarks') as string) || null,
-    }));
+    saved = await updateClockingLocation(user, {
+      clockingLocationId,
+      name: typed.name,
+      lat: coord(typed.lat),
+      lng: coord(typed.lng),
+      radiusM: typed.radiusM,
+      locationId: typed.locationId,
+      address: typed.address || null,
+      remarks: typed.remarks || null,
+      reportLabel: typed.reportLabel || null,
+    });
   } catch (e) {
-    await failClockingSave(e);
+    await clockingRefused(clockingEditPage(clockingLocationId), typed, e);
   }
-  await okWithRadiusAdvisory(warning);
+  await clockingSaved(clockingLocationId, saved!.warning);
 }
 
 export async function archiveClockingLocationAction(fd: FormData) {
