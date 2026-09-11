@@ -343,15 +343,17 @@ export const SCREENS: readonly ScreenEntry[] = [
       // route left `routes` in the SAME commit — test/function-access.test.ts fails BOTH ways.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/archive'` (6e9a126e, the read-only record
       // of the entitlement configuration release three clears) STOOD HERE and is DELIBERATELY GONE. The
-      // record is `/admin/leave-config/records/entitlement` now and the old address is an unguarded
-      // redirect stub, so it left `routes` in the SAME commit that emptied the page. Its `/export` route
+      // record is the Configuration sub-tab of `/admin/leave-config/records` now (7f69bd71; it was
+      // `/admin/leave-config/records/entitlement` in between, itself a stub today) and the old address is
+      // an unguarded redirect stub, so it left `routes` in the SAME commit that emptied the page. Its `/export` route
       // handler is UNMOVED and was never listed here — the reverse-completeness scan reads page.tsx files
       // only, and a route handler has no screen column to describe.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/ledger-archive'` (c8052ae3, the read-only
       // BALANCE record of what the Medical/Hospitalization ledger correction archived before deleting it)
-      // STOOD HERE and is DELIBERATELY GONE. The record is `/admin/leave-config/records/balances` now and
-      // the old address is an unguarded redirect stub, so it left `routes` in the SAME commit that emptied
-      // the page. Its `/export` sibling was never listed and has not moved.
+      // STOOD HERE and is DELIBERATELY GONE. The record is the Balances sub-tab of
+      // `/admin/leave-config/records` now (7f69bd71; `/admin/leave-config/records/balances` in between,
+      // itself a stub today) and the old address is an unguarded redirect stub, so it left `routes` in
+      // the SAME commit that emptied the page. Its `/export` sibling was never listed and has not moved.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements/templates'` (6e9a126e release two, the
       // Entitlement Tables + Employee Eligibility editor) STOOD HERE and is DELIBERATELY GONE. The screen
       // is `/admin/leave-config/entitlement-tables` now; the old address is an unguarded redirect stub,
