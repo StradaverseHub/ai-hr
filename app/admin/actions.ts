@@ -89,6 +89,7 @@ import {
   restoreClockingLocation,
   deleteClockingLocation,
   ClockingLocationInUseError,
+  ClockingLocationNameTakenError,
   type RadiusAdvisory,
 } from '@/packs/attendance/service';
 import { countEmployeesInScope } from '@/core/read';
@@ -2088,8 +2089,11 @@ export async function restoreLocationAction(fd: FormData) {
   ok(LOCATIONS);
 }
 
-// ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route; RLS gates the write per
-// company (tenant-catalog read, admin-of-company write — mirrors 0065 pay_component, NOT `location`).
+// ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route. f9afd1ce (0459): a clocking
+// location is a SHARED, tenant-level record with no owner company, so there is no companyId on create and
+// the WRITE is a group administrator's — the service's assertGroupAdmin throws a plain-English refusal
+// that reaches the banner through fail(), and RLS (app.is_group_admin() on INSERT/UPDATE/DELETE) says
+// the same thing underneath. Assigning a site to an employee (personnel actions) is unchanged.
 /**
  * 1fff489c — the radius advisory. The write ALREADY SUCCEEDED when this runs: an unusual radius is a
  * warning, never a refusal (spec section B — some sites genuinely need a bigger circle), so it returns
@@ -2107,24 +2111,37 @@ async function okWithRadiusAdvisory(warning: RadiusAdvisory | null): Promise<nev
   );
 }
 
+/**
+ * f9afd1ce — the duplicate banner for a SHARED site name (unique per TENANT since 0459). The service
+ * turns the 23505 into ClockingLocationNameTakenError; the sentence is composed here, the failLocationSave
+ * way, because only this layer can reach getTranslations and `fail()` copies the message verbatim.
+ */
+async function failClockingSave(e: unknown): Promise<never> {
+  if (e instanceof ClockingLocationNameTakenError) {
+    const t = await getTranslations('admin.locations');
+    fail(LOCATIONS, new Error(t('clockingNameTaken', { name: e.siteName })));
+  }
+  fail(LOCATIONS, e);
+}
+
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   let warning: RadiusAdvisory | null = null;
   try {
     ({ warning } = await createClockingLocation(user, {
-      companyId: String(fd.get('companyId') ?? ''),
       name: String(fd.get('name') ?? ''),
       lat: Number(fd.get('lat')),
       lng: Number(fd.get('lng')),
-      // 1fff489c — both REQUIRED by the service. Passed as the raw form strings so a blank field reaches
-      // the "Radius is required" / "pick a location" message rather than becoming NaN or ''.
+      // 1fff489c — the radius is REQUIRED by the service, passed as the raw form string so a blank field
+      // reaches the "Radius is required" message rather than becoming NaN. f9afd1ce — the location link
+      // is OPTIONAL; a blank select posts '' and the service stores null.
       radiusM: String(fd.get('radiusM') ?? ''),
       locationId: String(fd.get('locationId') ?? ''),
       address: (fd.get('address') as string) || null,
       remarks: (fd.get('remarks') as string) || null,
     }));
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failClockingSave(e);
   }
   await okWithRadiusAdvisory(warning);
 }
@@ -2144,7 +2161,7 @@ export async function updateClockingLocationAction(fd: FormData) {
       remarks: (fd.get('remarks') as string) || null,
     }));
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failClockingSave(e);
   }
   await okWithRadiusAdvisory(warning);
 }

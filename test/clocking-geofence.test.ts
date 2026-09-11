@@ -1,12 +1,17 @@
 /**
  * ADR-0070 — Clocking Location Management & Geofencing. Haversine golden vectors, CRUD + archive/
- * restore/delete-guard on the new clocking_location catalog + its DomainEvent substrate, set-based
- * assignment replace with the cross-company guard, per-employee geofencing config, the checkIn/checkOut
- * enforcement path (pass / outside-radius-blocked / zero-sites-fail-closed / missing-coords), the
- * BLOCKED-EVENT mechanism (the regression test for the fatal "event never commits inside a rolled-back
- * transaction" flaw), import/correction geo-nulling, and RLS (tenant-catalog read, admin-of-company write).
+ * restore/delete-guard on the clocking_location catalog + its DomainEvent substrate, set-based
+ * assignment replace, per-employee geofencing config, the checkIn/checkOut enforcement path (pass /
+ * outside-radius-blocked / zero-sites-fail-closed / missing-coords), the BLOCKED-EVENT mechanism (the
+ * regression test for the fatal "event never commits inside a rolled-back transaction" flaw),
+ * import/correction geo-nulling, and RLS.
+ *
+ * f9afd1ce (migration 0459) — a clocking location is a SHARED, TENANT-LEVEL record: no owner company,
+ * group-admin write (RLS + service + screen), an OPTIONAL link to any company's `location`, and
+ * assignment across companies. The cases that used to pin the per-company shape now pin the shared one;
+ * a guard pinning a decision that was reversed is updated, not deleted.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -33,9 +38,10 @@ import {
   setEmployeeClockingLocations,
   setGeofencing,
   radiusWarning,
+  ClockingLocationAuthorityError,
   ClockingLocationInUseError,
   ClockingLocationLinkError,
-  CrossCompanyClockingLocationError,
+  ClockingLocationNameTakenError,
   RADIUS_ADVISORY_MAX_M,
   RADIUS_ADVISORY_MIN_M,
 } from '../core/clocking-location';
@@ -50,7 +56,7 @@ import {
   GeolocationRequiredError,
   OutsideGeofenceError,
 } from '../core/attendance';
-import { type SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 
 let b: Base;
 const uniqEmail = () => `geo_${randomUUID().slice(0, 8)}@t.local`;
@@ -65,6 +71,17 @@ async function adminFor(companyId: string | null): Promise<SessionContext> {
     .insert(schema.roleAssignment)
     .values({ tenantId: b.tenantId, appUserId: u.id, companyId, role: 'hr_admin' });
   return { tenantId: b.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }] };
+}
+
+/**
+ * f9afd1ce — a GROUP administrator (hr_admin with company_id NULL), carrying the grant so BOTH halves of
+ * the write authority see it: `app.is_group_admin()` in RLS reads the same grants GUC, and the service's
+ * `assertGroupAdmin` reads `grants` off the context. The harness's `adminCtx(b)` is roles-only, which
+ * `withTenant` (and `withEffectiveGrants`) treat as group-wide — so it too is a group admin; this helper
+ * exists so the authority cases below say what they are testing with instead of relying on that shim.
+ */
+function groupAdmin(): Promise<SessionContext> {
+  return adminFor(null);
 }
 
 /** A plain-employee SessionContext scoped to one person (for RLS read/write checks). */
@@ -89,10 +106,12 @@ const hire = (ctx: SessionContext, companyId: string, departmentId: string, name
   });
 
 /**
- * 1fff489c — every clocking point now REQUIRES a radius AND a link to a non-archived `location` in the
- * same company. These two helpers keep the pre-existing cases (which are about geofencing, not about the
- * link) reading as they did: `mkSite()` supplies a default 300 m radius and memoises one location per
- * company. Cases that are ABOUT the radius or the link pass their own values and call the service direct.
+ * 1fff489c — every clocking point REQUIRES a radius; since f9afd1ce the link to a `location` is OPTIONAL
+ * and may be to any company's location. These helpers keep the pre-existing cases (which are about
+ * geofencing, not about the link) reading as they did: `mkSite()` supplies a default 300 m radius and
+ * links the point to one memoised location of the base company (`linkCompanyId` picks another company's
+ * location instead). A clocking site itself has NO company any more — there is no companyId to pass.
+ * Cases that are ABOUT the radius or the link pass their own values and call the service direct.
  */
 let locationSeq = 0;
 const locationByCompany = new Map<string, string>();
@@ -106,11 +125,10 @@ async function defaultLocationFor(ctx: SessionContext, companyId: string): Promi
 }
 async function mkSite(
   ctx: SessionContext,
-  p: { companyId: string; name: string; lat: number; lng: number; radiusM?: number; locationId?: string },
+  p: { name: string; lat: number; lng: number; radiusM?: number; locationId?: string; linkCompanyId?: string },
 ) {
-  const locationId = p.locationId ?? (await defaultLocationFor(ctx, p.companyId));
+  const locationId = p.locationId ?? (await defaultLocationFor(ctx, p.linkCompanyId ?? b.companyId));
   return createClockingLocation(ctx, {
-    companyId: p.companyId,
     name: p.name,
     lat: p.lat,
     lng: p.lng,
@@ -162,7 +180,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
   it('creates + updates + persists fields', async () => {
     const a = adminCtx(b);
     const loc = await defaultLocationFor(a, b.companyId);
-    const { id } = await mkSite(a, { companyId: b.companyId, name: 'HQ Tower', lat: HQ.lat, lng: HQ.lng });
+    const { id } = await mkSite(a, { name: 'HQ Tower', lat: HQ.lat, lng: HQ.lng });
     const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
     expect(row.name).toBe('HQ Tower');
     expect(row.lat).toBeCloseTo(HQ.lat, 6);
@@ -191,30 +209,30 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 
   it('rejects blank name and out-of-range coordinates', async () => {
     const a = adminCtx(b);
-    await expect(mkSite(a, { companyId: b.companyId, name: '  ', lat: 0, lng: 0 })).rejects.toThrow(/name is required/);
-    await expect(mkSite(a, { companyId: b.companyId, name: 'X', lat: 999, lng: 0 })).rejects.toThrow(/Latitude/);
-    await expect(mkSite(a, { companyId: b.companyId, name: 'X', lat: 0, lng: 999 })).rejects.toThrow(/Longitude/);
+    await expect(mkSite(a, { name: '  ', lat: 0, lng: 0 })).rejects.toThrow(/name is required/);
+    await expect(mkSite(a, { name: 'X', lat: 999, lng: 0 })).rejects.toThrow(/Latitude/);
+    await expect(mkSite(a, { name: 'X', lat: 0, lng: 999 })).rejects.toThrow(/Longitude/);
   });
 
-  it('name unique per company; archive/restore; hard delete when unreferenced', async () => {
+  it('name unique per TENANT (f9afd1ce); archive/restore; hard delete when unreferenced', async () => {
     const a = adminCtx(b);
-    const { id } = await mkSite(a, { companyId: b.companyId, name: 'DupSite', lat: HQ.lat, lng: HQ.lng });
-    await expect(mkSite(a, { companyId: b.companyId, name: 'DupSite', lat: HQ.lat, lng: HQ.lng })).rejects.toThrow();
+    const { id } = await mkSite(a, { name: 'DupSite', lat: HQ.lat, lng: HQ.lng });
+    await expect(mkSite(a, { name: 'DupSite', lat: HQ.lat, lng: HQ.lng })).rejects.toThrow();
 
     await archiveClockingLocation(a, { clockingLocationId: id });
-    expect((await listClockingLocations(a, [b.companyId])).map((l) => l.id)).not.toContain(id);
-    expect((await listClockingLocations(a, [b.companyId], { includeArchived: true })).map((l) => l.id)).toContain(id);
+    expect((await listClockingLocations(a)).map((l) => l.id)).not.toContain(id);
+    expect((await listClockingLocations(a, { includeArchived: true })).map((l) => l.id)).toContain(id);
 
     await restoreClockingLocation(a, { clockingLocationId: id });
-    expect((await listClockingLocations(a, [b.companyId])).map((l) => l.id)).toContain(id);
+    expect((await listClockingLocations(a)).map((l) => l.id)).toContain(id);
 
     await deleteClockingLocation(a, { clockingLocationId: id });
-    expect((await listClockingLocations(a, [b.companyId], { includeArchived: true })).map((l) => l.id)).not.toContain(id);
+    expect((await listClockingLocations(a, { includeArchived: true })).map((l) => l.id)).not.toContain(id);
   });
 
   it('delete refuses when referenced by an assignment or attendance row', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'Ref Site', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Ref Site', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await expect(deleteClockingLocation(a, { clockingLocationId: site })).rejects.toBeInstanceOf(ClockingLocationInUseError);
@@ -230,7 +248,7 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 
   it('appends clocking-location.created/updated/archived/restored/deleted events', async () => {
     const a = adminCtx(b);
-    const { id } = await mkSite(a, { companyId: b.companyId, name: 'EvSite', lat: HQ.lat, lng: HQ.lng });
+    const { id } = await mkSite(a, { name: 'EvSite', lat: HQ.lat, lng: HQ.lng });
     await updateClockingLocation(a, {
       clockingLocationId: id,
       name: 'EvSite2',
@@ -256,10 +274,10 @@ describe('clocking_location CRUD (ADR-0070)', () => {
 });
 
 describe('assignment + geofencing config (ADR-0070)', () => {
-  it('set-based replace assigns and unassigns; cross-company rejected', async () => {
+  it('set-based replace assigns and unassigns', async () => {
     const a = adminCtx(b);
-    const { id: site1 } = await mkSite(a, { companyId: b.companyId, name: 'S1', lat: HQ.lat, lng: HQ.lng });
-    const { id: site2 } = await mkSite(a, { companyId: b.companyId, name: 'S2', lat: HQ.lat + 0.01, lng: HQ.lng });
+    const { id: site1 } = await mkSite(a, { name: 'S1', lat: HQ.lat, lng: HQ.lng });
+    const { id: site2 } = await mkSite(a, { name: 'S2', lat: HQ.lat + 0.01, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
 
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1, site2] });
@@ -269,19 +287,65 @@ describe('assignment + geofencing config (ADR-0070)', () => {
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1] });
     assigned = await listEmployeeClockingLocations(a, e.employmentId);
     expect(assigned.map((s) => s.id)).toEqual([site1]);
+  });
 
+  /**
+   * f9afd1ce — THE REVERSAL of the cross-company guard. This case used to assert
+   * CrossCompanyClockingLocationError for exactly this shape. A clocking location is shared now: one gate
+   * that serves three companies is one record, and an employee of company B is assigned it like anyone
+   * else. The assignment must LAND (not merely not throw), and the site's "Used by" must then name B.
+   */
+  it('an employee of company B can be assigned a shared site linked to company A’s location (f9afd1ce)', async () => {
+    const a = adminCtx(b);
+    // The site's only link is to the BASE company's location; company B has no location at all.
+    const { id: sharedGate } = await mkSite(a, { name: 'Shared Gate', lat: HQ.lat, lng: HQ.lng });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Sdn Bhd' });
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
-    const { id: bSite } = await mkSite(a, { companyId: coB, name: 'BSite', lat: HQ.lat, lng: HQ.lng });
-    await expect(
-      setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [bSite] }),
-    ).rejects.toBeInstanceOf(CrossCompanyClockingLocationError);
-    expect(deptB).toBeTruthy();
+    const eB = await hire(a, coB, deptB.id, 'B Employee');
+
+    await setEmployeeClockingLocations(a, { employmentId: eB.employmentId, clockingLocationIds: [sharedGate] });
+    const assigned = await listEmployeeClockingLocations(a, eB.employmentId);
+    expect(assigned.map((s) => s.id)).toEqual([sharedGate]);
+    // Landed in the join table, not just echoed back.
+    const rows = await owner.db
+      .select({ id: schema.employeeClockingLocation.clockingLocationId })
+      .from(schema.employeeClockingLocation)
+      .where(eq(schema.employeeClockingLocation.employmentId, eB.employmentId));
+    expect(rows.map((r) => r.id)).toEqual([sharedGate]);
+
+    // …and the geofence honours it: B's employee, enforced, punches IN at the shared gate.
+    await setGeofencing(a, { employmentId: eB.employmentId, enabled: true });
+    await checkIn(a, { employmentId: eB.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
+    const row = await attendanceRow(eB.employmentId, '2026-07-06');
+    expect(row.checkInClockingLocationId).toBe(sharedGate);
+    expect(row.checkInGeofenceStatus).toBe('pass');
+  });
+
+  it('"Used by" lists the distinct companies whose employees are assigned, by label, sorted; empty when none', async () => {
+    const a = adminCtx(b);
+    const { id: gate } = await mkSite(a, { name: 'Used Gate', lat: HQ.lat, lng: HQ.lng });
+    const { id: lonely } = await mkSite(a, { name: 'Lonely Gate', lat: HQ.lat + 0.01, lng: HQ.lng });
+    const { id: coB } = await createCompany(a, { legalName: 'Zeta Sdn Bhd' });
+    // The chip shows the short label when one is set (coalesce(company_label, legal_name)).
+    await owner.db.update(schema.company).set({ companyLabel: 'Zeta' }).where(eq(schema.company.id, coB));
+    const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
+    // Two employees of the base company (Acme Sdn Bhd, no label) and one of Zeta: two chips, not three.
+    const e1 = await hire(a, b.companyId, b.deptA, 'Acme One');
+    const e2 = await hire(a, b.companyId, b.deptA, 'Acme Two');
+    const e3 = await hire(a, coB, deptB.id, 'Zeta One');
+    for (const e of [e1, e2, e3]) {
+      await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [gate] });
+    }
+    const byId = new Map((await listClockingLocations(a)).map((r) => [r.id, r]));
+    expect(byId.get(gate)?.usedByCompanies).toEqual(['Acme Sdn Bhd', 'Zeta']);
+    expect(byId.get(gate)?.assignedCount).toBe(3);
+    expect(byId.get(lonely)?.usedByCompanies).toEqual([]);
+    expect(byId.get(lonely)?.assignedCount).toBe(0);
   });
 
   it('appends employee.clocking-locations.assigned and employee.geofencing.updated', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'EvS', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'EvS', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -331,7 +395,7 @@ describe('assignment + geofencing config (ADR-0070)', () => {
 describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
   it('inside radius: row stamped per-punch (coords, matched id, distance, radius, pass, web)', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'InRadius', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'InRadius', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -355,7 +419,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('outside all sites: OutsideGeofenceError, NO attendance row, blocked event PERSISTED', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'Far', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Far', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -389,8 +453,8 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('within ANY of two assigned sites passes', async () => {
     const a = adminCtx(b);
-    const { id: site1 } = await mkSite(a, { companyId: b.companyId, name: 'Near1', lat: HQ.lat, lng: HQ.lng });
-    const { id: site2 } = await mkSite(a, { companyId: b.companyId, name: 'Near2', lat: HQ.lat + 1, lng: HQ.lng + 1 });
+    const { id: site1 } = await mkSite(a, { name: 'Near1', lat: HQ.lat, lng: HQ.lng });
+    const { id: site2 } = await mkSite(a, { name: 'Near2', lat: HQ.lat + 1, lng: HQ.lng + 1 });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site1, site2] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -417,7 +481,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('enabled + no coords: GeolocationRequiredError, no row, no event', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'NoCoords', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'NoCoords', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -455,7 +519,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 
   it('mid-day toggle: each punch keeps its own frozen status/radius', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'Toggle', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'Toggle', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     // Geofencing OFF at check-in.
@@ -474,7 +538,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
 describe('import + correction geo-nulling (ADR-0070)', () => {
   it('import overwrites a web check-in: geo fields nulled, method import — no contradictory rows', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'ImpSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'ImpSite', lat: HQ.lat, lng: HQ.lng });
     const [p] = await owner.db
       .insert(schema.person)
       .values({ tenantId: b.tenantId, fullName: 'Imp Emp', primaryEmail: uniqEmail() })
@@ -502,7 +566,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 
   it('import check-in then web check-out: in=import, out=web with out-geo stamped', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'MixSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'MixSite', lat: HQ.lat, lng: HQ.lng });
     const [p] = await owner.db
       .insert(schema.person)
       .values({ tenantId: b.tenantId, fullName: 'Mix Emp', primaryEmail: uniqEmail() })
@@ -530,7 +594,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 
   it('blocked check-out, then approved correction: row completed, geo fields nulled, method NULL', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'CorrSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'CorrSite', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true, radiusM: 300 });
@@ -569,7 +633,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
 describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
   it('a tenant employee SELECTs the clocking_location catalog but cannot write', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'RlsSite', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'RlsSite', lat: HQ.lat, lng: HQ.lng });
     const [p] = await owner.db
       .insert(schema.person)
       .values({ tenantId: b.tenantId, fullName: 'Plain Emp', primaryEmail: uniqEmail() })
@@ -577,54 +641,128 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     const empCtx = await employeeCtxFor(p.id);
 
     // Read: the tenant-wide catalog policy lets a plain employee through.
-    const seen = await listClockingLocations(empCtx, [b.companyId]);
+    const seen = await listClockingLocations(empCtx);
     expect(seen.map((s) => s.id)).toContain(site);
 
     // Write: RLS WITH CHECK requires is_admin_for(company_id) — a plain employee cannot create.
     await expect(
-      mkSite(empCtx, { companyId: b.companyId, name: 'Illegal', lat: HQ.lat, lng: HQ.lng }),
+      mkSite(empCtx, { name: 'Illegal', lat: HQ.lat, lng: HQ.lng }),
     ).rejects.toThrow();
   });
 
-  it('an admin of another company in the tenant reads but cannot write', async () => {
+  /**
+   * f9afd1ce — WRITE AUTHORITY IS THE GROUP ADMINISTRATOR'S, enforced in two places this file can reach
+   * (the third, the screen, is pinned by test/clocking-location-shared.test.ts). A COMPANY-SCOPED admin —
+   * an hr_admin whose grant names a company — still READS the whole catalog, still ASSIGNS sites to their
+   * own employees, and is refused every write to the catalog itself: by the SERVICE with the plain-English
+   * rule, and by the DATABASE when the service is bypassed.
+   */
+  it('a company-scoped admin reads the catalog and assigns sites, but every catalog write is refused by the service', async () => {
     const a = adminCtx(b);
-    const { id: coB } = await createCompany(a, { legalName: 'Co B RLS' });
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'AOnly', lat: HQ.lat, lng: HQ.lng });
-    const adminB = await adminFor(coB); // scoped to company B only
+    const { id: site } = await mkSite(a, { name: 'AOnly', lat: HQ.lat, lng: HQ.lng });
+    const companyAdmin = await adminFor(b.companyId); // scoped to ONE company — not a group admin
 
-    // Read: tenant-wide catalog policy — B's admin still sees A's site.
-    const seen = await listClockingLocations(adminB, [b.companyId]);
-    expect(seen.map((s) => s.id)).toContain(site);
+    // Read: tenant-wide catalog policy — the company admin sees the shared site.
+    expect((await listClockingLocations(companyAdmin)).map((s) => s.id)).toContain(site);
 
-    // Write: cannot update a site outside their company scope.
-    // 1fff489c — B's admin is now stopped one step EARLIER than before: `location` is admin-only-read
-    // (migration 0111), so A's location is invisible to them and the required link cannot be resolved.
-    // The refusal is real either way, but the assertion below no longer proves the clocking_location
-    // policy itself — hence the archive attempt that follows, which reaches the UPDATE unguarded.
-    await expect(
-      updateClockingLocation(adminB, {
-        clockingLocationId: site,
-        name: 'Hijacked',
-        lat: HQ.lat,
-        lng: HQ.lng,
-        radiusM: 300,
-        locationId: await defaultLocationFor(a, b.companyId),
-      }),
-    ).rejects.toThrow();
-    const [untouched] = await owner.db
-      .select()
-      .from(schema.clockingLocation)
-      .where(eq(schema.clockingLocation.id, site));
+    // Assign: unchanged — can_admin_employment on the join table, not the catalog's authority.
+    const e = await hire(a, b.companyId, b.deptA);
+    await setEmployeeClockingLocations(companyAdmin, { employmentId: e.employmentId, clockingLocationIds: [site] });
+    expect((await listEmployeeClockingLocations(companyAdmin, e.employmentId)).map((s) => s.id)).toEqual([site]);
+
+    // Every writer: refused by the service, with the rule named in words. Type AND message, because the
+    // message is what fail() puts in the banner.
+    const attempt = { name: 'Hijacked', lat: HQ.lat, lng: HQ.lng, radiusM: 300 };
+    await expect(createClockingLocation(companyAdmin, { ...attempt, name: 'ByCompanyAdmin' })).rejects.toBeInstanceOf(
+      ClockingLocationAuthorityError,
+    );
+    await expect(createClockingLocation(companyAdmin, { ...attempt, name: 'ByCompanyAdmin' })).rejects.toThrow(
+      /group administrator/,
+    );
+    await expect(updateClockingLocation(companyAdmin, { clockingLocationId: site, ...attempt })).rejects.toBeInstanceOf(
+      ClockingLocationAuthorityError,
+    );
+    await expect(archiveClockingLocation(companyAdmin, { clockingLocationId: site })).rejects.toBeInstanceOf(
+      ClockingLocationAuthorityError,
+    );
+    await expect(restoreClockingLocation(companyAdmin, { clockingLocationId: site })).rejects.toBeInstanceOf(
+      ClockingLocationAuthorityError,
+    );
+    await setEmployeeClockingLocations(companyAdmin, { employmentId: e.employmentId, clockingLocationIds: [] });
+    await expect(deleteClockingLocation(companyAdmin, { clockingLocationId: site })).rejects.toBeInstanceOf(
+      ClockingLocationAuthorityError,
+    );
+    const [untouched] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, site));
     expect(untouched.name).toBe('AOnly');
+    expect(untouched.archivedAt).toBeNull();
+  });
 
-    // The RLS policy itself: archive takes no location link, so this reaches the UPDATE and is refused by
-    // WITH CHECK app.is_admin_for(company_id).
-    await expect(archiveClockingLocation(adminB, { clockingLocationId: site })).rejects.toThrow();
+  it('a company-scoped admin’s INSERT is refused by the DATABASE itself (42501), bypassing the service', async () => {
+    const companyAdmin = await adminFor(b.companyId);
+    // Straight through withTenant as the app role: no service, no assertGroupAdmin — only RLS.
+    const err: unknown = await withTenant(companyAdmin, (tx) =>
+      tx
+        .insert(schema.clockingLocation)
+        .values({ tenantId: b.tenantId, name: 'RawInsert', lat: HQ.lat, lng: HQ.lng, radiusM: 100 }),
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeTruthy();
+    // drizzle wraps the Postgres error; the canonical cause is 42501 (insufficient_privilege — RLS WITH CHECK).
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    const text = `${cause?.message ?? ''} ${(err as Error).message}`.toLowerCase();
+    expect(cause?.code === '42501' || text.includes('row-level security')).toBe(true);
+    const rows = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.name, 'RawInsert'));
+    expect(rows.length).toBe(0);
+  });
+
+  it('a company-scoped admin’s raw UPDATE and DELETE touch no row (RLS USING filters; the service is what refuses)', async () => {
+    const a = adminCtx(b);
+    const { id: site } = await mkSite(a, { name: 'Untouchable', lat: HQ.lat, lng: HQ.lng });
+    const companyAdmin = await adminFor(b.companyId);
+    // An UPDATE/DELETE policy's USING clause hides the row rather than throwing — which is exactly why
+    // the service guard exists: without it a company admin's archive would "succeed" and change nothing.
+    await withTenant(companyAdmin, (tx) =>
+      tx.update(schema.clockingLocation).set({ name: 'Hijacked' }).where(eq(schema.clockingLocation.id, site)),
+    );
+    await withTenant(companyAdmin, (tx) => tx.delete(schema.clockingLocation).where(eq(schema.clockingLocation.id, site)));
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, site));
+    expect(row).toBeTruthy();
+    expect(row.name).toBe('Untouchable');
+  });
+
+  it('a GROUP admin (grant-carrying) creates, updates, archives, restores and deletes', async () => {
+    const g = await groupAdmin();
+    const { id } = await createClockingLocation(g, { name: 'GroupMade', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
+    await updateClockingLocation(g, { clockingLocationId: id, name: 'GroupMade 2', lat: HQ.lat, lng: HQ.lng, radiusM: 200 });
+    await archiveClockingLocation(g, { clockingLocationId: id });
+    await restoreClockingLocation(g, { clockingLocationId: id });
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, id));
+    expect(row.name).toBe('GroupMade 2');
+    expect(row.radiusM).toBe(200);
+    expect(row.archivedAt).toBeNull();
+    await deleteClockingLocation(g, { clockingLocationId: id });
+    expect((await listClockingLocations(g, { includeArchived: true })).map((r) => r.id)).not.toContain(id);
+  });
+
+  it('a site name is unique per TENANT — the same name linked to two companies’ locations is one gate, not two', async () => {
+    const g = await groupAdmin();
+    const { id: coB } = await createCompany(g, { legalName: 'Co B Uniq' });
+    const locA = await defaultLocationFor(g, b.companyId);
+    const locB = await defaultLocationFor(g, coB);
+    await createClockingLocation(g, { name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locA });
+    // The old (tenant, company, name) index would have let this through as company B's own copy.
+    await expect(
+      createClockingLocation(g, { name: 'HQ Tower — Main Gate', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: locB }),
+    ).rejects.toThrow();
+    // …and a DIFFERENT name linked to B's location is fine.
+    await createClockingLocation(g, { name: 'HQ Tower — South Gate', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150, locationId: locB });
   });
 
   it('another tenant sees nothing', async () => {
     const a = adminCtx(b);
-    await mkSite(a, { companyId: b.companyId, name: 'TenantASite', lat: HQ.lat, lng: HQ.lng });
+    await mkSite(a, { name: 'TenantASite', lat: HQ.lat, lng: HQ.lng });
 
     const [t2] = await owner.db.insert(schema.tenant).values({ workosOrgId: `org_${randomUUID()}`, name: 'Other Tenant' }).returning({ id: schema.tenant.id });
     const [c2] = await owner.db.insert(schema.company).values({ tenantId: t2.id, legalName: 'Other Co' }).returning({ id: schema.company.id });
@@ -632,13 +770,13 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
     await owner.db.insert(schema.roleAssignment).values({ tenantId: t2.id, appUserId: u2.id, companyId: null, role: 'hr_admin' });
     const otherCtx: SessionContext = { tenantId: t2.id, userId: u2.id, grants: [{ role: 'hr_admin', companyId: null }] };
 
-    const seen = await listClockingLocations(otherCtx, [c2.id]);
+    const seen = await listClockingLocations(otherCtx);
     expect(seen.length).toBe(0);
   });
 
   it('employee cannot write employee_clocking_location join rows', async () => {
     const a = adminCtx(b);
-    const { id: site } = await mkSite(a, { companyId: b.companyId, name: 'JoinRls', lat: HQ.lat, lng: HQ.lng });
+    const { id: site } = await mkSite(a, { name: 'JoinRls', lat: HQ.lat, lng: HQ.lng });
     const e = await hire(a, b.companyId, b.deptA);
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, e.personId));
     const empCtx = await employeeCtxFor(p.id);
@@ -663,7 +801,7 @@ describe('1fff489c — per-site radius', () => {
 
   it('a single site is judged against ITS OWN radius when the employee has no override', async () => {
     const a = adminCtx(b);
-    const { id: tight } = await mkSite(a, { companyId: b.companyId, name: 'Tight', ...north(0), radiusM: 100 });
+    const { id: tight } = await mkSite(a, { name: 'Tight', ...north(0), radiusM: 100 });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [tight] });
     // Enabled with NO override — the site's own 100 m is the only radius in play.
@@ -686,9 +824,9 @@ describe('1fff489c — per-site radius', () => {
   it('THE REGRESSION: the NEARER site fails its small radius, the FARTHER site passes its large one', async () => {
     const a = adminCtx(b);
     // 300 m away with a 100 m circle — the nearest site, and it does NOT authorise this punch.
-    const { id: near } = await mkSite(a, { companyId: b.companyId, name: 'Near Gate', ...north(300), radiusM: 100 });
+    const { id: near } = await mkSite(a, { name: 'Near Gate', ...north(300), radiusM: 100 });
     // 400 m away with a 500 m circle — further off, and it DOES.
-    const { id: far } = await mkSite(a, { companyId: b.companyId, name: 'Far Yard', ...north(400), radiusM: 500 });
+    const { id: far } = await mkSite(a, { name: 'Far Yard', ...north(400), radiusM: 500 });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [near, far] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
@@ -706,8 +844,8 @@ describe('1fff489c — per-site radius', () => {
 
   it('the closest PASSING site wins when two are in range — not the first one found', async () => {
     const a = adminCtx(b);
-    const { id: further } = await mkSite(a, { companyId: b.companyId, name: 'A Further', ...north(400), radiusM: 900 });
-    const { id: closer } = await mkSite(a, { companyId: b.companyId, name: 'B Closer', ...north(100), radiusM: 900 });
+    const { id: further } = await mkSite(a, { name: 'A Further', ...north(400), radiusM: 900 });
+    const { id: closer } = await mkSite(a, { name: 'B Closer', ...north(100), radiusM: 900 });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [further, closer] });
     await setGeofencing(a, { employmentId: e.employmentId, enabled: true });
@@ -719,7 +857,7 @@ describe('1fff489c — per-site radius', () => {
 
   it('the employment radius is an OVERRIDE: it replaces every site radius, tighter or wider', async () => {
     const a = adminCtx(b);
-    const { id: wide } = await mkSite(a, { companyId: b.companyId, name: 'Wide', ...north(0), radiusM: 1000 });
+    const { id: wide } = await mkSite(a, { name: 'Wide', ...north(0), radiusM: 1000 });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [wide] });
 
@@ -752,7 +890,7 @@ describe('1fff489c — per-site radius', () => {
     const locationId = await defaultLocationFor(a, b.companyId);
     const [legacy] = await owner.db
       .insert(schema.clockingLocation)
-      .values({ tenantId: b.tenantId, companyId: b.companyId, name: 'Legacy', lat: HQ.lat, lng: HQ.lng, locationId })
+      .values({ tenantId: b.tenantId, name: 'Legacy', lat: HQ.lat, lng: HQ.lng, locationId })
       .returning({ id: schema.clockingLocation.id });
     const e = await hire(a, b.companyId, b.deptA);
     await setEmployeeClockingLocations(a, { employmentId: e.employmentId, clockingLocationIds: [legacy.id] });
@@ -788,37 +926,63 @@ describe('1fff489c — per-site radius', () => {
   });
 });
 
-describe('1fff489c — the radius is required, and the location link is required', () => {
+describe('1fff489c — the radius is required; f9afd1ce — the location link is OPTIONAL and not company-bound', () => {
   it('refuses a create with no radius, a zero radius, or a negative radius', async () => {
     const a = adminCtx(b);
     const locationId = await defaultLocationFor(a, b.companyId);
-    const base = { companyId: b.companyId, lat: HQ.lat, lng: HQ.lng, locationId };
+    const base = { lat: HQ.lat, lng: HQ.lng, locationId };
     await expect(createClockingLocation(a, { ...base, name: 'R1', radiusM: '' })).rejects.toThrow(/required/);
     await expect(createClockingLocation(a, { ...base, name: 'R2', radiusM: 0 })).rejects.toThrow(/positive/);
     await expect(createClockingLocation(a, { ...base, name: 'R3', radiusM: -1 })).rejects.toThrow(/positive/);
     await expect(createClockingLocation(a, { ...base, name: 'R4', radiusM: 500_000 })).rejects.toThrow(/exceed/);
   });
 
-  it('refuses a create with no location link', async () => {
+  /**
+   * f9afd1ce REVERSED "refuses a create with no location link". A shared site five companies use cannot
+   * honestly be required to belong to one company's holiday-calendar record, so the link is optional:
+   * blank → stored null, listed under "Not linked to a location", never pre-ticked from anyone's work
+   * location. A blank AND an omitted field both mean "no link".
+   */
+  it('accepts a create with no location link — stored null, listed, unlinked in the read model', async () => {
     const a = adminCtx(b);
-    await expect(
-      createClockingLocation(a, { companyId: b.companyId, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' }),
-    ).rejects.toBeInstanceOf(ClockingLocationLinkError);
+    const { id: blank } = await createClockingLocation(a, { name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
+    const { id: omitted } = await createClockingLocation(a, { name: 'NoLink2', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
+    const byId = new Map((await listClockingLocations(a)).map((r) => [r.id, r]));
+    for (const id of [blank, omitted]) {
+      expect(byId.get(id)?.locationId).toBeNull();
+      expect(byId.get(id)?.locationCode).toBeNull();
+      expect(byId.get(id)?.locationCompanyName).toBeNull();
+    }
+    // …and an update may take the link away again.
+    const loc = await defaultLocationFor(a, b.companyId);
+    await updateClockingLocation(a, { clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: loc });
+    await updateClockingLocation(a, { clockingLocationId: blank, name: 'NoLink', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: '' });
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, blank));
+    expect(row.locationId).toBeNull();
   });
 
-  it("refuses a location belonging to ANOTHER company", async () => {
+  /** f9afd1ce REVERSED "refuses a location belonging to ANOTHER company": there is no "own" company now. */
+  it('accepts a link to ANOTHER company’s location, and the read model carries that location’s company', async () => {
     const a = adminCtx(b);
     const { id: coB } = await createCompany(a, { legalName: 'Co B Link' });
     const { id: foreignLocation } = await createLocation(a, { companyId: coB, code: 'FOREIGN', name: 'Foreign' });
+    const { id } = await createClockingLocation(a, {
+      name: 'CrossCo',
+      lat: HQ.lat,
+      lng: HQ.lng,
+      radiusM: 150,
+      locationId: foreignLocation,
+    });
+    const row = (await listClockingLocations(a)).find((r) => r.id === id);
+    expect(row?.locationId).toBe(foreignLocation);
+    expect(row?.locationCode).toBe('FOREIGN');
+    expect(row?.locationCompanyName).toBe('Co B Link');
+  });
+
+  it('refuses a link to a location that does not exist', async () => {
+    const a = adminCtx(b);
     await expect(
-      createClockingLocation(a, {
-        companyId: b.companyId,
-        name: 'CrossCo',
-        lat: HQ.lat,
-        lng: HQ.lng,
-        radiusM: 150,
-        locationId: foreignLocation,
-      }),
+      createClockingLocation(a, { name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: randomUUID() }),
     ).rejects.toBeInstanceOf(ClockingLocationLinkError);
   });
 
@@ -827,31 +991,32 @@ describe('1fff489c — the radius is required, and the location link is required
     const { id: gone } = await createLocation(a, { companyId: b.companyId, code: 'GONE', name: 'Closed Site' });
     await archiveLocation(a, { locationId: gone });
     await expect(
-      createClockingLocation(a, { companyId: b.companyId, name: 'Archived', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: gone }),
+      createClockingLocation(a, { name: 'Archived', lat: HQ.lat, lng: HQ.lng, radiusM: 150, locationId: gone }),
     ).rejects.toBeInstanceOf(ClockingLocationLinkError);
   });
 
-  it('an update cannot re-home a point onto another company’s location', async () => {
+  /** f9afd1ce REVERSED "an update cannot re-home a point onto another company's location". */
+  it('an update CAN re-home a point onto another company’s location', async () => {
     const a = adminCtx(b);
-    const { id: point } = await mkSite(a, { companyId: b.companyId, name: 'Homed', lat: HQ.lat, lng: HQ.lng });
+    const { id: point } = await mkSite(a, { name: 'Homed', lat: HQ.lat, lng: HQ.lng });
     const { id: coB } = await createCompany(a, { legalName: 'Co B Rehome' });
     const { id: foreignLocation } = await createLocation(a, { companyId: coB, code: 'REHOME', name: 'Elsewhere' });
-    await expect(
-      updateClockingLocation(a, {
-        clockingLocationId: point,
-        name: 'Homed',
-        lat: HQ.lat,
-        lng: HQ.lng,
-        radiusM: 150,
-        locationId: foreignLocation,
-      }),
-    ).rejects.toBeInstanceOf(ClockingLocationLinkError);
+    await updateClockingLocation(a, {
+      clockingLocationId: point,
+      name: 'Homed',
+      lat: HQ.lat,
+      lng: HQ.lng,
+      radiusM: 150,
+      locationId: foreignLocation,
+    });
+    const [row] = await owner.db.select().from(schema.clockingLocation).where(eq(schema.clockingLocation.id, point));
+    expect(row.locationId).toBe(foreignLocation);
   });
 
   it('the 10..5000 m band WARNS and does not block — the row is saved either way', async () => {
     const a = adminCtx(b);
     const locationId = await defaultLocationFor(a, b.companyId);
-    const base = { companyId: b.companyId, lat: HQ.lat, lng: HQ.lng, locationId };
+    const base = { lat: HQ.lat, lng: HQ.lng, locationId };
 
     const tight = await createClockingLocation(a, { ...base, name: 'Tiny', radiusM: RADIUS_ADVISORY_MIN_M - 1 });
     expect(tight.warning).toEqual({ code: 'tight', radiusM: RADIUS_ADVISORY_MIN_M - 1 });
@@ -861,7 +1026,7 @@ describe('1fff489c — the radius is required, and the location link is required
     expect(normal.warning).toBeNull();
 
     // NOT BLOCKED: all three rows are really there, with the radii as typed.
-    const saved = await listClockingLocations(a, [b.companyId]);
+    const saved = await listClockingLocations(a);
     const byName = new Map(saved.map((r) => [r.name, r]));
     expect(byName.get('Tiny')?.radiusM).toBe(RADIUS_ADVISORY_MIN_M - 1);
     expect(byName.get('Huge')?.radiusM).toBe(RADIUS_ADVISORY_MAX_M + 1);
@@ -872,18 +1037,56 @@ describe('1fff489c — the radius is required, and the location link is required
     expect(radiusWarning(RADIUS_ADVISORY_MAX_M)).toBeNull();
   });
 
+  /** Verifier m3 — a duplicate name leaves as a typed error carrying the name, never as raw SQL + params. */
+  it('a duplicate site name is ClockingLocationNameTakenError, on create and on rename', async () => {
+    const a = adminCtx(b);
+    const { id: second } = await createClockingLocation(a, { name: 'Gate One', lat: HQ.lat, lng: HQ.lng, radiusM: 150 });
+    await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.001, radiusM: 150 });
+    const dup: unknown = await createClockingLocation(a, { name: 'Gate Two', lat: HQ.lat, lng: HQ.lng + 0.002, radiusM: 150 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(dup).toBeInstanceOf(ClockingLocationNameTakenError);
+    expect((dup as ClockingLocationNameTakenError).siteName).toBe('Gate Two');
+    expect((dup as Error).message).not.toMatch(/failed query|params:/i);
+    // Renaming Gate One to Gate Two hits the same index through the UPDATE path.
+    const ren: unknown = await updateClockingLocation(a, { clockingLocationId: second, name: 'Gate Two', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(ren).toBeInstanceOf(ClockingLocationNameTakenError);
+    expect((ren as ClockingLocationNameTakenError).siteName).toBe('Gate Two');
+  });
+
+  /**
+   * Verifier m2 — an UPDATE/DELETE policy's USING clause FILTERS rows rather than throwing, so a writer that
+   * did not read its `.returning()` would "succeed" and append a clocking-location.* event about nothing.
+   * The only zero-row path a group admin can reach is an id that is not a site; the assertion that matters
+   * is the absence of an event.
+   */
+  it('archive / restore / delete / update of an id that is not a site throw a plain error and append NO event', async () => {
+    const g = await groupAdmin();
+    const ghost = randomUUID();
+    await expect(archiveClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(restoreClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(deleteClockingLocation(g, { clockingLocationId: ghost })).rejects.toThrow(/not found/);
+    await expect(
+      updateClockingLocation(g, { clockingLocationId: ghost, name: 'Ghost', lat: HQ.lat, lng: HQ.lng, radiusM: 150 }),
+    ).rejects.toThrow(/not found/);
+    expect(await eventTypesFor(b.tenantId, ghost)).toEqual([]);
+  });
+
   it('listClockingLocations carries the linked location’s code and name for the grouped render', async () => {
     const a = adminCtx(b);
     const { id: locationId } = await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     await createClockingLocation(a, {
-      companyId: b.companyId,
       name: 'HQ — North Gate',
       lat: HQ.lat,
       lng: HQ.lng,
       radiusM: 150,
       locationId,
     });
-    const [row] = await listClockingLocations(a, [b.companyId]);
+    const [row] = await listClockingLocations(a);
     expect(row.locationId).toBe(locationId);
     expect(row.locationCode).toBe('HQ');
     expect(row.locationName).toBe('Headquarters');

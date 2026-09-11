@@ -435,9 +435,11 @@ export default async function EmployeePage({
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
   // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
   const shiftHistory = admin ? await shiftArrangementHistory(s, employmentId) : [];
-  // ADR-0070 — Clocking Location & Geofencing: THIS employee's company's active clocking sites (the
-  // multi-select options) + their current assignment (admin-only, mirrors the payroll-policy card).
-  const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];
+  // ADR-0070 — Clocking Location & Geofencing: the multi-select options + this employee's current
+  // assignment (admin-only, mirrors the payroll-policy card). f9afd1ce (0459): EVERY active clocking site
+  // in the tenant, not this employee's company's — a clocking location is a shared record with no owner
+  // company, and this was the one line that made assignment per-company in practice.
+  const clockingLocations = admin ? await listClockingLocations(s) : [];
   const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
 
@@ -2340,17 +2342,30 @@ export default async function EmployeePage({
                 ))}
               </select>
             </Field>
-            {/* The four distinct empty states (spec section E). Today all four render as one blank field,
-                which is the reporter's actual complaint: "No location" cannot be acted on because it does
-                not say WHICH thing is missing. States 1, 3 and 4 live here; state 2 (branch not mapped)
-                is on the Work Location card above, where the branch is the thing to fix. */}
-            {locations.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{tc('noCompanyLocations')}</p>
-            ) : resolvedLocationPointCount === 0 ? (
-              <p className="text-xs text-muted-foreground">{tc('noSites')}</p>
-            ) : assignedClockingLocationIds.size === 0 && emp.locationId ? (
-              <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>
-            ) : null}
+            {/* The distinct empty states (spec section E). They used to render as one blank field, which
+                was the reporter's actual complaint: "No location" cannot be acted on because it does not
+                say WHICH thing is missing. State 2 (branch not mapped) is on the Work Location card
+                above, where the branch is the thing to fix.
+
+                f9afd1ce REWROTE the semantics here. Sites are SHARED now, so "no site is linked to this
+                employee's location" must never read as "clock-in is unavailable": every shared site is
+                in the list above regardless of the link. The line therefore says HOW MANY points are
+                linked to the resolved location (that is what resolvedLocationPointCount is for — the
+                pre-tick), and that every shared site is offered anyway. It renders only in the seeding
+                state (nothing assigned yet); once sites are saved, the saved set speaks for itself. */}
+            {clockingLocations.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{tc('noSharedSites')}</p>
+            ) : (
+              <>
+                {assignedClockingLocationIds.size === 0 && resolvedLocationPointCount != null && (
+                  <p className="text-xs text-muted-foreground">{tc('linkedPoints', { count: resolvedLocationPointCount })}</p>
+                )}
+                {/* "The sites ticked above are proposed…" is only true when something IS ticked. */}
+                {assignedClockingLocationIds.size === 0 && emp.locationId && (resolvedLocationPointCount ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>
+                )}
+              </>
+            )}
           </form>
           <form action={setGeofencingAction} data-save-section="geofencing" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />

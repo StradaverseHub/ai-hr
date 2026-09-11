@@ -412,19 +412,20 @@ export const location = pgTable(
   ],
 );
 
-// clocking_location = company-scoped Clocking Location register (ADR-0070). A DELIBERATE second site
-// registry alongside `location` above — see ADR-0070 §1 for why it is not an extension of `location`
-// (hard-delete lifecycle, no code namespace, wider tenant-catalog RLS). Lat/lng are typed numbers copied
-// from Google Maps (a map picker is Phase 2, deferred). RLS: tenant-catalog read (every tenant member),
-// admin-of-company write — mirrors the 0065 pay_component pattern, NOT location's admin-only-read pattern.
+// clocking_location = SHARED, TENANT-LEVEL Clocking Location register (ADR-0070, amended f9afd1ce
+// 2026-09-11 — migration 0459). A DELIBERATE second site registry alongside `location` above — see
+// ADR-0070 §1 for why it is not an extension of `location` (hard-delete lifecycle, no code namespace,
+// wider tenant-catalog RLS). NO OWNER COMPANY: one record per physical place, available to every
+// company in the tenant, so a gate three companies share is set up once and its radius changed once.
+// Lat/lng are typed numbers copied from Google Maps (a map picker is Phase 2, deferred). RLS: tenant-
+// catalog read (every tenant member), GROUP-ADMIN write (app.is_group_admin() on INSERT/UPDATE/DELETE) —
+// a shared record may be in use by companies an administrator does not manage. Assignment to an employee
+// (employee_clocking_location below) stays with the admin of that employment.
 export const clockingLocation = pgTable(
   'clocking_location',
   {
     id: id(),
     tenantId: tenantId(),
-    companyId: uuid('company_id')
-      .notNull()
-      .references(() => company.id),
     name: text('name').notNull(),
     lat: doublePrecision('lat').notNull(),
     lng: doublePrecision('lng').notNull(),
@@ -435,9 +436,11 @@ export const clockingLocation = pgTable(
     // every create/update, so nothing an admin can save leaves it blank. See migration 0419.
     radiusM: integer('radius_m'),
     // 1fff489c PHASE 1 — the explicit link to the `location` master record, replacing the loose habit of
-    // retyping the site name. Nullable for the same deploy reason; required by the service. Several points
-    // may share one location (the reporter's "HQ — North Gate" / "HQ — South Gate" compound), which is why
-    // the point keeps its OWN name and the location supplies the code and group heading.
+    // retyping the site name. Several points may share one location (the reporter's "HQ — North Gate" /
+    // "HQ — South Gate" compound), which is why the point keeps its OWN name and the location supplies
+    // the code and group heading. f9afd1ce (0459): the link is now OPTIONAL and may point at a non-
+    // archived location of ANY company in the tenant — `location` is company-scoped, and a site shared by
+    // five companies cannot honestly be required to belong to one company's holiday-calendar record.
     locationId: uuid('location_id').references((): AnyPgColumn => location.id),
     address: text('address'),
     remarks: text('remarks'),
@@ -445,9 +448,9 @@ export const clockingLocation = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index('clocking_location_company_idx').on(t.tenantId, t.companyId),
     index('clocking_location_location_idx').on(t.tenantId, t.locationId),
-    uniqueIndex('clocking_location_name_uq').on(t.tenantId, t.companyId, t.name),
+    // f9afd1ce (0459) — one name per physical place PER TENANT (was per company). "One gate, one record".
+    uniqueIndex('clocking_location_name_uq').on(t.tenantId, t.name),
     check('clocking_location_lat_range', sql`${t.lat} BETWEEN -90 AND 90`),
     check('clocking_location_lng_range', sql`${t.lng} BETWEEN -180 AND 180`),
     check('clocking_location_radius_m_ck', sql`${t.radiusM} IS NULL OR ${t.radiusM} > 0`),
