@@ -13,7 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { requestLeave } from '../core/leave';
-import { createHoliday, updateHoliday, listHolidays, DuplicateError } from '../core/admin';
+import { createHoliday, createHolidayGroup, updateHoliday, listHolidays, DuplicateError } from '../core/admin';
 import {
   adminCtx,
   closeAll,
@@ -75,7 +75,7 @@ describe('updateHoliday — edit date + name (the missing CRUD op)', () => {
       .where(eq(schema.holiday.id, id));
     expect(row.d).toBe('2026-07-23');
     expect(row.n).toBe('Ruler Birthday (gazetted)');
-    expect(row.s).toBe('Selangor'); // scope immutable
+    expect(row.s).toBe('Selangor'); // state not supplied ⇒ unchanged (def44f29: supplied ⇒ it moves, below)
 
     expect(await eventTypesFor(b.tenantId, id)).toContain('holiday.updated');
     const payload = await latestEventPayload(b.tenantId, id, 'holiday.updated');
@@ -158,5 +158,127 @@ describe('tentative flag', () => {
     });
     const sarawak = await hire('Sarawak');
     expect(await daysFor(sarawak.employmentId)).toBe(3); // 5 − national − tentative Sarawak
+  });
+});
+
+/**
+ * def44f29 — NATIONAL / STATE IS EDITABLE. ADR-0063 documented scope as immutable on update ("delete +
+ * recreate"); the reporter's complaint was exactly that delete-and-recreate. The change is narrowed to
+ * the one axis the Holidays screen edits: `state` moves between national (null) and a state of the row's
+ * country. What is pinned here, and why each line exists:
+ *   · the move is real (the row changes) AND readable from the ledger (after.state used to copy
+ *     before.state, which would have hidden every move from the audit trail);
+ *   · it reaches leave at once — the resolver reads the same row, so a Selangor employee stops losing the
+ *     day the moment it becomes a Sabah holiday;
+ *   · a business-group / holiday-group row is REFUSED a state (single-axis, holiday_scope_excl) — the
+ *     row's scope stays exactly as it was, with the service's message, not the constraint's;
+ *   · a move that collides with an existing row is a DuplicateError naming the TARGET scope;
+ *   · a label the country pack does not have is refused, and `undefined` still means "leave it alone".
+ */
+describe('def44f29 — National / State is editable on update', () => {
+  const scopeOf = async (id: string) => {
+    const [row] = await owner.db
+      .select({ s: schema.holiday.state, c: schema.holiday.companyId, g: schema.holiday.holidayGroupId })
+      .from(schema.holiday)
+      .where(eq(schema.holiday.id, id));
+    return row;
+  };
+
+  it('moves a national holiday to a state, records the move in the audit payload, and leave sees it at once', async () => {
+    const { id } = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'Moved Day' });
+    await updateHoliday(adminCtx(b), { id, state: 'Sabah' });
+
+    expect((await scopeOf(id)).s).toBe('Sabah');
+    const payload = await latestEventPayload(b.tenantId, id, 'holiday.updated');
+    expect((payload?.before as Record<string, unknown>)?.state).toBeNull();
+    expect((payload?.after as Record<string, unknown>)?.state).toBe('Sabah');
+
+    // Tue 21st is now Sabah-only: a Sabah employee taking Mon–Fri loses it (4 days), Selangor does not (5).
+    const sabah = await hire('Sabah');
+    const selangor = await hire('Selangor');
+    expect(await daysFor(sabah.employmentId)).toBe(4);
+    expect(await daysFor(selangor.employmentId)).toBe(5);
+  });
+
+  it('moves a state holiday back to national — null and the empty string both mean national', async () => {
+    const a = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'A', state: 'Sarawak' });
+    const c = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-22', name: 'C', state: 'Sabah' });
+    await updateHoliday(adminCtx(b), { id: a.id, state: null });
+    await updateHoliday(adminCtx(b), { id: c.id, state: '' });
+    expect((await scopeOf(a.id)).s).toBeNull();
+    expect((await scopeOf(c.id)).s).toBeNull();
+    const payload = await latestEventPayload(b.tenantId, a.id, 'holiday.updated');
+    expect((payload?.before as Record<string, unknown>)?.state).toBe('Sarawak');
+    expect((payload?.after as Record<string, unknown>)?.state).toBeNull();
+  });
+
+  it('leaves the state alone when it is not supplied', async () => {
+    const { id } = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'Keep', state: 'Sabah' });
+    await updateHoliday(adminCtx(b), { id, name: 'Keep (renamed)' });
+    expect((await scopeOf(id)).s).toBe('Sabah');
+  });
+
+  it('refuses a National / State change on a business-group row, leaving the row exactly as it was', async () => {
+    const { id } = await createHoliday(adminCtx(b), {
+      country: 'MY',
+      holidayDate: '2026-07-21',
+      name: 'Company Day',
+      companyId: b.companyId,
+    });
+    // THE NON-VACUITY ASSERTION for this build: remove the refusal in updateHoliday and this is the line
+    // that fails (the DB CHECK would refuse the write too, but with a constraint name, not a sentence).
+    await expect(updateHoliday(adminCtx(b), { id, state: 'Sabah' })).rejects.toThrow(
+      /business group or holiday group/,
+    );
+    const row = await scopeOf(id);
+    expect(row.c).toBe(b.companyId);
+    expect(row.s).toBeNull();
+  });
+
+  it('refuses it on a holiday-group row too', async () => {
+    const group = await createHolidayGroup(adminCtx(b), { name: 'KL Office', states: ['Kuala Lumpur'] });
+    const { id } = await createHoliday(adminCtx(b), {
+      country: 'MY',
+      holidayDate: '2026-07-21',
+      name: 'Office Day',
+      holidayGroupId: group.id,
+    });
+    await expect(updateHoliday(adminCtx(b), { id, state: 'Sabah' })).rejects.toThrow(
+      /business group or holiday group/,
+    );
+    const row = await scopeOf(id);
+    expect(row.g).toBe(group.id);
+    expect(row.s).toBeNull();
+  });
+
+  it('a move that collides with an existing row is a DuplicateError naming the TARGET scope', async () => {
+    const national = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'National' });
+    const sabah = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'Sabah', state: 'Sabah' });
+    // Sabah → national collides with the national row; the message says national (no state), not Sabah.
+    await expect(updateHoliday(adminCtx(b), { id: sabah.id, state: null })).rejects.toThrow(DuplicateError);
+    await expect(updateHoliday(adminCtx(b), { id: sabah.id, state: null })).rejects.toThrow(
+      /^A MY holiday on 2026-07-21 already exists\.$/,
+    );
+    // national → Sabah collides with the Sabah row; the message names Sabah.
+    await expect(updateHoliday(adminCtx(b), { id: national.id, state: 'Sabah' })).rejects.toThrow(
+      /^A MY Sabah holiday on 2026-07-21 already exists\.$/,
+    );
+    expect((await scopeOf(sabah.id)).s).toBe('Sabah');
+    expect((await scopeOf(national.id)).s).toBeNull();
+  });
+
+  it('refuses a state the country pack does not have', async () => {
+    const { id } = await createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'X' });
+    await expect(updateHoliday(adminCtx(b), { id, state: 'Atlantis' })).rejects.toThrow(/Unknown state/);
+    expect((await scopeOf(id)).s).toBeNull();
+  });
+
+  it('createHoliday refuses the same unknown state, in the same words — no dormant row at the door', async () => {
+    // Verifier finding: create accepted any label while update refused it, so a forged POST could write a
+    // row that reaches nobody and that Edit would silently clear to national.
+    await expect(
+      createHoliday(adminCtx(b), { country: 'MY', holidayDate: '2026-07-21', name: 'Nowhere Day', state: 'Atlantis' }),
+    ).rejects.toThrow(/^Unknown state “Atlantis”\.$/);
+    expect((await listHolidays(adminCtx(b), {})).find((h) => h.name === 'Nowhere Day')).toBeUndefined();
   });
 });

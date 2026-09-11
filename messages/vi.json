@@ -7394,7 +7394,16 @@
       "inactiveBadge": "Ngừng hoạt động",
       "nationalStateColumn": "Toàn quốc / Bang",
       "statusLabel": "Trạng thái",
-      "actionLabel": "Hành động"
+      "actionLabel": "Hành động",
+      "editTitle": "Sửa ngày lễ",
+      "editHint": "Thay đổi bất kỳ chi tiết nào ở đây rồi Lưu. Quốc gia giữ nguyên như đã ghi. Nghỉ phép và chấm công tự động theo ngày lễ đã lưu.",
+      "nationalStateLabel": "Toàn quốc / Bang",
+      "nationalStateHint": "Toàn quốc áp dụng cho mọi người. Chọn một bang để ngày lễ này chỉ áp dụng cho nhân viên làm việc tại bang đó.",
+      "scopeFixedHint": "Ngày lễ này thuộc về một nhóm doanh nghiệp hoặc nhóm ngày lễ. Không thể thay đổi Toàn quốc / Bang tại đây.",
+      "edit": "Sửa",
+      "cancel": "Hủy",
+      "saving": "Đang lưu…",
+      "close": "Đóng"
     },
     "users": {
       "title": "Người dùng & vai trò",

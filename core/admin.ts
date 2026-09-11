@@ -1603,6 +1603,10 @@ export async function createHoliday(
   // the DB CHECK holiday_scope_excl; thrown here so the user gets a clear message before the constraint).
   if ([state, companyId, holidayGroupId].filter(Boolean).length > 1)
     throw new Error('A holiday is scoped to a state, a company, or a holiday group — pick at most one.');
+  // def44f29 — the label must be one of the country pack's states, exactly as updateHoliday requires. A
+  // row for a state no employee can resolve to reaches nobody, and the edit dialog would show it as
+  // national and silently clear it on the next Save; better refused at the door, in the same words.
+  if (state && !statesForCountries([country]).has(state)) throw new Error(`Unknown state “${state}”.`);
   return withTenant(ctx, async (tx) => {
     let companyName: string | null = null;
     if (companyId) {
@@ -1685,15 +1689,23 @@ export async function createHoliday(
 /**
  * Follow-on #15b (ADR-0063) — edit an existing holiday's date, name and/or tentative flag. The missing
  * CRUD op: until now HR could only add + delete, so correcting a shifted (often last-minute gazetted) state
- * holiday meant losing the row's identity. Only the supplied fields change; scope (country/state/companyId)
- * is IMMUTABLE here — a scope change is delete + recreate (keeps the single-axis holiday_scope_excl CHECK
- * out of update churn). Loads the before-row (throws if missing), maps a moved-date collision to
- * DuplicateError (same scope-aware message as create), and appends holiday.updated {before, after}.
+ * holiday meant losing the row's identity. Only the supplied fields change. Loads the before-row (throws
+ * if missing), maps a collision to DuplicateError (same scope-aware message as create), and appends
+ * holiday.updated {before, after}.
+ *
+ * def44f29 — NATIONAL / STATE IS EDITABLE HERE NOW. ADR-0063 documented scope as immutable ("a scope
+ * change is delete + recreate"); the reporter's complaint was exactly that delete-and-recreate. The
+ * single-axis rule (holiday_scope_excl) is what made immutability cheap, and it is kept by narrowing the
+ * change to the ONE axis the Holidays screen edits: `state` may move between national (null) and one of
+ * the row's country's states. A row scoped to a business group (companyId) or a holiday group
+ * (holidayGroupId) is refused a state — giving it one would be a second axis — so those rows keep the
+ * "delete + recreate" rule, which nothing on the screen offers anyway (the dialog shows a fixed label).
+ * `country` stays immutable: the dialog shows it read-only on edit.
  */
 export async function updateHoliday(
   ctx: SessionContext,
-  // 66b8f5a8: the master fields (holidayCode/holidayType/description/active) are EDITABLE here (unlike scope,
-  // which stays immutable). Each is tri-state via `undefined` = leave untouched.
+  // 66b8f5a8: the master fields (holidayCode/holidayType/description/active) are EDITABLE here. Each is
+  // tri-state via `undefined` = leave untouched.
   p: {
     id: string;
     holidayDate?: string;
@@ -1703,6 +1715,9 @@ export async function updateHoliday(
     holidayType?: string;
     description?: string | null;
     active?: boolean;
+    /** def44f29 — undefined = leave unchanged; null or '' = national; a string = that state (validated
+     *  against the row's country pack). Refused on a business-group / holiday-group row. */
+    state?: string | null;
   },
 ) {
   // Validate up front (before any DB work), reusing create's guards so update is no laxer than create.
@@ -1711,6 +1726,7 @@ export async function updateHoliday(
   }
   const nextName = p.name !== undefined ? cleanName(p.name, 'Holiday name') : undefined;
   const nextType = p.holidayType !== undefined ? cleanHolidayType(p.holidayType) : undefined;
+  const nextState = p.state !== undefined ? p.state?.trim() || null : undefined;
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
@@ -1731,6 +1747,20 @@ export async function updateHoliday(
       .limit(1);
     if (!before) throw new Error('Holiday not found');
 
+    // def44f29 — a National / State move. Checked against the BEFORE row because the refusal is about what
+    // the row already is: a business-group or holiday-group row cannot take a state (single-axis,
+    // holiday_scope_excl — and the DB CHECK would refuse it too, one unreadable message later). The label
+    // is judged against the row's own country pack, the same vocabulary the holiday-group form validates
+    // against, so a MY row cannot be given a state Malaysia does not have.
+    if (nextState !== undefined && nextState !== before.state) {
+      if (before.companyId || before.holidayGroupId)
+        throw new Error(
+          'This holiday belongs to a business group or holiday group, so its National / State cannot be changed.',
+        );
+      if (nextState && !statesForCountries([before.country]).has(nextState))
+        throw new Error(`Unknown state “${nextState}”.`);
+    }
+
     const after = {
       holidayDate: p.holidayDate ?? before.holidayDate,
       name: nextName ?? before.name,
@@ -1739,6 +1769,7 @@ export async function updateHoliday(
       holidayType: nextType ?? before.holidayType,
       description: p.description !== undefined ? p.description?.trim() || null : before.description,
       active: p.active ?? before.active,
+      state: nextState !== undefined ? nextState : before.state,
     };
     await tx
       .update(holiday)
@@ -1750,17 +1781,19 @@ export async function updateHoliday(
         holidayType: after.holidayType,
         description: after.description,
         active: after.active,
+        state: after.state,
       })
       .where(eq(holiday.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) {
-          // Scope is immutable here, so reuse the BEFORE scope for the message (mirrors create).
+          // The AFTER scope names the collision (mirrors create): moving a Sabah row to national collides
+          // with the national row on that date, and the message must say "national", not "Sabah".
           const scope = before.companyId
             ? 'group '
             : before.holidayGroupId
               ? 'calendar '
-              : before.state
-                ? `${before.state} `
+              : after.state
+                ? `${after.state} `
                 : '';
           throw new DuplicateError(`A ${before.country} ${scope}holiday on ${after.holidayDate} already exists.`);
         }
@@ -1772,7 +1805,8 @@ export async function updateHoliday(
       aggregateId: p.id,
       eventType: 'holiday.updated',
       actor: actorOf(ctx),
-      // Scope-in-audit (ADR-0055): carry the unchanged scope on both sides alongside date/name/tentative.
+      // Scope-in-audit (ADR-0055): carry the scope on both sides. def44f29 — `after.state` is the NEW
+      // state now (it used to copy before.state), so a national ↔ state move is readable from the ledger.
       payload: {
         before: {
           holidayDate: before.holidayDate,
@@ -1790,7 +1824,6 @@ export async function updateHoliday(
         after: {
           ...after,
           country: before.country,
-          state: before.state,
           companyId: before.companyId,
           holidayGroupId: before.holidayGroupId,
         },

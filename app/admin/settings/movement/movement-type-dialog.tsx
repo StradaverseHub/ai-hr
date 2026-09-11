@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState, type RefObject } from 'react';
+import { startTransition, useActionState, useEffect, useRef, useState, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ErrorBanner, Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
@@ -33,6 +33,17 @@ import { saveMovementEventTypeAction, type MovementTypeSaveResult } from './acti
  * fields are CONTROLLED on purpose: React 19 resets an uncontrolled `<form action={…}>` once the action
  * settles, error or not, so `defaultValue` alone would silently wipe a half-typed name on the exact
  * path this is meant to protect.
+ *
+ * ⚠️ def44f29 (2026-09-11) — THE FORM HAS NO `action` PROP ANY MORE, AND THAT IS THE FIX, NOT THE
+ * `onReset` CANCEL BELOW. The cancel was believed to stop React's post-action reset; it cannot run:
+ * react-dom 19.2 switches its own event listener OFF for the commit phase (`_enabled = false`) and calls
+ * `form.reset()` INSIDE that phase, so the `reset` event is dropped before any onReset sees it. Proved
+ * by rendering (test/movement-type-dialog.dom.test.tsx): after a refused save the behaviour <select>
+ * snapped from the chosen "Promotion" back to "Transfer" with the cancel in place, so a re-submit would
+ * have posted the wrong behaviour. React only requests the reset for a submission that goes through the
+ * form's `action` prop, so onSubmit now builds the FormData and dispatches the same useActionState action
+ * inside startTransition — same pending state, same result, no reset. The cancel stays (it costs nothing
+ * and covers a manual form.reset()). Same shape as app/admin/holidays/holiday-dialog.tsx.
  *
  * NO t() HERE, BY DESIGN. Every visible string arrives pre-translated from the server page, which keeps
  * this island out of the i18n graph entirely and leaves the page's labels pinned where they already are
@@ -144,15 +155,17 @@ function MovementTypeForm({
 
   return (
     <form
-      action={formAction}
-      // ⚠️ CANCEL REACT 19's POST-ACTION FORM RESET. Found by rendering, not by any test: submit a name
-      // the service refuses and the behaviour dropdown snaps back to the FIRST option while React still
-      // holds the one you picked — so the dialog shows "Transfer" over a form that would save
-      // "Promotion". React resets the <form> once the action settles (success or failure); the text
-      // input survives it because React keeps a controlled input's defaultValue in step with its value,
-      // but it does not do the equivalent for <option>, and a re-render whose `value` prop did not
-      // change writes nothing back. `reset` is cancelable, and nothing in this form ever wants
-      // resetting: a refusal must keep the typing, and a success unmounts the dialog with it.
+      // NO `action` PROP, ON PURPOSE — see the file header (def44f29). React resets the <form> once a
+      // form-action settles, success or failure; the text input survives it because React keeps a
+      // controlled input's defaultValue in step with its value, but it does not do the equivalent for
+      // <option>, so the behaviour dropdown snapped back to the FIRST option while React still held the
+      // one you picked. The cancel below never ran (React drops its own reset event during the commit),
+      // so the reset is not cancelled here — it is never requested: the action is dispatched by hand.
+      onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        startTransition(() => formAction(formData));
+      }}
       onReset={(e) => e.preventDefault()}
       className="flex flex-col gap-4"
     >
