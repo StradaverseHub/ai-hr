@@ -765,6 +765,11 @@ export async function EntitlementTablesBlock({
       {/* ── STEP 2: WHO GETS WHICH TABLE ────────────────────────────────────────────────────────── */}
       <Card>
         <SectionHeader title={t('rulesTitle')} count={runningRules.length} />
+        {/* 6aee1d91 — ONE VOCABULARY. This section IS what the employee's profile calls their Benefit
+            Scheme (core/entitlement-scheme-view.ts names the winning rule here), so it is named that way
+            here too and says so in one line. The mechanism underneath is untouched: a "scheme" is an
+            entitlement_eligibility_rule row, matched and ranked exactly as before. */}
+        <p className="border-b px-4 pb-3 text-xs text-muted-foreground">{t('rulesIntro')}</p>
         {/* r212 (8ebf77ae) — "NO ELIGIBILITY RULES YET" IS THE RIGHT ANSWER FOR A TYPE WITH ONE TABLE, and
             until now this card said it in the same words it uses for a type that is genuinely half-built.
             The reporter's Hospitalization Leave has one table, no rule, and works; the engine applies the
@@ -779,7 +784,9 @@ export async function EntitlementTablesBlock({
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">{t('colName')}</th>
+                {/* 6aee1d91 — its own header, not the tables list's `colName`: the approved picture reads
+                    Scheme name / Entitlement table / Covers / In force. */}
+                <th className="px-3 py-2">{t('colSchemeName')}</th>
                 <th className="px-3 py-2">{t('colTemplate')}</th>
                 <th className="px-3 py-2">{t('colCriteria')}</th>
                 <th className="px-3 py-2">{t('colInForce')}</th>
@@ -1031,6 +1038,11 @@ export async function EntitlementTablesBlock({
               ) : null}
             </>
           )}
+          {/* 6aee1d91 — the profile shows ONE name only when every leave type's winning scheme carries the
+              same name (`benefitSchemeView`: ruleNames set of size 1); otherwise it says "does not resolve
+              to a single scheme" and lists each type. That is by design, and this is where the operator
+              can act on it, so it is said here rather than discovered on the profile. */}
+          <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">{t('rulesNamingTip')}</p>
         </div>
       </Card>
     </div>

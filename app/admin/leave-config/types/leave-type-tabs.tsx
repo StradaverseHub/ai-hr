@@ -856,6 +856,17 @@ export function LeaveTypeTabs({
             </CardHeader>
             <CardContent id={`tab-entitlement-${id}`} className="space-y-3">
               <p className="text-xs text-muted-foreground">{tTabs('tabHint.entitlement')}</p>
+              {/* 6aee1d91 — THE SEPARATION THE REPORTER ASKED FOR, at the top of the tab and in the approved
+                  words: tab 2 decides whether an employee may take this leave type at all; the benefit
+                  schemes below decide which entitlement table they get. Both mounts of the tables block
+                  render this same key (the unscoped Entitlement tables screen reads it too). */}
+              <p
+                role="note"
+                data-testid="scheme-explainer"
+                className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
+              >
+                {tTabs('entitlementStep.schemeExplainer')}
+              </p>
               {/* F9 — how days are earned, and how the figure is tidied. MOVED HERE from General setting:
                   this is the first half of "how many days" and the tables below are the second. */}
               <div className="space-y-1.5">

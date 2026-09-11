@@ -70,6 +70,9 @@ import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
 import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
 import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
+// 6aee1d91 — the read AFTER an insufficient-balance refusal, through the pack facade (ADR-0080 D9).
+import { entitlementCoverageFor } from '@/packs/leave/service';
+import type { SessionContext } from '@/db/client';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 import {
   createGoal,
@@ -191,7 +194,11 @@ export async function myRequestLeave(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+    redirect(
+      `/me?error=${encodeURIComponent(
+        await localizeLeaveError(e, selected?.name, { ctx: s, employmentId, leaveTypeId, subject: 'self' }),
+      )}`,
+    );
   }
   revalidatePath('/me');
   redirect('/me?toast=Leave+requested');
@@ -237,7 +244,11 @@ export async function myEditLeave(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+    redirect(
+      `/leave?error=${encodeURIComponent(
+        await localizeLeaveError(e, selected?.name, { ctx: s, employmentId, leaveTypeId, subject: 'self' }),
+      )}`,
+    );
   }
   revalidatePath('/leave');
   redirect('/leave?toast=leaveUpdated');
@@ -277,7 +288,16 @@ export async function myRequestLeaveCancellation(formData: FormData) {
  *  language (they reach ms/ta/th/vi/zh via ?error=). Unknown errors fall back to their English message.
  *  Exported so the Leave-Tab action (app/leave/actions.ts) reuses the same localizer rather than copying
  *  it — both forms now share the document/remark error wording. */
-export async function localizeLeaveError(e: unknown, typeName?: string): Promise<string> {
+export async function localizeLeaveError(
+  e: unknown,
+  typeName?: string,
+  /**
+   * 6aee1d91 — WHO WAS REFUSED, so a zero balance can be explained rather than merely reported. Only the
+   * insufficient-balance branch reads it. `subject` says whose refusal this is: the caller's own ("you")
+   * or, on the HR on-behalf path, another employee's. Absent ⇒ the plain message, exactly as before.
+   */
+  coverage?: { ctx: SessionContext; employmentId: string; leaveTypeId: string; subject: 'self' | 'other' },
+): Promise<string> {
   const t = await getTranslations('leave.errors');
   const name = typeName ?? '';
   if (e instanceof LeaveDocumentRequiredError) {
@@ -347,7 +367,25 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // Configurable Negative Leave Balance Validation (0ef0defd): the leave type's allow_negative_balance=false
   // blocked a submit/edit whose days exceed the available balance. Localized so all 6 locales see the
   // reporter's requested message ("Insufficient leave balance. Your available leave balance is lower…").
-  if (e instanceof InsufficientLeaveBalanceOnSubmitError) return t('insufficientBalance');
+  if (e instanceof InsufficientLeaveBalanceOnSubmitError) {
+    // 6aee1d91 — THE SAME REFUSAL, THREE REASONS. The service has already said no; this only asks WHY the
+    // balance was zero, through the engine's own resolver (core/leave.ts entitlementCoverageFor), so an
+    // employee nobody's benefit scheme covers is told that instead of being sent to count their days. A
+    // failed read falls back to the plain message: the refusal must never turn into a raw server error.
+    if (coverage) {
+      const reason = await entitlementCoverageFor(coverage.ctx, {
+        employmentId: coverage.employmentId,
+        leaveTypeId: coverage.leaveTypeId,
+        asOf: todayInKualaLumpur(),
+      }).catch(() => 'covered' as const);
+      const other = coverage.subject === 'other';
+      if (reason === 'no_scheme')
+        return t(other ? 'insufficientBalanceNoSchemeOther' : 'insufficientBalanceNoScheme', { typeName: name });
+      if (reason === 'no_table')
+        return t(other ? 'insufficientBalanceNoTableOther' : 'insufficientBalanceNoTable', { typeName: name });
+    }
+    return t('insufficientBalance');
+  }
   // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): the shared scheme pool cap would be breached across
   // its member leave types. Localized so all 6 locales show which pool + total was exceeded.
   if (e instanceof CombinedLeaveLimitExceededError)

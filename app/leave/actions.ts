@@ -160,6 +160,11 @@ export async function requestLeaveAction(formData: FormData) {
   // Phase-B #15: a non-blocking holiday-completeness warning is surfaced via ?warn= when the request's
   // (state, year) has fewer than the s.60D minimum of 11 gazetted holidays loaded.
   let warnQuery = '';
+  // 6aee1d91 — the subject of the refusal, hoisted so the catch below can explain a zero balance for the
+  // right person. Assigned only once the employment is resolved; a refusal before that point (an unresolved
+  // type, a bad file) has no balance to explain and falls through to the plain message.
+  let refusedEmploymentId: string | undefined;
+  let refusedOnBehalf = false;
   try {
     // Orphan-prevention: validate the file BEFORE requestLeave commits the row + event, so a
     // disallowed/oversized file is rejected with no committed pending request left behind.
@@ -185,10 +190,13 @@ export async function requestLeaveAction(formData: FormData) {
     // localized below). This line is unchanged on purpose: the fallback is what a self-service submit relies
     // on, and re-deriving the employment here would only move the check to the weaker of the two places.
     const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
-    const employmentId = postedEmploymentId || (await myEmployment(session))?.employmentId;
+    const ownEmploymentId = (await myEmployment(session))?.employmentId;
+    const employmentId = postedEmploymentId || ownEmploymentId;
     if (!employmentId) {
       throw new Error('No employment on record for this account.');
     }
+    refusedEmploymentId = employmentId;
+    refusedOnBehalf = employmentId !== ownEmploymentId;
     const res = await requestLeave(session, {
       employmentId,
       leaveTypeId,
@@ -234,7 +242,22 @@ export async function requestLeaveAction(formData: FormData) {
       const tErr = await getTranslations('leave.errors');
       redirect(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`);
     }
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+    redirect(
+      `/leave?error=${encodeURIComponent(
+        await localizeLeaveError(
+          e,
+          selected?.name,
+          refusedEmploymentId
+            ? {
+                ctx: session,
+                employmentId: refusedEmploymentId,
+                leaveTypeId,
+                subject: refusedOnBehalf ? 'other' : 'self',
+              }
+            : undefined,
+        ),
+      )}`,
+    );
   }
   revalidatePath('/leave');
   // Success confirmation (feedback 45c781e2) — until now a successful submission was SILENT: the dialog

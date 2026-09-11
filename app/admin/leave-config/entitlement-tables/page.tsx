@@ -63,6 +63,9 @@ export default async function LeaveConfigEntitlementTablesPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.entitlementTemplates');
+  // 6aee1d91 — the SAME explainer the leave type's tab 3 renders, read from the same key, so the two mounts
+  // of the tables block cannot describe eligibility and entitlement two ways.
+  const tTypes = await getTranslations('admin.leaveConfigTypes');
   const sp = await searchParams;
   const data = await loadEntitlementTablesData(s);
 
@@ -92,6 +95,16 @@ export default async function LeaveConfigEntitlementTablesPage({
           </Link>
         </div>
       </Card>
+
+      {/* 6aee1d91 — eligibility (tab 2 of the leave type) versus entitlement (the schemes below), in the
+          approved words, at the top of the unscoped block. */}
+      <p
+        role="note"
+        data-testid="scheme-explainer"
+        className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
+      >
+        {tTypes('entitlementStep.schemeExplainer')}
+      </p>
 
       {/* F33 — unfiltered: no `leaveTypeId`, so the Leave type column stays and the create form keeps its
           type picker. Byte-for-byte the mount the old page makes. */}
