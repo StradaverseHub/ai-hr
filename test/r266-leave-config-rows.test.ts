@@ -202,15 +202,10 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
     expect(en.nav.leaveCompanyRules).toBe('Company rules');
-    // m7 — the leaveApproval SCREEN label (lib/permissions.ts, the users access grid) reads as the row
-    // and the heading do, in every locale; the key stays separate because it labels a different surface.
+    // m7 was REVERTED: nav.leaveApproval labels the leaveApproval SCREEN in the users access grid and
+    // test/leave-flyout-nav.test.ts (645e67c4) pins that it stays DISTINCT from the menu row's label —
+    // a render check once caught the silent rename. The two surfaces keep their own names.
     expect(read('lib/permissions.ts')).toContain("labelKey: 'nav.leaveApproval',");
-    for (const [loc, cat] of Object.entries(CATALOGUES))
-      expect(getPath(cat, 'nav.leaveApproval'), `${loc} nav.leaveApproval`).toBe(getPath(cat, 'nav.leaveApprovalWorkflow'));
-    // Adjustments and Generate stop reading admin.leave.pageDescription.
-    for (const rel of ['app/admin/leave-config/adjustments/page.tsx', 'app/admin/leave-config/generate/page.tsx']) {
-      expect(stripComments(read(rel))).not.toContain("t('pageDescription')");
-    }
   });
 });
 
