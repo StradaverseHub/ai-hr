@@ -116,6 +116,9 @@ describe('leave configuration — no page-level width caps', () => {
         'app/admin/leave-config/generate/page.tsx',
         'app/admin/leave-config/adjustments/page.tsx',
         'app/admin/leave-config/import/page.tsx',
+        // 7f69bd71 — the Reset records sub-screen, and the two record tab addresses that are redirect
+        // stubs now (kept covered: a width cap can never reappear in a stub, so it costs nothing).
+        'app/admin/leave-config/records/page.tsx',
         'app/admin/leave-config/records/entitlement/page.tsx',
         'app/admin/leave-config/records/balances/page.tsx',
       ]),

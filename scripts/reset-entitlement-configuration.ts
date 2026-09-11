@@ -38,7 +38,7 @@
  *   template LINEAGE id, not a row), so the delete is closed over these two tables alone.
  *   ARCHIVE: entitlement_reset_archive, layers 'template' and 'rule', rendered to text: the bands in the
  *   words migration 0398 used ("0-2 yrs: 14 days, max brought forward 5"), the criteria in the words the
- *   rule screen uses (scripts/entitlement-criteria-words.ts). Read at /admin/leave-config/records/entitlement.
+ *   rule screen uses (scripts/entitlement-criteria-words.ts). Read at /admin/leave-config/records?record=configuration.
  *   ORDER: archive → verify → delete rules → delete templates → the health verdict, computed INSIDE the
  *   transaction with lib/leave-config-health.ts (every leave type must read `no_entitlement_table`, or the
  *   whole thing rolls back) → ONE domain event `entitlement-config.reset`.
@@ -55,7 +55,7 @@
  *   ARCHIVE: leave_ledger_reset_archive, layers 'ledger' and 'recalc_audit' — the names migration 0416's
  *   CHECK admits — rendered exactly as app.capture_leave_ledger_reset_archive renders them. The SQL is
  *   COPIED rather than the function called, because that function selects by leave TYPE and would sweep
- *   in the debits and adjustments this plan keeps. Read at /admin/leave-config/records/balances.
+ *   in the debits and adjustments this plan keeps. Read at /admin/leave-config/records?record=balances.
  *   ORDER: archive → verify → delete audit rows → delete accrual rows → survivor check (no accrual left,
  *   and exactly the kept rows remain) → ONE domain event `entitlement-accruals.reset`.
  *
@@ -1140,13 +1140,13 @@ export function formatReport(r: EntitlementResetReport): string {
   out.push(`\n  ARCHIVED: ${Object.entries(a).map(([k, v]) => `${v} ${k}`).join(' + ')} row(s) under tag '${r.tag}'.`);
   out.push(`  DELETED : ${Object.entries(d).map(([k, v]) => `${v} ${k}`).join(' + ')} row(s).`);
   if (r.stage === 'config') {
-    out.push('  Read the record at /admin/leave-config/records/entitlement.');
+    out.push('  Read the record at /admin/leave-config/records?record=configuration.');
     out.push('  Leave Balance Health, read back inside the same transaction:');
     for (const h of r.healthAfter ?? []) {
       out.push(`    ${h.name.padEnd(28)} templates in force ${h.templateCount} · ${h.status} · ${h.findings.join(', ')}`);
     }
   } else {
-    out.push('  Read the record at /admin/leave-config/records/balances.');
+    out.push('  Read the record at /admin/leave-config/records?record=balances.');
     if (r.includeSystemAdjustments) {
       out.push(
         `  ${t.systemAdjustmentRows} system-written adjustment row(s) were cleared WITH the accruals (--include-system-adjustments);`,

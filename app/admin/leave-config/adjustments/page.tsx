@@ -10,8 +10,9 @@ import { listAllProfileOptions } from '@/core/profile-options';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import Link from 'next/link';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
+import { LEAVE_CONFIG_RECORDS_HREF, LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
   applyLeaveAdjustmentAction,
   previewLeaveAdjustmentAction,
@@ -59,6 +60,7 @@ export default async function LeaveConfigAdjustmentsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
+  const tRecords = await getTranslations('admin.leaveConfigRecords');
   // r127's lesson, applied verbatim: all three label sets ALREADY SHIP in six locales, so they are read
   // where they live — the eight org axes under `admin.profileOptions.category`, the employment types
   // under `people.wizard.employmentType`, the ~20 axis names under `admin.leave.adjustmentsCriteria`.
@@ -97,8 +99,8 @@ export default async function LeaveConfigAdjustmentsPage({
   return (
     <div className="space-y-6">
       <PageHeader title={header.title} description={header.description} />
-      {/* 10b59703 — this row's tab row: Adjust balances · Balance record · Import leave data.
-          `current="adjustments"` because this IS that tab. */}
+      {/* 10b59703 — this row's tab row: Adjust balances · Import leave data (7f69bd71 took the Balance
+          record off it). `current="adjustments"` because this IS that tab. */}
       <LeaveConfigMap current="adjustments" />
       <ErrorBanner message={error} />
 
@@ -167,6 +169,17 @@ export default async function LeaveConfigAdjustmentsPage({
           ))}
         </ul>
       </Card>
+
+      {/* 7f69bd71 — THE ONLY WAY TO THE RESET RECORDS SUB-SCREEN. One small link, below the recent
+          adjustments, to the page that holds the Configuration record and the Balance record as
+          sub-tabs. Both are records of REMOVALS — rows a reset took out — which is the adjustments
+          domain, so the link lives here and only here (not on Import, not on Entitlements). The
+          Leave Adjustments row stays lit on the sub-screen (ownedSubpaths, packs/leave/index.ts). */}
+      <p className="text-xs text-muted-foreground">
+        <Link href={LEAVE_CONFIG_RECORDS_HREF} className="underline hover:text-foreground">
+          {tRecords('footLink')}
+        </Link>
+      </p>
     </div>
   );
 }

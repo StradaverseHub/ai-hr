@@ -410,12 +410,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave-config/generate',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
-      // The two read-only registers. Their `/export` route handlers are deliberately NOT listed and stay
-      // at their old addresses this round: the reverse-completeness scan reads page.tsx files only, and a
-      // route handler has no screen column to describe — the same reasoning as
-      // `/admin/leave/entitlements/ledger-archive`'s sibling above.
-      '/admin/leave-config/records/entitlement',
-      '/admin/leave-config/records/balances',
+      // 7f69bd71 — THE RESET RECORDS SUB-SCREEN: the two read-only registers as sub-tabs of one page
+      // (`?record=configuration` / `?record=balances`), reached from the foot of Leave Adjustments. Same
+      // requireAdmin guard, same key — no separate permission exists for the records and none is added.
+      // `'/admin/leave-config/records/entitlement'` and `'/admin/leave-config/records/balances'` STOOD
+      // HERE and are DELIBERATELY GONE: both are unguarded redirect stubs to the sub-screen now, and a
+      // stub is not a screen this grid can describe, so they left `routes` in the SAME commit that
+      // emptied their pages — test/function-access.test.ts fails BOTH ways. Their `/export` route
+      // handlers were never listed and have not moved: the reverse-completeness scan reads page.tsx
+      // files only, and a route handler has no screen column to describe.
+      '/admin/leave-config/records',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an

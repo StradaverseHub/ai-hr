@@ -8418,7 +8418,7 @@
       "notAnUndo": "Ini ialah senarai untuk ditaip semula, bukan butang buat asal. Memulihkan tetapan lama bermakna memasukkannya semula.",
       "feedsNothing": "Ia tidak menyuap apa-apa dan tidak mengubah sebarang angka. Tiada baki, kelayakan atau rekod cuti terjejas oleh apa-apa di halaman ini.",
       "emptyTitle": "Tiada rekod lagi",
-      "emptyBody": "Rekod diambil secara automatik. Jika ini kosong, tiada konfigurasi Skim Faedah atau kelayakan syarikat / gred untuk direkodkan.",
+      "emptyBody": "Rekod diambil secara automatik sebelum sesuatu set semula membersihkan apa-apa. Jika ini kosong, tiada konfigurasi kelayakan untuk direkodkan.",
       "captureLabel": "Rekod diambil",
       "show": "Papar",
       "downloadCsv": "Muat turun sebagai CSV",
@@ -8440,13 +8440,13 @@
       "allGrades": "Semua gred"
     },
     "leaveLedgerArchive": {
-      "pageDescription": "Rekod baca sahaja bagi setiap rekod baki Cuti Sakit dan Cuti Kemasukan Hospital yang dibuang oleh set semula sekali sahaja, disimpan supaya angka lama tidak hilang.",
-      "intro": "Ini ialah rekod bertulis yang diambil sejurus sebelum set semula Cuti Sakit dan Cuti Kemasukan Hospital membuang apa-apa. Setiap baris menunjukkan pemegang rekod, jenis cuti berkenaan, berapa hari nilainya, tarikh ia berkuat kuasa dan sebab ia wujud.",
+      "pageDescription": "Rekod baca sahaja bagi setiap rekod baki yang dibuang oleh sesuatu set semula, disimpan supaya angka lama tidak hilang.",
+      "intro": "Ini ialah rekod bertulis yang diambil sejurus sebelum sesuatu set semula membuang apa-apa. Setiap set semula menulis rekodnya sendiri; pilih yang hendak dibaca di bawah. Setiap baris menunjukkan pemegang rekod, jenis cuti berkenaan, berapa hari nilainya, tarikh ia berkuat kuasa dan sebab ia wujud.",
       "notAnUndo": "Ini rekod untuk dibaca, bukan butang buat asal. Baris di sini telah dibuang dan untuk mengembalikannya ia perlu dimasukkan semula.",
       "feedsNothing": "Ia tidak menyuap apa-apa dan tidak mengubah sebarang angka. Tiada baki, kelayakan atau rekod cuti terjejas oleh apa-apa di halaman ini.",
       "noLeaveHistory": "Tiada cuti yang dipohon atau diluluskan dibuang. Tiada seorang pun pernah mengambil kedua-dua jenis cuti ini, jadi sejarah cuti tidak terjejas.",
       "emptyTitle": "Belum ada rekod",
-      "emptyBody": "Rekod ditulis oleh set semula sekali sahaja itu sendiri. Jika ini kosong, set semula belum dijalankan pada sistem ini.",
+      "emptyBody": "Rekod ditulis oleh setiap set semula itu sendiri, sebelum apa-apa dibuang. Jika ini kosong, tiada set semula pernah dijalankan pada sistem ini.",
       "captureLabel": "Rekod diambil",
       "show": "Papar",
       "downloadCsv": "Muat turun sebagai CSV",
@@ -8659,6 +8659,12 @@
         "entitlementArchive": "Rekod konfigurasi",
         "ledgerArchive": "Rekod baki"
       }
+    },
+    "leaveConfigRecords": {
+      "pageTitle": "Rekod set semula",
+      "pageDescription": "Rekod bertulis yang diambil sebelum setiap set semula membersihkan konfigurasi kelayakan atau baki. Baca sahaja: tiada apa-apa di sini mengubah sebarang angka.",
+      "footLink": "Rekod set semula yang lalu",
+      "tabsLabel": "Rekod pada halaman ini"
     },
     "leaveConfigTypes": {
       "rowDescription": "Setiap jenis cuti, apa yang dilayakkan kepada pekerja, dan siapa yang menerima jadual yang mana.",

@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
-import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
+import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF } from '../components/leave-config-map';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -127,17 +127,27 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * direction; and the label key retires WITH the row instead of lingering as an untranslatable orphan.
    */
   it('10b59703 — a row OWNS the tabs of its group, so it stays lit on them, and owns nothing else', () => {
-    // The four screens that hang off no row of their own (Entitlement tables, Configuration record,
-    // Balance record, Import leave data) are tabs of Entitlements and Leave Adjustments. `ownedSubpaths`
-    // is highlighting only (packs/registry.ts), and the two lists — the nav's and the map's — must not
-    // drift: a tab the row does not own goes dark on arrival, and a path the row owns that is not its
-    // tab lights the wrong row.
+    // The two screens that hang off no row of their own (Entitlement tables, Import leave data) are tabs
+    // of Entitlements and Leave Adjustments. `ownedSubpaths` is highlighting only (packs/registry.ts),
+    // and the two lists — the nav's and the map's — must not drift: a tab the row does not own goes dark
+    // on arrival, and a path the row owns that is not its tab lights the wrong row.
+    //
+    // 7f69bd71 — ONE owned path that is not a tab, and it is named: the Reset records SUB-SCREEN
+    // (`/admin/leave-config/records`), reached from the foot of Adjust balances and holding the two
+    // read-only records that used to be tabs. Leave Adjustments owns it so the row stays lit on it — and
+    // on the two `records/*` redirect stubs on the way through, which `isNavRowActive` prefix-matches.
+    // Entitlements owns NO records path any more: the Configuration record lights Leave Adjustments now.
+    const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
     for (const group of LEAVE_CONFIG_MAP) {
       const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
       expect(row, `${group.navKey} has no fly-out row`).toBeTruthy();
       const tabs = group.items.slice(1).map((i) => i.href);
-      expect(row.ownedSubpaths ?? [], `${group.navKey} ownedSubpaths must be exactly its other tabs`).toEqual(tabs);
+      expect(row.ownedSubpaths ?? [], `${group.navKey} ownedSubpaths must be exactly its other tabs (plus its named sub-screen)`).toEqual([
+        ...tabs,
+        ...(SUB_SCREENS[group.navKey] ?? []),
+      ]);
     }
+    expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain('/admin/leave-config/records/entitlement');
     // Non-vacuity: two rows own two tabs each, and the sidebar consults them (components/sidebar.tsx).
     expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(2);
     const sidebar = read('components/sidebar.tsx');

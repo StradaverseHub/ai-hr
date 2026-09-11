@@ -894,7 +894,9 @@ describe('fe9c73bc — the words', () => {
 });
 
 describe('fe9c73bc — the reader knows the two new layers (source shape)', () => {
-  const page = fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/records/entitlement/page.tsx'), 'utf8');
+  // 7f69bd71 — the reader is the Configuration record component the Reset records sub-screen mounts;
+  // the page that used to hold it is a redirect stub.
+  const page = fs.readFileSync(path.join(ROOT, 'components/leave/reset-record-configuration.tsx'), 'utf8');
   const reader = fs.readFileSync(path.join(ROOT, 'core/entitlement-archive.ts'), 'utf8');
 
   it('labels template and rule rows by their own keys, and the two old layers exactly as before', () => {

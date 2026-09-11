@@ -15,8 +15,9 @@
  * The retired redirect stubs are asserted absent for the same reason in reverse — listing a redirect as a
  * destination is how a menu starts describing screens that do not exist.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { LEAVE_CONFIG_MAP, type LeaveConfigScreenId } from '../components/leave-config-map';
+import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF, type LeaveConfigScreenId } from '../components/leave-config-map';
 import { SCREENS } from '../lib/permissions';
 import { leavePack } from '../packs/leave';
 
@@ -91,11 +92,20 @@ describe('a6fe37fc — the leave configuration map', () => {
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     const onMap = new Set(mapItems.map((i) => i.href));
     const missing = leaveConfig.routes.filter((r) => !onMap.has(r));
+    // 7f69bd71 — ONE route is deliberately off the menu and it is named here, not tolerated: the Reset
+    // records sub-screen. It holds the two read-only records that used to be everyday tabs, and it is
+    // reached from a link at the foot of Leave Adjustments instead — a menu entry for it would put the
+    // records back where the reporter said they did not belong. "A screen nobody can find" is still the
+    // property: the link is asserted below, so the sub-screen is reachable from a menu screen.
     expect(
       missing,
       'a route on the leaveConfig screen key that the menu never reaches is a screen nobody can find — ' +
-        'the defect a6fe37fc exists to fix',
-    ).toEqual([]);
+        'the defect a6fe37fc exists to fix. The Reset records sub-screen is the one named exception.',
+    ).toEqual([LEAVE_CONFIG_RECORDS_HREF]);
+    expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
+    expect(readFileSync(new URL('../app/admin/leave-config/adjustments/page.tsx', import.meta.url), 'utf8')).toContain(
+      '<Link href={LEAVE_CONFIG_RECORDS_HREF}',
+    );
     // Non-vacuity, asserted on the module that is actually live: the whole new module is registered.
     expect(leaveConfig.routes.length).toBeGreaterThan(5);
     expect(leaveConfig.routes.every((r) => r.startsWith('/admin/leave-config/'))).toBe(true);
@@ -128,8 +138,10 @@ describe('a6fe37fc — the leave configuration map', () => {
     expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual(['entitlements', 'adjustments', 'generate', 'approval', 'companyRules']);
     const byGroup = Object.fromEntries(LEAVE_CONFIG_MAP.map((g) => [g.id, g.items.map((i) => i.id)]));
     // The two rows with tabs, exactly as the approved pictures draw them; the other three own one screen.
-    expect(byGroup.entitlements).toEqual<LeaveConfigScreenId[]>(['leaveTypes', 'entitlementTables', 'entitlementArchive']);
-    expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'ledgerArchive', 'importLeaveData']);
+    // 7f69bd71 — TWO tabs each: `entitlementArchive` and `ledgerArchive` left the rows for the Reset
+    // records sub-screen (its own test: test/reset-records-screen.test.ts). Put either back and this fails.
+    expect(byGroup.entitlements).toEqual<LeaveConfigScreenId[]>(['leaveTypes', 'entitlementTables']);
+    expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'importLeaveData']);
     expect(byGroup.generate).toEqual<LeaveConfigScreenId[]>(['generateEntitlement']);
     expect(byGroup.approval).toEqual<LeaveConfigScreenId[]>(['approvalChain']);
     expect(byGroup.companyRules).toEqual<LeaveConfigScreenId[]>(['companyRules']);
