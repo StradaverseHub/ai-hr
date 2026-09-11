@@ -22,23 +22,40 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
-import vi from '../messages/vi.json';
+import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { LEAVE_CONFIG_MAP, leaveConfigGroupOf, type MappedLeaveConfigScreenId } from '../components/leave-config-map';
+// m4 — a REAL translator over the English catalogue, so `leaveConfigPageHeader` can be exercised rather than
+// grepped: breaking it (title → the tab label) left every source-shape case green.
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (ns: string) => (key: string) => {
+    const node = `${ns}.${key}`
+      .split('.')
+      .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), en);
+    if (typeof node !== 'string') throw new Error(`MISSING_MESSAGE: ${ns}.${key}`);
+    return node;
+  },
+}));
+
+import {
+  LEAVE_CONFIG_MAP,
+  leaveConfigGroupOf,
+  leaveConfigPageHeader,
+  type MappedLeaveConfigScreenId,
+} from '../components/leave-config-map';
 import { leavePack } from '../packs/leave';
 import { SCREENS } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
-const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
+const CATALOGUES = { en, ms, ta, th, vi: vi_, zh } as const;
 type Dict = Record<string, unknown>;
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
@@ -121,6 +138,28 @@ describe('§B · no Leave Config page renders the nine-screen pill row', () => {
 });
 
 describe('§C · every page\'s heading is its submenu row, and its description is the row\'s', () => {
+  it('m4 — leaveConfigPageHeader(id) resolves, for all nine ids, to the ROW\'s nav label and the row\'s description', async () => {
+    const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.id as MappedLeaveConfigScreenId));
+    expect(ids).toHaveLength(9);
+    for (const id of ids) {
+      const group = leaveConfigGroupOf(id);
+      const header = await leaveConfigPageHeader(id);
+      expect(header.title, id).toBe(getPath(en, `nav.${group.navKey}`));
+      // …and never the tab label, which is the mismatch the reporter measured.
+      if (getPath(en, `admin.leaveConfigMap.item.${id}`) !== header.title)
+        expect(header.title, id).not.toBe(getPath(en, `admin.leaveConfigMap.item.${id}`));
+      expect(header.description.length, id).toBeGreaterThan(0);
+    }
+    // The three tabs of a row share one heading and one description.
+    const ent = await Promise.all((['leaveTypes', 'entitlementTables', 'entitlementArchive'] as const).map(leaveConfigPageHeader));
+    expect(new Set(ent.map((h) => `${h.title}|${h.description}`)).size).toBe(1);
+    expect(ent[0].title).toBe('Entitlements');
+    const adj = await Promise.all((['adjustments', 'ledgerArchive', 'importLeaveData'] as const).map(leaveConfigPageHeader));
+    expect(new Set(adj.map((h) => `${h.title}|${h.description}`)).size).toBe(1);
+    expect(adj[0].title).toBe('Leave Adjustments');
+    expect((await leaveConfigPageHeader('approvalChain')).title).toBe('Approval Workflow');
+  });
+
   it('each page reads its PageHeader through leaveConfigPageHeader(<its own id>)', () => {
     for (const rel of PAGES) {
       const src = read(rel);
@@ -151,9 +190,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       for (const [loc, cat] of Object.entries(CATALOGUES)) {
         const v = getPath(cat, key);
         expect(typeof v, `${loc} ${key}`).toBe('string');
-        // The two wrong descriptions are replaced: nothing under a row heading is the Leave types sentence.
-        expect(v, `${loc} ${key} borrows the Leave types sentence`).not.toBe(getPath(cat, 'admin.leave.pageDescription'));
+        // m5 — the Leave types sentence both pages borrowed (`admin.leave.pageDescription`) had no reader
+        // left, so it is pruned rather than kept as an orphan a copy-paste could revive.
+        expect(getPath(cat, 'admin.leave.pageDescription'), `${loc} admin.leave.pageDescription`).toBeUndefined();
       }
+      expect(getPath(en, key)).not.toBe('Leave types and their entitlement policies');
     }
     // The heading strings the reporter listed, in English.
     expect(en.nav.leaveEntitlements).toBe('Entitlements');
@@ -161,6 +202,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
     expect(en.nav.leaveCompanyRules).toBe('Company rules');
+    // m7 — the leaveApproval SCREEN label (lib/permissions.ts, the users access grid) reads as the row
+    // and the heading do, in every locale; the key stays separate because it labels a different surface.
+    expect(read('lib/permissions.ts')).toContain("labelKey: 'nav.leaveApproval',");
+    for (const [loc, cat] of Object.entries(CATALOGUES))
+      expect(getPath(cat, 'nav.leaveApproval'), `${loc} nav.leaveApproval`).toBe(getPath(cat, 'nav.leaveApprovalWorkflow'));
     // Adjustments and Generate stop reading admin.leave.pageDescription.
     for (const rel of ['app/admin/leave-config/adjustments/page.tsx', 'app/admin/leave-config/generate/page.tsx']) {
       expect(stripComments(read(rel))).not.toContain("t('pageDescription')");

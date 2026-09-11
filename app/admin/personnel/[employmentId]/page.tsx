@@ -27,6 +27,9 @@ import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
 // already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
 import { benefitSchemeView } from '@/core/entitlement-scheme-view';
+// 6aee1d91 fix pass (m3) — the card's two links to the Leave types screen resolve through the module's one
+// list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
+import { leaveConfigScreenHref } from '@/components/leave-config-map';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
@@ -2471,7 +2474,7 @@ export default async function EmployeePage({
               >
                 {tScheme('changeGrade')}
               </Link>
-              <Link href="/admin/leave-config/types" className="text-primary hover:underline">
+              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
                 {tScheme('setUpSchemes')}
               </Link>
             </div>
@@ -2549,7 +2552,7 @@ export default async function EmployeePage({
               {/* a6fe37fc ROUND 5 (cutover) — the leave TYPE screen is /admin/leave-config/types now.
                   The old address still answers (redirect stub), but a link whose job is "go and change
                   the rules" should name where the rules are. */}
-              <Link href="/admin/leave-config/types" className="text-primary hover:underline">
+              <Link href={leaveConfigScreenHref('leaveTypes')} className="text-primary hover:underline">
                 {tScheme('changeRules')}
               </Link>
             </div>

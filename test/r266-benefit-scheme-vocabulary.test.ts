@@ -138,6 +138,43 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     }
   });
 
+  it('M1 — the shared status label is impersonal: HR reads it about other people on three surfaces', () => {
+    // `me.leaveBalanceTable.statusNoEligibilityMatch` is rendered through ENTITLEMENT_STATUS_LABEL_KEY on
+    // the HR balance page, the personnel Leave tab and the CSV export as well as the employee's own
+    // table, so "covers you" would have HR reading "you" about somebody else. The hover TIP is HR-voiced
+    // ("this employee") and stays so.
+    const label = en.me.leaveBalanceTable.statusNoEligibilityMatch;
+    expect(label).toBe('Not covered by any benefit scheme');
+    expect(label).not.toMatch(/\byou\b/i);
+    expect(en.me.leaveBalanceTable.statusNoEligibilityMatchTip).toContain('this employee');
+    for (const [loc, cat] of Object.entries(CATALOGUES)) {
+      const v = getPath(cat, 'me.leaveBalanceTable.statusNoEligibilityMatch') as string;
+      expect(v, `${loc} label`).not.toMatch(/covers you|\byou\b/i);
+      if (loc !== 'en') expect(v, `${loc} label untranslated`).not.toBe(label);
+    }
+    // The three HR surfaces and the employee table all read the SAME key through the shared map, so a
+    // second, personal label cannot reappear on one of them without leaving this map.
+    for (const rel of [
+      'app/leave/employee-balances/page.tsx',
+      'app/leave/employee-balances/export/route.ts',
+      'app/admin/personnel/[employmentId]/page.tsx',
+      'components/leave/leave-balance-table.tsx',
+    ]) {
+      const src = read(rel);
+      expect(src, rel).toContain('ENTITLEMENT_STATUS_LABEL_KEY');
+      expect(src, `${rel} carries a personal label`).not.toContain('covers you');
+    }
+    // m2 — the no-table copy names the Leave types screen, not a path that no longer exists.
+    for (const [loc, cat] of Object.entries(CATALOGUES)) {
+      for (const key of ['leave.breakdown.statusNoEntitlementTableBody', 'me.leaveBalanceTable.statusNoEntitlementTableTip']) {
+        const v = getPath(cat, key) as string;
+        expect(v, `${loc} ${key}`).not.toMatch(/Settings, Leave, Entitlements|Tetapan, Cuti, Kelayakan|设置、假期、额度|Cài đặt, Nghỉ phép, Định mức/);
+      }
+    }
+    expect(en.leave.breakdown.statusNoEntitlementTableBody).toContain('on the Leave types screen');
+    expect(en.me.leaveBalanceTable.statusNoEntitlementTableTip).toContain('on the Leave types screen');
+  });
+
   it('the profile note has two states and both read as derived, never as a setting', () => {
     const ps = en.admin.personnel.benefitScheme;
     for (const v of [ps.derivedNote, ps.derivedNoteEmpty]) {
@@ -168,8 +205,11 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
     expect(src).toContain("tScheme('derivedNote')");
     expect(src).toContain("tScheme('derivedNoteEmpty')");
     expect(src).toContain("tScheme('setUpSchemes')");
-    // Still read-only: no form, no action, no input on the card.
+    // m3 — both links to the Leave types screen resolve through the module's one list of addresses.
     const card = src.slice(src.indexOf('id="section-benefit-scheme"'), src.indexOf('const leaveBalanceCard'));
+    expect((card.match(/href=\{leaveConfigScreenHref\('leaveTypes'\)\}/g) ?? []).length).toBe(2);
+    expect(card).not.toContain('href="/admin/leave-config/types"');
+    // Still read-only: no form, no action, no input on the card.
     expect(card).not.toMatch(/<form|<input|<select|action=/);
     expect((card.match(/data-testid="benefit-scheme-derived-note"/g) ?? []).length).toBe(2);
   });

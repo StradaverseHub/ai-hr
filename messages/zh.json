@@ -244,7 +244,7 @@
     "leaveAdjustments": "假期调整",
     "leaveGenerate": "生成假期额度",
     "leaveApprovalWorkflow": "审批流程",
-    "leaveApproval": "审批链",
+    "leaveApproval": "审批流程",
     "leaveReplacement": "替假",
     "leaveCompanyRules": "公司规则",
     "holidays": "公共假期",
@@ -2002,7 +2002,7 @@
       "statusEarningMethodMissingBody": "此假期类型已有适用的额度表，但尚未选择累积方式，因此生成额度只会发放 0.00 天，直到设置为止。",
       "statusEntitlementTable": "额度表：{name}",
       "statusNoEntitlementTableTitle": "此假期类型没有额度表",
-      "statusNoEntitlementTableBody": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数，下方数字为 0.00。管理员可在设置、假期、额度中创建。",
+      "statusNoEntitlementTableBody": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数，下方数字为 0.00。管理员可在“假期类型”页面创建。",
       "statusNoEligibilityMatchTitle": "没有涵盖您的福利方案",
       "statusNoEligibilityMatchBody": "没有福利方案在 {typeName} 上涵盖您，因此没有发放任何天数，下方数字为 0.00。请让 HR 检查此假期类型的福利方案。",
       "statusCappedByMaxBalanceTitle": "因最高余额为 0 而被清零",
@@ -2578,9 +2578,9 @@
       "statusZeroEntitlementTip": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变此数字。",
       "statusEarningMethodMissingTip": "已有适用的额度表，但此假期类型尚未选择累积方式，因此在设置之前只会发放 0.00 天。",
       "statusNoEntitlementTable": "无假期额度表",
-      "statusNoEligibilityMatch": "没有涵盖您的福利方案",
+      "statusNoEligibilityMatch": "未被任何福利方案涵盖",
       "statusCappedByMaxBalance": "因最高余额为 0 而被清零",
-      "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在设置、假期、额度中为其创建额度表。",
+      "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在“假期类型”页面为其创建额度表。",
       "statusNoEligibilityMatchTip": "没有福利方案在此假期类型上涵盖该员工，因此没有额度表触及他们，也没有发放任何天数。请检查此假期类型的福利方案。",
       "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
       "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
@@ -6623,7 +6623,6 @@
       "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
     },
     "leave": {
-      "pageDescription": "休假类型及其应享政策",
       "typesSectionTitle": "休假类型设置",
       "workspaceTypeListLabel": "休假类型",
       "workspaceReachesNobody": "无人可获得",

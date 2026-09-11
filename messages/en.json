@@ -244,7 +244,7 @@
     "leaveAdjustments": "Leave Adjustments",
     "leaveGenerate": "Generate Entitlement",
     "leaveApprovalWorkflow": "Approval Workflow",
-    "leaveApproval": "Approval chain",
+    "leaveApproval": "Approval Workflow",
     "leaveReplacement": "Replacement Leave",
     "leaveCompanyRules": "Company rules",
     "holidays": "Holidays",
@@ -2002,7 +2002,7 @@
       "statusEarningMethodMissingBody": "An entitlement table applies to this leave type, but no earning method has been chosen for it, so generating entitlement will grant 0.00 days until one is set.",
       "statusEntitlementTable": "Entitlement table: {name}",
       "statusNoEntitlementTableTitle": "No entitlement table for this leave type",
-      "statusNoEntitlementTableBody": "No entitlement table has been set up for this leave type, so there is no number of days for anybody to be granted and the figures below are 0.00. An administrator creates one on Settings, Leave, Entitlements.",
+      "statusNoEntitlementTableBody": "No entitlement table has been set up for this leave type, so there is no number of days for anybody to be granted and the figures below are 0.00. An administrator creates one on the Leave types screen.",
       "statusNoEligibilityMatchTitle": "No benefit scheme covers you",
       "statusNoEligibilityMatchBody": "No benefit scheme covers you for {typeName}, so no days have been granted and the figures below are 0.00. Ask HR to check the benefit schemes for this leave type.",
       "statusCappedByMaxBalanceTitle": "Capped at 0 by Maximum Balance",
@@ -2578,9 +2578,9 @@
       "statusZeroEntitlementTip": "An entitlement table applies to this leave type, but it grants 0 days for this length of service. Generating entitlement will not change the figure until the table's service bands are changed.",
       "statusEarningMethodMissingTip": "An entitlement table applies, but this leave type has no earning method chosen, so it grants 0.00 days until one is set.",
       "statusNoEntitlementTable": "No entitlement table",
-      "statusNoEligibilityMatch": "No benefit scheme covers you",
+      "statusNoEligibilityMatch": "Not covered by any benefit scheme",
       "statusCappedByMaxBalance": "Capped at 0 by Maximum Balance",
-      "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on Settings, Leave, Entitlements.",
+      "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on the Leave types screen.",
       "statusNoEligibilityMatchTip": "No benefit scheme covers this employee for this leave type, so no entitlement table reaches them and no days have been granted. Check the benefit schemes for this leave type.",
       "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
       "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
@@ -6623,7 +6623,6 @@
       "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },
     "leave": {
-      "pageDescription": "Leave types and their entitlement policies",
       "typesSectionTitle": "Leave type settings",
       "workspaceTypeListLabel": "Leave types",
       "workspaceReachesNobody": "Reaches nobody",

@@ -244,7 +244,7 @@
     "leaveAdjustments": "Pelarasan Cuti",
     "leaveGenerate": "Jana Kelayakan",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
-    "leaveApproval": "Rantaian kelulusan",
+    "leaveApproval": "Aliran Kelulusan",
     "leaveReplacement": "Cuti Ganti",
     "leaveCompanyRules": "Peraturan syarikat",
     "holidays": "Cuti umum",
@@ -2002,7 +2002,7 @@
       "statusEarningMethodMissingBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi tiada kaedah perolehan dipilih, jadi penjanaan kelayakan akan memberikan 0.00 hari sehingga satu ditetapkan.",
       "statusEntitlementTable": "Jadual kelayakan: {name}",
       "statusNoEntitlementTableTitle": "Tiada jadual kelayakan untuk jenis cuti ini",
-      "statusNoEntitlementTableBody": "Tiada jadual kelayakan disediakan untuk jenis cuti ini, jadi tiada bilangan hari untuk diberikan kepada sesiapa dan angka di bawah ialah 0.00. Pentadbir boleh menciptanya di Tetapan, Cuti, Kelayakan.",
+      "statusNoEntitlementTableBody": "Tiada jadual kelayakan disediakan untuk jenis cuti ini, jadi tiada bilangan hari untuk diberikan kepada sesiapa dan angka di bawah ialah 0.00. Pentadbir boleh menciptanya di skrin Jenis cuti.",
       "statusNoEligibilityMatchTitle": "Tiada skim faedah merangkumi anda",
       "statusNoEligibilityMatchBody": "Tiada skim faedah merangkumi anda untuk {typeName}, jadi tiada hari diberikan dan angka di bawah ialah 0.00. Minta HR menyemak skim faedah bagi jenis cuti ini.",
       "statusCappedByMaxBalanceTitle": "Dihadkan kepada 0 oleh Baki Maksimum",
@@ -2578,9 +2578,9 @@
       "statusZeroEntitlementTip": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka itu sehingga jalur perkhidmatan dalam jadual itu diubah.",
       "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan.",
       "statusNoEntitlementTable": "Tiada jadual kelayakan",
-      "statusNoEligibilityMatch": "Tiada skim faedah merangkumi anda",
+      "statusNoEligibilityMatch": "Tidak dirangkumi mana-mana skim faedah",
       "statusCappedByMaxBalance": "Dihadkan kepada 0 oleh Baki Maksimum",
-      "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di Tetapan, Cuti, Kelayakan.",
+      "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di skrin Jenis cuti.",
       "statusNoEligibilityMatchTip": "Tiada skim faedah merangkumi pekerja ini untuk jenis cuti ini, jadi tiada jadual kelayakan sampai kepadanya dan tiada hari diberikan. Semak skim faedah bagi jenis cuti ini.",
       "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
       "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
@@ -6623,7 +6623,6 @@
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {
-      "pageDescription": "Jenis cuti dan dasar kelayakannya",
       "typesSectionTitle": "Tetapan jenis cuti",
       "workspaceTypeListLabel": "Jenis cuti",
       "workspaceReachesNobody": "Tidak sampai kepada sesiapa",

@@ -244,7 +244,7 @@
     "leaveAdjustments": "Điều chỉnh nghỉ phép",
     "leaveGenerate": "Tạo quyền lợi",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
-    "leaveApproval": "Chuỗi phê duyệt",
+    "leaveApproval": "Quy trình phê duyệt",
     "leaveReplacement": "Nghỉ bù",
     "leaveCompanyRules": "Quy định của công ty",
     "holidays": "Ngày lễ",
@@ -2002,7 +2002,7 @@
       "statusEarningMethodMissingBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng chưa chọn phương thức tích lũy, nên việc tạo định mức sẽ cấp 0,00 ngày cho đến khi được đặt.",
       "statusEntitlementTable": "Bảng định mức: {name}",
       "statusNoEntitlementTableTitle": "Loại nghỉ phép này không có bảng định mức",
-      "statusNoEntitlementTableBody": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai và các con số bên dưới là 0,00. Quản trị viên có thể tạo tại Cài đặt, Nghỉ phép, Định mức.",
+      "statusNoEntitlementTableBody": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai và các con số bên dưới là 0,00. Quản trị viên có thể tạo trên màn hình Loại nghỉ phép.",
       "statusNoEligibilityMatchTitle": "Không có chế độ phúc lợi nào áp dụng cho bạn",
       "statusNoEligibilityMatchBody": "Không có chế độ phúc lợi nào áp dụng cho bạn với {typeName}, nên chưa có ngày nào được cấp và các con số bên dưới là 0,00. Hãy đề nghị HR kiểm tra các chế độ phúc lợi của loại nghỉ phép này.",
       "statusCappedByMaxBalanceTitle": "Bị giới hạn về 0 bởi Số dư tối đa",
@@ -2578,9 +2578,9 @@
       "statusZeroEntitlementTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng nó cấp 0 ngày cho thâm niên này. Việc tạo định mức sẽ không thay đổi con số này cho đến khi các mốc thâm niên trong bảng được thay đổi.",
       "statusEarningMethodMissingTip": "Có một bảng định mức áp dụng, nhưng loại nghỉ phép này chưa chọn phương thức tích lũy, nên sẽ cấp 0,00 ngày cho đến khi được đặt.",
       "statusNoEntitlementTable": "Không có bảng định mức",
-      "statusNoEligibilityMatch": "Không có chế độ phúc lợi nào áp dụng cho bạn",
+      "statusNoEligibilityMatch": "Không thuộc chế độ phúc lợi nào",
       "statusCappedByMaxBalance": "Bị giới hạn về 0 bởi Số dư tối đa",
-      "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này tại Cài đặt, Nghỉ phép, Định mức.",
+      "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này trên màn hình Loại nghỉ phép.",
       "statusNoEligibilityMatchTip": "Không có chế độ phúc lợi nào áp dụng cho nhân viên này với loại nghỉ phép này, nên không bảng định mức nào đến được họ và chưa có ngày nào được cấp. Hãy kiểm tra các chế độ phúc lợi của loại nghỉ phép này.",
       "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
       "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
@@ -6623,7 +6623,6 @@
       "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
     },
     "leave": {
-      "pageDescription": "Các loại nghỉ phép và chính sách hưởng phép của chúng",
       "typesSectionTitle": "Cài đặt loại nghỉ phép",
       "workspaceTypeListLabel": "Loại nghỉ phép",
       "workspaceReachesNobody": "Không đến được ai",
