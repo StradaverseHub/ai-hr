@@ -296,8 +296,9 @@ export class ClockingLocationInUseError extends Error {
  * Hard-delete a clocking site — the request asks for both archive AND delete. GUARDED: refuse if
  * referenced by any employee assignment OR any attendance punch (check-in or check-out matched-site
  * column); callers should archive an in-use site instead. Group admins only (service + RLS DELETE policy).
+ * `async` like the other writers so the authority refusal is a REJECTION, never a synchronous throw.
  */
-export function deleteClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
+export async function deleteClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
     const [assignRefs] = await tx

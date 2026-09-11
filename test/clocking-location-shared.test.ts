@@ -63,8 +63,8 @@ describe('f9afd1ce — migration 0459 is journalled and says what it must', () =
     }
     // UPDATE needs it on BOTH clauses: USING (which rows may be touched) and WITH CHECK (what they may become).
     const update = policyFor('UPDATE');
-    expect(update).toMatch(/USING \([^)]*app\.is_group_admin\(\)\)/);
-    expect(update).toMatch(/WITH CHECK \([^)]*app\.is_group_admin\(\)\)/);
+    expect(update).toMatch(/USING \(tenant_id = app\.current_tenant_id\(\) AND app\.is_group_admin\(\)\)/);
+    expect(update).toMatch(/WITH CHECK \(tenant_id = app\.current_tenant_id\(\) AND app\.is_group_admin\(\)\)/);
     const select = policyFor('SELECT');
     expect(select).not.toContain('is_group_admin');
     expect(select).toContain('tenant_id = app.current_tenant_id()');
