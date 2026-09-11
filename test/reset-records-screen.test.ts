@@ -638,3 +638,38 @@ describe('7f69bd71 — the sidebar predicate lights Leave Adjustments on the sub
     expect(isNavRowActive('/admin/leave-config/recordsx', '', adjustments), 'prefix means a path segment').toBe(false);
   });
 });
+
+describe('7f69bd71 verify fixes — the stub owns its record, and the explanation names no reset', () => {
+  const STUBS: ReadonlyArray<readonly [string, string]> = [
+    ['app/admin/leave/entitlements/archive/page.tsx', 'configuration'],
+    ['app/admin/leave/entitlements/ledger-archive/page.tsx', 'balances'],
+    ['app/admin/leave-config/records/entitlement/page.tsx', 'configuration'],
+    ['app/admin/leave-config/records/balances/page.tsx', 'balances'],
+  ];
+
+  it('a forwarded ?record= cannot send a bookmark to the other record', () => {
+    // Found by the verify pass: the forwarding loop ran AFTER `record` was seeded, so
+    // /admin/leave/entitlements/archive?record=balances landed on the BALANCE record.
+    for (const [file, record] of STUBS) {
+      const src = read(file);
+      expect(src, `${file}: seeds its own record`).toContain(`record: '${record}'`);
+      expect(src, `${file}: the loop must skip record`).toContain("if (k === 'record') continue;");
+      const loopAt = src.indexOf('for (const [k, v] of Object.entries(sp))');
+      const skipAt = src.indexOf("if (k === 'record') continue;");
+      expect(loopAt, `${file}: the loop exists`).toBeGreaterThan(-1);
+      expect(skipAt, `${file}: the skip is INSIDE the loop`).toBeGreaterThan(loopAt);
+    }
+  });
+
+  it('the Balance record explanation describes every reset, not the August one', () => {
+    for (const loc of LOCALES) {
+      const cat = JSON.parse(read(`messages/${loc}.json`));
+      const line = cat.admin.leaveLedgerArchive.noLeaveHistory as string;
+      expect(typeof line, `${loc}`).toBe('string');
+      // It may not claim anything about "either/both leave types" — that was true only of the
+      // August Medical/Hospitalisation reset, and the newest capture covers every leave type.
+      expect(line, `${loc}: no two-leave-type claim`).not.toMatch(/either leave type|both leave types/i);
+    }
+    expect(read('messages/en.json')).toContain('Every reset here kept the days people had actually taken');
+  });
+});

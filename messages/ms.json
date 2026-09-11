@@ -8444,7 +8444,7 @@
       "intro": "Ini ialah rekod bertulis yang diambil sejurus sebelum sesuatu set semula membuang apa-apa. Setiap set semula menulis rekodnya sendiri; pilih yang hendak dibaca di bawah. Setiap baris menunjukkan pemegang rekod, jenis cuti berkenaan, berapa hari nilainya, tarikh ia berkuat kuasa dan sebab ia wujud.",
       "notAnUndo": "Ini rekod untuk dibaca, bukan butang buat asal. Baris di sini telah dibuang dan untuk mengembalikannya ia perlu dimasukkan semula.",
       "feedsNothing": "Ia tidak menyuap apa-apa dan tidak mengubah sebarang angka. Tiada baki, kelayakan atau rekod cuti terjejas oleh apa-apa di halaman ini.",
-      "noLeaveHistory": "Tiada cuti yang dipohon atau diluluskan dibuang. Tiada seorang pun pernah mengambil kedua-dua jenis cuti ini, jadi sejarah cuti tidak terjejas.",
+      "noLeaveHistory": "Tiada cuti yang dipohon atau diluluskan dibuang. Setiap set semula di sini mengekalkan hari yang benar-benar telah diambil, jadi sejarah cuti tidak terjejas.",
       "emptyTitle": "Belum ada rekod",
       "emptyBody": "Rekod ditulis oleh setiap set semula itu sendiri, sebelum apa-apa dibuang. Jika ini kosong, tiada set semula pernah dijalankan pada sistem ini.",
       "captureLabel": "Rekod diambil",

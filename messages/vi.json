@@ -8444,7 +8444,7 @@
       "intro": "Đây là bản ghi được lập ngay trước khi một lần đặt lại xoá bất cứ thứ gì. Mỗi lần đặt lại lập bản ghi riêng; chọn bản ghi cần đọc ở bên dưới. Mỗi dòng cho biết bản ghi thuộc về ai, loại nghỉ phép nào, trị giá bao nhiêu ngày, ngày có hiệu lực và lý do nó tồn tại.",
       "notAnUndo": "Đây là bản ghi để đọc, không phải nút hoàn tác. Các dòng liệt kê ở đây đã bị xoá và muốn khôi phục thì phải nhập lại.",
       "feedsNothing": "Nó không cung cấp dữ liệu cho bất cứ thứ gì và không thay đổi con số nào. Không số dư, quyền lợi hay bản ghi nghỉ phép nào bị ảnh hưởng bởi bất cứ điều gì trên trang này.",
-      "noLeaveHistory": "Không có ngày nghỉ nào đã được nộp hoặc phê duyệt bị xoá. Chưa ai từng nghỉ một ngày nào thuộc hai loại này, nên lịch sử nghỉ phép không bị ảnh hưởng.",
+      "noLeaveHistory": "Không có ngày nghỉ nào đã được nộp hoặc phê duyệt bị xoá. Mỗi lần đặt lại ở đây đều giữ lại những ngày mọi người đã thực sự nghỉ, nên lịch sử nghỉ phép không bị ảnh hưởng.",
       "emptyTitle": "Chưa có bản ghi nào",
       "emptyBody": "Bản ghi do chính mỗi lần đặt lại viết ra, trước khi xoá bất cứ thứ gì. Nếu trống, chưa có lần đặt lại nào được chạy trên hệ thống này.",
       "captureLabel": "Bản ghi lập lúc",

@@ -8444,7 +8444,7 @@
       "intro": "This is the written record taken immediately before a reset removed anything. Each reset writes its own record; choose the one to read below. Each row shows who held the record, which leave type it belonged to, how many days it was worth, the date it took effect and why it was there.",
       "notAnUndo": "This is a record to read from, not an undo button. The rows listed here were removed and putting them back means entering them again.",
       "feedsNothing": "It feeds nothing and changes no number. No balance, no entitlement and no leave record is affected by anything on this page.",
-      "noLeaveHistory": "No leave anybody applied for or was approved for was removed. Nothing on either leave type had ever been taken, so no leave history is affected.",
+      "noLeaveHistory": "No leave anybody applied for or was approved for was removed. Every reset here kept the days people had actually taken, so no leave history is affected.",
       "emptyTitle": "Nothing recorded yet",
       "emptyBody": "The record is written by each reset itself, before anything is removed. If this is empty, no reset has been run on this system.",
       "captureLabel": "Record taken",

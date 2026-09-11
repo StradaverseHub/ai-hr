@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 
 /**
- * a6fe37fc ROUND 5 (cutover) — redirect stub. The Entitlement configuration record lives at
- * `/admin/leave-config/records/entitlement` now (IA §2 → RECORDS), and this address exists only so no
+ * a6fe37fc ROUND 5 (cutover) — redirect stub. The Entitlement configuration record used to live at
+ * `/admin/leave-config/records/entitlement` (IA §2 → RECORDS), and this address exists only so no
  * saved link 404s.
  *
  * 7f69bd71 — REPOINTED ONE HOP. The record moved again, to the Configuration sub-tab of the Reset records
@@ -38,6 +38,9 @@ export default async function EntitlementArchiveRedirect({
   const sp = await searchParams;
   const usp = new URLSearchParams({ record: 'configuration' });
   for (const [k, v] of Object.entries(sp)) {
+    // `record` is THIS stub's own identity: a saved link that carries one must not be able to send the
+    // bookmark to the other record. Everything else (notably `capture`) rides along unchanged.
+    if (k === 'record') continue;
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }

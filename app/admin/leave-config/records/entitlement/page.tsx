@@ -34,6 +34,9 @@ export default async function LeaveConfigEntitlementRecordRedirect({
   const sp = await searchParams;
   const usp = new URLSearchParams({ record: 'configuration' });
   for (const [k, v] of Object.entries(sp)) {
+    // `record` is THIS stub's own identity: a saved link that carries one must not be able to send the
+    // bookmark to the other record. Everything else (notably `capture`) rides along unchanged.
+    if (k === 'record') continue;
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
