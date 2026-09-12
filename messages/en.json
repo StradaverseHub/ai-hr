@@ -8220,6 +8220,18 @@
       "cancel": "Cancel",
       "back": "Back to holiday groups"
     },
+    "holidayCoverage": {
+      "summaryEmpty": "No public holidays",
+      "summaryMissing": "{held} public holidays, {missing} missing",
+      "summaryComplete": "{held} public holidays",
+      "warnEmptyTitle": "This calendar holds no public holidays",
+      "warnEmptyBody": "A work location attached to “{name}” gives its staff exactly the days ticked into this calendar and nothing else, and nothing is ticked. All {gazette} public holidays gazetted for {year} would be ordinary working days for them — counted against their leave, and paid at the ordinary overtime rate:",
+      "warnMissingTitle": "This calendar leaves out {missing, plural, =1 {# gazetted day} other {# gazetted days}}",
+      "warnMissingBody": "“{name}” holds {held} of the {gazette} public holidays gazetted for {year}. A work location attached to it gives its staff exactly those days, so these would be ordinary working days for them:",
+      "gapRow": "{date} — {name}",
+      "note": "This is a warning, not a block. A calendar that deliberately holds fewer days is a real thing, and you can still save it.",
+      "okLine": "“{name}” holds all {gazette} public holidays gazetted for {year}."
+    },
     "attendanceRule": {
       "moduleTitle": "Lateness, Early Out & Overtime Settings",
       "moduleDescription": "A reusable library of attendance calculation rules. Assign a rule to a shift, or let shifts fall back to the Standard rule.",

@@ -8220,6 +8220,18 @@
       "cancel": "Hủy",
       "back": "Quay lại nhóm ngày lễ"
     },
+    "holidayCoverage": {
+      "summaryEmpty": "Không có ngày lễ công",
+      "summaryMissing": "{held} ngày lễ công, thiếu {missing}",
+      "summaryComplete": "{held} ngày lễ công",
+      "warnEmptyTitle": "Lịch này không có ngày lễ công nào",
+      "warnEmptyBody": "Địa điểm làm việc gắn với “{name}” chỉ cho nhân viên những ngày được chọn trong lịch này, và hiện chưa chọn ngày nào. Toàn bộ {gazette} ngày lễ công được công bố cho năm {year} sẽ là ngày làm việc bình thường với họ — bị trừ vào ngày nghỉ phép và trả làm thêm giờ theo mức thường:",
+      "warnMissingTitle": "Lịch này bỏ sót {missing, plural, other {# ngày lễ được công bố}}",
+      "warnMissingBody": "“{name}” có {held} trong {gazette} ngày lễ công được công bố cho năm {year}. Địa điểm làm việc gắn với lịch này chỉ cho nhân viên những ngày đó, nên các ngày sau sẽ là ngày làm việc bình thường với họ:",
+      "gapRow": "{date} — {name}",
+      "note": "Đây là cảnh báo, không phải chặn. Một lịch cố ý có ít ngày hơn là điều bình thường, và bạn vẫn có thể lưu.",
+      "okLine": "“{name}” có đủ {gazette} ngày lễ công được công bố cho năm {year}."
+    },
     "attendanceRule": {
       "moduleTitle": "Cài đặt Đi trễ, Về sớm & Tăng ca",
       "moduleDescription": "Thư viện quy tắc tính công có thể tái sử dụng. Gán quy tắc cho ca làm, hoặc để ca dùng quy tắc Tiêu chuẩn.",

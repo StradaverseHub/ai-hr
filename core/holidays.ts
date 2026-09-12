@@ -43,9 +43,12 @@
  * as historical and are NOT retroactively re-classified. No re-freeze job is built (out of scope). If a
  * recompute is ever wanted, that is a separate task.
  */
-import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import type { SessionContext, Tx } from '../db/client';
+// 0e276da0 — the calendar-coverage read at the foot of this file is SESSION-scoped (a screen asks it),
+// unlike every resolver above, which runs inside the caller's tx. `withTenant` is the only addition.
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { appendEvent, actorOf } from '../db/events';
 import { assignment, company, employment, holiday, holidayGroup, holidayGroupHoliday, location } from '../db/schema';
 
@@ -524,4 +527,185 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
     );
   // The chain's group-scoped extras stack on the gazette result (empty chain → no-op, byte-identical).
   return new Set([...baseRows.map((h) => h.d), ...chainExtras]);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────
+// 0e276da0 (r269) — CALENDAR COVERAGE: what a named holiday calendar would cost the staff of a
+// location attached to it. A PURE, PRESENTATIONAL READ. Nothing above this line changes.
+//
+// WHY IT EXISTS. §ADR-0067 above: a location mapped to a calendar whose effective archetype is
+// 'custom' resolves to ONLY that calendar's own days and NO gazette — "a national date the custom
+// calendar omits is a normal working day for that location's staff", which reaches money through the
+// frozen attendance day-type (OT class) and the working-day leave count. Nothing warned, because
+// effectiveHolidayState deliberately returns skipCompleteness for 'custom' (the s.60D guard would
+// otherwise cry wolf over every hand-managed calendar). THAT SKIP IS RIGHT AND STAYS. This read is a
+// SEPARATE question asked on a screen, never by the resolver: not "does the gazette have 11 days" but
+// "which gazetted days does THIS calendar leave out". It emits no event, writes nothing, and blocks
+// nothing — a calendar that deliberately holds fewer days is a real thing.
+//
+// DELIBERATE PREDICATE CHOICE: the gazette set below uses the SAME predicate as holidayDatesFor's
+// gazette branch (company_id IS NULL ∧ holiday_group_id IS NULL ∧ country ∧ state ∈ {null} ∪ states[]),
+// with NO filter on `active`, `tentative` or `holiday_type`. The resolver does not read those columns,
+// so filtering here would let the screen say a day is covered that the engine will treat as a working
+// day. Resolver-consistency is the standard: a day this read calls "left out" IS a working day for
+// that location's staff.
+//
+// WHAT IT CANNOT SEE, said plainly rather than papered over: 'custom' also resolves COMPANY-scoped
+// ad-hoc rows (app.is_company_descendant against the EMPLOYEE's company). Those are a property of the
+// employee's company chain, not of the calendar, so a calendar this read calls empty may still yield
+// days to staff of a company that owns ad-hoc rows. The warning is therefore a WARNING and says so.
+
+/** One gazetted DATE a calendar does not supply. `name` joins the names the gazette gives that date. */
+export type HolidayCalendarGap = { date: string; name: string };
+
+/** What a named calendar covers in one year, and what it leaves out. */
+export type HolidayCalendarCoverage = {
+  groupId: string;
+  name: string;
+  /** The EFFECTIVE archetype — the PARENT's when the group inherits (R18 a519a96e), exactly as the
+   *  resolver substitutes it. A child of a custom parent stands alone even if its own row says otherwise. */
+  archetype: string;
+  /** true ⇔ effective archetype 'custom': this calendar's staff get these days and NO gazette. */
+  standalone: boolean;
+  /** The gazette country, or null when the tenant does not resolve to exactly one (see below). */
+  country: string | null;
+  year: number;
+  /** The EFFECTIVE states[] (the parent's when the group inherits). */
+  states: string[];
+  /** DISTINCT dates the calendar itself supplies in `year` — days off, not junction rows. Two gazette
+   *  rows on one date (Federal Territory Day is three rows) are ONE day off and count once. */
+  held: number;
+  /** DISTINCT gazetted dates that apply to this calendar in `year` (national ∪ states[]). */
+  gazette: number;
+  /** The gazetted dates `held` does not cover, earliest first. Empty when `country` is null. */
+  missing: HolidayCalendarGap[];
+};
+
+/** How a calendar reads on screen. PURE. Only a stand-alone (custom) calendar can be at risk: a
+ *  standard/extended calendar still gets the gazette, so it can never strip a day. */
+export function holidayCalendarRisk(c: HolidayCalendarCoverage): 'empty' | 'incomplete' | null {
+  if (!c.standalone) return null;
+  if (c.held === 0) return 'empty';
+  return c.missing.length > 0 ? 'incomplete' : null;
+}
+
+/**
+ * PURE diff: the gazetted DATES `held` does not cover, named and ordered. Multiple gazette rows on one
+ * date (the same holiday gazetted in several states) collapse to one gap whose name lists each distinct
+ * name once, so the reader sees one lost day rather than three.
+ */
+export function missingGazettedDates(
+  held: Iterable<string>,
+  gazette: { holidayDate: string; name: string }[],
+): HolidayCalendarGap[] {
+  const have = new Set(held);
+  const byDate = new Map<string, string[]>();
+  for (const g of gazette) {
+    if (have.has(g.holidayDate)) continue;
+    const names = byDate.get(g.holidayDate);
+    if (names) {
+      if (!names.includes(g.name)) names.push(g.name);
+    } else byDate.set(g.holidayDate, [g.name]);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([date, names]) => ({ date, name: names.join(' / ') }));
+}
+
+/**
+ * Coverage for EVERY named calendar in the tenant, for one year (default: the current year in the
+ * tenant's timezone — §8 "no hardcoded future dates"). One read, one shape, used by both screens.
+ *
+ * COUNTRY. The gazette is country-keyed; a holiday_group is not. We take the tenant's distinct company
+ * countries: exactly one ⇒ that is the gazette. Zero or several ⇒ `country` stays null and `missing`
+ * stays EMPTY rather than diffing against a union of two countries' gazettes and naming days that were
+ * never owed. The empty-calendar warning still stands in that case — it needs no gazette to be true.
+ *
+ * Read-only: no event, no write.
+ */
+export function holidayCalendarCoverage(
+  ctx: SessionContext,
+  opts: { year?: number } = {},
+): Promise<HolidayCalendarCoverage[]> {
+  const year = opts.year ?? Number(todayInKualaLumpur().slice(0, 4));
+  return withTenant(ctx, async (tx) => {
+    const coverageParent = alias(holidayGroup, 'coverage_parent');
+    const groups = await tx
+      .select({
+        id: holidayGroup.id,
+        name: holidayGroup.name,
+        archetype: holidayGroup.archetype,
+        states: holidayGroup.states,
+        parentId: holidayGroup.parentGroupId,
+        parentArchetype: coverageParent.archetype,
+        parentStates: coverageParent.states,
+      })
+      .from(holidayGroup)
+      .leftJoin(coverageParent, eq(coverageParent.id, holidayGroup.parentGroupId))
+      .orderBy(holidayGroup.name);
+    if (groups.length === 0) return [];
+
+    const countryRows = await tx.selectDistinct({ country: company.country }).from(company);
+    const countries = countryRows.map((r) => r.country).filter((c): c is string => !!c);
+    const country = countries.length === 1 ? countries[0] : null;
+    const inYear = sql`extract(year from ${holiday.holidayDate}) = ${year}`;
+
+    // The gazette that could apply to any calendar this year — national ∪ every state. Filtered per
+    // calendar below by its effective states[]. Same predicate as holidayDatesFor's gazette branch.
+    const gazetteRows = country
+      ? await tx
+          .select({ holidayDate: holiday.holidayDate, name: holiday.name, state: holiday.state })
+          .from(holiday)
+          .where(and(eq(holiday.country, country), isNull(holiday.companyId), isNull(holiday.holidayGroupId), inYear))
+      : [];
+
+    // What each calendar itself supplies: the days TICKED into it (holiday_group_holiday, 66b8f5a8) and
+    // the group-SCOPED extra days it owns (holiday.holiday_group_id, R18 a519a96e) — the two additive
+    // sources holidayDatesFor folds into chainExtras. Read for every group at once, then attributed to
+    // the CHAIN (group ∪ its parent) below, exactly as the resolver builds chainIds.
+    const countryFilter = country ? eq(holiday.country, country) : undefined;
+    const tickedRows = await tx
+      .select({ gid: holidayGroupHoliday.holidayGroupId, d: holiday.holidayDate })
+      .from(holidayGroupHoliday)
+      .innerJoin(holiday, eq(holiday.id, holidayGroupHoliday.holidayId))
+      .where(and(inYear, countryFilter));
+    const extraRows = await tx
+      .select({ gid: holiday.holidayGroupId, d: holiday.holidayDate })
+      .from(holiday)
+      .where(and(isNotNull(holiday.holidayGroupId), inYear, countryFilter));
+
+    const datesByGroup = new Map<string, Set<string>>();
+    const addDate = (gid: string | null, d: string) => {
+      if (!gid) return;
+      const set = datesByGroup.get(gid);
+      if (set) set.add(d);
+      else datesByGroup.set(gid, new Set([d]));
+    };
+    for (const r of tickedRows) addDate(r.gid, r.d);
+    for (const r of extraRows) addDate(r.gid, r.d);
+
+    return groups.map((g) => {
+      // R18 a519a96e substitution, mirroring the resolver: with a parent set, the PARENT's archetype and
+      // states[] are the gazette source; the child only adds its own days.
+      const archetype = (g.parentId ? g.parentArchetype : g.archetype) ?? 'standard';
+      const rawStates = g.parentId ? g.parentStates : g.states;
+      const states = Array.isArray(rawStates) ? (rawStates as string[]) : [];
+      const chainIds = [g.id, ...(g.parentId ? [g.parentId] : [])];
+      const held = new Set<string>();
+      for (const gid of chainIds) for (const d of datesByGroup.get(gid) ?? []) held.add(d);
+      const applicable = gazetteRows.filter((r) => r.state === null || states.includes(r.state));
+      return {
+        groupId: g.id,
+        name: g.name,
+        archetype,
+        standalone: archetype === 'custom',
+        country,
+        year,
+        states,
+        held: held.size,
+        gazette: new Set(applicable.map((r) => r.holidayDate)).size,
+        missing: missingGazettedDates(held, applicable),
+      };
+    });
+  });
 }
