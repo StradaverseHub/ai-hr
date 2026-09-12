@@ -8220,6 +8220,18 @@
       "cancel": "取消",
       "back": "返回假期组"
     },
+    "holidayCoverage": {
+      "summaryEmpty": "没有公共假期",
+      "summaryMissing": "{held} 个公共假期，缺少 {missing} 个",
+      "summaryComplete": "{held} 个公共假期",
+      "warnEmptyTitle": "此日历没有任何公共假期",
+      "warnEmptyBody": "附加到「{name}」的工作地点，其员工只享有此日历中勾选的日期，而目前一个也没有勾选。{year} 年宪报公布的全部 {gazette} 个公共假期对他们而言都是普通工作日——会计入他们的假期，并按普通加班费率支付：",
+      "warnMissingTitle": "此日历遗漏了 {missing, plural, other {# 个宪报公共假期}}",
+      "warnMissingBody": "「{name}」包含 {year} 年宪报公布的 {gazette} 个公共假期中的 {held} 个。附加到它的工作地点，其员工只享有这些日期，因此以下日期对他们而言是普通工作日：",
+      "gapRow": "{date} — {name}",
+      "note": "这是提醒，不是限制。日历可以有意少列一些日期，您仍然可以保存。",
+      "okLine": "「{name}」包含 {year} 年宪报公布的全部 {gazette} 个公共假期。"
+    },
     "attendanceRule": {
       "moduleTitle": "迟到、早退与加班设置",
       "moduleDescription": "可重复使用的考勤计算规则库。为班次分配规则，或让班次回退到标准规则。",

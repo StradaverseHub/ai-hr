@@ -2,6 +2,8 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { listHolidayGroups } from '@/core/admin';
+// 0e276da0 (r269) — the day count / missing-day count each named calendar carries this year.
+import { holidayCalendarCoverage } from '@/core/holidays';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary } from '@/components/ui';
 import { HolidayTabs } from '@/components/holiday-tabs';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
@@ -24,9 +26,26 @@ export default async function HolidayGroupsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.holidayGroups');
+  // 0e276da0 — the shared coverage vocabulary (the Locations screen and the group page say the same).
+  const tc = await getTranslations('admin.holidayCoverage');
   const sp = await searchParams;
   const { error } = sp;
   const groups = await listHolidayGroups(s);
+  const coverage = await holidayCalendarCoverage(s);
+  const coverageById = new Map(coverage.map((c) => [c.groupId, c]));
+  /**
+   * 0e276da0 — the one-line state of a STAND-ALONE (Custom) calendar: how many public holidays it holds
+   * this year and how many gazetted days it leaves out. Nothing is shown for Standard/Extended, which
+   * still get the gazette and so can never strip a day. Literal keys for test/i18n-coverage check C.
+   */
+  const coverageSummary = (groupId: string) => {
+    const c = coverageById.get(groupId);
+    if (!c || !c.standalone) return null;
+    if (c.held === 0) return { text: tc('summaryEmpty'), atRisk: true };
+    if (c.missing.length > 0)
+      return { text: tc('summaryMissing', { held: c.held, missing: c.missing.length }), atRisk: true };
+    return { text: tc('summaryComplete', { held: c.held }), atRisk: false };
+  };
   const pq = parsePageQuery(sp);
   const { rows: pageGroups, state: pgState } = paginateRows(groups, pq);
 
@@ -69,6 +88,19 @@ export default async function HolidayGroupsPage({
                       {g.parentName && (
                         <span className="ml-2 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
                           {t('inheritsFrom', { name: g.parentName })}
+                        </span>
+                      )}
+                      {/* 0e276da0 — a stand-alone calendar's coverage, so a thin one is visible from the
+                          list. Amber is a warning, not a refusal; Edit still saves whatever HR wants. */}
+                      {coverageSummary(g.id) && (
+                        <span
+                          className={`mt-0.5 block text-xs font-normal ${
+                            coverageSummary(g.id)!.atRisk
+                              ? 'text-amber-700 dark:text-amber-400'
+                              : 'text-muted-foreground'
+                          }`}
+                        >
+                          {coverageSummary(g.id)!.text}
                         </span>
                       )}
                     </td>

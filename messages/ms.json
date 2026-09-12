@@ -8220,6 +8220,18 @@
       "cancel": "Batal",
       "back": "Kembali ke kumpulan cuti"
     },
+    "holidayCoverage": {
+      "summaryEmpty": "Tiada cuti umum",
+      "summaryMissing": "{held} cuti umum, {missing} tiada",
+      "summaryComplete": "{held} cuti umum",
+      "warnEmptyTitle": "Kalendar ini tidak mengandungi sebarang cuti umum",
+      "warnEmptyBody": "Lokasi kerja yang dikaitkan dengan “{name}” memberi kakitangannya hanya hari yang ditanda dalam kalendar ini, dan tiada satu pun ditanda. Kesemua {gazette} cuti umum yang diwartakan untuk {year} menjadi hari bekerja biasa bagi mereka — dikira daripada cuti mereka, dan dibayar pada kadar kerja lebih masa biasa:",
+      "warnMissingTitle": "Kalendar ini meninggalkan {missing, plural, other {# hari yang diwartakan}}",
+      "warnMissingBody": "“{name}” mengandungi {held} daripada {gazette} cuti umum yang diwartakan untuk {year}. Lokasi kerja yang dikaitkan dengannya memberi kakitangannya hanya hari tersebut, jadi hari berikut menjadi hari bekerja biasa bagi mereka:",
+      "gapRow": "{date} — {name}",
+      "note": "Ini amaran, bukan sekatan. Kalendar yang sengaja mengandungi kurang hari adalah perkara biasa, dan anda masih boleh menyimpannya.",
+      "okLine": "“{name}” mengandungi kesemua {gazette} cuti umum yang diwartakan untuk {year}."
+    },
     "attendanceRule": {
       "moduleTitle": "Tetapan Kelewatan, Balik Awal & Kerja Lebih Masa",
       "moduleDescription": "Pustaka peraturan pengiraan kehadiran yang boleh diguna semula. Berikan peraturan kepada syif, atau biarkan syif menggunakan peraturan Standard.",

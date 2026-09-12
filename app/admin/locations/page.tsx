@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
@@ -7,9 +8,13 @@ import { listLocations, listUnmappedBranches } from '@/core/location';
 import { listClockingLocations } from '@/core/clocking-location';
 import { listProfileOptions } from '@/core/profile-options';
 import { listHolidayGroups } from '@/core/admin';
+// 0e276da0 (r269) — what a named calendar would COST the staff of a location attached to it. A pure
+// presentational read; the resolver and the s.60D skip in core/holidays.ts are untouched.
+import { holidayCalendarCoverage } from '@/core/holidays';
 import { countryPacks } from '@/localization/registry';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { HolidayCoverageWarning } from '@/components/holiday-coverage-warning';
 import {
   createLocationAction,
   updateLocationAction,
@@ -47,6 +52,9 @@ export default async function LocationsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.locations');
+  // 0e276da0 — the coverage sentence lives in its own namespace because the calendar's own screen says
+  // exactly the same thing (components/holiday-coverage-warning.tsx is the single copy).
+  const tc = await getTranslations('admin.holidayCoverage');
   const { error, saved, focus: rawFocus } = await searchParams;
   // `?focus=` addresses a uuid; junk is dropped rather than rendered (lib/calendar-focus.ts idiom).
   const focus = rawFocus && UUID_RE.test(rawFocus) ? rawFocus : undefined;
@@ -57,6 +65,13 @@ export default async function LocationsPage({
   const locations = await listLocations(s, visible.map((c) => c.id), { includeArchived: true });
   // Named holiday calendars (holiday_group rows) to populate the per-location Calendar dropdown (ADR-0067).
   const calendars = await listHolidayGroups(s);
+  // 0e276da0 — ADR-0067 §custom: attaching a location to a Custom calendar gives its staff EXACTLY that
+  // calendar's days and NO gazette, so an empty or thin one silently turns gazetted holidays into ordinary
+  // working days (frozen attendance day-type ⇒ OT class, and the working-day leave count). Nothing warned,
+  // because the s.60D completeness guard is deliberately skipped for Custom — correct for a populated
+  // calendar, and that skip stays. This is the separate, presentational read: it WARNS, never refuses.
+  const coverage = await holidayCalendarCoverage(s);
+  const coverageById = new Map(coverage.map((c) => [c.groupId, c]));
   const byCompany = new Map<string, typeof locations>();
   for (const l of locations) {
     const arr = byCompany.get(l.companyId);
@@ -69,6 +84,33 @@ export default async function LocationsPage({
   const stateOptions = countryPacks().flatMap((p) => p.states);
   // Country/state are rendered through label maps (not raw strings) so a value isn't shown untranslated.
   const stateLabel = (st: string | null) => (st ? st : t('stateNational'));
+
+  /**
+   * 0e276da0 — the picker says what a calendar COSTS before it is chosen. A stand-alone (Custom)
+   * calendar's option carries how many public holidays it holds this year and how many gazetted days it
+   * leaves out; a Standard/Extended one reads exactly as it always did, because the gazette still applies
+   * to it and it can never strip a day. Literal message keys (not a computed one) so
+   * test/i18n-coverage.test.ts check C resolves every one of them.
+   */
+  const calendarOptionLabel = (calId: string, calName: string) => {
+    const c = coverageById.get(calId);
+    if (!c || !c.standalone) return calName;
+    const summary =
+      c.held === 0
+        ? tc('summaryEmpty')
+        : c.missing.length > 0
+          ? tc('summaryMissing', { held: c.held, missing: c.missing.length })
+          : tc('summaryComplete', { held: c.held });
+    return `${calName} — ${summary}`;
+  };
+
+  // …and for a location that ALREADY carries a calendar, the full warning naming every gazetted day its
+  // staff would work. Built here rather than inline so each row's JSX stays one expression.
+  const calendarWarnings = new Map<string, ReactNode>();
+  for (const l of locations) {
+    const c = l.holidayGroupId ? coverageById.get(l.holidayGroupId) : undefined;
+    if (c) calendarWarnings.set(l.id, <HolidayCoverageWarning coverage={c} className="mt-1 basis-full" />);
+  }
 
   // ADR-0070 — Clocking Location Management: a SEPARATE site register from the holiday-calendar
   // `location` list above (see ADR-0070 §1 for why). f9afd1ce (migration 0459): a SHARED, TENANT-LEVEL
@@ -395,7 +437,7 @@ export default async function LocationsPage({
                             <option value="">{t('calendarNone')}</option>
                             {calendars.map((cal) => (
                               <option key={cal.id} value={cal.id}>
-                                {cal.name}
+                                {calendarOptionLabel(cal.id, cal.name)}
                               </option>
                             ))}
                           </select>
@@ -435,6 +477,9 @@ export default async function LocationsPage({
                           <button className={btnGhost}>{t('archive')}</button>
                         </form>
                       )}
+                      {/* 0e276da0 — beside the picker, for the calendar this location is attached to
+                          RIGHT NOW: the days its staff would work. A warning, never a block. */}
+                      {calendarWarnings.get(l.id)}
                     </li>
                   ))}
                 </ul>
@@ -466,7 +511,7 @@ export default async function LocationsPage({
                     <option value="">{t('calendarNone')}</option>
                     {calendars.map((cal) => (
                       <option key={cal.id} value={cal.id}>
-                        {cal.name}
+                        {calendarOptionLabel(cal.id, cal.name)}
                       </option>
                     ))}
                   </select>
