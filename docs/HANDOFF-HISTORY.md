@@ -1,3 +1,63 @@
+## readiness survey (2026-09-12) — customer-deployment readiness, four read-only surveys. `main@1c43cc25`, no migration. NOT a shipped round: nothing was built or deployed.
+
+Four parallel agents surveyed features, security, statutory and operations under binding read-only
+ground rules (four states: BUILT AND PROVEN / BUILT BUT UNPROVEN / PARTIAL / ABSENT). Output:
+`docs/CUSTOMER-DEPLOYMENT-READINESS.md`, and a tickable shared checklist at
+https://claude.ai/code/artifact/db91c3d8-a733-4844-ac46-843873b245c1 (56 items, `db` capability).
+
+**Every headline figure re-verified by hand against production before the doc was committed** — the
+survey output was NOT trusted on its own. Verified: 11,195 `domain_event` rows, 0 chained · 2 tenants,
+both ours · 20 `statutory_report` rows, all `draft` · 0 `app_invitation` · 0 `tenant_provision_request`
+· 0 `tenant_suspension_window` · 73 `employee_statutory_my` rows with 30 missing a tax number, 31 an
+EPF number, 47 a SOCSO number · 0 of 1 entitlement templates and 0 of 1 eligibility rules in force ·
+0 backup lines in cron · `.env.production` carries 15 keys, none `WORKOS_*`, no
+`AUDIT_HASH_CHAIN_ENABLED`, `ALLOW_DEMO_SESSION=true` · `deploy.sh:40` + `:153` · `middleware.ts:42`.
+
+**DECISIONS the surveys forced, that no ticket had settled:**
+
+- **`deploy/deploy.sh` is a DEMO deploy script and the runbook says to keep it that way.** `:40`
+  hard-requires `DEV_TENANT_ID`, `:153` runs `db/seed.ts` when that tenant is absent, and
+  `DEPLOY.md:111` says leave the demo vars as-is. Following our own runbook seeds Demo Group into a
+  customer's production database. This is gate 1.1 and must be fixed before anything else touches a
+  customer box.
+- **The audit hash chain is an ordering constraint, not a task.** No backfill exists, so every event
+  written before it is armed is permanently unprotected. It has to be armed before the first real
+  record or the guarantee is unavailable forever. Gate 1.2.
+- **Auth is fully BUILT and has never been switched on.** WorkOS, login, callback, invite, reset and
+  the auth audit writer all exist; `ALLOW_DEMO_SESSION=true` means the deployed system authenticates
+  nobody. `/login` sits outside the password gate by design and returns every principal's real name
+  and role; `POST /login/as` sets `dev_user` without the password. Harmless with seed data, a staff
+  directory leak the day real employees land.
+- **`middleware.ts:42` fails OPEN.** Unset `SHARE_PASSWORD` silently disables the gate entirely.
+- **Nothing has ever been filed.** `statutory_report.status` is hardcoded `'draft'` at both insert
+  sites and no code updates it, so `final`/`submitted`/`amended` are unreachable. The unlock warning
+  that says `statutoryFiled` actually means "somebody generated a draft".
+- **Two PERKESO ASSIST builders disagree** (`localization/my/socso-eis-file.ts` vs
+  `lib/perkeso-socso-file.ts`) on padding and the SKBBK box, both reachable from the UI, and the
+  golden-tested one is the one WITHOUT SKBBK — mandatory 1 Oct 2026.
+- **A closed run cannot be corrected without deleting payslips.** No `paid`/`reversed`/`void`, no
+  contra; unlock → reset → regenerate is the only path, and both flags are ON in production.
+- **Eight features look built and are inert** (email has no transport anywhere in the repo; all AI
+  surfaces resolve null; geofencing off for all 83 employments; `pii_key` empty with zero callers for
+  seal/unseal; goal-setting imported by no component; module gating fails open past ~35 routes; any
+  employee can publish to the KB; `/feedback` shows our build queue to every authenticated user).
+  Each must be fixed or disclosed, never sold as-is.
+
+**What is genuinely proven** and should not be re-litigated: the statutory engines (golden-tested
+against agency worked examples), tenant isolation (`ai_hr_app` NOBYPASSRLS, 172/173 tables, verified
+live), migration safety (`gate:shadow`, upgrade rehearsal), the six cron jobs (119 runs, zero
+failures), employee import (six real runs), the leave engine.
+
+**NOT done:** nothing was fixed. This is a survey. Also still outstanding from r269 — the production
+entitlement restart SQL (`scratchpad/restart-config.sql`) is UNRUN; 0 templates and 0 rules remain in
+force, so nobody resolves to any leave entitlement. It needs a Bash permission rule or the owner's
+`!` command; the classifier blocks production writes and a spoken go-ahead does not lift it.
+
+**UNKNOWN and stated as such:** the host Zabbix agent's rule set; which PERKESO layout the portal
+accepts today; seven PCB relief figures against a primary source (the LHDN spec URL 404s); load
+behaviour at customer scale (`lib/pagination.ts:124` fetches-then-slices across 61 call sites, never
+bitten at 83 employments); whether the current dumps restore at all (the one rehearsal failed).
+
 ## r269 (2026-09-12) — four items: the default entitlement table, the grade-change record, the Employee Leave Inquiry row, and the holiday-calendar warning. `main@41613c04`, migrations `0462` + `0463`. DEPLOYED (192 pages, 377 → 379 on the box, both new column sets present, service active, `GET /` 401, dry-run clean).
 
 **Gate:** 829 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, ALL green, zero assertion

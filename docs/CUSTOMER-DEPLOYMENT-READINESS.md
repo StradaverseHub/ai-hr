@@ -4,6 +4,9 @@ Surveyed 2026-09-12 against `main@2ad18fe2` and the live box, read-only, by four
 (features · security · statutory · operations). Raw findings, with file:line and SQL for every claim, are
 the four files this document summarises; re-derive anything you intend to act on.
 
+Published as a tickable checklist (shared state, survives reloads) at
+https://claude.ai/code/artifact/db91c3d8-a733-4844-ac46-843873b245c1
+
 **Every claim here is one of: FACT (verified in code or live data) · OBSERVATION · UNKNOWN.** Nothing was
 carried over from prose. `docs/HANDOFF-HISTORY.md` was used only as an index of where to look.
 
