@@ -51,7 +51,13 @@ export async function HolidayCoverageWarning({
           ? t('warnEmptyBody', { name: coverage.name, gazette: coverage.gazette, year })
           : t('warnMissingBody', {
               name: coverage.name,
-              held: coverage.held,
+              // COVERED, not `held`. `held` counts the days this calendar SUPPLIES, and the tick list can
+              // pick any master holiday including another state's, so `held` can exceed `gazette` and the
+              // sentence would read "holds 13 of the 12" while naming a missing day. Found by the verify
+              // pass on a built case (not reachable from today's production data, but arithmetic nonsense
+              // is not something to leave on a screen). Covered is gazetted-minus-missing by construction,
+              // so it can never exceed the total.
+              held: coverage.gazette - coverage.missing.length,
               gazette: coverage.gazette,
               year,
             })}

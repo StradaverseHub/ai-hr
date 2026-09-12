@@ -150,3 +150,17 @@ describe('0e276da0 — every locale actually FORMATS, with the arguments the scr
     });
   }
 });
+
+describe('0e276da0 verify fix — the sentence can never claim more days than are gazetted', () => {
+  it('renders days COVERED, never days supplied', () => {
+    // A calendar may tick another state's holiday, so `held` can exceed `gazette`; the sentence must
+    // report gazetted-minus-missing, which is bounded by the total by construction.
+    const src = read('components/holiday-coverage-warning.tsx');
+    expect(src, 'the warning body must not pass raw coverage.held').not.toMatch(
+      /warnMissingBody[\s\S]{0,200}held:\s*coverage\.held\b/,
+    );
+    expect(src, 'it must pass gazetted minus missing').toMatch(
+      /held:\s*coverage\.gazette\s*-\s*coverage\.missing\.length/,
+    );
+  });
+});
