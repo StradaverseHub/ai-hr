@@ -1263,7 +1263,7 @@
       "holidayCalendarCardTitle": "Holiday Calendar",
       "gradeCardTitle": "Grade",
       "recalcHistoryTitle": "Entitlement recalculation history",
-      "recalcHistoryHelp": "Automatic adjustments made to this employee’s leave entitlement after a profile change (grade, employment type, hire date or confirmation). “Took effect” is the date the change itself took effect, not the date it was recorded.",
+      "recalcHistoryHelp": "Automatic adjustments made to this employee’s leave entitlement after a profile change (grade, employment type, hire date or confirmation). “Took effect” is the date the change itself took effect, not the date it was recorded. Where a change took effect in an earlier leave year, the correction applies to the current one and this column shows the date it was posted.",
       "recalcHistoryEmpty": "No entitlement recalculations yet.",
       "recalcColEffective": "Took effect",
       "recalcColType": "Leave type",

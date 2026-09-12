@@ -1635,13 +1635,6 @@ export async function setEmploymentHolidayCalendar(
   });
 }
 
-/** ADR-0041 2E: set an employment's seniority grade (drives grade-scoped leave entitlements). Pass null
- *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched.
- *  78853b97 (Movement tab): no-ops when the grade is unchanged (returns { changed: false }, no event —
- *  matching this writer's long-documented contract at its call sites); accepts an optional caller tx
- *  (the exact run(outerTx) pattern of core/comp.ts setCompensation) so a Promotion/Demotion can change
- *  assignment + grade atomically in ONE transaction; and takes an optional movement classification tag
- *  merged into the event payload. Existing callers pass neither — behaviour unchanged for real edits. */
 /**
  * 9e2a89e9 — THIS EMPLOYMENT'S JOB GRADE RIGHT NOW, as one indexed read.
  *
@@ -1666,6 +1659,13 @@ export async function employmentGradeId(ctx: SessionContext, employmentId: strin
   });
 }
 
+/** ADR-0041 2E: set an employment's seniority grade (drives grade-scoped leave entitlements). Pass null
+ *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched.
+ *  78853b97 (Movement tab): no-ops when the grade is unchanged (returns { changed: false }, no event —
+ *  matching this writer's long-documented contract at its call sites); accepts an optional caller tx
+ *  (the exact run(outerTx) pattern of core/comp.ts setCompensation) so a Promotion/Demotion can change
+ *  assignment + grade atomically in ONE transaction; and takes an optional movement classification tag
+ *  merged into the event payload. Existing callers pass neither — behaviour unchanged for real edits. */
 export async function setEmploymentGrade(
   ctx: SessionContext,
   p: { employmentId: string; gradeId: string | null; movement?: MovementTag },

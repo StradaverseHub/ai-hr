@@ -1263,7 +1263,7 @@
       "holidayCalendarCardTitle": "假期日历",
       "gradeCardTitle": "职级",
       "recalcHistoryTitle": "假期额度重新计算记录",
-      "recalcHistoryHelp": "在资料变更（职级、雇佣类型、入职日期或转正）后，对该员工假期额度所做的自动调整。“生效于”指的是变更本身生效的日期，而非录入的日期。",
+      "recalcHistoryHelp": "在资料变更（职级、雇佣类型、入职日期或转正）后，对该员工假期额度所做的自动调整。“生效于”指的是变更本身生效的日期，而非录入的日期。若某项变更生效于更早的假期年度，则该项更正适用于当前年度，此列显示的是录入日期。",
       "recalcHistoryEmpty": "暂无额度重新计算记录。",
       "recalcColEffective": "生效于",
       "recalcColType": "假期类型",

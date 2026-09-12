@@ -41,7 +41,9 @@ import * as schema from '../db/schema';
 import { createJobGrade } from '../core/admin';
 import { employmentGradeId, hireEmployee, setEmploymentGrade } from '../core/org';
 import {
+  changeDateWithinCycle,
   listEntitlementRecalcAudit,
+  openLeaveYear,
   reprojectEntitlementForEmployment,
   PROFILE_RECALC_REASON_PREFIX,
 } from '../core/leave';
@@ -259,6 +261,61 @@ describe('§B · the history carries the date the change took effect; the ledger
     const ledger = await recalcLedgerRows(emp.employmentId);
     expect(ledger.length).toBe(1);
     expect(ledger[0].effectiveOn).toBe(ASOF);
+  });
+
+  /**
+   * ⚠️ THE CASE THE FIRST CUT GOT WRONG, and it is the one that would have misled somebody about money.
+   *
+   * A promotion effective 15 Dec 2025 recorded on 11 Sep 2026: the recalc re-projects the CURRENT cycle
+   * (2026) and posts +2.00 into it — 2025 is closed and is never rewritten. Writing the effective date
+   * unclamped put "Took effect 15 Dec 2025" beside figures that are 2026's, which reads as though the
+   * +2 had landed in 2025. It had not.
+   *
+   * Dropped rather than clamped to the window start: 1 January 2026 is a date the change did not take
+   * effect on, and a wrong value asserts something false where an absent one asserts nothing. With null
+   * the screen falls back to the posting date and reads what actually happened.
+   */
+  it('a change dated in a CLOSED leave year quotes no date — the figures belong to the current cycle', async () => {
+    const ctx = adminCtx(b);
+    const { from, to } = await twoGrades();
+    // Hired in 2024 so 2025 is a real, CLOSED leave year for them, and 2026 opened so the current cycle
+    // is materialized — the recalc kernel only ever corrects a cycle something has already granted into.
+    const emp = await hire({ hiredOn: '2024-01-01', gradeId: from.id });
+    await openLeaveYear(ctx, { year: 2026, employmentIds: [emp.employmentId] });
+    const before = await employmentGradeId(ctx, emp.employmentId);
+    await setEmploymentGrade(ctx, { employmentId: emp.employmentId, gradeId: to.id });
+
+    const res = await reprojectEntitlementForEmployment(ctx, {
+      employmentId: emp.employmentId,
+      asOf: ASOF, // 2026-09-11
+      trigger: 'movement_recorded',
+      gradeBefore: { gradeId: before },
+      changeEffectiveOn: '2025-12-15', // LAST leave year
+    });
+    expect(res.affected).toBe(1);
+
+    const audit = await auditRows(emp.employmentId);
+    expect(audit.length).toBe(1);
+    // The grades ARE still recorded — they describe the change, not a cycle.
+    expect(audit[0].previousGradeId).toBe(from.id);
+    expect(audit[0].newGradeId).toBe(to.id);
+    // The DATE is not, because these figures are 2026's.
+    expect(audit[0].changeEffectiveOn).toBeNull();
+    expect(audit[0].effectiveOn).toBe(ASOF);
+    const history = await listEntitlementRecalcAudit(ctx, emp.employmentId);
+    expect(history[0].tookEffectOn).toBe(ASOF);
+  });
+
+  it('the window rule is pure and has one definition, boundaries included', () => {
+    // Inclusive at both ends — the same closed interval the already-posted days are summed over.
+    expect(changeDateWithinCycle('2026-07-01', '2026-01-01', '2026-12-31')).toBe('2026-07-01');
+    expect(changeDateWithinCycle('2026-01-01', '2026-01-01', '2026-12-31')).toBe('2026-01-01');
+    expect(changeDateWithinCycle('2026-12-31', '2026-01-01', '2026-12-31')).toBe('2026-12-31');
+    // Outside on either side ⇒ nothing quoted, never clamped to a boundary.
+    expect(changeDateWithinCycle('2025-12-31', '2026-01-01', '2026-12-31')).toBeNull();
+    expect(changeDateWithinCycle('2027-01-01', '2026-01-01', '2026-12-31')).toBeNull();
+    expect(changeDateWithinCycle(null, '2026-01-01', '2026-12-31')).toBeNull();
+    expect(changeDateWithinCycle(undefined, '2026-01-01', '2026-12-31')).toBeNull();
   });
 
   it('a caller with no effective date to give leaves it null, and the screen falls back to the posting date', async () => {
@@ -492,6 +549,9 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     // The column heading says what it now means, and the help says which of the two dates it is.
     expect(en.people.detail.recalcColEffective).toBe('Took effect');
     expect(en.people.detail.recalcHistoryHelp).toContain('not the date it was recorded');
+    // …and it discloses the one case where the column shows the posting date instead, rather than
+    // leaving a reader to assume a correction landed in a leave year it never touched.
+    expect(en.people.detail.recalcHistoryHelp).toContain('earlier leave year');
   });
 
   it('the plan DECLINES the mid-year split, and nothing here builds one', () => {

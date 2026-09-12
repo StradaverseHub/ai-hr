@@ -66,11 +66,18 @@ export type HealthLeaveType = {
   /** `leave_type.accrual_unconfigured` — the marker stamped when the method was left unset (bc36c768).
    *  Populated since 2026-08-04 on this tenant and, until r209, read by nothing. */
   accrualUnconfigured: boolean;
-  /** 76ffdcf2 — `leave_type.default_entitlement_template_lineage_id`: the entitlement table anyone no
-   *  benefit scheme covers receives. NULL ⇒ nothing falls back, i.e. the pre-76ffdcf2 behaviour, and the
-   *  findings below read exactly as they did. Undefined is treated as null so every existing caller and
-   *  fixture compiles unchanged. */
-  defaultEntitlementTemplateLineageId?: string | null;
+  /**
+   * 76ffdcf2 — `leave_type.default_entitlement_template_lineage_id`: the entitlement table anyone no
+   * benefit scheme covers receives. NULL ⇒ nothing falls back, i.e. the pre-76ffdcf2 behaviour, and every
+   * finding below reads exactly as it did.
+   *
+   * ⚠️ REQUIRED, NOT OPTIONAL, AND THAT IS THE POINT. It shipped optional and the one caller that matters
+   * — `loadEntitlementTablesData`'s explicit field literal — quietly omitted it, so every health
+   * derivation on two screens answered `defaultTableApplies: false` over leave types that had a default
+   * set. An optional field on a projection literal is a defect waiting for a rendered page to find; making
+   * it required moves that to the compiler.
+   */
+  defaultEntitlementTemplateLineageId: string | null;
   archived: boolean;
 };
 

@@ -8015,7 +8015,9 @@ export async function reprojectA2cEntitlement(
       (years) => templates.bandFor(e.employmentId, p.leaveTypeId, years),
     );
     if (!projected) continue;
-    const { expected } = projected;
+    // 9e2a89e9 — the window rides along so the audit row's quoted date can be judged against the cycle
+    // this projection is actually about (a per-type `yearCycleOverride` moves it).
+    const { expected, windowStart, windowEnd } = projected;
 
     const accrued = accruedBy.get(e.employmentId) ?? 0;
     const superseded = supersededBy.get(e.employmentId) ?? 0;
@@ -8065,7 +8067,9 @@ export async function reprojectA2cEntitlement(
       delta: accrualDelta.toFixed(2),
       reason: p.trigger,
       effectiveOn: p.asOf,
-      changeEffectiveOn: p.changeEffectiveOn ?? null,
+      // Same rule as the profile-recalc kernel next door: a date outside the cycle these figures describe
+      // is dropped, never clamped.
+      changeEffectiveOn: changeDateWithinCycle(p.changeEffectiveOn, windowStart, windowEnd),
       previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
       newGradeId: p.gradeBefore ? (p.newGradeId ?? null) : null,
       ledgerId: anchorRowId,
@@ -8093,6 +8097,39 @@ export async function reprojectA2cEntitlement(
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
   return { affected, totalDelta, packBlocked };
+}
+
+/**
+ * 9e2a89e9 — THE DATE A HISTORY ROW IS ALLOWED TO QUOTE, and why it is sometimes none.
+ *
+ * A recalc row carries four facts about ONE leave cycle: the entitlement before, the entitlement after,
+ * the difference, and — new in this item — the date the underlying change took effect. The first three
+ * always describe the cycle the recalc actually re-projected. The fourth comes from the caller and can
+ * describe a DIFFERENT one.
+ *
+ * ⚠️ THE CASE THIS EXISTS FOR, MEASURED: a promotion effective 2025-12-15 recorded on 2026-09-11. The
+ * recalc re-projects the CURRENT cycle — 2026 — and posts prev 14.00 / new 16.00 / delta +2.00 into it.
+ * 2025 is closed and is never rewritten (every `projectExpectedEntitlement` caller's first invariant). So
+ * a row reading "Took effect 15 Dec 2025" beside 2026's figures invites exactly one conclusion, that the
+ * +2 landed in 2025, and it did not.
+ *
+ * SO AN OUT-OF-WINDOW DATE IS DROPPED, NOT CLAMPED. Clamping to `windowStart` would print "1 January
+ * 2026", which is a date the change did not take effect on — a wrong value asserts something false, an
+ * absent one asserts nothing (CLAUDE.md §8). With null the screen falls back to `effective_on` and reads
+ * "Took effect 11 Sep 2026", which is precisely what happened: on that day we corrected the 2026 cycle.
+ * The backdated effective date is NOT lost — it is the movement's own fact and Employment History carries
+ * it; this column only ever spoke about the cycle these figures describe.
+ *
+ * Pure and exported so the rule has one definition and a test can reach it without a database.
+ */
+export function changeDateWithinCycle(
+  changeEffectiveOn: string | null | undefined,
+  windowStart: string,
+  windowEnd: string,
+): string | null {
+  if (!changeEffectiveOn) return null;
+  // ISO dates compare lexicographically, the same comparison the cycle window itself is filtered with.
+  return changeEffectiveOn >= windowStart && changeEffectiveOn <= windowEnd ? changeEffectiveOn : null;
 }
 
 // ── Profile-change recalculation (R45 7527ea5f) ────────────────────────────────────────────────────
@@ -8336,7 +8373,8 @@ export async function reprojectEntitlementForEmployment(
         delta: delta.toFixed(2),
         reason: p.trigger,
         effectiveOn: asOf,
-        changeEffectiveOn: p.changeEffectiveOn ?? null,
+        // Only when it describes the cycle these figures describe — see `changeDateWithinCycle`.
+        changeEffectiveOn: changeDateWithinCycle(p.changeEffectiveOn, windowStart, windowEnd),
         previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
         newGradeId: p.gradeBefore ? (emp.gradeId ?? null) : null,
         ledgerId: row.id,

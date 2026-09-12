@@ -899,6 +899,28 @@ export async function deleteEntitlementTemplate(
     // The lineage's leave type is constant across its versions — `updateEntitlementTemplate` refuses to
     // change it — so any version answers, and `versions[0]` is not a guess about which.
     const leaveTypeId = versions[0].leaveTypeId;
+    /**
+     * 76ffdcf2 — …AND A LEAVE TYPE'S NAMED DEFAULT IS A POINTER TOO, so it belongs beside the rule check
+     * above rather than being discovered afterwards. A default is the table everyone no scheme covers
+     * receives: deleting it out from under them would silently return the whole unmatched population to
+     * resolving nothing, which is the state this item exists to end. And
+     * `default_entitlement_template_lineage_id` carries no FK (a lineage is not a row), so nothing in the
+     * database would have stopped it.
+     *
+     * Refused rather than cleared: clearing somebody's fallback as a side effect of a delete is a bigger
+     * decision than the one they pressed. The message names the way out, exactly as the rule refusal does.
+     */
+    const [defaultOf] = await tx
+      .select({ id: leaveType.id, name: leaveType.name })
+      .from(leaveType)
+      .where(eq(leaveType.defaultEntitlementTemplateLineageId, p.lineageId))
+      .limit(1);
+    if (defaultOf) {
+      throw new Error(
+        `${name} is the default entitlement table for ${defaultOf.name}, so it cannot be deleted. ` +
+          `Choose another default (or clear it) on that leave type first, or stop this table from a date instead.`,
+      );
+    }
     const window = lineageInForceWindow(versions)!;
     const used = await grantsInWindow(tx, leaveTypeId, window);
     if (used.grants > 0) {
@@ -2188,25 +2210,6 @@ export async function setLeaveTypeDefaultTemplate(
       actor: actorOf(ctx),
     });
     return { leaveTypeId: p.leaveTypeId, defaultTemplateLineageId: lineageId };
-  });
-}
-
-/**
- * 76ffdcf2 — the default entitlement table lineage of every ACTIVE leave type, keyed by leave type id.
- *
- * Read as data so the health module stays pure and the screens do not each invent their own query. Leave
- * types with no default are simply absent from the map — never present with a null, which a caller could
- * read as "configured to nothing".
- */
-export async function defaultTemplateLineageByLeaveType(ctx: SessionContext): Promise<Map<string, string>> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ id: leaveType.id, lineageId: leaveType.defaultEntitlementTemplateLineageId })
-      .from(leaveType)
-      .where(eq(leaveType.tenantId, ctx.tenantId));
-    const out = new Map<string, string>();
-    for (const r of rows) if (r.lineageId) out.set(r.id, r.lineageId);
-    return out;
   });
 }
 

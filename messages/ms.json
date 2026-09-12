@@ -1263,7 +1263,7 @@
       "holidayCalendarCardTitle": "Kalendar Cuti",
       "gradeCardTitle": "Gred",
       "recalcHistoryTitle": "Sejarah pengiraan semula kelayakan",
-      "recalcHistoryHelp": "Pelarasan automatik yang dibuat pada kelayakan cuti pekerja ini selepas perubahan profil (gred, jenis pekerjaan, tarikh mula bekerja atau pengesahan). “Berkuat kuasa pada” ialah tarikh perubahan itu sendiri berkuat kuasa, bukan tarikh ia direkodkan.",
+      "recalcHistoryHelp": "Pelarasan automatik yang dibuat pada kelayakan cuti pekerja ini selepas perubahan profil (gred, jenis pekerjaan, tarikh mula bekerja atau pengesahan). “Berkuat kuasa pada” ialah tarikh perubahan itu sendiri berkuat kuasa, bukan tarikh ia direkodkan. Jika sesuatu perubahan berkuat kuasa dalam tahun cuti terdahulu, pembetulan itu terpakai pada tahun semasa dan lajur ini memaparkan tarikh ia dicatatkan.",
       "recalcHistoryEmpty": "Belum ada pengiraan semula kelayakan.",
       "recalcColEffective": "Berkuat kuasa pada",
       "recalcColType": "Jenis cuti",

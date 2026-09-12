@@ -250,6 +250,19 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
       accrualUnconfigured: x.accrualUnconfigured != null,
       eligibility: (x.eligibility ?? null) as LeaveTypeEligibility | null,
       probationEligibility: (x.probationEligibility ?? null) as 'confirmed_only' | 'probation_only' | null,
+      /**
+       * 76ffdcf2 — ⚠️ THIS FIELD WAS PROJECTED BY `listLeaveTypes` AND DROPPED HERE, and that one omission
+       * made four of the item's promises inert behind a green suite: the Default badge never rendered, the
+       * Covers cell called the default table "No benefit scheme names this table" (the exact claim this
+       * item exists to delete), `leaveConfigHealthAll` saw `undefined` so the stale blocking findings kept
+       * firing, and A SAVED DEFAULT READ BACK AS "No default" ON EVERY RELOAD.
+       *
+       * The lesson is the one this projection list has already learned three times over (see the
+       * `MUST be projected` notes in core/read.ts): an explicit field literal silently drops whatever is
+       * added upstream. `HealthLeaveType.defaultEntitlementTemplateLineageId` is therefore REQUIRED, not
+       * optional, so the compiler is what catches the next reshape rather than a rendered page.
+       */
+      defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
     })),
     templates,
     rules,

@@ -1263,7 +1263,7 @@
       "holidayCalendarCardTitle": "Lịch nghỉ lễ",
       "gradeCardTitle": "Cấp bậc",
       "recalcHistoryTitle": "Lịch sử tính lại quyền lợi",
-      "recalcHistoryHelp": "Các điều chỉnh tự động đối với định mức nghỉ phép của nhân viên này sau khi hồ sơ thay đổi (bậc, loại hình làm việc, ngày vào làm hoặc chính thức). “Có hiệu lực từ” là ngày bản thân thay đổi có hiệu lực, không phải ngày nó được ghi nhận.",
+      "recalcHistoryHelp": "Các điều chỉnh tự động đối với định mức nghỉ phép của nhân viên này sau khi hồ sơ thay đổi (bậc, loại hình làm việc, ngày vào làm hoặc chính thức). “Có hiệu lực từ” là ngày bản thân thay đổi có hiệu lực, không phải ngày nó được ghi nhận. Nếu một thay đổi có hiệu lực trong năm nghỉ phép trước đó, phần điều chỉnh áp dụng cho năm hiện tại và cột này hiển thị ngày ghi nhận.",
       "recalcHistoryEmpty": "Chưa có lần tính lại quyền lợi nào.",
       "recalcColEffective": "Có hiệu lực từ",
       "recalcColType": "Loại nghỉ phép",

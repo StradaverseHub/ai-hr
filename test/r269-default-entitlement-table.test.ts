@@ -28,22 +28,29 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// `loadEntitlementTablesData` reads three label namespaces for the criteria picker. A key-echoing
+// translator is the house idiom (test/entitlement-save-stay.test.ts and a dozen others) and is enough:
+// §E asserts the DATA the block hands its consumers, not the words.
+vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
-import vi from '../messages/vi.json';
+import viLocale from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
+import { eq } from 'drizzle-orm';
 import {
   buildTemplateEntitlementResolver,
   createEligibilityRule,
   createEntitlementTemplate,
+  deleteEntitlementTemplate,
   eligibilityNoticeFrom,
   explainEntitlementEligibilityFor,
   retireEntitlementTemplate,
@@ -51,13 +58,14 @@ import {
 } from '../core/entitlement-template';
 import { entitlementCoverageFor } from '../core/leave';
 import { benefitSchemeView } from '../core/entitlement-scheme-view';
-import { leaveTypeConfigHealth } from '../lib/leave-config-health';
+import { leaveConfigHealthAll, leaveTypeConfigHealth } from '../lib/leave-config-health';
+import { loadEntitlementTablesData } from '../app/admin/leave/entitlements/templates/entitlement-tables-block';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '..');
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
-const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
+const CATALOGUES = { en, ms, ta, th, vi: viLocale, zh } as const;
 type Dict = Record<string, unknown>;
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
@@ -312,6 +320,62 @@ describe('§B · what the default must never do', () => {
     ).rejects.toThrow(/different leave type/i);
   });
 
+  /**
+   * ⚠️ THE RESOLVER'S OWN GUARD, NOT THE WRITER'S. The test above proves `setLeaveTypeDefaultTemplate`
+   * refuses a foreign lineage; it says nothing about the resolver, and dropping `tpl.leaveTypeId ===
+   * row.id` from `buildTemplateEntitlementResolver` passed the whole suite. A column with no FK (a
+   * lineage is not a row) can hold a foreign id from an older row, a restore, or a future writer, so the
+   * resolver has to refuse it on its own — and the consequence of not refusing is Annual Leave handing
+   * out Medical Leave's day table.
+   */
+  it('the RESOLVER ignores a default lineage belonging to another leave type, whatever the column holds', async () => {
+    const ctx = adminCtx(b);
+    const typeA = await newLeaveType(b.tenantId, 'Annual Leave');
+    const typeB = await newLeaveType(b.tenantId, 'Medical Leave');
+    await createEntitlementTemplate(ctx, { leaveTypeId: typeA, name: 'A1', serviceBands: BANDS, validFrom: '2020-01-01' });
+    await createEntitlementTemplate(ctx, { leaveTypeId: typeA, name: 'A2', serviceBands: BANDS, validFrom: '2020-01-01' });
+    const foreign = await createEntitlementTemplate(ctx, {
+      leaveTypeId: typeB,
+      name: 'Medical table',
+      serviceBands: DEFAULT_BANDS,
+      validFrom: '2020-01-01',
+    });
+    const emp = await hire('Cross Type Default');
+
+    // Written AROUND the service, as a restore or an older writer could leave it — the service's own
+    // refusal is tested above and is deliberately not the thing under test here.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ defaultEntitlementTemplateLineageId: foreign.lineageId })
+      .where(eq(schema.leaveType.id, typeA));
+
+    const { won, band } = await winner(emp, typeA);
+    expect(won).toBeNull();
+    expect(band).toBeNull();
+    // …and Medical Leave is untouched by the bad pointer on Annual Leave.
+    expect((await winner(emp, typeB)).won?.viaSoleTemplate).toBe(true);
+  });
+
+  it('a table a leave type names as its DEFAULT cannot be deleted out from under the people it reaches', async () => {
+    const ctx = adminCtx(b);
+    const typeId = await newLeaveType(b.tenantId, 'Annual Leave');
+    await createEntitlementTemplate(ctx, { leaveTypeId: typeId, name: 'A', serviceBands: BANDS, validFrom: '2020-01-01' });
+    const fallback = await createEntitlementTemplate(ctx, {
+      leaveTypeId: typeId,
+      name: DEFAULT_TABLE,
+      serviceBands: DEFAULT_BANDS,
+      validFrom: '2020-01-01',
+    });
+    await setLeaveTypeDefaultTemplate(ctx, { leaveTypeId: typeId, templateLineageId: fallback.lineageId });
+
+    await expect(deleteEntitlementTemplate(ctx, { lineageId: fallback.lineageId })).rejects.toThrow(
+      /is the default entitlement table for Annual Leave/,
+    );
+    // Cleared, and the same delete goes through — refused, not blocked for good.
+    await setLeaveTypeDefaultTemplate(ctx, { leaveTypeId: typeId, templateLineageId: null });
+    await expect(deleteEntitlementTemplate(ctx, { lineageId: fallback.lineageId })).resolves.toBeTruthy();
+  });
+
   it('WITH NO DEFAULT NOTHING IS INVENTED — two tables, no scheme, no default ⇒ no opinion', async () => {
     const ctx = adminCtx(b);
     const typeId = await newLeaveType(b.tenantId, 'Annual Leave');
@@ -358,6 +422,7 @@ describe('§B2 · the profile card and the config health read the engine’s own
       accrualMethod: 'full_upfront',
       accrualUnconfigured: false,
       archived: false,
+      defaultEntitlementTemplateLineageId: null,
     };
     const templates = [
       { lineageId: 'l-a', leaveTypeId: 'lt-1', name: 'A', validFrom: '2020-01-01', validTo: null, serviceBands: BANDS },
@@ -419,14 +484,61 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
     'Nobody can receive them.',
   ];
 
-  it('no English string anywhere still claims a scheme is why an employee has no entitlement', () => {
-    const hits: string[] = [];
-    const walk = (o: unknown, p: string) => {
-      if (o && typeof o === 'object') for (const [k, v] of Object.entries(o as Dict)) walk(v, `${p}.${k}`);
-      else if (typeof o === 'string' && RETIRED_CLAIMS.some((c) => o.includes(c))) hits.push(p);
-    };
-    walk(en, 'en');
-    expect(hits).toEqual([]);
+  /**
+   * The three sentences r266 shipped, VERBATIM from `3a14035e`, in each locale it shipped them in. Quoted
+   * rather than derived, because the point is that these exact strings are gone — an assertion computed
+   * from the current catalogue could only ever agree with whatever the catalogue now says.
+   *
+   * ⚠️ THE ENGLISH LIST IS SWEPT OVER EVERY CATALOGUE AS WELL, and that is not redundant: an English
+   * claim surviving in ms.json is the signature of a rewrite that updated `en` and left the other five,
+   * which is exactly the failure `i18n-check`'s parity pass cannot see (the key is present either way).
+   */
+  const RETIRED_BY_LOCALE: Record<string, string[]> = {
+    en: [
+      'No benefit scheme covers this employee yet, so no entitlement table reaches them and no days have been granted.',
+      'No benefit schemes yet. Nobody receives an entitlement table until a scheme covers them.',
+      'Not covered by any benefit scheme',
+    ],
+    ms: [
+      'Tiada skim faedah merangkumi pekerja ini lagi, jadi tiada jadual kelayakan sampai kepadanya dan tiada hari diberikan.',
+      'Belum ada skim faedah. Tiada sesiapa menerima jadual kelayakan sehingga satu skim merangkumi mereka.',
+      'Tidak dirangkumi mana-mana skim faedah',
+    ],
+    ta: [
+      'இந்த ஊழியரை இதுவரை எந்த சலுகைத் திட்டமும் உள்ளடக்கவில்லை, எனவே எந்த உரிமை அட்டவணையும் அவரை அடையவில்லை, நாட்கள் எதுவும் வழங்கப்படவில்லை.',
+      'இன்னும் சலுகைத் திட்டங்கள் இல்லை. ஒரு திட்டம் உள்ளடக்கும் வரை யாரும் உரிமை அட்டவணையைப் பெறமாட்டார்கள்.',
+      'எந்த சலுகைத் திட்டத்தாலும் உள்ளடக்கப்படவில்லை',
+    ],
+    th: [
+      'ยังไม่มีแผนสวัสดิการที่ครอบคลุมพนักงานคนนี้ จึงไม่มีตารางสิทธิ์ใดถึงเขาและยังไม่ได้รับวันลาใด',
+      'ยังไม่มีแผนสวัสดิการ จะไม่มีใครได้รับตารางสิทธิ์จนกว่าจะมีแผนครอบคลุมถึง',
+      'ไม่อยู่ในแผนสวัสดิการใด',
+    ],
+    vi: [
+      'Chưa có chế độ phúc lợi nào áp dụng cho nhân viên này, nên không bảng định mức nào đến được họ và chưa có ngày nào được cấp.',
+      'Chưa có chế độ phúc lợi nào. Không ai nhận được bảng định mức cho tới khi có một chế độ áp dụng cho họ.',
+      'Không thuộc chế độ phúc lợi nào',
+    ],
+    zh: [
+      '尚无福利方案涵盖该员工，因此没有额度表触及他们，也没有发放任何天数。',
+      '尚无福利方案。在有方案涵盖员工之前，没有人会获得额度表。',
+      '未被任何福利方案涵盖',
+    ],
+  };
+
+  it('no string in ANY of the six catalogues still claims a scheme is why an employee has no entitlement', () => {
+    for (const [loc, cat] of Object.entries(CATALOGUES)) {
+      // This locale's own retired sentences, plus the English ones (an English leftover in ms.json is a
+      // rewrite that updated en and forgot the other five — parity cannot see it, the key exists either way).
+      const banned = [...RETIRED_BY_LOCALE[loc], ...RETIRED_CLAIMS];
+      const hits: string[] = [];
+      const walk = (o: unknown, path: string) => {
+        if (o && typeof o === 'object') for (const [k, v] of Object.entries(o as Dict)) walk(v, `${path}.${k}`);
+        else if (typeof o === 'string' && banned.some((c) => o.includes(c))) hits.push(path);
+      };
+      walk(cat, loc);
+      expect(hits, `${loc} still carries a retired causal claim`).toEqual([]);
+    }
   });
 
   it('the profile card, the balance tip and the apply refusal say what a scheme actually does', () => {
@@ -517,5 +629,60 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
     const head = body.slice(0, body.indexOf('saved(formData'));
     expect(head.indexOf('await setLeaveTypeDefaultTemplate(')).toBeGreaterThan(-1);
     expect(head.indexOf('await recomputeAfterSave(')).toBeGreaterThan(head.indexOf('await setLeaveTypeDefaultTemplate('));
+  });
+});
+
+// ── §E · THE CHAIN FROM THE COLUMN TO THE SCREEN ─────────────────────────────────────────────────────
+/**
+ * ⚠️ THIS SECTION EXISTS BECAUSE §C's SCREEN ASSERTIONS WERE NOT ENOUGH, AND SHIPPED A DEFECT.
+ *
+ * §C asserts that the block's SOURCE contains the badge key, the picker and the health call. All of that
+ * was true while `loadEntitlementTablesData` — one layer above — reshaped its leave types into an
+ * explicit field literal that silently omitted `defaultEntitlementTemplateLineageId`. Every consumer
+ * therefore received `undefined`: the badge never rendered, the Covers cell called the default table "No
+ * benefit scheme names this table", `leaveConfigHealthAll` answered `defaultTableApplies: false` on two
+ * screens, and a SAVED DEFAULT READ BACK AS "No default" ON EVERY RELOAD.
+ *
+ * A source assertion cannot see that. So these assert the DATA that actually reaches the health
+ * derivation and the picker, through the real loader, against a real database.
+ */
+describe('§E · the default survives the loader, the health call and the picker’s default value', () => {
+  it('loadEntitlementTablesData carries the default through to its consumers', async () => {
+    const ctx = adminCtx(b);
+    const typeId = await newLeaveType(b.tenantId, 'Annual Leave');
+    await createEntitlementTemplate(ctx, { leaveTypeId: typeId, name: 'A', serviceBands: BANDS, validFrom: '2020-01-01' });
+    const fallback = await createEntitlementTemplate(ctx, {
+      leaveTypeId: typeId,
+      name: DEFAULT_TABLE,
+      serviceBands: DEFAULT_BANDS,
+      validFrom: '2020-01-01',
+    });
+    await setLeaveTypeDefaultTemplate(ctx, { leaveTypeId: typeId, templateLineageId: fallback.lineageId });
+
+    const data = await loadEntitlementTablesData(ctx);
+    const row = data.leaveTypes.find((x) => x.id === typeId);
+    // 1. THE FIELD SURVIVES THE RESHAPE. This is the assertion the shipped defect would have failed.
+    //    It is also what the picker's `defaultValue` reads, so a saved default reads back as saved.
+    expect(row?.defaultEntitlementTemplateLineageId).toBe(fallback.lineageId);
+
+    // 2. …AND THE HEALTH DERIVATION SEES IT, called exactly as both host screens call it.
+    const health = leaveConfigHealthAll({
+      leaveTypes: data.leaveTypes,
+      templates: data.templates,
+      rules: data.rules,
+      grades: data.activeGrades,
+      today: data.today,
+    });
+    const h = health.find((x) => x.leaveTypeId === typeId);
+    expect(h?.defaultTableApplies).toBe(true);
+    expect(h?.defaultTableName).toBe(DEFAULT_TABLE);
+    // The stale blocking finding is gone, which is the visible half of the same fact.
+    expect(h?.findings).not.toContain('no_rule_in_force');
+
+    // 3. A type with NO default still reads null rather than undefined — the field is REQUIRED on
+    //    HealthLeaveType now, so a future reshape that drops it fails the compiler instead of a page.
+    const other = await newLeaveType(b.tenantId, 'Medical Leave');
+    const again = await loadEntitlementTablesData(ctx);
+    expect(again.leaveTypes.find((x) => x.id === other)?.defaultEntitlementTemplateLineageId).toBeNull();
   });
 });
