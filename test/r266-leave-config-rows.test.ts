@@ -51,7 +51,7 @@ import {
   type MappedLeaveConfigScreenId,
 } from '../components/leave-config-map';
 import { leavePack } from '../packs/leave';
-import { SCREENS } from '../lib/permissions';
+import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -82,13 +82,44 @@ const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin
 const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
-const ROWS = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+const CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+/**
+ * 5ca446db (r269) — the five CONFIGURATION rows, which is what this file has always been about.
+ *
+ * The fly-out gained a sixth child (Employee Leave Inquiry → `/leave/employee-balances`) that is not a
+ * Leave Config screen: no page under `app/admin/leave-config/**`, its own `leaveEmployeeBalances`
+ * permission column, its own PageHeader. Every case below that reasons about "the rows and their tabs"
+ * means these five; the sixth has its own case in §A and in test/leave-flyout-nav.test.ts.
+ */
+const ROWS = CHILDREN.filter((c) => c.href.startsWith('/admin/leave-config/'));
 
 describe('§A · the map is the five submenu rows, in the submenu\'s order', () => {
   it('group ↔ row agreement, both directions, first item = the row\'s own href', () => {
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(ROWS.map((r) => r.labelKey));
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(ROWS.map((r) => r.href));
     expect(ROWS).toHaveLength(5);
+  });
+
+  it('5ca446db — the SIXTH child is the Leave Inquiry door, and it is not a Leave Config screen', () => {
+    // UPDATED, NOT LOOSENED: `expect(ROWS).toHaveLength(5)` above still holds exactly, because ROWS is now
+    // the five rows whose destinations live under the module. The extra child is pinned here rather than
+    // excluded quietly — a second mapless row would fail the last assertion in this case.
+    const mapless = CHILDREN.filter((c) => !ROWS.includes(c));
+    expect(mapless.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
+      { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
+    ]);
+    // It is LAST, immediately after Company rules — the position the reporter asked for.
+    expect(CHILDREN.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
+    expect(CHILDREN.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
+    // Its route is registered, unmoved, and on its OWN column — not on leaveConfig.
+    expect(REGISTERED_ROUTES.has('/leave/employee-balances')).toBe(true);
+    expect(SCREENS.find((s) => s.screenKey === 'leaveConfig')!.routes).not.toContain('/leave/employee-balances');
+    const own = SCREENS.find((s) => s.screenKey === 'leaveEmployeeBalances')!;
+    expect(own.routes).toEqual(['/leave/employee-balances']);
+    expect(own.guard).toBe('scopedAdmin');
+    // …and the matrix column keeps its OWN name: the row is the area, the column is the screen.
+    expect(own.labelKey).toBe('admin.users.screen.leaveEmployeeBalances');
+    expect(en.nav.employeeLeaveInquiry).toBe('Employee Leave Inquiry');
   });
 
   it('every leaveConfig route is on exactly one row, and no route moved (bookmarks keep working)', () => {
@@ -244,13 +275,27 @@ describe('§C · every page\'s heading is its submenu row, and its description i
 });
 
 describe('§D · the moves, and what deliberately did not move', () => {
-  it('the Entitlements header carries only the Employee Balances link (F47), and no + Import', () => {
+  it('the Entitlements header carries NO actions at all, and F47 is served by the submenu row instead', () => {
+    // 5ca446db (r269) — UPDATED, NOT DELETED. This case used to read "the header carries ONLY the Employee
+    // Balances link (F47)". F47's property is unchanged — an HR admin looking one person's balances up must
+    // find a way in from Leave Config — and it is now served by a permanent fly-out row present on EVERY
+    // Leave Config screen instead of one underlined link on this one page, which is strictly stronger. The
+    // reporter asked for that row twice. So the assertion moves with the property: the header is empty, and
+    // the row is what carries the way in.
     const src = read('app/admin/leave-config/types/page.tsx');
     const header = src.slice(src.indexOf('<PageHeader'), src.indexOf('<LeaveConfigMap'));
-    expect(header).toContain('href="/leave/employee-balances"');
-    expect((header.match(/<Link /g) ?? []).length).toBe(1);
-    for (const gone of ['entitlementTablesAction', 'configurationRecordAction', 'balanceRecordAction', 'importAction'])
+    expect(header, 'the actions slot is gone, not emptied').not.toMatch(/actions=\{/);
+    expect(header, 'no link survives in the header').not.toContain('<Link ');
+    // The whole PAGE carries no link to the inquiry screen any more — not in the header, not anywhere.
+    expect(src).not.toContain('href="/leave/employee-balances"');
+    for (const gone of ['entitlementTablesAction', 'configurationRecordAction', 'balanceRecordAction', 'importAction', 'employeeBalancesAction'])
       expect(src, gone).not.toContain(gone);
+    // THE WAY IN THAT REPLACED IT — asserted here so this case can never go green on a page that simply
+    // lost its link with nothing put in its place.
+    expect(CHILDREN.map((c) => c.href)).toContain('/leave/employee-balances');
+    // …and the orphaned caption retires with its only reader, in all six catalogues.
+    for (const [loc, cat] of Object.entries(CATALOGUES))
+      expect(getPath(cat, 'admin.leave.employeeBalancesAction'), `${loc}: the caption must be pruned`).toBeUndefined();
   });
 
   it('Run earned accrual is on Generate Entitlement, once, and tab 3 keeps a pointer to it', () => {
@@ -349,6 +394,10 @@ describe('§E · the strings, six locales', () => {
       'admin.entitlementArchive.backToEntitlements',
       'admin.leaveLedgerArchive.backToEntitlements',
       'admin.leaveConfigTypes.pageDescription',
+      // 5ca446db (r269) — the LAST header caption goes the same way, with the link it labelled. Grepped
+      // first (the r137 rule): its one reader was app/admin/leave-config/types/page.tsx, and no computed
+      // `t(\`…\`)` form in any file reading the `admin.leave` namespace can reach it.
+      'admin.leave.employeeBalancesAction',
     ]) {
       for (const [loc, cat] of Object.entries(CATALOGUES)) expect(getPath(cat, gone), `${loc} ${gone}`).toBeUndefined();
     }

@@ -185,17 +185,28 @@ export default async function LeaveConfigTypesPage({
         // (components/leave-config-map.tsx). The map item label ("Leave types") is the TAB below.
         title={header.title}
         description={header.description}
-        actions={
-          // 10b59703 — IA §3.1 F5's three header links (Entitlement tables · Configuration record ·
-          // Balance record) and the + Import button are GONE from the header: the first three are this
-          // page's tab row now, and Import is a tab under Leave Adjustments. What survives is the ONE link
-          // that leaves Leave Config — r242 3a3f5a2d's Employee Balances (F47), the way in the reporter
-          // went looking for, at its unchanged /leave/employee-balances address, which is a Leave
-          // Inquiry screen and not a tab of anything here.
-          <Link href="/leave/employee-balances" className="text-sm underline">
-            {t('employeeBalancesAction')} →
-          </Link>
-        }
+        // 5ca446db (r269) — THE HEADER HAS NO `actions` SLOT AT ALL, and the last thing in it was
+        // DELIBERATELY REMOVED, not lost.
+        //
+        // 10b59703 stripped IA §3.1 F5's three header links (Entitlement tables · Configuration record ·
+        // Balance record) and the + Import button, keeping the ONE link that left Leave Config —
+        // r242 3a3f5a2d's Employee Balances (F47): an underlined Link at the inquiry screen's address,
+        // captioned from its own action key under this page's admin.leave namespace. (Neither the href nor
+        // the key is quoted here, because the guards on this page grep the SOURCE and a quoted specifier in
+        // a comment reads as code — CLAUDE.md §8.) That link is gone now because the reporter asked for the
+        // thing it was standing in for: a permanent "Employee Leave Inquiry" row in the Leave Config
+        // fly-out (packs/leave/index.ts LEAVE_ADMIN_NAV, last child), which opens the same address.
+        //
+        // F47'S PROPERTY IS NOT DROPPED — IT IS STRENGTHENED, and that is the only reason removing the
+        // link is safe. F47 exists because "an HR admin looking one person's balances up came to Leave
+        // Config and found nothing pointing at Leave Inquiry"; a menu row present on every Leave Config
+        // screen serves that strictly better than one underlined link on this one page. The three guards
+        // that pinned the link (test/r266-leave-config-rows, test/leave-config-types-tabs,
+        // test/entitlement-header-actions-removal) were REWRITTEN to assert the row, not deleted, and the
+        // caption key under admin.leave was pruned in all six catalogues with its only reader.
+        //
+        // PageHeader renders nothing when `actions` is absent (components/ui.tsx), so there is no empty
+        // wrapper left behind. The address itself is untouched: no route moved, no bookmark broke.
       />
       {/* 10b59703 — the page's own tab row (Leave types · Entitlement tables · Configuration record),
           rendered by the same component that used to draw the nine-screen pill row on every page. The

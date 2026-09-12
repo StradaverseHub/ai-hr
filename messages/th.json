@@ -247,6 +247,7 @@
     "leaveApproval": "สายอนุมัติ",
     "leaveReplacement": "วันลาทดแทน",
     "leaveCompanyRules": "กฎของบริษัท",
+    "employeeLeaveInquiry": "การสอบถามข้อมูลการลาของพนักงาน",
     "holidays": "วันหยุด",
     "payroll": "เงินเดือน",
     "payrollGuide": "คู่มือเวิร์กโฟลว์",
@@ -6904,7 +6905,6 @@
       "encashmentSave": "บันทึก",
       "encashmentEligibleTypesFixed": "วันลาที่มีสิทธิ์: วันลาพักร้อนเท่านั้น",
       "encashmentRoundingFixed": "การปัดเศษ: น้อยกว่า 0.5 วันจะปัดลงเป็น 0; 0.5 วันขึ้นไปจะปัดขึ้นเป็นวันเต็มถัดไป ตัวเลขนี้จะไม่ต่ำกว่า 0",
-      "employeeBalancesAction": "ยอดวันลาของพนักงาน",
       "runAccrualAction": "เรียกใช้การสะสม",
       "close": "ปิด",
       "import": {

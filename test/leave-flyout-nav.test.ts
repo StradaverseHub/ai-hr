@@ -12,9 +12,14 @@
  *
  *   1. NO BROKEN BOOKMARKS. The node's hrefs must be the retired strip's, character for character.
  *      A renamed route would 404 for anyone who saved a leave-config link.
- *   2. NO DEAD ENTRIES. Every href must resolve to a real route file, and must be registered on the
- *      leaveConfig screen in lib/permissions.ts — a menu row whose route is unregistered is either
- *      invisible or refused by our own access check (the trap 4b0e76ae's tab hit).
+ *   2. NO DEAD ENTRIES. Every href must resolve to a real route file, and must be a registered route on a
+ *      NAMED screen in lib/permissions.ts — a menu row whose route is unregistered is either invisible or
+ *      refused by our own access check (the trap 4b0e76ae's tab hit). Four are on the `leaveConfig`
+ *      column; Approval Workflow is on `leaveApproval` (0d147b78) and 5ca446db's Employee Leave Inquiry row
+ *      is on `leaveEmployeeBalances`, because its destination is a Leave Inquiry screen with its own column
+ *      since 20c699f8. The guard names the owning column per child rather than relaxing the rule to
+ *      "registered somewhere" — and it was that strengthening which revealed the Approval Workflow case,
+ *      which the substring scan it replaced had never checked.
  *   3. THE STRIP IS ACTUALLY GONE. Leaving it behind would give leave two navigations at once, which
  *      is worse than the crowding being fixed.
  *
@@ -26,6 +31,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
 import { LEAVE_CONFIG_MAP, LEAVE_CONFIG_RECORDS_HREF } from '../components/leave-config-map';
+import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -97,23 +103,97 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   // left as an untranslatable orphan.
 ] as const;
 
+/**
+ * 5ca446db (r269) — DESTINATIONS ADDED SINCE THE STRIP WAS RETIRED, in the order they were added.
+ *
+ * The exact-set guard below compares `children` to RETIRED_STRIP **followed by this list**, so the two
+ * promises the strip list carries ("no destination lost", "no re-sorting") keep their exact-set teeth while
+ * a genuinely NEW row can be added by naming it here, in the commit that adds it — the same discipline the
+ * `STOOD HERE` notes above apply to removals, in the other direction.
+ *
+ * · Employee Leave Inquiry — the reporter's second request for it ("add a new function under Leave Config:
+ *   Leave Inquiry", item 1ff969ed, then this item). It is the ONLY child whose destination is not a Leave
+ *   Config screen: it opens the existing Leave Inquiry surface at its unchanged `/leave/employee-balances`
+ *   address, which is why it is absent from LEAVE_CONFIG_MAP and registered on its own permission column
+ *   (both pinned by their own cases below). It replaces the single underlined link that used to sit in the
+ *   Entitlements page header.
+ */
+const ADDED_SINCE: readonly { href: string; labelKey: string }[] = [
+  { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
+] as const;
+
+/** The child this round added, resolved from the node so a rename here cannot silently pass. */
+const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
+
 /** href → the route file that must exist for it to be a live destination. */
 const routeFile = (href: string) => `app${href}/page.tsx`;
 
 describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () => {
-  it('carries every retired tab destination, same hrefs, same order — no broken bookmarks', () => {
-    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(RETIRED_STRIP);
+  it('carries every retired tab destination, same hrefs, same order, then what was added since — no broken bookmarks', () => {
+    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
+      ...RETIRED_STRIP,
+      ...ADDED_SINCE,
+    ]);
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
   });
 
-  it('every destination is a real page AND registered on the leaveConfig screen — no dead entries', () => {
-    const permissions = read('lib/permissions.ts');
+  it('every destination is a real page AND registered on a NAMED permission screen — no dead entries', () => {
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED, and in fact strengthened. This used to be a substring scan of
+    // lib/permissions.ts for the href, which the doc comment described as "registered on the leaveConfig
+    // screen" but never actually checked. It now resolves the REGISTRY and names the owning screen key for
+    // every child, so the one child that is deliberately on a different column has to say so out loud.
+    const OWNING_SCREEN: Record<string, string> = {
+      // Four Leave Config destinations on the one leaveConfig column…
+      '/admin/leave-config/types': 'leaveConfig',
+      '/admin/leave-config/adjustments': 'leaveConfig',
+      '/admin/leave-config/generate': 'leaveConfig',
+      '/admin/leave-config/company-rules': 'leaveConfig',
+      // …and Approval Workflow, which has answered to the SEPARATE `leaveApproval` column since 0d147b78
+      // absorbed the standalone approval-chain route. The substring scan this case replaced could not see
+      // that, so the old doc comment's "registered on the leaveConfig screen" was already untrue for this
+      // row before r269; it is written down here rather than quietly generalised away.
+      '/admin/leave-config/approval-chains': 'leaveApproval',
+      // THE EXCEPTION, named rather than tolerated: the Employee Leave Inquiry row opens a LEAVE INQUIRY
+      // screen, which has carried its own scopedAdmin matrix column since 20c699f8. Revoking
+      // leaveEmployeeBalances in Security & Permissions still refuses the page (the guard is on the page);
+      // it does NOT hide this row, because the Administration group gates adminOnly wholesale and
+      // canSeeChild has no screen-key gate. That exposure predates this row (it exists on the inquiry rail)
+      // and is disclosed in the approved plan rather than papered over with a bespoke flag here.
+      '/leave/employee-balances': 'leaveEmployeeBalances',
+    };
     for (const child of NODE.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
       // A row whose route is unregistered is invisible or refused by our own access check.
-      expect(permissions, `${child.href} is not registered in lib/permissions.ts`).toContain(`'${child.href}'`);
+      expect(REGISTERED_ROUTES.has(child.href), `${child.href} is not a registered route`).toBe(true);
+      const owner = SCREENS.find((s) => s.routes.includes(child.href));
+      expect(owner, `${child.href} is on no screen`).toBeTruthy();
+      expect(owner!.screenKey, `${child.href} changed permission column`).toBe(OWNING_SCREEN[child.href]);
     }
+    // Non-vacuity: the map above must describe exactly the children that exist, so a new row cannot be
+    // added without deciding (and writing down) which permission column answers for it.
+    expect(Object.keys(OWNING_SCREEN).sort()).toEqual(NODE.children.map((c) => c.href).sort());
+  });
+
+  /**
+   * 5ca446db (r269) — the sixth row, and the four things about it that a later round could quietly undo.
+   */
+  it('the Employee Leave Inquiry row opens the existing Employee Balances screen and moves nothing', () => {
+    expect(INQUIRY_ROW, 'the sixth row is gone').toBeTruthy();
+    // THE ROUTE IS UNMOVED. Saved links, the export links already in circulation and the rail's own hrefs
+    // all depend on this address; the row is a new DOOR, not a new address.
+    expect(INQUIRY_ROW.href).toBe('/leave/employee-balances');
+    expect(exists('app/leave/employee-balances/page.tsx')).toBe(true);
+    // It stays lit on the rail's other admin tab, so stepping between them does not darken the menu.
+    expect(INQUIRY_ROW.ownedSubpaths).toEqual(['/leave/employee-records']);
+    // Highlighting is not a gate: adding one here would be a permission invented in the nav layer.
+    expect(INQUIRY_ROW.adminOnly, 'ownedSubpaths must not have become a gate').toBeUndefined();
+    expect(INQUIRY_ROW.managerUp, 'ownedSubpaths must not have become a gate').toBeUndefined();
+    // It is NOT a Leave Config screen: no page under the module directory, and no map group (its own case
+    // below and test/leave-config-map.test.ts pin the map half).
+    expect(exists('app/admin/leave-config/employee-balances/page.tsx')).toBe(false);
+    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(INQUIRY_ROW.href);
+    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).not.toContain('employeeLeaveInquiry');
   });
 
   /**
@@ -137,7 +217,14 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // read-only records that used to be tabs. Leave Adjustments owns it so the row stays lit on it — and
     // on the two `records/*` redirect stubs on the way through, which `isNavRowActive` prefix-matches.
     // Entitlements owns NO records path any more: the Configuration record lights Leave Adjustments now.
+    //
+    // 5ca446db (r269) — the loop runs over LEAVE_CONFIG_MAP, so the sixth row (Employee Leave Inquiry) is
+    // skipped by construction: it has no map group, deliberately, because its destination is not a Leave
+    // Config screen. It is NOT left unpinned — `MAPLESS_ROWS` names it and its owned path here, so the row
+    // is still held to an exact set and a future map group for it would fail the "every row is a group"
+    // half in test/r266-leave-config-rows.test.ts.
     const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
+    const MAPLESS_ROWS: Record<string, string[]> = { employeeLeaveInquiry: ['/leave/employee-records'] };
     for (const group of LEAVE_CONFIG_MAP) {
       const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
       expect(row, `${group.navKey} has no fly-out row`).toBeTruthy();
@@ -147,9 +234,16 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
         ...(SUB_SCREENS[group.navKey] ?? []),
       ]);
     }
+    const mapped = new Set(LEAVE_CONFIG_MAP.map((g) => g.navKey as string));
+    for (const row of NODE.children.filter((c) => !mapped.has(c.labelKey))) {
+      expect(MAPLESS_ROWS[row.labelKey], `${row.labelKey} is on no map group and is unpinned here`).toBeTruthy();
+      expect(row.ownedSubpaths ?? [], `${row.labelKey} ownedSubpaths`).toEqual(MAPLESS_ROWS[row.labelKey]);
+    }
+    expect(Object.keys(MAPLESS_ROWS)).toEqual(NODE.children.filter((c) => !mapped.has(c.labelKey)).map((c) => c.labelKey));
     expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain('/admin/leave-config/records/entitlement');
-    // Non-vacuity: two rows own two tabs each, and the sidebar consults them (components/sidebar.tsx).
-    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(2);
+    // Non-vacuity: two rows own two tabs each and the Leave Inquiry row owns the rail's other admin tab
+    // (2 → 3 at r269), and the sidebar consults them all (components/sidebar.tsx).
+    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(3);
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar).toContain('const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];');
     expect(sidebar).toContain('isParentActive(pathname, children.flatMap(childPaths))');
@@ -229,11 +323,21 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
   });
 
-  it('the Audit row is gone and Company rules is last', () => {
+  it('the Audit row is gone, Company rules closes the config rows, and Employee Leave Inquiry is last', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
-    // a6fe37fc Round 5 — the last row is the screen that ABSORBED Replacement leave. The position the
-    // reporter's team reads is unchanged; only what sits in it moved.
-    expect(NODE.children.at(-1)!.href).toBe('/admin/leave-config/company-rules');
+    // a6fe37fc Round 5 — the row that ABSORBED Replacement leave closes the five CONFIGURE rows. The
+    // position the reporter's team reads is unchanged; only what sits in it moved.
+    //
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. "Company rules is last" was the assertion; it is now "last
+    // of the five configuration rows", because the reporter asked for the inquiry row to sit at the BOTTOM,
+    // after Company rules ("Add a sixth row to the Leave Config menu, at the bottom, after Company rules").
+    // Both halves are pinned so neither the fifth position nor the sixth can drift.
+    const CONFIG_ROWS = NODE.children.filter((c) => c.href.startsWith('/admin/leave-config/'));
+    expect(CONFIG_ROWS.at(-1)!.href).toBe('/admin/leave-config/company-rules');
+    expect(NODE.children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
+    expect(NODE.children.at(-1)!.href).toBe('/leave/employee-balances');
+    // …and it is IMMEDIATELY after Company rules, not merely somewhere below it.
+    expect(NODE.children.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
   });
 

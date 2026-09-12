@@ -247,6 +247,7 @@
     "leaveApproval": "审批链",
     "leaveReplacement": "替假",
     "leaveCompanyRules": "公司规则",
+    "employeeLeaveInquiry": "员工假期查询",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -6904,7 +6905,6 @@
       "encashmentSave": "保存",
       "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
       "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。",
-      "employeeBalancesAction": "员工假期余额",
       "runAccrualAction": "运行累积",
       "close": "关闭",
       "import": {

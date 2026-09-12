@@ -132,9 +132,23 @@ describe('a6fe37fc — the leave configuration map', () => {
     // the list is declared rather than derived — and it is pinned in both directions: every group is a
     // row of LEAVE_ADMIN_NAV (same order), and every row is a group. The first item of a group is the
     // row's href, so the row and the tab it lands on are the same screen.
-    const rows = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. The fly-out has SIX children now and this map still has
+    // five groups, so "every group is a row / every row is a group" becomes "the five groups ARE the five
+    // CONFIGURATION rows, in order", with the sixth named explicitly below. The sixth row (Employee Leave
+    // Inquiry) opens `/leave/employee-balances`, a Leave Inquiry screen with no page under
+    // `app/admin/leave-config/**` and its own `leaveEmployeeBalances` permission column — giving it a group
+    // here would make `leaveConfigPageHeader` claim a page it does not own and break this file's own "every
+    // screen here IS a declared route on its screen key" case.
+    const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    const rows = children.filter((c) => c.href.startsWith('/admin/leave-config/'));
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(rows.map((r) => r.labelKey));
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(rows.map((r) => r.href));
+    // The one child that is deliberately NOT a group, named so the exclusion above cannot grow silently.
+    const mapless = children.filter((c) => !rows.includes(c));
+    expect(mapless.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
+      { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
+    ]);
+    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain('/leave/employee-balances');
     expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual(['entitlements', 'adjustments', 'generate', 'approval', 'companyRules']);
     const byGroup = Object.fromEntries(LEAVE_CONFIG_MAP.map((g) => [g.id, g.items.map((i) => i.id)]));
     // The two rows with tabs, exactly as the approved pictures draw them; the other three own one screen.

@@ -94,6 +94,18 @@ export type LeaveConfigScreenId =
 /**
  * 10b59703 — GROUPED BY THE FIVE ROWS OF THE LEFT SUBMENU, and nothing else.
  *
+ * ⚠️ 5ca446db (r269) — THE FLY-OUT HAS SIX ROWS NOW AND THIS MAP STILL HAS FIVE GROUPS. THAT IS CORRECT.
+ * The sixth row ("Employee Leave Inquiry", packs/leave/index.ts LEAVE_ADMIN_NAV, last child) opens
+ * `/leave/employee-balances` — a LEAVE INQUIRY screen that is not a Leave Config screen: it has no page
+ * under `app/admin/leave-config/**`, it is registered on its own `leaveEmployeeBalances` permission
+ * column rather than on `leaveConfig`, and its heading comes from its own PageHeader
+ * (`leave.inquiry.balancesTitle`), not from `leaveConfigPageHeader`. Adding a group for it here would make
+ * `leaveConfigPageHeader` claim a page it does not own and would break
+ * test/leave-config-map.test.ts's "every screen here IS a declared route on its screen key". The
+ * row↔group agreement below is therefore pinned as "the five map groups are the FIRST five rows", with
+ * the sixth named explicitly — see test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts.
+ * This note is here because the next person WILL assume the row belongs in this list.
+ *
  * Until r266 the groups were configure / run / history and the component rendered ALL nine screens as a
  * pill row on every page — fourteen navigation controls on the Entitlements landing before the content
  * started, five of them duplicating a submenu row beside them, and two screens each named twice on one

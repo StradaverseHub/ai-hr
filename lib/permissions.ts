@@ -136,6 +136,23 @@ export const SCREENS: readonly ScreenEntry[] = [
   // it. Labels live under admin.users.screen.* rather than nav.* because neither screen is a sidebar row —
   // both are reached from the leave-inquiry rail, whose first tab moved from My Absence to Team Leave
   // Tracker in 388e53c2. Their own hrefs are UNCHANGED by that move, so these two rows are untouched.
+  //
+  // ⚠️ 5ca446db (r269) — THAT SENTENCE IS NOW HALF TRUE, and it is updated rather than deleted because the
+  // REASON still holds for the labels. Employee Balances IS a sidebar row now: the Leave Config fly-out's
+  // sixth child ("Employee Leave Inquiry", packs/leave/index.ts LEAVE_ADMIN_NAV) opens
+  // `/leave/employee-balances`, and that row also owns `/leave/employee-records` for highlighting. Employee
+  // Leave Record is still reached only from the rail.
+  //
+  // THE TWO `labelKey`s BELOW DO NOT MOVE TO `nav.*`. The menu ROW is called "Employee Leave Inquiry" (the
+  // area) while these matrix COLUMNS are called "Employee Balances" and "Employee Leave Record" (the
+  // screens) — the reporter's own point 7, and the same two-surfaces-two-names rule as
+  // nav.leaveApprovalWorkflow vs nav.leaveApproval (645e67c4, re-affirmed by r266's gate). Pointing this
+  // column at the row's key would silently rename an administrator's permission column.
+  //
+  // KNOWN, DISCLOSED EXPOSURE (approved plan): the Administration group is gated adminOnly wholesale and
+  // `canSeeChild` (components/sidebar.tsx) has no screen-key gate, so an administrator whose role has
+  // `leaveEmployeeBalances` revoked here still SEES the new row and is refused at the page. That exposure
+  // already existed on the inquiry rail; the guard below is the real one and it is unchanged.
   {
     screenKey: 'leaveEmployeeBalances',
     href: '/leave/employee-balances',

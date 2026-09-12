@@ -44,7 +44,13 @@ describe('e8f2398f → 10b59703: Import has exactly one home, the Leave Adjustme
   it.each(LEAVE_TYPE_PAGES)('%s has no importer entry left — not in the header, not as a section, not as a literal', (rel) => {
     const page = read(rel);
     const header = page.match(/<PageHeader[\s\S]*?\/>/)?.[0] ?? '';
-    expect(header).toMatch(/actions=\{/);
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. `expect(header).toMatch(/actions=\{/)` stood here as the
+    // non-vacuity anchor: it proved the slice really was a header with a slot in it, so "no importer in the
+    // header" could not pass on an empty match. The slot itself is gone now — its last occupant, r242's
+    // Employee Balances link, became the Leave Config fly-out's sixth row — so the anchor moves onto
+    // something the header still has, and the absence of the slot is asserted rather than its presence.
+    expect(header, 'the slice must really be the header element').toContain('title={header.title}');
+    expect(header, 'the header opens nothing at all now').not.toMatch(/actions=\{/);
     expect(header).not.toContain("leaveConfigScreenHref('importLeaveData')");
     expect(header).not.toContain('importAction');
     for (const key of PRUNED_KEYS) expect(page.includes(key)).toBe(false);

@@ -55,10 +55,20 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
   it('the page header is STILL clear — 962077a8 is not undone by re-homing the button', () => {
     // The header was deliberately emptied at the reporter's request. Putting the accrual button back
     // there would have been the easy fix and would have reverted a shipped decision.
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED, and the old slice would now have read the WRONG TEXT. It
+    // ran from `<PageHeader` to the first `/>` after `actions={`; the header has no actions slot any more
+    // (its last link became the Leave Config fly-out's Employee Leave Inquiry row), so `indexOf` returned
+    // -1, the search restarted at 0 and the slice came back EMPTY — a guard that would have gone green on
+    // a header containing anything at all. It is anchored on the element's own closing `/>` instead.
     const page = stripComments(read(PAGE));
-    const header = page.slice(page.indexOf('<PageHeader'), page.indexOf('/>', page.indexOf('actions={')));
+    const start = page.indexOf('<PageHeader');
+    expect(start, 'the page must still render a PageHeader').toBeGreaterThan(-1);
+    const header = page.slice(start, page.indexOf('/>', start) + 2);
     expect(header.length).toBeGreaterThan(30);
+    expect(header, 'the slice must really be the header element').toContain('title={header.title}');
     expect(header).not.toContain('EarnedAccrualDialog');
+    // 962077a8's property, unchanged and now absolute: the header opens NOTHING.
+    expect(header).not.toMatch(/actions=\{/);
   });
 
   // 6e9a126e RELEASE THREE — RETIRED_ADJUSTMENTS_SUB_STEP migrated a stored 'adjustments' onto 'service'.
