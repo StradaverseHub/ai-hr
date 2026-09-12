@@ -55,10 +55,24 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
   it('the page header is STILL clear — 962077a8 is not undone by re-homing the button', () => {
     // The header was deliberately emptied at the reporter's request. Putting the accrual button back
     // there would have been the easy fix and would have reverted a shipped decision.
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. The old slice ran from `<PageHeader` to the first `/>`
+    // AFTER `actions={`; the header has no actions slot any more (its last link became the Leave Config
+    // fly-out's Employee Leave Inquiry row), so `indexOf('actions={')` returned -1, the search restarted
+    // at 0 and the slice came back EMPTY. ⚠️ AN EARLIER VERSION OF THIS COMMENT CLAIMED THAT MADE THE
+    // GUARD VACUOUS. IT DID NOT, and the verify pass measured it: the `header.length > 30` line below is
+    // this case's own non-vacuity anchor, so an empty slice turned the guard RED rather than green. The
+    // re-anchoring is a tightening of a guard that WORKED, not the repair of one that had rotted — and
+    // the difference matters, because "an indexOf(-1) slice goes silently green" is a false lesson to
+    // leave lying in a test file. It is anchored on the element's own closing `/>` instead.
     const page = stripComments(read(PAGE));
-    const header = page.slice(page.indexOf('<PageHeader'), page.indexOf('/>', page.indexOf('actions={')));
+    const start = page.indexOf('<PageHeader');
+    expect(start, 'the page must still render a PageHeader').toBeGreaterThan(-1);
+    const header = page.slice(start, page.indexOf('/>', start) + 2);
     expect(header.length).toBeGreaterThan(30);
+    expect(header, 'the slice must really be the header element').toContain('title={header.title}');
     expect(header).not.toContain('EarnedAccrualDialog');
+    // 962077a8's property, unchanged and now absolute: the header opens NOTHING.
+    expect(header).not.toMatch(/actions=\{/);
   });
 
   // 6e9a126e RELEASE THREE — RETIRED_ADJUSTMENTS_SUB_STEP migrated a stored 'adjustments' onto 'service'.

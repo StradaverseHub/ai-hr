@@ -29,6 +29,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 import { REGISTERED_ROUTES } from '../lib/permissions';
+import { leavePack } from '../packs/leave';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
@@ -542,13 +543,23 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('tablesReachNobody(h)');
   });
 
-  it('F47 the Employee Balances way in (r242) is on the header, at its unchanged address', () => {
+  it('F47 the Employee Balances way in (r242) is a Leave Config SUBMENU ROW now, at its unchanged address', () => {
     // r242 3a3f5a2d exists because an HR admin looking one person's balances up came to Leave Config and
-    // found nothing pointing at Leave Inquiry. Dropping it at the cutover re-creates that exact complaint.
-    expect(pageSrc).toContain('href="/leave/employee-balances"');
-    expect(pageSrc).toContain("t('employeeBalancesAction')");
-    // The old screen keeps its copy until Round 5 deletes it — neither screen is the fix on its own.
-    expect(read('app/admin/leave-config/types/page.tsx')).toContain('href="/leave/employee-balances"');
+    // found nothing pointing at Leave Inquiry. Dropping the way in re-creates that exact complaint.
+    //
+    // 5ca446db (r269) — UPDATED, NOT DELETED, because the DECISION being reversed is only WHERE the way in
+    // lives, not whether there is one. r242 answered F47 with a single underlined link in this page's
+    // header; the reporter came back and asked (for the second time) for a menu row instead. A permanent
+    // row on every Leave Config screen serves F47 strictly better than one link on one page, so the
+    // assertion follows the property onto the row — and the link is asserted GONE, so a half-done change
+    // that removes the link without adding the row fails here.
+    const ROW = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.at(-1)!;
+    expect(ROW.labelKey).toBe('employeeLeaveInquiry');
+    expect(ROW.href, 'the address r242 promised would not move').toBe('/leave/employee-balances');
+    expect(ROW.ownedSubpaths).toEqual(['/leave/employee-records']);
+    expect(pageSrc).not.toContain('href="/leave/employee-balances"');
+    expect(pageSrc).not.toContain("t('employeeBalancesAction')");
+    expect(read('app/admin/leave-config/types/page.tsx')).not.toContain('href="/leave/employee-balances"');
   });
 
   it('F48 the negative-balance-needs-a-limit list (r126) survived, predicate and all', () => {

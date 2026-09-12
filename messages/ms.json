@@ -247,6 +247,7 @@
     "leaveApproval": "Rantaian kelulusan",
     "leaveReplacement": "Cuti Ganti",
     "leaveCompanyRules": "Peraturan syarikat",
+    "employeeLeaveInquiry": "Pertanyaan Cuti Pekerja",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
     "payrollGuide": "Panduan Aliran Kerja",
@@ -6904,7 +6905,6 @@
       "encashmentSave": "Simpan",
       "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
       "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0.",
-      "employeeBalancesAction": "Baki Cuti Pekerja",
       "runAccrualAction": "Jalankan Pengumpulan",
       "close": "Tutup",
       "import": {

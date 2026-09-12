@@ -114,6 +114,7 @@ import {
   GitBranch,
   Repeat2,
   SlidersHorizontal,
+  UserSearch,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGroupDescriptor } from '../registry';
 
@@ -156,13 +157,20 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   // original complaint. The two inquiry screens keep their /leave/* addresses on purpose, so the row
   // they are now reached from has to claim them explicitly.
   { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays, exactHref: true },
-  {
-    group: 'manage',
-    href: '/leave/tracker',
-    labelKey: 'teamLeaveTracker',
-    icon: CalendarRange,
-    ownedSubpaths: ['/leave/employee-balances', '/leave/employee-records'],
-  },
+  // 5ca446db (r269) — `ownedSubpaths: ['/leave/employee-balances', '/leave/employee-records']` STOOD HERE
+  // and is a DELIBERATE TRANSFER, not a lost line. The two inquiry paths now belong to the new
+  // "Employee Leave Inquiry" child of LEAVE_ADMIN_NAV below, because the reporter asked (twice) for a
+  // Leave Config menu row that opens Employee Balances. Both rows claiming the same two paths would light
+  // two rows in two groups at once, and `activeSectionKey` (components/sidebar.tsx) would resolve to
+  // Manage because it is the earlier group — so ownership has to move, it cannot be shared.
+  //
+  // WHAT THIS ROW KEEPS, and it is the load-bearing half: `/leave/tracker` itself, matched on its own href
+  // by the plain prefix rule (no `exactHref` here). The tracker is the Leave Calendar for every plain
+  // employee AND the Employee Details tab of the inquiry rail, so it stays a Manage row with no gate.
+  // DISCLOSED CONSEQUENCE (in the approved plan): stepping across the inquiry rail's three tabs moves the
+  // sidebar highlight between Manage (Employee Details) and Leave config (Balances / Leave Record). That is
+  // the least-bad option — the alternative is two lit rows, or taking the calendar off /leave/tracker.
+  { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
 ];
 
 /**
@@ -283,6 +291,42 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // so saved links land somewhere real. A stub is NOT a guarded page, so it also left lib/permissions.ts's
     // leaveConfig `routes` in the same change — test/function-access.test.ts fails on a registered route
     // with no guarded page on disk, which is why that is one move, not two. Same for the export route.
+    // 5ca446db (r269) — THE SIXTH ROW, and the only child of this node whose destination is NOT a Leave
+    // Config screen. The reporter asked twice ("add a new function under Leave Config: Leave Inquiry", item
+    // 1ff969ed; then this item) for a way to look one person's leave up from the menu they configure leave
+    // in. The three screens already exist and already sit together as the Leave Inquiry rail
+    // (components/leave/leave-inquiry-nav.tsx); what was missing was the door, which was a single underlined
+    // link in the Entitlements page header (removed in this same commit — a link on one page is not
+    // navigation, and r242's F47 property is served strictly better by a permanent row).
+    //
+    // THE ROW IS NAMED FOR THE AREA, THE SCREEN KEEPS ITS OWN NAME (the reporter's point 7). The row says
+    // "Employee Leave Inquiry"; the destination's own PageHeader still says "Employee Balances"
+    // (`leave.inquiry.balancesTitle`), and the permission matrix column still says "Employee Balances"
+    // (lib/permissions.ts `leaveEmployeeBalances`). Same two-surfaces-two-names precedent as
+    // leaveApprovalWorkflow / leaveApproval (645e67c4, re-affirmed by r266's gate).
+    //
+    // ⚠️ IT IS NOT IN components/leave-config-map.tsx AND MUST NOT BE. It has no page under
+    // app/admin/leave-config/**, so a map group here would make `leaveConfigPageHeader` claim a page it does
+    // not own and break test/leave-config-map.test.ts's "every screen here IS a declared route on its screen
+    // key". The map's own header carries the same note at the point somebody would add it.
+    //
+    // ⚠️ ITS ROUTE IS REGISTERED ON A DIFFERENT SCREEN KEY — `leaveEmployeeBalances`, not `leaveConfig`
+    // (lib/permissions.ts). test/leave-flyout-nav.test.ts names that exception explicitly rather than
+    // relaxing the "every child is a registered route" rule. Knock-on, stated in the approved plan and NOT
+    // papered over here, and CORRECTED by the verify pass: there is no per-screen grant to revoke, so the
+    // exposure is not "an admin whose leaveEmployeeBalances is revoked". It is that app/layout.tsx passes a
+    // wider isAdmin than requireAdmin enforces (it ORs in the payroll and perf-comp partners), so a partner
+    // who is not an admin sees every adminOnly row, this one included, and is redirected at each page. It
+    // predates this row and is not for this row to fix with a bespoke flag.
+    //
+    // `ownedSubpaths` carries Employee Leave Record so the row stays lit across the rail's other admin tab
+    // — the paths TRANSFERRED off the Team Leave Tracker row above (see its note). Highlighting only.
+    {
+      href: '/leave/employee-balances',
+      labelKey: 'employeeLeaveInquiry',
+      icon: UserSearch,
+      ownedSubpaths: ['/leave/employee-records'],
+    },
   ],
 };
 

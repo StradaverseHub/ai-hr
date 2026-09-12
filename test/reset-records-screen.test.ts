@@ -264,9 +264,26 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     const rows = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
     expect(rows.find((r) => r.labelKey === 'leaveAdjustments')!.ownedSubpaths).toEqual(['/admin/leave-config/import', ROUTE]);
     expect(rows.find((r) => r.labelKey === 'leaveEntitlements')!.ownedSubpaths).toEqual(['/admin/leave-config/entitlement-tables']);
-    // Not a row: the fly-out has the same five children it had.
+    // Not a row: the sub-screen is reached from a link at the foot of Adjust balances, never from the menu.
+    //
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. `expect(rows).toHaveLength(5)` stood here and meant "7f69bd71
+    // added no fly-out row". The fly-out has SIX children now because a LATER, unrelated item added one
+    // (Employee Leave Inquiry → /leave/employee-balances, the Leave Inquiry door the reporter asked for
+    // twice), so a bare count no longer says what this case means. The property is restated exactly: the
+    // five CONFIGURATION rows — the children whose destinations live under the module — are unchanged, in
+    // order, and none of them is the sub-screen. A row added under app/admin/leave-config still fails here.
     expect(rows.map((r) => r.href)).not.toContain(ROUTE);
-    expect(rows).toHaveLength(5);
+    const configRows = rows.filter((r) => r.href.startsWith('/admin/leave-config/'));
+    expect(configRows.map((r) => r.href)).toEqual([
+      '/admin/leave-config/types',
+      '/admin/leave-config/adjustments',
+      '/admin/leave-config/generate',
+      '/admin/leave-config/approval-chains',
+      '/admin/leave-config/company-rules',
+    ]);
+    // The one child that is deliberately NOT a Leave Config screen, named so the filter above cannot
+    // silently start hiding a second one (its own shape is pinned in test/r269-*).
+    expect(rows.filter((r) => !configRows.includes(r)).map((r) => r.href)).toEqual(['/leave/employee-balances']);
   });
 });
 

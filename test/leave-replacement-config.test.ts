@@ -95,7 +95,16 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // is now directly above: Approval chains. The promise — Company rules sits at the END of the leave
     // config menu, where Replacement Leave was put — is what is asserted, and it is asserted twice.
     expect(at('/admin/leave-config/company-rules')).toBeGreaterThan(at('/admin/leave-config/approval-chains'));
-    expect(at('/admin/leave-config/company-rules')).toBe(hrefs.length - 1);
+    // 5ca446db (r269) — UPDATED, NOT LOOSENED. `toBe(hrefs.length - 1)` stood here and meant "Company rules
+    // is the END of the leave CONFIG menu, where Replacement Leave was put". A sixth child was added after
+    // it by a later, unrelated item — Employee Leave Inquiry, whose destination (/leave/employee-balances)
+    // is not a Leave Config screen at all — so the count-based spelling stopped expressing the promise. The
+    // promise itself is unchanged and is restated exactly: Company rules is the LAST of the rows that open
+    // a Leave Config screen. A new /admin/leave-config/* row placed after it still fails here.
+    const configHrefs = hrefs.filter((h) => h.startsWith('/admin/leave-config/'));
+    expect(configHrefs.at(-1)).toBe('/admin/leave-config/company-rules');
+    // …and nothing but the named inquiry row sits outside that set, so the filter cannot hide a regression.
+    expect(hrefs.filter((h) => !h.startsWith('/admin/leave-config/'))).toEqual(['/leave/employee-balances']);
     // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
     // STOOD HERE. The Audit row is retired into the one central Audit Trail, so there is no longer an
     // entry after Replacement for it to sit before; the position this item actually promised (after

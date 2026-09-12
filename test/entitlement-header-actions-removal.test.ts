@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { leavePack } from '../packs/leave';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -32,17 +33,32 @@ const generatePage = read('/app/admin/leave-config/generate/page.tsx');
  * movements) and the three Entitlements links into this page's own tab row, so the header keeps only the
  * ONE link that leaves Leave Config — r242's Employee Balances (F47). Run Accrual moved to Generate
  * Entitlement, still mounted exactly once, still not in any header.
+ *
+ * 5ca446db (r269) — UPDATED AGAIN, IN THE SAME DIRECTION 962077a8 was always pushing: the header now has
+ * NO actions slot at all. The last survivor, r242's Employee Balances link, became the Leave Config
+ * fly-out's sixth row ("Employee Leave Inquiry", packs/leave/index.ts), which is where the reporter twice
+ * asked for it. F47's property is not dropped — it is carried by a row on every Leave Config screen instead
+ * of a link on this one — so the assertion below pins BOTH halves: the header is empty AND the row exists.
+ * Asserting only the emptiness would go green on a page that simply lost its way in.
  */
 const header = entitlementsPage.slice(
   entitlementsPage.indexOf('<PageHeader'),
   entitlementsPage.indexOf('<LeaveConfigMap'),
 );
 
-describe('962077a8 → 10b59703: the PageHeader keeps only the Employee Balances link', () => {
-  it('the actions slot renders the Employee Balances link and nothing else opens from the header', () => {
-    expect(header).toMatch(/actions=\{/);
-    expect(header).toContain('href="/leave/employee-balances"');
-    expect(header).toMatch(/\{t\('employeeBalancesAction'\)\}/);
+describe('962077a8 → 5ca446db: the PageHeader carries no actions at all, and the way in is a submenu row', () => {
+  it('the actions slot is absent and the page carries no link to /leave/employee-balances', () => {
+    expect(header, 'the actions slot is gone, not emptied').not.toMatch(/actions=\{/);
+    expect(header).not.toContain('href="/leave/employee-balances"');
+    expect(header).not.toMatch(/\{t\('employeeBalancesAction'\)\}/);
+    // The whole page, not just the header cluster: one link moved to the bottom would be the same defect.
+    expect(entitlementsPage).not.toContain('href="/leave/employee-balances"');
+    expect(entitlementsPage).not.toContain('employeeBalancesAction');
+    // THE REPLACEMENT, so this case cannot pass on a page that lost the way in with nothing put in its
+    // place. The row's own shape is pinned in test/leave-flyout-nav.test.ts and test/r269-*.
+    const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    expect(children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
+    expect(children.at(-1)!.href).toBe('/leave/employee-balances');
     // The importer button and the three tab links are gone from the header cluster…
     expect(header).not.toContain("leaveConfigScreenHref('importLeaveData')");
     expect(header).not.toContain("leaveConfigScreenHref('entitlementTables')");

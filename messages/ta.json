@@ -247,6 +247,7 @@
     "leaveApproval": "ஒப்புதல் சங்கிலி",
     "leaveReplacement": "மாற்று விடுப்பு",
     "leaveCompanyRules": "நிறுவன விதிகள்",
+    "employeeLeaveInquiry": "ஊழியர் விடுப்பு விசாரணை",
     "holidays": "விடுமுறை நாட்கள்",
     "payroll": "ஊதியம்",
     "payrollGuide": "பணிப்பாய்வு வழிகாட்டி",
@@ -6904,7 +6905,6 @@
       "encashmentSave": "சேமி",
       "encashmentEligibleTypesFixed": "தகுதியான விடுப்பு: ஆண்டு விடுப்பு மட்டும்.",
       "encashmentRoundingFixed": "வட்டமிடல்: 0.5 நாளுக்கும் குறைவானது 0 ஆக வட்டமிடப்படும்; 0.5 நாள் அல்லது அதற்கு மேல் அடுத்த முழு நாளாக வட்டமிடப்படும். இந்த எண் 0க்குக் கீழே செல்லாது.",
-      "employeeBalancesAction": "ஊழியர் விடுப்பு இருப்பு",
       "runAccrualAction": "சேர்ப்பை இயக்கு",
       "close": "மூடு",
       "import": {
