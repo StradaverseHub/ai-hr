@@ -67,6 +67,7 @@ import {
   deleteEntitlementTemplateAction,
   retireEligibilityRuleAction,
   retireEntitlementTemplateAction,
+  setLeaveTypeDefaultTemplateAction,
   updateEligibilityRuleAction,
   updateEntitlementTemplateAction,
 } from './actions';
@@ -371,6 +372,16 @@ export async function EntitlementTablesBlock({
     (scopedHealth ? [scopedHealth] : allHealth).filter((h) => h.soleTableApplies).map((h) => h.leaveTypeId),
   );
   /**
+   * 76ffdcf2 — leave type id → the entitlement table lineage it falls back to. Read off the leave types
+   * this page already loaded (`listLeaveTypes` projects the column), never a second query: the block is
+   * mounted once per leave type on the Entitlements screen, and a read here would be one per panel.
+   */
+  const defaultLineageByType = new Map(
+    leaveTypes
+      .filter((x) => x.defaultEntitlementTemplateLineageId)
+      .map((x) => [x.id, x.defaultEntitlementTemplateLineageId!] as const),
+  );
+  /**
    * r212 (8ebf77ae) — …AND THE SAME SET AS NAMES, so Step 2 can say "no rule is needed here, and none is
    * missing" instead of leaving "No eligibility rules yet" to be read as a gap.
    *
@@ -533,7 +544,18 @@ export async function EntitlementTablesBlock({
               )}
               {templates.map((x) => (
                 <tr key={x.id} className="border-t align-top">
-                  <td className="px-3 py-2 font-medium">{x.name}</td>
+                  <td className="px-3 py-2 font-medium">
+                    {x.name}
+                    {/* 76ffdcf2 — the row says it is the fallback, on BOTH mounts. On the unfiltered
+                        screen this is the only place the default is visible at all. Judged on the
+                        lineage AND on the row still running: a stopped version is not the default in
+                        force, which is exactly what the engine decides. */}
+                    {x.validTo == null && defaultLineageByType.get(x.leaveTypeId) === x.lineageId ? (
+                      <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                        {t('defaultTableBadge')}
+                      </span>
+                    ) : null}
+                  </td>
                   {scoped ? null : <td className="px-3 py-2">{typeNameById.get(x.leaveTypeId) ?? dash}</td>}
                   <td className="px-3 py-2 text-xs">
                     {x.serviceBands.map((b, i) => (
@@ -737,11 +759,22 @@ export async function EntitlementTablesBlock({
 
                   Scoped mount only — the unfiltered screen cannot know which leave type the picker below is
                   about to name. */}
+              {/* 76ffdcf2 — A THIRD ANSWER, and it is the one that makes the other two honest. Both
+                  sentences above end "…reaches nobody until a benefit scheme names it", which stopped
+                  being the whole truth the moment a leave type could name a DEFAULT table: with one in
+                  force, everybody no scheme covers still resolves, and the new table is simply one more
+                  table nobody is pointed at yet. Said in its own words rather than by amending a warning
+                  whose premise no longer holds. */}
               {!editingTemplate && scoped && scopedHealth && newTableReachesNobody(scopedHealth) ? (
                 <p className="text-xs font-medium text-amber-700 dark:text-amber-500">
-                  {scopedHealth.soleTableApplies
-                    ? t('createEndsSoleTableWarning', { type: scopedTypeName })
-                    : t('createNoRuleWarning', { type: scopedTypeName })}
+                  {scopedHealth.defaultTableApplies
+                    ? t('createWithDefaultTableNote', {
+                        type: scopedTypeName,
+                        table: scopedHealth.defaultTableName ?? '',
+                      })
+                    : scopedHealth.soleTableApplies
+                      ? t('createEndsSoleTableWarning', { type: scopedTypeName })
+                      : t('createNoRuleWarning', { type: scopedTypeName })}
                 </p>
               ) : null}
               <div className="flex flex-wrap items-center gap-3">
@@ -761,6 +794,53 @@ export async function EntitlementTablesBlock({
               item opens with. The row carries the same date field and the same ConfirmSubmit subtitle. */}
         </div>
       </Card>
+
+      {/* ── 76ffdcf2 · THE DEFAULT ENTITLEMENT TABLE: WHO A SCHEME NEVER REACHES ────────────────────
+          The reporter read the old screens as saying a benefit scheme decides WHETHER somebody is
+          entitled. It never did — but with two or more tables and no matching scheme the engine refused
+          to guess, so an unmatched employee genuinely resolved to nothing. This control is the answer,
+          and its shape is the safety argument: the fallback is a table a NAMED HUMAN chooses here, so
+          "never hand out a table nobody chose" (r193 fault 3) survives intact and no days are invented.
+          SCOPED MOUNT ONLY — the default belongs to ONE leave type, and a picker per type on the
+          unfiltered screen would be a column of twenty-four saves. The unfiltered list still SHOWS which
+          table is a default, on the row it belongs to. */}
+      {scoped && scopedType ? (
+        <Card>
+          <SectionHeader title={t('defaultTableTitle')} />
+          <div className="space-y-3 p-4">
+            <p className="text-xs text-muted-foreground">{t('defaultTableIntro')}</p>
+            <form action={setLeaveTypeDefaultTemplateAction} className="flex flex-wrap items-end gap-3">
+              {returnField}
+              <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+              <Field label={t('defaultTableTitle')}>
+                <select
+                  className={inputCls}
+                  name="defaultTemplateLineageId"
+                  defaultValue={scopedType.defaultEntitlementTemplateLineageId ?? ''}
+                  data-testid="default-entitlement-table-select"
+                >
+                  {/* An EMPTY value is a real instruction — "no default" — and it is today's behaviour
+                      for every leave type until somebody chooses otherwise. */}
+                  <option value="">{t('defaultTableNone')}</option>
+                  {templateOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <button type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+                {t('defaultTableSave')}
+              </button>
+            </form>
+            {/* Only the IN-FORCE tables are offered: a default pointing at a stopped table applies to
+                nobody, which would be a setting that reads as configured and does nothing. */}
+            {templateOptions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('defaultTableNoTables')}</p>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
 
       {/* ── STEP 2: WHO GETS WHICH TABLE ────────────────────────────────────────────────────────── */}
       <Card>

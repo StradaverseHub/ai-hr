@@ -1911,9 +1911,9 @@
       "applyOnBehalfNotAllowed": "You do not have permission to apply for leave on behalf of another employee.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
-      "insufficientBalanceNoScheme": "No benefit scheme covers you for {typeName}, so no days have been granted. Ask HR to check the benefit schemes for this leave type.",
+      "insufficientBalanceNoScheme": "No entitlement table reaches you for {typeName}, so no days have been granted. Ask HR to name you in a benefit scheme for this leave type, or to set a default entitlement table for it.",
       "insufficientBalanceNoTable": "{typeName} has no entitlement table yet, so no days have been granted. Ask HR to set one up before you apply.",
-      "insufficientBalanceNoSchemeOther": "No benefit scheme covers this employee for {typeName}, so no days have been granted. Check the benefit schemes for this leave type on the Leave types screen.",
+      "insufficientBalanceNoSchemeOther": "No entitlement table reaches this employee for {typeName}, so no days have been granted. Name them in a benefit scheme for this leave type, or set a default entitlement table for it, on the Leave types screen.",
       "insufficientBalanceNoTableOther": "{typeName} has no entitlement table yet, so no days have been granted to this employee. Set one up on the Leave types screen first.",
       "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",
       "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications.",
@@ -2003,12 +2003,12 @@
       "statusEntitlementTable": "Entitlement table: {name}",
       "statusNoEntitlementTableTitle": "No entitlement table for this leave type",
       "statusNoEntitlementTableBody": "No entitlement table has been set up for this leave type, so there is no number of days for anybody to be granted and the figures below are 0.00. An administrator creates one on the Leave types screen.",
-      "statusNoEligibilityMatchTitle": "No benefit scheme covers you",
-      "statusNoEligibilityMatchBody": "No benefit scheme covers you for {typeName}, so no days have been granted and the figures below are 0.00. Ask HR to check the benefit schemes for this leave type.",
+      "statusNoEligibilityMatchTitle": "No entitlement table reaches you",
+      "statusNoEligibilityMatchBody": "No entitlement table reaches you for {typeName}, so no days have been granted and the figures below are 0.00. Ask HR to name you in a benefit scheme for this leave type, or to set a default entitlement table for it.",
       "statusCappedByMaxBalanceTitle": "Capped at 0 by Maximum Balance",
       "statusCappedByMaxBalanceBody": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away as soon as it is granted. An administrator sets a Maximum Balance that is at least the number of days granted.",
       "eligibilityRulesTitle": "The benefit schemes for this leave type",
-      "eligibilityNoRules": "This leave type has no benefit schemes at all, so nothing can point you at one of its entitlement tables.",
+      "eligibilityNoRules": "This leave type has no benefit schemes. A scheme is only needed to choose between several entitlement tables: with one table, or with a default table named, the leave type reaches everybody without one.",
       "eligibilityNotActive": "You were not employed on {date}, so no scheme can cover you on that date.",
       "eligibilityStateMatched": "Reaches you",
       "eligibilityStateInForce": "In force",
@@ -2578,10 +2578,10 @@
       "statusZeroEntitlementTip": "An entitlement table applies to this leave type, but it grants 0 days for this length of service. Generating entitlement will not change the figure until the table's service bands are changed.",
       "statusEarningMethodMissingTip": "An entitlement table applies, but this leave type has no earning method chosen, so it grants 0.00 days until one is set.",
       "statusNoEntitlementTable": "No entitlement table",
-      "statusNoEligibilityMatch": "Not covered by any benefit scheme",
+      "statusNoEligibilityMatch": "No entitlement table applies",
       "statusCappedByMaxBalance": "Capped at 0 by Maximum Balance",
       "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on the Leave types screen.",
-      "statusNoEligibilityMatchTip": "No benefit scheme covers this employee for this leave type, so no entitlement table reaches them and no days have been granted. Check the benefit schemes for this leave type.",
+      "statusNoEligibilityMatchTip": "No benefit scheme names this employee for this leave type, and the leave type has no default entitlement table, so no table decides their days. A scheme chooses between a leave type’s tables — it is not what decides whether somebody is entitled.",
       "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
       "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
     },
@@ -8467,7 +8467,7 @@
       "pageTitle": "Entitlement tables",
       "pageDescription": "Write a service-based entitlement table once, then say who gets it.",
       "intro": "An entitlement table lists your own service ranges and the days each one earns. Write it once, name it, and let as many benefit schemes name it as you like, instead of retyping the same table inside every scheme.",
-      "coexistNote": "Where a benefit scheme below covers an employee, the table it names decides their days. A leave type with a single table and no scheme applies that table to everyone.",
+      "coexistNote": "Where a benefit scheme below covers an employee, the table it names decides their days. A leave type with a single table and no scheme applies that table to everyone. Anyone no scheme covers receives the leave type’s default entitlement table, where one is named.",
       "datedNote": "Both tables and schemes carry a start date, and that date decides what Save does. Leave the date alone and the version you are editing is updated in place, including one that is already in force. Give it a later date and the running version is closed on that date and a new one starts, so a report for a closed year still reads the figures that were in force back then. A version that has not started yet is always corrected in place.",
       "templatesTitle": "Entitlement tables",
       "templatesTitleForType": "Entitlement tables for {type}",
@@ -8498,8 +8498,8 @@
       "refuseNote": "This version has been in force since {from}, so its start date cannot be moved earlier. Keep {from} to update this version in place, or choose a later date to close it and start a new one.",
       "inPlaceInForceNote": "The date has not changed, so saving updates the version you are looking at — nothing is closed and no new version is created. Give it a LATER date instead and this version is closed on that date and a new one starts.",
       "inPlaceStartedWarning": "This version has been in force since {from}. Updating it in place also changes what closed leave years report, because entitlement is worked out at a past date by the Carry Forward report, the year-end expiry sweep and every balance breakdown. Give it a later date instead to leave those figures alone.",
-      "createNoRuleWarning": "{type} has no benefit scheme in force, so a table saved here reaches no employee until a scheme below names it.",
-      "createEndsSoleTableWarning": "{type} has a single entitlement table and no benefit scheme, so that table currently applies to everyone. Saving a second table ends that: from then on NEITHER table reaches anybody until a benefit scheme names them.",
+      "createNoRuleWarning": "{type} has no benefit scheme in force and no default entitlement table, so a table saved here reaches no employee until a scheme below names it, or until you make it the default.",
+      "createEndsSoleTableWarning": "{type} has a single entitlement table and no benefit scheme, so that table currently applies to everyone. Saving a second table ends that: from then on NEITHER table reaches anybody until a benefit scheme names them, or one of them is set as the default entitlement table for {type}.",
       "stopFrom": "Stop from",
       "stopTemplate": "Stop this table",
       "stopTemplateConfirm": "From that date this table hands out nothing, and the {rules} benefit schemes naming it stop covering anybody. Nothing is deleted and no leave record changes.",
@@ -8514,7 +8514,7 @@
       "bandCeiling": "Leave the last To year(s) blank for no limit. Up to {max} ranges.",
       "rulesTitle": "Benefit schemes",
       "rulesIntro": "A benefit scheme says who receives which entitlement table, from when. It is what the employee's profile shows as their Benefit Scheme.",
-      "rulesNone": "No benefit schemes yet. Nobody receives an entitlement table until a scheme covers them.",
+      "rulesNone": "No benefit schemes yet. A scheme is only needed to choose between several entitlement tables — a leave type with one table, or with a default table named, reaches everybody without one.",
       "rulesNeedTemplate": "Create an entitlement table first, because a scheme has to name one.",
       "newRuleTitle": "New benefit scheme",
       "editRuleTitle": "Edit benefit scheme",
@@ -8568,9 +8568,9 @@
       "healthNothingMissing": "Nothing missing.",
       "healthNoEarningMethod": "No earning method chosen, so nothing is granted however complete the tables are.",
       "healthNoEntitlementTable": "No entitlement table has been set up, so there is no number of days to grant.",
-      "healthNoRuleInForce": "{tables} entitlement tables and no benefit scheme in force, so no employee resolves to any of them.",
-      "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. None of them reaches anybody, because no benefit scheme in force names them - so the entitlement run grants nothing from this configuration. Days already on an employee's record came from an earlier configuration or were entered by hand.",
-      "healthTableWithoutRule": "No benefit scheme names: {tables}. Nobody can receive them.",
+      "healthNoRuleInForce": "{tables} entitlement tables, no benefit scheme in force and no default table named, so no employee resolves to any of them.",
+      "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. None of them reaches anybody, because no benefit scheme in force names them and no default table is set - so the entitlement run grants nothing from this configuration. Days already on an employee’s record came from an earlier configuration or were entered by hand.",
+      "healthTableWithoutRule": "No benefit scheme names: {tables}. Nobody receives them until a scheme names one, or one of them becomes this leave type’s default table.",
       "healthRuleExpired": "Benefit scheme expired, so it covers nobody: {rules}",
       "healthRuleExpiring": "Benefit scheme ends soon: {rules}",
       "healthGradesWithoutTable": "Job grades that belong to no entitlement table: {grades}",
@@ -8623,7 +8623,16 @@
       "explainWhyNotTested": "Not compared against this employee on this date.",
       "explainWhyMatched": "Matches",
       "explainRuleLink": "Open scheme",
-      "explainTable": "Table: {name}"
+      "explainTable": "Table: {name}",
+      "defaultTableTitle": "Default entitlement table",
+      "defaultTableIntro": "Used for anyone no benefit scheme covers. A scheme chooses between this leave type’s tables; the default is what an employee no scheme names receives, so nobody is left without an entitlement table. Leave it unset and an employee no scheme covers receives nothing, exactly as before.",
+      "defaultTableNone": "No default — anyone no scheme covers receives nothing",
+      "defaultTableNoTables": "There is no entitlement table in force on this leave type yet, so there is nothing to name as the default.",
+      "defaultTableSave": "Save default table",
+      "defaultTableBadge": "Default",
+      "createWithDefaultTableNote": "{type} has no benefit scheme in force, and {table} is its default entitlement table — so everyone receives {table} today. A table saved here reaches nobody until a scheme names it, or until you make it the default instead.",
+      "healthDefaultTable": "Anyone no benefit scheme covers receives the default table {table}.",
+      "explainWinnerDefault": "Resolves to {table}, the default entitlement table for this leave type. No benefit scheme covers this employee, so the default applies — entitlement is not withheld because a scheme is missing."
     },
     "personnel": {
       "benefitScheme": {
@@ -8638,10 +8647,14 @@
         "changeGrade": "Change grade or status",
         "changeRules": "Change what this scheme grants",
         "serviceYears": "{years} years of service",
-        "empty": "No benefit scheme covers this employee yet, so no entitlement table reaches them and no days have been granted.",
-        "derivedNote": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: to move this employee to another scheme, change their grade or status, or change who the scheme covers.",
-        "derivedNoteEmpty": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a scheme on each leave type says who it covers.",
-        "setUpSchemes": "Set up benefit schemes on the Leave types screen"
+        "empty": "No benefit scheme covers this employee, and no leave type names a default entitlement table they could fall back to — so no table reaches them. A scheme decides which entitlement table an employee receives; it is not what decides whether they are entitled.",
+        "derivedNote": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a benefit scheme decides which entitlement table this employee receives. It does not decide whether they are eligible for a leave type, and it never grants or removes days by itself.",
+        "derivedNoteEmpty": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a scheme on each leave type says who it covers, and each leave type can also name a default entitlement table for everyone a scheme does not.",
+        "setUpSchemes": "Set up benefit schemes on the Leave types screen",
+        "notCovered": "Not covered by a scheme",
+        "notCoveredHint": "Receives the default entitlement table for each leave type, listed below.",
+        "viaDefault": "Default table — {table}",
+        "derivedNoteDefault": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a benefit scheme is optional, and where none names this employee they receive the default entitlement table chosen for each leave type. Entitlement is never withheld because a scheme is missing."
       }
     },
     "leaveConfigMap": {
@@ -8684,7 +8697,7 @@
         "approvers": "The approval settings that belong to the leave type itself. Approval chains are built and assigned on the Approval chain screen."
       },
       "entitlementStep": {
-        "schemeExplainer": "Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. Entitlement is decided by the benefit scheme that covers the employee; each scheme names one entitlement table."
+        "schemeExplainer": "Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. A benefit scheme decides WHICH entitlement table an employee receives where there is more than one; anyone no scheme covers receives the default entitlement table named here."
       }
     },
     "leaveConfigAdjustments": {

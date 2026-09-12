@@ -1644,6 +1644,27 @@ export const leaveType = pgTable('leave_type', {
   //     has no home there and becomes type-level here — collapsed across every band of every policy under
   //     the same one-distinct-value assertion.
   maxBalanceDays: numeric('max_balance_days', { precision: 6, scale: 2 }),
+  /**
+   * 76ffdcf2 (r269, migration 0462) — THE DEFAULT ENTITLEMENT TABLE: which table an employee receives when
+   * NO benefit scheme (entitlement_eligibility_rule) covers them for this leave type.
+   *
+   * A leave type with two or more entitlement tables and no matching rule resolved to NOTHING, because the
+   * resolver refuses to guess which of several tables a person should get (r193 fault 3). The reporter read
+   * the screens as saying a scheme is a PRECONDITION for entitlement; it never was, but the outcome — an
+   * unmatched employee holding no table — looked the same. This column closes it without inventing days:
+   * the fallback is a lineage a NAMED HUMAN chose on this leave type.
+   *
+   * ⚠️ NULL IS TODAY'S BEHAVIOUR, EXACTLY. No default ⇒ nothing resolves ⇒ `noEntitlementOpinion` ⇒ the
+   * caller posts NOTHING (delta exactly 0, never 0 days). The r193 property "never hand out a table nobody
+   * chose" survives precisely BECAUSE the fallback is explicit, and the EA-1955 statutory floor is not a
+   * fallback here (fa3f4ccb: advisory, out of the arithmetic, on the reporter's written instruction twice).
+   *
+   * A LINEAGE, NOT A VERSION, so no FK — `entitlement_template.lineage_id` is not unique on that table
+   * (one row per version). `entitlement_eligibility_rule.template_lineage_id` is modelled identically.
+   * `setLeaveTypeDefaultTemplate` refuses a lineage belonging to another leave type; the resolver ignores
+   * a default with no version in force on the date it is resolving at.
+   */
+  defaultEntitlementTemplateLineageId: uuid('default_entitlement_template_lineage_id'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

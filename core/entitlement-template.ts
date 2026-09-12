@@ -161,6 +161,11 @@ export type ResolvedEntitlement = {
    *  because none exists to consult. A screen must say "the only table for this leave type", not name a
    *  rule that does not exist. False for every rule-decided answer. */
   viaSoleTemplate: boolean;
+  /** 76ffdcf2 — this answer came from the leave type's DEFAULT entitlement table
+   *  (`leave_type.default_entitlement_template_lineage_id`), because no benefit scheme in force matched
+   *  this employee. A screen must say "the default table for this leave type", never name a scheme.
+   *  False for every rule-decided and every sole-table answer; the three are mutually exclusive. */
+  viaDefaultTemplate: boolean;
 };
 
 // ── Templates ────────────────────────────────────────────────────────────────────────────────────────
@@ -1278,6 +1283,10 @@ export type EntitlementEligibilityExplanation = {
   soleTableApplies: boolean;
   /** What actually decided — null when nothing did, which is the state this whole type exists to explain. */
   winner: ResolvedEntitlement | null;
+  /** 76ffdcf2, read off the engine's own answer (`ResolvedEntitlement.viaDefaultTemplate`): no scheme
+   *  reached this employee and the leave type's DEFAULT entitlement table answered instead. Mutually
+   *  exclusive with `soleTableApplies`, and derived the same way — never re-computed here. */
+  defaultTableApplies: boolean;
   /** Every rule lineage of this leave type, current version, in force or not, ordered by name. */
   rules: EligibilityRuleExplanation[];
   /** Any rule above narrows by an undated axis ⇒ the whole explanation carries the caveat. */
@@ -1547,6 +1556,7 @@ export async function explainEntitlementEligibility(
     asOf: p.asOf,
     activeAtDate,
     soleTableApplies: winner?.viaSoleTemplate === true,
+    defaultTableApplies: winner?.viaDefaultTemplate === true,
     winner,
     rules,
     usesUndatedAxis: rules.some((r) => r.usesUndatedAxis),
@@ -1608,7 +1618,9 @@ export function eligibilityNoticeFrom(
   const verdict: EligibilityVerdict = winner
     ? explanation.soleTableApplies
       ? 'sole_table'
-      : 'resolved'
+      : explanation.defaultTableApplies
+        ? 'default_table'
+        : 'resolved'
     : !explanation.activeAtDate
       ? 'not_active'
       : explanation.rules.length === 0
@@ -1618,6 +1630,7 @@ export function eligibilityNoticeFrom(
   return {
     verdict,
     soleTableApplies: explanation.soleTableApplies,
+    defaultTableApplies: explanation.defaultTableApplies,
     activeAtDate: explanation.activeAtDate,
     winningRuleName: winner?.ruleName ?? null,
     winningTableName: winner?.templateName ?? null,
@@ -1765,6 +1778,41 @@ export async function buildTemplateEntitlementResolver(
     if (!ruledTypeIds.has(typeId)) soleTemplateByType.set(typeId, lineagesByType.get(typeId)![0]);
   }
 
+  // ── 76ffdcf2 — THE DEFAULT ENTITLEMENT TABLE: WHAT AN EMPLOYEE NO SCHEME COVERS RECEIVES ───────────
+  //
+  // The reporter's words: "No code path silently produces zero entitlement merely because Benefit Scheme
+  // is missing." Before this, a leave type with two or more tables and no MATCHING rule resolved to
+  // nothing — deliberately, because picking one of several tables nobody chose would be a silent
+  // mis-grant (see the sole-table note above). The gap was real all the same: 34 employees on production
+  // held 2026 Annual Leave days while their profile said no table reached them.
+  //
+  // ⚠️ THIS DOES NOT WIDEN `soleTableApplies`, AND MUST NOT BE MADE TO. r193 fault 3's safety property is
+  // that a table NOBODY CHOSE is never handed to everyone. A default is chosen — by a named human, on the
+  // leave type, through `setLeaveTypeDefaultTemplate`. Where no default is set the answer is still null
+  // and the caller still posts NOTHING (`noEntitlementOpinion`, core/leave-compute.ts): "never invent
+  // days" is untouched, and the EA-1955 floor is NOT resurrected as a fallback (fa3f4ccb).
+  //
+  // ⚠️ AND IT IS THE LAST BRANCH, NEVER THE FIRST. A matching rule always wins, and so does the sole-table
+  // answer; the default only speaks where nothing else did. A default that could beat a rule would let a
+  // leave-type-level setting silently reverse an exclusion HR wrote deliberately.
+  //
+  // The lineage is resolved through the SAME `templates` map every other branch reads, so a default whose
+  // table has been STOPPED (no version in force on `asOf`) simply stops applying — it never resolves
+  // against some other version, which is the staleness the lineage design exists to remove. A default
+  // pointing at another leave type's table is refused at write time and ignored here regardless.
+  const defaultTemplateByType = new Map<string, EntitlementTemplateRow>();
+  {
+    const defaults = await tx
+      .select({ id: leaveType.id, lineageId: leaveType.defaultEntitlementTemplateLineageId })
+      .from(leaveType)
+      .where(inArray(leaveType.id, typeIds));
+    for (const row of defaults) {
+      if (!row.lineageId) continue;
+      const tpl = templates.get(row.lineageId);
+      if (tpl && tpl.leaveTypeId === row.id) defaultTemplateByType.set(row.id, tpl);
+    }
+  }
+
   const ruleRows = (
     await tx
       .select()
@@ -1784,7 +1832,9 @@ export async function buildTemplateEntitlementResolver(
   // r193: `&& soleTemplateByType.size === 0` — a tenant with tables but no rules used to short-circuit to
   // "nothing configured" HERE, which is the whole of fault 3. It still short-circuits when there is also
   // nothing unambiguous to apply, so the back-compat guarantee in this function's header is untouched.
-  if (ruleRows.length === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
+  if (ruleRows.length === 0 && soleTemplateByType.size === 0 && defaultTemplateByType.size === 0) {
+    return emptyWith(hasTemplatesFor);
+  }
 
   // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
   const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
@@ -1800,7 +1850,9 @@ export async function buildTemplateEntitlementResolver(
       else matchedByEmp.set(id, [rule]);
     }
   }
-  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
+  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0 && defaultTemplateByType.size === 0) {
+    return emptyWith(hasTemplatesFor);
+  }
 
   // Ranked once per (employment, leave type) and memoised — the grant loops ask for the same pair at
   // several service lengths (the anniversary re-resolution in projectExpectedEntitlement asks twice for
@@ -1831,6 +1883,7 @@ export async function buildTemplateEntitlementResolver(
           .slice(1)
           .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
         viaSoleTemplate: false,
+        viaDefaultTemplate: false,
       };
     }
     // r193 FAULT 3: no rule decided this pair. If the leave type has exactly one table in force and no
@@ -1848,6 +1901,26 @@ export async function buildTemplateEntitlementResolver(
           specificity: 0,
           alsoMatched: [],
           viaSoleTemplate: true,
+          viaDefaultTemplate: false,
+        };
+      }
+    }
+    // 76ffdcf2 — LAST: no scheme matched and no unambiguous sole table, so the leave type's DEFAULT table
+    // answers, if HR named one. `specificity: 0` because a default narrows by nothing — it is the answer
+    // for everybody the earlier branches left without one.
+    if (out === null) {
+      const fallback = defaultTemplateByType.get(leaveTypeId);
+      if (fallback) {
+        out = {
+          ruleName: null,
+          ruleLineageId: null,
+          templateName: fallback.name,
+          templateLineageId: fallback.lineageId,
+          serviceBands: fallback.serviceBands,
+          specificity: 0,
+          alsoMatched: [],
+          viaSoleTemplate: false,
+          viaDefaultTemplate: true,
         };
       }
     }
@@ -2055,6 +2128,85 @@ export async function countEligibilityRulesForLeaveType(tx: Tx, leaveTypeId: str
     )
     .where(eq(entitlementTemplate.leaveTypeId, leaveTypeId));
   return Number(row?.n ?? 0);
+}
+
+/**
+ * 76ffdcf2 — NAME (or clear) THE DEFAULT ENTITLEMENT TABLE for a leave type.
+ *
+ * This is the ONE write behind the reporter's request that nobody fall through. An employee whom no
+ * benefit scheme covers receives the table named here instead of receiving nothing; where nothing is
+ * named, resolution is exactly what it was before this item existed.
+ *
+ * ⚠️ THE LINEAGE MUST BE THIS LEAVE TYPE'S OWN, and that is checked here rather than by a constraint: a
+ * lineage is not a row (see the schema note on `default_entitlement_template_lineage_id`), so there is no
+ * FK to lean on, and a default pointing at another type's table would resolve to nothing and read on
+ * screen as "not eligible" rather than as the configuration error it is. The picker is restricted to the
+ * type's own in-force tables for the same reason; this is the backstop a hand-crafted post meets.
+ *
+ * ⚠️ IT DOES NOT REPROJECT. Saving a default MOVES BALANCES for everyone the schemes do not reach, and the
+ * recalc must run in its OWN transaction against the COMMITTED configuration — the same ordering
+ * `setLeaveTypeRules` obeys, and for the same reason: called inside this write, every employee would
+ * reproject against the configuration this save just replaced. The caller runs
+ * `reprojectEntitlementForLeaveTypeCohort` after this returns, and a test asserts that ordering.
+ *
+ * Returns the lineage that is now stored (null when cleared), so a caller need not re-read to report it.
+ */
+export async function setLeaveTypeDefaultTemplate(
+  ctx: SessionContext,
+  p: { leaveTypeId: string; templateLineageId: string | null },
+): Promise<{ leaveTypeId: string; defaultTemplateLineageId: string | null }> {
+  const lineageId = (p.templateLineageId ?? '').trim() || null;
+  return withTenant(ctx, async (tx) => {
+    const [type] = await tx
+      .select({ id: leaveType.id, current: leaveType.defaultEntitlementTemplateLineageId })
+      .from(leaveType)
+      .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, p.leaveTypeId)))
+      .limit(1);
+    if (!type) throw new Error('That leave type does not exist.');
+    if (lineageId) {
+      await assertTemplateLineageExists(tx, lineageId);
+      const [owned] = await tx
+        .select({ id: entitlementTemplate.id })
+        .from(entitlementTemplate)
+        .where(
+          and(eq(entitlementTemplate.lineageId, lineageId), eq(entitlementTemplate.leaveTypeId, p.leaveTypeId)),
+        )
+        .limit(1);
+      if (!owned) throw new Error('That entitlement table belongs to a different leave type.');
+    }
+    await tx
+      .update(leaveType)
+      .set({ defaultEntitlementTemplateLineageId: lineageId })
+      .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, p.leaveTypeId)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave_type',
+      aggregateId: p.leaveTypeId,
+      eventType: 'leave-type.default-entitlement-table.set',
+      payload: { leaveTypeId: p.leaveTypeId, before: type.current ?? null, after: lineageId },
+      actor: actorOf(ctx),
+    });
+    return { leaveTypeId: p.leaveTypeId, defaultTemplateLineageId: lineageId };
+  });
+}
+
+/**
+ * 76ffdcf2 — the default entitlement table lineage of every ACTIVE leave type, keyed by leave type id.
+ *
+ * Read as data so the health module stays pure and the screens do not each invent their own query. Leave
+ * types with no default are simply absent from the map — never present with a null, which a caller could
+ * read as "configured to nothing".
+ */
+export async function defaultTemplateLineageByLeaveType(ctx: SessionContext): Promise<Map<string, string>> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: leaveType.id, lineageId: leaveType.defaultEntitlementTemplateLineageId })
+      .from(leaveType)
+      .where(eq(leaveType.tenantId, ctx.tenantId));
+    const out = new Map<string, string>();
+    for (const r of rows) if (r.lineageId) out.set(r.id, r.lineageId);
+    return out;
+  });
 }
 
 // ── internals ────────────────────────────────────────────────────────────────────────────────────────

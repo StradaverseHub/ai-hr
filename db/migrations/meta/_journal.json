@@ -2640,6 +2640,13 @@
       "when": 1781862561000,
       "tag": "0461_clocking_location_report_label",
       "breakpoints": true
+    },
+    {
+      "idx": 462,
+      "version": "7",
+      "when": 1781862562000,
+      "tag": "0462_leave_type_default_entitlement_table",
+      "breakpoints": true
     }
   ]
 }

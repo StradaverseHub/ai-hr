@@ -66,6 +66,11 @@ export type HealthLeaveType = {
   /** `leave_type.accrual_unconfigured` — the marker stamped when the method was left unset (bc36c768).
    *  Populated since 2026-08-04 on this tenant and, until r209, read by nothing. */
   accrualUnconfigured: boolean;
+  /** 76ffdcf2 — `leave_type.default_entitlement_template_lineage_id`: the entitlement table anyone no
+   *  benefit scheme covers receives. NULL ⇒ nothing falls back, i.e. the pre-76ffdcf2 behaviour, and the
+   *  findings below read exactly as they did. Undefined is treated as null so every existing caller and
+   *  fixture compiles unchanged. */
+  defaultEntitlementTemplateLineageId?: string | null;
   archived: boolean;
 };
 
@@ -123,6 +128,12 @@ export type LeaveConfigHealth = {
    *  of whichever of its tables that rule points at), so the table applies to everyone with no rule needed.
    *  The second half is the engine's `leaveTypeIdsWithEligibilityRulesAt` join, not `ruleCount`. */
   soleTableApplies: boolean;
+  /** 76ffdcf2 — a DEFAULT entitlement table is named on this leave type AND has a version in force today,
+   *  so every employee no benefit scheme covers resolves to it. The engine's own fallback, mirrored. */
+  defaultTableApplies: boolean;
+  /** The default table's name when `defaultTableApplies`, so a screen can say WHICH table answers. NULL
+   *  when none is named, and also when one is named but has no version in force (it applies to nobody). */
+  defaultTableName: string | null;
   /**
    * r224 — NO ELIGIBILITY RULE IS IN FORCE ON THIS LEAVE TYPE AT ALL, measured on the WIDER set the engine's
    * sole-table gate is measured on (every version of every lineage this type owns, in force or not — see
@@ -234,10 +245,32 @@ export function leaveTypeConfigHealth(p: {
   // to everyone" would silently reverse that.
   const soleTableApplies = liveTemplates.length === 1 && rulesInForce.length === 0;
 
+  /**
+   * 76ffdcf2 — THE DEFAULT ENTITLEMENT TABLE, mirrored from the engine exactly as `soleTableApplies` is.
+   *
+   * `buildTemplateEntitlementResolver` falls back to `leave_type.default_entitlement_template_lineage_id`
+   * when no rule matched and no sole table applied — but ONLY when that lineage has a version IN FORCE on
+   * the date being resolved. A health check that skipped the second half would report a leave type as
+   * covered while the engine resolved nobody, which is the r209 mistake in a new place.
+   *
+   * It is the same shape as the sole-table gate and it is load-bearing for three findings below: a default
+   * in force means nobody falls through, so "no scheme in force" stops being BLOCKING, the default table
+   * itself is no longer "a table nobody can receive", and no job grade is left without a table.
+   */
+  const defaultTemplate =
+    leaveType.defaultEntitlementTemplateLineageId != null
+      ? (liveTemplates.find((t) => t.lineageId === leaveType.defaultEntitlementTemplateLineageId) ?? null)
+      : null;
+  const defaultTableApplies = defaultTemplate != null;
+
   const pointedAt = new Set(liveRules.map((r) => r.templateLineageId));
   const tablesWithoutRule = soleTableApplies
     ? []
-    : liveTemplates.filter((t) => !pointedAt.has(t.lineageId)).map((t) => t.name);
+    : liveTemplates
+        // 76ffdcf2 — the DEFAULT table is reached by everybody no scheme covers, so listing it under
+        // "nobody can receive them" would be false about the one table that always reaches somebody.
+        .filter((t) => !pointedAt.has(t.lineageId) && t.lineageId !== defaultTemplate?.lineageId)
+        .map((t) => t.name);
 
   // Rule lineages, judged on their CURRENT version — see `latestPerLineage`. Scoped to this type by the
   // lineage they point at, using EVERY template version (`ownLineages`, above): a rule whose table was
@@ -254,8 +287,10 @@ export function leaveTypeConfigHealth(p: {
   // `core/org-criteria.ts` means it covers every grade — so one such rule in force answers the question for
   // the whole catalogue. Only when EVERY live rule names grades can a grade be left out, and then it is the
   // ones outside the union. Same for the sole-table case: that table reaches everyone.
+  // 76ffdcf2 — …and a default table in force reaches every grade the rules miss, so there is no grade
+  // left without one. Same argument as the sole-table case on the line below.
   let gradesWithoutTable: string[] = [];
-  if (!soleTableApplies && liveRules.length > 0) {
+  if (!soleTableApplies && !defaultTableApplies && liveRules.length > 0) {
     const narrowsByGrade = liveRules.every((r) => (r.criteria.gradeIds ?? []).length > 0);
     if (narrowsByGrade) {
       const covered = new Set(liveRules.flatMap((r) => r.criteria.gradeIds ?? []));
@@ -274,7 +309,10 @@ export function leaveTypeConfigHealth(p: {
   const findings: LeaveConfigFinding[] = [];
   if (!earningMethodSet) findings.push('no_earning_method');
   if (liveTemplates.length === 0) findings.push('no_entitlement_table');
-  else if (liveRules.length === 0 && !soleTableApplies) findings.push('no_rule_in_force');
+  // 76ffdcf2 — `&& !defaultTableApplies`: with a default table in force every employee no scheme covers
+  // resolves to it, so "no employee resolves to any of them" is no longer true and this must not read as
+  // BLOCKING. Where no default is named the finding fires exactly as it did before.
+  else if (liveRules.length === 0 && !soleTableApplies && !defaultTableApplies) findings.push('no_rule_in_force');
   if (tablesWithoutRule.length > 0) findings.push('table_without_rule');
   if (expiredRules.length > 0) findings.push('rule_expired');
   if (expiringRules.length > 0) findings.push('rule_expiring');
@@ -293,6 +331,8 @@ export function leaveTypeConfigHealth(p: {
     templateCount: liveTemplates.length,
     ruleCount: liveRules.length,
     soleTableApplies,
+    defaultTableApplies,
+    defaultTableName: defaultTemplate?.name ?? null,
     noRuleInForce: rulesInForce.length === 0,
     configuredDaysMin: bandDays.length ? Math.min(...bandDays) : null,
     configuredDaysMax: bandDays.length ? Math.max(...bandDays) : null,

@@ -98,16 +98,27 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     expect(et.colSchemeName).toBe('Scheme name');
     expect(et.colCriteria).toBe('Covers');
     expect(et.colRules).toBe('Schemes');
+    // r269 (76ffdcf2) REWROTE the second half. "Entitlement is decided by the benefit scheme that covers
+    // the employee" is the prerequisite claim again: a scheme chooses BETWEEN tables where there is more
+    // than one, and anyone no scheme covers now receives the leave type's default table. The first
+    // sentence — eligibility versus entitlement, which is what r266 was for — is untouched.
     expect(en.admin.leaveConfigTypes.entitlementStep.schemeExplainer).toBe(
-      'Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. Entitlement is decided by the benefit scheme that covers the employee; each scheme names one entitlement table.',
+      'Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. A benefit scheme decides WHICH entitlement table an employee receives where there is more than one; anyone no scheme covers receives the default entitlement table named here.',
+    );
+    expect(en.admin.leaveConfigTypes.entitlementStep.schemeExplainer).toMatch(
+      /^Eligibility \(the Who is eligible tab\) decides whether an employee can take this leave type\./,
     );
     // Leave balance health: "no benefit scheme in force" where it said "no eligibility rule in force".
     expect(et.healthNoRuleInForce).toContain('no benefit scheme in force');
     expect(et.healthNoRuleInForce).not.toMatch(/eligibility rule/i);
-    // The refusal sentence, in the plan's words, with the leave type interpolated.
+    // The refusal sentence, with the leave type interpolated. r269 (76ffdcf2) REWROTE it: the r266 wording
+    // said a missing scheme was the reason no days exist, which is the causal claim the engine never made
+    // and the reporter objected to. What is true is that no TABLE reached them — and there are now two
+    // remedies, so the sentence names both.
     expect(en.leave.errors.insufficientBalanceNoScheme).toBe(
-      'No benefit scheme covers you for {typeName}, so no days have been granted. Ask HR to check the benefit schemes for this leave type.',
+      'No entitlement table reaches you for {typeName}, so no days have been granted. Ask HR to name you in a benefit scheme for this leave type, or to set a default entitlement table for it.',
     );
+    expect(en.leave.errors.insufficientBalanceNoScheme).not.toMatch(/No benefit scheme covers you/);
   });
 
   it('no renamed namespace still says "eligibility rule" in English', () => {
@@ -143,8 +154,10 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     // the HR balance page, the personnel Leave tab and the CSV export as well as the employee's own
     // table, so "covers you" would have HR reading "you" about somebody else. The hover TIP is HR-voiced
     // ("this employee") and stays so.
+    // r269 (76ffdcf2) — the label states the OUTCOME rather than blaming the absent scheme: with a default
+    // entitlement table named, "not covered by a scheme" no longer means the figure is zero.
     const label = en.me.leaveBalanceTable.statusNoEligibilityMatch;
-    expect(label).toBe('Not covered by any benefit scheme');
+    expect(label).toBe('No entitlement table applies');
     expect(label).not.toMatch(/\byou\b/i);
     expect(en.me.leaveBalanceTable.statusNoEligibilityMatchTip).toContain('this employee');
     for (const [loc, cat] of Object.entries(CATALOGUES)) {
@@ -182,7 +195,12 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
       expect(v).toContain('There is nothing to set here');
     }
     expect(ps.setUpSchemes).toBe('Set up benefit schemes on the Leave types screen');
-    expect(ps.empty).toMatch(/^No benefit scheme covers this employee yet/);
+    // r269 (76ffdcf2) — the sentence the reporter quoted. It claimed scheme ⇒ table ⇒ days, a chain the
+    // engine does not follow. The replacement states both facts that are true of this state (no scheme AND
+    // no default table) and says what a scheme actually decides.
+    expect(ps.empty).toMatch(/^No benefit scheme covers this employee, and no leave type names a default entitlement table/);
+    expect(ps.empty).toContain('it is not what decides whether they are entitled');
+    expect(ps.empty).not.toMatch(/so no entitlement table reaches them and no days have been granted/);
   });
 });
 
@@ -318,8 +336,8 @@ describe('§C · the apply refusal names the missing scheme, and the decision it
     expect(await entitlementCoverageFor(emp.ctx, { employmentId: emp.employmentId, leaveTypeId: typeId, asOf: todayInKualaLumpur() })).toBe('no_scheme');
 
     const msg = await localizeLeaveError(e, 'Annual Leave', { ctx: emp.ctx, employmentId: emp.employmentId, leaveTypeId: typeId, subject: 'self' });
-    expect(msg).toContain('No benefit scheme covers you for Annual Leave, so no days have been granted.');
-    expect(msg).toContain('Ask HR to check the benefit schemes for this leave type.');
+    expect(msg).toContain('No entitlement table reaches you for Annual Leave, so no days have been granted.');
+    expect(msg).toContain('or to set a default entitlement table for it.');
     expect(msg).not.toContain('Insufficient leave balance');
   });
 
@@ -368,8 +386,8 @@ describe('§C · the apply refusal names the missing scheme, and the decision it
     const emp = await hireEmployeeCtx();
     const e = await refusal(emp.ctx, emp.employmentId, typeId);
     const msg = await localizeLeaveError(e, 'Annual Leave', { ctx: adminCtx(b), employmentId: emp.employmentId, leaveTypeId: typeId, subject: 'other' });
-    expect(msg).toContain('No benefit scheme covers this employee for Annual Leave');
-    expect(msg).not.toContain('covers you');
+    expect(msg).toContain('No entitlement table reaches this employee for Annual Leave');
+    expect(msg).not.toContain('reaches you');
   });
 
   it('a type that spends ANOTHER type’s balance is judged on that balance’s tables (cdf9ca48)', async () => {

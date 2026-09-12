@@ -262,6 +262,13 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
  *                   employee, so nothing was ever granted (r209's "second zero");
  *   - `no_table`  — the leave type has no entitlement table at all, so there was never a number to grant.
  *
+ * 76ffdcf2 adds the fourth, and it is NOT a fourth refusal reason — it is the state that USED to be
+ * `no_scheme` and is now a normal, covered employee:
+ *   - `covered_by_default` — no benefit scheme reaches them, and the leave type's DEFAULT entitlement
+ *                   table does. Days WERE granted from a table a human named, so the remedy is the same
+ *                   as `covered` (the days are spent) and the refusal sentence is the plain one. It is
+ *                   reported separately only so a screen can say WHICH table answered.
+ *
  * This is a READ AFTER THE DECISION, not part of it: the refusal in `requestLeave` / `editLeaveRequest`
  * is unchanged, and this function cannot make an application succeed or fail. It asks the ONE batched
  * matcher the engines use (`buildTemplateEntitlementResolver`) for the pair and reads `hasTemplatesFor`
@@ -272,7 +279,7 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
  * type that spends another type's balance was refused over THAT balance, and telling the employee their
  * own type "has no entitlement table" would send HR to create one nobody would ever spend.
  */
-export type EntitlementCoverage = 'covered' | 'no_scheme' | 'no_table';
+export type EntitlementCoverage = 'covered' | 'covered_by_default' | 'no_scheme' | 'no_table';
 
 export async function entitlementCoverageFor(
   ctx: SessionContext,
@@ -286,7 +293,11 @@ export async function entitlementCoverageFor(
       asOf: p.asOf,
     });
     if (!resolver.hasTemplatesFor(sourceTypeId)) return 'no_table';
-    return resolver.winnerFor(p.employmentId, sourceTypeId) ? 'covered' : 'no_scheme';
+    const won = resolver.winnerFor(p.employmentId, sourceTypeId);
+    if (!won) return 'no_scheme';
+    // 76ffdcf2 — a default-table answer IS coverage. Reported under its own name so the profile card can
+    // say which table answered; every refusal path treats it exactly as `covered`.
+    return won.viaDefaultTemplate ? 'covered_by_default' : 'covered';
   });
 }
 

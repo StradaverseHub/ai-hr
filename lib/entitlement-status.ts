@@ -305,6 +305,9 @@ export type EligibilityVerdict =
   | 'resolved'
   /** r193 fault 3 — one table in force, no rule in force, so the table applied and NO RULE IS NEEDED. */
   | 'sole_table'
+  /** 76ffdcf2 — no benefit scheme reached this employee, so the leave type's DEFAULT entitlement table
+   *  applied. A table resolved and days were granted; naming a scheme here would be false. */
+  | 'default_table'
   /** Nothing resolved AND this employment did not exist on the date (hired later / already terminated). */
   | 'not_active'
   /** Nothing resolved and the leave type has no eligibility rules at all. */
@@ -323,10 +326,14 @@ export type EligibilityNotice = {
   /** r193 fault 3, as the engine's own `viaSoleTemplate`. Kept for a screen that words the sole-table
    *  verdict differently from an ordinary win; `verdict === 'sole_table'` is the same fact. */
   soleTableApplies: boolean;
+  /** 76ffdcf2, as the engine's own `viaDefaultTemplate`: no scheme matched and the leave type's DEFAULT
+   *  table answered. Kept alongside the verdict for the same reason `soleTableApplies` is. */
+  defaultTableApplies: boolean;
   /** The rule that decided, when one did — so a matching employee reads WHY they get what they get. */
   winningRuleName: string | null;
-  /** The entitlement table that decided, by name. Non-null WITHOUT `winningRuleName` in exactly one case:
-   *  `sole_table`, where the table applied and no rule was consulted because none exists to consult. */
+  /** The entitlement table that decided, by name. Non-null WITHOUT `winningRuleName` in exactly two cases:
+   *  `sole_table`, where the table applied and no rule was consulted because none exists to consult, and
+   *  `default_table`, where no scheme reached this employee and the leave type's default answered. */
   winningTableName: string | null;
   rules: EligibilityRuleNotice[];
   /** Some rule narrows by grade, gender, nationality, religion or race — none of which is effective-dated

@@ -1911,9 +1911,9 @@
       "applyOnBehalfNotAllowed": "您没有代其他员工申请休假的权限。",
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
-      "insufficientBalanceNoScheme": "没有福利方案在 {typeName} 上涵盖您，因此没有发放任何天数。请让 HR 检查此假期类型的福利方案。",
+      "insufficientBalanceNoScheme": "在 {typeName} 上没有额度表触及您，因此没有发放任何天数。请让 HR 在此假期类型的福利方案中指名您，或为它设定一张默认额度表。",
       "insufficientBalanceNoTable": "{typeName} 尚无额度表，因此没有发放任何天数。请让 HR 先设置一张再申请。",
-      "insufficientBalanceNoSchemeOther": "没有福利方案在 {typeName} 上涵盖该员工，因此没有发放任何天数。请在“假期类型”页面检查此假期类型的福利方案。",
+      "insufficientBalanceNoSchemeOther": "在 {typeName} 上没有额度表触及该员工，因此没有发放任何天数。请在“假期类型”页面为此假期类型的福利方案指名该员工，或为它设定一张默认额度表。",
       "insufficientBalanceNoTableOther": "{typeName} 尚无额度表，因此没有向该员工发放任何天数。请先在“假期类型”页面设置一张。",
       "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",
       "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。",
@@ -2003,12 +2003,12 @@
       "statusEntitlementTable": "额度表：{name}",
       "statusNoEntitlementTableTitle": "此假期类型没有额度表",
       "statusNoEntitlementTableBody": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数，下方数字为 0.00。管理员可在“假期类型”页面创建。",
-      "statusNoEligibilityMatchTitle": "没有涵盖您的福利方案",
-      "statusNoEligibilityMatchBody": "没有福利方案在 {typeName} 上涵盖您，因此没有发放任何天数，下方数字为 0.00。请让 HR 检查此假期类型的福利方案。",
+      "statusNoEligibilityMatchTitle": "没有额度表触及您",
+      "statusNoEligibilityMatchBody": "在 {typeName} 上没有额度表触及您，因此没有发放任何天数，下方数字为 0.00。请让 HR 在此假期类型的福利方案中指名您，或为它设定一张默认额度表。",
       "statusCappedByMaxBalanceTitle": "因最高余额为 0 而被清零",
       "statusCappedByMaxBalanceBody": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天在发放时即被清零。管理员应将最高余额设为至少等于发放的天数。",
       "eligibilityRulesTitle": "此假期类型的福利方案",
-      "eligibilityNoRules": "此假期类型根本没有福利方案，因此没有任何东西能把您指向它的额度表。",
+      "eligibilityNoRules": "此假期类型没有福利方案。只有在需要从多张额度表中做选择时才需要方案：若只有一张表，或已指定默认表，此假期类型无需方案即可触及所有人。",
       "eligibilityNotActive": "您在 {date} 并未在职，因此在该日期没有方案能够涵盖您。",
       "eligibilityStateMatched": "覆盖您",
       "eligibilityStateInForce": "生效中",
@@ -2578,10 +2578,10 @@
       "statusZeroEntitlementTip": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变此数字。",
       "statusEarningMethodMissingTip": "已有适用的额度表，但此假期类型尚未选择累积方式，因此在设置之前只会发放 0.00 天。",
       "statusNoEntitlementTable": "无假期额度表",
-      "statusNoEligibilityMatch": "未被任何福利方案涵盖",
+      "statusNoEligibilityMatch": "没有适用的额度表",
       "statusCappedByMaxBalance": "因最高余额为 0 而被清零",
       "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在“假期类型”页面为其创建额度表。",
-      "statusNoEligibilityMatchTip": "没有福利方案在此假期类型上涵盖该员工，因此没有额度表触及他们，也没有发放任何天数。请检查此假期类型的福利方案。",
+      "statusNoEligibilityMatchTip": "没有福利方案在此假期类型上指名该员工，此假期类型也没有默认额度表，因此没有任何表决定他们的天数。方案是在某个假期类型的多张表之间做选择 — 它并不决定谁享有额度。",
       "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
       "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
     },
@@ -8467,7 +8467,7 @@
       "pageTitle": "额度表",
       "pageDescription": "按服务年资编写一次额度表，再指定谁适用。",
       "intro": "额度表列出您自己定义的服务年资区间以及每个区间对应的天数。只需编写一次并命名，就可以让任意多个福利方案指定它，无需在每个方案内重复录入同一张表。",
-      "coexistNote": "当下方的福利方案涵盖某位员工时，它指定的额度表决定该员工的天数。只有一张额度表且没有方案的假期类型，会对所有人使用该表。",
+      "coexistNote": "当下方的福利方案涵盖某位员工时，它指定的额度表决定该员工的天数。只有一张额度表且没有方案的假期类型，会对所有人使用该表。没有方案涵盖的员工，则获得该假期类型的默认额度表（若已指定）。",
       "datedNote": "表格和方案都带有生效日期，而这个日期决定了保存会做什么。不改动日期，你正在编辑的版本就会被就地更新，包括已经生效的版本。填入更晚的日期，正在运行的版本会在该日期结束并开始新版本，这样已结束年度的报表仍会读到当时生效的数字。尚未开始的版本一律就地修正。",
       "templatesTitle": "额度表",
       "templatesTitleForType": "{type} 额度表",
@@ -8498,8 +8498,8 @@
       "refuseNote": "此版本自 {from} 起已生效，因此不能把生效日期改到更早。保留 {from} 可就地更新此版本，或选择更晚的日期以结束该版本并开始新版本。",
       "inPlaceInForceNote": "日期没有更改，因此保存会直接更新你正在查看的版本——不会结束任何版本，也不会新增版本。若要结束此版本并开始新版本，请改填更晚的日期。",
       "inPlaceStartedWarning": "此版本自 {from} 起已生效。就地更新它也会改变已结束假期年度的报表数字，因为结转报表、年末失效处理和每一份余额明细都会按过去的日期计算权益。若不想改动这些数字，请改填更晚的日期。",
-      "createNoRuleWarning": "{type} 没有生效中的福利方案，因此在此保存的表格在下方有方案指定它之前，不会发放给任何员工。",
-      "createEndsSoleTableWarning": "{type} 只有一张额度表且没有福利方案，因此该表目前适用于所有人。保存第二张表会结束这种情况：此后两张表在有福利方案指定它们之前都不会发放给任何人。",
+      "createNoRuleWarning": "{type} 没有生效中的福利方案，也没有默认额度表，因此在此保存的表在下方有方案指定它、或你把它设为默认之前，不会发放给任何员工。",
+      "createEndsSoleTableWarning": "{type} 只有一张额度表且没有福利方案，因此该表目前适用于所有人。保存第二张表会结束这种情况：此后两张表在有福利方案指定它们、或其中一张被设为 {type} 的默认额度表之前，都不会发放给任何人。",
       "stopFrom": "停用日期",
       "stopTemplate": "停用此额度表",
       "stopTemplateConfirm": "自该日期起此额度表不再发放任何天数，指定它的 {rules} 个福利方案也将不再涵盖任何人。不会删除任何内容，也不会改变任何休假记录。",
@@ -8514,7 +8514,7 @@
       "bandCeiling": "最后一行的截止年资留空表示不限。最多 {max} 个区间。",
       "rulesTitle": "福利方案",
       "rulesIntro": "福利方案说明谁从何时起获得哪一张额度表。它就是员工档案中显示的“福利方案”。",
-      "rulesNone": "尚无福利方案。在有方案涵盖员工之前，没有人会获得额度表。",
+      "rulesNone": "尚无福利方案。只有在需要从多张额度表中做选择时才需要方案 — 只有一张表、或已指定默认表的假期类型，无需方案也能触及所有人。",
       "rulesNeedTemplate": "请先创建额度表，因为每个方案都必须指定一张表。",
       "newRuleTitle": "新建福利方案",
       "editRuleTitle": "编辑福利方案",
@@ -8568,9 +8568,9 @@
       "healthNothingMissing": "没有缺少的项目。",
       "healthNoEarningMethod": "未选择累积方式，因此无论额度表多完整都不会发放任何天数。",
       "healthNoEntitlementTable": "尚未设置额度表，因此没有可发放的天数。",
-      "healthNoRuleInForce": "有 {tables} 张额度表，但没有生效的福利方案，因此没有员工能对应到其中任何一张。",
-      "healthConfiguredVsActual": "已配置：{tables} 张生效的额度表中共 {configured} 天。其中没有任何一张能触及任何员工，因为没有生效的福利方案指定它们 — 因此权益运行不会依据此配置发放任何天数。员工记录上已有的天数来自更早的配置或由人工录入。",
-      "healthTableWithoutRule": "没有福利方案指定：{tables}。没有人能获得这些额度表。",
+      "healthNoRuleInForce": "有 {tables} 张额度表，没有生效的福利方案，也未指定默认表，因此没有员工能对应到其中任何一张。",
+      "healthConfiguredVsActual": "已配置：{tables} 张生效的额度表中共 {configured} 天。其中没有任何一张能触及任何员工，因为没有生效的福利方案指定它们，也没有设定默认表 — 因此权益运行不会依据此配置发放任何天数。员工记录上已有的天数来自更早的配置或由人工录入。",
+      "healthTableWithoutRule": "没有福利方案指定：{tables}。在有方案指定它们、或其中一张成为此假期类型的默认表之前，没有人会获得它们。",
       "healthRuleExpired": "福利方案已过期，因此不涵盖任何人：{rules}",
       "healthRuleExpiring": "福利方案即将到期：{rules}",
       "healthGradesWithoutTable": "不属于任何额度表的职级：{grades}",
@@ -8623,7 +8623,16 @@
       "explainWhyNotTested": "该日期未与此员工进行比对。",
       "explainWhyMatched": "匹配",
       "explainRuleLink": "打开方案",
-      "explainTable": "额度表：{name}"
+      "explainTable": "额度表：{name}",
+      "defaultTableTitle": "默认额度表",
+      "defaultTableIntro": "用于任何没有福利方案涵盖的员工。方案在此假期类型的多张额度表之间做选择；默认表则是没有任何方案指名的员工所获得的那一张，因此不会有人没有额度表。留空则没有方案涵盖的员工什么也不会获得，与此前完全一致。",
+      "defaultTableNone": "无默认 — 没有方案涵盖的员工不会获得任何天数",
+      "defaultTableNoTables": "此假期类型目前没有生效中的额度表，因此还没有可设为默认的表。",
+      "defaultTableSave": "保存默认表",
+      "defaultTableBadge": "默认",
+      "createWithDefaultTableNote": "{type} 没有生效中的福利方案，而 {table} 是它的默认额度表 — 因此今天所有人都获得 {table}。在此保存的表在有方案指定它、或你改把它设为默认之前，不会触及任何人。",
+      "healthDefaultTable": "没有福利方案涵盖的员工将获得默认表 {table}。",
+      "explainWinnerDefault": "适用 {table}，即此假期类型的默认额度表。没有福利方案涵盖该员工，因此适用默认表 — 不会因为缺少方案而扣住额度。"
     },
     "personnel": {
       "benefitScheme": {
@@ -8638,10 +8647,14 @@
         "changeGrade": "更改职级或状态",
         "changeRules": "更改此方案的内容",
         "serviceYears": "服务 {years} 年",
-        "empty": "尚无福利方案涵盖该员工，因此没有额度表触及他们，也没有发放任何天数。",
-        "derivedNote": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：要把该员工转到另一个方案，请更改其职级或状态，或更改该方案涵盖的员工。",
-        "derivedNoteEmpty": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：每种假期类型上的方案说明它涵盖谁。",
-        "setUpSchemes": "在“假期类型”页面设置福利方案"
+        "empty": "没有福利方案涵盖该员工，也没有任何假期类型指定可供他们回落的默认额度表 — 因此没有额度表触及他们。方案决定员工获得哪一张额度表；它并不决定员工是否享有额度。",
+        "derivedNote": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：福利方案决定该员工获得哪一张额度表。它不决定员工是否有资格休某种假，也从不自行发放或收回天数。",
+        "derivedNoteEmpty": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：每种假期类型上的方案说明它涵盖谁，而每种假期类型还可以为方案未涵盖的人指定一张默认额度表。",
+        "setUpSchemes": "在“假期类型”页面设置福利方案",
+        "notCovered": "未被任何方案涵盖",
+        "notCoveredHint": "按下方列表，获得每种假期类型的默认额度表。",
+        "viaDefault": "默认表 — {table}",
+        "derivedNoteDefault": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：福利方案是可选的，若没有方案指名该员工，他们将获得为每种假期类型所选的默认额度表。绝不会因为缺少方案而扣住额度。"
       }
     },
     "leaveConfigMap": {
@@ -8684,7 +8697,7 @@
         "approvers": "属于休假类型本身的审批设置。审批链在“审批链”页面创建和分配。"
       },
       "entitlementStep": {
-        "schemeExplainer": "资格（“谁有资格”标签）决定员工能否休这种假。额度由涵盖该员工的福利方案决定；每个方案指定一张额度表。"
+        "schemeExplainer": "资格（“谁有资格”标签）决定员工能否休这种假。当存在多张额度表时，福利方案决定员工获得“哪一张”额度表；没有方案涵盖的员工，则获得此处指定的默认额度表。"
       }
     },
     "leaveConfigAdjustments": {

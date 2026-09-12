@@ -1911,9 +1911,9 @@
       "applyOnBehalfNotAllowed": "Anda tiada kebenaran untuk memohon cuti bagi pihak pekerja lain.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
-      "insufficientBalanceNoScheme": "Tiada skim faedah merangkumi anda untuk {typeName}, jadi tiada hari diberikan. Minta HR menyemak skim faedah bagi jenis cuti ini.",
+      "insufficientBalanceNoScheme": "Tiada jadual kelayakan sampai kepada anda untuk {typeName}, jadi tiada hari diberikan. Minta HR menamakan anda dalam satu skim faedah bagi jenis cuti ini, atau menetapkan jadual kelayakan lalai untuknya.",
       "insufficientBalanceNoTable": "{typeName} belum mempunyai jadual kelayakan, jadi tiada hari diberikan. Minta HR menyediakannya sebelum anda memohon.",
-      "insufficientBalanceNoSchemeOther": "Tiada skim faedah merangkumi pekerja ini untuk {typeName}, jadi tiada hari diberikan. Semak skim faedah bagi jenis cuti ini pada skrin Jenis cuti.",
+      "insufficientBalanceNoSchemeOther": "Tiada jadual kelayakan sampai kepada pekerja ini untuk {typeName}, jadi tiada hari diberikan. Namakan mereka dalam satu skim faedah bagi jenis cuti ini, atau tetapkan jadual kelayakan lalai untuknya, pada skrin Jenis cuti.",
       "insufficientBalanceNoTableOther": "{typeName} belum mempunyai jadual kelayakan, jadi tiada hari diberikan kepada pekerja ini. Sediakannya pada skrin Jenis cuti dahulu.",
       "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya.",
       "combinedApplicationTooLong": "Kumpulan cuti kongsi \"{poolName}\" membenarkan paling banyak {maxDays} hari bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan.",
@@ -2003,12 +2003,12 @@
       "statusEntitlementTable": "Jadual kelayakan: {name}",
       "statusNoEntitlementTableTitle": "Tiada jadual kelayakan untuk jenis cuti ini",
       "statusNoEntitlementTableBody": "Tiada jadual kelayakan disediakan untuk jenis cuti ini, jadi tiada bilangan hari untuk diberikan kepada sesiapa dan angka di bawah ialah 0.00. Pentadbir boleh menciptanya di skrin Jenis cuti.",
-      "statusNoEligibilityMatchTitle": "Tiada skim faedah merangkumi anda",
-      "statusNoEligibilityMatchBody": "Tiada skim faedah merangkumi anda untuk {typeName}, jadi tiada hari diberikan dan angka di bawah ialah 0.00. Minta HR menyemak skim faedah bagi jenis cuti ini.",
+      "statusNoEligibilityMatchTitle": "Tiada jadual kelayakan sampai kepada anda",
+      "statusNoEligibilityMatchBody": "Tiada jadual kelayakan sampai kepada anda untuk {typeName}, jadi tiada hari diberikan dan angka di bawah ialah 0.00. Minta HR menamakan anda dalam satu skim faedah bagi jenis cuti ini, atau menetapkan jadual kelayakan lalai untuknya.",
       "statusCappedByMaxBalanceTitle": "Dihadkan kepada 0 oleh Baki Maksimum",
       "statusCappedByMaxBalanceBody": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong sebaik sahaja ia diberikan. Pentadbir perlu menetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
       "eligibilityRulesTitle": "Skim faedah bagi jenis cuti ini",
-      "eligibilityNoRules": "Jenis cuti ini tiada sebarang skim faedah, jadi tiada apa-apa yang boleh menghubungkan anda dengan mana-mana jadual kelayakannya.",
+      "eligibilityNoRules": "Jenis cuti ini tiada skim faedah. Skim hanya diperlukan untuk memilih antara beberapa jadual kelayakan: dengan satu jadual, atau dengan jadual lalai dinamakan, jenis cuti ini sampai kepada semua orang tanpa skim.",
       "eligibilityNotActive": "Anda tidak bekerja pada {date}, jadi tiada skim boleh merangkumi anda pada tarikh itu.",
       "eligibilityStateMatched": "Mencapai anda",
       "eligibilityStateInForce": "Berkuat kuasa",
@@ -2578,10 +2578,10 @@
       "statusZeroEntitlementTip": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka itu sehingga jalur perkhidmatan dalam jadual itu diubah.",
       "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan.",
       "statusNoEntitlementTable": "Tiada jadual kelayakan",
-      "statusNoEligibilityMatch": "Tidak dirangkumi mana-mana skim faedah",
+      "statusNoEligibilityMatch": "Tiada jadual kelayakan terpakai",
       "statusCappedByMaxBalance": "Dihadkan kepada 0 oleh Baki Maksimum",
       "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di skrin Jenis cuti.",
-      "statusNoEligibilityMatchTip": "Tiada skim faedah merangkumi pekerja ini untuk jenis cuti ini, jadi tiada jadual kelayakan sampai kepadanya dan tiada hari diberikan. Semak skim faedah bagi jenis cuti ini.",
+      "statusNoEligibilityMatchTip": "Tiada skim faedah menamakan pekerja ini bagi jenis cuti ini, dan jenis cuti ini tiada jadual kelayakan lalai, jadi tiada jadual menentukan hari mereka. Skim memilih antara jadual sesuatu jenis cuti — ia bukan yang menentukan sama ada seseorang layak.",
       "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
       "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
     },
@@ -8467,7 +8467,7 @@
       "pageTitle": "Jadual kelayakan",
       "pageDescription": "Tulis satu jadual kelayakan berasaskan tempoh perkhidmatan, kemudian tetapkan siapa yang mendapatnya.",
       "intro": "Jadual kelayakan menyenaraikan julat tempoh perkhidmatan anda sendiri dan bilangan hari bagi setiap julat. Tulis sekali, berikan nama, dan biarkan seberapa banyak skim faedah menamakannya, tanpa perlu menaip semula jadual yang sama di dalam setiap skim.",
-      "coexistNote": "Apabila skim faedah di bawah merangkumi seseorang pekerja, jadual yang dinamakannya menentukan hari mereka. Jenis cuti dengan satu jadual sahaja dan tiada skim menggunakan jadual itu untuk semua orang.",
+      "coexistNote": "Apabila skim faedah di bawah merangkumi seorang pekerja, jadual yang dinamakannya menentukan hari mereka. Jenis cuti dengan satu jadual dan tiada skim akan menggunakan jadual itu untuk semua orang. Sesiapa yang tiada skim merangkuminya menerima jadual kelayakan lalai jenis cuti itu, jika ada yang dinamakan.",
       "datedNote": "Kedua-dua jadual dan skim mempunyai tarikh mula, dan tarikh itulah yang menentukan apa yang dilakukan oleh Simpan. Biarkan tarikh itu dan versi yang anda sunting dikemas kini di tempatnya, termasuk versi yang sudah berkuat kuasa. Beri tarikh yang lebih lewat dan versi yang sedang berjalan ditutup pada tarikh itu lalu versi baharu bermula, supaya laporan bagi tahun yang telah ditutup masih membaca angka yang berkuat kuasa ketika itu. Versi yang belum bermula sentiasa dibetulkan di tempatnya.",
       "templatesTitle": "Jadual kelayakan",
       "templatesTitleForType": "Jadual kelayakan untuk {type}",
@@ -8498,8 +8498,8 @@
       "refuseNote": "Versi ini telah berkuat kuasa sejak {from}, jadi tarikh mulanya tidak boleh dialihkan lebih awal. Kekalkan {from} untuk mengemas kini versi ini di tempatnya, atau pilih tarikh yang lebih lewat untuk menutupnya dan memulakan versi baharu.",
       "inPlaceInForceNote": "Tarikh tidak berubah, jadi menyimpan akan mengemas kini versi yang anda lihat — tiada versi ditutup dan tiada versi baharu dicipta. Beri tarikh yang LEBIH LEWAT jika anda mahu versi ini ditutup pada tarikh itu dan versi baharu bermula.",
       "inPlaceStartedWarning": "Versi ini telah berkuat kuasa sejak {from}. Mengemas kininya di tempatnya turut mengubah angka yang dilaporkan oleh tahun cuti yang telah ditutup, kerana kelayakan dikira pada tarikh lampau oleh laporan Bawa Ke Hadapan, sapuan luput akhir tahun dan setiap pecahan baki. Beri tarikh yang lebih lewat jika anda mahu angka itu kekal.",
-      "createNoRuleWarning": "{type} tiada skim faedah yang berkuat kuasa, jadi jadual yang disimpan di sini tidak sampai kepada mana-mana pekerja sehingga satu skim di bawah menamakannya.",
-      "createEndsSoleTableWarning": "{type} mempunyai satu jadual kelayakan sahaja dan tiada skim faedah, jadi jadual itu kini terpakai kepada semua orang. Menyimpan jadual kedua menamatkan keadaan itu: selepas itu TIADA satu pun daripada kedua-dua jadual sampai kepada sesiapa sehingga skim faedah menamakannya.",
+      "createNoRuleWarning": "{type} tiada skim faedah yang berkuat kuasa dan tiada jadual kelayakan lalai, jadi jadual yang disimpan di sini tidak sampai kepada mana-mana pekerja sehingga satu skim di bawah menamakannya, atau sehingga anda menjadikannya lalai.",
+      "createEndsSoleTableWarning": "{type} mempunyai satu jadual kelayakan dan tiada skim faedah, jadi jadual itu kini terpakai kepada semua orang. Menyimpan jadual kedua menamatkan keadaan itu: selepas itu KEDUA-DUA jadual tidak sampai kepada sesiapa sehingga satu skim faedah menamakannya, atau salah satu daripadanya ditetapkan sebagai jadual kelayakan lalai bagi {type}.",
       "stopFrom": "Berhenti dari",
       "stopTemplate": "Hentikan jadual ini",
       "stopTemplateConfirm": "Dari tarikh itu jadual ini tidak memberikan apa-apa, dan {rules} skim faedah yang menamakannya berhenti merangkumi sesiapa. Tiada apa-apa dipadam dan tiada rekod cuti berubah.",
@@ -8514,7 +8514,7 @@
       "bandCeiling": "Biarkan ruangan Hingga tahun pada baris terakhir kosong untuk tiada had. Sehingga {max} julat.",
       "rulesTitle": "Skim faedah",
       "rulesIntro": "Skim faedah menyatakan siapa yang menerima jadual kelayakan yang mana, dan mulai bila. Inilah yang dipaparkan pada profil pekerja sebagai Skim Faedah mereka.",
-      "rulesNone": "Belum ada skim faedah. Tiada sesiapa menerima jadual kelayakan sehingga satu skim merangkumi mereka.",
+      "rulesNone": "Belum ada skim faedah. Skim hanya diperlukan untuk memilih antara beberapa jadual kelayakan — jenis cuti dengan satu jadual, atau dengan jadual lalai dinamakan, sampai kepada semua orang tanpa skim.",
       "rulesNeedTemplate": "Cipta jadual kelayakan dahulu, kerana setiap skim mesti menamakan satu jadual.",
       "newRuleTitle": "Skim faedah baharu",
       "editRuleTitle": "Sunting skim faedah",
@@ -8568,9 +8568,9 @@
       "healthNothingMissing": "Tiada yang hilang.",
       "healthNoEarningMethod": "Tiada kaedah perolehan dipilih, jadi tiada apa-apa diberikan walau selengkap mana jadualnya.",
       "healthNoEntitlementTable": "Tiada jadual kelayakan disediakan, jadi tiada bilangan hari untuk diberikan.",
-      "healthNoRuleInForce": "{tables} jadual kelayakan dan tiada skim faedah berkuat kuasa, jadi tiada pekerja yang terhubung kepada mana-mana daripadanya.",
-      "healthConfiguredVsActual": "Ditetapkan: {configured} hari merentasi {tables} jadual kelayakan yang berkuat kuasa. Tiada satu pun sampai kepada sesiapa, kerana tiada skim faedah berkuat kuasa yang menamakannya - jadi proses kelayakan tidak memberi apa-apa daripada tetapan ini. Hari yang sudah ada pada rekod pekerja datang daripada tetapan terdahulu atau dimasukkan secara manual.",
-      "healthTableWithoutRule": "Tiada skim faedah menamakan: {tables}. Tiada sesiapa boleh menerimanya.",
+      "healthNoRuleInForce": "{tables} jadual kelayakan, tiada skim faedah berkuat kuasa dan tiada jadual lalai dinamakan, jadi tiada pekerja terpakai kepada mana-mana daripadanya.",
+      "healthConfiguredVsActual": "Dikonfigurasikan: {configured} hari merentas {tables} jadual kelayakan yang berkuat kuasa. Tiada satu pun sampai kepada sesiapa, kerana tiada skim faedah berkuat kuasa menamakannya dan tiada jadual lalai ditetapkan - jadi larian kelayakan tidak memberikan apa-apa daripada konfigurasi ini. Hari yang sudah ada pada rekod pekerja datang daripada konfigurasi terdahulu atau dimasukkan secara manual.",
+      "healthTableWithoutRule": "Tiada skim faedah menamakan: {tables}. Tiada sesiapa menerimanya sehingga satu skim menamakannya, atau salah satu daripadanya menjadi jadual lalai jenis cuti ini.",
       "healthRuleExpired": "Skim faedah telah tamat tempoh, jadi ia tidak merangkumi sesiapa: {rules}",
       "healthRuleExpiring": "Skim faedah akan tamat tidak lama lagi: {rules}",
       "healthGradesWithoutTable": "Gred jawatan yang tidak tergolong dalam mana-mana jadual kelayakan: {grades}",
@@ -8623,7 +8623,16 @@
       "explainWhyNotTested": "Tidak dibandingkan dengan pekerja ini pada tarikh ini.",
       "explainWhyMatched": "Sepadan",
       "explainRuleLink": "Buka skim",
-      "explainTable": "Jadual: {name}"
+      "explainTable": "Jadual: {name}",
+      "defaultTableTitle": "Jadual kelayakan lalai",
+      "defaultTableIntro": "Digunakan untuk sesiapa yang tidak dirangkumi mana-mana skim faedah. Skim memilih antara jadual jenis cuti ini; jadual lalai ialah apa yang diterima oleh pekerja yang tiada skim menamakannya, jadi tiada sesiapa ditinggalkan tanpa jadual kelayakan. Biarkan kosong, dan pekerja yang tiada skim merangkuminya tidak menerima apa-apa, sama seperti sebelum ini.",
+      "defaultTableNone": "Tiada lalai — sesiapa yang tiada skim merangkuminya tidak menerima apa-apa",
+      "defaultTableNoTables": "Belum ada jadual kelayakan yang berkuat kuasa pada jenis cuti ini, jadi tiada apa-apa untuk dinamakan sebagai lalai.",
+      "defaultTableSave": "Simpan jadual lalai",
+      "defaultTableBadge": "Lalai",
+      "createWithDefaultTableNote": "{type} tiada skim faedah yang berkuat kuasa, dan {table} ialah jadual kelayakan lalainya — jadi semua orang menerima {table} hari ini. Jadual yang disimpan di sini tidak sampai kepada sesiapa sehingga satu skim menamakannya, atau sehingga anda menjadikannya lalai.",
+      "healthDefaultTable": "Sesiapa yang tiada skim faedah merangkuminya menerima jadual lalai {table}.",
+      "explainWinnerDefault": "Diselesaikan kepada {table}, jadual kelayakan lalai bagi jenis cuti ini. Tiada skim faedah merangkumi pekerja ini, jadi jadual lalai terpakai — kelayakan tidak ditahan kerana skim tiada."
     },
     "personnel": {
       "benefitScheme": {
@@ -8638,10 +8647,14 @@
         "changeGrade": "Tukar gred atau status",
         "changeRules": "Tukar apa yang skim ini berikan",
         "serviceYears": "{years} tahun perkhidmatan",
-        "empty": "Tiada skim faedah merangkumi pekerja ini lagi, jadi tiada jadual kelayakan sampai kepadanya dan tiada hari diberikan.",
-        "derivedNote": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: untuk memindahkan pekerja ini ke skim lain, tukar gred atau status mereka, atau tukar siapa yang dirangkumi skim itu.",
-        "derivedNoteEmpty": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim pada setiap jenis cuti menyatakan siapa yang dirangkuminya.",
-        "setUpSchemes": "Sediakan skim faedah pada skrin Jenis cuti"
+        "empty": "Tiada skim faedah merangkumi pekerja ini, dan tiada jenis cuti menamakan jadual kelayakan lalai untuk mereka bergantung padanya — jadi tiada jadual sampai kepada mereka. Skim menentukan jadual kelayakan yang mana diterima oleh pekerja; ia bukan yang menentukan sama ada mereka layak.",
+        "derivedNote": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim faedah menentukan jadual kelayakan yang mana diterima oleh pekerja ini. Ia tidak menentukan sama ada mereka layak untuk sesuatu jenis cuti, dan ia tidak pernah memberi atau menarik balik hari dengan sendirinya.",
+        "derivedNoteEmpty": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim pada setiap jenis cuti menyatakan siapa yang dirangkuminya, dan setiap jenis cuti juga boleh menamakan jadual kelayakan lalai untuk sesiapa yang tidak dirangkumi skim.",
+        "setUpSchemes": "Sediakan skim faedah pada skrin Jenis cuti",
+        "notCovered": "Tidak dirangkumi mana-mana skim",
+        "notCoveredHint": "Menerima jadual kelayakan lalai bagi setiap jenis cuti, seperti disenaraikan di bawah.",
+        "viaDefault": "Jadual lalai — {table}",
+        "derivedNoteDefault": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim faedah adalah pilihan, dan jika tiada skim menamakan pekerja ini, mereka menerima jadual kelayakan lalai yang dipilih bagi setiap jenis cuti. Kelayakan tidak pernah ditahan kerana skim tiada."
       }
     },
     "leaveConfigMap": {
@@ -8684,7 +8697,7 @@
         "approvers": "Tetapan kelulusan yang menjadi milik jenis cuti ini sendiri. Rantaian kelulusan dibina dan diumpukkan pada skrin Rantaian kelulusan."
       },
       "entitlementStep": {
-        "schemeExplainer": "Kelayakan (tab Siapa yang layak) menentukan sama ada seseorang pekerja boleh mengambil jenis cuti ini. Bilangan hari yang diterima ditentukan oleh skim faedah yang merangkumi pekerja itu; setiap skim menamakan satu jadual kelayakan."
+        "schemeExplainer": "Kelayakan (tab Siapa yang layak) menentukan sama ada pekerja boleh mengambil jenis cuti ini. Skim faedah menentukan jadual kelayakan YANG MANA diterima oleh pekerja apabila terdapat lebih daripada satu; sesiapa yang tiada skim merangkuminya menerima jadual kelayakan lalai yang dinamakan di sini."
       }
     },
     "leaveConfigAdjustments": {

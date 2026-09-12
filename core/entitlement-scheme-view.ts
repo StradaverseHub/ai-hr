@@ -83,6 +83,10 @@ export type SchemeLeaveTypeRow = {
   ruleName: string | null;
   templateName: string;
   viaSoleTemplate: boolean;
+  /** 76ffdcf2 — no benefit scheme reached this employee for this type, so the leave type's DEFAULT
+   *  entitlement table answered. The screen names the TABLE and says it is the default; it must never
+   *  print a scheme name here, because no scheme was consulted. */
+  viaDefaultTemplate: boolean;
   bands: ServiceBand[];
   /** Days this employee gets at their current service length — `bandFor`, not a local re-derivation.
    *  NULL when the bands do not resolve, which is shown as an em dash rather than as 0. */
@@ -95,6 +99,18 @@ export type BenefitSchemeView = {
   /** TRUE only when the winning rules DISAGREE across leave types. False when there simply is no rule
    *  (every type resolved via its sole table), which is a different and non-alarming state. */
   ambiguous: boolean;
+  /**
+   * 76ffdcf2 — NOT COVERED BY A SCHEME, AND THAT IS NOT THE SAME AS HAVING NOTHING.
+   *
+   * True when no rule decided ANY of this employee's leave types and at least one of them resolved
+   * through the leave type's DEFAULT entitlement table. The card then says which table each type falls
+   * back to and how many days that gives them, instead of the sentence r266 shipped, which told 34
+   * production employees they had no entitlement while they were holding days.
+   *
+   * False when a rule decided anything (there is a scheme to name), and false when nothing resolved at
+   * all (`perType` is empty and the card takes its empty state).
+   */
+  coveredByDefaultOnly: boolean;
   /** Effective date of the most recent applied movement that could have changed the scheme. NULL when the
    *  record shows no such movement — rendered as an em dash. A wrong date here would be worse than none. */
   effectiveFrom: string | null;
@@ -148,6 +164,7 @@ export async function benefitSchemeView(
         ruleName: won.ruleName,
         templateName: won.templateName,
         viaSoleTemplate: won.viaSoleTemplate,
+        viaDefaultTemplate: won.viaDefaultTemplate,
         bands,
         daysAtService:
           serviceYears == null ? null : (bandFor({ serviceBands: bands }, serviceYears)?.days ?? null),
@@ -158,21 +175,37 @@ export async function benefitSchemeView(
   });
 
   if (!perTypeAndService) {
-    return { schemeName: null, ambiguous: false, effectiveFrom: null, effectiveFromKind: null, serviceYears: null, perType: [] };
+    return {
+      schemeName: null,
+      ambiguous: false,
+      coveredByDefaultOnly: false,
+      effectiveFrom: null,
+      effectiveFromKind: null,
+      serviceYears: null,
+      perType: [],
+    };
   }
   const { rows, serviceYears } = perTypeAndService;
 
   // THE NAME. Only rule-decided rows can carry one; a sole-table row was decided without consulting any
-  // rule, so counting it as a disagreement would report a conflict that does not exist.
-  const ruleNames = new Set(rows.filter((r) => !r.viaSoleTemplate && r.ruleName).map((r) => r.ruleName!));
+  // rule, so counting it as a disagreement would report a conflict that does not exist. 76ffdcf2 — a
+  // DEFAULT-table row is the same kind of null for the same reason: no scheme was consulted, so it is
+  // neither a name nor a disagreement.
+  const ruleNames = new Set(
+    rows.filter((r) => !r.viaSoleTemplate && !r.viaDefaultTemplate && r.ruleName).map((r) => r.ruleName!),
+  );
   const ambiguous = ruleNames.size > 1;
   const schemeName = ruleNames.size === 1 ? [...ruleNames][0] : null;
+  // 76ffdcf2 — "no scheme names this employee, and here is what they get instead". Requires BOTH halves:
+  // nothing rule-decided anywhere, and at least one type actually answered by a default.
+  const coveredByDefaultOnly = ruleNames.size === 0 && rows.some((r) => r.viaDefaultTemplate);
 
   const effective = await schemeEffectiveFrom(ctx, employmentId, asOf);
 
   return {
     schemeName,
     ambiguous,
+    coveredByDefaultOnly,
     effectiveFrom: effective?.effectiveDate ?? null,
     effectiveFromKind: effective?.kind ?? null,
     serviceYears,

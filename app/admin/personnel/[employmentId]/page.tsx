@@ -2484,9 +2484,19 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <div className="text-xs text-muted-foreground">{tScheme('title')}</div>
+                {/* 76ffdcf2 — THREE STATES, NOT TWO. `none` means the winning schemes DISAGREE across
+                    leave types, which is a real conflict. "No scheme names this employee" is a different
+                    and ordinary state now that a leave type can carry a default table: they are covered,
+                    by a table HR chose, and the rows below say which and how many days. Printing the
+                    disagreement wording there would invent a conflict that does not exist. */}
                 <div className={`text-base font-semibold ${scheme.schemeName ? '' : 'font-medium text-muted-foreground'}`}>
-                  {scheme.schemeName ?? tScheme('none')}
+                  {scheme.schemeName ?? (scheme.coveredByDefaultOnly ? tScheme('notCovered') : tScheme('none'))}
                 </div>
+                {scheme.coveredByDefaultOnly ? (
+                  <div className="text-xs text-muted-foreground" data-testid="benefit-scheme-default-hint">
+                    {tScheme('notCoveredHint')}
+                  </div>
+                ) : null}
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">{tScheme('effectiveFrom')}</div>
@@ -2513,7 +2523,7 @@ export default async function EmployeePage({
               data-testid="benefit-scheme-derived-note"
               className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
             >
-              {tScheme('derivedNote')}
+              {scheme.coveredByDefaultOnly ? tScheme('derivedNoteDefault') : tScheme('derivedNote')}
             </p>
 
             <div className="mt-4 overflow-x-auto">
@@ -2531,8 +2541,15 @@ export default async function EmployeePage({
                   {scheme.perType.map((r) => (
                     <tr key={r.leaveTypeId} className="border-b border-border last:border-0">
                       <td className="py-2">{r.leaveTypeName}</td>
+                      {/* 76ffdcf2 — a default-table row names the TABLE and says it is the default. It
+                          must never print a scheme name: no scheme was consulted, and the whole of this
+                          item is that the screens stopped claiming otherwise. */}
                       <td className="py-2 text-muted-foreground">
-                        {r.viaSoleTemplate ? tScheme('noRule') : (r.ruleName ?? r.templateName)}
+                        {r.viaDefaultTemplate
+                          ? tScheme('viaDefault', { table: r.templateName })
+                          : r.viaSoleTemplate
+                            ? tScheme('noRule')
+                            : (r.ruleName ?? r.templateName)}
                       </td>
                       {/* Em dash rather than 0.00 — "no band resolves" and "zero days" are different facts. */}
                       <td className="py-2 text-right tabular-nums">{r.daysAtService ?? '—'}</td>

@@ -191,14 +191,19 @@ export async function EligibilityExplainPanel({
             <p className="text-sm">
               {notice.verdict === 'sole_table'
                 ? t('explainWinnerSole', { table: notice.winningTableName ?? '' })
-                : notice.verdict === 'resolved'
-                  ? t('explainWinner', {
-                      table: notice.winningTableName ?? '',
-                      rule: notice.winningRuleName ?? '',
-                    })
-                  : notice.verdict === 'not_active'
-                    ? t('explainNotActive', { date: asOf })
-                    : t('explainNoWinner')}
+                : /* 76ffdcf2 — the fourth verdict: no scheme reached this employee and the leave type's
+                     DEFAULT table answered. Named on its own rather than folded into `resolved`, whose
+                     sentence interpolates a rule name that does not exist here. */
+                  notice.verdict === 'default_table'
+                  ? t('explainWinnerDefault', { table: notice.winningTableName ?? '' })
+                  : notice.verdict === 'resolved'
+                    ? t('explainWinner', {
+                        table: notice.winningTableName ?? '',
+                        rule: notice.winningRuleName ?? '',
+                      })
+                    : notice.verdict === 'not_active'
+                      ? t('explainNotActive', { date: asOf })
+                      : t('explainNoWinner')}
             </p>
             {/* …and the employment window as a CAVEAT rather than a competing verdict, for the one case
                 where both are true: a sole table resolves for somebody outside their employment window,

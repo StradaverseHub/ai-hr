@@ -104,6 +104,7 @@ describe('entitlement templates — the reporter\'s named service-band tables', 
       specificity: 0,
       alsoMatched: [],
       viaSoleTemplate: false,
+      viaDefaultTemplate: false,
     });
     expect(days(0)).toBe(14);
     expect(days(1)).toBe(14);
