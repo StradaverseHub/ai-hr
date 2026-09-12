@@ -8,6 +8,9 @@ import {
   loadEntitlementTablesData,
 } from '../../leave/entitlements/templates/entitlement-tables-block';
 import { EligibilityExplainPanel } from '../../leave/entitlements/templates/eligibility-explain';
+// 9e2a89e9 — "every employee no entitlement table reaches", mounted HERE and nowhere else: the reader
+// sweeps every active employment, and the leave type panels compose the tables block 24 at a time.
+import { UncoveredEmployeesCard } from '../../leave/entitlements/templates/uncovered-employees';
 
 /**
  * a6fe37fc — ENTITLEMENT TABLES (`/admin/leave-config/entitlement-tables`).
@@ -107,6 +110,11 @@ export default async function LeaveConfigEntitlementTablesPage({
           exist, which are in force, and what about THIS employee does not match. Below the rules it
           explains, because it is read after them. */}
       <EligibilityExplainPanel s={s} data={data} params={sp} />
+
+      {/* 9e2a89e9 — and the same question asked the other way round: not "why this one person", but
+          "who is left out", which is the one an administrator needs before year end. `data.today` is the
+          page's own clock, so the list and the health card above are judged as at the same date. */}
+      <UncoveredEmployeesCard s={s} asOf={data.today} />
     </div>
   );
 }

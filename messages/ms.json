@@ -1263,9 +1263,9 @@
       "holidayCalendarCardTitle": "Kalendar Cuti",
       "gradeCardTitle": "Gred",
       "recalcHistoryTitle": "Sejarah pengiraan semula kelayakan",
-      "recalcHistoryHelp": "Pelarasan automatik pada kelayakan cuti pekerja ini selepas perubahan profil (gred, jenis pekerjaan, tarikh mula atau pengesahan).",
+      "recalcHistoryHelp": "Pelarasan automatik yang dibuat pada kelayakan cuti pekerja ini selepas perubahan profil (gred, jenis pekerjaan, tarikh mula bekerja atau pengesahan). “Berkuat kuasa pada” ialah tarikh perubahan itu sendiri berkuat kuasa, bukan tarikh ia direkodkan.",
       "recalcHistoryEmpty": "Belum ada pengiraan semula kelayakan.",
-      "recalcColEffective": "Tarikh berkuat kuasa",
+      "recalcColEffective": "Berkuat kuasa pada",
       "recalcColType": "Jenis cuti",
       "recalcColReason": "Sebab",
       "recalcColPrevious": "Sebelum",
@@ -1521,7 +1521,9 @@
       "payComponentBackwards": "Pekerja ini sudah mempunyai komponen gaji {code} yang bermula {from}. Nilai baharu mesti berkuat kuasa pada atau selepas tarikh tersebut.",
       "payComponentMidMonth": "Perubahan pada komponen gaji {code} mesti berkuat kuasa pada hari pertama bulan. Pekerja ini sudah mempunyai rekod {code} aktif yang meliputi sebahagian daripada bulan tersebut, jadi perubahan bertarikh pertengahan bulan akan membayar kedua-dua rekod sepenuhnya. Gunakan {nextFirst}.",
       "payComponentClosedRun": "Larian gaji {period} telah ditutup, jadi komponen gaji {code} tidak boleh diubah bagi tempoh tersebut.",
-      "payComponentOpenEnded": "tiada tarikh tamat"
+      "payComponentOpenEnded": "tiada tarikh tamat",
+      "recalcColGrade": "Gred pekerjaan",
+      "recalcGradeUnchanged": "Tiada perubahan"
     },
     "import": {
       "title": "Import pekerja",
@@ -8632,7 +8634,19 @@
       "defaultTableBadge": "Lalai",
       "createWithDefaultTableNote": "{type} tiada skim faedah yang berkuat kuasa, dan {table} ialah jadual kelayakan lalainya — jadi semua orang menerima {table} hari ini. Jadual yang disimpan di sini tidak sampai kepada sesiapa sehingga satu skim menamakannya, atau sehingga anda menjadikannya lalai.",
       "healthDefaultTable": "Sesiapa yang tiada skim faedah merangkuminya menerima jadual lalai {table}.",
-      "explainWinnerDefault": "Diselesaikan kepada {table}, jadual kelayakan lalai bagi jenis cuti ini. Tiada skim faedah merangkumi pekerja ini, jadi jadual lalai terpakai — kelayakan tidak ditahan kerana skim tiada."
+      "explainWinnerDefault": "Diselesaikan kepada {table}, jadual kelayakan lalai bagi jenis cuti ini. Tiada skim faedah merangkumi pekerja ini, jadi jadual lalai terpakai — kelayakan tidak ditahan kerana skim tiada.",
+      "colCovers": "Merangkumi",
+      "coversMore": "+{count} lagi",
+      "coversDefaultTable": "Sesiapa yang tiada skim faedah merangkuminya — jadual lalai jenis cuti ini",
+      "uncoveredTitle": "Pekerja yang tidak dicapai oleh mana-mana jadual kelayakan",
+      "uncoveredHelp": "Jenis cuti yang mempunyai jadual kelayakan berkuat kuasa, di mana pekerja ini tidak dinamakan oleh mana-mana skim faedah dan jenis cuti itu juga tiada jadual lalai. Tiada apa-apa diberikan dan tiada apa-apa direka — inilah orang yang perlu dinamakan dalam skim, atau diberi jadual lalai.",
+      "uncoveredNone": "Setiap pekerja aktif dicapai oleh jadual kelayakan pada setiap jenis cuti yang mempunyainya.",
+      "uncoveredNoGrade": "{count} daripada mereka langsung tiada gred pekerjaan direkodkan, daripada {total} pekerja aktif. Skim faedah yang sepadan mengikut gred pekerjaan tidak akan pernah mencapai mereka — gred itu perlu diisi pada rekod pekerjaan.",
+      "uncoveredNoGradeCell": "Tiada gred pekerjaan direkodkan",
+      "uncoveredColEmployee": "Pekerja",
+      "uncoveredColGrade": "Gred pekerjaan",
+      "uncoveredColTypes": "Jenis cuti yang tidak dicapai",
+      "uncoveredMore": "Memaparkan {shown} daripada {total}."
     },
     "personnel": {
       "benefitScheme": {
@@ -8654,7 +8668,9 @@
         "notCovered": "Tidak dirangkumi mana-mana skim",
         "notCoveredHint": "Menerima jadual kelayakan lalai bagi setiap jenis cuti, seperti disenaraikan di bawah.",
         "viaDefault": "Jadual lalai — {table}",
-        "derivedNoteDefault": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim faedah adalah pilihan, dan jika tiada skim menamakan pekerja ini, mereka menerima jadual kelayakan lalai yang dipilih bagi setiap jenis cuti. Kelayakan tidak pernah ditahan kerana skim tiada."
+        "derivedNoteDefault": "Ditentukan secara automatik daripada skim faedah pada skrin Jenis cuti. Tiada apa-apa untuk ditetapkan di sini: skim faedah adalah pilihan, dan jika tiada skim menamakan pekerja ini, mereka menerima jadual kelayakan lalai yang dipilih bagi setiap jenis cuti. Kelayakan tidak pernah ditahan kerana skim tiada.",
+        "unmatchedWarning": "Perlu perhatian anda: tiada jadual kelayakan sampai kepada pekerja ini untuk {types}. Gred pekerjaan mereka tidak dinamakan oleh mana-mana skim faedah bagi jenis cuti itu, dan tiada jadual kelayakan lalai ditetapkan untuknya. Tiada hari diberikan, dan tiada yang akan direka.",
+        "unmatchedNoGrade": "Pekerja ini tiada gred pekerjaan direkodkan, jadi skim faedah yang sepadan mengikut gred pekerjaan tidak akan pernah mencapainya."
       }
     },
     "leaveConfigMap": {

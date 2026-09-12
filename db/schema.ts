@@ -7027,6 +7027,31 @@ export const leaveEntitlementRecalcAudit = pgTable(
     reason: text('reason').notNull(),
     // The date the compensating adjustment was posted (the recalc's effective date, = the cycle asOf).
     effectiveOn: date('effective_on').notNull(),
+    /**
+     * 9e2a89e9 (r269, migration 0463) — THE DATE THE UNDERLYING CHANGE TOOK EFFECT, when the caller knows
+     * it. A promotion effective 1 July, recorded on 11 September, reads 1 July here and 11 September in
+     * `effective_on` above. NULL where there is no such date to know — a configuration-triggered cohort
+     * recalc, an ordinary employment-details edit, a reversal — and the screen then falls back to
+     * `effective_on` under one "Took effect" heading.
+     *
+     * ⚠️ IT DOES NOT RE-POINT `effective_on`, AND MUST NOT BE MADE TO. That column means "when the
+     * compensating LEDGER row was posted" on every row ever written; giving it a second meaning would
+     * leave the two distinguishable only by row age. The LEDGER row's own date is not moved by this item
+     * either: that is money-like (cycle windows, ADR-0069 freezes, a backdated change crossing a closed
+     * leave year) and the approved plan promises only the history row's date.
+     */
+    changeEffectiveOn: date('change_effective_on'),
+    /**
+     * 9e2a89e9 — the grades the change moved BETWEEN. The reporter asked for the history to name them
+     * ("GRADE 16 (PERMANENT) → GRADE 17 (PERMANENT)"), because `reason` carries only the machine trigger.
+     *
+     * BOTH NULL unless the caller declared a grade change: a recalc fired by a configuration edit has no
+     * grades to name, and writing today's grade into `new_grade_id` there would read as a promotion that
+     * never happened. NO FOREIGN KEY, deliberately — a job grade may be archived or deleted, and an audit
+     * row must outlive the catalogue it refers to. The reader LEFT JOINs for the name.
+     */
+    previousGradeId: uuid('previous_grade_id'),
+    newGradeId: uuid('new_grade_id'),
     // The leave_ledger row that carried the compensating delta (nullable for defensive/rollback safety).
     ledgerId: uuid('ledger_id'),
     createdAt: createdAt(),

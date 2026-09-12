@@ -1263,9 +1263,9 @@
       "holidayCalendarCardTitle": "Holiday Calendar",
       "gradeCardTitle": "Grade",
       "recalcHistoryTitle": "Entitlement recalculation history",
-      "recalcHistoryHelp": "Automatic adjustments made to this employee's leave entitlement after a profile change (grade, employment type, hire date or confirmation).",
+      "recalcHistoryHelp": "Automatic adjustments made to this employee’s leave entitlement after a profile change (grade, employment type, hire date or confirmation). “Took effect” is the date the change itself took effect, not the date it was recorded.",
       "recalcHistoryEmpty": "No entitlement recalculations yet.",
-      "recalcColEffective": "Effective date",
+      "recalcColEffective": "Took effect",
       "recalcColType": "Leave type",
       "recalcColReason": "Reason",
       "recalcColPrevious": "Previous",
@@ -1521,7 +1521,9 @@
       "payComponentBackwards": "This employee already has a {code} pay component starting {from}. A new value must take effect on or after that date.",
       "payComponentMidMonth": "A change to the {code} pay component has to take effect on the first of a month. This employee already has a live {code} record covering part of that month, so a change dated part-way through it would pay both records in full. Use {nextFirst}.",
       "payComponentClosedRun": "Pay run {period} is closed, so the {code} pay component can no longer be changed for that period.",
-      "payComponentOpenEnded": "no end date"
+      "payComponentOpenEnded": "no end date",
+      "recalcColGrade": "Job grade",
+      "recalcGradeUnchanged": "No change"
     },
     "import": {
       "title": "Import employees",
@@ -8632,7 +8634,19 @@
       "defaultTableBadge": "Default",
       "createWithDefaultTableNote": "{type} has no benefit scheme in force, and {table} is its default entitlement table — so everyone receives {table} today. A table saved here reaches nobody until a scheme names it, or until you make it the default instead.",
       "healthDefaultTable": "Anyone no benefit scheme covers receives the default table {table}.",
-      "explainWinnerDefault": "Resolves to {table}, the default entitlement table for this leave type. No benefit scheme covers this employee, so the default applies — entitlement is not withheld because a scheme is missing."
+      "explainWinnerDefault": "Resolves to {table}, the default entitlement table for this leave type. No benefit scheme covers this employee, so the default applies — entitlement is not withheld because a scheme is missing.",
+      "colCovers": "Covers",
+      "coversMore": "+{count} more",
+      "coversDefaultTable": "Anyone no benefit scheme covers — this leave type’s default table",
+      "uncoveredTitle": "Employees no entitlement table reaches",
+      "uncoveredHelp": "Leave types that have an entitlement table in force, where this employee is named by no benefit scheme and the leave type has no default table either. Nothing is granted and nothing is invented — these are the people to name in a scheme, or to give a default table to.",
+      "uncoveredNone": "Every active employee is reached by an entitlement table on every leave type that has one.",
+      "uncoveredNoGrade": "{count} of these have no job grade recorded at all, out of {total} active employees. A benefit scheme that matches on job grade can never reach them — the grades have to be filled in on the employment records.",
+      "uncoveredNoGradeCell": "No job grade recorded",
+      "uncoveredColEmployee": "Employee",
+      "uncoveredColGrade": "Job grade",
+      "uncoveredColTypes": "Leave types not reached",
+      "uncoveredMore": "Showing {shown} of {total}."
     },
     "personnel": {
       "benefitScheme": {
@@ -8654,7 +8668,9 @@
         "notCovered": "Not covered by a scheme",
         "notCoveredHint": "Receives the default entitlement table for each leave type, listed below.",
         "viaDefault": "Default table — {table}",
-        "derivedNoteDefault": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a benefit scheme is optional, and where none names this employee they receive the default entitlement table chosen for each leave type. Entitlement is never withheld because a scheme is missing."
+        "derivedNoteDefault": "Worked out automatically from the benefit schemes on the Leave types screen. There is nothing to set here: a benefit scheme is optional, and where none names this employee they receive the default entitlement table chosen for each leave type. Entitlement is never withheld because a scheme is missing.",
+        "unmatchedWarning": "Needs your attention: no entitlement table reaches this employee for {types}. Their job grade is named by no benefit scheme for those leave types, and no default entitlement table is set for them. No days have been assigned, and none will be invented.",
+        "unmatchedNoGrade": "This employee has no job grade recorded, so a benefit scheme that matches on job grade can never reach them."
       }
     },
     "leaveConfigMap": {

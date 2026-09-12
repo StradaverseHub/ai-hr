@@ -27,6 +27,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { domainEvent } from '../db/schema';
 import { applyDueMovementsTx } from './movement';
+// 9e2a89e9 — the pre-write grade read. core/ → core/, no pack boundary crossed.
+import { employmentGradeId } from './org';
 // Through the pack facade, not `core/leave` directly: this file is NEW, and ADR-0080 D9's import
 // ratchet only ever shrinks its allowlist (test/leave-pack-drift.test.ts).
 import { reprojectEntitlementForEmployment } from '../packs/leave/service';
@@ -88,6 +90,10 @@ export async function sweepDueMovements(
   for (const c of candidates) {
     if (!c.employmentId) continue;
     try {
+      // 9e2a89e9 — READ BEFORE THE WRITE, for the same reason the save path does: after the movement has
+      // been applied, employment.grade_id is the NEW grade. One indexed read per employment that has a
+      // movement due, which is a handful a morning.
+      const gradeBefore = { gradeId: await employmentGradeId(ctx, c.employmentId) };
       // One transaction per employment: the legs and the applied event land together or not at all.
       const r = await withTenant(ctx, (tx) => applyDueMovementsTx(tx, ctx, c.employmentId!, today));
       applied += r.applied;
@@ -105,6 +111,12 @@ export async function sweepDueMovements(
           await reprojectEntitlementForEmployment(ctx, {
             employmentId: c.employmentId,
             trigger: 'movement_applied',
+            // 9e2a89e9 — the two grades and the date the promotion TOOK EFFECT. `appliedEffectiveDate`
+            // rather than `today`: a sweep that has not run for three days is applying movements whose
+            // dates have already passed, and the record must say when the change happened, not when the
+            // cron noticed. `asOf` is deliberately NOT moved — that would change the arithmetic.
+            gradeBefore,
+            changeEffectiveOn: r.appliedEffectiveDate,
           });
         } catch {
           // non-fatal — re-runs on the next profile trigger or policy edit.

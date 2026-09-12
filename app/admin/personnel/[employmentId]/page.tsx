@@ -2450,6 +2450,28 @@ export default async function EmployeePage({
   // in that case we "say so plainly and list what applies per leave type, rather than inventing a name".
   // Do not replace this with a best guess.
   const tScheme = await getTranslations('admin.personnel.benefitScheme');
+  /**
+   * 9e2a89e9 — WHEN A GRADE CHANGE LANDS ON NOBODY'S TABLE, SAY SO.
+   *
+   * The engine already refuses to invent a figure nobody configured — it skips the leave type rather than
+   * clawing it to 0 ("NO OPINION IS NOT ZERO", core/leave.ts). What was missing is anybody being told.
+   * Rendered in BOTH states of the card below, because the state it matters most in is the one where some
+   * leave types resolved and others silently did not.
+   */
+  const schemeUnmatchedNotice =
+    scheme && scheme.unmatched.length > 0 ? (
+      <p
+        role="note"
+        data-testid="benefit-scheme-unmatched"
+        className="mt-3 rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+      >
+        {tScheme('unmatchedWarning', { types: scheme.unmatched.map((u) => u.leaveTypeName).join(', ') })}
+        {/* The commonest cause by far, and one no configuration change fixes: 47 of 74 active employments
+            on production have no job grade recorded at all. Said only when it is true of this person. */}
+        {scheme.noJobGrade ? <span className="mt-1 block">{tScheme('unmatchedNoGrade')}</span> : null}
+      </p>
+    ) : null;
+
   const benefitSchemeCard = scheme ? (
     <Card id="section-benefit-scheme">
       <SectionHeader title={tScheme('title')} />
@@ -2467,6 +2489,7 @@ export default async function EmployeePage({
             >
               {tScheme('derivedNoteEmpty')}
             </p>
+            {schemeUnmatchedNotice}
             <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs">
               <Link
                 href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
@@ -2525,6 +2548,7 @@ export default async function EmployeePage({
             >
               {scheme.coveredByDefaultOnly ? tScheme('derivedNoteDefault') : tScheme('derivedNote')}
             </p>
+            {schemeUnmatchedNotice}
 
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
@@ -2667,6 +2691,11 @@ export default async function EmployeePage({
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">{t('recalcColEffective')}</th>
                 <th className="px-4 py-2 font-medium">{t('recalcColType')}</th>
+                {/* 9e2a89e9 — the reporter asked for "previous Job Grade, new Job Grade, previous
+                    entitlement, new entitlement, effective date, and reason". Three of the six were
+                    already here; this is the fourth, and the date column above now carries the date the
+                    change TOOK EFFECT rather than the date somebody typed it in. */}
+                <th className="px-4 py-2 font-medium">{t('recalcColGrade')}</th>
                 <th className="px-4 py-2 font-medium">{t('recalcColReason')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('recalcColPrevious')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('recalcColNew')}</th>
@@ -2676,8 +2705,22 @@ export default async function EmployeePage({
             <tbody>
               {recalcAudit.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2 tabular-nums">{r.effectiveOn}</td>
+                  {/* `tookEffectOn` is the change's own effective date where the writer knew it, and the
+                      posting date otherwise — one column, never two dates fighting over one heading. */}
+                  <td className="px-4 py-2 tabular-nums">{r.tookEffectOn}</td>
                   <td className="px-4 py-2">{r.leaveTypeName}</td>
+                  {/* An em dash where no grade change was recorded, and where the grade has since left
+                      the catalogue: an absent value asserts nothing, a guessed one asserts something
+                      false. "From no grade to GRADE 16" is a real change and prints as "— → GRADE 16". */}
+                  <td className="px-4 py-2 text-xs">
+                    {r.gradeChanged ? (
+                      <span className="whitespace-nowrap">
+                        {r.previousGradeName ?? '—'} → {r.newGradeName ?? '—'}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">{t('recalcGradeUnchanged')}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-muted-foreground">{recalcReasonLabel(r.reason)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{r.previousEntitlement}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{r.newEntitlement}</td>

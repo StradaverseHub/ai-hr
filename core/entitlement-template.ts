@@ -95,6 +95,7 @@ import {
   employment,
   entitlementEligibilityRule,
   entitlementTemplate,
+  jobGrade,
   leaveLedger,
   leaveType,
   person,
@@ -2206,6 +2207,102 @@ export async function defaultTemplateLineageByLeaveType(ctx: SessionContext): Pr
     const out = new Map<string, string>();
     for (const r of rows) if (r.lineageId) out.set(r.id, r.lineageId);
     return out;
+  });
+}
+
+/**
+ * 9e2a89e9 — EVERY EMPLOYEE NO ENTITLEMENT TABLE REACHES, as one list an administrator can open.
+ *
+ * The reporter asked to be told when a grade change lands on nobody's table. Today that is silent: the
+ * reproject loop's "NO OPINION IS NOT ZERO" skip (core/leave.ts) leaves the employee alone, correctly,
+ * and says nothing to anybody. One profile at a time is not a workable way to find them — on production
+ * 47 of 74 active employments have no job grade recorded at all, so this is a list, not an exception.
+ *
+ * ⚠️ NO SECOND MATCHER. The answer comes from `buildTemplateEntitlementResolver`, the ONE batched matcher
+ * every engine reads, asked once for every active employment × every leave type that has a table in force.
+ * This file's header calls a private "who does this apply to" matcher "the defect wearing the fix's
+ * clothes"; a reader that disagreed with the engine would be worse than no reader, because it would send
+ * an administrator to fix configuration that is already correct.
+ *
+ * ⚠️ LEAVE TYPES WITH NO TABLE AT ALL ARE EXCLUDED, deliberately. Nobody was ever meant to receive days
+ * there, so listing them would bury the types that are genuinely half-configured under a permanent wall
+ * of rows — the shape that gets a warning ignored within a day (see lib/leave-config-health.ts's note on
+ * archived types).
+ *
+ * COST: one query for the employments, one for the leave types, then the resolver's own bounded set (one
+ * membership query per eligibility rule in force, narrowed to this batch). It does NOT grow with the
+ * employee count. Called from ONE screen — the unfiltered Entitlement tables page — never from the
+ * per-leave-type panels, which are composed 24 at a time.
+ */
+export type UnreachedEmployment = {
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  /** Null when no job grade is recorded — which is the commonest reason and is reported as its own fact. */
+  gradeId: string | null;
+  gradeName: string | null;
+  /** The leave types that HAVE a table in force and still resolve nothing for this employee, by name. */
+  leaveTypeNames: string[];
+};
+
+export async function listEmploymentsWithoutEntitlementTable(
+  ctx: SessionContext,
+  p: { asOf: string; limit?: number },
+): Promise<{ rows: UnreachedEmployment[]; total: number; withoutJobGrade: number; activeTotal: number }> {
+  const limit = p.limit ?? 50;
+  return withTenant(ctx, async (tx) => {
+    const empty = { rows: [], total: 0, withoutJobGrade: 0, activeTotal: 0 };
+    const employments = await tx
+      .select({
+        id: employment.id,
+        employeeCode: employment.employeeCode,
+        gradeId: employment.gradeId,
+        gradeName: jobGrade.name,
+        fullName: person.fullName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .where(and(isNull(employment.terminatedOn), lte(employment.hiredOn, p.asOf)))
+      // Any asserted array from a query needs an ORDER BY (CLAUDE.md §8) — the cap below makes this
+      // load-bearing: without it "the first 50" would be a different 50 on every render.
+      .orderBy(asc(person.fullName), asc(employment.id));
+    if (employments.length === 0) return empty;
+
+    const typeIds = [...(await leaveTypeIdsWithTemplatesAt(tx, p.asOf))];
+    if (typeIds.length === 0) {
+      return { rows: [], total: 0, withoutJobGrade: 0, activeTotal: employments.length };
+    }
+    const typeNames = new Map(
+      (await tx.select({ id: leaveType.id, name: leaveType.name }).from(leaveType)).map((t) => [t.id, t.name]),
+    );
+
+    const resolver = await buildTemplateEntitlementResolver(tx, {
+      employmentIds: employments.map((e) => e.id),
+      leaveTypeIds: typeIds,
+      asOf: p.asOf,
+    });
+
+    const rows: UnreachedEmployment[] = [];
+    for (const e of employments) {
+      const missing = typeIds.filter((typeId) => resolver.winnerFor(e.id, typeId) == null);
+      if (missing.length === 0) continue;
+      rows.push({
+        employmentId: e.id,
+        employeeName: e.fullName,
+        employeeCode: e.employeeCode ?? null,
+        gradeId: e.gradeId ?? null,
+        gradeName: e.gradeName ?? null,
+        leaveTypeNames: missing.map((id) => typeNames.get(id) ?? '').filter(Boolean),
+      });
+    }
+    return {
+      // The CAP is applied after counting, so the screen can say "50 of 68" rather than implying 50 is all.
+      rows: rows.slice(0, limit),
+      total: rows.length,
+      withoutJobGrade: rows.filter((r) => r.gradeId == null).length,
+      activeTotal: employments.length,
+    };
   });
 }
 

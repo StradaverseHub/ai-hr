@@ -1263,9 +1263,9 @@
       "holidayCalendarCardTitle": "Lịch nghỉ lễ",
       "gradeCardTitle": "Cấp bậc",
       "recalcHistoryTitle": "Lịch sử tính lại quyền lợi",
-      "recalcHistoryHelp": "Các điều chỉnh tự động đối với quyền nghỉ phép của nhân viên này sau khi thay đổi hồ sơ (cấp bậc, loại hình lao động, ngày tuyển dụng hoặc xác nhận).",
+      "recalcHistoryHelp": "Các điều chỉnh tự động đối với định mức nghỉ phép của nhân viên này sau khi hồ sơ thay đổi (bậc, loại hình làm việc, ngày vào làm hoặc chính thức). “Có hiệu lực từ” là ngày bản thân thay đổi có hiệu lực, không phải ngày nó được ghi nhận.",
       "recalcHistoryEmpty": "Chưa có lần tính lại quyền lợi nào.",
-      "recalcColEffective": "Ngày hiệu lực",
+      "recalcColEffective": "Có hiệu lực từ",
       "recalcColType": "Loại nghỉ phép",
       "recalcColReason": "Lý do",
       "recalcColPrevious": "Trước đây",
@@ -1521,7 +1521,9 @@
       "payComponentBackwards": "Nhân viên này đã có thành phần lương {code} bắt đầu từ {from}. Giá trị mới phải có hiệu lực từ ngày đó trở đi.",
       "payComponentMidMonth": "Thay đổi đối với thành phần lương {code} phải có hiệu lực từ ngày đầu tháng. Nhân viên này đã có một bản ghi {code} đang hoạt động bao gồm một phần của tháng đó, nên một thay đổi ghi ngày giữa tháng sẽ trả đủ cả hai bản ghi. Hãy dùng {nextFirst}.",
       "payComponentClosedRun": "Kỳ lương {period} đã chốt, nên thành phần lương {code} không thể thay đổi cho kỳ đó nữa.",
-      "payComponentOpenEnded": "không có ngày kết thúc"
+      "payComponentOpenEnded": "không có ngày kết thúc",
+      "recalcColGrade": "Bậc công việc",
+      "recalcGradeUnchanged": "Không thay đổi"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -8632,7 +8634,19 @@
       "defaultTableBadge": "Mặc định",
       "createWithDefaultTableNote": "{type} không có chế độ phúc lợi nào đang hiệu lực, và {table} là bảng định mức mặc định của nó — nên hiện tại mọi người đều nhận {table}. Bảng lưu ở đây sẽ không đến được ai cho tới khi có chế độ chỉ định nó, hoặc cho tới khi bạn đặt nó làm mặc định.",
       "healthDefaultTable": "Người không được chế độ phúc lợi nào áp dụng sẽ nhận bảng mặc định {table}.",
-      "explainWinnerDefault": "Nhận {table}, bảng định mức mặc định của loại nghỉ phép này. Không có chế độ phúc lợi nào áp dụng cho nhân viên này, nên bảng mặc định được dùng — định mức không bị giữ lại chỉ vì thiếu chế độ."
+      "explainWinnerDefault": "Nhận {table}, bảng định mức mặc định của loại nghỉ phép này. Không có chế độ phúc lợi nào áp dụng cho nhân viên này, nên bảng mặc định được dùng — định mức không bị giữ lại chỉ vì thiếu chế độ.",
+      "colCovers": "Áp dụng cho",
+      "coversMore": "+{count} nữa",
+      "coversDefaultTable": "Người không được chế độ phúc lợi nào áp dụng — bảng mặc định của loại nghỉ phép này",
+      "uncoveredTitle": "Nhân viên không có bảng định mức nào đến được",
+      "uncoveredHelp": "Các loại nghỉ phép có bảng định mức đang hiệu lực, nhưng nhân viên này không được chế độ phúc lợi nào chỉ định và loại nghỉ phép đó cũng không có bảng mặc định. Không có gì được cấp và không có gì bị bịa ra — đây là những người cần đưa vào một chế độ, hoặc cần một bảng mặc định.",
+      "uncoveredNone": "Mọi nhân viên đang làm việc đều có bảng định mức đến được, trên mọi loại nghỉ phép có bảng.",
+      "uncoveredNoGrade": "{count} trong số này hoàn toàn chưa được ghi bậc công việc, trên tổng số {total} nhân viên đang làm việc. Chế độ phúc lợi khớp theo bậc công việc sẽ không bao giờ đến được họ — phải điền bậc vào hồ sơ việc làm.",
+      "uncoveredNoGradeCell": "Chưa ghi bậc công việc",
+      "uncoveredColEmployee": "Nhân viên",
+      "uncoveredColGrade": "Bậc công việc",
+      "uncoveredColTypes": "Loại nghỉ phép không đến được",
+      "uncoveredMore": "Hiển thị {shown} trong {total}."
     },
     "personnel": {
       "benefitScheme": {
@@ -8654,7 +8668,9 @@
         "notCovered": "Không thuộc chế độ nào",
         "notCoveredHint": "Nhận bảng định mức mặc định của từng loại nghỉ phép, liệt kê bên dưới.",
         "viaDefault": "Bảng mặc định — {table}",
-        "derivedNoteDefault": "Được xác định tự động từ các chế độ phúc lợi trên màn hình Loại nghỉ phép. Không có gì để đặt ở đây: chế độ phúc lợi là tùy chọn, và khi không chế độ nào chỉ định nhân viên này, họ nhận bảng định mức mặc định đã chọn cho từng loại nghỉ phép. Định mức không bao giờ bị giữ lại chỉ vì thiếu chế độ."
+        "derivedNoteDefault": "Được xác định tự động từ các chế độ phúc lợi trên màn hình Loại nghỉ phép. Không có gì để đặt ở đây: chế độ phúc lợi là tùy chọn, và khi không chế độ nào chỉ định nhân viên này, họ nhận bảng định mức mặc định đã chọn cho từng loại nghỉ phép. Định mức không bao giờ bị giữ lại chỉ vì thiếu chế độ.",
+        "unmatchedWarning": "Cần bạn xem lại: không có bảng định mức nào đến được nhân viên này với {types}. Bậc công việc của họ không được chế độ phúc lợi nào chỉ định cho các loại nghỉ phép đó, và cũng chưa đặt bảng định mức mặc định. Chưa có ngày nào được gán, và sẽ không có con số nào bị bịa ra.",
+        "unmatchedNoGrade": "Nhân viên này chưa được ghi bậc công việc, nên chế độ phúc lợi khớp theo bậc công việc sẽ không bao giờ đến được họ."
       }
     },
     "leaveConfigMap": {

@@ -1263,9 +1263,9 @@
       "holidayCalendarCardTitle": "假期日历",
       "gradeCardTitle": "职级",
       "recalcHistoryTitle": "假期额度重新计算记录",
-      "recalcHistoryHelp": "员工资料变更（职级、雇佣类型、入职日期或确认日期）后对其假期额度进行的自动调整。",
+      "recalcHistoryHelp": "在资料变更（职级、雇佣类型、入职日期或转正）后，对该员工假期额度所做的自动调整。“生效于”指的是变更本身生效的日期，而非录入的日期。",
       "recalcHistoryEmpty": "暂无额度重新计算记录。",
-      "recalcColEffective": "生效日期",
+      "recalcColEffective": "生效于",
       "recalcColType": "假期类型",
       "recalcColReason": "原因",
       "recalcColPrevious": "原额度",
@@ -1521,7 +1521,9 @@
       "payComponentBackwards": "该员工已有一项自 {from} 起生效的 {code} 薪资组成。新数值的生效日期必须不早于该日期。",
       "payComponentMidMonth": "对 {code} 薪资组成的更改必须自每月一日起生效。该员工已有一条覆盖当月部分日期的有效 {code} 记录，因此生效日期落在月中的更改会导致两条记录都按全额支付。请改用 {nextFirst}。",
       "payComponentClosedRun": "薪资批次 {period} 已关账，因此 {code} 薪资组成在该期间不能再更改。",
-      "payComponentOpenEnded": "无结束日期"
+      "payComponentOpenEnded": "无结束日期",
+      "recalcColGrade": "职级",
+      "recalcGradeUnchanged": "无变化"
     },
     "import": {
       "title": "导入员工",
@@ -8632,7 +8634,19 @@
       "defaultTableBadge": "默认",
       "createWithDefaultTableNote": "{type} 没有生效中的福利方案，而 {table} 是它的默认额度表 — 因此今天所有人都获得 {table}。在此保存的表在有方案指定它、或你改把它设为默认之前，不会触及任何人。",
       "healthDefaultTable": "没有福利方案涵盖的员工将获得默认表 {table}。",
-      "explainWinnerDefault": "适用 {table}，即此假期类型的默认额度表。没有福利方案涵盖该员工，因此适用默认表 — 不会因为缺少方案而扣住额度。"
+      "explainWinnerDefault": "适用 {table}，即此假期类型的默认额度表。没有福利方案涵盖该员工，因此适用默认表 — 不会因为缺少方案而扣住额度。",
+      "colCovers": "涵盖范围",
+      "coversMore": "另有 {count} 项",
+      "coversDefaultTable": "没有福利方案涵盖的员工 — 此假期类型的默认额度表",
+      "uncoveredTitle": "没有额度表触及的员工",
+      "uncoveredHelp": "有生效额度表的假期类型，但该员工未被任何福利方案指名，且该假期类型也没有默认表。系统不会发放任何天数，也不会自行编造 — 这些人正是需要写进方案、或需要一张默认表的人。",
+      "uncoveredNone": "在每一个已有额度表的假期类型上，所有在职员工都有额度表触及。",
+      "uncoveredNoGrade": "其中 {count} 人完全没有记录职级（共 {total} 名在职员工）。按职级匹配的福利方案永远无法触及他们 — 必须先在雇佣记录上填写职级。",
+      "uncoveredNoGradeCell": "未记录职级",
+      "uncoveredColEmployee": "员工",
+      "uncoveredColGrade": "职级",
+      "uncoveredColTypes": "未触及的假期类型",
+      "uncoveredMore": "显示 {total} 项中的 {shown} 项。"
     },
     "personnel": {
       "benefitScheme": {
@@ -8654,7 +8668,9 @@
         "notCovered": "未被任何方案涵盖",
         "notCoveredHint": "按下方列表，获得每种假期类型的默认额度表。",
         "viaDefault": "默认表 — {table}",
-        "derivedNoteDefault": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：福利方案是可选的，若没有方案指名该员工，他们将获得为每种假期类型所选的默认额度表。绝不会因为缺少方案而扣住额度。"
+        "derivedNoteDefault": "由“假期类型”页面上的福利方案自动得出。此处没有可设置的内容：福利方案是可选的，若没有方案指名该员工，他们将获得为每种假期类型所选的默认额度表。绝不会因为缺少方案而扣住额度。",
+        "unmatchedWarning": "需要你处理：在 {types} 上没有额度表触及该员工。这些假期类型的福利方案都没有指名他们的职级，也没有为其设定默认额度表。系统没有分配任何天数，也不会编造。",
+        "unmatchedNoGrade": "该员工未记录职级，因此按职级匹配的福利方案永远无法触及他们。"
       }
     },
     "leaveConfigMap": {

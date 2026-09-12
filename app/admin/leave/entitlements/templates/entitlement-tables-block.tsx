@@ -50,6 +50,14 @@ import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
 import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
+// 9e2a89e9 — "who does this cover", derived ONCE for both Covers columns. The scheme list had this
+// rendering inline (raw criteria keys and a count); the tables list needed the same answer, and two
+// renderings of one criteria object is how two halves of a screen come to disagree. See that file.
+import {
+  isEveryoneCriteria,
+  summariseOrgCriteria,
+  type CriteriaAxisSummary,
+} from '@/lib/entitlement-criteria-summary';
 // r212 (8ebf77ae) — the leave type's OWN conditions, worded from the SAME criteria vocabulary the rule
 // builder below is generated from, so the inherited list and the pickers beside it cannot drift apart.
 import { inheritedConditions, type LeaveTypeEligibility } from './leave-type-conditions';
@@ -495,6 +503,42 @@ export async function EntitlementTablesBlock({
    *  screen. Absent on the standalone mount, where the actions keep their own return. */
   const returnField = scoped ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
 
+  /**
+   * 9e2a89e9 — THE COVERS CELL, one renderer for both columns.
+   *
+   * Values are named through the picker's own option labels (`criteriaSections`, already loaded once per
+   * page and already in six locales), never printed as stored ids: an archived or deleted catalogue row
+   * has no option to name it, so it is COUNTED rather than rendered as a UUID in front of an operator.
+   * Long lists are capped for the same reason a 66-row grade catalogue is not a table cell.
+   */
+  const COVERS_VALUE_CAP = 6;
+  const coversCell = (criteria: Record<string, unknown> | null | undefined) => {
+    if (isEveryoneCriteria(criteria)) return <span className="block">{t('criteriaEveryone')}</span>;
+    return summariseOrgCriteria(criteria, criteriaSections).map((a: CriteriaAxisSummary) => {
+      const shown = a.values.slice(0, COVERS_VALUE_CAP);
+      const hidden = a.values.length - shown.length + a.unresolved;
+      return (
+        <span key={a.axis} className="block">
+          <span className="text-muted-foreground">{a.label}:</span>{' '}
+          {a.scalar != null ? a.scalar : shown.join(' · ')}
+          {hidden > 0 ? <span className="text-muted-foreground"> {t('coversMore', { count: hidden })}</span> : null}
+        </span>
+      );
+    });
+  };
+  /**
+   * Which IN-FORCE schemes name each entitlement table, keyed by template lineage. Built from the rules
+   * this mount already holds — the Covers column on the tables list is the SAME fact as the Covers column
+   * on the schemes list, read from the table's side, and the table itself deliberately stores no criteria
+   * (that would be a second source of truth for who gets what).
+   */
+  const rulesByTemplateLineage = new Map<string, EligibilityRuleRow[]>();
+  for (const r of runningRules) {
+    const arr = rulesByTemplateLineage.get(r.templateLineageId);
+    if (arr) arr.push(r);
+    else rulesByTemplateLineage.set(r.templateLineageId, [r]);
+  }
+
   const dash = DAY_DASH;
   /** One band rendered for the read-only list. `t.raw` is not needed here — no braces, plain values.
    *  4a1abc4a: the three day figures print through the shared formatter, so the summary a reader scans
@@ -506,7 +550,7 @@ export async function EntitlementTablesBlock({
 
   // Scoped drops the Leave type column: every row on screen is the same type, and the step's own heading
   // already says which. The colSpan of the empty-state row follows the column count rather than a literal.
-  const templateCols = scoped ? 5 : 6;
+  const templateCols = scoped ? 6 : 7;
 
   return (
     <div className="space-y-6">
@@ -528,6 +572,9 @@ export async function EntitlementTablesBlock({
               <tr>
                 <th className="px-3 py-2">{t('colName')}</th>
                 {scoped ? null : <th className="px-3 py-2">{t('colLeaveType')}</th>}
+                {/* 9e2a89e9 — WHO EACH TABLE COVERS, on the screen where tables are created. Read from
+                    the benefit scheme that names the table; the table itself stores no criteria. */}
+                <th className="px-3 py-2">{t('colCovers')}</th>
                 <th className="px-3 py-2">{t('colBands')}</th>
                 <th className="px-3 py-2">{t('colInForce')}</th>
                 <th className="px-3 py-2">{t('colRules')}</th>
@@ -557,6 +604,26 @@ export async function EntitlementTablesBlock({
                     ) : null}
                   </td>
                   {scoped ? null : <td className="px-3 py-2">{typeNameById.get(x.leaveTypeId) ?? dash}</td>}
+                  {/* 9e2a89e9 — THE COVERS CELL. Three states, and each says something different:
+                      a superseded/stopped VERSION covers nobody (it is not in force);
+                      a table no scheme names covers nobody UNLESS it is the leave type's default,
+                        in which case it covers everyone no scheme reaches — which is the whole of
+                        76ffdcf2 and must not read as "nobody";
+                      otherwise, what each scheme naming it covers, in the picker's own words. */}
+                  <td className="px-3 py-2 text-xs">
+                    {x.validTo != null
+                      ? dash
+                      : defaultLineageByType.get(x.leaveTypeId) === x.lineageId &&
+                          (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
+                        ? t('coversDefaultTable')
+                        : (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
+                          ? t('ruleNonePointsHere')
+                          : (rulesByTemplateLineage.get(x.lineageId) ?? []).map((rule) => (
+                              <span key={rule.id} className="mb-1 block last:mb-0">
+                                {coversCell(rule.criteria as Record<string, unknown>)}
+                              </span>
+                            ))}
+                  </td>
                   <td className="px-3 py-2 text-xs">
                     {x.serviceBands.map((b, i) => (
                       <span key={i} className="block">
@@ -894,9 +961,6 @@ export async function EntitlementTablesBlock({
                  * rule it happened to and not only inside the confirmation dialog that caused it.
                  */
                 const stoppedTarget = target ? null : templateHeads.get(x.templateLineageId);
-                const axes = Object.entries(x.criteria as Record<string, unknown>).filter(
-                  ([, v]) => (Array.isArray(v) ? v.length > 0 : v != null && v !== ''),
-                );
                 /**
                  * THE DRIFT CHECK THE APPROVED PLAN REQUIRES, AS A LIST OF THE RULES IT HAPPENED TO.
                  *
@@ -930,15 +994,12 @@ export async function EntitlementTablesBlock({
                           dash
                         ))}
                     </td>
-                    {/* An EMPTY criteria object is a real value that means EVERYONE — never a blank cell. */}
+                    {/* An EMPTY criteria object is a real value that means EVERYONE — never a blank cell.
+                        9e2a89e9 — through the SHARED summariser now: this cell used to print raw criteria
+                        keys and a count (`gradeIds: 4`), which is readable to whoever wrote the code and
+                        to nobody else. Same renderer as the tables list's Covers column. */}
                     <td className="px-3 py-2 text-xs">
-                      {axes.length === 0
-                        ? t('criteriaEveryone')
-                        : axes.map(([k, v]) => (
-                            <span key={k} className="block">
-                              {k}: {Array.isArray(v) ? v.length : String(v)}
-                            </span>
-                          ))}
+                      {coversCell(x.criteria as Record<string, unknown>)}
                       {drifted.length > 0 ? (
                         <span className="mt-1 block font-medium text-foreground">
                           {t('ruleGradeGroupPartial', { groups: drifted.map((g) => g.name).join(', ') })}
