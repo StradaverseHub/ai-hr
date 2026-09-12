@@ -9,7 +9,10 @@ arrived after midnight. Measured 2026-09-12: **0 templates and 0 rules in force*
 `valid_to` clears and is written, verified and ready at `scratchpad/restart-config.sql` (one transaction,
 an audit event each, aborts unless exactly 1 and 1 are in force afterwards). **The permission classifier
 refuses production data writes in this session and a spoken go-ahead does not lift it** — it needs a Bash
-allow rule or the owner runs it. UNTIL IT RUNS, NOBODY RESOLVES TO ANY ENTITLEMENT.
+allow rule or the owner runs it. UNTIL IT RUNS, NOBODY RESOLVES TO ANY ENTITLEMENT. Re-checked at the end of
+2026-09-12: STILL 0 templates and 0 rules in force. The paste-able form, which puts the output in the
+session, is:
+`! ssh -p 8288 ubuntu@203.142.6.241 'cd /opt/ai-hr && set -a && . ./.env.production && set +a && psql "$MIGRATION_DATABASE_URL" -f -' < <path to scratchpad>/restart-config.sql`
 
 **`76ffdcf2` — the default entitlement table, and the wording WE got wrong.** `git log -S` proved the
 sentence the reporter quoted was shipped by r266's rename (`3a14035e`) that morning; it claimed a chain of
@@ -60,7 +63,7 @@ on the calendar's own page.
 **ALL FOUR CORRECTIONS WERE DELIVERED as `ddb3fc65` (raised + planned, 2026-09-12)**, re-measured first with
 the parent inheritance and the jsonb `states` column read correctly: JOHOR OFFICE 0 of 11 · JOHOR SITE the
 same, inheriting · KUALA LUMPUR HQ 11 of 12, missing Deepavali 2026-11-08 · KUALA LUMPUR SITE 10 of 12,
-missing 2026-02-01 and 2026-09-01. The item is a close-out: approve and it shuts. `0e276da0` is deployed and
+missing 2026-02-01 and 2026-09-01. The reporter APPROVED it and it is closed (`no-code-change`). `0e276da0` is deployed and
 was NOT re-planned — pushing a revision onto a deployed item resets its status and loses the record that it
 shipped (CLAUDE.md §9). Hand-fixed before deploy: the sentence could read "holds 13 of the 12" where a
 calendar ticks another state's day, so it now reports gazetted-minus-missing, which is bounded by
