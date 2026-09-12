@@ -783,6 +783,12 @@ export function listLeaveTypes(
         allowNegativeBalance: leaveType.allowNegativeBalance,
         // bc512dc3 — the floor under that switch (NULL ⇒ unbounded).
         maxNegativeBalance: leaveType.maxNegativeBalance,
+        // 76ffdcf2 — the DEFAULT entitlement table (what an employee no benefit scheme covers receives).
+        // MUST be projected for the same reason as the columns above: the Entitlement step reads the
+        // picker's current value from it, and the health derivation reads it to decide whether "no scheme
+        // in force" still means nobody resolves. Unprojected, the picker renders empty on every reload
+        // and the health card calls a covered leave type blocked.
+        defaultEntitlementTemplateLineageId: leaveType.defaultEntitlementTemplateLineageId,
         // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): feed the admin panel's two new
         // Leave Application Rules cards (MUST be projected or both render at their defaults on every reload —
         // the "my setting didn't save" report this list has already had twice).

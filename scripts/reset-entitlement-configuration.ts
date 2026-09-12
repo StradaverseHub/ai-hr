@@ -386,6 +386,9 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       archivedAt: leaveType.archivedAt,
       accrualMethod: leaveType.accrualMethod,
       accrualUnconfigured: leaveType.accrualUnconfigured,
+      // 76ffdcf2 — the health derivation reads it: with a default table in force, "no scheme in force" is
+      // no longer BLOCKING, so a report built without this column would call a covered leave type broken.
+      defaultEntitlementTemplateLineageId: leaveType.defaultEntitlementTemplateLineageId,
     })
     .from(leaveType)
     .where(eq(leaveType.tenantId, tenantId))
@@ -563,6 +566,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       archived: x.archivedAt != null,
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
+      defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
     })),
     templates: templates.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),
     rules: rules.map((x) => ({ ...x, criteria: (x.criteria ?? {}) as { gradeIds?: string[] } & Record<string, unknown> })),
@@ -770,6 +774,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           archived: x.archivedAt != null,
           accrualMethod: x.accrualMethod ?? null,
           accrualUnconfigured: x.accrualUnconfigured != null,
+          defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
         })),
         templates: tplAfter.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),
         rules: rulesAfter.map((x) => ({

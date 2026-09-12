@@ -4,7 +4,7 @@
  * the debit + status flip + event atomically in one transaction.
  */
 // `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
-import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -262,6 +262,13 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
  *                   employee, so nothing was ever granted (r209's "second zero");
  *   - `no_table`  — the leave type has no entitlement table at all, so there was never a number to grant.
  *
+ * 76ffdcf2 adds the fourth, and it is NOT a fourth refusal reason — it is the state that USED to be
+ * `no_scheme` and is now a normal, covered employee:
+ *   - `covered_by_default` — no benefit scheme reaches them, and the leave type's DEFAULT entitlement
+ *                   table does. Days WERE granted from a table a human named, so the remedy is the same
+ *                   as `covered` (the days are spent) and the refusal sentence is the plain one. It is
+ *                   reported separately only so a screen can say WHICH table answered.
+ *
  * This is a READ AFTER THE DECISION, not part of it: the refusal in `requestLeave` / `editLeaveRequest`
  * is unchanged, and this function cannot make an application succeed or fail. It asks the ONE batched
  * matcher the engines use (`buildTemplateEntitlementResolver`) for the pair and reads `hasTemplatesFor`
@@ -272,7 +279,7 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
  * type that spends another type's balance was refused over THAT balance, and telling the employee their
  * own type "has no entitlement table" would send HR to create one nobody would ever spend.
  */
-export type EntitlementCoverage = 'covered' | 'no_scheme' | 'no_table';
+export type EntitlementCoverage = 'covered' | 'covered_by_default' | 'no_scheme' | 'no_table';
 
 export async function entitlementCoverageFor(
   ctx: SessionContext,
@@ -286,7 +293,11 @@ export async function entitlementCoverageFor(
       asOf: p.asOf,
     });
     if (!resolver.hasTemplatesFor(sourceTypeId)) return 'no_table';
-    return resolver.winnerFor(p.employmentId, sourceTypeId) ? 'covered' : 'no_scheme';
+    const won = resolver.winnerFor(p.employmentId, sourceTypeId);
+    if (!won) return 'no_scheme';
+    // 76ffdcf2 — a default-table answer IS coverage. Reported under its own name so the profile card can
+    // say which table answered; every refusal path treats it exactly as `covered`.
+    return won.viaDefaultTemplate ? 'covered_by_default' : 'covered';
   });
 }
 
@@ -7885,6 +7896,13 @@ export async function reprojectA2cEntitlement(
     asOf: string;
     /** Recorded on the event payload: what triggered the correction (e.g. 'year_cycle_override'). */
     trigger: string;
+    /** 9e2a89e9 — the grade pair and the change's own effective date, threaded from
+     *  `reprojectEntitlementForEmployment` so an a2c first-year employee's promotion leaves the SAME
+     *  history row as everybody else's. Absent on every other caller, which writes no grades. See the
+     *  notes on that function's parameters for why presence, not nullness, is the signal. */
+    gradeBefore?: { gradeId: string | null };
+    newGradeId?: string | null;
+    changeEffectiveOn?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
@@ -7997,7 +8015,9 @@ export async function reprojectA2cEntitlement(
       (years) => templates.bandFor(e.employmentId, p.leaveTypeId, years),
     );
     if (!projected) continue;
-    const { expected } = projected;
+    // 9e2a89e9 — the window rides along so the audit row's quoted date can be judged against the cycle
+    // this projection is actually about (a per-type `yearCycleOverride` moves it).
+    const { expected, windowStart, windowEnd } = projected;
 
     const accrued = accruedBy.get(e.employmentId) ?? 0;
     const superseded = supersededBy.get(e.employmentId) ?? 0;
@@ -8047,6 +8067,11 @@ export async function reprojectA2cEntitlement(
       delta: accrualDelta.toFixed(2),
       reason: p.trigger,
       effectiveOn: p.asOf,
+      // Same rule as the profile-recalc kernel next door: a date outside the cycle these figures describe
+      // is dropped, never clamped.
+      changeEffectiveOn: changeDateWithinCycle(p.changeEffectiveOn, windowStart, windowEnd),
+      previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
+      newGradeId: p.gradeBefore ? (p.newGradeId ?? null) : null,
       ledgerId: anchorRowId,
     });
     await appendEvent(tx, {
@@ -8072,6 +8097,39 @@ export async function reprojectA2cEntitlement(
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
   return { affected, totalDelta, packBlocked };
+}
+
+/**
+ * 9e2a89e9 — THE DATE A HISTORY ROW IS ALLOWED TO QUOTE, and why it is sometimes none.
+ *
+ * A recalc row carries four facts about ONE leave cycle: the entitlement before, the entitlement after,
+ * the difference, and — new in this item — the date the underlying change took effect. The first three
+ * always describe the cycle the recalc actually re-projected. The fourth comes from the caller and can
+ * describe a DIFFERENT one.
+ *
+ * ⚠️ THE CASE THIS EXISTS FOR, MEASURED: a promotion effective 2025-12-15 recorded on 2026-09-11. The
+ * recalc re-projects the CURRENT cycle — 2026 — and posts prev 14.00 / new 16.00 / delta +2.00 into it.
+ * 2025 is closed and is never rewritten (every `projectExpectedEntitlement` caller's first invariant). So
+ * a row reading "Took effect 15 Dec 2025" beside 2026's figures invites exactly one conclusion, that the
+ * +2 landed in 2025, and it did not.
+ *
+ * SO AN OUT-OF-WINDOW DATE IS DROPPED, NOT CLAMPED. Clamping to `windowStart` would print "1 January
+ * 2026", which is a date the change did not take effect on — a wrong value asserts something false, an
+ * absent one asserts nothing (CLAUDE.md §8). With null the screen falls back to `effective_on` and reads
+ * "Took effect 11 Sep 2026", which is precisely what happened: on that day we corrected the 2026 cycle.
+ * The backdated effective date is NOT lost — it is the movement's own fact and Employment History carries
+ * it; this column only ever spoke about the cycle these figures describe.
+ *
+ * Pure and exported so the rule has one definition and a test can reach it without a database.
+ */
+export function changeDateWithinCycle(
+  changeEffectiveOn: string | null | undefined,
+  windowStart: string,
+  windowEnd: string,
+): string | null {
+  if (!changeEffectiveOn) return null;
+  // ISO dates compare lexicographically, the same comparison the cycle window itself is filtered with.
+  return changeEffectiveOn >= windowStart && changeEffectiveOn <= windowEnd ? changeEffectiveOn : null;
 }
 
 // ── Profile-change recalculation (R45 7527ea5f) ────────────────────────────────────────────────────
@@ -8103,7 +8161,37 @@ export async function reprojectA2cEntitlement(
  */
 export async function reprojectEntitlementForEmployment(
   ctx: SessionContext,
-  p: { employmentId: string; asOf?: string; trigger: string },
+  p: {
+    employmentId: string;
+    asOf?: string;
+    trigger: string;
+    /**
+     * 9e2a89e9 — WHAT THE GRADE WAS BEFORE, declared by the caller, so the history row can name both
+     * grades instead of only the machine trigger.
+     *
+     * ⚠️ ITS PRESENCE IS THE SIGNAL, which is why it is an object rather than a bare nullable id: "no
+     * grade before" and "this caller is not telling me about a grade change" are different statements,
+     * and only the first should put grades on the row. A configuration-triggered cohort recalc omits it,
+     * so its rows carry no grades — writing today's grade into `new_grade_id` there would read as a
+     * promotion that never happened.
+     *
+     * The caller has it and this function does not: by the time a recalc runs the profile write has
+     * already committed, so `employment.grade_id` read here is the NEW grade. Re-deriving the old one
+     * from the event trail would be a second reader of the movement history to keep in step with
+     * corrections and reversals.
+     */
+    gradeBefore?: { gradeId: string | null };
+    /**
+     * 9e2a89e9 — THE DATE THE CHANGE TOOK EFFECT, when the caller knows it (a movement's effective date).
+     * Recorded on the AUDIT row only.
+     *
+     * ⚠️ IT IS NOT `asOf` AND MUST NOT BECOME IT. `asOf` decides WHAT IS PROJECTED — the cycle, the
+     * service band, the window the already-posted days are summed over. Passing a backdated effective
+     * date there would change the arithmetic, which is money and is not what the approved plan promises.
+     * The ledger row's own `effectiveOn` stays at `asOf` for the same reason.
+     */
+    changeEffectiveOn?: string | null;
+  },
 ): Promise<{ affected: number; totalDelta: number }> {
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
@@ -8232,6 +8320,11 @@ export async function reprojectEntitlementForEmployment(
           employmentIds: [p.employmentId],
           asOf,
           trigger: p.trigger,
+          // 9e2a89e9 — the same record, whichever kernel posts the correction. `newGradeId` is passed
+          // explicitly because that function sweeps a cohort and cannot read one employment's grade.
+          gradeBefore: p.gradeBefore,
+          newGradeId: emp.gradeId ?? null,
+          changeEffectiveOn: p.changeEffectiveOn ?? null,
         });
         affected += a2c.affected;
         totalDelta = round2(totalDelta + a2c.totalDelta);
@@ -8267,6 +8360,10 @@ export async function reprojectEntitlementForEmployment(
         })
         .returning({ id: leaveLedger.id });
       // Audit-history row (the human-readable trail: previous → new entitlement, why, effective date).
+      // 9e2a89e9 — plus the two GRADES the change moved between and the date it TOOK EFFECT, when the
+      // caller declared them. `effectiveOn` keeps its meaning (when the correction was posted);
+      // `changeEffectiveOn` carries the other date, and the screen prints the second falling back to the
+      // first. The grades are written as a PAIR or not at all — see `gradeBefore` on the signature.
       await tx.insert(leaveEntitlementRecalcAudit).values({
         tenantId: ctx.tenantId,
         employmentId: p.employmentId,
@@ -8276,6 +8373,10 @@ export async function reprojectEntitlementForEmployment(
         delta: delta.toFixed(2),
         reason: p.trigger,
         effectiveOn: asOf,
+        // Only when it describes the cycle these figures describe — see `changeDateWithinCycle`.
+        changeEffectiveOn: changeDateWithinCycle(p.changeEffectiveOn, windowStart, windowEnd),
+        previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
+        newGradeId: p.gradeBefore ? (emp.gradeId ?? null) : null,
         ledgerId: row.id,
       });
       await appendEvent(tx, {
@@ -8388,8 +8489,20 @@ export async function reprojectEntitlementForLeaveTypeCohort(
   return { employees: empIds.length, affected, totalDelta };
 }
 
-/** R45 7527ea5f — the profile-change recalculation history for one employment (newest first), joined to
- *  the leave-type name for display. Read-only (RLS: tenant-read), no events. */
+/**
+ * R45 7527ea5f — the profile-change recalculation history for one employment (newest first), joined to
+ * the leave-type name for display. Read-only (RLS: tenant-read), no events.
+ *
+ * 9e2a89e9 — it now also answers WHICH GRADES the change moved between and WHEN THAT CHANGE TOOK EFFECT.
+ * Both grade joins are LEFT joins and the id is returned beside the name: the audit row carries no
+ * foreign key (a grade may be archived or deleted, and a history that tidying the catalogue can erase is
+ * not a history), so "the grade is gone" must render as an em dash rather than dropping the whole row —
+ * which an inner join would do, silently, to exactly the oldest records.
+ *
+ * `tookEffectOn` is the one date a screen should print: the change's own effective date where the writer
+ * knew it, otherwise the date the correction was posted. Both are returned so a reader can tell which it
+ * got, and `effectiveOn` keeps its original meaning for every row ever written.
+ */
 export async function listEntitlementRecalcAudit(
   ctx: SessionContext,
   employmentId: string,
@@ -8403,10 +8516,23 @@ export async function listEntitlementRecalcAudit(
     delta: number;
     reason: string;
     effectiveOn: string;
+    /** 9e2a89e9 — when the underlying change took effect, or null where the writer had no such date. */
+    changeEffectiveOn: string | null;
+    /** `changeEffectiveOn ?? effectiveOn` — what the "Took effect" column prints. */
+    tookEffectOn: string;
+    previousGradeId: string | null;
+    newGradeId: string | null;
+    /** Null when no grade pair was recorded, AND when the grade has since left the catalogue. */
+    previousGradeName: string | null;
+    newGradeName: string | null;
+    /** True when this row records a grade change at all — the two names may still be null (deleted). */
+    gradeChanged: boolean;
     createdAt: string;
   }[]
 > {
   return withTenant(ctx, async (tx) => {
+    const previousGrade = aliasedTable(jobGrade, 'previous_grade');
+    const newGrade = aliasedTable(jobGrade, 'new_grade');
     const rows = await tx
       .select({
         id: leaveEntitlementRecalcAudit.id,
@@ -8417,10 +8543,17 @@ export async function listEntitlementRecalcAudit(
         delta: leaveEntitlementRecalcAudit.delta,
         reason: leaveEntitlementRecalcAudit.reason,
         effectiveOn: leaveEntitlementRecalcAudit.effectiveOn,
+        changeEffectiveOn: leaveEntitlementRecalcAudit.changeEffectiveOn,
+        previousGradeId: leaveEntitlementRecalcAudit.previousGradeId,
+        newGradeId: leaveEntitlementRecalcAudit.newGradeId,
+        previousGradeName: previousGrade.name,
+        newGradeName: newGrade.name,
         createdAt: leaveEntitlementRecalcAudit.createdAt,
       })
       .from(leaveEntitlementRecalcAudit)
       .innerJoin(leaveType, eq(leaveType.id, leaveEntitlementRecalcAudit.leaveTypeId))
+      .leftJoin(previousGrade, eq(previousGrade.id, leaveEntitlementRecalcAudit.previousGradeId))
+      .leftJoin(newGrade, eq(newGrade.id, leaveEntitlementRecalcAudit.newGradeId))
       .where(
         and(
           eq(leaveEntitlementRecalcAudit.tenantId, ctx.tenantId),
@@ -8437,6 +8570,15 @@ export async function listEntitlementRecalcAudit(
       delta: Number(r.delta),
       reason: r.reason,
       effectiveOn: r.effectiveOn,
+      changeEffectiveOn: r.changeEffectiveOn ?? null,
+      tookEffectOn: r.changeEffectiveOn ?? r.effectiveOn,
+      previousGradeId: r.previousGradeId ?? null,
+      newGradeId: r.newGradeId ?? null,
+      previousGradeName: r.previousGradeName ?? null,
+      newGradeName: r.newGradeName ?? null,
+      // A grade CHANGE was recorded when either id is present. "From no grade to GRADE 16" is a real
+      // change and its `previousGradeId` is legitimately null, so presence of either is the test.
+      gradeChanged: r.previousGradeId != null || r.newGradeId != null,
       createdAt: r.createdAt.toISOString(),
     }));
   });

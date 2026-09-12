@@ -2474,7 +2474,20 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
 
 /** What one employment's due-movement pass did. `noop` counts movements that arrived to find their
  *  values already in place — they still get an applied event, so they never retry. */
-export type ApplyDueResult = { applied: number; noop: number };
+export type ApplyDueResult = {
+  applied: number;
+  noop: number;
+  /**
+   * 9e2a89e9 — the LATEST effective date among the movements this pass actually applied, or null when it
+   * applied none. The sweep hands it to the entitlement recalc so a future-dated promotion's history row
+   * reads the date it took effect rather than the morning the cron happened to run — which on a job that
+   * has not run for a few days are different dates.
+   *
+   * The MAXIMUM, computed, never "the last row of the loop": several movements can come due together and
+   * the one whose date the correction belongs to is the most recent of them.
+   */
+  appliedEffectiveDate: string | null;
+};
 
 /**
  * 941c9dac — apply every PENDING movement of one employment whose effective date has arrived.
@@ -2507,6 +2520,7 @@ export async function applyDueMovementsTx(
 
   let applied = 0;
   let noop = 0;
+  let appliedEffectiveDate: string | null = null;
   for (const r of due) {
     const ev = events.find((e) => e.id === r.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2553,6 +2567,10 @@ export async function applyDueMovementsTx(
           });
       changes = res.changes;
       applied += 1;
+      // ISO dates compare lexicographically; this is the maximum, not the loop's last iteration.
+      if (appliedEffectiveDate == null || r.effectiveDate > appliedEffectiveDate) {
+        appliedEffectiveDate = r.effectiveDate;
+      }
     } catch (e) {
       // The movement arrived to find its values already in place (someone made the same change by hand in
       // the meantime). That is a legitimate outcome, not a failure: record it as applied-with-no-changes
@@ -2581,7 +2599,7 @@ export async function applyDueMovementsTx(
       },
     });
   }
-  return { applied, noop };
+  return { applied, noop, appliedEffectiveDate };
 }
 
 // ───────────── Corrections: Edit + Rollback — 66a63bd6, renamed by 10fcf6df ─────────────

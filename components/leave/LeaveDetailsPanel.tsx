@@ -470,7 +470,12 @@ export function LeaveDetailsPanel({
                     `resolved` / `sole_table` render NOTHING here on purpose: `core/read.ts` attaches this
                     notice only where the engine resolved nothing, so a verdict that names a winner belongs
                     to a status this block is not explaining. */}
-                {eligibility && eligibility.verdict !== 'resolved' && eligibility.verdict !== 'sole_table' && (
+                {/* 76ffdcf2 — `default_table` joins that list for the same reason: a default table IS a
+                    winner, so an explanation of why nothing reached this employee does not apply to it. */}
+                {eligibility &&
+                  eligibility.verdict !== 'resolved' &&
+                  eligibility.verdict !== 'sole_table' &&
+                  eligibility.verdict !== 'default_table' && (
                   <div className="mt-2 border-t border-current/20 pt-2">
                     {eligibility.verdict === 'not_active' ? (
                       <p>{t('eligibilityNotActive', { date: asOf })}</p>

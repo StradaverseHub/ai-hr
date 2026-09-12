@@ -98,6 +98,8 @@ const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
   id: 'lt-med',
   name: 'Medical Leave',
   accrualMethod: 'grant_on_hire_prorated',
+  // 76ffdcf2 — required on HealthLeaveType so a projection that drops it fails the compiler, not a page.
+  defaultEntitlementTemplateLineageId: null,
   accrualUnconfigured: false,
   archived: false,
   ...over,
@@ -658,7 +660,14 @@ describe('r209 · the health card and the ENGINE agree about which zero is a fau
     const h = leaveTypeConfigHealth({
       // An earning method IS set, deliberately: it leaves the rule/table state as the only thing that can
       // colour this card, so the case cannot pass for the wrong reason.
-      leaveType: { id: typeId, name: 'Medical Leave', accrualMethod: 'grant_on_hire_prorated', accrualUnconfigured: false, archived: false },
+      leaveType: {
+        id: typeId,
+        name: 'Medical Leave',
+        accrualMethod: 'grant_on_hire_prorated',
+        accrualUnconfigured: false,
+        archived: false,
+        defaultEntitlementTemplateLineageId: null,
+      },
       templates,
       rules,
       grades: [],

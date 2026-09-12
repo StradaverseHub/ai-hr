@@ -1635,6 +1635,30 @@ export async function setEmploymentHolidayCalendar(
   });
 }
 
+/**
+ * 9e2a89e9 — THIS EMPLOYMENT'S JOB GRADE RIGHT NOW, as one indexed read.
+ *
+ * It exists for one job: a caller that is about to record a movement needs the grade as it stands BEFORE
+ * the write, so the entitlement recalc that follows can name both grades on its history row. By the time
+ * `reprojectEntitlementForEmployment` runs the profile write has committed, so it can only see the new
+ * one, and re-deriving the old one from the `employment.grade.changed` event trail would be a second
+ * reader of that history to keep in step with corrections and reversals.
+ *
+ * Returns null both for "no grade recorded" (47 of 74 active employments on production) and for an
+ * employment this caller cannot read through RLS. Neither is an error: the audit row simply records no
+ * previous grade, which is the truth in both cases.
+ */
+export async function employmentGradeId(ctx: SessionContext, employmentId: string): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ gradeId: employment.gradeId })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    return row?.gradeId ?? null;
+  });
+}
+
 /** ADR-0041 2E: set an employment's seniority grade (drives grade-scoped leave entitlements). Pass null
  *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched.
  *  78853b97 (Movement tab): no-ops when the grade is unchanged (returns { changed: false }, no event —

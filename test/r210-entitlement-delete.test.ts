@@ -696,6 +696,7 @@ describe('§C r210 · a deleted table is not still reported as a table without a
     name: 'Annual Leave',
     accrualMethod: 'grant_on_hire_prorated',
     accrualUnconfigured: false,
+    defaultEntitlementTemplateLineageId: null,
     archived: false,
   });
 

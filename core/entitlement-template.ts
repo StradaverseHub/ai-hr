@@ -95,6 +95,7 @@ import {
   employment,
   entitlementEligibilityRule,
   entitlementTemplate,
+  jobGrade,
   leaveLedger,
   leaveType,
   person,
@@ -161,6 +162,11 @@ export type ResolvedEntitlement = {
    *  because none exists to consult. A screen must say "the only table for this leave type", not name a
    *  rule that does not exist. False for every rule-decided answer. */
   viaSoleTemplate: boolean;
+  /** 76ffdcf2 — this answer came from the leave type's DEFAULT entitlement table
+   *  (`leave_type.default_entitlement_template_lineage_id`), because no benefit scheme in force matched
+   *  this employee. A screen must say "the default table for this leave type", never name a scheme.
+   *  False for every rule-decided and every sole-table answer; the three are mutually exclusive. */
+  viaDefaultTemplate: boolean;
 };
 
 // ── Templates ────────────────────────────────────────────────────────────────────────────────────────
@@ -893,6 +899,28 @@ export async function deleteEntitlementTemplate(
     // The lineage's leave type is constant across its versions — `updateEntitlementTemplate` refuses to
     // change it — so any version answers, and `versions[0]` is not a guess about which.
     const leaveTypeId = versions[0].leaveTypeId;
+    /**
+     * 76ffdcf2 — …AND A LEAVE TYPE'S NAMED DEFAULT IS A POINTER TOO, so it belongs beside the rule check
+     * above rather than being discovered afterwards. A default is the table everyone no scheme covers
+     * receives: deleting it out from under them would silently return the whole unmatched population to
+     * resolving nothing, which is the state this item exists to end. And
+     * `default_entitlement_template_lineage_id` carries no FK (a lineage is not a row), so nothing in the
+     * database would have stopped it.
+     *
+     * Refused rather than cleared: clearing somebody's fallback as a side effect of a delete is a bigger
+     * decision than the one they pressed. The message names the way out, exactly as the rule refusal does.
+     */
+    const [defaultOf] = await tx
+      .select({ id: leaveType.id, name: leaveType.name })
+      .from(leaveType)
+      .where(eq(leaveType.defaultEntitlementTemplateLineageId, p.lineageId))
+      .limit(1);
+    if (defaultOf) {
+      throw new Error(
+        `${name} is the default entitlement table for ${defaultOf.name}, so it cannot be deleted. ` +
+          `Choose another default (or clear it) on that leave type first, or stop this table from a date instead.`,
+      );
+    }
     const window = lineageInForceWindow(versions)!;
     const used = await grantsInWindow(tx, leaveTypeId, window);
     if (used.grants > 0) {
@@ -1278,6 +1306,10 @@ export type EntitlementEligibilityExplanation = {
   soleTableApplies: boolean;
   /** What actually decided — null when nothing did, which is the state this whole type exists to explain. */
   winner: ResolvedEntitlement | null;
+  /** 76ffdcf2, read off the engine's own answer (`ResolvedEntitlement.viaDefaultTemplate`): no scheme
+   *  reached this employee and the leave type's DEFAULT entitlement table answered instead. Mutually
+   *  exclusive with `soleTableApplies`, and derived the same way — never re-computed here. */
+  defaultTableApplies: boolean;
   /** Every rule lineage of this leave type, current version, in force or not, ordered by name. */
   rules: EligibilityRuleExplanation[];
   /** Any rule above narrows by an undated axis ⇒ the whole explanation carries the caveat. */
@@ -1547,6 +1579,7 @@ export async function explainEntitlementEligibility(
     asOf: p.asOf,
     activeAtDate,
     soleTableApplies: winner?.viaSoleTemplate === true,
+    defaultTableApplies: winner?.viaDefaultTemplate === true,
     winner,
     rules,
     usesUndatedAxis: rules.some((r) => r.usesUndatedAxis),
@@ -1608,7 +1641,9 @@ export function eligibilityNoticeFrom(
   const verdict: EligibilityVerdict = winner
     ? explanation.soleTableApplies
       ? 'sole_table'
-      : 'resolved'
+      : explanation.defaultTableApplies
+        ? 'default_table'
+        : 'resolved'
     : !explanation.activeAtDate
       ? 'not_active'
       : explanation.rules.length === 0
@@ -1618,6 +1653,7 @@ export function eligibilityNoticeFrom(
   return {
     verdict,
     soleTableApplies: explanation.soleTableApplies,
+    defaultTableApplies: explanation.defaultTableApplies,
     activeAtDate: explanation.activeAtDate,
     winningRuleName: winner?.ruleName ?? null,
     winningTableName: winner?.templateName ?? null,
@@ -1765,6 +1801,41 @@ export async function buildTemplateEntitlementResolver(
     if (!ruledTypeIds.has(typeId)) soleTemplateByType.set(typeId, lineagesByType.get(typeId)![0]);
   }
 
+  // ── 76ffdcf2 — THE DEFAULT ENTITLEMENT TABLE: WHAT AN EMPLOYEE NO SCHEME COVERS RECEIVES ───────────
+  //
+  // The reporter's words: "No code path silently produces zero entitlement merely because Benefit Scheme
+  // is missing." Before this, a leave type with two or more tables and no MATCHING rule resolved to
+  // nothing — deliberately, because picking one of several tables nobody chose would be a silent
+  // mis-grant (see the sole-table note above). The gap was real all the same: 34 employees on production
+  // held 2026 Annual Leave days while their profile said no table reached them.
+  //
+  // ⚠️ THIS DOES NOT WIDEN `soleTableApplies`, AND MUST NOT BE MADE TO. r193 fault 3's safety property is
+  // that a table NOBODY CHOSE is never handed to everyone. A default is chosen — by a named human, on the
+  // leave type, through `setLeaveTypeDefaultTemplate`. Where no default is set the answer is still null
+  // and the caller still posts NOTHING (`noEntitlementOpinion`, core/leave-compute.ts): "never invent
+  // days" is untouched, and the EA-1955 floor is NOT resurrected as a fallback (fa3f4ccb).
+  //
+  // ⚠️ AND IT IS THE LAST BRANCH, NEVER THE FIRST. A matching rule always wins, and so does the sole-table
+  // answer; the default only speaks where nothing else did. A default that could beat a rule would let a
+  // leave-type-level setting silently reverse an exclusion HR wrote deliberately.
+  //
+  // The lineage is resolved through the SAME `templates` map every other branch reads, so a default whose
+  // table has been STOPPED (no version in force on `asOf`) simply stops applying — it never resolves
+  // against some other version, which is the staleness the lineage design exists to remove. A default
+  // pointing at another leave type's table is refused at write time and ignored here regardless.
+  const defaultTemplateByType = new Map<string, EntitlementTemplateRow>();
+  {
+    const defaults = await tx
+      .select({ id: leaveType.id, lineageId: leaveType.defaultEntitlementTemplateLineageId })
+      .from(leaveType)
+      .where(inArray(leaveType.id, typeIds));
+    for (const row of defaults) {
+      if (!row.lineageId) continue;
+      const tpl = templates.get(row.lineageId);
+      if (tpl && tpl.leaveTypeId === row.id) defaultTemplateByType.set(row.id, tpl);
+    }
+  }
+
   const ruleRows = (
     await tx
       .select()
@@ -1784,7 +1855,9 @@ export async function buildTemplateEntitlementResolver(
   // r193: `&& soleTemplateByType.size === 0` — a tenant with tables but no rules used to short-circuit to
   // "nothing configured" HERE, which is the whole of fault 3. It still short-circuits when there is also
   // nothing unambiguous to apply, so the back-compat guarantee in this function's header is untouched.
-  if (ruleRows.length === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
+  if (ruleRows.length === 0 && soleTemplateByType.size === 0 && defaultTemplateByType.size === 0) {
+    return emptyWith(hasTemplatesFor);
+  }
 
   // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
   const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
@@ -1800,7 +1873,9 @@ export async function buildTemplateEntitlementResolver(
       else matchedByEmp.set(id, [rule]);
     }
   }
-  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
+  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0 && defaultTemplateByType.size === 0) {
+    return emptyWith(hasTemplatesFor);
+  }
 
   // Ranked once per (employment, leave type) and memoised — the grant loops ask for the same pair at
   // several service lengths (the anniversary re-resolution in projectExpectedEntitlement asks twice for
@@ -1831,6 +1906,7 @@ export async function buildTemplateEntitlementResolver(
           .slice(1)
           .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
         viaSoleTemplate: false,
+        viaDefaultTemplate: false,
       };
     }
     // r193 FAULT 3: no rule decided this pair. If the leave type has exactly one table in force and no
@@ -1848,6 +1924,26 @@ export async function buildTemplateEntitlementResolver(
           specificity: 0,
           alsoMatched: [],
           viaSoleTemplate: true,
+          viaDefaultTemplate: false,
+        };
+      }
+    }
+    // 76ffdcf2 — LAST: no scheme matched and no unambiguous sole table, so the leave type's DEFAULT table
+    // answers, if HR named one. `specificity: 0` because a default narrows by nothing — it is the answer
+    // for everybody the earlier branches left without one.
+    if (out === null) {
+      const fallback = defaultTemplateByType.get(leaveTypeId);
+      if (fallback) {
+        out = {
+          ruleName: null,
+          ruleLineageId: null,
+          templateName: fallback.name,
+          templateLineageId: fallback.lineageId,
+          serviceBands: fallback.serviceBands,
+          specificity: 0,
+          alsoMatched: [],
+          viaSoleTemplate: false,
+          viaDefaultTemplate: true,
         };
       }
     }
@@ -2055,6 +2151,162 @@ export async function countEligibilityRulesForLeaveType(tx: Tx, leaveTypeId: str
     )
     .where(eq(entitlementTemplate.leaveTypeId, leaveTypeId));
   return Number(row?.n ?? 0);
+}
+
+/**
+ * 76ffdcf2 — NAME (or clear) THE DEFAULT ENTITLEMENT TABLE for a leave type.
+ *
+ * This is the ONE write behind the reporter's request that nobody fall through. An employee whom no
+ * benefit scheme covers receives the table named here instead of receiving nothing; where nothing is
+ * named, resolution is exactly what it was before this item existed.
+ *
+ * ⚠️ THE LINEAGE MUST BE THIS LEAVE TYPE'S OWN, and that is checked here rather than by a constraint: a
+ * lineage is not a row (see the schema note on `default_entitlement_template_lineage_id`), so there is no
+ * FK to lean on, and a default pointing at another type's table would resolve to nothing and read on
+ * screen as "not eligible" rather than as the configuration error it is. The picker is restricted to the
+ * type's own in-force tables for the same reason; this is the backstop a hand-crafted post meets.
+ *
+ * ⚠️ IT DOES NOT REPROJECT. Saving a default MOVES BALANCES for everyone the schemes do not reach, and the
+ * recalc must run in its OWN transaction against the COMMITTED configuration — the same ordering
+ * `setLeaveTypeRules` obeys, and for the same reason: called inside this write, every employee would
+ * reproject against the configuration this save just replaced. The caller runs
+ * `reprojectEntitlementForLeaveTypeCohort` after this returns, and a test asserts that ordering.
+ *
+ * Returns the lineage that is now stored (null when cleared), so a caller need not re-read to report it.
+ */
+export async function setLeaveTypeDefaultTemplate(
+  ctx: SessionContext,
+  p: { leaveTypeId: string; templateLineageId: string | null },
+): Promise<{ leaveTypeId: string; defaultTemplateLineageId: string | null }> {
+  const lineageId = (p.templateLineageId ?? '').trim() || null;
+  return withTenant(ctx, async (tx) => {
+    const [type] = await tx
+      .select({ id: leaveType.id, current: leaveType.defaultEntitlementTemplateLineageId })
+      .from(leaveType)
+      .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, p.leaveTypeId)))
+      .limit(1);
+    if (!type) throw new Error('That leave type does not exist.');
+    if (lineageId) {
+      await assertTemplateLineageExists(tx, lineageId);
+      const [owned] = await tx
+        .select({ id: entitlementTemplate.id })
+        .from(entitlementTemplate)
+        .where(
+          and(eq(entitlementTemplate.lineageId, lineageId), eq(entitlementTemplate.leaveTypeId, p.leaveTypeId)),
+        )
+        .limit(1);
+      if (!owned) throw new Error('That entitlement table belongs to a different leave type.');
+    }
+    await tx
+      .update(leaveType)
+      .set({ defaultEntitlementTemplateLineageId: lineageId })
+      .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, p.leaveTypeId)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave_type',
+      aggregateId: p.leaveTypeId,
+      eventType: 'leave-type.default-entitlement-table.set',
+      payload: { leaveTypeId: p.leaveTypeId, before: type.current ?? null, after: lineageId },
+      actor: actorOf(ctx),
+    });
+    return { leaveTypeId: p.leaveTypeId, defaultTemplateLineageId: lineageId };
+  });
+}
+
+/**
+ * 9e2a89e9 — EVERY EMPLOYEE NO ENTITLEMENT TABLE REACHES, as one list an administrator can open.
+ *
+ * The reporter asked to be told when a grade change lands on nobody's table. Today that is silent: the
+ * reproject loop's "NO OPINION IS NOT ZERO" skip (core/leave.ts) leaves the employee alone, correctly,
+ * and says nothing to anybody. One profile at a time is not a workable way to find them — on production
+ * 47 of 74 active employments have no job grade recorded at all, so this is a list, not an exception.
+ *
+ * ⚠️ NO SECOND MATCHER. The answer comes from `buildTemplateEntitlementResolver`, the ONE batched matcher
+ * every engine reads, asked once for every active employment × every leave type that has a table in force.
+ * This file's header calls a private "who does this apply to" matcher "the defect wearing the fix's
+ * clothes"; a reader that disagreed with the engine would be worse than no reader, because it would send
+ * an administrator to fix configuration that is already correct.
+ *
+ * ⚠️ LEAVE TYPES WITH NO TABLE AT ALL ARE EXCLUDED, deliberately. Nobody was ever meant to receive days
+ * there, so listing them would bury the types that are genuinely half-configured under a permanent wall
+ * of rows — the shape that gets a warning ignored within a day (see lib/leave-config-health.ts's note on
+ * archived types).
+ *
+ * COST: one query for the employments, one for the leave types, then the resolver's own bounded set (one
+ * membership query per eligibility rule in force, narrowed to this batch). It does NOT grow with the
+ * employee count. Called from ONE screen — the unfiltered Entitlement tables page — never from the
+ * per-leave-type panels, which are composed 24 at a time.
+ */
+export type UnreachedEmployment = {
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  /** Null when no job grade is recorded — which is the commonest reason and is reported as its own fact. */
+  gradeId: string | null;
+  gradeName: string | null;
+  /** The leave types that HAVE a table in force and still resolve nothing for this employee, by name. */
+  leaveTypeNames: string[];
+};
+
+export async function listEmploymentsWithoutEntitlementTable(
+  ctx: SessionContext,
+  p: { asOf: string; limit?: number },
+): Promise<{ rows: UnreachedEmployment[]; total: number; withoutJobGrade: number; activeTotal: number }> {
+  const limit = p.limit ?? 50;
+  return withTenant(ctx, async (tx) => {
+    const empty = { rows: [], total: 0, withoutJobGrade: 0, activeTotal: 0 };
+    const employments = await tx
+      .select({
+        id: employment.id,
+        employeeCode: employment.employeeCode,
+        gradeId: employment.gradeId,
+        gradeName: jobGrade.name,
+        fullName: person.fullName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .where(and(isNull(employment.terminatedOn), lte(employment.hiredOn, p.asOf)))
+      // Any asserted array from a query needs an ORDER BY (CLAUDE.md §8) — the cap below makes this
+      // load-bearing: without it "the first 50" would be a different 50 on every render.
+      .orderBy(asc(person.fullName), asc(employment.id));
+    if (employments.length === 0) return empty;
+
+    const typeIds = [...(await leaveTypeIdsWithTemplatesAt(tx, p.asOf))];
+    if (typeIds.length === 0) {
+      return { rows: [], total: 0, withoutJobGrade: 0, activeTotal: employments.length };
+    }
+    const typeNames = new Map(
+      (await tx.select({ id: leaveType.id, name: leaveType.name }).from(leaveType)).map((t) => [t.id, t.name]),
+    );
+
+    const resolver = await buildTemplateEntitlementResolver(tx, {
+      employmentIds: employments.map((e) => e.id),
+      leaveTypeIds: typeIds,
+      asOf: p.asOf,
+    });
+
+    const rows: UnreachedEmployment[] = [];
+    for (const e of employments) {
+      const missing = typeIds.filter((typeId) => resolver.winnerFor(e.id, typeId) == null);
+      if (missing.length === 0) continue;
+      rows.push({
+        employmentId: e.id,
+        employeeName: e.fullName,
+        employeeCode: e.employeeCode ?? null,
+        gradeId: e.gradeId ?? null,
+        gradeName: e.gradeName ?? null,
+        leaveTypeNames: missing.map((id) => typeNames.get(id) ?? '').filter(Boolean),
+      });
+    }
+    return {
+      // The CAP is applied after counting, so the screen can say "50 of 68" rather than implying 50 is all.
+      rows: rows.slice(0, limit),
+      total: rows.length,
+      withoutJobGrade: rows.filter((r) => r.gradeId == null).length,
+      activeTotal: employments.length,
+    };
+  });
 }
 
 // ── internals ────────────────────────────────────────────────────────────────────────────────────────

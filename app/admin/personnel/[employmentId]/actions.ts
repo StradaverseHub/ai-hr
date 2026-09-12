@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import {
   createMovementEvent,
@@ -89,9 +89,18 @@ async function recomputeEntitlement(
   s: Awaited<ReturnType<typeof requireAdmin>>,
   employmentId: string,
   trigger: string,
+  /**
+   * 9e2a89e9 — THE RECORD THE RECALC CANNOT ASSEMBLE FOR ITSELF.
+   *
+   * `gradeBefore` must be read BEFORE the write (by then `employment.grade_id` is the new grade), and
+   * `changeEffectiveOn` is the movement's own effective date — the reporter's "a promotion effective
+   * 1 July entered in September should read 1 July". Both are OPTIONAL and omitted by the callers that
+   * genuinely have neither, whose rows then carry no grades, exactly as before this item.
+   */
+  record: { gradeBefore?: { gradeId: string | null }; changeEffectiveOn?: string | null } = {},
 ): Promise<void> {
   try {
-    await reprojectEntitlementForEmployment(s, { employmentId, trigger });
+    await reprojectEntitlementForEmployment(s, { employmentId, trigger, ...record });
   } catch {
     // non-fatal — idempotent, re-runs on the next profile trigger or policy edit.
   }
@@ -502,6 +511,11 @@ export async function createMovementEventAction(formData: FormData) {
   let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
+    // 9e2a89e9 — READ BEFORE THE WRITE. After createMovementEvent has committed, employment.grade_id is
+    // the NEW grade and the old one is unrecoverable without replaying the event trail, so the history
+    // row could only ever have named one of the two. One indexed read, on the path that already opens
+    // several transactions.
+    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
     const res = await createMovementEvent(s, { employmentId, ...p });
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
@@ -530,7 +544,13 @@ export async function createMovementEventAction(formData: FormData) {
       p.kind === 'groupJoinDateCorrection' ||
       p.kind === 'termination'
     ) {
-      await recomputeEntitlement(s, employmentId, 'movement_recorded');
+      // The movement's own effective date, NOT today: a promotion effective 1 July keyed in September is
+      // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
+      // the posting date, because re-dating money is a separate decision (see the migration's header).
+      await recomputeEntitlement(s, employmentId, 'movement_recorded', {
+        gradeBefore,
+        changeEffectiveOn: p.effectiveDate ?? null,
+      });
     }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
@@ -564,13 +584,19 @@ export async function editMovementEventAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   try {
     const p = parseMovementForm(formData);
+    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
     await editMovementEvent(s, {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
       ...p,
     });
-    if (isComparisonKind(p.kind)) await recomputeEntitlement(s, employmentId, 'movement_recorded');
+    // A correction can move the grade just as the original did, and it carries its own effective date.
+    if (isComparisonKind(p.kind))
+      await recomputeEntitlement(s, employmentId, 'movement_recorded', {
+        gradeBefore,
+        changeEffectiveOn: p.effectiveDate ?? null,
+      });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -587,12 +613,16 @@ export async function reverseMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
     await reverseMovementEvent(s, {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
     });
-    await recomputeEntitlement(s, employmentId, 'movement_recorded');
+    // A rollback moves the grade BACK, and that is a grade change worth naming. It carries no effective
+    // date of its own — the reversal takes effect now — so `changeEffectiveOn` is deliberately omitted
+    // and the row falls back to the posting date under the screen's one "Took effect" heading.
+    await recomputeEntitlement(s, employmentId, 'movement_recorded', { gradeBefore });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }

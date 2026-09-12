@@ -101,6 +101,7 @@ const rule = (over: Partial<EligibilityRuleNotice> = {}): EligibilityRuleNotice 
 const notice = (over: Partial<EligibilityNotice> = {}): EligibilityNotice => ({
   verdict: 'no_match',
   soleTableApplies: false,
+  defaultTableApplies: false,
   activeAtDate: true,
   winningRuleName: null,
   winningTableName: null,

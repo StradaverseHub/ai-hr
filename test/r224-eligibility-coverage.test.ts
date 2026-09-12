@@ -52,6 +52,7 @@ const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
   name: 'Annual Leave',
   accrualMethod: 'grant_on_hire_prorated',
   accrualUnconfigured: false,
+  defaultEntitlementTemplateLineageId: null,
   archived: false,
   ...over,
 });

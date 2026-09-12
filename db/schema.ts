@@ -1644,6 +1644,27 @@ export const leaveType = pgTable('leave_type', {
   //     has no home there and becomes type-level here — collapsed across every band of every policy under
   //     the same one-distinct-value assertion.
   maxBalanceDays: numeric('max_balance_days', { precision: 6, scale: 2 }),
+  /**
+   * 76ffdcf2 (r269, migration 0462) — THE DEFAULT ENTITLEMENT TABLE: which table an employee receives when
+   * NO benefit scheme (entitlement_eligibility_rule) covers them for this leave type.
+   *
+   * A leave type with two or more entitlement tables and no matching rule resolved to NOTHING, because the
+   * resolver refuses to guess which of several tables a person should get (r193 fault 3). The reporter read
+   * the screens as saying a scheme is a PRECONDITION for entitlement; it never was, but the outcome — an
+   * unmatched employee holding no table — looked the same. This column closes it without inventing days:
+   * the fallback is a lineage a NAMED HUMAN chose on this leave type.
+   *
+   * ⚠️ NULL IS TODAY'S BEHAVIOUR, EXACTLY. No default ⇒ nothing resolves ⇒ `noEntitlementOpinion` ⇒ the
+   * caller posts NOTHING (delta exactly 0, never 0 days). The r193 property "never hand out a table nobody
+   * chose" survives precisely BECAUSE the fallback is explicit, and the EA-1955 statutory floor is not a
+   * fallback here (fa3f4ccb: advisory, out of the arithmetic, on the reporter's written instruction twice).
+   *
+   * A LINEAGE, NOT A VERSION, so no FK — `entitlement_template.lineage_id` is not unique on that table
+   * (one row per version). `entitlement_eligibility_rule.template_lineage_id` is modelled identically.
+   * `setLeaveTypeDefaultTemplate` refuses a lineage belonging to another leave type; the resolver ignores
+   * a default with no version in force on the date it is resolving at.
+   */
+  defaultEntitlementTemplateLineageId: uuid('default_entitlement_template_lineage_id'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -7006,6 +7027,31 @@ export const leaveEntitlementRecalcAudit = pgTable(
     reason: text('reason').notNull(),
     // The date the compensating adjustment was posted (the recalc's effective date, = the cycle asOf).
     effectiveOn: date('effective_on').notNull(),
+    /**
+     * 9e2a89e9 (r269, migration 0463) — THE DATE THE UNDERLYING CHANGE TOOK EFFECT, when the caller knows
+     * it. A promotion effective 1 July, recorded on 11 September, reads 1 July here and 11 September in
+     * `effective_on` above. NULL where there is no such date to know — a configuration-triggered cohort
+     * recalc, an ordinary employment-details edit, a reversal — and the screen then falls back to
+     * `effective_on` under one "Took effect" heading.
+     *
+     * ⚠️ IT DOES NOT RE-POINT `effective_on`, AND MUST NOT BE MADE TO. That column means "when the
+     * compensating LEDGER row was posted" on every row ever written; giving it a second meaning would
+     * leave the two distinguishable only by row age. The LEDGER row's own date is not moved by this item
+     * either: that is money-like (cycle windows, ADR-0069 freezes, a backdated change crossing a closed
+     * leave year) and the approved plan promises only the history row's date.
+     */
+    changeEffectiveOn: date('change_effective_on'),
+    /**
+     * 9e2a89e9 — the grades the change moved BETWEEN. The reporter asked for the history to name them
+     * ("GRADE 16 (PERMANENT) → GRADE 17 (PERMANENT)"), because `reason` carries only the machine trigger.
+     *
+     * BOTH NULL unless the caller declared a grade change: a recalc fired by a configuration edit has no
+     * grades to name, and writing today's grade into `new_grade_id` there would read as a promotion that
+     * never happened. NO FOREIGN KEY, deliberately — a job grade may be archived or deleted, and an audit
+     * row must outlive the catalogue it refers to. The reader LEFT JOINs for the name.
+     */
+    previousGradeId: uuid('previous_grade_id'),
+    newGradeId: uuid('new_grade_id'),
     // The leave_ledger row that carried the compensating delta (nullable for defensive/rollback safety).
     ledgerId: uuid('ledger_id'),
     createdAt: createdAt(),

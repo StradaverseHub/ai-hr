@@ -13,6 +13,7 @@ import {
   reprojectEntitlementForLeaveTypeCohort,
   retireEligibilityRule,
   retireEntitlementTemplate,
+  setLeaveTypeDefaultTemplate,
   updateEligibilityRule,
   updateEntitlementTemplate,
   type ServiceBand,
@@ -145,6 +146,35 @@ async function recomputeAfterSave(s: SessionContext, leaveTypeId: string | null,
   } catch (e) {
     console.error(`entitlement recompute after ${trigger} failed for leave type ${leaveTypeId}:`, e);
   }
+}
+
+/**
+ * 76ffdcf2 — NAME (or clear) THE DEFAULT ENTITLEMENT TABLE for this leave type.
+ *
+ * This is the write behind the reporter's central complaint. Until now an employee whom no benefit scheme
+ * covered received NOTHING on a leave type with two or more tables, and the screens told them a scheme was
+ * the reason they had no entitlement. The scheme never was the reason — but the outcome was real, and this
+ * is what closes it: HR names one table as the fallback and nobody falls through.
+ *
+ * ⚠️ IT MOVES BALANCES, so it goes through `recomputeAfterSave` exactly as creating a rule does — same
+ * ordering (after the write has committed), same best-effort disposition, same "no opinion is not zero"
+ * guard on the CLEAR direction. Clearing the default puts the affected employees back to resolving
+ * nothing, which `composeEntitlement` answers with a delta of exactly 0 rather than a clawback.
+ *
+ * An EMPTY posted value is a legitimate instruction — "no default" — not a missing field, and it is what
+ * the picker's first option posts.
+ */
+export async function setLeaveTypeDefaultTemplateAction(formData: FormData) {
+  const s = await requireAdmin();
+  const leaveTypeId = String(formData.get('leaveTypeId') ?? '').trim();
+  const templateLineageId = String(formData.get('defaultTemplateLineageId') ?? '').trim() || null;
+  try {
+    await setLeaveTypeDefaultTemplate(s, { leaveTypeId, templateLineageId });
+  } catch (e) {
+    refused(formData, e);
+  }
+  await recomputeAfterSave(s, leaveTypeId, 'leave_type_default_table');
+  saved(formData, templateLineageId ? 'Saved default entitlement table' : 'Cleared default entitlement table');
 }
 
 export async function createEntitlementTemplateAction(formData: FormData) {

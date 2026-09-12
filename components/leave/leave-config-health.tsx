@@ -160,6 +160,13 @@ function HealthCounts({ t, h }: { t: T; h: LeaveConfigHealth }) {
         rules: h.ruleCount,
       })}
       {h.soleTableApplies ? <span className="ml-1">{t('healthSoleTable')}</span> : null}
+      {/* 76ffdcf2 — WHO THE SCHEMES DO NOT REACH, in the same line as the counts that raise the question.
+          "Schemes in force: 1" over 74 employees is the shape the reporter hit; naming the fallback table
+          here is what stops that count being read as "the other 68 get nothing". Mutually exclusive with
+          the sole-table note: the engine's fallback order is rule → sole table → default. */}
+      {!h.soleTableApplies && h.defaultTableApplies && h.defaultTableName ? (
+        <span className="ml-1">{t('healthDefaultTable', { table: h.defaultTableName })}</span>
+      ) : null}
     </p>
   );
 }
