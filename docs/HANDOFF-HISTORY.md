@@ -56,7 +56,13 @@ days off, not 13 (three junction rows are Federal Territory Day on one date); KU
 Lumpur"]); and **JOHOR SITE INHERITS from JOHOR OFFICE**, so the two Johor calendars are one decision.
 Also owed: the plan said the screen names the missing days "at the moment of attaching", but the picker is
 a no-JS server-rendered select, so at that moment they get the COUNT in the option label and the named days
-on the calendar's own page. Hand-fixed before deploy: the sentence could read "holds 13 of the 12" where a
+on the calendar's own page.
+**ALL FOUR CORRECTIONS WERE DELIVERED as `ddb3fc65` (raised + planned, 2026-09-12)**, re-measured first with
+the parent inheritance and the jsonb `states` column read correctly: JOHOR OFFICE 0 of 11 · JOHOR SITE the
+same, inheriting · KUALA LUMPUR HQ 11 of 12, missing Deepavali 2026-11-08 · KUALA LUMPUR SITE 10 of 12,
+missing 2026-02-01 and 2026-09-01. The item is a close-out: approve and it shuts. `0e276da0` is deployed and
+was NOT re-planned — pushing a revision onto a deployed item resets its status and loses the record that it
+shipped (CLAUDE.md §9). Hand-fixed before deploy: the sentence could read "holds 13 of the 12" where a
 calendar ticks another state's day, so it now reports gazetted-minus-missing, which is bounded by
 construction.
 
