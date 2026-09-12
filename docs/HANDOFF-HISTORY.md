@@ -1,3 +1,65 @@
+## r269 (2026-09-12) — four items: the default entitlement table, the grade-change record, the Employee Leave Inquiry row, and the holiday-calendar warning. `main@41613c04`, migrations `0462` + `0463`. DEPLOYED (192 pages, 377 → 379 on the box, both new column sets present, service active, `GET /` 401, dry-run clean).
+
+**Gate:** 829 files as twelve foreground batches at `VITEST_MAX_WORKERS=3`, ALL green, zero assertion
+errors. `gate:shadow` PASS 377 → 379. `next build` clean.
+
+⚠️ **THE REPORTER'S ENTITLEMENT CONFIGURATION LAPSED OVERNIGHT AND IS STILL DOWN.** They stopped their one
+table and one rule from 2026-09-12; the approval of `76ffdcf2` (whose first promise was to restart them)
+arrived after midnight. Measured 2026-09-12: **0 templates and 0 rules in force**. The restart is two
+`valid_to` clears and is written, verified and ready at `scratchpad/restart-config.sql` (one transaction,
+an audit event each, aborts unless exactly 1 and 1 are in force afterwards). **The permission classifier
+refuses production data writes in this session and a spoken go-ahead does not lift it** — it needs a Bash
+allow rule or the owner runs it. UNTIL IT RUNS, NOBODY RESOLVES TO ANY ENTITLEMENT.
+
+**`76ffdcf2` — the default entitlement table, and the wording WE got wrong.** `git log -S` proved the
+sentence the reporter quoted was shipped by r266's rename (`3a14035e`) that morning; it claimed a chain of
+cause and effect the engine does not follow. Their own data disproved it: one table with NO scheme granted
+28 people days (`soleTableApplies`). Built: `leave_type.default_entitlement_template_lineage_id` (0462,
+nullable, no FK — a lineage is not a row), one fallback branch in `winnerFor` placed **last** (rule → sole
+table → default), 18 strings rewritten in six locales, health findings gated on the default.
+**The money property survives and was re-proved by mutation:** with no default named the answer is still
+`null`, the caller posts delta exactly 0, `soleTableApplies` is NOT widened, and the EA-1955 floor is not
+resurrected. **Verify: FIX FIRST — and it was right.** `loadEntitlementTablesData` reshaped leave types
+into an explicit field literal that DROPPED the new column one layer above every screen, so the badge never
+rendered, the health card kept firing stale findings, and **a saved default read back as "No default" on
+every reload**. `tsc` stayed clean because the field was declared optional and the tests fed hand-built
+fixtures. Fixed, the field made REQUIRED so the compiler enforces it — which immediately found six more
+construction sites including `scripts/reset-entitlement-configuration.ts`, whose health report would have
+called a covered leave type blocked — and the test now calls the REAL loader against a real database.
+
+**`9e2a89e9` — the grade-change record.** Grade, employment type and service years were already criteria;
+what was missing was the record. `0463` adds `previous_grade_id`, `new_grade_id`, `change_effective_on`;
+the tables list gains a Covers column and an uncovered-employees card. **47 of 74 active employments have
+no job grade at all**, so grade-matching can reach at most 27 people — no engine work fixes that.
+**Verify MAJOR, half fixed and half rightly DECLINED:** a backdated change crossing a closed leave year
+wrote its own date beside figures belonging to the current cycle. The builder clamps to the projection's
+own window and writes NULL when it falls outside, and **declined clamping to the window start** on
+CLAUDE.md §8 grounds — a wrong date asserts something false where an absent one asserts nothing. The
+screen falls back to the posting date and the help text now discloses the case. The ledger row's date was
+NOT moved, deliberately, and is pinned so a future round must reverse it on purpose.
+
+**`5ca446db` — the sixth Leave Config row, Employee Leave Inquiry.** They had asked once before
+(`1ff969ed` built the three screens, never the row; the corner link was the patch). Ten guards updated,
+**zero loosened** — every narrowing filter paired with an exact set over what it excludes. ⚠️ **The build
+claimed it had found a guard gone vacuous; the verify pass measured both sides and that was FALSE** — the
+case carried its own `length > 30` anchor and turned RED. The false lesson ("an `indexOf(-1)` slice goes
+silently green") was corrected where it had been written into the test file. Three comment blocks also
+described an exposure that cannot occur (there is no per-screen grant to revoke); the REAL one, which
+predates this row, is `app/layout.tsx` passing a wider `isAdmin` than `requireAdmin` enforces.
+
+**`0e276da0` — the holiday-calendar warning (our own raise).** A read that diffs a stand-alone calendar
+against the gazette, surfaced on the picker, the calendar page and the list. The resolver is byte-identical
+to main and the s.60D skip for `custom` is untouched — both proven. ⚠️ **THREE FIGURES IN THE PLAN WE
+RAISED WERE WRONG and are owed to the reporter at the top of the next item:** KUALA LUMPUR HQ holds **11**
+days off, not 13 (three junction rows are Federal Territory Day on one date); KUALA LUMPUR SITE omits
+**TWO** days, not one (KL Federal Territory Day 2026-02-01 as well, because its states are ["Kuala
+Lumpur"]); and **JOHOR SITE INHERITS from JOHOR OFFICE**, so the two Johor calendars are one decision.
+Also owed: the plan said the screen names the missing days "at the moment of attaching", but the picker is
+a no-JS server-rendered select, so at that moment they get the COUNT in the option label and the named days
+on the calendar's own page. Hand-fixed before deploy: the sentence could read "holds 13 of the 12" where a
+calendar ticks another state's day, so it now reports gazetted-minus-missing, which is bounded by
+construction.
+
 ## r268-plan (2026-09-11, evening) — four items planned with pictures. NO CODE. ⚠️ ONE IS TIME-CRITICAL.
 
 ⚠️ **THE REPORTER'S ANNUAL LEAVE CONFIGURATION SWITCHES ITSELF OFF AT MIDNIGHT TONIGHT.** At 19:56 they
