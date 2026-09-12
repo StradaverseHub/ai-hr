@@ -155,11 +155,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // row before r269; it is written down here rather than quietly generalised away.
       '/admin/leave-config/approval-chains': 'leaveApproval',
       // THE EXCEPTION, named rather than tolerated: the Employee Leave Inquiry row opens a LEAVE INQUIRY
-      // screen, which has carried its own scopedAdmin matrix column since 20c699f8. Revoking
-      // leaveEmployeeBalances in Security & Permissions still refuses the page (the guard is on the page);
-      // it does NOT hide this row, because the Administration group gates adminOnly wholesale and
-      // canSeeChild has no screen-key gate. That exposure predates this row (it exists on the inquiry rail)
-      // and is disclosed in the approved plan rather than papered over with a bespoke flag here.
+      // screen, which has carried its own scopedAdmin matrix column since 20c699f8. ⚠️ The first version of
+      // this note said an admin could have leaveEmployeeBalances "revoked in Security & Permissions"; the
+      // verify pass showed that cannot happen — canReach is derived from the guard and the access grid is
+      // presentational. The real, pre-existing exposure is app/layout.tsx's wider isAdmin (it ORs in the
+      // payroll and perf-comp partners), which shows every adminOnly row to a non-admin partner who is then
+      // redirected at the page. Disclosed, predates this row, not fixed here with a bespoke flag.
       '/leave/employee-balances': 'leaveEmployeeBalances',
     };
     for (const child of NODE.children) {

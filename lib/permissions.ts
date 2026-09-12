@@ -149,10 +149,14 @@ export const SCREENS: readonly ScreenEntry[] = [
   // nav.leaveApprovalWorkflow vs nav.leaveApproval (645e67c4, re-affirmed by r266's gate). Pointing this
   // column at the row's key would silently rename an administrator's permission column.
   //
-  // KNOWN, DISCLOSED EXPOSURE (approved plan): the Administration group is gated adminOnly wholesale and
-  // `canSeeChild` (components/sidebar.tsx) has no screen-key gate, so an administrator whose role has
-  // `leaveEmployeeBalances` revoked here still SEES the new row and is refused at the page. That exposure
-  // already existed on the inquiry rail; the guard below is the real one and it is unchanged.
+  // KNOWN, DISCLOSED EXPOSURE — and the verify pass CORRECTED how it was first written here. There is no
+  // per-screen grant to revoke: `canReach` is derived from the guard (see rolesForGuard below) and the
+  // Function Access grid is presentational, so "an admin whose leaveEmployeeBalances is revoked" cannot
+  // happen. The REAL exposure, which predates this row: app/layout.tsx passes
+  // `isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}`, wider than
+  // requireAdmin's `isAdmin(s)`, so a payroll or perf-comp partner who is NOT an admin sees the whole
+  // adminOnly group — every Leave Config row, this one included — and is redirected at each page. Sixth
+  // instance of a five-instance class; the page guard below is the real one and is unchanged.
   {
     screenKey: 'leaveEmployeeBalances',
     href: '/leave/employee-balances',

@@ -313,10 +313,11 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // ⚠️ ITS ROUTE IS REGISTERED ON A DIFFERENT SCREEN KEY — `leaveEmployeeBalances`, not `leaveConfig`
     // (lib/permissions.ts). test/leave-flyout-nav.test.ts names that exception explicitly rather than
     // relaxing the "every child is a registered route" rule. Knock-on, stated in the approved plan and NOT
-    // papered over here: the Administration group is gated adminOnly wholesale and `canSeeChild`
-    // (components/sidebar.tsx) has no screen-key gate, so an administrator whose role has
-    // `leaveEmployeeBalances` revoked sees this row and is refused at the page. That exposure already exists
-    // on the inquiry rail itself; it is not new and is not for this row to fix with a bespoke flag.
+    // papered over here, and CORRECTED by the verify pass: there is no per-screen grant to revoke, so the
+    // exposure is not "an admin whose leaveEmployeeBalances is revoked". It is that app/layout.tsx passes a
+    // wider isAdmin than requireAdmin enforces (it ORs in the payroll and perf-comp partners), so a partner
+    // who is not an admin sees every adminOnly row, this one included, and is redirected at each page. It
+    // predates this row and is not for this row to fix with a bespoke flag.
     //
     // `ownedSubpaths` carries Employee Leave Record so the row stays lit across the rail's other admin tab
     // — the paths TRANSFERRED off the Team Leave Tracker row above (see its note). Highlighting only.
