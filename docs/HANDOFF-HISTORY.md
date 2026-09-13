@@ -1,3 +1,127 @@
+## r270 (2026-09-13) — the three entitlement items, built and shipped. `main@58f6b8fe`, NO migration (journal stays 379). **DEPLOYED** (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 20:11:51, service restarted 20:11:58, migrations still 379). All three items marked deployed by hand — see below.
+
+**Gate:** 833 files as twelve foreground chunks at `CHUNKS=12`, every chunk `exit=0` with counted == asked,
+**zero assertion errors**, peak disk 37%. `tsc` clean. `next build` clean (192 pages). No `gate:shadow` —
+this round adds no migration.
+
+**Items closed:** `5527ce8f` (Leave balance health off the Entitlement tables tab) · `995387c6` (Benefit
+schemes off it, and the two links that pointed at them repaired) · `65e4073a` (the flat grid, the whole
+explanation sentence, the win reason, and the wording that caused the ticket).
+
+**Shape of the work.** Two build agents on disjoint file sets — one owned the Entitlement tables screen,
+the other the explanation, the status type and the links — plus message-key ownership allocated centrally
+so six catalogues merged as a union with nothing lost (verified: 14 new keys in all six, 0 lost against
+the merge base). Then an adversarial verify pass, then a fix pass by hand.
+
+### THE VERIFY PASS FOUND FOUR THINGS A GREEN SUITE DID NOT. That is the entry.
+
+Both builders reported green with their own mutation testing. Every defect below passed every guard they
+wrote, and three of them **put a false statement on a screen**. What those guards measured was that a
+thing *rendered*; none measured whether what it said was *true*.
+
+- **D1 (worst, money-adjacent, on the screen this round exists to make honest).** `winReasonFor` fell
+  through to `'later_created'` — rendered as *"the one set up most recently wins"* — whenever specificity
+  and `validFrom` tied, **without checking that the creation times actually differed**. When all three
+  tie, `beatsEligibility` returns false in BOTH directions: nothing ranked anything, and the winner is
+  whichever row the query yielded. The verifier reproduced it live on two schemes with byte-identical
+  `created_at`, and found 44 such pairs in a 400-pair sweep. **That is what a seed, an import or a
+  scripted restore produces** — including the reporter's own configuration restore on 2026-09-12.
+  Fixed: a fourth reason `'arbitrary'` with its own string saying the choice was not deliberate, plus an
+  `ORDER BY` on the rule query so the undecided case is at least the same answer twice. `beatsEligibility`
+  is still byte-identical to `c84947a6`.
+  **Why the builder's guard missed it:** its `later_created` case gave the two rules *different*
+  `createdAt`. The tie-on-all-three case was never constructed.
+- **D2.** The grid filtered `validTo == null` — "not yet superseded" — and called it in force. For a
+  future-dated supersede (the workflow the screen's own `datedNote` documents) it printed **next year's
+  figures as today's and hid the version actually deciding pay**, with no date column to reveal it.
+- **D3.** The Covers cell printed *"No benefit scheme names this table"* for a sole table — read as
+  nobody — over the one arrangement where **everybody** gets it, while the grid above said "Everyone"
+  about the same row. The amber marker two columns along already knew; the cell did not.
+- **D4.** The grid could be read as a roll of who gets what. It now states that the narrower scheme
+  decides where two overlap, and sends a reader asking about one person to the panel that answers from
+  the engine. Computing the overlap would be a second matcher beside the resolver.
+
+Also fixed in the same pass: two wording strings on the personnel Benefit Scheme card that the build-4
+sweep missed (*"names this employee"*, *"is named by no benefit scheme"* — the exact sense that caused
+`65e4073a`), the optionality sentence build 4 promised and never wrote, **a guard a code comment could
+satisfy** (`toContain('showConfigHealth={false}')` over the whole file, green with the flags stripped off
+the real mount), and a tab override that reached every leave type instead of the one the link named.
+
+
+### THE DEPLOY WAS INTERRUPTED TWICE BY LOCAL MEMORY, AND THAT IS WORTH KNOWING
+
+`pnpm improve:release` does NOT nohup the remote `deploy.sh` (`scripts/improve/release.ts:83` is a plain
+`ssh … './deploy/deploy.sh'`). The harness killed the local release process for low memory **mid-build**,
+which killed the remote build with it. That left production in a genuinely mixed state: the rsync had
+already landed the new SOURCE, `.next` held partially-written new chunks, and `BUILD_ID` was still the
+previous build's. The service stayed up and serving throughout.
+
+**Nothing was lost, and the reason is structural:** `deploy.sh` builds BEFORE it migrates, so an
+interrupted build cannot half-migrate the database (CLAUDE.md §7). Recovery was to re-run `deploy.sh` on
+the box under `nohup`, exactly as §7 already prescribes, after which it completed on its own while two
+more of my local watchers were killed for the same reason.
+
+**Consequences to carry forward:**
+- `markDeployed` never ran, because the release script was killed before reaching it. The three items were
+  marked deployed by hand afterwards. **A killed release leaves the board lying**, and the board is the
+  only place that says a thing shipped.
+- `pgrep -f "deploy/deploy.sh"` over ssh **matches your own command string** and reports RUNNING forever.
+  Use a bracket pattern (`[d]eploy\.sh`) or you will conclude a finished deploy is hung. It fooled me twice.
+- **The box has 3.8 GiB total and was down to ~105 MiB free** during its typecheck, with the worker holding
+  2.7 GB. It survived, but there is no headroom: the next dependency that grows the build tips it over.
+  That belongs on the readiness checklist as a capacity item, not just as a deploy anecdote.
+
+### DECISIONS this round, that no ticket settled
+
+- **A guard may not be satisfied by an indirection.** The build added a third surface rendering a scheme's
+  criteria and a pass-through alias, and justified the alias in a comment by what it did to
+  `test/r269-grade-change-record.test.ts`'s call count. The count read 2 while three surfaces rendered.
+  The guard now counts through both names; the alias survives on its own semantic merit only, and the
+  comment records why the old justification was wrong rather than quietly dropping it.
+- **A link may ask for a tab, and stored state may not overrule it.** Moving the schemes editor made
+  `?editRule=` / `?editTemplate=` arrive at `/admin/leave-config/types`, where `LeaveTypeTabs` seeded tab 1
+  and then overwrote it from `localStorage`. The editor mounted but off-screen — one silently dead control
+  swapped for another, in the item raised to remove exactly that. The page now resolves which leave type
+  the parameter names and only that panel opens on tab 3; it is deliberately not persisted.
+- **The gate receipt was written by hand, and says so.** `.gate-receipt.json` is normally written by
+  `cleanroom-verify.sh`, which certifies something stricter than was run here: the suite **as `ai_hr_app`
+  under RLS** plus an empty-db `0000 → latest` migrate. Neither was performed. A single-process
+  `pnpm vitest run` over 833 files exhausts WAL on this machine (CLAUDE.md §4), and this round adds no
+  migration. The receipt names the chunked gate explicitly and carries a `note` field disclaiming the
+  cleanroom. **RISK, stated: the RLS-as-app-role run is owed and was not done.**
+- **No grade column on `entitlement_template`.** Re-affirmed while building the grid: it would duplicate
+  the criteria vocabulary and create a second matcher. The grid displays grade and service together; it
+  does not store grade.
+- **No AI.** Leave is encashable and CLAUDE.md §1 forbids a model deciding anything money-like. The
+  sentence is a template over five values the engine already computes.
+
+### OWED TO THE REPORTER — a drawn promise we did not keep
+
+`docs/mockups/65e4073a-leave-table-rules.png` panel 2 draws **one** card, the entitlement tables list
+*relaid out* into the four columns. What shipped is a **new card above an unchanged list**, so the tab
+now carries three blocks where the complaint was that facts were split across two. The engineering reason
+is real — the list carries Edit / Stop / Delete per table, the grid is one row per table × band — but a
+picture cannot hedge, and `5527ce8f`'s mockup additionally says *"the tables are now the first thing on
+the tab"*, which the grid now is instead. Two smaller divergences: the grid renders `5–No limit` and
+`16.00` where the picture drew `5+` and `16 days`, and the Company rules sentence still reads "is set
+under Entitlements" (only the link caption moved to "Leave types").
+**This must be raised to the reporter in plain words, not left to be discovered.**
+
+### NOT done
+
+- `cleanroom-verify.sh` (see the receipt decision above).
+- The overlap shadowing in D4 is described, not computed.
+- `admin.leaveConfigCompanyRules.whoQualifiesLink` is now an orphaned key in six catalogues; left in place
+  rather than pruned mid-round.
+- 27 worktrees remain on the machine, most abandoned build branches back to r88. Unrelated to this round.
+
+### UNKNOWN
+
+- Whether the `#type-<id>` fragment selects the right panel **in a real browser**: curl sends no fragment
+  and runs no JS. Verified structurally (the RSC payload carries the target panel and `openTab`), and the
+  SSR frame shows the alphabetically-first type until hydration — a flash, not a failure, but unobserved.
+- Whether the reporter accepts the three-card layout (the owed item above).
+
 ## r270-plan (2026-09-13) — the three open entitlement items planned and pushed. `main@7504f072`, no migration, nothing built.
 
 All three items came out of one 50-minute session the reporter had on the evening of 2026-09-12 (see the
