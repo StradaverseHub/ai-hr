@@ -145,6 +145,49 @@ export type EligibilityRuleRow = {
   createdAt: Date;
 };
 
+/**
+ * r270 (65e4073a build 3) — WHY THE WINNER BEAT THE RUNNER-UP, IN THE TIE-BREAK'S OWN VOCABULARY.
+ *
+ * `beatsEligibility` already ranks candidates by specificity, then `validFrom`, then `createdAt`, and its
+ * header says "every step of it is explainable on screen". It was not: two rules each narrowing ONE axis
+ * tie on specificity and are then separated by a date nothing printed, so an operator reading "Resolves to
+ * GP1215, through the scheme GP1215" had no way to know a second scheme also reached that employee and
+ * lost on a start date.
+ *
+ * ⚠️ THIS REPORTS THE COMPARISON; IT DOES NOT MAKE IT. `beatsEligibility` is untouched and is still the
+ * only thing that decides, `winReasonFor` re-reads the SAME three terms in the SAME order over the pair
+ * the sort already produced, and nothing here can move a rule up or down the ranking. A screen that
+ * printed a reason derived some other way would eventually disagree with the decision beside it.
+ */
+export type EntitlementWinReason =
+  /** Exactly one rule reached this employee, so nothing was ranked and there is nothing to explain. */
+  | 'sole_candidate'
+  /** It narrows by MORE criteria axes than the runner-up (`orgCriteriaSpecificity`). */
+  | 'more_specific'
+  /** Tied on narrowed axes; this one TAKES EFFECT LATER — the operator's own stated date. */
+  | 'later_start'
+  /** Tied on narrowed axes AND on start date; this row was created last. A genuine ambiguity in the
+   *  configuration, reported as one rather than dressed up as a reason. */
+  | 'later_created';
+
+/**
+ * The reason the winner won, over the pair `beatsEligibility` has already ordered. Pure, and exported so
+ * the guard can drive it directly rather than through a database.
+ *
+ * ⚠️ THE TERMS AND THEIR ORDER MIRROR `beatsEligibility` EXACTLY. If that function's order ever changes,
+ * this one is wrong rather than merely stale — which is why `test/r270-entitlement-explain.test.ts` pins
+ * the two against each other over the same pairs instead of asserting this one alone.
+ */
+export function winReasonFor(
+  winner: EligibilityRuleRow,
+  runnerUp: EligibilityRuleRow | null | undefined,
+): EntitlementWinReason {
+  if (!runnerUp) return 'sole_candidate';
+  if (orgCriteriaSpecificity(winner.criteria) !== orgCriteriaSpecificity(runnerUp.criteria)) return 'more_specific';
+  if (winner.validFrom !== runnerUp.validFrom) return 'later_start';
+  return 'later_created';
+}
+
 /** What actually decided an employee's days, and why — the shape a screen needs to say "this rule won". */
 export type ResolvedEntitlement = {
   /** The eligibility rule that won — NULL when the leave type had exactly one table in force and no rule
@@ -156,8 +199,13 @@ export type ResolvedEntitlement = {
   serviceBands: ServiceBand[];
   /** How many criteria axes the winning rule narrowed by. Shown so "most specific wins" is auditable. */
   specificity: number;
-  /** Every rule that ALSO matched, most-specific first. A screen shows this so the win is never a guess. */
+  /** Every rule that ALSO matched, most-specific first. A screen shows this so the win is never a guess.
+   *  The FIRST entry is the runner-up `winReason` below is about. */
   alsoMatched: { ruleName: string; specificity: number }[];
+  /** r270 — which term of `beatsEligibility` separated the winner from the runner-up. NULL where no rule
+   *  was consulted at all (`viaSoleTemplate` / `viaDefaultTemplate`): there was no comparison to report,
+   *  and a reason invented for one would be the screen asserting a ranking that never happened. */
+  winReason: EntitlementWinReason | null;
   /** r193 FAULT 3 — this answer came from the leave type's ONLY table in force, with no rule consulted
    *  because none exists to consult. A screen must say "the only table for this leave type", not name a
    *  rule that does not exist. False for every rule-decided answer. */
@@ -1894,6 +1942,10 @@ export async function buildTemplateEntitlementResolver(
         .sort((a, b) => (beatsEligibility(a, b) ? -1 : beatsEligibility(b, a) ? 1 : 0));
       const winner = ranked[0];
       const template = templates.get(winner.templateLineageId)!;
+      // r270 — READ OFF THE PAIR THE SORT ALREADY PRODUCED. `ranked[1]` is the runner-up by construction;
+      // asking `winReasonFor` about it re-runs the same three comparisons `beatsEligibility` just made,
+      // so the reason on screen and the rule in the ledger cannot disagree.
+      const winReason = winReasonFor(winner, ranked[1]);
       out = {
         ruleName: winner.name,
         ruleLineageId: winner.lineageId,
@@ -1905,6 +1957,7 @@ export async function buildTemplateEntitlementResolver(
         alsoMatched: ranked
           .slice(1)
           .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
+        winReason,
         viaSoleTemplate: false,
         viaDefaultTemplate: false,
       };
@@ -1923,6 +1976,7 @@ export async function buildTemplateEntitlementResolver(
           serviceBands: sole.serviceBands,
           specificity: 0,
           alsoMatched: [],
+          winReason: null,
           viaSoleTemplate: true,
           viaDefaultTemplate: false,
         };
@@ -1942,6 +1996,7 @@ export async function buildTemplateEntitlementResolver(
           serviceBands: fallback.serviceBands,
           specificity: 0,
           alsoMatched: [],
+          winReason: null,
           viaSoleTemplate: false,
           viaDefaultTemplate: true,
         };
