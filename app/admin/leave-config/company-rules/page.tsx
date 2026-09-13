@@ -203,6 +203,18 @@ export default async function LeaveConfigCompanyRulesPage({
   // Resolved ONCE, here: the per-company cards below are rendered from a synchronous `.map`, and the
   // heading is the SAME string the map shows for the screen this section absorbs (IA §2.0 — Replacement
   // leave's address becomes a stub pointing at THIS page).
+  /**
+   * r270 (995387c6) — THE CAPTION IS THE MAP'S OWN NAME FOR THE TARGET, not a second spelling of it.
+   *
+   * The pointer below used to be captioned from this page's own `whoQualifiesLink` ("Open Entitlement
+   * tables") because that is where it went. Moving the href without moving the caption would have left a
+   * control that says one thing and does another — precisely the class of defect this round exists to
+   * remove, arriving by the fix's own door. Reading the label from `leaveConfigScreenTitle` is the same
+   * argument the href already follows (`leaveConfigScreenHref`): one map, so the page, the caption and
+   * the submenu cannot disagree about where a screen is or what it is called. The Replacement leave and
+   * Payroll impact pointers on this page are captioned the same way, so this is the page's own idiom.
+   */
+  const whoQualifiesTarget = await leaveConfigScreenTitle('leaveTypes');
   const replacementTitle = await leaveConfigScreenTitle('replacementLeave');
   const payrollTitle = await leaveConfigScreenTitle('payrollImpact');
   const companyOptions = [
@@ -276,7 +288,7 @@ export default async function LeaveConfigCompanyRulesPage({
           <p className="text-muted-foreground">
             {tPage('whoQualifies')}{' '}
             <Link href={leaveConfigScreenHref('leaveTypes')} className="font-medium text-primary hover:underline">
-              {tPage('whoQualifiesLink')} →
+              {whoQualifiesTarget} →
             </Link>
           </p>
         </div>

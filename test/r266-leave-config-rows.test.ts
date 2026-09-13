@@ -331,6 +331,15 @@ describe('§D · the moves, and what deliberately did not move', () => {
     expect(companyRules, 'the pointer must not still name the tab the schemes left').not.toContain(
       "leaveConfigScreenHref('entitlementTables')",
     );
+    // …AND THE CAPTION MOVED WITH THE HREF. A render check caught this: repointing the link alone left
+    // it reading "Open Entitlement tables" while opening Leave types — a control that says one thing and
+    // does another, which is the very defect this repoint exists to prevent. The label is the map's own
+    // name for the target now, the way the Replacement leave and Payroll impact pointers on this page
+    // already are, so no third spelling of a screen name exists to drift.
+    expect(companyRules, 'the link caption must name the screen it opens').toContain(
+      "await leaveConfigScreenTitle('leaveTypes')",
+    );
+    expect(companyRules, 'the old caption key must not survive its href').not.toContain("tPage('whoQualifiesLink')");
     expect(companyRules).not.toContain('<EntitlementTablesBlock');
     expect(companyRules).not.toContain('EligibilityRuleForm');
     // The tables block is mounted where it was: the leave type's tab 3 and the Entitlement tables tab.
