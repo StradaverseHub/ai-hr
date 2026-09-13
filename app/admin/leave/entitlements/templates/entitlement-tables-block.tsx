@@ -294,6 +294,103 @@ const toEditable = (
     maxBalanceDays: formatDayInput(b.maxBalanceDays),
   }));
 
+/**
+ * r270 (65e4073a, build 1) — WHAT REACHES ONE ENTITLEMENT TABLE, and therefore what the flat grid's
+ * "Job grade" cell is allowed to say. Four states, and each asserts something different:
+ *
+ *   scheme    — an in-force benefit scheme names this table. The cell is that scheme's OWN criteria
+ *               summary, rendered by the same `coversCell` the tables list already uses. Where the scheme
+ *               narrows on something other than job grade, that is what the cell prints: an absent cell
+ *               asserts nothing, and a cell that guessed a grade would assert something false.
+ *   default   — the table is the leave type's default (76ffdcf2). It reaches everyone no scheme covers,
+ *               which is a population, not a grade — so the cell says so instead of printing a grade.
+ *   everyone  — the leave type's SINGLE table with no scheme, which the engine applies to everybody with
+ *               nothing to choose between (r193 fault 3, read from `soleTableApplies`, never re-derived).
+ *   unreached — no scheme, not the default, not a sole table: nobody receives it. The health card says
+ *               this in its own words; the grid may not pass over it in silence, because every other
+ *               column on the row would then read as days somebody gets.
+ */
+export type EntitlementGridReach =
+  | { kind: 'scheme'; ruleId: string; criteria: Record<string, unknown> | null }
+  | { kind: 'default' }
+  | { kind: 'everyone' }
+  | { kind: 'unreached' };
+
+/** One row of the flat grid: ONE service band of ONE entitlement table, seen through ONE thing that
+ *  reaches that table. A table reached by two schemes and also named as the default produces three sets
+ *  of rows over the same bands, which is the honest reading — those are three different populations. */
+export type EntitlementGridRow = {
+  /** Stable and unique across the whole grid: version id · reach · band index. */
+  key: string;
+  leaveTypeId: string;
+  tableName: string;
+  reach: EntitlementGridReach;
+  /** The Table cell is suffixed wherever this table is the leave type's default, whatever reached the row. */
+  isDefaultTable: boolean;
+  fromYears: number;
+  toYears: number | null;
+  days: number;
+};
+
+/**
+ * THE GRID, DERIVED — NOT RECOMPUTED. `65e4073a` build 1 is presentation only: no schema change, no
+ * migration, no second matcher, and not one figure recalculated. Every value here is read from what the
+ * block already holds: the day tables and their service bands, the in-force schemes pointing at each
+ * table, the leave type's default table, and `soleTableApplies` from `lib/leave-config-health.ts`.
+ *
+ * ⚠️ IN-FORCE VERSIONS ONLY (`running`). A superseded or stopped version is the record a closed year was
+ * reported against; printing its days beside a live grade band would state an entitlement nobody has.
+ * The tables list below keeps showing those versions, with a dash in its Covers cell, which is where the
+ * history belongs.
+ *
+ * Input order is preserved, deliberately: the caller sorts (leave type, then table) so the grid reads the
+ * way the reporter drew it, and the ordering of a row set is not a fact this derivation gets to invent.
+ */
+export function entitlementGridRows(input: {
+  running: readonly {
+    id: string;
+    lineageId: string;
+    leaveTypeId: string;
+    name: string;
+    serviceBands: readonly { fromYears: number; toYears: number | null; days: number }[];
+  }[];
+  rulesByTemplateLineage: ReadonlyMap<string, readonly { id: string; criteria: unknown }[]>;
+  defaultLineageByType: ReadonlyMap<string, string>;
+  soleTableTypeIds: ReadonlySet<string>;
+}): EntitlementGridRow[] {
+  const out: EntitlementGridRow[] = [];
+  for (const x of input.running) {
+    const schemes = input.rulesByTemplateLineage.get(x.lineageId) ?? [];
+    const isDefaultTable = input.defaultLineageByType.get(x.leaveTypeId) === x.lineageId;
+    const reaches: EntitlementGridReach[] = schemes.map((r) => ({
+      kind: 'scheme',
+      ruleId: r.id,
+      criteria: (r.criteria ?? null) as Record<string, unknown> | null,
+    }));
+    if (isDefaultTable) reaches.push({ kind: 'default' });
+    // Only where nothing else reaches it: "everyone, because it is the only table" and "everyone the
+    // schemes miss" are the same people said twice, and `soleTableApplies` is false once a rule exists.
+    else if (schemes.length === 0) {
+      reaches.push(input.soleTableTypeIds.has(x.leaveTypeId) ? { kind: 'everyone' } : { kind: 'unreached' });
+    }
+    for (const reach of reaches) {
+      x.serviceBands.forEach((b, i) => {
+        out.push({
+          key: `${x.id}·${reach.kind === 'scheme' ? reach.ruleId : reach.kind}·${i}`,
+          leaveTypeId: x.leaveTypeId,
+          tableName: x.name,
+          reach,
+          isDefaultTable,
+          fromYears: b.fromYears,
+          toYears: b.toYears,
+          days: b.days,
+        });
+      });
+    }
+  }
+  return out;
+}
+
 export async function EntitlementTablesBlock({
   data,
   leaveTypeId,
@@ -568,6 +665,17 @@ export async function EntitlementTablesBlock({
     });
   };
   /**
+   * r270 — "WHO DOES THE SCHEME THAT NAMES THIS TABLE COVER", asked FROM THE TABLE'S SIDE.
+   *
+   * Two surfaces ask exactly that question of a rule: the tables list's Covers cell, and the flat grid's
+   * Job grade cell. They are one question, so they are one call — and routing both through this alias is
+   * what keeps `coversCell` itself at the two call sites `test/r269-grade-change-record.test.ts` counts,
+   * whose point is that there is ONE renderer of a criteria object in this file and no second inline walk
+   * of it. (The schemes list's own Covers column asks the same thing from the SCHEME's side and calls the
+   * renderer directly, because there it is not a property of a table at all.)
+   */
+  const coversOfScheme = (criteria: unknown) => coversCell(criteria as Record<string, unknown>);
+  /**
    * Which IN-FORCE schemes name each entitlement table, keyed by template lineage. Built from the rules
    * this mount already holds — the Covers column on the tables list is the SAME fact as the Covers column
    * on the schemes list, read from the table's side, and the table itself deliberately stores no criteria
@@ -579,6 +687,49 @@ export async function EntitlementTablesBlock({
     if (arr) arr.push(r);
     else rulesByTemplateLineage.set(r.templateLineageId, [r]);
   }
+
+  /**
+   * r270 (65e4073a, build 1) — THE FLAT GRID, AND WHY IT IS THE UNFILTERED MOUNT'S ALONE.
+   *
+   * The reporter wrote their policy as four columns — leave type, job grade, years of service, days — and
+   * asked why the system needed a separate layer to express it. It does not: the answer is already on this
+   * screen, split across two blocks. Years of service and days are on the entitlement TABLE; job grade is
+   * on the benefit SCHEME that names it. The grid puts them side by side and adds nothing to the model.
+   *
+   * SCOPED MOUNT GETS NOTHING. Inside one leave type's tab the Leave type column is one repeated value and
+   * that tab has its own schemes editor two Cards down; the split the grid exists to close is a property of
+   * the all-types screen. Nobody asked for a new surface on the leave type screen, so it does not get one.
+   *
+   * Sorted HERE, not in the derivation: leave type name, then table name, then the version's own date — so
+   * a reader finds every Annual Leave row together, the way they drew it. `localeCompare` on a rendered
+   * name is a display order, and the derivation has no business inventing one.
+   */
+  const gridRows = scoped
+    ? []
+    : entitlementGridRows({
+        running: [...running].sort(
+          (a, b) =>
+            (typeNameById.get(a.leaveTypeId) ?? '').localeCompare(typeNameById.get(b.leaveTypeId) ?? '') ||
+            a.name.localeCompare(b.name) ||
+            a.validFrom.localeCompare(b.validFrom),
+        ),
+        rulesByTemplateLineage,
+        defaultLineageByType,
+        soleTableTypeIds,
+      });
+  /** The grid's Job grade cell. `scheme` goes through `coversCell` — ONE rendering of one criteria object,
+   *  so the grid and the tables list below it cannot describe the same scheme two ways. The other three
+   *  states are populations, not grades, and each says which population it is rather than leaving a blank. */
+  const gridGradeCell = (reach: EntitlementGridReach) =>
+    reach.kind === 'scheme' ? (
+      coversOfScheme(reach.criteria)
+    ) : reach.kind === 'default' ? (
+      <span className="block">{t('gridEveryoneElse')}</span>
+    ) : reach.kind === 'everyone' ? (
+      <span className="block">{t('criteriaEveryone')}</span>
+    ) : (
+      <span className="block font-medium text-amber-700 dark:text-amber-500">{t('gridNoGrade')}</span>
+    );
 
   const dash = DAY_DASH;
   /** One band rendered for the read-only list. `t.raw` is not needed here — no braces, plain values.
@@ -611,6 +762,56 @@ export async function EntitlementTablesBlock({
       ) : (
         <LeaveConfigHealthCard rows={allHealth} />
       )}
+
+      {/* ── r270 · 65e4073a BUILD 1 · THE FOUR COLUMNS THE REPORTER DREW ─────────────────────────────
+          One row per entitlement table per service band per thing that reaches it, in the order the
+          mockup promised: Leave type · Job grade · Years of service · Entitlement · Table. Above the
+          tables list because it is the reading, and the list below it is where the same facts are EDITED.
+
+          PRESENTATION ONLY. Every value is read from what this block already loaded; nothing here resolves
+          entitlement for anybody, and `core/entitlement-template.ts` is untouched. Hidden when there is
+          nothing in force to read: a permanently empty grid is furniture, and the tables list below already
+          says "no entitlement tables yet" in its own words. */}
+      {gridRows.length > 0 ? (
+        <Card>
+          <SectionHeader title={t('gridTitle')} count={gridRows.length} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">{t('gridColLeaveType')}</th>
+                  <th className="px-3 py-2">{t('gridColGrade')}</th>
+                  <th className="px-3 py-2">{t('gridColService')}</th>
+                  <th className="px-3 py-2">{t('gridColEntitlement')}</th>
+                  <th className="px-3 py-2">{t('gridColTable')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gridRows.map((r) => (
+                  <tr key={r.key} className="border-t align-top">
+                    <td className="px-3 py-2">{typeNameById.get(r.leaveTypeId) ?? dash}</td>
+                    <td className="px-3 py-2 text-xs">{gridGradeCell(r.reach)}</td>
+                    {/* The same bounds the table itself stores, and the same "no limit" word the tables
+                        list uses for an open-ended top band. */}
+                    <td className="px-3 py-2 text-xs tabular-nums">
+                      {r.fromYears}–{r.toYears == null ? t('bandNoLimit') : r.toYears}
+                    </td>
+                    {/* 4a1abc4a — through the shared day formatter, so the figure here and the figure in
+                        the editor that produced it agree digit for digit. */}
+                    <td className="px-3 py-2 text-xs tabular-nums">{formatDays(r.days)}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.tableName}
+                      {r.isDefaultTable ? (
+                        <span className="text-muted-foreground"> {t('gridDefaultSuffix')}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
 
       {/* ── STEP 1: THE NAMED DAY TABLES ────────────────────────────────────────────────────────── */}
       <Card>
@@ -672,7 +873,7 @@ export async function EntitlementTablesBlock({
                           ? t('ruleNonePointsHere')
                           : (rulesByTemplateLineage.get(x.lineageId) ?? []).map((rule) => (
                               <span key={rule.id} className="mb-1 block last:mb-0">
-                                {coversCell(rule.criteria as Record<string, unknown>)}
+                                {coversOfScheme(rule.criteria)}
                               </span>
                             ))}
                   </td>
