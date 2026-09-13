@@ -168,7 +168,14 @@ export type EntitlementWinReason =
   | 'later_start'
   /** Tied on narrowed axes AND on start date; this row was created last. A genuine ambiguity in the
    *  configuration, reported as one rather than dressed up as a reason. */
-  | 'later_created';
+  | 'later_created'
+  /**
+   * Tied on ALL THREE terms, so `beatsEligibility` separated nothing and the winner is whichever row the
+   * query returned first. There is no reason, and saying "the one set up most recently" would be a lie —
+   * they were set up at the same instant. Found by the r270 verify pass on a pair with byte-identical
+   * `created_at`, which is what a seed, an import or a scripted restore produces.
+   */
+  | 'arbitrary';
 
 /**
  * The reason the winner won, over the pair `beatsEligibility` has already ordered. Pure, and exported so
@@ -185,7 +192,11 @@ export function winReasonFor(
   if (!runnerUp) return 'sole_candidate';
   if (orgCriteriaSpecificity(winner.criteria) !== orgCriteriaSpecificity(runnerUp.criteria)) return 'more_specific';
   if (winner.validFrom !== runnerUp.validFrom) return 'later_start';
-  return 'later_created';
+  // The THIRD term, checked rather than assumed. `beatsEligibility` returns false in both directions when
+  // the creation instants are equal, so nothing separated the pair and the winner is query order. Falling
+  // through to 'later_created' here told the operator a ranking had happened that had not.
+  if (winner.createdAt.getTime() !== runnerUp.createdAt.getTime()) return 'later_created';
+  return 'arbitrary';
 }
 
 /** What actually decided an employee's days, and why — the shape a screen needs to say "this rule won". */
@@ -1894,6 +1905,12 @@ export async function buildTemplateEntitlementResolver(
           or(isNull(entitlementEligibilityRule.validTo), gt(entitlementEligibilityRule.validTo, p.asOf)),
         ),
       )
+      // r270 — DETERMINISM, not precedence. `beatsEligibility` ranks these, and for a pair that ties on
+      // all three of its terms it returns false both ways, so the comparator leaves them in input order
+      // and the winner was whatever the heap happened to yield — a different answer run to run, for the
+      // same data. Ordering here does not decide anything the comparator decides; it only makes the
+      // undecided case repeatable, which is the least a screen that now explains the choice can stand on.
+      .orderBy(entitlementEligibilityRule.createdAt, entitlementEligibilityRule.id)
   )
     .map(toRuleRow)
     // A rule pointing at a lineage with no version in force on `asOf` is not a match — it is a rule whose

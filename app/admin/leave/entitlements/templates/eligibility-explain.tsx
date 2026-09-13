@@ -77,12 +77,21 @@ const STATE_KEY: Record<EligibilityRuleNotice['state'], string> = {
  * comparison to narrate and a line claiming one would be furniture at best. The `later_created` case
  * shares `explainWhyChosenLater` with `later_start` and selects a different wording inside it — the start
  * dates are identical there, so "it starts later" would be false about the configuration on screen.
+ *
+ * ⚠️ `arbitrary` GETS ITS OWN STRING AND MUST NEVER SHARE ONE. When all three terms tie, nothing ranked
+ * anything: `beatsEligibility` returns false in BOTH directions and the winner is whichever row the query
+ * returned first. r270's first cut fell through to `later_created` here and printed "the one set up most
+ * recently wins" over two schemes created in the same instant — a confident sentence about a ranking that
+ * never happened, on the one screen this item exists to make honest. The verify pass found it over 400
+ * generated pairs; 44 of them were this case. The honest line says the choice is not deliberate and tells
+ * the administrator how to make it so.
  */
 const WHY_CHOSEN_KEY: Record<EntitlementWinReason, string | null> = {
   sole_candidate: null,
   more_specific: 'explainWhyChosenSpecific',
   later_start: 'explainWhyChosenLater',
   later_created: 'explainWhyChosenLater',
+  arbitrary: 'explainWhyChosenArbitrary',
 };
 
 /** How many option names one axis contributes to the "(job grade 16-19, full time)" clause before the

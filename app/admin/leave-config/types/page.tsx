@@ -111,6 +111,27 @@ export default async function LeaveConfigTypesPage({
   // ⚠️ ELEVEN READS, ONCE, FOR THE WHOLE PAGE. The result is SLICED per type inside the block; a block
   // that loaded for itself would turn eleven queries into eleven times the number of leave types.
   const entitlementTablesData = await loadEntitlementTablesData(s);
+  /**
+   * r270 fix pass — WHICH leave type the edit link is actually for.
+   *
+   * `openTab` first shipped as `editRule || editTemplate ? 'entitlement' : undefined` passed to EVERY
+   * panel, so arriving by one link also forced tab 3 on every OTHER leave type and made each of them
+   * ignore its own stored tab for that page load. Found by the r270 verify pass.
+   *
+   * The server can tell exactly which type is meant: `editTemplate` is a table lineage, which carries a
+   * `leaveTypeId`; `editRule` is a scheme lineage, which names a table lineage, which carries one. A
+   * parameter naming something that no longer exists resolves to null and every panel keeps its own tab,
+   * which is the right answer for a stale bookmark.
+   */
+  const editTargetLeaveTypeId = (() => {
+    const byLineage = new Map(entitlementTablesData.templates.map((t) => [t.lineageId, t.leaveTypeId]));
+    if (editTemplate) return byLineage.get(editTemplate) ?? null;
+    if (editRule) {
+      const rule = entitlementTablesData.rules.find((r) => r.lineageId === editRule);
+      return rule ? (byLineage.get(rule.templateLineageId) ?? null) : null;
+    }
+    return null;
+  })();
   // The traffic-light listing, derived from the SAME data the tabs below are sliced from, so the card
   // and each type's own tab 3 can never disagree (IA §3.1 F2 — one derivation, two places).
   const configHealth = leaveConfigHealthAll({
@@ -360,7 +381,7 @@ export default async function LeaveConfigTypesPage({
                   entitlementTablesSection={entitlementTablesSectionFor(lt.id)}
                   /* r270 (995387c6) — the schemes editor is only here now, so a link carrying either edit
                      parameter means "open tab 3", whatever tab this reader last left open. */
-                  openTab={editRule || editTemplate ? 'entitlement' : undefined}
+                  openTab={lt.id === editTargetLeaveTypeId ? 'entitlement' : undefined}
                   accrualPointer={accrualPointer}
                   /* a6fe37fc Round 4 — tab 5's read-out, sliced per type from the ONE rule set read
                      above. Server-composed and handed across the boundary as a rendered node, exactly

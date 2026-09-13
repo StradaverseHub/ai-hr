@@ -29,11 +29,18 @@ describe('r270 · the tab a link asks for beats the tab a browser remembers', ()
   it('the page derives the tab from BOTH edit parameters and passes it down', () => {
     const src = read(PAGE);
     // Both parameters mean "the embedded tables block wants you": editRule opens a scheme, editTemplate
-    // opens a table. Pinning both stops a later edit from fixing one link and leaving the other dead.
-    expect(src).toMatch(/openTab=\{[^}]*editRule[^}]*editTemplate[^}]*\}/);
-    expect(src).toMatch(/openTab=\{[^}]*'entitlement'[^}]*\}/);
-    // And it must still be the page that reads them from the URL, not a client guess.
+    // opens a table. Both must be resolved, or a later edit fixes one link and leaves the other dead.
+    expect(src).toContain('if (editTemplate) return byLineage.get(editTemplate)');
+    expect(src).toContain('r.lineageId === editRule');
+    // …and it is the page that reads them from the URL, not a client guess.
     expect(src).toContain('const { error, editTemplate, editRule } = await searchParams;');
+    // ⚠️ SCOPED TO THE TYPE THE LINK NAMES. The first cut passed the tab to EVERY panel, so arriving by
+    // one link forced tab 3 on every other leave type and made each ignore its own stored tab for that
+    // page load. The r270 verify pass found it. The comparison against the resolved target is the fix,
+    // so it is what gets pinned — `openTab={'entitlement'}` unconditionally would pass a looser check.
+    expect(src).toContain("openTab={lt.id === editTargetLeaveTypeId ? 'entitlement' : undefined}");
+    // A parameter naming something deleted must resolve to null, so a stale bookmark moves nobody's tab.
+    expect(src).toMatch(/\?\? null/);
   });
 
   it('the component seeds its tab from the prop rather than always starting at tab 1', () => {

@@ -460,6 +460,23 @@ export async function EntitlementTablesBlock({
 
   const running = templates.filter((x) => x.validTo == null);
   const runningRules = rules.filter((x) => x.validTo == null);
+  /**
+   * r270 fix pass — IN FORCE AT `today`, WHICH IS NOT THE SAME AS OPEN.
+   *
+   * `running` is "the version nothing has superseded yet", and that is the right set for a PICKER and for
+   * an Edit link: you edit the open version. It is the wrong set for a grid that tells a reader how many
+   * days somebody gets, because the screen's own `datedNote` documents the opposite workflow — giving a
+   * table a later date closes the running version ON that date and starts a new one. Between the save and
+   * that date BOTH exist, the open one is the FUTURE one, and the grid was printing next year's figures
+   * as today's while hiding the version actually deciding pay today.
+   *
+   * Found by the r270 verify pass: superseding a 14-day table from 2027-01-01 with 30 days made the grid
+   * read 30, and the 14-day version in force did not appear at all. The grid carries no date column, so
+   * nothing on screen let a reader notice.
+   */
+  const inForceTemplates = templates.filter(
+    (x) => x.validFrom <= today && (x.validTo == null || x.validTo > today),
+  );
   // Scoped: every option is this type's, so repeating the type name in each label is noise.
   const templateOptions = running.map((x) => ({
     value: x.lineageId,
@@ -713,7 +730,7 @@ export async function EntitlementTablesBlock({
   const gridRows = scoped
     ? []
     : entitlementGridRows({
-        running: [...running].sort(
+        running: [...inForceTemplates].sort(
           (a, b) =>
             (typeNameById.get(a.leaveTypeId) ?? '').localeCompare(typeNameById.get(b.leaveTypeId) ?? '') ||
             a.name.localeCompare(b.name) ||
@@ -781,6 +798,15 @@ export async function EntitlementTablesBlock({
       {gridRows.length > 0 ? (
         <Card>
           <SectionHeader title={t('gridTitle')} count={gridRows.length} />
+          {/* r270 fix pass — WHAT THIS GRID CANNOT SHOW, SAID RATHER THAN LEFT TO BE ASSUMED.
+              One row per table and service band is a view of the CONFIGURATION, not a roll of who gets
+              what. Where two schemes could both cover one employee the resolver picks the narrower one,
+              so a person can appear in two rows here and receive only the days in one of them; and a
+              scheme with no conditions covers everybody, which leaves the default table's row describing
+              nobody. Computing the overlap would be a second matcher beside the engine — the thing this
+              area exists to avoid — so the grid states the rule and sends a reader asking about one
+              person to the panel below, which answers it from the engine itself. */}
+          <p className="px-3 pb-2 text-xs text-muted-foreground">{t('gridOverlapNote')}</p>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -875,8 +901,18 @@ export async function EntitlementTablesBlock({
                       : defaultLineageByType.get(x.leaveTypeId) === x.lineageId &&
                           (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
                         ? t('coversDefaultTable')
-                        : (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
-                          ? t('ruleNonePointsHere')
+                        : // r270 fix pass — THE SOLE TABLE REACHES EVERYONE, AND THIS CELL USED TO SAY THE
+                          // OPPOSITE. With one table in force for a leave type and no scheme, the resolver
+                          // hands it to everybody (`viaSoleTemplate`), which is why the amber marker two
+                          // columns along already suppresses itself for exactly this case. The Covers cell
+                          // did not know, so it printed "No benefit scheme names this table" — read as
+                          // nobody gets it — over the one arrangement where everybody does, while the grid
+                          // above said "Everyone" about the same row. Same string as the grid, so the
+                          // screen cannot describe one table two ways.
+                          (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
+                          ? soleTableTypeIds.has(x.leaveTypeId)
+                            ? t('criteriaEveryone')
+                            : t('ruleNonePointsHere')
                           : (rulesByTemplateLineage.get(x.lineageId) ?? []).map((rule) => (
                               <span key={rule.id} className="mb-1 block last:mb-0">
                                 {coversOfScheme(rule.criteria)}

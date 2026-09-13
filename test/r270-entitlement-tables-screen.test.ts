@@ -249,8 +249,14 @@ describe('§B · which mount switches what off, and what was gated rather than d
   });
 
   it('the Entitlement tables tab switches both off; the leave type tab switches neither off', () => {
-    expect(page).toContain('showConfigHealth={false}');
-    expect(page).toContain('showBenefitSchemes={false}');
+    // ⚠️ SLICED TO THE MOUNT, not searched over the whole file. This assertion first read the file and was
+    // VACUOUS: the page's own explanatory comment names both flags, so stripping them off the real mount
+    // left it green. The r270 verify pass proved that by mutation. A guard that a comment can satisfy is
+    // not a guard — take the mount text, exactly as the sibling above does.
+    const mount = page.slice(page.indexOf('<EntitlementTablesBlock'));
+    const mountProps = mount.slice(0, mount.indexOf('/>'));
+    expect(mountProps).toContain('showConfigHealth={false}');
+    expect(mountProps).toContain('showBenefitSchemes={false}');
     const types = read(TYPES_PAGE);
     expect(types).not.toContain('showConfigHealth={false}');
     expect(types).not.toContain('showBenefitSchemes={false}');
