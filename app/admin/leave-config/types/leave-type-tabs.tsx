@@ -181,12 +181,27 @@ export function LeaveTypeTabs({
   entitlementTablesSection,
   accrualPointer,
   approvalReadoutSection,
+  openTab,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
   setTypeRulesAction,
 }: {
   type: LeaveTypeTabsData;
+  /**
+   * r270 (995387c6) — THE TAB THE URL ASKED FOR, and the only thing that outranks stored state.
+   *
+   * The schemes editor left `/admin/leave-config/entitlement-tables` this round, so the explain panel's
+   * "Open scheme" link and every rule/table save now come HERE carrying `?editRule=` / `?editTemplate=`.
+   * The embedded block that reads those two parameters lives on tab 3 — so without this the link opened
+   * the right leave type on whatever tab `leaveTypeCards:<id>` last remembered (tab 1 for anyone who has
+   * never switched), and the editor the caller asked for was mounted but not on screen. A control that
+   * silently does nothing is the defect the item was raised to remove, not one to introduce.
+   *
+   * It is deliberately NOT persisted: arriving by such a link is a one-off errand, and writing it to
+   * storage would move the tab an administrator chose for every later visit.
+   */
+  openTab?: TabKey;
   /** The ACTIVE picker values for each of the eight org fields, keyed by profile_option category. */
   orgAssignmentOptions: Record<string, { value: string; label: string }[]>;
   /** The types THIS one may draw its balance from — prepared once at page level, not per panel. */
@@ -279,7 +294,7 @@ export function LeaveTypeTabs({
   const codeLocked =
     (STATUTORY_APPLY_SEEDED_CODES as readonly string[]).includes(code) || code === 'EMERGENCY';
 
-  const [activeTab, setActiveTab] = useState<TabKey>('identity');
+  const [activeTab, setActiveTab] = useState<TabKey>(openTab ?? 'identity');
   const [applyNoticeEnabled, setApplyNoticeEnabled] = useState<boolean>(!!customMessages?.applyNotice);
   /**
    * r258 fix pass — THE RENAME TOGGLE, RESTORED. The first draft of this screen rendered the identity
@@ -301,6 +316,10 @@ export function LeaveTypeTabs({
    * tab 1. Anything unrecognised leaves tab 1, which is the walk's first step.
    */
   useEffect(() => {
+    // r270 — an explicit tab in the URL beats stored state. Without this early return the effect runs
+    // after mount and puts the reader back on their remembered tab, which is exactly the silent
+    // no-op the "Open scheme" link was repointed to avoid.
+    if (openTab) return;
     try {
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
       if (!raw) return;
@@ -331,7 +350,7 @@ export function LeaveTypeTabs({
     } catch {
       /* storage unavailable / malformed ⇒ default tab 1 */
     }
-  }, [id]);
+  }, [id, openTab]);
 
   /**
    * Persist. The stored payload is MERGED, never replaced: the old screen's `activeStep` /

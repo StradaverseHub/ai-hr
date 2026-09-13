@@ -358,6 +358,9 @@ export default async function LeaveConfigTypesPage({
                     .map((x) => ({ id: x.id, name: x.name }))}
                   formulaTemplate={formulaTemplate}
                   entitlementTablesSection={entitlementTablesSectionFor(lt.id)}
+                  /* r270 (995387c6) — the schemes editor is only here now, so a link carrying either edit
+                     parameter means "open tab 3", whatever tab this reader last left open. */
+                  openTab={editRule || editTemplate ? 'entitlement' : undefined}
                   accrualPointer={accrualPointer}
                   /* a6fe37fc Round 4 — tab 5's read-out, sliced per type from the ONE rule set read
                      above. Server-composed and handed across the boundary as a rendered node, exactly
