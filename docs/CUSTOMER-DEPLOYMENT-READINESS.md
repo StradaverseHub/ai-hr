@@ -313,6 +313,25 @@ application-layer scoping with no database backstop.
 
 ## PART 7 — CAPACITY
 
+### 7.1 The server has no build headroom — measured 2026-09-13
+The box has **3.8 GiB of memory in total**. During its own deploy typecheck it ran down to about
+**105 MiB available**, with a single Next.js worker holding 2.7 GB. The build survived, but there is no
+margin: the next dependency that grows the build tips a deploy into an out-of-memory failure. That is
+survivable today only because `deploy.sh` builds before it migrates, so a failed build leaves the database
+untouched and the old service running.
+
+Two related facts from the same deploy. `pnpm improve:release` does **not** detach the remote
+`deploy.sh` (`scripts/improve/release.ts:83`), so anything that kills the local release process kills the
+server build with it, and the board is left saying the work did not ship when it did. And a build
+interrupted that way leaves new source on disk beside a stale `.next` build id, which nothing on the
+server detects or reports.
+
+- [ ] Raise the server's memory, or build elsewhere and ship the artifact
+- [ ] Detach the remote deploy so a local failure cannot kill it
+- [ ] A deploy that fails partway is detected and reported, rather than left mixed
+
+### 7.2 Pagination fetches every row
+
 `lib/pagination.ts:124` fetches every row then slices, across 61 call sites. It has never bitten because
 production holds 83 employments and 93 payslips. **UNKNOWN:** the row count at which it becomes a problem;
 nobody has load-tested it. A customer an order of magnitude larger should be assumed to expose it.
