@@ -1,3 +1,38 @@
+## correction (2026-09-13) — the production entitlement configuration is BACK UP. The restart SQL must NOT be run.
+
+Yesterday's readiness entry and r269 both record that production had **0 entitlement templates and 0
+eligibility rules in force**, and that `scratchpad/restart-config.sql` was still owed. **Both statements
+are now wrong.** Measured 2026-09-13: **1 template and 1 rule in force.** The reporter restored their own
+configuration on the evening of 2026-09-12. Do not run that SQL, and do not ask for a permission rule
+to run it.
+
+`domain_event` timeline for 2026-09-12, which is also the origin of the three open items:
+
+    17:08  leave.entitlement.recalculated  (x20+)
+    17:19  entitlement-eligibility.created
+    17:28  leave-type.default-entitlement-table.set   ← the r269 feature, used by the reporter
+    17:29  entitlement-eligibility.created
+    17:30  entitlement-eligibility.retired
+    17:42  feedback 5527ce8f filed  (remove Leave Balance Health from Entitlement Tables)
+    17:54  feedback 995387c6 filed  (move Benefit Schemes off Entitlement Tables)
+    18:02  feedback 65e4073a filed  (remove the dependency on a separate Benefit Scheme layer)
+
+**Why the SQL is now actively dangerous, not merely redundant.** It clears `valid_to` on rule
+`e1aa6e06` ("Permanent 16 - 19  (New)"), which the reporter **deliberately retired** at 17:30 on
+2026-09-12. Running it resurrects a rule they intentionally stopped. Its own pre-flight guard asserts
+"exactly 1 template and 1 rule in force afterwards" — that condition is **already true**, so the guard
+would not catch this. A guard written against a measured state does not protect against that state
+having changed.
+
+**Rule inventory on production 2026-09-13:** `bac2703d` "GP1215" from 2026-01-01 in force ·
+`c5efc36d` "GP1215" from 2026-01-01 retired 09-12 · `e1aa6e06` "Permanent 16 - 19  (New)"
+2026-09-11 retired 09-12. Leave types: 17, of which **exactly 1 (Annual Leave) carries a default
+entitlement table**, and the template it names is in force.
+
+**The lesson, which is the reusable half:** a remediation script written against a measured production
+state expires. Re-measure immediately before running one, and write the guard against the state you
+expect to CHANGE, not the state you want to end in.
+
 ## readiness survey (2026-09-12) — customer-deployment readiness, four read-only surveys. `main@1c43cc25`, no migration. NOT a shipped round: nothing was built or deployed.
 
 Four parallel agents surveyed features, security, statutory and operations under binding read-only
