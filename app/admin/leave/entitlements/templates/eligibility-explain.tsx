@@ -2,10 +2,21 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { listEmployees } from '@/core/read';
+import { entitlementExplainFactsFor } from '@/core/entitlement-scheme-view';
 import type { SessionContext } from '@/db/client';
-import { explainEntitlementEligibilityFor, eligibilityNoticeFrom } from '@/packs/leave/service';
+import {
+  explainEntitlementEligibilityFor,
+  eligibilityNoticeFrom,
+  type EntitlementWinReason,
+} from '@/packs/leave/service';
 import { Card, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import type { EligibilityRuleNotice } from '@/lib/entitlement-status';
+import { leaveConfigScreenHref } from '@/components/leave-config-map';
+import {
+  eligibilityExplainSentence,
+  type EligibilityNotice,
+  type EligibilityRuleNotice,
+} from '@/lib/entitlement-status';
+import { summariseOrgCriteria, type CriteriaAxisSummary } from '@/lib/entitlement-criteria-summary';
 import { criteriaAxisLabeller, criteriaValueLabeller } from './leave-type-conditions';
 import type { EntitlementTablesData } from './entitlement-tables-block';
 
@@ -55,6 +66,30 @@ const STATE_KEY: Record<EligibilityRuleNotice['state'], string> = {
   table_stopped: 'explainStateTableStopped',
 };
 
+/**
+ * r270 (65e4073a build 3) — WHY THE WINNER BEAT THE RUNNER-UP, AS ONE SENTENCE EACH.
+ *
+ * Two schemes that each narrow by one axis TIE on `orgCriteriaSpecificity` and are then separated by
+ * `validFrom`, and if that ties too by `createdAt` — silently, with nothing on screen. The engine now
+ * reports which term decided (`winReasonFor`, core/entitlement-template.ts) and this maps it to words.
+ *
+ * `sole_candidate` maps to NULL on purpose: only one scheme reached this employee, so there is no
+ * comparison to narrate and a line claiming one would be furniture at best. The `later_created` case
+ * shares `explainWhyChosenLater` with `later_start` and selects a different wording inside it — the start
+ * dates are identical there, so "it starts later" would be false about the configuration on screen.
+ */
+const WHY_CHOSEN_KEY: Record<EntitlementWinReason, string | null> = {
+  sole_candidate: null,
+  more_specific: 'explainWhyChosenSpecific',
+  later_start: 'explainWhyChosenLater',
+  later_created: 'explainWhyChosenLater',
+};
+
+/** How many option names one axis contributes to the "(job grade 16-19, full time)" clause before the
+ *  rest become a count. The Covers column's cap, for the same reason: a 66-row grade catalogue is not a
+ *  sentence. */
+const CLAUSE_VALUE_CAP = 6;
+
 export async function EligibilityExplainPanel({
   s,
   data,
@@ -97,31 +132,132 @@ export async function EligibilityExplainPanel({
   const valueLabel = criteriaValueLabeller(data.criteriaSections);
 
   /**
-   * ⚠️ ONLY A LINEAGE WITH A RUNNING VERSION IS LINKABLE. `?editRule=` is answered by the block above,
-   * which looks the lineage up in its RUNNING rules — so a link on an expired or retired lineage navigates,
-   * loses the explanation, and opens nothing. Those are precisely the rules a reader most wants to click,
-   * which is why this returns null for them rather than rendering a link that does nothing.
+   * ⚠️ ONLY A LINEAGE WITH A RUNNING VERSION IS LINKABLE. `?editRule=` is answered by the entitlement
+   * tables block, which looks the lineage up in its RUNNING rules — so a link on an expired or retired
+   * lineage navigates, loses the explanation, and opens nothing. Those are precisely the rules a reader
+   * most wants to click, which is why this returns null for them rather than rendering a link that does
+   * nothing. The predicate is the block's own (`rules.filter((x) => x.validTo == null)`), restated here
+   * because this panel holds the unscoped list.
    */
   const runningRuleLineages = new Set(data.rules.filter((r) => r.validTo == null).map((r) => r.lineageId));
 
-  const notice =
+  /**
+   * r270 (995387c6) — THE RULE EDITOR IS ON THE LEAVE TYPES SCREEN NOW, AND THIS LINK HAD TO FOLLOW IT.
+   *
+   * This panel used to send "Open scheme" back to its OWN address with `&editRule=`, because the
+   * Entitlement tables screen mounted the block unscoped and answered that parameter. This round removes
+   * the Benefit schemes section from that screen, so the parameter would arrive at a route that no longer
+   * reads it: a control that navigates, loses the explanation and opens nothing — the exact failure the
+   * `runningRuleLineages` gate above exists to prevent, arriving by a different door.
+   *
+   * VERIFIED, not assumed: `app/admin/leave-config/types/page.tsx` declares `editRule` in its
+   * `searchParams` and passes it into every per-type `EntitlementTablesBlock` mount, and that block
+   * resolves it against its running rules and renders the rule editor. One contract, two mounts.
+   *
+   * ⚠️ THE `#type-<id>` ANCHOR IS LOAD-BEARING, and the block's own header says why: `LeaveTypeWorkspace`
+   * seeds its selection from `items[0]` and only then applies the hash, so a hard load with no anchor
+   * lands on the FIRST leave type alphabetically while the rule being edited belongs to another. The
+   * anchor is the deep-link contract every Edit link in that block already carries.
+   *
+   * WHAT IS LOST, stated rather than papered over: the explain query no longer rides along, because the
+   * destination is a different screen and would ignore it. The browser's Back returns to the explanation
+   * intact — it is a GET form, so the address still holds the whole question.
+   */
+  const ruleEditorHref = (lineageId: string) =>
+    `${leaveConfigScreenHref('leaveTypes')}?editRule=${encodeURIComponent(lineageId)}` +
+    `#type-${encodeURIComponent(leaveTypeId)}`;
+
+  const explanation =
     chosen && leaveTypeId
-      ? eligibilityNoticeFrom(
-          await explainEntitlementEligibilityFor(s, {
-            employmentId: chosen.employmentId,
-            leaveTypeId,
-            asOf,
-          }),
-          {
-            // …and the answer is carried THROUGH the link, so opening a rule does not throw away the
-            // employee, the leave type and the date that produced the question.
-            href: (lineageId) =>
-              runningRuleLineages.has(lineageId)
-                ? `${linkFor(chosen.employmentId)}&editRule=${encodeURIComponent(lineageId)}`
-                : null,
-          },
-        )
+      ? await explainEntitlementEligibilityFor(s, {
+          employmentId: chosen.employmentId,
+          leaveTypeId,
+          asOf,
+        })
       : null;
+  const notice = explanation
+    ? eligibilityNoticeFrom(explanation, {
+        href: (lineageId) => (runningRuleLineages.has(lineageId) ? ruleEditorHref(lineageId) : null),
+      })
+    : null;
+
+  /**
+   * r270 (65e4073a build 2) — THE REST OF THE SENTENCE, FROM FACTS THAT ARE ALREADY COMPUTED.
+   *
+   * Asked ONLY when something actually resolved: with no winner there are no days to explain, the panel's
+   * verdict line is the whole answer, and this query would be paid for nothing. The bands handed in are
+   * the WINNER'S own (`ResolvedEntitlement.serviceBands`), so the band named on screen is chosen from the
+   * very array the engine resolved — `entitlementExplainFactsFor` selects it through the engine's
+   * `bandFor` and never re-derives one.
+   */
+  const facts =
+    chosen && explanation?.winner
+      ? await entitlementExplainFactsFor(s, {
+          employmentId: chosen.employmentId,
+          asOf,
+          serviceBands: explanation.winner.serviceBands,
+        })
+      : null;
+  /** The notice plus the four employee-side facts — the shape `eligibilityExplainSentence` reads. */
+  const noticeWithFacts: EligibilityNotice | null = notice
+    ? {
+        ...notice,
+        gradeName: facts?.gradeName ?? null,
+        serviceYears: facts?.serviceYears ?? null,
+        winningBand: facts?.band ?? null,
+        daysAtService: facts?.daysAtService ?? null,
+      }
+    : null;
+
+  /**
+   * "(job grade 16-19, full time)" — the WINNING rule's criteria in the picker's own words.
+   *
+   * ⚠️ THE SAME SUMMARISER THE COVERS COLUMNS USE (`lib/entitlement-criteria-summary.ts`), not a third
+   * rendering of one criteria object. Its header states the rule: two renderings of the same object
+   * eventually disagree on two halves of one screen. It also never prints a raw UUID — an archived
+   * catalogue row has no option to name it, so it is COUNTED — which is the property this clause needs
+   * most, since the commonest axis here is `gradeIds` and its stored values are ids.
+   *
+   * The VERSION matched is the one in force at `asOf`, by the resolver's own predicate, so the criteria
+   * quoted are the criteria that decided rather than whatever the lineage's head happens to say today.
+   */
+  const winningRuleVersion =
+    explanation?.winner?.ruleLineageId != null
+      ? (data.rules.find(
+          (r) =>
+            r.lineageId === explanation.winner!.ruleLineageId &&
+            r.validFrom <= asOf &&
+            (r.validTo == null || r.validTo > asOf),
+        ) ?? null)
+      : null;
+  const criteriaClause = winningRuleVersion
+    ? summariseOrgCriteria(winningRuleVersion.criteria as Record<string, unknown>, data.criteriaSections)
+        .map((a: CriteriaAxisSummary) => {
+          if (a.scalar != null) return `${a.label}: ${a.scalar}`;
+          const shown = a.values.slice(0, CLAUSE_VALUE_CAP);
+          const hidden = a.values.length - shown.length + a.unresolved;
+          if (shown.length === 0) return null;
+          return `${a.label}: ${shown.join(' · ')}${hidden > 0 ? ` ${t('coversMore', { count: hidden })}` : ''}`;
+        })
+        .filter((x): x is string => x != null)
+        .join('; ')
+    : null;
+
+  /** Null for every verdict where nothing resolved — see `eligibilityExplainSentence`'s header. */
+  const sentence =
+    noticeWithFacts && chosen
+      ? eligibilityExplainSentence(noticeWithFacts, { employee: chosen.name, criteriaClause })
+      : null;
+
+  /** The lineage that actually won, so the why-chosen line lands on ONE row. Keyed on the lineage id and
+   *  never on the name: several rules can be `matched`, and nothing makes two rule names differ. */
+  const winningLineageId = explanation?.winner?.ruleLineageId ?? null;
+  const whyChosenKey = explanation?.winner?.winReason
+    ? WHY_CHOSEN_KEY[explanation.winner.winReason]
+    : null;
+  /** The runner-up this win is stated against — `alsoMatched` is ranked, so its first entry is it. */
+  const runnerUpName = explanation?.winner?.alsoMatched[0]?.ruleName ?? '';
+
   const typeName = typeOptions.find((x) => x.id === leaveTypeId)?.name ?? '';
 
   return (
@@ -205,6 +341,14 @@ export async function EligibilityExplainPanel({
                       ? t('explainNotActive', { date: asOf })
                       : t('explainNoWinner')}
             </p>
+            {/* r270 (65e4073a build 2) — THE WHOLE SENTENCE, UNDER THE ONE-LINE VERDICT.
+                "Ahmad is Grade 17 with 7 years of service. The scheme GP1215 (Job Grade: Grade 16 · …)
+                covers them, and its table GP1215 gives 20 days for 5 or more years of service."
+                Every figure in it was already computed by the engine — nothing new is stored, nothing is
+                recalculated and no model is involved (CLAUDE.md §1: the LLM never computes money, and
+                entitlement days are encashable). Absent when nothing resolved: the verdict above is then
+                the whole answer, and a sentence about days that do not exist would be worse than silence. */}
+            {sentence ? <p className="text-sm">{t(sentence.key, sentence.values)}</p> : null}
             {/* …and the employment window as a CAVEAT rather than a competing verdict, for the one case
                 where both are true: a sole table resolves for somebody outside their employment window,
                 because that shortcut deliberately consults no window (r193 fault 3). */}
@@ -247,7 +391,24 @@ export async function EligibilityExplainPanel({
                               cell for every rule on that screen, which invites a hunt for a criterion that
                               was never looked at. */}
                           {r.state === 'matched' ? (
-                            t('explainWhyMatched')
+                            <>
+                              {t('explainWhyMatched')}
+                              {/* r270 (65e4073a build 3) — AND, ON THE ROW THAT ACTUALLY WON, WHY IT WON.
+                                  Several rules can read "Matches" (the engine tests them all); exactly one
+                                  of them decided, and until now the ranking that picked it was invisible.
+                                  Rendered only where there was a comparison to report — `WHY_CHOSEN_KEY`
+                                  maps the single-candidate case to null. */}
+                              {r.id === winningLineageId && whyChosenKey ? (
+                                <span className="block text-muted-foreground">
+                                  {t(whyChosenKey, {
+                                    other: runnerUpName,
+                                    date: r.validFrom,
+                                    basis:
+                                      explanation?.winner?.winReason === 'later_start' ? 'start' : 'created',
+                                  })}
+                                </span>
+                              ) : null}
+                            </>
                           ) : !r.tested ? (
                             t('explainWhyNotTested')
                           ) : r.failingAxis ? (

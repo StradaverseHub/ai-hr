@@ -115,10 +115,21 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     // said a missing scheme was the reason no days exist, which is the causal claim the engine never made
     // and the reporter objected to. What is true is that no TABLE reached them — and there are now two
     // remedies, so the sentence names both.
-    expect(en.leave.errors.insufficientBalanceNoScheme).toBe(
-      'No entitlement table reaches you for {typeName}, so no days have been granted. Ask HR to name you in a benefit scheme for this leave type, or to set a default entitlement table for it.',
-    );
+    //
+    // r270 (65e4073a) REWROTE IT AGAIN, and this pin is UPDATED rather than dropped because the decision
+    // it guards has been reversed by its own author. r266's "Ask HR to NAME you in a benefit scheme" used
+    // *name* to mean *describe*; the reporter read it as *list by name* and filed a ticket asking us to
+    // remove a mandatory per-employee assignment layer THAT DOES NOT EXIST — there is no benefit-scheme
+    // field on an employment in this version. So the sentence now says what a scheme is (a description),
+    // that it is optional, and what it is for. The three properties r266 and r269 pinned are pinned still:
+    // the leave type is interpolated, the causal claim stays retired, and both remedies are named.
+    expect(en.leave.errors.insufficientBalanceNoScheme).toContain('{typeName}');
+    expect(en.leave.errors.insufficientBalanceNoScheme).toContain('No entitlement table reaches you');
     expect(en.leave.errors.insufficientBalanceNoScheme).not.toMatch(/No benefit scheme covers you/);
+    // The word that caused the ticket, in the sense that caused it: never ask to "name" a person in a
+    // scheme again, on any of the six screens that talk about one.
+    expect(en.leave.errors.insufficientBalanceNoScheme).not.toMatch(/name (you|them|this employee) in a/i);
+    expect(en.leave.errors.insufficientBalanceNoSchemeOther).not.toMatch(/name (you|them|this employee) in a/i);
   });
 
   it('no renamed namespace still says "eligibility rule" in English', () => {

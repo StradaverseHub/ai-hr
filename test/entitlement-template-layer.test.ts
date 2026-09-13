@@ -103,6 +103,9 @@ describe('entitlement templates — the reporter\'s named service-band tables', 
       serviceBands: tpl.serviceBands,
       specificity: 0,
       alsoMatched: [],
+      // r270 — the fixture states the field the resolver now carries. `null` is the honest value here:
+      // this literal is not the output of a ranking, so there is no runner-up it beat.
+      winReason: null,
       viaSoleTemplate: false,
       viaDefaultTemplate: false,
     });

@@ -203,6 +203,18 @@ export default async function LeaveConfigCompanyRulesPage({
   // Resolved ONCE, here: the per-company cards below are rendered from a synchronous `.map`, and the
   // heading is the SAME string the map shows for the screen this section absorbs (IA §2.0 — Replacement
   // leave's address becomes a stub pointing at THIS page).
+  /**
+   * r270 (995387c6) — THE CAPTION IS THE MAP'S OWN NAME FOR THE TARGET, not a second spelling of it.
+   *
+   * The pointer below used to be captioned from this page's own `whoQualifiesLink` ("Open Entitlement
+   * tables") because that is where it went. Moving the href without moving the caption would have left a
+   * control that says one thing and does another — precisely the class of defect this round exists to
+   * remove, arriving by the fix's own door. Reading the label from `leaveConfigScreenTitle` is the same
+   * argument the href already follows (`leaveConfigScreenHref`): one map, so the page, the caption and
+   * the submenu cannot disagree about where a screen is or what it is called. The Replacement leave and
+   * Payroll impact pointers on this page are captioned the same way, so this is the page's own idiom.
+   */
+  const whoQualifiesTarget = await leaveConfigScreenTitle('leaveTypes');
   const replacementTitle = await leaveConfigScreenTitle('replacementLeave');
   const payrollTitle = await leaveConfigScreenTitle('payrollImpact');
   const companyOptions = [
@@ -262,11 +274,21 @@ export default async function LeaveConfigCompanyRulesPage({
           {/* 10b59703 — the reporter's tree put eligibility rules under Company rules. They stay under
               Entitlements (a benefit scheme names one entitlement table of one leave type; splitting the
               two across pages is the "who qualifies is answered in three places" defect IA §1.2(e) just
-              removed), and this page says so with a plain pointer, resolved through the map. */}
+              removed), and this page says so with a plain pointer, resolved through the map.
+
+              r270 (995387c6) — THE POINTER MOVED WITH THE SECTION IT POINTS AT. It named the Entitlement
+              tables tab, which until this round mounted the Benefit schemes card as well; that duplicate
+              copy is gone and the schemes now live only inside each leave type's Entitlements tab on
+              Leave types. The pointer's PROPERTY is unchanged — "who receives which entitlement table is
+              set under Entitlements, and here is the way in" — so the target moves rather than the
+              sentence. Still resolved through the map, so this page and the submenu cannot disagree about
+              where the screen is. `test/r266-leave-config-rows.test.ts` pins it and was UPDATED, not
+              deleted: the property it guards is that this page only POINTS at eligibility and never hosts
+              it, which this change narrows rather than weakens. */}
           <p className="text-muted-foreground">
             {tPage('whoQualifies')}{' '}
-            <Link href={leaveConfigScreenHref('entitlementTables')} className="font-medium text-primary hover:underline">
-              {tPage('whoQualifiesLink')} →
+            <Link href={leaveConfigScreenHref('leaveTypes')} className="font-medium text-primary hover:underline">
+              {whoQualifiesTarget} →
             </Link>
           </p>
         </div>

@@ -45,7 +45,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { employment, leaveType } from '../db/schema';
+import { employment, jobGrade, leaveType } from '../db/schema';
 // ADR-0080 D9: core/leave-compute and core/entitlement-template are leave-pack BOUNDARY modules, and
 // this file is an outside consumer (its caller is the personnel screen, not a leave screen). So it takes
 // them through the facade, which re-exports both in place. Adding this file to the pack instead would
@@ -242,6 +242,67 @@ export async function benefitSchemeView(
     serviceYears,
     perType: rows,
   };
+}
+
+
+/**
+ * r270 (65e4073a build 2) — THE FOUR FACTS THE EXPLAIN SENTENCE QUOTES, AND NOTHING ELSE.
+ *
+ * The explain panel could say which table and which scheme won and no more: "Resolves to GP1215, through
+ * the scheme GP1215." The reporter asked for the sentence that names the employee's grade, their length of
+ * service, the band that applied and the days it gives. Every one of those is already computed — this
+ * reader only fetches the two stored columns (`employment.grade_id` → its name, `employment.hired_on`) and
+ * puts the rest through the engine's own helpers.
+ *
+ * ⚠️ IT DECIDES NOTHING, for the reason this module's header gives. `serviceYearsAt` is the counter the
+ * accrual engine reads and `bandFor` is the engine's own band selection; the BANDS are handed in by the
+ * caller straight off `ResolvedEntitlement.serviceBands`, so the band named on screen is selected from the
+ * very array the winner resolved. Re-resolving the winner here would be a second matcher.
+ *
+ * ⚠️ AND EVERY FIELD IS NULLABLE ON PURPOSE. 47 of the reporter's 74 live employments have no job grade
+ * recorded, so `gradeName` is null for most of them and the sentence must simply not mention a grade —
+ * "is Grade null" is the failure mode this nullability exists to make impossible. An employment with no
+ * hire date has no service length, and a band array that does not resolve has no days: each absence drops
+ * its own clause and no other.
+ *
+ * ONE QUERY, read-only, no event. RLS hides an employment the caller may not read; the defined answer for
+ * that is four nulls, never an error.
+ */
+export type EntitlementExplainFacts = {
+  /** The employee's job grade by NAME, never its id. Null when no grade is recorded on the employment. */
+  gradeName: string | null;
+  /** Completed whole years of service at `asOf`, through `serviceYearsAt`. Null with no hire date. */
+  serviceYears: number | null;
+  /** The band of the WINNING table that applies at that service length — the engine's own `bandFor`. Null
+   *  when there is no winner, no service length to look up, or the band array does not resolve. */
+  band: ServiceBand | null;
+  /** That band's days. Null rather than 0: "no band resolved" and "this band gives nothing" are different
+   *  statements and only one of them is a figure. */
+  daysAtService: number | null;
+};
+
+export async function entitlementExplainFactsFor(
+  ctx: SessionContext,
+  p: { employmentId: string; asOf: string; serviceBands: ServiceBand[] | null },
+): Promise<EntitlementExplainFacts> {
+  // Read-only — no events (CLAUDE.md skip rule).
+  return withTenant(ctx, async (tx: Tx) => {
+    const [row] = await tx
+      .select({ hiredOn: employment.hiredOn, gradeName: jobGrade.name })
+      .from(employment)
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const serviceYears = row?.hiredOn ? serviceYearsAt(row.hiredOn, p.asOf) : null;
+    const band =
+      p.serviceBands && serviceYears != null ? bandFor({ serviceBands: p.serviceBands }, serviceYears) : null;
+    return {
+      gradeName: row?.gradeName ?? null,
+      serviceYears,
+      band,
+      daysAtService: band?.days ?? null,
+    };
+  });
 }
 
 /**
