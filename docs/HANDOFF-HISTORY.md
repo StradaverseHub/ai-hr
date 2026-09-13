@@ -66,6 +66,18 @@ for 68 people.
 **NOT done:** nothing was built; there were no approved items. Mockups for all three are in `docs/mockups/`
 (rendered with `pnpm mockup`; chromium had to be reinstalled, it was absent from the Playwright cache).
 
+**PROCESS MISS, recorded because the order was wrong even though the outcome was not.** Both `5527ce8f`
+and `995387c6` carried a reporter `.docx` attachment from the moment they were filed, and **I planned and
+pushed all three items before reading them** — CLAUDE.md §8 says read attachments first. Read afterwards,
+they CONFIRM both plans rather than contradicting them: each document is a pair of screenshots of the same
+section on both screens, captioned "Under Leave Config> Entitlements> Leave Types> ..." and "Under Leave
+Config> Entitlements> Entitlement tables> ...". The two images differ only by the scoped-only "Already set
+on the leave type (Who is eligible tab)" read-out, which is exactly the scoped/unscoped split at
+`entitlement-tables-block.tsx:1107`. The screenshots also show a **Grade group picker already in the scheme
+form**, whose on-screen note states the expansion behaviour `65e4073a`'s plan flags as an open question —
+so that question is still the right one to ask, and the UI already half-answers it. Check
+`feedback_attachment` at pull time, not after pushing.
+
 **UNKNOWN, flagged to the reporter:** whether their "Grade 4-6" means a named grade group. Groups are
 expanded to member `gradeIds` at save with no back-link stored, so the label cannot be reconstructed on the
 explain screen; restoring it is a schema change and a separate item.
