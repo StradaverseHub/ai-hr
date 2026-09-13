@@ -361,7 +361,7 @@ Round 5 cutover). Both are on the new screen.
 
 | # | Function today | Screen today | Where it lands |
 |---|---|---|---|
-| F33 | Entitlement tables + eligibility for **all** leave types side by side | Entitlement tables | **Entitlement tables** — new page, same shared block (same behaviour) |
+| F33 | Entitlement tables for **all** leave types side by side — each table's own row naming its leave type, who it covers and how many benefit schemes point at it | Entitlement tables | **Entitlement tables** — new page, same shared block. ⚠️ **r270 (`995387c6`) deleted the eligibility half of this row.** The benefit schemes list and its create/edit form are the leave type's own tab 3, where they have been since `6aee1d91`; this screen was mounting a second copy of the same form over the same effective-dated lineage, and the reporter asked for it to stop. What survives here is the **read-only** cross-type view — the Covers cell and the scheme count on every table's row (`entitlement-tables-block.tsx`), which is the part §3.2's anti-drop reasoning is actually about. The row is re-worded rather than left standing, because a function table that still promises a surface nobody renders is the r258 defect this section exists to prevent. |
 | F34 | Approval template creation: named, ordered chain; activate / duplicate / delete / set org-wide default | Approval chain | **Approval chains** (same behaviour) |
 | F35 | Template assignment: company × leave type × grade or named population — this is what writes `leave_approval_policy` | Approval chain | **Approval chains** (same behaviour) |
 | F36 | Per-company escalation policy | Approval chain | **Approval chains** (same behaviour) |

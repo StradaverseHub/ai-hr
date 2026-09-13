@@ -65,9 +65,10 @@ export default async function LeaveConfigEntitlementTablesPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.entitlementTemplates');
-  // 6aee1d91 — the SAME explainer the leave type's tab 3 renders, read from the same key, so the two mounts
-  // of the tables block cannot describe eligibility and entitlement two ways.
-  const tTypes = await getTranslations('admin.leaveConfigTypes');
+  // r270 (995387c6) — 6aee1d91's scheme explainer, and the `admin.leaveConfigTypes` translator that read
+  // it, are GONE FROM THIS SCREEN. It described the difference between the leave type's eligibility and
+  // the benefit schemes below it; there are no schemes below it any more, so it explained a section that
+  // is not on the page. It is unchanged on the leave type's own tab, which is where the schemes are.
   const sp = await searchParams;
   const data = await loadEntitlementTablesData(s);
   // 10b59703 — this is a TAB of Entitlements: the heading and the description are the row's, and the
@@ -92,19 +93,18 @@ export default async function LeaveConfigEntitlementTablesPage({
         </div>
       </Card>
 
-      {/* 6aee1d91 — eligibility (tab 2 of the leave type) versus entitlement (the schemes below), in the
-          approved words, at the top of the unscoped block. */}
-      <p
-        role="note"
-        data-testid="scheme-explainer"
-        className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground"
-      >
-        {tTypes('entitlementStep.schemeExplainer')}
-      </p>
-
       {/* F33 — unfiltered: no `leaveTypeId`, so the Leave type column stays and the create form keeps its
-          type picker. Byte-for-byte the mount the old page makes. */}
-      <EntitlementTablesBlock data={data} editTemplate={sp.editTemplate} editRule={sp.editRule} />
+          type picker.
+
+          r270 — and two surfaces of the block are switched OFF here, both because this screen was drawing
+          a second copy of something that already has one home:
+            · `showConfigHealth={false}` (5527ce8f) — Leave balance health is the first thing on the Leave
+              types tab, drawn there at page level; this tab drew the identical card above the tables.
+            · `showBenefitSchemes={false}` (995387c6) — the schemes list and its create/edit form live on
+              the leave type's own "What they are entitled to" tab, and did before this item was raised.
+          Neither flag names `leaveTypeId`: this mount stays UNFILTERED, which is the one thing this screen
+          does that a leave type's own tab cannot, and two guards read the mount text to prove it. */}
+      <EntitlementTablesBlock data={data} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
 
       {/* F49 (r212 8ebf77ae) — the question the tables above cannot answer for one person: which rules
           exist, which are in force, and what about THIS employee does not match. Below the rules it
@@ -113,7 +113,9 @@ export default async function LeaveConfigEntitlementTablesPage({
 
       {/* 9e2a89e9 — and the same question asked the other way round: not "why this one person", but
           "who is left out", which is the one an administrator needs before year end. `data.today` is the
-          page's own clock, so the list and the health card above are judged as at the same date. */}
+          page's own clock, so this list and every block above it are judged as at the same date.
+          (r270 — the sentence used to name the health card that stood above it; that card is drawn on the
+          Leave types tab now, so the old wording named a component this page no longer renders.) */}
       <UncoveredEmployeesCard s={s} asOf={data.today} />
     </div>
   );

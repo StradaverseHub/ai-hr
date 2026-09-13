@@ -216,12 +216,26 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
 });
 
 describe('§B · the mounts: one explainer key on both tables-block mounts, the note in both card states', () => {
-  it('tab 3 of the leave type and the unscoped Entitlement tables screen render the SAME explainer key', () => {
+  it('tab 3 of the leave type renders the explainer; the Entitlement tables tab deliberately no longer does', () => {
     const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
     const page = read('app/admin/leave-config/entitlement-tables/page.tsx');
     expect(tabs).toContain("tTabs('entitlementStep.schemeExplainer')");
-    expect(page).toContain("tTypes('entitlementStep.schemeExplainer')");
-    expect(page).toContain("getTranslations('admin.leaveConfigTypes')");
+    /**
+     * r270 (995387c6) — THE PAGE HALF OF THIS GUARD IS REVERSED, NOT DROPPED, and the reversal is the
+     * point. 6aee1d91 pinned the explainer on BOTH screens because both screens carried a Benefit schemes
+     * section and each had to say how eligibility differs from entitlement. The Entitlement tables tab has
+     * no schemes section any more, so the note explained a section that is not on the page — and a note
+     * describing an absent surface is the drift this guard exists to catch, pointing the other way.
+     * Asserted as an ABSENCE so the note cannot be restored without this decision being re-read.
+     *
+     * The leave-type half above is untouched: that screen still carries the schemes, so it still explains
+     * them, and the key stays live in all six catalogues for it (pinned in §A, line 86).
+     */
+    expect(page).not.toContain('entitlementStep.schemeExplainer');
+    expect(page).not.toContain("getTranslations('admin.leaveConfigTypes')");
+    expect(page).not.toContain('data-testid="scheme-explainer"');
+    // …and the screen that kept the schemes is the screen that still asks for the key, so it is not dead.
+    expect(en.admin.leaveConfigTypes.entitlementStep.schemeExplainer).toBeTruthy();
     // At the top of the tab: before the earning method (F9), which is the first control of tab 3.
     const explainerAt = tabs.indexOf("tTabs('entitlementStep.schemeExplainer')");
     const earningAt = tabs.indexOf("t('subStep.earning')");
