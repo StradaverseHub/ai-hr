@@ -145,14 +145,20 @@ There is **no rate limiting anywhere** — the shared password can be brute-forc
 
 ## PART 2 — BEFORE THE FIRST REAL PAYROLL RUN
 
-### 2.1 The live tenant's entitlement configuration is currently empty
-Measured 2026-09-12: **0 entitlement templates and 0 eligibility rules in force**. Nobody resolves to any
-leave entitlement. The restart SQL is written (`scratchpad/restart-config.sql`) and has not been run.
-Beyond fixing it, note the shape of the risk: **one admin edit silently zeroed the entitlement engine for
-the whole tenant, and nothing anywhere raised an alarm.**
+### 2.1 An admin edit silently zeroed the entitlement engine — RESOLVED BY THE CUSTOMER
+**Corrected 2026-09-13.** On 2026-09-12 this tenant had **0 entitlement templates and 0 eligibility rules
+in force** and nobody resolved to any leave entitlement. **The reporter restored it themselves that
+evening**; measured 2026-09-13, 1 template and 1 rule are in force. The restart SQL that was written for
+this is **superseded and must NOT be run** — it clears `valid_to` on rule `e1aa6e06`, which the reporter
+deliberately retired at 17:30 that evening, and its own pre-flight guard cannot catch that because the
+guard's end-state condition is already true.
 
-- [ ] Configuration restored and verified in force
-- [ ] Consider an alarm for "a leave type resolves for nobody" at tenant scale
+The outage is closed. **The finding that survives is the shape of the risk:** one admin edit silently
+zeroed the entitlement engine for a whole tenant, it stayed down for a day, and nothing anywhere raised
+an alarm. Nobody would have noticed until an employee was refused leave.
+
+- [ ] An alarm for "a leave type resolves for nobody" at tenant scale
+- [ ] An alarm for "a tenant's entitlement templates in force dropped to zero"
 
 ### 2.2 Master data must be complete before month one
 Of 73 rows in `employee_statutory_my`: **30 have no tax number, 31 no EPF number, 47 no SOCSO number,
