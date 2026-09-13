@@ -494,8 +494,17 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain("t('colCovers')");
     expect(block).toContain("t('coversDefaultTable')");
-    // One renderer, called twice. A second inline criteria walk would be the drift this item removes.
-    expect((block.match(/coversCell\(/g) ?? []).length).toBe(2);
+    // ONE renderer, and every surface that shows a criteria object goes through it. r270 added a third
+    // surface (the flat grid) and a thin alias `coversOfScheme` naming the question the tables list and
+    // the grid share, so a bare `coversCell(` count stopped measuring what this line claims: it read 2
+    // while three surfaces rendered a criteria object. Count the CALLS, through either name, so the
+    // number on the right is the number of places a scheme's criteria reach a screen from this file.
+    const renderings =
+      (block.match(/coversCell\(/g) ?? []).length + (block.match(/coversOfScheme\(/g) ?? []).length;
+    // -1: the alias's own body calls coversCell, and a definition is not a surface.
+    expect(renderings - 1).toBe(3);
+    // And there is still exactly ONE implementation behind all three.
+    expect((block.match(/const coversCell = /g) ?? []).length).toBe(1);
     expect(block).not.toMatch(/Object\.entries\(x\.criteria as Record<string, unknown>\)/);
   });
 

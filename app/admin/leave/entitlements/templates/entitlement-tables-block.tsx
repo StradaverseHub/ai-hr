@@ -668,11 +668,17 @@ export async function EntitlementTablesBlock({
    * r270 — "WHO DOES THE SCHEME THAT NAMES THIS TABLE COVER", asked FROM THE TABLE'S SIDE.
    *
    * Two surfaces ask exactly that question of a rule: the tables list's Covers cell, and the flat grid's
-   * Job grade cell. They are one question, so they are one call — and routing both through this alias is
-   * what keeps `coversCell` itself at the two call sites `test/r269-grade-change-record.test.ts` counts,
-   * whose point is that there is ONE renderer of a criteria object in this file and no second inline walk
-   * of it. (The schemes list's own Covers column asks the same thing from the SCHEME's side and calls the
-   * renderer directly, because there it is not a property of a table at all.)
+   * Job grade cell. They are one question, so they get one name. (The schemes list's own Covers column
+   * asks the same thing from the SCHEME's side and calls the renderer directly, because there it is not
+   * a property of a table at all.)
+   *
+   * ⚠️ THAT IS THE ONLY REASON THIS ALIAS EXISTS, and it must never be justified by what it does to a
+   * test's call count. r270 first shipped it with exactly that justification written here, which was
+   * wrong twice over: an indirection that keeps a counter at 2 while a third surface renders a criteria
+   * object makes the guard measure something it does not claim to measure. The guard in
+   * `test/r269-grade-change-record.test.ts` now counts renderings through BOTH names, so hiding one
+   * behind an alias cannot work. Its point is what it always was: ONE renderer of a criteria object in
+   * this file, reached from every surface that shows one, and no second inline walk of it.
    */
   const coversOfScheme = (criteria: unknown) => coversCell(criteria as Record<string, unknown>);
   /**
