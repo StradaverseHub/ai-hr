@@ -340,7 +340,111 @@ export type EligibilityNotice = {
    *  in this schema, so it is read at TODAY'S value however far back the date reaches
    *  (`UNDATED_ELIGIBILITY_AXES`). Captioned rather than implied away. */
   usesUndatedAxis: boolean;
+
+  // ── r270 (65e4073a build 2) — THE FOUR FACTS THAT TURN "WHICH TABLE" INTO A SENTENCE ────────────────
+  //
+  // The notice above says WHICH table and WHICH scheme decided. The reporter asked for the rest of the
+  // sentence: the employee's grade, their length of service, the band that applied and the days it gives.
+  //
+  // ⚠️ OPTIONAL, AND THAT IS THE CONTRACT, NOT A SHORTCUT. `eligibilityNoticeFrom` maps a configuration
+  // explanation; none of these four is a fact about the configuration, and two of them are columns of the
+  // employment record. The admin explain panel has the employee in hand and fills them in; the employee's
+  // own Leave Details panel receives its notice through `core/read.ts` and does not, and must keep
+  // compiling and rendering without them. Absent ⇒ `eligibilityExplainSentence` drops the clause that
+  // needed the fact and says the rest — never a placeholder, never a guess.
+  /** The employee's job grade BY NAME. Null/absent ⇒ no grade is recorded (47 of the reporter's 74 live
+   *  employments), and the sentence must not mention a grade at all. */
+  gradeName?: string | null;
+  /** Completed whole years of service at the date asked about (`serviceYearsAt`). */
+  serviceYears?: number | null;
+  /** The winning table's band at that service length — the engine's own `bandFor`, never re-derived. */
+  winningBand?: ServiceBandLike | null;
+  /** That band's days. Null rather than 0: "no band resolved" is not "this band gives nothing". */
+  daysAtService?: number | null;
 };
+
+/**
+ * The part of `ServiceBand` (core/leave-compute.ts) a SENTENCE needs, declared structurally.
+ *
+ * ⚠️ NOT IMPORTED, AND THE REASON IS A GUARD RATHER THAN A PREFERENCE. `core/leave-compute` is a leave-pack
+ * BOUNDARY module (test/leave-pack-drift.test.ts's `BOUNDARIES`); no file under `lib/` is on the audited
+ * allowlist, and that allowlist may only shrink. The ratchet scans SOURCE, so even a type-only import from
+ * that specifier would register as a new edge. `lib/entitlement-criteria-summary.ts` set this precedent for
+ * the same reason — a structural shape keeps this module importable by a client island and adds no edge.
+ * A real `ServiceBand` assigns to it, so the caller passes the engine's own object through unchanged.
+ */
+export type ServiceBandLike = { fromYears: number; toYears: number | null; days: number };
+
+/**
+ * r270 (65e4073a build 2) — THE WHOLE SENTENCE, AS A MESSAGE KEY AND ITS VALUES.
+ *
+ * Three ways to win, three sentences, because they are three different statements and folding them into
+ * one would interpolate a scheme name into two answers where no scheme was consulted (the same mistake
+ * `explainWinnerDefault` was minted to undo in 76ffdcf2):
+ *   · `resolved`      ⇒ `explainSentence`        — a benefit scheme reached this employee;
+ *   · `default_table` ⇒ `explainSentenceDefault` — no scheme did, and the leave type's default answered;
+ *   · `sole_table`    ⇒ `explainSentenceSole`    — one table, no rule, nothing to choose between.
+ * Every other verdict returns null: nothing resolved, so there are no days to explain and the panel's own
+ * verdict line is the whole answer.
+ *
+ * ⚠️ EVERY ABSENT FACT DROPS ITS OWN CLAUSE AND NOTHING ELSE. This is not a nicety — "is Grade null" would
+ * be printed for most of the reporter's employments, and a sentence that says something false about an
+ * employee's record is worse than one that says less. `facts` selects which of the four leading shapes the
+ * message renders (both / grade only / service only / nothing at all, in which case the sentence simply
+ * starts at the scheme); `hasDays` and `band` do the same for the tail. The panel already names the
+ * employee, the leave type and the date above this line, so the `none` shape loses no context.
+ *
+ * PURE. No translator, no database, no clock — the caller holds the catalogue and interpolates.
+ */
+export type EligibilityExplainSentence = { key: string; values: Record<string, string | number> } | null;
+
+export function eligibilityExplainSentence(
+  notice: EligibilityNotice,
+  p: {
+    /** The employee's own name, as the screen already spells it. */
+    employee: string;
+    /** "job grade 16-19, full time" — the winning rule's criteria in the PICKER's words, resolved by the
+     *  caller (only a screen has the catalogue). Null/absent ⇒ the clause is dropped, never guessed. */
+    criteriaClause?: string | null;
+  },
+): EligibilityExplainSentence {
+  const key =
+    notice.verdict === 'resolved'
+      ? 'explainSentence'
+      : notice.verdict === 'default_table'
+        ? 'explainSentenceDefault'
+        : notice.verdict === 'sole_table'
+          ? 'explainSentenceSole'
+          : null;
+  if (!key) return null;
+
+  const grade = notice.gradeName ?? null;
+  const years = notice.serviceYears ?? null;
+  const band = notice.winningBand ?? null;
+  const days = notice.daysAtService ?? null;
+  const clause = (p.criteriaClause ?? '').trim();
+
+  return {
+    key,
+    values: {
+      employee: p.employee,
+      facts: grade && years != null ? 'both' : grade ? 'grade' : years != null ? 'years' : 'none',
+      grade: grade ?? '',
+      years: years ?? 0,
+      rule: notice.winningRuleName ?? '',
+      hasClause: clause ? 'yes' : 'no',
+      clause,
+      table: notice.winningTableName ?? '',
+      hasDays: days == null ? 'no' : 'yes',
+      days: days ?? 0,
+      // An open-ended last band ("5 or more years") and a closed one ("0 to 2 years") are different
+      // sentences; a band that did not resolve is neither, and says nothing.
+      band: band == null ? 'none' : band.toYears == null ? 'open' : 'closed',
+      from: band?.fromYears ?? 0,
+      to: band?.toYears ?? 0,
+    },
+  };
+}
 
 /**
  * A CRITERIA AXIS → THE MESSAGE KEY THE RULE EDITOR'S OWN PICKER IS LABELLED FROM.
