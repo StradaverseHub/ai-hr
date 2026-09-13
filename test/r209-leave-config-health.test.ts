@@ -394,8 +394,27 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
 
   it('the two mounts render it: one type inside its own step, every type on the Entitlements page', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    /**
+     * r270 (5527ce8f) — UPDATED, NOT DELETED. This pair of assertions pinned the exact literals of both
+     * arms of a TWO-arm ternary. There are three states now, because the Entitlement tables tab drew a
+     * second copy of a card `app/admin/leave-config/types/page.tsx` already renders at page level, and
+     * asks for it to be suppressed. Both original literals are still asserted — the two arms did not
+     * change, only what is tested before them — and the suppressed state is pinned beside them so the
+     * flag cannot be quietly dropped back to today's two-arm shape.
+     *
+     * ⚠️ ORDER IS THE ASSERTION. The flag has to be read BEFORE the scoped/unscoped branch, or a caller
+     * that said "do not draw this" falls through to the unscoped arm. The same ordering closes a live
+     * edge case: a `leaveTypeId` matching no loaded row leaves `scopedHealth` null, so the SCOPED mount
+     * used to render the unscoped card — an empty "No active leave types" over one type's tables.
+     */
+    expect(block).toContain('{!showConfigHealth ? null : scopedHealth ? (');
     expect(block).toContain('<LeaveConfigHealthNotice health={scopedHealth} />');
     expect(block).toContain('<LeaveConfigHealthCard rows={allHealth} />');
+    expect(block).toContain('showConfigHealth = true');
+    expect(block.indexOf('!showConfigHealth ? null')).toBeLessThan(block.indexOf('<LeaveConfigHealthNotice'));
+    // …and exactly one mount suppresses it: the tab that has the duplicate, never the tab that owns it.
+    expect(read('app/admin/leave-config/entitlement-tables/page.tsx')).toContain('showConfigHealth={false}');
+    expect(read('app/admin/leave-config/types/page.tsx')).not.toContain('showConfigHealth={false}');
     // ⚠️ THE "no rule points here" MARKER IS PER LEAVE TYPE, not one boolean for the whole table. The
     // unfiltered mount lists every type's tables together, so a single flag would either warn on a healthy
     // single-table type or stay silent on a broken multi-table one — and it is the same set the card above

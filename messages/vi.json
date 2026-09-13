@@ -8481,7 +8481,7 @@
       "pageTitle": "Bảng định mức phép",
       "pageDescription": "Viết một bảng định mức theo thâm niên một lần, rồi chỉ định ai được áp dụng.",
       "intro": "Bảng định mức liệt kê các khoảng thâm niên do bạn tự đặt và số ngày tương ứng. Viết một lần, đặt tên, rồi cho bao nhiêu chế độ phúc lợi chỉ định cũng được, thay vì gõ lại cùng một bảng trong từng chế độ.",
-      "coexistNote": "Khi một chế độ phúc lợi bên dưới áp dụng cho một nhân viên, bảng mà chế độ chỉ định quyết định số ngày của họ. Loại nghỉ phép chỉ có một bảng và không có chế độ sẽ áp dụng bảng đó cho tất cả mọi người. Người không được chế độ nào áp dụng sẽ nhận bảng định mức mặc định của loại nghỉ phép, nếu có chỉ định.",
+      "coexistNote": "Khi một chế độ phúc lợi áp dụng cho một nhân viên, bảng mà chế độ chỉ định quyết định số ngày của họ; chế độ được thiết lập ở tab Loại nghỉ phép, trên chính loại phép đó. Loại nghỉ phép chỉ có một bảng và không có chế độ sẽ áp dụng bảng đó cho tất cả mọi người. Người không được chế độ nào áp dụng sẽ nhận bảng định mức mặc định của loại nghỉ phép, nếu có chỉ định.",
       "datedNote": "Cả bảng lẫn chế độ đều có ngày bắt đầu, và chính ngày đó quyết định việc Lưu làm gì. Giữ nguyên ngày thì phiên bản bạn đang sửa được cập nhật tại chỗ, kể cả phiên bản đang có hiệu lực. Nhập ngày muộn hơn thì phiên bản đang chạy được đóng vào ngày đó và một phiên bản mới bắt đầu, nhờ vậy báo cáo của năm đã đóng vẫn đọc đúng số liệu có hiệu lực khi ấy. Phiên bản chưa bắt đầu thì luôn được sửa tại chỗ.",
       "templatesTitle": "Bảng định mức phép",
       "templatesTitleForType": "Bảng định mức phép cho {type}",

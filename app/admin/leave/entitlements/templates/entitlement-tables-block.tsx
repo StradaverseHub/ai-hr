@@ -299,6 +299,8 @@ export async function EntitlementTablesBlock({
   leaveTypeId,
   editTemplate,
   editRule,
+  showConfigHealth = true,
+  showBenefitSchemes = true,
 }: {
   data: EntitlementTablesData;
   /** Absent ⇒ the standalone screen: every leave type, with the Leave type column and the type picker.
@@ -306,6 +308,32 @@ export async function EntitlementTablesBlock({
   leaveTypeId?: string;
   editTemplate?: string;
   editRule?: string;
+  /**
+   * r270 (5527ce8f) — DRAW THE LEAVE BALANCE HEALTH SURFACE AT ALL.
+   *
+   * ⚠️ NEITHER FLAG MAY CARRY THE SUBSTRING `leaveTypeId`. `test/entitlement-tables-embed.test.ts`
+   * proves the standalone mount is UNFILTERED by slicing the mount text to its first `/>` and asserting
+   * that slice names no `leaveTypeId`, and `test/leave-config-round3.test.ts` asserts the same of the
+   * whole page; a flag named after the scope would read to both guards as the filter coming back.
+   *
+   * Default TRUE, so every existing mount keeps today's behaviour and only the caller that wants the
+   * surface gone has to say so. The Entitlement tables tab passes false because
+   * `app/admin/leave-config/types/page.tsx` already renders `LeaveConfigHealthCard` at page level and the
+   * block was drawing a second, identical copy above the tables the operator opened that tab to read.
+   * The page-level copy is the one that is KEPT.
+   */
+  showConfigHealth?: boolean;
+  /**
+   * r270 (995387c6) — DRAW THE BENEFIT SCHEMES CARD (the list AND its create/edit form) at all.
+   *
+   * Same shape and the same naming constraint as `showConfigHealth`. The schemes surface already lives on
+   * the leave type's own "What they are entitled to" tab, which is the scoped mount; the unscoped mount
+   * was a second copy of the same form writing the same effective-dated lineage. GATED, NOT DELETED: the
+   * JSX below is the one definition both mounts share, `test/r266-benefit-scheme-vocabulary.test.ts`
+   * requires this file to keep asking for `colSchemeName` / `rulesIntro` / `rulesNamingTip`, and a
+   * deletion would take the scoped mount's schemes editor with it.
+   */
+  showBenefitSchemes?: boolean;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
   // r212 — the marital-status values already shipped in six locales under the leave-type screen's own
@@ -570,8 +598,19 @@ export async function EntitlementTablesBlock({
       {/* ── r209 · STEP 0: CAN THIS LEAVE TYPE PRODUCE A BALANCE AT ALL? ─────────────────────────────
           Above the tables, because it is the question the tables below cannot answer on their own: six
           correct Medical tables and one eligibility rule that expired on 13 August 2026 read, on this
-          screen, as six correct tables. Everything it names was already in the database and shown nowhere. */}
-      {scopedHealth ? <LeaveConfigHealthNotice health={scopedHealth} /> : <LeaveConfigHealthCard rows={allHealth} />}
+          screen, as six correct tables. Everything it names was already in the database and shown nowhere.
+
+          r270 (5527ce8f) — THREE STATES, AND THE SUPPRESSED ONE IS TESTED FIRST. Order is load-bearing
+          twice over. It is what the flag means (a caller that said "do not draw this" must not get the
+          unscoped card as a fall-through), and it closes a live edge case that the two-arm ternary had:
+          a `leaveTypeId` matching no row in the loaded data leaves `scopedType` undefined, so `scopedHealth`
+          is null and the SCOPED mount fell into the UNSCOPED arm — rendering an empty card reading "No
+          active leave types" over one leave type's tables. */}
+      {!showConfigHealth ? null : scopedHealth ? (
+        <LeaveConfigHealthNotice health={scopedHealth} />
+      ) : (
+        <LeaveConfigHealthCard rows={allHealth} />
+      )}
 
       {/* ── STEP 1: THE NAMED DAY TABLES ────────────────────────────────────────────────────────── */}
       <Card>
@@ -922,7 +961,16 @@ export async function EntitlementTablesBlock({
         </Card>
       ) : null}
 
-      {/* ── STEP 2: WHO GETS WHICH TABLE ────────────────────────────────────────────────────────── */}
+      {/* ── STEP 2: WHO GETS WHICH TABLE ──────────────────────────────────────────────────────────
+          r270 (995387c6) — GATED, NOT DELETED, AND DELIBERATELY NOT RE-INDENTED. The whole Card below —
+          the schemes list AND the create/edit form under it — is one surface with one definition, and the
+          unscoped mount was its second copy. `showBenefitSchemes` is read here and nowhere else, so the
+          leave type's own tab keeps every field, button and action it has today.
+
+          The body keeps its original indentation on purpose: re-indenting 275 lines to add one conditional
+          would bury the actual change in a whitespace diff, and three guards in two files read literal
+          substrings out of this Card (`t('colSchemeName')`, `t('rulesIntro')`, `t('rulesNamingTip')`). */}
+      {showBenefitSchemes ? (
       <Card>
         <SectionHeader title={t('rulesTitle')} count={runningRules.length} />
         {/* 6aee1d91 — ONE VOCABULARY. This section IS what the employee's profile calls their Benefit
@@ -1199,6 +1247,7 @@ export async function EntitlementTablesBlock({
           <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">{t('rulesNamingTip')}</p>
         </div>
       </Card>
+      ) : null}
     </div>
   );
 }

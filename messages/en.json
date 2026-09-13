@@ -8481,7 +8481,7 @@
       "pageTitle": "Entitlement tables",
       "pageDescription": "Write a service-based entitlement table once, then say who gets it.",
       "intro": "An entitlement table lists your own service ranges and the days each one earns. Write it once, name it, and let as many benefit schemes name it as you like, instead of retyping the same table inside every scheme.",
-      "coexistNote": "Where a benefit scheme below covers an employee, the table it names decides their days. A leave type with a single table and no scheme applies that table to everyone. Anyone no scheme covers receives the leave type’s default entitlement table, where one is named.",
+      "coexistNote": "Where a benefit scheme covers an employee, the table it names decides their days; schemes are set on the Leave types tab, on the leave type they belong to. A leave type with a single table and no scheme applies that table to everyone. Anyone no scheme covers receives the leave type’s default entitlement table, where one is named.",
       "datedNote": "Both tables and schemes carry a start date, and that date decides what Save does. Leave the date alone and the version you are editing is updated in place, including one that is already in force. Give it a later date and the running version is closed on that date and a new one starts, so a report for a closed year still reads the figures that were in force back then. A version that has not started yet is always corrected in place.",
       "templatesTitle": "Entitlement tables",
       "templatesTitleForType": "Entitlement tables for {type}",
