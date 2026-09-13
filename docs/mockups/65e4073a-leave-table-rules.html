@@ -1,0 +1,188 @@
+<meta charset="utf-8">
+<title>65e4073a — the leave table already drives entitlement</title>
+<!-- Mockup for 65e4073a. Panel 1 is the reporter"s own worked example expressed in
+     todays objects: service bands live on the table (core/leave-compute.ts ServiceBand),
+     grade/employment type live on the rule (core/org-criteria.ts OrgCriteria). So a grade
+     ladder costs one rule per grade band, NOT one per combination.
+     Production 2026-09-13: 74 live employments, 6 covered by the one rule, 68 by the
+     default table, 47 with no job grade recorded. -->
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Your worked example, set up the way the system works today</h2>
+  <p class="q">“Annual Leave / Grade 4–6 / ≥ 5 years / 20 days … rather than Employee → Benefit Scheme → Leave Types → Leave Entitlement.”</p>
+
+  <div class="two">
+    <div class="box" style="border-color:#c7d2fe;background:#eef2ff">
+      <span class="tag" style="background:#e0e7ff;color:#3730a3">WHAT YOU WROTE</span>
+      <table>
+        <tr><th>Leave type</th><th>Job grade</th><th>Years of service</th><th>Entitlement</th></tr>
+        <tr><td>Annual Leave</td><td>Grade 1–3</td><td>&lt; 2 years</td><td>12 days</td></tr>
+        <tr><td>Annual Leave</td><td>Grade 1–3</td><td>2–5 years</td><td>14 days</td></tr>
+        <tr><td>Annual Leave</td><td>Grade 4–6</td><td>&lt; 5 years</td><td>18 days</td></tr>
+        <tr><td>Annual Leave</td><td>Grade 4–6</td><td>≥ 5 years</td><td>20 days</td></tr>
+      </table>
+      <div class="note">Four rows. The worry: four benefit schemes to create and assign.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">WHAT IT TAKES TODAY — two schemes, two tables, nobody assigned</span>
+      <div class="panel" style="margin-bottom:8px">
+        <div class="ph">Benefit schemes <span class="count">2</span></div>
+        <div class="pb"><table>
+          <tr><th>Scheme name</th><th>Covers (a description, not a list of people)</th><th>Table</th></tr>
+          <tr><td>Grade 1–3</td><td>Job grade is 1, 2 or 3</td><td>Junior ladder</td></tr>
+          <tr><td>Grade 4–6</td><td>Job grade is 4, 5 or 6</td><td>Senior ladder</td></tr>
+        </table></div>
+      </div>
+      <div class="panel">
+        <div class="ph">Entitlement tables <span class="count">2</span></div>
+        <div class="pb"><table>
+          <tr><th>Table</th><th>From</th><th>To</th><th>Days</th></tr>
+          <tr><td>Junior ladder</td><td>0</td><td>2</td><td>12</td></tr>
+          <tr><td>Junior ladder</td><td>2</td><td>5</td><td>14</td></tr>
+          <tr><td>Senior ladder</td><td>0</td><td>5</td><td>18</td></tr>
+          <tr><td>Senior ladder</td><td>5</td><td>—</td><td>20</td></tr>
+        </table></div>
+      </div>
+      <div class="note"><b>Years of service is already inside the table.</b> So you need one scheme per
+        <i>grade band</i>, not one per combination. Two grade bands and four service steps cost two schemes,
+        not four — and adding a fifth service step costs none.</div>
+    </div>
+  </div>
+
+  <div class="hole"><b>Nobody is assigned to anything.</b> There is no benefit scheme field on an employee,
+    and there never has been in this version. A scheme is a description — “job grade is 4, 5 or 6” — that the
+    system matches against employment records every time it calculates. Today on your account
+    <b>68 of your 74 live employees</b> are getting their Annual Leave with no scheme naming them at all.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>What we will actually build: your four columns, as one grid</h2>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — the facts are split across two blocks</span>
+      <div class="panel" style="margin-bottom:8px"><div class="ph">Entitlement tables</div>
+        <div class="pb"><table><tr><th>Name</th><th>Service ranges</th><th>Covers</th><th>In force</th></tr>
+        <tr><td>GP1215</td><td>0–2 · 2–5 · 5+</td><td>Grade 16–19, full time</td><td>01 Jan 2026</td></tr></table></div></div>
+      <div class="panel"><div class="ph">Edit entitlement table — GP1215</div>
+        <div class="pb"><table><tr><th>From year(s)</th><th>To year(s)</th><th>Entitled days</th></tr>
+        <tr><td>0</td><td>2</td><td>16</td></tr><tr><td>2</td><td>5</td><td>18</td></tr>
+        <tr><td>5</td><td>—</td><td>20</td></tr></table></div></div>
+      <div class="note">You have to open the table to see the days, and read “Covers” to see the grade.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — one row per grade band and service step</span>
+      <div class="panel"><div class="ph">Entitlement tables <span class="chip new" style="margin-left:6px">NEW LAYOUT</span></div>
+        <div class="pb"><table>
+          <tr><th>Leave type</th><th>Job grade</th><th>Years of service</th><th>Entitlement</th><th>Table</th></tr>
+          <tr><td>Annual Leave</td><td>Grade 16–19, full time</td><td>0–2</td><td>16 days</td><td>GP1215</td></tr>
+          <tr><td>Annual Leave</td><td>Grade 16–19, full time</td><td>2–5</td><td>18 days</td><td>GP1215</td></tr>
+          <tr><td>Annual Leave</td><td>Grade 16–19, full time</td><td>5+</td><td>20 days</td><td>GP1215</td></tr>
+          <tr><td>Annual Leave</td><td>Everyone else</td><td>0–2</td><td>16 days</td><td>GP1215 (default)</td></tr>
+        </table></div></div>
+      <div class="note">Same data, same engine, nothing recalculated. This is a way of reading what you
+        already have, in the shape you drew.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>The sentence you asked for</h2>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — names the table and the scheme, nothing else</span>
+      <div class="panel"><div class="ph">Why does an employee get this table, or none?</div>
+        <div class="pb" style="font-size:12px">Resolves to <b>GP1215</b>, through the scheme “<b>GP1215</b>”.
+        <div style="margin-top:7px;color:var(--mf)">It never tells you the employee’s grade, their length of
+          service, which band applied, or how many days.</div></div></div>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER — the four facts that produced the number</span>
+      <div class="panel"><div class="ph">Why does an employee get this table, or none?</div>
+        <div class="pb" style="font-size:12px">
+          <b>Ahmad is Grade 17 with 7 years of service.</b> The scheme “GP1215” (job grade 16–19, full time)
+          covers them, and its table GP1215 gives <b>20 days</b> for 5 or more years of service.
+        <div style="margin-top:7px;color:var(--good)">Every figure here is already calculated. Composing the
+          sentence needs no new data and no AI.</div></div></div>
+    </div>
+  </div>
+  <div class="hole"><b>One thing to fix on your side, and it is the real risk.</b> 47 of your 74 live employees
+    have <b>no job grade recorded</b>. A scheme that matches on grade can never reach them. That is why the
+    default entitlement table you set on Annual Leave is currently doing the work for 68 people.</div>
+</div>

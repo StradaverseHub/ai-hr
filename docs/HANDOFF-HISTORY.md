@@ -1,3 +1,75 @@
+## r270-plan (2026-09-13) — the three open entitlement items planned and pushed. `main@7504f072`, no migration, nothing built.
+
+All three items came out of one 50-minute session the reporter had on the evening of 2026-09-12 (see the
+correction entry below for the `domain_event` timeline). They escalate: remove a duplicated card, remove a
+duplicated section, then remove the architecture. **The third one is the important one, and its premise is
+wrong — because of a word we shipped two days earlier.**
+
+**`5527ce8f` — Leave balance health on the Entitlement tables tab. PLANNED, quick.** Premise CONFIRMED.
+Both screens mount `EntitlementTablesBlock`; the block's `:574` ternary renders the full
+`LeaveConfigHealthCard` when unscoped and a `LeaveConfigHealthNotice` when scoped, and `types/page.tsx:220`
+renders the card again at page level. So the card really is drawn twice, and the copy to keep is the
+page-level one. Fix is an optional boolean prop, default true, passed false from the unscoped mount.
+`test/r209-leave-config-health.test.ts:397-398` pins the exact literals of both arms and must be UPDATED.
+
+**`995387c6` — Benefit schemes on the Entitlement tables tab. PLANNED, moderate.** Premise partly INVERTED:
+the reporter asked us to *move* the section to Leave types, where **it already is** (`types/page.tsx:135-145`
+mounts the scoped block, which carries the full schemes Card). So it is a removal of the second copy, not a
+move. **Two things would break silently and are folded into the item, not deferred:** the explain panel's
+"Open scheme" button (`eligibility-explain.tsx:118-121`) builds `?editRule=` links at this same route and
+would become a dead control, and `company-rules/page.tsx:267-269` links here saying this is where you set
+who receives which table. Also owed with it: drop the now-orphaned scheme-explainer note, reword
+`coexistNote`'s "below", and re-word F33 in `docs/design/a6fe37fc-leave-config-ia.md:364`, which defines the
+screen as "Entitlement tables **+ eligibility** side by side" — this change deletes the eligibility half.
+
+**`65e4073a` — "Remove the dependency on a separate Benefit Scheme layer". PLANNED, moderate. ALREADY BUILT,
+and we caused the ticket.** The mandatory layer was removed three releases ago: `benefit_scheme`,
+`scheme_leave_entitlement`, `leave_policy` and `employment.benefit_scheme_id` **do not exist on production**.
+Entitlement resolves in one function (`core/entitlement-template.ts:1746`, winner at `:1884`) through three
+branches — sole table, matching rule, default table. `OrgCriteria` already covers grade, min/max years of
+service, employment type, department, hire-date bands and twelve more axes, and has **no employee-id
+criterion by design** (`core/org-criteria.ts:315-327`). Years of service is derived
+(`lib/completed-years.ts:26-38`), never stored. Recalculation already fires on grade change, movement,
+employment-info edit, company change, join-date correction and every config save.
+
+**Measured: 68 of the reporter's 74 live employments receive Annual Leave today with no scheme naming them.**
+The thing the ticket asks us to remove is already not in their way.
+
+**DECISIONS this round, that no ticket settled:**
+
+- **We caused `65e4073a` with commit `3a14035e` (r266, 2026-09-11)**, which renamed "Employee eligibility" →
+  "Benefit schemes" across six locales. The new name reads as a thing each employee must be put into, and
+  the screens compounded it with "ask HR to **name** you in a benefit scheme", where *name* means *describe*.
+  The plan opens by saying we did this and apologising. **The wording fix is probably the change that
+  actually resolves the complaint**, and it is the cheapest item in the plan.
+- **DO NOT add a grade column to `entitlement_template`.** It would duplicate the criteria vocabulary and
+  create a second matcher, breaking one-authoritative-owner-per-fact — the rule the whole three-layer design
+  exists to enforce. Grade stays on the rule; the new grid merely *displays* grade and service together.
+  If this is contested, it becomes an ADR.
+- **The AI framing is DECLINED, with the reason given to the reporter.** Leave is encashable
+  (`core/leave-encashment.ts`), CLAUDE.md §1 forbids a model deciding anything money-like, and separately
+  `ai_provider_config` has 0 rows so every AI surface resolves null — an AI promise would be inert as well as
+  wrong. The explanation the reporter wants is a template string over five values the engine already
+  computes; it needs no model.
+- **Real gaps, and what was promised instead:** (1) no flat `Leave type | Job grade | Years of service |
+  Entitlement` grid — the facts sit on one screen in two blocks; (2) the explain panel names the table and
+  the rule but never the employee's grade, their service, the winning band or the days; (3) overlap
+  precedence ties on `orgCriteriaSpecificity` and is then broken by `validFrom` then `createdAt`, silently
+  (`core/entitlement-template.ts:1177-1183`).
+- **Sequencing:** the grid in `65e4073a` lands on the screen the other two items are clearing. Build
+  `5527ce8f` and `995387c6` first.
+
+**Told to the reporter, in the plan:** 47 of their 74 live employments have **no job grade recorded**, so a
+grade-matching rule can never reach them — which is why the default table they set at 17:28 is load-bearing
+for 68 people.
+
+**NOT done:** nothing was built; there were no approved items. Mockups for all three are in `docs/mockups/`
+(rendered with `pnpm mockup`; chromium had to be reinstalled, it was absent from the Playwright cache).
+
+**UNKNOWN, flagged to the reporter:** whether their "Grade 4-6" means a named grade group. Groups are
+expanded to member `gradeIds` at save with no back-link stored, so the label cannot be reconstructed on the
+explain screen; restoring it is a schema change and a separate item.
+
 ## correction (2026-09-13) — the production entitlement configuration is BACK UP. The restart SQL must NOT be run.
 
 Yesterday's readiness entry and r269 both record that production had **0 entitlement templates and 0
