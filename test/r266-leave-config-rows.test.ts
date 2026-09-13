@@ -315,7 +315,22 @@ describe('§D · the moves, and what deliberately did not move', () => {
   it('eligibility rules stay under Entitlements; Company rules only points at them', () => {
     const companyRules = read('app/admin/leave-config/company-rules/page.tsx');
     expect(companyRules).toContain("tPage('whoQualifies')");
-    expect(companyRules).toContain("leaveConfigScreenHref('entitlementTables')");
+    // r270 (995387c6) — UPDATED, NOT DELETED, AND THE PROPERTY IS NARROWED RATHER THAN LOOSENED.
+    //
+    // This case's subject is "Company rules hosts no eligibility editor and only POINTS at one", and that
+    // is untouched: the two `not.toContain` lines below still carry it. What moved is the pointer's
+    // TARGET. r266 sent it to the Entitlement tables tab because that tab mounted the Benefit schemes
+    // card as well; r270 removes that duplicate copy, so the only place a scheme is edited is each leave
+    // type's Entitlements tab on Leave types. A pointer left on the old target would survive every guard
+    // in this file and land an administrator on a screen with no schemes on it.
+    //
+    // Pinned as the MAP CALL rather than the literal path, deliberately: the whole reason this page
+    // resolves its link through `leaveConfigScreenHref` is that the page and the submenu cannot then
+    // disagree about where a screen lives, and asserting the raw href would break that on the next move.
+    expect(companyRules).toContain("leaveConfigScreenHref('leaveTypes')");
+    expect(companyRules, 'the pointer must not still name the tab the schemes left').not.toContain(
+      "leaveConfigScreenHref('entitlementTables')",
+    );
     expect(companyRules).not.toContain('<EntitlementTablesBlock');
     expect(companyRules).not.toContain('EligibilityRuleForm');
     // The tables block is mounted where it was: the leave type's tab 3 and the Entitlement tables tab.
