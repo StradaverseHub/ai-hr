@@ -244,6 +244,7 @@
     "systemLabels": "System Labels",
     "leaveConfig": "Leave config",
     "leaveEntitlements": "Entitlements",
+    "leaveBalanceHealth": "Leave Balance Health",
     "leaveAdjustments": "Leave Adjustments",
     "leaveGenerate": "Generate Entitlement",
     "leaveApprovalWorkflow": "Approval Workflow",

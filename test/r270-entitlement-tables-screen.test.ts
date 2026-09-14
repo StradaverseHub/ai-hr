@@ -280,8 +280,25 @@ describe('§B · which mount switches what off, and what was gated rather than d
     const types = read(TYPES_PAGE);
     expect(types).not.toContain('showConfigHealth={false}');
     expect(types).not.toContain('showBenefitSchemes={false}');
-    // …and the copy of the health card that is KEPT is the one that page renders itself.
-    expect(types).toContain('<LeaveConfigHealthCard rows={configHealth} />');
+    // r279 (3fbf7a02) — UPDATED, NOT DELETED, and this case's subject is untouched: the Entitlement
+    // tables tab suppresses both surfaces, the leave type tab suppresses neither. What changed is which
+    // surface the unsuppressed flag now draws on the leave type tab. r270 wrote "the copy of the health
+    // card that is KEPT is the one that page renders itself", and that page-level card has moved to its
+    // own row and its own address — the whole point of r279, because a card named nowhere in the menu
+    // could only be found by scrolling a tab you already had to know about.
+    //
+    // ⚠️ `showConfigHealth` STILL MATTERS HERE AND IS NOT DEAD. The types page mounts the block SCOPED
+    // (`leaveTypeId={leaveTypeId}`), so the unsuppressed flag draws the per-type `LeaveConfigHealthNotice`
+    // beside that one type's own tables — the warning that is deliberately NOT moving, because a warning
+    // shown on a different screen from the thing it is about gets ignored. Asserted directly below so
+    // this case cannot go green over a leave type tab that quietly lost its notice too.
+    expect(types, 'the page-level card moved to its own screen; two copies of one list drift').not.toContain(
+      '<LeaveConfigHealthCard',
+    );
+    expect(block, 'the per-type notice is the scoped arm and stays').toContain(
+      '<LeaveConfigHealthNotice health={scopedHealth} />',
+    );
+    expect(read('app/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
   });
 
   it('the schemes Card is GATED, not deleted — the leave type tab still gets every part of it', () => {

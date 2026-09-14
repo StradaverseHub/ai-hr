@@ -31,7 +31,7 @@
  * deliverable is that the missing configuration is visible and the resolution explainable.
  */
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { and, eq } from 'drizzle-orm';
@@ -85,6 +85,12 @@ import type { SessionContext } from '../db/client';
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '..');
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
+/** r279 — every page.tsx under one repo-relative directory, walked so a later mount cannot hide from
+ *  the "exactly one address" assertion below by landing in a directory nobody listed. */
+const pagesUnder = (dir: string): string[] =>
+  readdirSync(resolve(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? pagesUnder(`${dir}/${e.name}`) : e.name === 'page.tsx' ? [`${dir}/${e.name}`] : [],
+  );
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`)) as Record<string, never>;
 const leaf = (obj: unknown, dotted: string): unknown =>
@@ -433,9 +439,25 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     expect(block).toContain("t('ruleExpiredBadge')");
     expect(block).toContain("t('ruleExpiringBadge')");
     expect(block).toContain('ruleHeadIds.has(x.id)');
+    // r279 (3fbf7a02) — UPDATED, NOT DELETED, AND THE PROPERTY IS THE SAME ONE: the full listing is
+    // rendered by THIS component from THIS derivation, and exactly once. What changed is its address.
+    // `<LeaveConfigHealthCard rows={configHealth} />` on the Leave types tab was the assertion; the card
+    // was named nowhere in the menu there, so the screen that explains a 0.00 balance could only be found
+    // by already knowing it existed and scrolling. It is its own row and its own page now. The Leave
+    // types tab keeps the DERIVATION (the rail's per-type "reaches nobody" badge reads it) and loses the
+    // CARD — and both halves are asserted, so a half-done move that leaves two copies, or one that takes
+    // the card away without giving it an address, fails here.
     const page = read('app/admin/leave-config/types/page.tsx');
-    expect(page).toContain('leaveConfigHealthAll(');
-    expect(page).toContain('<LeaveConfigHealthCard rows={configHealth} />');
+    expect(page, 'the per-type badge still reads this derivation').toContain('leaveConfigHealthAll(');
+    expect(page, 'the full listing moved to its own page; two copies drift').not.toContain('<LeaveConfigHealthCard');
+    const moved = read('app/admin/leave-config/balance-health/page.tsx');
+    expect(moved).toContain('leaveConfigHealthAll(');
+    expect(moved).toContain('<LeaveConfigHealthCard rows={rows} />');
+    // Exactly one page-level mount of the card in the whole module, so "it only changed address" holds.
+    expect(
+      pagesUnder('app/admin/leave-config').filter((p) => read(p).includes('<LeaveConfigHealthCard')),
+      'the full listing must live at exactly one address',
+    ).toEqual(['app/admin/leave-config/balance-health/page.tsx']);
   });
 
   /**

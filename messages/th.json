@@ -244,6 +244,7 @@
     "systemLabels": "ป้ายระบบ",
     "leaveConfig": "ตั้งค่าการลา",
     "leaveEntitlements": "สิทธิ์การลา",
+    "leaveBalanceHealth": "สุขภาพยอดคงเหลือการลา",
     "leaveAdjustments": "การปรับปรุงวันลา",
     "leaveGenerate": "สร้างสิทธิ์การลา",
     "leaveApprovalWorkflow": "ขั้นตอนการอนุมัติ",

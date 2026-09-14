@@ -273,9 +273,17 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     // five CONFIGURATION rows — the children whose destinations live under the module — are unchanged, in
     // order, and none of them is the sub-screen. A row added under app/admin/leave-config still fails here.
     expect(rows.map((r) => r.href)).not.toContain(ROUTE);
+    //
+    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED, and for the same reason again. A later, unrelated item
+    // gave Leave Balance Health a row of its own, SECOND, directly under Entitlements (it was a card at
+    // page level on the Leave types tab, named nowhere in the menu). This case's property is untouched —
+    // 7f69bd71 added no fly-out row, and the Reset records sub-screen is still reached only from a link
+    // — so the list is restated exactly rather than turned into a count or a "contains": a row added
+    // under app/admin/leave-config by anything OTHER than the commit that names it here still fails.
     const configRows = rows.filter((r) => r.href.startsWith('/admin/leave-config/'));
     expect(configRows.map((r) => r.href)).toEqual([
       '/admin/leave-config/types',
+      '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/generate',
       '/admin/leave-config/approval-chains',

@@ -244,6 +244,7 @@
     "systemLabels": "系统标签",
     "leaveConfig": "休假配置",
     "leaveEntitlements": "假期额度",
+    "leaveBalanceHealth": "假期余额健康检查",
     "leaveAdjustments": "假期调整",
     "leaveGenerate": "生成假期额度",
     "leaveApprovalWorkflow": "审批流程",

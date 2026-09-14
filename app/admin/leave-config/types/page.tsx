@@ -12,8 +12,11 @@ import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
 } from '../../leave/entitlements/templates/entitlement-tables-block';
+// r279 (3fbf7a02) — the health CARD's import LEFT WITH ITS MOUNT (see the note where it was rendered):
+// the full listing is its own page now. Its component name is not written here, because four guards grep
+// this file for that specifier to prove the mount is gone. `leaveConfigHealthAll` and `tablesReachNobody`
+// stay, because the rail's per-type badge below still reads that derivation.
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
-import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import { LeaveConfigMap, leaveConfigPageHeader, leaveConfigScreenHref } from '@/components/leave-config-map';
 import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../approval-readout';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
@@ -236,9 +239,28 @@ export default async function LeaveConfigTypesPage({
       <LeaveConfigMap current="leaveTypes" />
       <ErrorBanner message={error} />
 
-      {/* Above the workspace on purpose: it answers "which of these can produce a balance at all", and
-          every tab below assumes that question has already been asked. */}
-      <LeaveConfigHealthCard rows={configHealth} />
+      {/* r279 (3fbf7a02) — THE PAGE-LEVEL LEAVE BALANCE HEALTH CARD STOOD HERE, above the workspace,
+          under a comment reading "it answers 'which of these can produce a balance at all', and every
+          tab below assumes that question has already been asked". It is DELIBERATELY GONE,
+
+          ⚠️ AND ITS COMPONENT NAME IS NOT SPELLED OUT ANYWHERE IN THIS FILE, deliberately: four guards
+          grep this source for that specifier to prove the mount is gone (r209, r270, r266's tabs file
+          and r279's own), and a quoted specifier in a comment reads to them as code — CLAUDE.md §8's
+          "reword a quoted specifier" rule, learned the same way the pack drift ratchet learned it.
+          and it moved rather than went away: Leave Balance Health is its own fly-out row and its own
+          page now (`/admin/leave-config/balance-health`). The reporter's complaint was that the one
+          screen explaining why a balance reads 0.00 was named nowhere in the menu and could only be
+          found by already knowing it was there and scrolling this tab.
+
+          ONE PLACE, NOT TWO: the card is not left here as well, because two copies of one list drift
+          apart the moment either is improved — and the sentence above was the argument for it being on
+          THIS tab, which is exactly the argument that no longer holds once it has an address.
+
+          ⚠️ `configHealth` IS STILL DERIVED ON THIS PAGE and must be: the leave-type rail below reads it
+          for the per-type "reaches nobody" badge (`tablesReachNobody`), and the per-type
+          `LeaveConfigHealthNotice` inside each type's Entitlements tab is the scoped arm of the ternary
+          in the shared tables block. Both are the warning shown BESIDE the thing it is about, which is
+          the half of r209 that deliberately did not move. */}
 
       {/* r126 9861b8a4 — THE LIST THE PLAN PROMISED, CARRIED ACROSS (r258 fix pass). Rendered only when the
           set is non-empty: a permanent empty banner is furniture, and furniture stops being read. */}

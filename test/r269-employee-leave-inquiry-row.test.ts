@@ -129,11 +129,17 @@ const INQUIRY_ROW = NODE.children.at(-1)!;
 // ────────────────────────────────── SOURCE SHAPE ──────────────────────────────────
 
 describe('5ca446db — six rows in the Leave Config fly-out, the new one last', () => {
-  it('the node carries SIX children, in the order the reporter reads, with the inquiry row last', () => {
+  it('the node carries every Leave Config child, in the order the reporter reads, with the inquiry row last', () => {
+    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED. This was "SIX children"; it is seven, because Leave
+    // Balance Health took a row of its own directly under Entitlements (test/r279-balance-health-row
+    // .test.ts owns that decision). This file's property is unchanged and is still asserted exactly: the
+    // INQUIRY row is last, immediately after Company rules, which is where the reporter asked for it. The
+    // list stays an exact set — a deletion, a rename or a re-sort still fails it.
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
     expect(NODE.children.map((c) => c.labelKey)).toEqual([
       'leaveEntitlements',
+      'leaveBalanceHealth',
       'leaveAdjustments',
       'leaveGenerate',
       'leaveApprovalWorkflow',
@@ -221,9 +227,18 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
         (CATALOGUES[loc].admin.leave as Record<string, unknown>).employeeBalancesAction,
         `${loc}: the caption must retire with its only reader`,
       ).toBeUndefined();
-    // Everything else on the page the plan promised would not change is still mounted.
-    for (const kept of ['<LeaveConfigMap current="leaveTypes"', '<LeaveConfigHealthCard', '<EntitlementTablesBlock', '<LeaveTypeWorkspace'])
+    // Everything else on the page r269's plan promised would not change is still mounted.
+    //
+    // r279 (3fbf7a02) — `'<LeaveConfigHealthCard'` STOOD IN THIS LIST and is deliberately gone from it.
+    // r269 promised this page's OTHER surfaces would survive ITS change, and they did; r279 is a
+    // different, approved change that gives the health listing its own row and its own address, because
+    // nothing in the menu said it existed. Keeping the literal here would make this file veto a later
+    // approved move of a surface it never owned. The three surfaces r269 actually reasoned about are
+    // still pinned, and the card's new home is asserted instead, so this cannot go green on a page that
+    // simply lost it.
+    for (const kept of ['<LeaveConfigMap current="leaveTypes"', '<EntitlementTablesBlock', '<LeaveTypeWorkspace'])
       expect(src, kept).toContain(kept);
+    expect(read('app/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
   });
 });
 
