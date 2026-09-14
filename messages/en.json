@@ -190,6 +190,8 @@
     "breakFixed": "Fixed",
     "breakFixedHint": "Fixed means the break is taken at that clock time. Untick it and the employee takes the break whenever they like.",
     "breakFixedLockedHint": "Every break on this shift is flexible, so Fixed cannot be ticked: the break is an allowance the employee may take at any time, not a clock time to be kept.",
+    "breakRowMinutes": "Allowed (min)",
+    "breakRowMinutesHint": "On a flexible break you can set how many minutes it is worth. Leave it blank and the break is counted the way it is today — only the minutes the employee was actually away inside those times.",
     "dailyCutoffLegend": "Daily cut-off",
     "dailyCutoffUse": "Use a daily cut-off",
     "dailyCutoffAt": "Cut off at",

@@ -190,6 +190,8 @@
     "breakFixed": "Tetap",
     "breakFixedHint": "Tetap bermaksud rehat diambil pada waktu itu. Nyahtanda dan pekerja boleh berehat bila-bila masa.",
     "breakFixedLockedHint": "Setiap rehat pada syif ini adalah fleksibel, jadi Tetap tidak boleh ditandakan: rehat itu ialah peruntukan yang boleh diambil pekerja bila-bila masa, bukan waktu jam yang mesti dipatuhi.",
+    "breakRowMinutes": "Dibenarkan (min)",
+    "breakRowMinutesHint": "Bagi rehat fleksibel anda boleh menetapkan berapa minit nilainya. Biarkan kosong dan rehat itu dikira seperti hari ini — hanya minit yang pekerja benar-benar tiada dalam waktu tersebut.",
     "dailyCutoffLegend": "Had masa harian",
     "dailyCutoffUse": "Guna had masa harian",
     "dailyCutoffAt": "Had pada",

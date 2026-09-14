@@ -3882,7 +3882,29 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // break_minutes scalar (Σ of the UNPAID windows — core/roster.ts normalizeShiftInput) is unchanged for all
 // of them. A paid break is time the employer pays for, so it is NOT taken off the scheduled hours; an
 // unpaid one comes off exactly as it does today.
-export type BreakPeriod = { start: string; end: string; flexible?: boolean; clockingRequired?: boolean; paid?: boolean };
+// r277 (439565ff) — `flexibleMinutes` is THIS ROW'S OWN ALLOWANCE in minutes: "you may take up to N
+// minutes for this break, whenever you like". It exists because one number for the whole shift
+// (shift.flexible_break_minutes, migration 0457) cannot say that a 60-minute lunch and a 15-minute tea
+// break have different allowances.
+//
+// OPTIONAL, AND ABSENT IS NOT ZERO. An absent value means this row is deducted exactly as it is today —
+// the overlap between the clocking and this window (core/attendance.ts spannedBreakMinutes) — NOT that
+// the row deducts nothing. Every window stored before this change is byte-identical afterwards and every
+// shift keeps the worked minutes and the overtime it has today until an allowance is actually typed.
+//
+// Only meaningful on a row that is `flexible` (a fixed window IS its own clock, so an allowance beside it
+// would be a second answer to the same question), and only on an UNPAID row (a paid break is never
+// deducted at all). core/roster.ts refuses both contradictions rather than storing them, and it folds the
+// allowance into the shift's canonical break_minutes scalar so scheduled hours, the punch import and the
+// payroll hourly clamp keep agreeing with what the engine deducts.
+export type BreakPeriod = {
+  start: string;
+  end: string;
+  flexible?: boolean;
+  clockingRequired?: boolean;
+  paid?: boolean;
+  flexibleMinutes?: number;
+};
 
 // cf21e554 stage 1 — the reference General tab's "Day Type" box. RECORDED ONLY in stage 1: nothing in the
 // engine reads it, and the form says so on the box. The value set is THIS PRODUCT'S OWN day vocabulary

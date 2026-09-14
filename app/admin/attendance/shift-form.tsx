@@ -182,6 +182,8 @@ export async function ShiftForm({
             end: bp.end.slice(0, 5),
             paid: bp.paid === true,
             flexible: bp.flexible === true,
+            // r277 — seed the row's own allowance; absent stays an EMPTY box, never a 0.
+            flexibleMinutes: bp.flexibleMinutes != null ? String(bp.flexibleMinutes) : '',
           }))}
           defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
           defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}

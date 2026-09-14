@@ -46,7 +46,7 @@ const optNum = (formData: FormData, key: string): number | null => {
  *  hidden field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback.
  *  cf21e554 — `paid` is carried through ONLY when true, so an unpaid row is the byte-identical
  *  { start, end } it has always been. */
-type PostedBreak = { start: string; end: string; paid?: boolean; flexible?: boolean };
+type PostedBreak = { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: number };
 const parseBreakPeriods = (raw: string): PostedBreak[] | null => {
   if (!raw) return null;
   try {
@@ -62,6 +62,11 @@ const parseBreakPeriods = (raw: string): PostedBreak[] | null => {
         // Semi-Flexi still forces flexible on every break inside core/roster.ts; this only carries what the
         // operator actually chose on a Normal shift.
         if (x.flexible === true) row.flexible = true;
+        // r277 (439565ff) — this row's own allowance. ABSENT stays absent (the break is deducted exactly as
+        // it is today); a value present is passed through UNCHECKED so core/roster.ts is the one place that
+        // decides whether it is storable — a figure quietly dropped here would deduct the whole window
+        // instead, which is more minutes off a payslip than the operator typed.
+        if (x.flexibleMinutes != null) row.flexibleMinutes = Number(x.flexibleMinutes);
         return row;
       });
     return out.length > 0 ? out : null;

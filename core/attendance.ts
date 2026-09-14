@@ -488,6 +488,50 @@ const spannedBreakMinutes = (
   return Math.min(overlap, breakMinutes);
 };
 
+/** r277 (439565ff) — THE PER-ROW FLEXIBLE ALLOWANCE: what comes off a day when the shift's break rows
+ *  carry their OWN allowances instead of one number for the whole shift ("a sixty-minute lunch and a
+ *  fifteen-minute tea break can finally have different allowances").
+ *
+ *  NULL unless at least one UNPAID window is `flexible` AND carries a `flexibleMinutes`. That null is the
+ *  whole safety property: a shift with no per-row figure never reaches this branch, so the shift-level
+ *  allowance, the spanned-window deduction and workedFromSpan's 6-hour cliff keep their exact order and
+ *  their exact answers — which is every shift that exists today, MB28 included.
+ *
+ *  When it DOES apply, the shift's deduction is read row by row, because that is the only reading under
+ *  which two rows can mean two different things:
+ *    • a FLEXIBLE row with an allowance contributes its allowance, whether or not the clocking covered the
+ *      window — an allowance is a permission to be away for N minutes, not a window to be tested against.
+ *      This is the same meaning the shift-level allowance already has, applied one row down.
+ *    • every OTHER unpaid row contributes exactly what it contributes today: the minutes of the clocking
+ *      that fell inside its window. `flexibleMinutes` ABSENT MEANS TODAY'S BEHAVIOUR, NEVER ZERO — a row
+ *      the operator did not touch must not start deducting nothing because a sibling row was edited.
+ *    • a PAID row contributes nothing, as it does today: the employer pays for that time either way.
+ *
+ *  Capped at the canonical `breakMinutes` for the same reason spannedBreakMinutes is (a drifted row can
+ *  never deduct more than the figure the rest of the system reports as this shift's break) and at the
+ *  day's own span for the same reason the shift-level allowance is (a short day cannot go negative).
+ *  core/roster.ts writes break_minutes as Σ of exactly these per-row contributions for a full day, so the
+ *  cap is a no-op on a correctly-saved shift and scheduled hours agree with what comes off. */
+const perRowBreakMinutes = (
+  periods: BreakPeriod[] | null,
+  breakMinutes: number,
+  w: PunchWindow,
+  cutoffAbs: number | null | undefined,
+  span: number,
+): number | null => {
+  if (!periods || periods.length === 0) return null;
+  const unpaid = periods.filter((bp) => bp.paid !== true);
+  if (!unpaid.some((bp) => bp.flexible === true && bp.flexibleMinutes != null)) return null;
+  const total = unpaid.reduce((acc, bp) => {
+    if (bp.flexible === true && bp.flexibleMinutes != null) return acc + Math.max(0, Math.trunc(bp.flexibleMinutes));
+    // The SAME placement rule the punch used (b8aa3466), for the same reason as in spannedBreakMinutes.
+    const bs = anchorToShift(toMinutes(bp.start), w.startAbs, cutoffAbs);
+    const be = anchorToShift(toMinutes(bp.end), w.startAbs, cutoffAbs);
+    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
+  }, 0);
+  return Math.min(total, breakMinutes, span);
+};
+
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
 type ResolvedSchedule = {
@@ -1075,7 +1119,14 @@ function deriveAttendance(
   const flexibleBreak = s.flexibleBreakMinutes != null ? Math.min(s.flexibleBreakMinutes, span) : null;
   // b7b886e2 — the break comes out only when the clocking actually SPANNED a declared break window, as the
   // reporter specified. Without windows there is nothing to test against, so the legacy 6h cliff stands.
-  const spannedBreak = flexibleBreak ?? (w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
+  // r277 — the PER-ROW allowance sits between the two, and only ever fires for a shift whose break rows
+  // carry their own figures. It is second, not first: a shift that still uses the shift-level switch has
+  // one allowance for the whole shift and that answer must not change (core/roster.ts refuses to store
+  // both at once, so in practice they can never both be present — the order here says which would win if
+  // a row were ever written past the service). NULL ⇒ the line below is the line that has always run.
+  const perRowBreak = w ? perRowBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes, span) : null;
+  const spannedBreak =
+    flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
   const workedMinutes = spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
   // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
   // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a

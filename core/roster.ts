@@ -334,6 +334,37 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       // cf21e554 stage 1 — the "Paid?" tick. Written ONLY when true, so an unpaid break stays byte-identical
       // to every row stored before this change (absent means unpaid — see BreakPeriod in db/schema.ts).
       if (bp.paid === true) out.paid = true;
+      // ── r277 (439565ff) · THIS ROW'S OWN ALLOWANCE ──────────────────────────────────────────────
+      // ABSENT is the overwhelming majority and absent writes nothing: the row keeps the { start, end }
+      // (+flags) shape it has today and the engine keeps deducting the clocking's overlap with it. The
+      // three refusals below are the three ways the number could be stored next to something that
+      // contradicts it, and each is refused rather than silently dropped BECAUSE THIS IS MONEY: an
+      // operator who typed thirty minutes and got a shift that deducts sixty would find out on a payslip.
+      if (bp.flexibleMinutes != null) {
+        if (flexibleBreakEnabled) {
+          throw new Error(
+            'This shift already has one flexible break allowance for the whole shift. Switch that off to give each break its own duration.',
+          );
+        }
+        if (flexible !== true) {
+          throw new Error('Only a Flexible break can have its own duration — a Fixed break is defined by its start and end times.');
+        }
+        if (bp.paid === true) {
+          throw new Error('A paid break is not deducted from worked hours, so it cannot carry an allowed duration.');
+        }
+        const mins = Math.trunc(Number(bp.flexibleMinutes));
+        if (!Number.isFinite(mins) || mins <= 0) {
+          throw new Error('A flexible break needs an allowed duration in minutes — set one, or set the break to Fixed');
+        }
+        // Validated against ITS OWN window, the way the shift-level allowance is validated against the
+        // shift span. NOT the shift-level rule's strict `>=`: that one refuses a break as long as the
+        // whole shift (which would leave no work in the day), whereas an allowance equal to its own
+        // window is the ordinary case — a 12:00–13:00 lunch with a sixty-minute allowance.
+        if (mins > hhmmToMin(end) - hhmmToMin(start)) {
+          throw new Error('A break’s allowed duration cannot be longer than the break window itself');
+        }
+        out.flexibleMinutes = mins;
+      }
       return out;
     });
     // Canonical scalar = Σ break durations of the UNPAID windows.
@@ -345,9 +376,17 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // as it does today. break_minutes stays the canonical scalar every other consumer reads (scheduled /
     // normal hours, the punch import, the hourly clamp, and the cap on the spanned-break deduction in
     // core/attendance.ts), which is why the paid/unpaid split has to land HERE rather than at each reader.
+    //
+    // r277 — A ROW WITH ITS OWN ALLOWANCE CONTRIBUTES THAT ALLOWANCE, not its window length. This is the
+    // same rule 6340aecb applied at shift scale, and it is here for the same reason: break_minutes is what
+    // scheduled/normal hours, the punch import and the payroll hourly clamp all read as "this shift's
+    // break", so it has to equal what core/attendance.ts will actually take off a full day. Leaving it as
+    // Σ window lengths while the engine deducted Σ allowances would give one shift two different break
+    // figures depending on which screen you asked. With no row carrying an allowance — every shift that
+    // exists today — `?? the window length` makes this the identical expression it has always been.
     breakMinutes = breakPeriods
       .filter((bp) => bp.paid !== true)
-      .reduce((acc, bp) => acc + (hhmmToMin(bp.end) - hhmmToMin(bp.start)), 0);
+      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? hhmmToMin(bp.end) - hhmmToMin(bp.start)), 0);
   }
 
   // ── 6340aecb · THE FLEXIBLE BREAK (migration 0457) ──────────────────────────────────────────────────

@@ -76,7 +76,14 @@ export function formatBreakDisplay(
       paid: bp.paid === true,
     }));
     const text = rows.map((r) => `${r.seq}. ${r.start}–${r.end} (${r.minutes}m)`).join(', ');
-    const unpaidSum = rows.filter((r) => !r.paid).reduce((acc, r) => acc + r.minutes, 0);
+    // r277 (439565ff) — a row with its OWN flexible allowance contributes that allowance here, because
+    // core/roster.ts writes exactly that into break_minutes. Without this the mismatch badge — which
+    // exists to warn about a DRIFTED row — would fire on every shift whose per-break allowance is shorter
+    // than its window, i.e. on the feature working exactly as configured. Absent ⇒ the window's own
+    // length, which is the identical sum this line has always computed.
+    const unpaidSum = breakPeriods
+      .filter((bp) => bp.paid !== true)
+      .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? toMin(bp.end) - toMin(bp.start)), 0);
     if (flexibleMinutes != null) return { text, rows, flexibleMinutes };
     return unpaidSum === scalar ? { text, rows } : { text, rows, mismatchMinutes: scalar };
   }

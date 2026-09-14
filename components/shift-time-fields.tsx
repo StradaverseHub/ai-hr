@@ -11,7 +11,12 @@ import { Card, Field, inputCls } from '@/components/ui';
 // what every stored window means today, so a legacy row opens ticked and posts back without the key: the
 // JSON is byte-identical unless the operator actually unticks it. f3321963 already defined the flag; this
 // is the first editor for it.
-type BreakRow = { start: string; end: string; paid?: boolean; flexible?: boolean };
+//
+// r277 (439565ff) — `flexibleMinutes` is THIS ROW'S OWN allowance, held as the raw string the number input
+// carries so an empty box stays empty (ABSENT ≠ 0 — see BreakPeriod in db/schema.ts). It is offered only on
+// a row that is Flexible and unpaid, and only while the shift-level allowance is off; blank posts nothing,
+// which is the break the shift deducts today.
+type BreakRow = { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: string };
 
 const toMin = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
@@ -155,15 +160,33 @@ export function ShiftTimeFields({
   const hoursRequired = semiFlexi || fullFlexi;
 
   const validBreaks = breaks.filter((bp) => bp.start && bp.end && bp.end > bp.start);
+  /** r277 — which rows are OFFERED their own allowance box, and therefore post one. Flexible is stored
+   *  INVERTED (`bp.flexible !== true` is the Fixed tick), Semi Flexi forces every row flexible in
+   *  core/roster.ts, a PAID break is never deducted so an allowance on it would move nothing, and the
+   *  SHIFT-LEVEL allowance already answers this question for the whole shift — core/roster.ts refuses to
+   *  store both, so the box must not be offered while that switch is on. */
+  const rowTakesAllowance = (bp: BreakRow) => !flexOn && !bp.paid && (semiFlexi || bp.flexible === true);
+  /** The row's allowance as a NUMBER, or null for "blank ⇒ deduct this row exactly as today". */
+  const rowAllowance = (bp: BreakRow): number | null => {
+    if (!rowTakesAllowance(bp)) return null;
+    const raw = (bp.flexibleMinutes ?? '').trim();
+    const n = Math.trunc(Number(raw));
+    return raw !== '' && Number.isFinite(n) && n > 0 ? n : null;
+  };
   // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)
   const crosses = !!start && !!end && end <= start;
   const span = start && end ? (crosses ? toMin(end) + 1440 - toMin(start) : toMin(end) - toMin(start)) : 0;
   // Only the UNPAID windows come off — the same rule core/roster.ts applies when it persists break_minutes.
   // A window's own `flexible` flag deliberately plays no part here: that flag says the window is a target
   // rather than a fixed clock, and the window is still deducted.
+  //
+  // r277 — …EXCEPT where the row carries its own allowance, which is the one case where `flexible` decides
+  // a number: core/roster.ts then writes that allowance into break_minutes in place of the window's length,
+  // so this readout has to deduct the same figure the engine will. Blank ⇒ the window's length, i.e. the
+  // identical expression this has always been.
   const windowBreakSum =
     breaks.length > 0
-      ? validBreaks.filter((bp) => !bp.paid).reduce((acc, bp) => acc + (toMin(bp.end) - toMin(bp.start)), 0)
+      ? validBreaks.filter((bp) => !bp.paid).reduce((acc, bp) => acc + (rowAllowance(bp) ?? toMin(bp.end) - toMin(bp.start)), 0)
       : Number(breakMinutes) || 0;
   // 6340aecb — with the SHIFT-LEVEL flexible break on, the allowance IS the shift's break: core/roster.ts
   // writes it into break_minutes on save, so this readout has to deduct the same number the engine will.
@@ -209,6 +232,10 @@ export function ShiftTimeFields({
   const toggleFlex = (on: boolean) => {
     setFlexOn(on);
     if (on && flexMin.trim() === '' && windowBreakSum > 0) setFlexMin(String(windowBreakSum));
+    // r277 — one allowance for the whole shift and one per break are two answers to the same question, and
+    // core/roster.ts refuses to store both. Clearing the per-row boxes here is what keeps that refusal
+    // unreachable from the screen: the operator sees the rows lose their figures as the switch goes on.
+    if (on) setBreaks((prev) => prev.map((bp) => (bp.flexibleMinutes ? { ...bp, flexibleMinutes: '' } : bp)));
   };
 
   return (
@@ -465,7 +492,10 @@ export function ShiftTimeFields({
                       <input
                         type="checkbox"
                         checked={bp.paid ?? false}
-                        onChange={(e) => setBreak(i, { paid: e.target.checked })}
+                        // r277 — a paid break is not deducted at all, so an allowance beside it would be a
+                        // number that moves nothing; ticking Paid clears it rather than leaving it to be
+                        // refused on save.
+                        onChange={(e) => setBreak(i, { paid: e.target.checked, ...(e.target.checked ? { flexibleMinutes: '' } : {}) })}
                         className="h-3.5 w-3.5 accent-primary"
                         aria-label={t('breakPaid')}
                       />
@@ -486,12 +516,32 @@ export function ShiftTimeFields({
                         type="checkbox"
                         disabled={semiFlexi || flexOn}
                         checked={semiFlexi || flexOn ? false : bp.flexible !== true}
-                        onChange={(e) => setBreak(i, { flexible: !e.target.checked })}
+                        // r277 — going back to Fixed drops this row's allowance: a fixed window IS its own
+                        // clock, so the two cannot both be true and core/roster.ts refuses the pair.
+                        onChange={(e) => setBreak(i, { flexible: !e.target.checked, ...(e.target.checked ? { flexibleMinutes: '' } : {}) })}
                         className="h-3.5 w-3.5 accent-primary"
                         aria-label={t('breakFixed')}
                       />
                       {t('breakFixed')}
                     </label>
+                    {/* ── r277 (439565ff) · THIS ROW'S OWN ALLOWANCE ────────────────────────────────
+                        "A sixty-minute lunch and a fifteen-minute tea break can finally have different
+                        allowances." Shown ONLY on a row that is Flexible and unpaid, and only while the
+                        shift-level allowance is off — see rowTakesAllowance. BLANK IS NOT ZERO: an empty
+                        box posts nothing and the row is deducted exactly as it is today. */}
+                    {rowTakesAllowance(bp) && (
+                      <Field label={t('breakRowMinutes')}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={rowMinutes ?? undefined}
+                          value={bp.flexibleMinutes ?? ''}
+                          onChange={(e) => setBreak(i, { flexibleMinutes: e.target.value })}
+                          className={`${inputCls} w-24`}
+                          aria-label={t('breakRowMinutes')}
+                        />
+                      </Field>
+                    )}
                     <button
                       type="button"
                       onClick={() => setBreaks((prev) => prev.filter((_, j) => j !== i))}
@@ -514,6 +564,9 @@ export function ShiftTimeFields({
                     end: bp.end,
                     ...(bp.paid ? { paid: true } : {}),
                     ...(bp.flexible ? { flexible: true } : {}),
+                    // r277 — and `flexibleMinutes` ONLY when the row is offered one AND a figure is typed,
+                    // so a break row that predates this release still posts the exact shape it always did.
+                    ...(rowAllowance(bp) != null ? { flexibleMinutes: rowAllowance(bp) } : {}),
                   })),
                 )}
               />
@@ -532,6 +585,8 @@ export function ShiftTimeFields({
                 and must say WHY it is decided for them. */}
             <span className="text-xs text-muted-foreground">
               {semiFlexi || flexOn ? t('breakFixedLockedHint') : t('breakFixedHint')}
+              {/* r277 — said next to the boxes it is about, and only while any row is actually offered one. */}
+              {breaks.some((bp) => rowTakesAllowance(bp)) ? ` ${t('breakRowMinutesHint')}` : ''}
             </span>
           </span>
         </div>

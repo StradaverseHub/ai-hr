@@ -190,6 +190,8 @@
     "breakFixed": "Cố định",
     "breakFixedHint": "Cố định nghĩa là nghỉ đúng vào giờ đó. Bỏ chọn thì nhân viên nghỉ vào lúc nào tùy ý.",
     "breakFixedLockedHint": "Mọi lần nghỉ của ca này đều linh hoạt nên không thể tích Cố định: giờ nghỉ là định mức nhân viên có thể dùng bất cứ lúc nào, không phải mốc giờ bắt buộc phải tuân theo.",
+    "breakRowMinutes": "Cho phép (phút)",
+    "breakRowMinutesHint": "Với lần nghỉ linh hoạt, bạn có thể đặt nó đáng bao nhiêu phút. Để trống thì lần nghỉ được tính như hiện nay — chỉ tính số phút nhân viên thực sự vắng mặt trong khung giờ đó.",
     "dailyCutoffLegend": "Giờ chốt ngày",
     "dailyCutoffUse": "Dùng giờ chốt ngày",
     "dailyCutoffAt": "Chốt lúc",
