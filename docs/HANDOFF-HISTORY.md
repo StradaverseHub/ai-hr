@@ -1,3 +1,84 @@
+## r275-plan (2026-09-14) — the contested item re-planned and the draft item planned. `main@e49b5f26`, nothing built.
+
+### `439565ff` CONTESTED, and the reply settled three of four disagreements OUR way
+
+The reporter came back on the item shipped hours earlier, and **accepted every refusal r274 made**, in their
+own words: *"For Working Days, I would not move it to Schedule based on the development team's
+explanation… For Half-Day, I recommend removing it from the specification entirely… And General shall
+remain because removing it would risk clearing existing payroll-related shift values such as the shift pay
+premium."* Three scope reductions, none of them ours to claim — they read the reasons and agreed.
+
+**Their Full Flexi restatement is entirely already shipped**, including the point that reads like new work:
+*"When an administrator manually changes a shift to Full Flexi, the new calculation rule shall apply only
+to attendance records processed under that configuration."* **Verified, not assumed:** `updateShift`
+references neither attendance nor recompute nor derive; the only recompute entry points are
+`previewRecomputeAction` / `applyRecomputeAction` on `app/attendance/recompute`, both `requireAdmin`, with
+the preview first; and the six cron jobs on the box (`accrue-earned`, `anomaly-sweep`, `capture-usage`,
+`expire-carry`, `provision-runner`, `review-sweep`) include **no attendance recompute**. So changing a
+shift's type touches nothing that already exists, and no code is needed for that point.
+
+**One genuinely new requirement survives: a flexible break duration PER ROW**, which r274's own survey had
+already identified as the single absent break feature. Revision 2 states that as the only build.
+
+- **It changes numbers**, and the plan says so: break minutes come off worked hours, worked hours decide
+  overtime, overtime reaches a payslip. `BreakPeriod` (`db/schema.ts:3885`) gains an OPTIONAL
+  `flexibleMinutes` — optional is load-bearing, because an absent value must mean today's behaviour and
+  never zero. The deduction precedence at `core/attendance.ts:1045-1049` (shift allowance → spanned
+  windows → six-hour cliff) must be byte-identical for any shift carrying no per-row figure, and
+  `core/roster.ts` must keep `break_minutes` equal to the sum it writes today or scheduled hours, punch
+  import and the payroll hourly clamp will disagree with the engine.
+- **Money guard named in the plan:** assert MB28's worked minutes and overtime are IDENTICAL until a
+  per-row figure is set. It is the only shift on production using a flexible break.
+
+### `a72610af` — Draft Status Employee. PLANNED, and it carries a REAL DEFECT
+
+**Reproduced on production.** `app/admin/personnel/new/wizard.tsx:498` renders
+`value={data.employment?.employmentType ?? 'full_time'}` — a DISPLAY fallback with no matching write. The
+select shows "Full Time", nothing enters the blob, `missingByTab` correctly reports it outstanding, and
+Activate stays disabled. `:516` is identical for Hire Date. **Two of the six live drafts are stuck in that
+state, including one created the same morning the ticket was filed.** The store and the validator are both
+correct and are agreeing with each other — the reporter's "check both frontend binding and backend
+persistence" points one layer too deep.
+
+The fix pattern is already in the file: `page.tsx:214-219` `withProbationDefault` seeds a default INTO the
+data server-side. **Ordering hazard:** it reads `(e.employmentType ?? 'full_time')` to derive the probation
+date, which is why the stuck draft already carries a probation-derived `provisionalEndOn` while carrying no
+employment type. Seed the type first.
+
+**Already built, and the plan leads with it:** the draft already uses the SAME tab shell as the activated
+record (`ClientTabs`, `personnel-tabs.tsx`), with five tabs where the reporter asked for four; `saveEmployeeDraft`
+validates **nothing**; and only Activate refuses.
+
+- **REFUSED with reasons:** the eight org-flat fields (Division…Category) are **read-only on the ACTIVE
+  profile too** — movement-owned by `8ebabbf2` / `89ea527b` — so there is no dropdown behaviour to copy and
+  an editable draft would be looser than the record it becomes; addresses, emergency contacts, payroll
+  policy, TP3, pay items and zakat are **child records**, not fields, needing a `materialiseDependents`-style
+  path; and the closing "Draft and Active should share one underlying structure" is **route B**, rejected in
+  migration `0337` whose header gives the reason — every list read joins `employment`, so a flag needs a new
+  exclusion in each of them forever, and the failure mode is a half-entered person in a headcount or a
+  payroll run.
+- **Scope reversal, knowingly:** `06f0cb8f` split creation from completion *specifically* so details stop
+  blocking creation, and `lib/employee-draft-schema.ts:198-201` says the profile tab carries no required
+  field on purpose. **Every field this round adds is optional**; making one required would reverse that.
+- **The drift argument cuts the other way and is the strongest thing FOR the item:** `2983802f` made the
+  bulk importer richer than the draft form — `lib/import-schema.ts:154-190` already carries passport,
+  address, emergency contact, probation and notice, written through `hire → setEmploymentInfo`. The draft is
+  now the poorest of the three creation paths, and the importer is the working precedent.
+- **UNKNOWN, asked rather than assumed:** whether "Draft Status Employee List" means the Personnel list's
+  Draft bucket or a standalone screen. A standalone Draft card existed and was removed under `06f0cb8f` at
+  this reporter's own request.
+
+### Still running
+
+Two surveys out: `870b79e2` + `d91aee93` (both Attendance → Schedule — five of its six tabs ship named and
+empty, and the Schedule Group proposal is the same relocation argument the reporter just withdrew for
+Working Days) and `8c59c664` (Employee Balances — the trap to check is whether "YTD Entitled" currently
+shows the ACCRUED figure, in which case renaming it to "Full Entitlement" would put a wrong number under a
+new name).
+
+**`fa2db8cb` still blocked.** Approved a third time with no key. There is no maps key on the server and no
+keyless satellite basemap exists. It needs the owner, not another block.
+
 ## r274 (2026-09-14) — three items shipped. `main@83ffd5f1`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 13:01:33).
 
 **Gate:** 837 files as twelve foreground chunks, **zero assertion errors**. `tsc`, `eslint`, `next build`

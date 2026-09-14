@@ -1,0 +1,148 @@
+<meta charset="utf-8">
+<title>439565ff rev2 — flexible break per row</title>
+<!-- Mockup for 439565ff revision 2. Row controls read from
+     components/shift-time-fields.tsx:445-500 (Break start, Break end, Paid, Fixed, delete)
+     and the shift-level allowance at :548-575. BreakPeriod is db/schema.ts:3885. -->
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+  .ck{display:inline-flex;align-items:center;gap:6px;font-size:11.5px}
+  .bx{width:13px;height:13px;border:1.5px solid var(--mf);border-radius:3px;display:inline-block;flex:none}
+  .bx.on{background:var(--primary);border-color:var(--primary)}
+  .bx.dis{opacity:.4}
+  .del{color:var(--bad);font-size:11px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Full Flexi — everything you restated is already live</h2>
+  <table>
+    <tr><th>Your specification</th><th>Status</th></tr>
+    <tr><td>Full Flexi is a selectable Shift Type</td><td><span class="chip ok">Shipped today</span></td></tr>
+    <tr><td>Existing Fixed / Semi Flexi shifts do not become Full Flexi</td><td><span class="chip ok">Verified after release</span> 6 Fixed, 1 Semi Flexi, 0 Full Flexi</td></tr>
+    <tr><td>Existing attendance and payroll results unchanged</td><td><span class="chip ok">Nothing converted, nothing recalculated</span></td></tr>
+    <tr><td>The new rule applies only to records processed under that configuration</td><td><span class="chip ok">Already how it works</span> see below</td></tr>
+    <tr><td>Total Normal Working Hours is the completion requirement</td><td><span class="chip ok">Shipped, and now required</span></td></tr>
+    <tr><td>8:04 in, 5:04 out, 9 hours = complete</td><td><span class="chip ok">Tested end to end</span></td></tr>
+  </table>
+  <div class="hole"><b>On the fourth point.</b> Changing a shift's type does not touch a single attendance
+    record that already exists. Past days keep the figures they were calculated with. They only change if an
+    administrator deliberately opens Attendance &gt; Recompute and runs it over a date range, which shows a
+    preview of what would change before anything is written. Nothing scheduled or automatic ever re-runs it.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The one thing left to build: a flexible duration per break</h2>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — one duration for the whole shift</span>
+      <table>
+        <tr><th>#</th><th>Break start</th><th>Break end</th><th></th><th></th><th></th></tr>
+        <tr><td>1</td><td>12:00</td><td>13:00</td><td><span class="ck"><span class="bx"></span> Paid</span></td><td><span class="ck"><span class="bx dis"></span> Fixed</span></td><td><span class="del">Remove</span></td></tr>
+        <tr><td>2</td><td>15:30</td><td>15:45</td><td><span class="ck"><span class="bx"></span> Paid</span></td><td><span class="ck"><span class="bx dis"></span> Fixed</span></td><td><span class="del">Remove</span></td></tr>
+      </table>
+      <div class="panel" style="margin-top:9px"><div class="pb">
+        <span class="ck"><span class="bx on"></span> Use a flexible break allowance</span>
+        <div class="g2" style="margin-top:7px"><div><span class="lbl">Flexible break (minutes)</span><span class="inp">60</span></div><div></div></div>
+        <div class="note">One number covering every break on the shift. A sixty-minute lunch and a
+          fifteen-minute tea break cannot have different allowances.</div>
+      </div></div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — each row carries its own</span>
+      <table>
+        <tr><th>#</th><th>Break start</th><th>Break end</th><th>Type</th><th>Flexible minutes</th><th></th><th></th></tr>
+        <tr><td>1</td><td>12:00</td><td>13:00</td><td>Flexible</td><td><span class="inp" style="width:64px">60</span></td><td><span class="ck"><span class="bx"></span> Paid</span></td><td><span class="del">Remove</span></td></tr>
+        <tr><td>2</td><td>15:30</td><td>15:45</td><td>Flexible</td><td><span class="inp" style="width:64px">15</span></td><td><span class="ck"><span class="bx"></span> Paid</span></td><td><span class="del">Remove</span></td></tr>
+        <tr><td>3</td><td>19:00</td><td>19:30</td><td>Fixed</td><td><span class="inp ro" style="width:64px">—</span></td><td><span class="ck"><span class="bx on"></span> Paid</span></td><td><span class="del">Remove</span></td></tr>
+      </table>
+      <div class="note">The minutes box appears only on a row set to Flexible. A Fixed break is still
+        defined by its start and end, exactly as now.</div>
+    </div>
+  </div>
+  <div class="hole"><b>This one changes numbers.</b> Break minutes come off worked hours, worked hours
+    decide overtime, and overtime is on a payslip. So it ships with every existing shift keeping exactly the
+    behaviour it has today, and we will show you the before-and-after minutes for your own shift MB28 before
+    anything is switched.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Dropped from the request, at your direction</h2>
+  <table>
+    <tr><th>Item</th><th>What happens now</th></tr>
+    <tr><td>Move Working Days to Schedule</td><td>Not doing it. If the existing Shift, Working Days row needs improving, that is a separate request and we will plan it.</td></tr>
+    <tr><td>Half-Day shift type</td><td>Removed from the specification. The existing Full / Half / Rest / Off row stays as the way to express a half day.</td></tr>
+    <tr><td>Remove the General card</td><td>Staying, for the reason you gave: removing it would risk clearing the shift pay premium.</td></tr>
+  </table>
+</div>
