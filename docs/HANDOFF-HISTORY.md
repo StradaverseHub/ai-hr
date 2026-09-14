@@ -1,3 +1,73 @@
+## r272 (2026-09-14) — Location assignment. `main@9a24f608`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 11:59:06, restarted 11:59:13).
+
+**Gate:** 835 files as twelve foreground chunks, **zero assertion errors**, peak disk 40%. `tsc`, `eslint`,
+`next build` clean. No `gate:shadow` — no migration. **Item closed: `0e8cf366`.**
+
+**The item's central premise was false and the plan said so first.** Nothing has ever derived an
+employee's clocking locations from Company, State, Holiday Calendar or Branch — `resolveGeofence`
+(`core/attendance.ts:194`) joins `employee_clocking_location` to `clocking_location` and nothing else, and
+`clocking_location` has had no `company_id` since `0459`. **Eight of the eighteen requested points were
+already live.** What made the derivation look real was presentation, and that is what this round removed:
+the branch-derived pre-tick, the sentence counting clocking points under the employee's work location, the
+company name on the admin list's group headings, and a string sending a holiday-calendar problem to the
+clocking screen.
+
+**Built:** the card is *Location assignment* — a searchable picker plus a table of assigned sites with
+address, radius, status and Remove, replacing a `<select multiple className="h-28">` whose only unassign
+gesture was ctrl-clicking a highlighted row. Remove and unticking are one operation on one `Set`, so the
+table and the picker cannot disagree about what is about to be saved. The list now states Active/Archived
+on every row, and a company-scoped admin finally gets a way in — `clocking/[id]` has always rendered them
+a read-only fact list and nothing linked to it.
+
+### THREE FAILURES OF MINE, ALL WORTH KEEPING
+
+- **The render check caught a defect nothing else did.** I passed `selectedCount: (n) => …` and
+  `radiusText: (r) => …` from the SERVER page into a CLIENT component. `tsc` clean, `eslint` clean,
+  **thirteen green guards** — and the personnel page returned **500**: *"Functions cannot be passed
+  directly to Client Components"*. Fixed the way `ReplacementEligibilityPicker` already does it: a
+  `{count}` template substituted client-side, and per-row text formatted server-side as a string.
+  CLAUDE.md §8 names this class exactly, and only rendering finds it.
+- **A guard was satisfied by my own comment.** §B's `type="button"` check looked for that string within
+  200 characters before the handler — and the comment explaining *why the attribute is load-bearing* sits
+  directly above it and contains the string. **Second round running** that a proximity guard measured the
+  explanation instead of the code. It now strips comments and pins adjacency.
+- **A second vacuous guard**, same pass: the group-cell check in r271 was satisfied by the row's own
+  `className={r.firstOfTable ? …}`. Both were caught by mutation, not by review.
+
+### GUARDS UPDATED, NOT DELETED — and both taught something
+
+- `test/clocking-location-page.test.ts:505` asserted the edit URL was **absent** from the list for a
+  company-scoped admin. That was true only because nothing linked there; the same test proves two lines
+  later that the destination renders **no form** for that role. The subject was the *affordance to
+  change*, not the *ability to read* — so it now pins "no Edit control, no Add, no form", and allows View.
+- `test/clocking-location-shared.test.ts:259` required the sentence reporting linked points under the
+  work location. That sentence **was** the defect `0e8cf366` was filed about. f9afd1ce's actual rule —
+  the empty state must not claim clock-in is unavailable when shared sites exist — is met better now: the
+  new state names the real cause (nothing assigned) and the real consequence (fail-closed everywhere), and
+  the guard pins that it blames **neither** the work location nor the branch.
+
+### THE GATE'S OWN LESSON, AGAIN
+
+Chunk 6 reported **19 failed files with zero assertion errors** — 116 "does not exist" and hook timeouts,
+i.e. the worker databases were gone. It was run in the **background**, which the harness killed for low
+memory, exactly as CLAUDE.md §4 describes. Re-run in the foreground it was **70/70 green**. A background
+gate on this machine is not evidence; treat a zero-assertion red as an environment report every time.
+
+### ALSO THIS ROUND
+
+- **`2420718d` planned** (Employee Attendance under Admin). Premise partly inverted: `/attendance` is
+  `guard: 'scopedSession'` with no admin gate — one screen scoped by role, showing an employee their own
+  month and an admin all 83. **We already moved it once and moved it back** (`a324a4b3` rev2 → rev3), and
+  `test/sidebar-attendance-group.test.ts:200` exists to stop it happening again, because the admin group
+  gates at GROUP level so a row moved inside it becomes *invisible*, not admin-only. Plan proposes a
+  second door (an admin-gated row) rather than a move.
+- **`fa2db8cb` planned** — the map provider decision, given a reply path. Satellite has no keyless option.
+- **`439565ff` surveyed, not yet planned** — Full Flexi already exists as an enum value with the
+  duration-based arithmetic built (`normal_minutes_override`); only the UI option is disabled. Attendance
+  → Schedule **already exists and already shows working days**. And removing the "General" card as the
+  item asks would **null a pay premium**, because `shiftFields()` is a full-row overwrite: an input that
+  stops rendering is a column that gets nulled on the next save.
+
 ## r271 (2026-09-14) — the entitlement tables became ONE table. `main@8f93a5a4`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 10:31:51, restarted 10:31:57).
 
 **Gate:** 834 files as twelve foreground chunks, every chunk `exit=0` with counted == asked, **zero
