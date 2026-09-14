@@ -279,6 +279,62 @@ export function openingTab(tabParam: string | null | undefined, currentStep: num
 
 const blank = (v: string | undefined) => (v ?? '').trim() === '';
 
+/** The employment type the Employment tab opens on when a draft carries none. Named because
+ *  `withEmploymentDefaults` seeds it and the wizard's select displays it, and those two must not drift. */
+export const DEFAULT_EMPLOYMENT_TYPE = 'full_time';
+
+/**
+ * THE EMPLOYMENT TAB'S DEFAULTS, WRITTEN INTO THE DRAFT RATHER THAN ONLY DISPLAYED — item a72610af.
+ *
+ * THE DEFECT THIS EXISTS AGAINST, exactly. The Employment Type select rendered
+ * `value={data.employment?.employmentType ?? 'full_time'}` and the Hire Date input
+ * `value={data.employment?.hiredOn ?? today}` — DISPLAY fallbacks with no matching write. A draft nobody
+ * touched therefore showed "Full Time" and today's date, stored NEITHER, and `missingByTab` below
+ * correctly reported both outstanding, so Activate stayed disabled and reopening the draft showed the
+ * same two values again. Two of six live production drafts were stuck in exactly that state. Nothing was
+ * wrong with the saving or the checking: they agreed with each other, and the screen was showing a
+ * default it never wrote down.
+ *
+ * SO THE SEED HAPPENS ONCE, ON THE SERVER, AGAINST THE DRAFT AS LOADED — never as a client effect, which
+ * would re-apply the default on every render and fight anyone who deliberately cleared a field. That is
+ * the pattern `withProbationDefault` already used for `provisionalEndOn` (which is why a stuck draft
+ * already carried a probation-derived end date while carrying no employment type at all); this function
+ * absorbs it so all three defaults are decided in ONE place and in the right order.
+ *
+ * THE ORDER IS LOAD-BEARING. The probation end date is derived from the employment type, so the type is
+ * resolved FIRST and the derivation reads the RESOLVED value. Deriving it from `e.employmentType` while
+ * seeding the type separately is how the production rows ended up internally inconsistent.
+ *
+ * `undefined` IS THE ONLY TRIGGER, and that is the whole precision of the fix: it mirrors the `??` the
+ * display fallback used, so what is seeded is exactly what was being shown and nothing more. A value the
+ * administrator has CLEARED is `''`, not `undefined` — it stays cleared, `missingByTab` keeps naming it,
+ * and the screen keeps showing it blank. Re-filling a box somebody had just emptied would be a second
+ * version of this same defect, pointing the other way.
+ */
+export function withEmploymentDefaults(
+  data: EmployeeDraftData,
+  seed: { hiredOn: string; provisionalEndOn: string },
+): EmployeeDraftData {
+  const e = data.employment ?? {};
+  const employmentType = e.employmentType ?? DEFAULT_EMPLOYMENT_TYPE;
+  const hiredOn = e.hiredOn ?? seed.hiredOn;
+  // The probation/provisional end date keeps the rule it has always had — seeded only when the field has
+  // never been touched, and only for a full-time hire (every other type's end date is user-supplied).
+  // It reads `employmentType` above, not `e.employmentType`, so the two can never disagree.
+  const provisionalEndOn =
+    e.provisionalEndOn === undefined && employmentType === DEFAULT_EMPLOYMENT_TYPE
+      ? seed.provisionalEndOn
+      : e.provisionalEndOn;
+  if (
+    employmentType === e.employmentType &&
+    hiredOn === e.hiredOn &&
+    provisionalEndOn === e.provisionalEndOn
+  ) {
+    return data;
+  }
+  return { ...data, employment: { ...e, employmentType, hiredOn, ...(provisionalEndOn === undefined ? {} : { provisionalEndOn }) } };
+}
+
 /**
  * The Employee ID rule the draft is judged against (item bd271009), resolved from the LIVE setup by the
  * caller. Optional, and its ABSENCE is meaningful: omit the property and the Employee ID is not judged at

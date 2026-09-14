@@ -87,6 +87,7 @@ import { IdentityNumberField, NationalityPicker } from '@/components/identity-fi
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
+  DEFAULT_EMPLOYMENT_TYPE,
   DRAFT_TABS,
   draftFamily,
   missingByTab,
@@ -177,7 +178,7 @@ export function EmployeeWizard({
   const employeeCode = reservedEmployeeCode ?? data.profile?.employeeCode ?? '';
   // 8590615a — the single provisional/lifecycle end date the wizard captures MEANS the contract end date
   // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged).
-  const isContractHire = (data.employment?.employmentType ?? 'full_time') === 'contract';
+  const isContractHire = (data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE) === 'contract';
 
   const missing = useMemo(() => missingByTab(data), [data]);
   const outstanding = useMemo(() => missingForCreation(data), [data]);
@@ -492,10 +493,18 @@ export function EmployeeWizard({
                 ))}
               </select>
             </Field>
+            {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
+                whole of the defect this item fixed. It used to be the only statement of "Full Time" on
+                this screen: nobody chose it, nothing wrote it, `missingByTab` correctly reported the
+                employment type outstanding, and Activate stayed switched off with the box reading Full
+                Time. The value is now SEEDED INTO the draft server-side (`withEmploymentDefaults`, applied
+                by page.tsx), so what is shown is what is stored and this expression only ever falls back
+                if that seed is somehow skipped. It reads the SHARED constant rather than a second literal
+                so the two can never disagree again. */}
             <Field label={t('fields.employmentType')}>
               <select
                 className={inputCls}
-                value={data.employment?.employmentType ?? 'full_time'}
+                value={data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE}
                 onChange={(e) => set('employment', { employmentType: e.target.value })}
               >
                 <option value="full_time">{t('employmentType.full_time')}</option>
@@ -509,6 +518,9 @@ export function EmployeeWizard({
         <Card>
           <SectionHeader title={t('sections.employmentDates')} />
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+            {/* a72610af — same correction as the Employment Type select above: today's date is SEEDED
+                into the draft by page.tsx, so this `??` is a guard rather than the screen's only
+                statement of it. Before that it showed today and stored nothing. */}
             <Field label={t('fields.hiredOn')}>
               <input
                 type="date"
