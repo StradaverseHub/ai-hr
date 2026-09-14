@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { TaxCategoryField } from './tax-category-field';
+import { ChildReliefModeField, DisabledReliefField, DisabledReliefHints } from './tax-relief-fields';
 
 // Inlined design tokens (server module) so this stays a clean client island — same pattern as bank-info-card.tsx.
 const inputCls =
@@ -183,38 +184,20 @@ export function IdentityTaxCard({
                 <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
               </select>
             </Field>
-            {/* Item d64d0df4 — Disabled Individual (OKU). Yes/No, defaulting to No, so nobody's monthly tax
-                moves until an admin makes the claim. Setting it to Yes DOES move it: monthly tax is worked
-                out from the year to date, so the month of the change absorbs the whole year-to-date
-                correction — which is what the rules require, and what the hint below says out loud rather
-                than letting it arrive as a surprise on a payslip. */}
-            <Field label={t('disabledIndividualLabel')}>
-              <select
-                name="disabledIndividual"
-                defaultValue={defaults.disabledIndividual ? 'yes' : 'no'}
-                className={inputCls}
-              >
-                <option value="no">{t('disabledIndividualNo')}</option>
-                <option value="yes">{t('disabledIndividualYes')}</option>
-              </select>
-            </Field>
-            {/* Item d64d0df4 — Disabled Spouse (OKU). Same Yes/No shape as the field above and the same
-                default of No. Unlike Disabled Individual it only moves the deduction for tax category 2
-                (Married & Spouse Not Working) — the official rules give it no effect otherwise — so the
-                hint below says that out loud rather than letting the setting look ignored. */}
-            <Field label={t('disabledSpouseLabel')}>
-              <select
-                name="disabledSpouse"
-                defaultValue={defaults.disabledSpouse ? 'yes' : 'no'}
-                className={inputCls}
-              >
-                <option value="no">{t('disabledIndividualNo')}</option>
-                <option value="yes">{t('disabledIndividualYes')}</option>
-              </select>
-            </Field>
+            {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,
+                so nobody's monthly tax moves until an admin makes the claim. Setting either to Yes DOES
+                move it: monthly tax is worked out from the year to date, so the month of the change
+                absorbs the whole year-to-date correction — which is what the rules require, and what the
+                hints below say out loud rather than letting it arrive as a surprise on a payslip.
+                Disabled Spouse additionally only moves the deduction for tax category 2 (Married & Spouse
+                Not Working); the official rules give it no effect otherwise.
+                a72610af — both are now the SHARED control the Create New Employee draft renders too
+                (components/tax-relief-fields.tsx). The names, the option order and the defaults are
+                carried over unchanged; this card still posts the same two values. */}
+            <DisabledReliefField mode="form" field="disabledIndividual" defaultValue={defaults.disabledIndividual} />
+            <DisabledReliefField mode="form" field="disabledSpouse" defaultValue={defaults.disabledSpouse} />
           </div>
-          <p className="text-xs text-muted-foreground">{t('disabledIndividualHint')}</p>
-          <p className="text-xs text-muted-foreground">{t('disabledSpouseHint')}</p>
+          <DisabledReliefHints />
         </fieldset>
 
         {/* Children (PCB relief) — manual or auto (derive from Family records, confirm into numChildren). */}
@@ -223,21 +206,13 @@ export function IdentityTaxCard({
             {t('childReliefLegend')}
           </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('childReliefModeLabel')}>
-              <select
-                name="childReliefMode"
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-                className={inputCls}
-              >
-                <option value="manual">{t('childReliefModeManual')}</option>
-                <option value="auto">{t('childReliefModeAuto')}</option>
-                {/* Item d64d0df4 — the third mode. Keys the official five categories directly against
-                    the employee, for the case this mode exists for: their DECLARED relief differs from
-                    what the Family tab holds. */}
-                <option value="auto_table">{t('childReliefModeAutoTable')}</option>
-              </select>
-            </Field>
+            {/* a72610af — the SHARED control the Create New Employee draft renders too. It is CONTROLLED
+                in this mode as well, unlike every other shared group's form branch: its value decides
+                whether the five-category grid below renders and whether the head count is read-only, so
+                this card has always driven it from state inside the form. Item d64d0df4's third mode
+                ('auto_table') keys the official five categories directly against the employee, for the
+                case it exists for: their DECLARED relief differs from what the Family tab holds. */}
+            <ChildReliefModeField mode="form" value={mode} onChange={setMode} />
             {/* R46 47146ea3 — in 'auto' the count is machine-maintained, so the input goes read-only and
                 shows the DERIVED value rather than the stored one. readOnly (not disabled) is deliberate: a
                 disabled input submits nothing, and setTaxProfileMY overwrites the whole tax column set, so

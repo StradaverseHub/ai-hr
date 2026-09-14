@@ -70,6 +70,17 @@ const PERSONNEL_COMPONENTS = [
   'components/bank-info-card.tsx',
   'components/salary-history-table.tsx',
   'components/pay-structure-fields.tsx',
+  // a72610af — five more shared groups joined the list when the Create New Employee draft was widened to
+  // the record's own fields. The labels did not move namespace and the Personnel screen still renders
+  // every one of them; only the FILE they are written in changed, which is exactly the reason this list
+  // exists. Omitting them would make the manifest report Salutation, the passport block, the probation
+  // and notice periods, the OKU claims and the HRDF switch as "rendered nowhere on the Personnel
+  // screen" — false, and the kind of nagging that gets a guard deleted.
+  'components/person-name-fields.tsx',
+  'components/passport-fields.tsx',
+  'components/employment-period-fields.tsx',
+  'components/employer-bears-fields.tsx',
+  'components/tax-relief-fields.tsx',
 ];
 const PERSONNEL_SRC = PERSONNEL_PAGE + PERSONNEL_COMPONENTS.map(read).join('\n');
 
@@ -154,6 +165,20 @@ describe('r259 — My Profile carries the Personnel record’s shape', () => {
     // the pattern: every other <span> on that page is a hint, an empty-state or a legend, and matching
     // those would turn this guard into a nag about text that is not a field at all.
     for (const spanLabelled of ['payMode', 'paymentTerm', 'rateAmount']) labelled.add(spanLabelled);
+    // a72610af — components/employment-period-fields.tsx picks its label out of a four-entry lookup
+    // (`<Field label={label}>`) rather than inlining `t('…')` in the attribute, because ONE component
+    // renders all four periods and a computed `employmentInfo.${key}` would be invisible to
+    // test/i18n-coverage.test.ts check C. The four keys are literals inside that lookup, so they are
+    // named here for the same reason the three above are: widening the pattern to catch them would make
+    // it match every hint and legend on the page and turn this guard into a nag.
+    for (const lookupLabelled of [
+      'employmentInfo.probationPeriod',
+      'employmentInfo.extendedProbationPeriod',
+      'employmentInfo.noticeBeforeConfirmation',
+      'employmentInfo.noticeAfterConfirmation',
+    ]) {
+      labelled.add(lookupLabelled);
+    }
 
     expect(labelled.size, 'the Personnel field list came back empty — the extraction pattern is broken')
       .toBeGreaterThan(100);

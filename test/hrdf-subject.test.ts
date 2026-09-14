@@ -137,19 +137,29 @@ describe('Others Statutory — source layout + i18n (0df0c635)', () => {
     expect(panel.indexOf('{othersStatutoryCard}')).toBeGreaterThan(panel.indexOf('{statutoryCard}'));
     expect(PAGE.includes('const othersStatutoryCard = admin ?')).toBe(true);
     expect(PAGE.includes('action={setOthersStatutoryAction}')).toBe(true);
-    expect(PAGE.includes('name="subjectToHrdf"')).toBe(true);
+    // ITEM a72610af MOVED THE CONTROL, NOT THE CARD. The tri-state is now the shared
+    // components/tax-relief-fields.tsx `HrdfSubjectField`, which the Create New Employee draft renders
+    // too; this card renders it in `form` mode and the group is what carries the `name`. (g2) below
+    // asserts the shape of the control itself, at its new address.
+    expect(PAGE.includes('<HrdfSubjectField mode="form"')).toBe(true);
   });
 
   it('(g2/57840a6e) Subject to HRDF is a THREE-option select ("" / yes / no), never a checkbox', () => {
-    const card = PAGE.slice(PAGE.indexOf('const othersStatutoryCard'), PAGE.indexOf('const tp3Card'));
+    // a72610af — the control now lives in the shared group, so the shape is asserted THERE. Nothing
+    // about the decision changed: three options, the blank one meaning "follow the company default",
+    // and never a checkbox — that collapse WAS the bug (57840a6e).
+    const card = read('components/tax-relief-fields.tsx');
     expect(card).toContain('<select');
-    expect(card).toContain('name="subjectToHrdf"');
+    expect(card).toContain("name: props.name ?? 'subjectToHrdf'");
     // "" = follow the company default (persists null) — reuses the existing copy, so no new i18n key.
     expect(card).toContain('<option value="">{t(\'subjectToHrdfFollowingDefault\')}</option>');
     expect(card).toContain('<option value="yes">');
     expect(card).toContain('<option value="no">');
-    // A checkbox structurally cannot carry the tri-state — that collapse WAS the bug.
+    // A checkbox structurally cannot carry the tri-state.
     expect(card).not.toContain('type="checkbox"');
+    // The card that USES it must not have grown a checkbox of its own either.
+    const others = PAGE.slice(PAGE.indexOf('const othersStatutoryCard'), PAGE.indexOf('const tp3Card'));
+    expect(others).not.toContain('type="checkbox"');
     // …and the action must map the three values, not coerce a checkbox's 'on'.
     const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function setOthersStatutoryAction'));

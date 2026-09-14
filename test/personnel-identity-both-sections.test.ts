@@ -82,9 +82,22 @@ describe('Identity sections — NRIC gated by nationality, passport always (5586
     // The NRIC input is mandatory whenever its card is shown (Malaysians must have an NRIC); the passport
     // trio's requiredness still toggles by nationality (mandatory only for non-Malaysians).
     expect(IDENTITY.includes('required={isMY}')).toBe(false);
-    expect(IDENTITY.includes('required={!isMY}')).toBe(true);
-    // The Issuing Country picker (searchable Combobox) is part of the passport form.
-    expect(IDENTITY.includes('name="passportIssuingCountry"')).toBe(true);
+    // ITEM a72610af MOVED THE PASSPORT FIELDS, NOT THE RULE. The six of them are now the shared group
+    // components/passport-fields.tsx, which the Create New Employee draft renders too — so the
+    // nationality-driven requiredness is expressed as a PROP here and applied inside the group. Both
+    // halves are asserted, because a group that ignored the prop would drop the rule silently.
+    expect(IDENTITY.includes('requiredTrio={!isMY}')).toBe(true);
+    const PASSPORT = readFileSync(root + 'components/passport-fields.tsx', 'utf8');
+    expect(PASSPORT, 'the group applies requiredTrio to the number/issue/expiry trio only')
+      .toContain('const req = props.mode === \'form\' && props.requiredTrio;');
+    for (const f of ['passportNumber', 'passportIssueDate', 'passportExpiryDate']) {
+      expect(PASSPORT.includes(`box('${f}'`), `${f} is in the required trio`).toBe(true);
+    }
+    // The Issuing Country picker (searchable Combobox) is part of the passport group.
+    expect(PASSPORT.includes("picker('passportIssuingCountry'")).toBe(true);
+    expect(PASSPORT.includes('<Combobox')).toBe(true);
+    // …and the group posts it under that name in form mode, so the action still reads it.
+    expect(PASSPORT.includes('{ name: key }')).toBe(true);
     // Section headings make NRIC vs Passport visibly separate documents.
     expect(IDENTITY.includes("t('identityNricTitle')")).toBe(true);
     expect(IDENTITY.includes("t('passportInfoTitle')")).toBe(true);

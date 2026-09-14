@@ -1721,7 +1721,10 @@
         "rateAmount": "Mức đơn giá",
         "familyMemberName": "Tên thành viên gia đình",
         "familyMemberRelationship": "Quan hệ thành viên gia đình",
-        "familyMemberDate": "Ngày của thành viên gia đình"
+        "familyMemberDate": "Ngày của thành viên gia đình",
+        "passport": "Hộ chiếu",
+        "confirmationDate": "Ngày chính thức",
+        "employmentPeriods": "Thời gian thử việc và báo trước"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",

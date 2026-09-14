@@ -1,5 +1,12 @@
 import { inputCls } from '@/components/ui';
-import type { ProfileOptionRow } from '@/core/profile-options';
+
+/**
+ * The narrow shape either rendering needs: a value, its label, and a stable React key.
+ * `core/profile-options.ts`'s `ProfileOptionRow` satisfies it, and so does the trimmed `{ id, value, label }` the Create New Employee wizard receives —
+ * that screen is a client component, and shipping a catalog row's sort order and active flag across the
+ * boundary would put columns in the browser bundle that nothing on the page reads.
+ */
+export type ProfileOptionChoice = { id?: string; value: string; label: string };
 
 /**
  * A dropdown for a configurable profile field (religion / race / nationality / state / country /
@@ -22,7 +29,9 @@ export function ProfileOptionSelect({
 }: {
   name: string;
   value: string | null | undefined;
-  options: ProfileOptionRow[];
+  // Widened to the narrow shape (a72610af) so the SAME props satisfy both renderings; every existing
+  // caller still passes full `ProfileOptionRow`s, which are assignable to it.
+  options: ProfileOptionChoice[];
   placeholder: string;
   legacySuffix: string;
   className?: string;
@@ -31,10 +40,32 @@ export function ProfileOptionSelect({
   id?: string;
 }) {
   const current = value ?? '';
+  return (
+    <select id={id} name={name} defaultValue={current} className={className ?? inputCls}>
+      {profileOptionChoices(current, options, placeholder, legacySuffix)}
+    </select>
+  );
+}
+
+/**
+ * THE CATALOG'S OPTION LIST, INCLUDING THE LEGACY-TOLERANCE EXTRA — one definition, two renderings.
+ *
+ * Item a72610af needed the SAME dropdown on the Create New Employee wizard, where the value is held in
+ * the draft's React state rather than read out of FormData at submit. The legacy rule is the part that
+ * must not be copied: an off-catalog stored value is rendered as a pre-selected extra so a save never
+ * blanks it, and a second copy of that is a second place for it to rot. Both components below build
+ * their options here.
+ */
+function profileOptionChoices(
+  current: string,
+  options: ProfileOptionChoice[],
+  placeholder: string,
+  legacySuffix: string,
+) {
   const known = options.some((o) => o.value === current);
   const showLegacy = current !== '' && !known;
   return (
-    <select id={id} name={name} defaultValue={current} className={className ?? inputCls}>
+    <>
       <option value="">{placeholder}</option>
       {showLegacy && (
         <option value={current}>
@@ -42,10 +73,45 @@ export function ProfileOptionSelect({
         </option>
       )}
       {options.map((o) => (
-        <option key={o.id} value={o.value}>
+        <option key={o.id ?? o.value} value={o.value}>
           {o.label}
         </option>
       ))}
+    </>
+  );
+}
+
+/**
+ * The CONTROLLED twin of `ProfileOptionSelect` (item a72610af) — the same catalog, the same legacy
+ * tolerance, the same placeholder, driven by `value` + `onChange` and carrying NO `name` at all.
+ *
+ * NO `name` IS DELIBERATE and is the r159 lesson: the Create New Employee wizard submits its draft as
+ * JSON, not as FormData, so a guard grepping for `name="religion"` must never be able to conclude that
+ * this copy posts anything.
+ */
+export function ProfileOptionSelectControlled({
+  value,
+  options,
+  placeholder,
+  legacySuffix,
+  className,
+  onChange,
+}: {
+  value: string | null | undefined;
+  options: ProfileOptionChoice[];
+  placeholder: string;
+  legacySuffix: string;
+  className?: string;
+  onChange: (value: string) => void;
+}) {
+  const current = value ?? '';
+  return (
+    <select
+      value={current}
+      onChange={(e) => onChange(e.target.value)}
+      className={className ?? inputCls}
+    >
+      {profileOptionChoices(current, options, placeholder, legacySuffix)}
     </select>
   );
 }

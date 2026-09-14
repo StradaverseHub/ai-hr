@@ -11,7 +11,9 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
 import { getEmployeeDraft } from '@/core/employee-draft';
-import type { EmployeeDraftData } from '@/lib/employee-draft-schema';
+// Item a72610af — the Employment tab's three defaults are SEEDED INTO the draft here, on the server,
+// against the draft as loaded. See the function's own header for why a display-only fallback was the bug.
+import { withEmploymentDefaults } from '@/lib/employee-draft-schema';
 // 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
 import { listProfileOptions } from '@/core/profile-options';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
@@ -102,6 +104,9 @@ export default async function CreateEmployeePage({
     nationalities,
     dependentRelationships,
     countries,
+    salutations,
+    religions,
+    races,
   ] = await Promise.all([
     listDepartments(session),
     listPositions(session, { companyIds: scopeIds }),
@@ -118,6 +123,12 @@ export default async function CreateEmployeePage({
     // falls back to the five built-ins, exactly as that tab does.
     listProfileOptions(session, 'dependentRelationship', { activeOnly: true }),
     listProfileOptions(session, 'country', { activeOnly: true }),
+    // a72610af — the three catalogs behind Salutation, Religion and Race, read exactly as the Personnel
+    // profile card reads them (active options only), so a value HR can pick on a draft is one
+    // `updatePerson`'s catalog check will accept at Activate.
+    listProfileOptions(session, 'salutation', { activeOnly: true }),
+    listProfileOptions(session, 'religion', { activeOnly: true }),
+    listProfileOptions(session, 'race', { activeOnly: true }),
   ]);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
@@ -169,7 +180,7 @@ export default async function CreateEmployeePage({
         today={today}
         draftId={draft.id}
         reservedEmployeeCode={draft.reservedEmployeeCode}
-        initialData={withProbationDefault(draft.data, probationDefault)}
+        initialData={withEmploymentDefaults(draft.data, { hiredOn: today, provisionalEndOn: probationDefault })}
         initialStep={draft.currentStep}
         initialTab={sp.tab}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}
@@ -197,6 +208,14 @@ export default async function CreateEmployeePage({
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
+        // PLAIN DATA across the boundary, trimmed to what the dropdowns render: this screen is a client
+        // component and a catalog row's sort order and active flag would be columns in the browser bundle
+        // that nothing on the page reads.
+        profileOptions={{
+          salutation: salutations.map((o) => ({ value: o.value, label: o.label })),
+          religion: religions.map((o) => ({ value: o.value, label: o.label })),
+          race: races.map((o) => ({ value: o.value, label: o.label })),
+        }}
         relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
         countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
       />
@@ -205,16 +224,13 @@ export default async function CreateEmployeePage({
 }
 
 /**
- * Seed the provisional end date the FIRST time the Employment step is opened, and only then.
+ * `withProbationDefault` USED TO LIVE HERE and is now `withEmploymentDefaults` in
+ * lib/employee-draft-schema.ts — item a72610af. It was already doing the right thing for the provisional
+ * end date (seeding it INTO the data, on the server, against the draft as loaded) while the employment
+ * type and the hire date beside it were only ever DISPLAYED. That asymmetry is the defect: it is why a
+ * stuck draft on production carries a probation-derived end date and no employment type at all.
  *
- * It used to be filled by the company picker's change handler, which no longer exists on this form — the
- * company is fixed at Create. Applied here rather than in the wizard so it happens once, on the server,
- * against the draft as loaded: a client-side effect would re-apply the default every render and fight
- * anyone who deliberately cleared the field.
+ * It moved rather than grew a second half here because the ORDER of the three seeds is load-bearing (the
+ * end date is derived from the type), and because a rule the wizard's own controls have to agree with
+ * belongs in the module both screens already share.
  */
-function withProbationDefault(data: EmployeeDraftData, provisionalEndOn: string): EmployeeDraftData {
-  const e = data.employment ?? {};
-  if (e.provisionalEndOn !== undefined) return data;
-  if ((e.employmentType ?? 'full_time') !== 'full_time') return data;
-  return { ...data, employment: { ...e, provisionalEndOn } };
-}

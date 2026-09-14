@@ -1721,7 +1721,10 @@
         "rateAmount": "Rate amount",
         "familyMemberName": "Family member name",
         "familyMemberRelationship": "Family member relationship",
-        "familyMemberDate": "Family member date"
+        "familyMemberDate": "Family member date",
+        "passport": "Passport",
+        "confirmationDate": "Confirmation Date",
+        "employmentPeriods": "Probation and notice periods"
       },
       "employmentType": {
         "full_time": "Full-time",

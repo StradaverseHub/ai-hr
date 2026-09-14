@@ -38,7 +38,12 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { company, employeeDraft, employeeIdConfig, person, tenantCounter } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
-import { hireEmployee } from './org';
+// a72610af — three writers join `hireEmployee` here, and none of them is new: `setEmploymentInfo` owns
+// the probation / confirmation / notice columns (HireParams accepts none of them) and `updatePerson` owns
+// the profile columns. `commitEmployeeImport` composes the SAME hire-then-setEmploymentInfo-then-
+// updatePerson sequence (core/import.ts, item 2983802f), so this is the established path rather than a
+// second one — which is the whole point of the plan's "creation must go through the existing writers".
+import { hireEmployee, setEmploymentInfo, updatePerson } from './org';
 import { issueLegacyEmployeeCode, setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
 import { listLeaveTypes } from './read';
@@ -49,6 +54,10 @@ import { findEmployeeCodeClaim } from './employee-code-claims';
 import { requirePackFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
+// a72610af — the EPF category the draft stores is the five-name UI value; this is the SAME mapper the
+// Personnel statutory action calls to turn it into one of the three lawful KWSP enum values. The client
+// never decides the persisted enum, on either screen.
+import { mapEpfUiMode } from '../lib/epf-mode-map';
 import {
   draftFamily,
   draftLabel,
@@ -663,9 +672,80 @@ export async function completeEmployeeDraft(
         (boolOrUndef(s.eisEligible) === false ? 'none' : undefined),
       isResident: boolOrUndef(s.isResident),
       epfCitizenship: citizenship(s.epfCitizenship),
+      // a72610af — the EPF CATEGORY, through the same mapper the Personnel statutory action uses. The
+      // draft stores the five-name UI value ('auto' | 'manual_percentage' | 'semi_auto' | 'none'); the
+      // three lawful KWSP enum values are decided HERE, server-side. No rates: the draft does not
+      // collect them (see EmployeeDraftStatutory.epfMode for why), and `mapEpfUiMode` nulls both sides
+      // for every category, so 'a blank side stays statutory' is exactly what is stored.
+      ...mapEpfUiMode(str(s.epfMode), null, null),
+      // a72610af — the four employer-bears switches. Absent ⇒ undefined ⇒ the writer's `?? false`, which
+      // is the column default, so a draft saved before this change creates a byte-identical employee.
+      employerBearsEpf: boolOrUndef(s.employerBearsEpf),
+      employerBearsSocso: boolOrUndef(s.employerBearsSocso),
+      employerBearsEis: boolOrUndef(s.employerBearsEis),
+      employerBearsSkbbk: boolOrUndef(s.employerBearsSkbbk),
       bankName: str(s.bankName),
       bankAccountNo: str(s.bankAccountNo),
     });
+  }
+
+  // ── The passport block (item a72610af) ──────────────────────────────────────────────────────────
+  // CALLED ONLY WHEN THE DRAFT CARRIES ONE, which is what keeps this path no stricter than the two other
+  // ways of creating an employee. `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for
+  // a non-Malaysian WHENEVER IT IS CALLED — so calling it unconditionally would refuse to activate any
+  // foreign hire whose passport HR does not yet have, which is precisely the drift
+  // lib/employee-draft-schema.ts's header warns about. `commitEmployeeImport` guards it the same way
+  // (`if (row.passport)`), for the same reason. The all-or-nothing rule on a passport somebody DID start
+  // is judged by `missingForCreation` above, before anything was created.
+  const passport = {
+    passportNumber: str(p.passportNumber),
+    passportIssueDate: str(p.passportIssueDate),
+    passportExpiryDate: str(p.passportExpiryDate),
+    passportIssuingCountry: str(p.passportIssuingCountry),
+    passportIssuingCountryCode: str(p.passportIssuingCountryCode),
+    passportRemark: str(p.passportRemark),
+  };
+  if (Object.values(passport).some((v) => v !== undefined)) {
+    await pack.statutory.setPassport(ctx, { personId, ...passport });
+  }
+
+  // ── The tax reliefs and the child-relief mode (item a72610af) ───────────────────────────────────
+  // A SECOND WRITER OVER THE SAME TABLE, and the ORDER IS LOAD-BEARING — it is the same order
+  // lib/personnel-tab-sections.ts declares for the Personnel screen's consolidated save, for the same
+  // reason. `setTaxProfileMY` is a TOTAL overwrite of the tax columns: it re-derives `is_resident` from
+  // the residency it is given and writes taxNumber / taxCategory / numChildren whether or not the caller
+  // meant to. So it runs AFTER the statutory write and is handed that write's own values back, or a draft
+  // that carried a tax number and an OKU claim would activate with the tax number silently dropped.
+  //
+  // `taxResidency` is DERIVED from the draft's `isResident`, because the draft has never collected the
+  // four-way residency the column stores. resident ⇔ true; the three incentive statuses are set on the
+  // record. That keeps the two columns in the same agreement `setStatutoryProfileMY` just wrote.
+  const taxReliefs = {
+    disabledIndividual: boolOrUndef(s.disabledIndividual),
+    disabledSpouse: boolOrUndef(s.disabledSpouse),
+    childReliefMode: str(s.childReliefMode),
+  };
+  if (Object.values(taxReliefs).some((v) => v !== undefined)) {
+    await pack.statutory.setTax(ctx, {
+      personId,
+      ...taxReliefs,
+      // Pass-through of everything this setter would otherwise reset to a default.
+      taxNumber: str(s.taxNumber) ?? null,
+      taxCategory: numOrUndef(s.taxCategory),
+      numChildren: numOrUndef(s.numChildren),
+      taxResidency: boolOrUndef(s.isResident) === false ? 'non_resident' : 'resident',
+    });
+  }
+
+  // ── The training levy switch (item a72610af) ────────────────────────────────────────────────────
+  // Its own partial-save writer, and a TRI-STATE: absent means "follow the company's HRDF registration
+  // default", which is what every employee does until somebody overrides them, so an absent value is not
+  // written at all rather than being written as a No. Feedback 57840a6e is the whole reason that
+  // distinction is drawn this carefully — a control that wrote an explicit No by default excluded a
+  // company's staff from the levy for ever.
+  const hrdf = boolOrUndef(s.subjectToHrdf);
+  if (hrdf !== undefined) {
+    await pack.statutory.setOthersStatutory(ctx, { personId, subjectToHrdf: hrdf });
   }
 
   // Gender / marital status / date of birth are compliance-gated fields with their own writer. An
@@ -686,6 +766,72 @@ export async function completeEmployeeDraft(
       // Best-effort, matching commitEmployeeImport: the employee exists and is payable; a rejected
       // profile detail must not strand the whole creation.
     }
+  }
+
+  // ── The profile fields (item a72610af) ──────────────────────────────────────────────────────────
+  // Through `updatePerson`, the writer the Personnel Profile tab saves through and the one
+  // `commitEmployeeImport` already uses for its address block — so a value typed on a draft is written by
+  // the code that owns the column, and audited by the `person.updated` event that code appends.
+  //
+  // CALLED ONLY WHEN THE DRAFT CARRIES AT LEAST ONE, so a draft saved before this change produces a
+  // byte-identical employee and no spurious second `person.updated` event on every activation.
+  //
+  // THE CORE TRIO IS PASSED THROUGH, not omitted: `updatePerson` REWRITES fullName / primaryEmail /
+  // phone on every call (they are not presence-gated the way the profile fields are), so leaving `phone`
+  // out would blank the number `hireEmployee` had just stored. The importer passes it for the same reason.
+  //
+  // NOT WRAPPED IN A try/catch, unlike the compliance write below. The three catalog-backed values
+  // (salutation, religion, race) are offered to HR as the tenant's ACTIVE options, exactly as nationality
+  // already is, so a value that can be picked is one `assertProfileValueAllowed` accepts — and if one is
+  // somehow refused, the honest outcome is the documented one in this function's header (the employee
+  // exists, the draft is kept, HR finishes it on the profile screen) rather than silently dropping
+  // something HR typed, which is the failure test/draft-activation-field-survival.test.ts exists against.
+  const profileFields = {
+    salutation: str(p.salutation),
+    firstName: str(p.firstName),
+    lastName: str(p.lastName),
+    preferredName: str(p.preferredName),
+    religion: str(p.religion),
+    race: str(p.race),
+    homePhone: str(p.homePhone),
+    personalEmail: str(p.personalEmail),
+  };
+  if (Object.values(profileFields).some((v) => v !== undefined)) {
+    await updatePerson(ctx, {
+      personId,
+      fullName: str(p.fullName)!,
+      primaryEmail: str(p.primaryEmail)!,
+      phone: str(p.phone) ?? null,
+      via: 'employee-draft',
+      ...profileFields,
+    });
+  }
+
+  // ── Probation, confirmation and the two notice periods (item a72610af) ──────────────────────────
+  // `HireParams` accepts none of these: the columns live on `employment` and `setEmploymentInfo` is their
+  // writer. The importer has done exactly this hire-then-setEmploymentInfo pair since item 2983802f.
+  //
+  // ONLY THE FIELDS THE DRAFT ACTUALLY CARRIES are sent — `undefined` means "leave as-is" to that writer,
+  // and it REFUSES an empty write set ("Nothing to change."), so a draft with none of them must not call
+  // it at all. Its own validation (whole numbers ≥ 0, a known unit, a confirmation date not before the
+  // hire date) is restated by `missingByTab`, so those refusals are provoked on the tab rather than here,
+  // after `hireEmployee` has already committed.
+  const employmentInfo: Record<string, string> = {};
+  for (const [k, v] of Object.entries({
+    probationValue: str(e.probationValue),
+    probationUnit: str(e.probationUnit),
+    extendedProbationValue: str(e.extendedProbationValue),
+    extendedProbationUnit: str(e.extendedProbationUnit),
+    confirmationDate: str(e.confirmationDate),
+    noticeBeforeConfirmationValue: str(e.noticeBeforeConfirmationValue),
+    noticeBeforeConfirmationUnit: str(e.noticeBeforeConfirmationUnit),
+    noticeAfterConfirmationValue: str(e.noticeAfterConfirmationValue),
+    noticeAfterConfirmationUnit: str(e.noticeAfterConfirmationUnit),
+  })) {
+    if (v !== undefined) employmentInfo[k] = v;
+  }
+  if (Object.keys(employmentInfo).length > 0) {
+    await setEmploymentInfo(ctx, { employmentId, ...employmentInfo });
   }
 
   await setCompensation(ctx, {

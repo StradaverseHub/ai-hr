@@ -1721,7 +1721,10 @@
         "rateAmount": "Jumlah kadar",
         "familyMemberName": "Nama ahli keluarga",
         "familyMemberRelationship": "Hubungan ahli keluarga",
-        "familyMemberDate": "Tarikh ahli keluarga"
+        "familyMemberDate": "Tarikh ahli keluarga",
+        "passport": "Pasport",
+        "confirmationDate": "Tarikh Pengesahan",
+        "employmentPeriods": "Tempoh percubaan dan notis"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",

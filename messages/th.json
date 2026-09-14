@@ -1721,7 +1721,10 @@
         "rateAmount": "จำนวนอัตรา",
         "familyMemberName": "ชื่อสมาชิกครอบครัว",
         "familyMemberRelationship": "ความสัมพันธ์ของสมาชิกครอบครัว",
-        "familyMemberDate": "วันที่ของสมาชิกครอบครัว"
+        "familyMemberDate": "วันที่ของสมาชิกครอบครัว",
+        "passport": "หนังสือเดินทาง",
+        "confirmationDate": "วันที่บรรจุ",
+        "employmentPeriods": "ระยะทดลองงานและระยะแจ้งล่วงหน้า"
       },
       "employmentType": {
         "full_time": "เต็มเวลา",

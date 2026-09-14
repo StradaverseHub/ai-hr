@@ -204,7 +204,15 @@ describe('bf953339 — copy island + form wiring (source shape)', () => {
   it('the page assigns the perm-/corr- phone ids the island copies between', () => {
     // Main Contact & Address pair (the perm- side aliases the main inputs; names are NOT perm-prefixed).
     expect(page).toMatch(/id="perm-mobile-phone"[^>]*name="phone"/);
-    expect(page).toMatch(/id="perm-home-phone"[^>]*name="homePhone"/);
+    // ITEM a72610af MOVED THE HOME PHONE INPUT, NOT ITS ID. Home Phone and Personal E-mail are now the
+    // shared pair components/person-name-fields.tsx renders on this card AND on the Create New Employee
+    // draft. The id is a CONTRACT with the copy island, not decoration, so the page still passes it and
+    // the group still puts it on the input — both halves asserted, because a group that quietly dropped
+    // the prop would leave the tick box copying into nothing.
+    expect(page).toMatch(/<PersonContactExtraFields[\s\S]*?homePhoneId="perm-home-phone"/);
+    const GROUP = read('components/person-name-fields.tsx');
+    expect(GROUP, 'the shared group puts the caller\'s id and the homePhone name on the same input')
+      .toMatch(/id: props\.homePhoneId, name: 'homePhone'/);
     // Correspondence block's own pair.
     expect(page).toMatch(/id="corr-mobile-phone"[^>]*name="correspondenceMobilePhone"/);
     expect(page).toMatch(/id="corr-home-phone"[^>]*name="correspondenceHomePhone"/);
