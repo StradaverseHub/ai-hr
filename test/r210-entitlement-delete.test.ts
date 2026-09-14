@@ -754,8 +754,12 @@ describe('§D r210 · Stop and Delete are ROW actions, on both blocks, and every
   const blockSrc = read(BLOCK);
   /** The two table bodies, sliced apart so "the control is on the ROW" is asserted rather than "the
    *  control is somewhere in this 900-line file" — which is what was true before this item. */
+  // r271 (6d29e11c) — the anchor moved with the merge, the assertion did not. The grid and the tables
+  // list became one table, so the body that carries these controls is now the merged row map. What §D is
+  // FOR is unchanged and is the reason this slice exists at all: proving the control is on the ROW, not
+  // merely somewhere in a 1,500-line file.
   const templateRows = blockSrc.slice(
-    blockSrc.indexOf('{templates.map((x) => ('),
+    blockSrc.indexOf('{gridRows.map((r) => {'),
     blockSrc.indexOf('{editingTemplate ? t('),
   );
   const ruleRows = blockSrc.slice(blockSrc.indexOf('{rules.map((x) => {'), blockSrc.indexOf('{editingRule ? t('));
