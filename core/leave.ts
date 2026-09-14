@@ -27,7 +27,15 @@ import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
 // year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
 // the helper returns the same calendar-year pair this function has always built.
 import { sharedGroupCycleWindow } from '../lib/leave-groups';
-import { consumeReplacementLeaveTx } from './toil';
+// 3fb1a611 — the register INVERSE arrived with this round; before it, both cancellation paths below
+// refused replacement leave outright because giving the day back without giving the credit back would
+// corrupt the balance. See `restoreReplacementLeaveTx` for why the refusal was right and what replaced it.
+import {
+  assertReplacementLeaveRestorableTx,
+  consumeReplacementLeaveTx,
+  ReplacementLeaveRestoreBlockedError,
+  restoreReplacementLeaveTx,
+} from './toil';
 import {
   holidayDatesFor,
   effectiveHolidayState,
@@ -5094,11 +5102,15 @@ export async function requestLeaveCancellation(
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
-    if (leaveTypeIs(lt, 'replacement')) {
-      // Restoring a REPLACEMENT day via the ledger without re-crediting the toil_accrual register would
-      // reintroduce the ghost-credit / negative-balance bug — and there is no inverse of consumeReplacementLeaveTx.
-      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
-    }
+    // 3fb1a611 — THIS USED TO BE A FLAT REFUSAL: "replacement (time-off-in-lieu) leave cannot be
+    // cancelled", because restoring a REPLACEMENT day through the ledger without re-crediting the
+    // `toil_accrual` register reintroduces the ghost credit, and there was no inverse of
+    // `consumeReplacementLeaveTx`. There is one now (`restoreReplacementLeaveTx`), so the refusal narrows
+    // from the TYPE to the one case that genuinely cannot be undone — a credit that has expired since it
+    // was spent. That check needs the weighted give-back amount, so it runs below, once `requestedDays` is
+    // known; the flag is carried down rather than the check hoisted, because asking it against the wrong
+    // number would refuse cancellations that are perfectly restorable.
+    const isReplacement = leaveTypeIs(lt, 'replacement');
     const cancelIncl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
 
     // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
@@ -5150,6 +5162,25 @@ export async function requestLeaveCancellation(
     // Day Type Inclusion (feedback ef6d7146): weigh each cancel date through the SAME vector the leave was
     // deducted under (cancelIncl above), so a re-included public-holiday/rest date previews its real weight.
     const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols, cancelIncl), 0));
+    // 3fb1a611 — CAN THE CREDIT ACTUALLY COME BACK? Asked here, at the moment the employee asks, and not
+    // only when the manager approves days later: a refusal the employee reads on their own screen names
+    // the credit and its expiry date, while the same refusal thrown under the approval button strands a
+    // pending card nobody can clear. Read-only — nothing is restored until decideLeaveCancellation runs.
+    if (isReplacement) {
+      try {
+        await assertReplacementLeaveRestorableTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: requestedDays,
+          asOf: today,
+        });
+      } catch (e) {
+        // Re-typed so the existing localisation path (localizeLeaveError → cancellationNotAllowed) carries
+        // the stated reason to the screen instead of a raw 500.
+        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        throw e;
+      }
+    }
     const [row] = await tx
       .insert(leaveCancellationRequest)
       .values({
@@ -5242,7 +5273,9 @@ export async function decideLeaveCancellation(
     // absent from workingDates, so sum(segment days) < req.days and the whole-span reversal below would
     // over-restore. undefined ⇒ byte-identical legacy split.
     const [decLt] = await tx
-      .select({ dayTypeInclusion: leaveType.dayTypeInclusion })
+      // 3fb1a611 widens this select by two columns: `leaveTypeIs(decLt, 'replacement')` resolves ROLE
+      // first and falls back to the seeded code, and the TOIL register give-back below is keyed on it.
+      .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
@@ -5398,6 +5431,33 @@ export async function decideLeaveCancellation(
       }
     }
 
+    // 3fb1a611 — GIVE THE CREDIT BACK TO THE REGISTER, not only the day to the ledger. The whole-span
+    // reversal + per-segment re-debit above restores `restoredDays` to `leave_ledger`, which is the balance
+    // authority; for REPLACEMENT that balance is backed lot-by-lot by `toil_accrual`, and a ledger-only
+    // restore is exactly the ghost credit the old flat refusal existed to prevent. Reverse FIFO: the last
+    // lot the approval consumed is the first one given back, so the employee gets back the credit with the
+    // most life left in it. `sourceRequestId` on the ledger rows follows the split, but the TOIL allocation
+    // was recorded against the ORIGINAL request id — which is `req.id`, reused for segment[0] — so that is
+    // what identifies the consumption to unwind.
+    //
+    // A lot that has expired since it was spent makes this THROW rather than half-restore; the employee's
+    // own request already ran the same check (requestLeaveCancellation), so reaching a refusal here means
+    // the credit expired between asking and approving, which is a real answer and not a surprise.
+    if (leaveTypeIs(decLt, 'replacement') && restoredDays > 0) {
+      try {
+        await restoreReplacementLeaveTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: round2(restoredDays),
+          effectiveOn: req.startDate,
+          asOf: todayInKualaLumpur(),
+        });
+      } catch (e) {
+        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        throw e;
+      }
+    }
+
     await tx
       .update(leaveCancellationRequest)
       .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
@@ -5460,17 +5520,20 @@ export async function adminCancelLeave(
     const previousStatus = req.status as 'pending' | 'approved';
 
     const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
+      // 3fb1a611 widens this select by `role`: `leaveTypeIs` resolves ROLE first and only then falls back
+      // to the seeded code (production's own replacement type is coded `RL`, not `REPLACEMENT`).
+      .select({ code: leaveType.code, name: leaveType.name, role: leaveType.role })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
 
-    // An APPROVED REPLACEMENT (time-off-in-lieu) leave already consumed the toil_accrual register at approval,
-    // and there is no inverse of consumeReplacementLeaveTx — restoring it via the ledger would reintroduce the
-    // ghost-credit bug. A PENDING replacement never consumed the register, so it cancels cleanly.
-    if (previousStatus === 'approved' && leaveTypeIs(lt, 'replacement')) {
-      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
-    }
+    // 3fb1a611 — THIS USED TO REFUSE OUTRIGHT: an APPROVED REPLACEMENT leave consumed the `toil_accrual`
+    // register at approval and there was no inverse of `consumeReplacementLeaveTx`, so restoring the day
+    // through the ledger alone would leave a balance with no lot behind it. The inverse exists now and
+    // runs below, after the net ledger reversal, against the same `restoredDays` figure — so the two halves
+    // can never disagree about how much came back. A PENDING replacement still never consumed the register
+    // (net 0 ⇒ restoredDays 0 ⇒ nothing to unwind), so it cancels exactly as cleanly as it did before.
+    const isReplacement = leaveTypeIs(lt, 'replacement');
 
     // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
     // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
@@ -5506,6 +5569,28 @@ export async function adminCancelLeave(
         sourceRequestId: req.id,
         effectiveOn: req.startDate, // same cycle/carry window as the original debit
       });
+    }
+
+    // 1b) 3fb1a611 — …and give the CREDIT back to the register, for REPLACEMENT. Driven by `restoredDays`
+    //    (the net ledger movement just reversed) rather than by `req.days`, so a per-date partial approval,
+    //    a survivor of an earlier split or a half-day fraction unwinds exactly what it charged. Reverse
+    //    FIFO, and it REFUSES — naming the credit and its expiry date — where a lot has expired since it
+    //    was spent, because re-crediting an expired lot for a First-Schedule employee would hand the next
+    //    sweep a day to convert to CASH. A refusal rolls this whole transaction back, so the leave stays
+    //    approved rather than half-cancelled.
+    if (isReplacement && restoredDays > 0) {
+      try {
+        await restoreReplacementLeaveTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: restoredDays,
+          effectiveOn: req.startDate,
+          asOf: todayInKualaLumpur(),
+        });
+      } catch (e) {
+        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        throw e;
+      }
     }
 
     // 2) Flip the request to cancelled. decidedByEmploymentId/decidedAt are left untouched (they record the
