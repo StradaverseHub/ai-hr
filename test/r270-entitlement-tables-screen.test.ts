@@ -53,22 +53,40 @@ const bands = [
   { fromYears: 2, toYears: 5, days: 18 },
   { fromYears: 5, toYears: null, days: 20 },
 ];
-const table = (over: Partial<{ id: string; lineageId: string; leaveTypeId: string; name: string }> = {}) => ({
+const table = (
+  over: Partial<{
+    id: string;
+    lineageId: string;
+    leaveTypeId: string;
+    name: string;
+    validFrom: string;
+    validTo: string | null;
+    serviceBands: typeof bands;
+  }> = {},
+) => ({
   id: 'v1',
   lineageId: 'lin-gp1215',
   leaveTypeId: 'annual',
   name: 'GP1215',
+  validFrom: '2026-01-01',
+  validTo: null,
   serviceBands: bands,
   ...over,
 });
-const grid = (over: Partial<Parameters<typeof entitlementGridRows>[0]> = {}) =>
-  entitlementGridRows({
-    running: [table()],
+/** r271 — the derivation owns EVERY row the merged table draws, so it takes all versions plus the set
+ *  that is in force. `inForceIds` defaults to "every table passed", which is what the old `running`
+ *  argument meant, so a case that does not care about dating reads exactly as it did. */
+const grid = (over: Partial<Parameters<typeof entitlementGridRows>[0]> = {}) => {
+  const templates = (over.templates as ReturnType<typeof table>[] | undefined) ?? [table()];
+  return entitlementGridRows({
+    templates,
+    inForceIds: new Set(templates.map((x) => x.id)),
     rulesByTemplateLineage: new Map(),
     defaultLineageByType: new Map(),
     soleTableTypeIds: new Set(),
     ...over,
   });
+};
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 // §A · the derivation
@@ -171,10 +189,11 @@ describe('§A 65e4073a · one row per table × service band × the thing that re
 
   it('input order is preserved and every key is unique, so the caller owns the order and React owns nothing', () => {
     const rows = entitlementGridRows({
-      running: [
+      templates: [
         table({ id: 'v-sick', lineageId: 'lin-sick', leaveTypeId: 'sick', name: 'Sick standard' }),
         table(),
       ],
+      inForceIds: new Set(['v-sick', 'v1']),
       rulesByTemplateLineage: new Map([['lin-gp1215', [{ id: 'rule-a', criteria: {} }]]]),
       defaultLineageByType: new Map(),
       soleTableTypeIds: new Set(),
@@ -190,9 +209,10 @@ describe('§A 65e4073a · one row per table × service band × the thing that re
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
   });
 
-  it('nothing in force ⇒ no rows, so the screen can hide the grid instead of drawing empty furniture', () => {
+  it('no versions at all ⇒ no rows, and the table falls through to its own empty state', () => {
     expect(entitlementGridRows({
-      running: [],
+      templates: [],
+      inForceIds: new Set(),
       rulesByTemplateLineage: new Map(),
       defaultLineageByType: new Map(),
       soleTableTypeIds: new Set(),
@@ -284,12 +304,21 @@ describe('§B · which mount switches what off, and what was gated rather than d
   it('the five things that must keep working on this tab with the schemes card gone', () => {
     // Verified, not assumed: none of these depends on the schemes Card, and together they are what keeps
     // cross-leave-type visibility on this screen after the editor leaves it.
-    expect(block, 'the Leave type column on the tables list').toContain("<th className=\"px-3 py-2\">{t('colLeaveType')}</th>");
+    // r271 (6d29e11c) — THE SAME FIVE THINGS, ASKED OF THE MERGED TABLE. The grid and the list became one
+    // table, so three of these moved rather than disappeared, and the pins move with them. What the test
+    // is FOR is unchanged: cross-leave-type visibility must survive the schemes editor leaving this tab.
+    expect(block, 'the Leave type column').toContain("<th className=\"px-3 py-2\">{t('gridColLeaveType')}</th>");
     expect(block, 'the leave type picker in the create form').toContain("t('templateLeaveType')");
-    expect(block, 'the Schemes count column').toContain("t('colRules')");
-    expect(block, 'the Covers cell').toContain('{coversOfScheme(rule.criteria)}');
+    // The scheme COUNT column is gone; who reaches a table is the Job grade cell on that table's own rows,
+    // which says it in words instead of as a number the reader had to interpret.
+    expect(block, 'who reaches each table').toContain("t('gridColGrade')");
+    expect(block, 'the Covers rendering').toContain('coversOfScheme(reach.criteria)');
     expect(block, 'the amber "nothing points here" marker').toContain('text-amber-700 dark:text-amber-500');
-    expect(block).toContain("t('ruleNonePointsHere')");
+    // r271 — the marker's words are `gridNoGrade` now ("Nobody — no benefit scheme names this table"),
+    // which says the CONSEQUENCE before the cause. `ruleNonePointsHere` said only the cause and is retired
+    // with the second column it lived in. The r209 lesson the marker exists for is unchanged: a table
+    // nothing reaches must never read as a bare zero.
+    expect(block).toContain("t('gridNoGrade')");
   });
 
   it('there is still exactly ONE renderer of a criteria object, and the grid borrows it', () => {
@@ -307,16 +336,23 @@ describe('§B · which mount switches what off, and what was gated rather than d
     expect((block.match(/summariseOrgCriteria\(/g) ?? []).length, 'inside coversCell and nowhere else').toBe(1);
   });
 
-  it('the grid is the unfiltered mount’s alone, and it renders the five promised columns in order', () => {
-    expect(block).toContain('const gridRows = scoped');
-    const head = block.slice(block.indexOf("t('gridColLeaveType')"), block.indexOf("t('gridColTable')"));
-    expect(head).toContain("t('gridColGrade')");
+  it('the merged table renders the promised columns in order, on BOTH mounts', () => {
+    // r271 REVERSES r270's "the grid is the unfiltered mount's alone". r270 drew the grid as a second Card
+    // above the list, which put three blocks on a tab whose complaint was two and described every table
+    // twice. The approved sketch drew ONE table, so the grid IS the list now — and therefore it renders
+    // wherever the list does, including the leave type tab, because two layouts out of one component is
+    // the second implementation this area exists to prevent. `scoped` still hides the Leave type column.
+    expect(block, 'no longer gated to the unfiltered mount').not.toContain('const gridRows = scoped');
+    expect(block).toContain('const gridRows = entitlementGridRows({');
+    const head = block.slice(block.indexOf("t('gridColLeaveType')"), block.indexOf("t('colInForce')"));
     expect(head.indexOf("t('gridColGrade')")).toBeLessThan(head.indexOf("t('gridColService')"));
     expect(head.indexOf("t('gridColService')")).toBeLessThan(head.indexOf("t('gridColEntitlement')"));
+    expect(head.indexOf("t('gridColEntitlement')")).toBeLessThan(head.indexOf("t('gridColTable')"));
     // Days print through the shared formatter (4a1abc4a), never re-rounded for a new column.
-    expect(block).toContain('{formatDays(r.days)}');
-    // The grid sits ABOVE the tables list: it is the reading, the list is the editor.
-    expect(block.indexOf("t('gridTitle')")).toBeLessThan(block.indexOf("t('templatesTitle')"));
+    expect(block).toContain('formatDays(r.days)');
+    // ONE table: the separate grid heading is gone, and the list's own heading is what remains.
+    expect(block).not.toContain("t('gridTitle')");
+    expect(block).toContain("t('templatesTitle')");
   });
 
   it('the scheme-explainer note and its translator are gone from this page only', () => {
@@ -336,16 +372,17 @@ describe('§B · which mount switches what off, and what was gated rather than d
 // §C · the words
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('§C · the nine keys the grid mints, and the two sentences that went stale', () => {
+describe('§C · the keys the grid mints, and the two sentences that went stale', () => {
+  // r271 — `gridTitle` is RETIRED with the second Card it headed. The merged table is the tables list, so
+  // it carries the list's own heading and a second title would be the duplication this item removed. The
+  // remaining eight are still minted by the block, and the loop below is what stops any of them becoming
+  // six catalogues of dead strings.
   const KEYS = [
-    'gridTitle',
     'gridColLeaveType',
     'gridColGrade',
     'gridColService',
     'gridColEntitlement',
     'gridColTable',
-    'gridEveryoneElse',
-    'gridDefaultSuffix',
     'gridNoGrade',
   ];
 
@@ -361,7 +398,7 @@ describe('§C · the nine keys the grid mints, and the two sentences that went s
     }
   });
 
-  it('the screen really asks for all nine, or they are six catalogues of dead strings', () => {
+  it('the screen really asks for every one of them, or they are six catalogues of dead strings', () => {
     const block = read(BLOCK);
     for (const k of KEYS) expect(block, k).toContain(`t('${k}')`);
   });

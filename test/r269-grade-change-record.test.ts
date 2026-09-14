@@ -492,7 +492,10 @@ describe('§D · one criteria summariser, two Covers columns', () => {
 
   it('the tables list renders the column, and BOTH columns go through the one summariser', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
-    expect(block).toContain("t('colCovers')");
+    // r271 (6d29e11c) — the grid and the tables list MERGED, so the Covers column and the grid's Job
+    // grade column became one column. `colCovers` is retired with the header it named; `gridColGrade` is
+    // the header that survives, and it is the same fact under the name the reporter drew.
+    expect(block).toContain("t('gridColGrade')");
     expect(block).toContain("t('coversDefaultTable')");
     // ONE renderer, and every surface that shows a criteria object goes through it. r270 added a third
     // surface (the flat grid) and a thin alias `coversOfScheme` naming the question the tables list and
@@ -502,7 +505,10 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     const renderings =
       (block.match(/coversCell\(/g) ?? []).length + (block.match(/coversOfScheme\(/g) ?? []).length;
     // -1: the alias's own body calls coversCell, and a definition is not a surface.
-    expect(renderings - 1).toBe(3);
+    // r271: THREE became TWO when the two tables became one — the merged table's Job grade cell and the
+    // schemes list's own Covers column. The count going DOWN as surfaces merge is the number doing its
+    // job; it is updated deliberately here rather than loosened to "at least one".
+    expect(renderings - 1).toBe(2);
     // And there is still exactly ONE implementation behind all three.
     expect((block.match(/const coversCell = /g) ?? []).length).toBe(1);
     expect(block).not.toMatch(/Object\.entries\(x\.criteria as Record<string, unknown>\)/);
@@ -526,7 +532,8 @@ describe('§D · one criteria summariser, two Covers columns', () => {
 
   it('every key this item minted exists in all six catalogues and is translated', () => {
     const KEYS = [
-      'admin.entitlementTemplates.colCovers',
+      // r271 — `colCovers` retired: the Covers column and the grid's Job grade column merged into one,
+      // and `gridColGrade` (asserted above) is the header that survives.
       'admin.entitlementTemplates.coversMore',
       'admin.entitlementTemplates.coversDefaultTable',
       'admin.entitlementTemplates.uncoveredTitle',

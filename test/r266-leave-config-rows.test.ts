@@ -381,7 +381,12 @@ describe('§E · the strings, six locales', () => {
     'admin.leaveConfigAdjustments.pageDescription',
     'admin.leaveConfigGenerate.pageDescription',
     'admin.leaveConfigCompanyRules.whoQualifies',
-    'admin.leaveConfigCompanyRules.whoQualifiesLink',
+    // r271 (6d29e11c) — `whoQualifiesLink` is PRUNED from all six catalogues. r270 repointed this pointer
+    // at Leave types and captioned it from the map's own screen title, which orphaned the old caption
+    // ("Open Entitlement tables"); it then survived a round as a dead string in six files. A key nothing
+    // renders cannot be pinned as one every catalogue must carry — the assertion below would keep six
+    // translations of a caption alive forever. The sentence it sat beside is still pinned, above.
+
     'admin.leave.entitlementStep.accrualMovedPointer',
     'admin.entitlementArchive.pageDescription',
   ];

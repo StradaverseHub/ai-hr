@@ -97,7 +97,13 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     expect(et.ruleEveryoneTitle).toBe('One scheme for everyone this leave type is available to');
     expect(et.colSchemeName).toBe('Scheme name');
     expect(et.colCriteria).toBe('Covers');
-    expect(et.colRules).toBe('Schemes');
+    // r271 (6d29e11c) — `colRules` ("Schemes") is GONE, and this pin goes with the column it guarded.
+    // The merged entitlement table has no separate scheme-count column: who reaches a table is now the
+    // Job grade cell on that table's own rows, which says the same fact in words rather than as a number
+    // a reader had to interpret. r266's subject was the VOCABULARY, and the vocabulary survives — the
+    // scheme-facing strings below are still pinned. A column that no longer exists cannot be pinned.
+    expect(et).not.toHaveProperty('colRules');
+    expect(et.gridColGrade).toBeTypeOf('string');
     // r269 (76ffdcf2) REWROTE the second half. "Entitlement is decided by the benefit scheme that covers
     // the employee" is the prerequisite claim again: a scheme chooses BETWEEN tables where there is more
     // than one, and anyone no scheme covers now receives the leave type's default table. The first

@@ -314,7 +314,15 @@ export type EntitlementGridReach =
   | { kind: 'scheme'; ruleId: string; criteria: Record<string, unknown> | null }
   | { kind: 'default' }
   | { kind: 'everyone' }
-  | { kind: 'unreached' };
+  | { kind: 'unreached' }
+  /**
+   * r271 (6d29e11c) — A VERSION THAT IS NOT IN FORCE ON `today`. It reaches nobody, but it must still be
+   * ON the screen: it is the record a closed year was reported against, and its lineage's current version
+   * is the only row carrying Delete. When the grid and the tables list were two Cards the list held these;
+   * now that they are one table, dropping them would take a stopped table's Delete button off the screen
+   * with it.
+   */
+  | { kind: 'stopped' };
 
 /** One row of the flat grid: ONE service band of ONE entitlement table, seen through ONE thing that
  *  reaches that table. A table reached by two schemes and also named as the default produces three sets
@@ -322,14 +330,31 @@ export type EntitlementGridReach =
 export type EntitlementGridRow = {
   /** Stable and unique across the whole grid: version id · reach · band index. */
   key: string;
+  /** r271 — the version this row came from, so the merged table can hang that version's own controls
+   *  (Edit / Stop / Delete) off its FIRST row without a second derivation deciding the grouping. */
+  templateId: string;
   leaveTypeId: string;
   tableName: string;
   reach: EntitlementGridReach;
   /** The Table cell is suffixed wherever this table is the leave type's default, whatever reached the row. */
   isDefaultTable: boolean;
-  fromYears: number;
+  /** r271 — TRUE on exactly one row per VERSION (not per reach). The renderer draws the grouped cells —
+   *  leave type, table name, the in-force window and the row actions — on this row and leaves them blank
+   *  below it, so a table with three service steps reads as one entry rather than three. Computed here
+   *  because only the derivation knows where a group starts; a renderer counting rows would be a second
+   *  opinion about the same grouping. */
+  firstOfTable: boolean;
+  /** r271 — TRUE on the first band row of each REACH. The Job grade cell is a property of what reaches
+   *  the table, not of a service step, so repeating it down three bands is noise; a table named by two
+   *  schemes still gets it twice, once at the head of each scheme's band run. */
+  firstOfReach: boolean;
+  validFrom: string;
+  validTo: string | null;
+  /** Null where the version stores no service bands at all. The row still exists — a table with no bands
+   *  is a configuration fault somebody has to be able to see and delete, not a table that vanishes. */
+  fromYears: number | null;
   toYears: number | null;
-  days: number;
+  days: number | null;
 };
 
 /**
@@ -347,44 +372,81 @@ export type EntitlementGridRow = {
  * way the reporter drew it, and the ordering of a row set is not a fact this derivation gets to invent.
  */
 export function entitlementGridRows(input: {
-  running: readonly {
+  /**
+   * r271 — EVERY VERSION THIS MOUNT SHOWS, in the order it should read, not only the ones in force.
+   * The grid and the tables list are ONE table now, so this derivation owns every row the screen draws:
+   * a stopped version still needs its window, its name and its Delete button.
+   */
+  templates: readonly {
     id: string;
     lineageId: string;
     leaveTypeId: string;
     name: string;
+    validFrom: string;
+    validTo: string | null;
     serviceBands: readonly { fromYears: number; toYears: number | null; days: number }[];
   }[];
+  /** Version ids in force on the page's own `today`. NOT `validTo == null`: a future-dated supersede
+   *  leaves the FUTURE version open while the one deciding pay today is already closed (r270 D2). */
+  inForceIds: ReadonlySet<string>;
   rulesByTemplateLineage: ReadonlyMap<string, readonly { id: string; criteria: unknown }[]>;
   defaultLineageByType: ReadonlyMap<string, string>;
   soleTableTypeIds: ReadonlySet<string>;
 }): EntitlementGridRow[] {
   const out: EntitlementGridRow[] = [];
-  for (const x of input.running) {
-    const schemes = input.rulesByTemplateLineage.get(x.lineageId) ?? [];
+  for (const x of input.templates) {
+    const inForce = input.inForceIds.has(x.id);
+    const schemes = inForce ? (input.rulesByTemplateLineage.get(x.lineageId) ?? []) : [];
     const isDefaultTable = input.defaultLineageByType.get(x.leaveTypeId) === x.lineageId;
-    const reaches: EntitlementGridReach[] = schemes.map((r) => ({
-      kind: 'scheme',
-      ruleId: r.id,
-      criteria: (r.criteria ?? null) as Record<string, unknown> | null,
-    }));
-    if (isDefaultTable) reaches.push({ kind: 'default' });
-    // Only where nothing else reaches it: "everyone, because it is the only table" and "everyone the
-    // schemes miss" are the same people said twice, and `soleTableApplies` is false once a rule exists.
-    else if (schemes.length === 0) {
-      reaches.push(input.soleTableTypeIds.has(x.leaveTypeId) ? { kind: 'everyone' } : { kind: 'unreached' });
+
+    let reaches: EntitlementGridReach[];
+    if (!inForce) {
+      // A version not in force reaches nobody, and says so once. It does NOT get a scheme row: a scheme
+      // names a LINEAGE, and drawing it against a closed version would claim people receive these days.
+      reaches = [{ kind: 'stopped' }];
+    } else {
+      reaches = schemes.map((r) => ({
+        kind: 'scheme',
+        ruleId: r.id,
+        criteria: (r.criteria ?? null) as Record<string, unknown> | null,
+      }));
+      if (isDefaultTable) reaches.push({ kind: 'default' });
+      // Only where nothing else reaches it: "everyone, because it is the only table" and "everyone the
+      // schemes miss" are the same people said twice, and `soleTableApplies` is false once a rule exists.
+      else if (schemes.length === 0) {
+        reaches.push(input.soleTableTypeIds.has(x.leaveTypeId) ? { kind: 'everyone' } : { kind: 'unreached' });
+      }
     }
+
+    // A version with NO service bands is a configuration fault — it hands out nothing — and it must stay
+    // visible and deletable rather than falling out of a `forEach` over an empty array.
+    const bands: readonly ({ fromYears: number; toYears: number | null; days: number } | null)[] =
+      x.serviceBands.length > 0 ? x.serviceBands : [null];
+
+    let first = true;
     for (const reach of reaches) {
-      x.serviceBands.forEach((b, i) => {
+      let firstOfReach = true;
+      bands.forEach((b, i) => {
         out.push({
           key: `${x.id}·${reach.kind === 'scheme' ? reach.ruleId : reach.kind}·${i}`,
+          templateId: x.id,
           leaveTypeId: x.leaveTypeId,
           tableName: x.name,
           reach,
           isDefaultTable,
-          fromYears: b.fromYears,
-          toYears: b.toYears,
-          days: b.days,
+          // Exactly one row per VERSION carries the grouped cells, and it is the first row emitted for
+          // that version across ALL of its reaches — not the first of each reach, or a table named by two
+          // schemes would draw its Delete button twice.
+          firstOfTable: first,
+          firstOfReach,
+          validFrom: x.validFrom,
+          validTo: x.validTo,
+          fromYears: b ? b.fromYears : null,
+          toYears: b ? b.toYears : null,
+          days: b ? b.days : null,
         });
+        first = false;
+        firstOfReach = false;
       });
     }
   }
@@ -720,26 +782,30 @@ export async function EntitlementTablesBlock({
    * on the benefit SCHEME that names it. The grid puts them side by side and adds nothing to the model.
    *
    * SCOPED MOUNT GETS NOTHING. Inside one leave type's tab the Leave type column is one repeated value and
-   * that tab has its own schemes editor two Cards down; the split the grid exists to close is a property of
-   * the all-types screen. Nobody asked for a new surface on the leave type screen, so it does not get one.
+   * r271 (6d29e11c) — THE GRID IS THE TABLES LIST NOW, ON BOTH MOUNTS.
+   *
+   * r270 shipped it as a second Card above the list, which put THREE blocks on a tab whose whole complaint
+   * was that the facts sat in two, and described every table twice — once with its days, once with its
+   * buttons. The approved sketch drew ONE table; this is that table. The leave type tab gets the same
+   * layout for the same reason the block is shared at all: two layouts out of one component is the second
+   * implementation this area exists to prevent, and `scoped` already hides the Leave type column there.
    *
    * Sorted HERE, not in the derivation: leave type name, then table name, then the version's own date — so
    * a reader finds every Annual Leave row together, the way they drew it. `localeCompare` on a rendered
    * name is a display order, and the derivation has no business inventing one.
    */
-  const gridRows = scoped
-    ? []
-    : entitlementGridRows({
-        running: [...inForceTemplates].sort(
-          (a, b) =>
-            (typeNameById.get(a.leaveTypeId) ?? '').localeCompare(typeNameById.get(b.leaveTypeId) ?? '') ||
-            a.name.localeCompare(b.name) ||
-            a.validFrom.localeCompare(b.validFrom),
-        ),
-        rulesByTemplateLineage,
-        defaultLineageByType,
-        soleTableTypeIds,
-      });
+  const gridRows = entitlementGridRows({
+    templates: [...templates].sort(
+      (a, b) =>
+        (typeNameById.get(a.leaveTypeId) ?? '').localeCompare(typeNameById.get(b.leaveTypeId) ?? '') ||
+        a.name.localeCompare(b.name) ||
+        a.validFrom.localeCompare(b.validFrom),
+    ),
+    inForceIds: new Set(inForceTemplates.map((x) => x.id)),
+    rulesByTemplateLineage,
+    defaultLineageByType,
+    soleTableTypeIds,
+  });
   /** The grid's Job grade cell. `scheme` goes through `coversCell` — ONE rendering of one criteria object,
    *  so the grid and the tables list below it cannot describe the same scheme two ways. The other three
    *  states are populations, not grades, and each says which population it is rather than leaving a blank. */
@@ -747,25 +813,34 @@ export async function EntitlementTablesBlock({
     reach.kind === 'scheme' ? (
       coversOfScheme(reach.criteria)
     ) : reach.kind === 'default' ? (
-      <span className="block">{t('gridEveryoneElse')}</span>
+      // r271 — `coversDefaultTable` ("Anyone no benefit scheme covers — this leave type's default table"),
+      // NOT the sketch's "Everyone else". A default table whose leave type has no schemes at all produces
+      // exactly ONE row, and "Everyone else" there is else than nobody — a phrase that means nothing on
+      // the commonest arrangement on this account. The list's own wording is true in both cases, and a
+      // mockup's caveat covers wording; it does not cover saying something meaningless.
+      <span className="block">{t('coversDefaultTable')}</span>
     ) : reach.kind === 'everyone' ? (
       <span className="block">{t('criteriaEveryone')}</span>
+    ) : reach.kind === 'stopped' ? (
+      // r271 — a version not in force reaches nobody, and that is not the same fact as "no scheme names
+      // this table". The old list drew a plain dash here for exactly this row; it still does. The amber
+      // warning below is for a LIVE table nothing points at, and shouting it at a stopped one is noise.
+      <span className="text-muted-foreground">{dash}</span>
     ) : (
       <span className="block font-medium text-amber-700 dark:text-amber-500">{t('gridNoGrade')}</span>
     );
 
   const dash = DAY_DASH;
-  /** One band rendered for the read-only list. `t.raw` is not needed here — no braces, plain values.
-   *  4a1abc4a: the three day figures print through the shared formatter, so the summary a reader scans
-   *  ("0–2: 12.00 (+5.00)") matches the editor they open to change it. The year bounds stay bare. */
-  const bandText = (b: { fromYears: number; toYears: number | null; days: number; carryForwardDays?: number | null; maxBalanceDays?: number | null }) =>
-    `${b.fromYears}–${b.toYears == null ? t('bandNoLimit') : b.toYears}: ${formatDays(b.days)}` +
-    (b.carryForwardDays != null ? ` (+${formatDays(b.carryForwardDays)})` : '') +
-    (b.maxBalanceDays != null ? ` ≤${formatDays(b.maxBalanceDays)}` : '');
 
   // Scoped drops the Leave type column: every row on screen is the same type, and the step's own heading
   // already says which. The colSpan of the empty-state row follows the column count rather than a literal.
-  const templateCols = scoped ? 6 : 7;
+  /** r271 — the merged table's own column count, for the empty-state colspan. Seven unscoped
+   *  (leave type · job grade · service · entitlement · table · in force · controls), six scoped, where
+   *  every row is one leave type and naming it on each line is noise. */
+  const mergedCols = scoped ? 6 : 7;
+  /** The version behind a grid row, for the controls the row's group head draws. One map, built once —
+   *  looking a template up inside the render loop is the only thing the row does not already carry. */
+  const templateById = new Map(templates.map((x) => [x.id, x]));
 
   return (
     <div className="space-y-6">
@@ -795,220 +870,154 @@ export async function EntitlementTablesBlock({
           entitlement for anybody, and `core/entitlement-template.ts` is untouched. Hidden when there is
           nothing in force to read: a permanently empty grid is furniture, and the tables list below already
           says "no entitlement tables yet" in its own words. */}
-      {gridRows.length > 0 ? (
-        <Card>
-          <SectionHeader title={t('gridTitle')} count={gridRows.length} />
-          {/* r270 fix pass — WHAT THIS GRID CANNOT SHOW, SAID RATHER THAN LEFT TO BE ASSUMED.
-              One row per table and service band is a view of the CONFIGURATION, not a roll of who gets
-              what. Where two schemes could both cover one employee the resolver picks the narrower one,
-              so a person can appear in two rows here and receive only the days in one of them; and a
-              scheme with no conditions covers everybody, which leaves the default table's row describing
-              nobody. Computing the overlap would be a second matcher beside the engine — the thing this
-              area exists to avoid — so the grid states the rule and sends a reader asking about one
-              person to the panel below, which answers it from the engine itself. */}
-          <p className="px-3 pb-2 text-xs text-muted-foreground">{t('gridOverlapNote')}</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">{t('gridColLeaveType')}</th>
-                  <th className="px-3 py-2">{t('gridColGrade')}</th>
-                  <th className="px-3 py-2">{t('gridColService')}</th>
-                  <th className="px-3 py-2">{t('gridColEntitlement')}</th>
-                  <th className="px-3 py-2">{t('gridColTable')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gridRows.map((r) => (
-                  <tr key={r.key} className="border-t align-top">
-                    <td className="px-3 py-2">{typeNameById.get(r.leaveTypeId) ?? dash}</td>
-                    <td className="px-3 py-2 text-xs">{gridGradeCell(r.reach)}</td>
-                    {/* The same bounds the table itself stores, and the same "no limit" word the tables
-                        list uses for an open-ended top band. */}
-                    <td className="px-3 py-2 text-xs tabular-nums">
-                      {r.fromYears}–{r.toYears == null ? t('bandNoLimit') : r.toYears}
-                    </td>
-                    {/* 4a1abc4a — through the shared day formatter, so the figure here and the figure in
-                        the editor that produced it agree digit for digit. */}
-                    <td className="px-3 py-2 text-xs tabular-nums">{formatDays(r.days)}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {r.tableName}
-                      {r.isDefaultTable ? (
-                        <span className="text-muted-foreground"> {t('gridDefaultSuffix')}</span>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : null}
-
-      {/* ── STEP 1: THE NAMED DAY TABLES ────────────────────────────────────────────────────────── */}
+      {/* ── THE ENTITLEMENT TABLES, AS ONE TABLE ────────────────────────────────────────────────
+          r271 (6d29e11c). r270 drew this twice: a "who gets how many days" grid above, and the managed
+          list below, describing the same versions once with their figures and once with their buttons.
+          The approved sketch drew ONE table and the reporter's whole complaint was fragmentation, so a
+          third block was the wrong answer to it. One row per service step; the cells that belong to the
+          VERSION rather than to a step — leave type, table name, the in-force window, and the controls —
+          are drawn once at the head of each group and left blank beneath it. */}
       <Card>
         <SectionHeader
           title={scoped ? t('templatesTitleForType', { type: scopedTypeName }) : t('templatesTitle')}
           count={running.length}
         />
+        {/* What this table cannot show, said before it rather than after (r270 D4). */}
+        <p className="px-3 pb-2 text-xs text-muted-foreground">{t('gridOverlapNote')}</p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">{t('colName')}</th>
-                {scoped ? null : <th className="px-3 py-2">{t('colLeaveType')}</th>}
-                {/* 9e2a89e9 — WHO EACH TABLE COVERS, on the screen where tables are created. Read from
-                    the benefit scheme that names the table; the table itself stores no criteria. */}
-                <th className="px-3 py-2">{t('colCovers')}</th>
-                <th className="px-3 py-2">{t('colBands')}</th>
+                {scoped ? null : <th className="px-3 py-2">{t('gridColLeaveType')}</th>}
+                <th className="px-3 py-2">{t('gridColGrade')}</th>
+                <th className="px-3 py-2">{t('gridColService')}</th>
+                <th className="px-3 py-2">{t('gridColEntitlement')}</th>
+                <th className="px-3 py-2">{t('gridColTable')}</th>
                 <th className="px-3 py-2">{t('colInForce')}</th>
-                <th className="px-3 py-2">{t('colRules')}</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
-              {templates.length === 0 && (
+              {gridRows.length === 0 && (
                 <tr>
-                  <td colSpan={templateCols} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  <td colSpan={mergedCols} className="px-3 py-6 text-center text-xs text-muted-foreground">
                     {t('templatesNone')}
                   </td>
                 </tr>
               )}
-              {templates.map((x) => (
-                <tr key={x.id} className="border-t align-top">
-                  <td className="px-3 py-2 font-medium">
-                    {x.name}
-                    {/* 76ffdcf2 — the row says it is the fallback, on BOTH mounts. On the unfiltered
-                        screen this is the only place the default is visible at all. Judged on the
-                        lineage AND on the row still running: a stopped version is not the default in
-                        force, which is exactly what the engine decides. */}
-                    {x.validTo == null && defaultLineageByType.get(x.leaveTypeId) === x.lineageId ? (
-                      <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                        {t('defaultTableBadge')}
-                      </span>
-                    ) : null}
-                  </td>
-                  {scoped ? null : <td className="px-3 py-2">{typeNameById.get(x.leaveTypeId) ?? dash}</td>}
-                  {/* 9e2a89e9 — THE COVERS CELL. Three states, and each says something different:
-                      a superseded/stopped VERSION covers nobody (it is not in force);
-                      a table no scheme names covers nobody UNLESS it is the leave type's default,
-                        in which case it covers everyone no scheme reaches — which is the whole of
-                        76ffdcf2 and must not read as "nobody";
-                      otherwise, what each scheme naming it covers, in the picker's own words. */}
-                  <td className="px-3 py-2 text-xs">
-                    {x.validTo != null
-                      ? dash
-                      : defaultLineageByType.get(x.leaveTypeId) === x.lineageId &&
-                          (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
-                        ? t('coversDefaultTable')
-                        : // r270 fix pass — THE SOLE TABLE REACHES EVERYONE, AND THIS CELL USED TO SAY THE
-                          // OPPOSITE. With one table in force for a leave type and no scheme, the resolver
-                          // hands it to everybody (`viaSoleTemplate`), which is why the amber marker two
-                          // columns along already suppresses itself for exactly this case. The Covers cell
-                          // did not know, so it printed "No benefit scheme names this table" — read as
-                          // nobody gets it — over the one arrangement where everybody does, while the grid
-                          // above said "Everyone" about the same row. Same string as the grid, so the
-                          // screen cannot describe one table two ways.
-                          (rulesByTemplateLineage.get(x.lineageId) ?? []).length === 0
-                          ? soleTableTypeIds.has(x.leaveTypeId)
-                            ? t('criteriaEveryone')
-                            : t('ruleNonePointsHere')
-                          : (rulesByTemplateLineage.get(x.lineageId) ?? []).map((rule) => (
-                              <span key={rule.id} className="mb-1 block last:mb-0">
-                                {coversOfScheme(rule.criteria)}
-                              </span>
-                            ))}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {x.serviceBands.map((b, i) => (
-                      <span key={i} className="block">
-                        {bandText(b)}
-                      </span>
-                    ))}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {x.validFrom}
-                    <span className="block">{x.validTo ?? t('stillRunning')}</span>
-                  </td>
-                  {/* r209 — A ZERO HERE IS THE WHOLE DEFECT AND IT USED TO RENDER AS A ZERO. Five of the
-                      six Medical tables on the reporter's account have never had a rule; the count said
-                      "0" and nothing said that 0 means nobody can ever receive this table. It is now
-                      said in words, except where the leave type's SINGLE table applies to everyone with
-                      no rule needed (r193 fault 3) — calling that broken would make the warning noise. */}
-                  <td className="px-3 py-2 text-xs">
-                    {x.validTo == null ? (ruleCounts.get(x.lineageId) ?? 0) : dash}
-                    {x.validTo == null &&
-                    (ruleCounts.get(x.lineageId) ?? 0) === 0 &&
-                    !soleTableTypeIds.has(x.leaveTypeId) ? (
-                      <span className="mt-0.5 block font-medium text-amber-700 dark:text-amber-500">
-                        {t('ruleNonePointsHere')}
-                      </span>
-                    ) : null}
-                  </td>
-                  {/* ── r210 · THE WAYS OUT OF A RECORD, WHERE THE RECORD IS ─────────────────────────
-                      Stop existed and lived several fields down inside the Edit panel, which is the whole
-                      of the reporter's discoverability complaint: from the list you would never know it
-                      was there. Both ways out are row actions now, and where Delete is refused the reason
-                      stands in the same cell as the Stop control that answers it. */}
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-                      {x.validTo == null ? (
-                        <Link href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
-                          {t('edit')}
-                        </Link>
+              {gridRows.map((r) => {
+                const x = templateById.get(r.templateId);
+                return (
+                  <tr
+                    key={r.key}
+                    className={r.firstOfTable ? 'border-t-2 border-border align-top' : 'border-t align-top'}
+                  >
+                    {scoped ? null : (
+                      <td className="px-3 py-2">{r.firstOfTable ? (typeNameById.get(r.leaveTypeId) ?? dash) : null}</td>
+                    )}
+                    <td className="px-3 py-2 text-xs">{r.firstOfReach ? gridGradeCell(r.reach) : null}</td>
+                    {/* The same bounds the version stores, and the same "no limit" word its own editor
+                        uses for an open-ended top band. A version with no bands says so rather than
+                        rendering an empty row that looks like a rendering fault. */}
+                    <td className="px-3 py-2 text-xs tabular-nums">
+                      {r.fromYears == null ? (
+                        <span className="text-muted-foreground">{t('templateNoBands')}</span>
+                      ) : (
+                        <>
+                          {r.fromYears}–{r.toYears == null ? t('bandNoLimit') : r.toYears}
+                        </>
+                      )}
+                    </td>
+                    {/* Through the shared day formatter, so this figure and the editor that produced it
+                        agree digit for digit — and a half day reads 16.50 rather than rounding away. */}
+                    <td className="px-3 py-2 text-xs tabular-nums">{r.days == null ? dash : formatDays(r.days)}</td>
+                    <td className="px-3 py-2 text-xs font-medium">
+                      {r.firstOfTable ? (
+                        <>
+                          {r.tableName}
+                          {r.isDefaultTable && r.reach.kind !== 'stopped' ? (
+                            <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              {t('defaultTableBadge')}
+                            </span>
+                          ) : null}
+                        </>
                       ) : null}
-                      {x.validTo == null ? (
-                        <form action={retireEntitlementTemplateAction} className="flex items-center gap-1.5">
-                          {returnField}
-                          <input type="hidden" name="lineageId" value={x.lineageId} />
-                          <input type="hidden" name="name" value={x.name} />
-                          <input
-                            className={rowDateCls}
-                            type="date"
-                            name="validTo"
-                            defaultValue={today}
-                            required
-                            aria-label={t('stopFrom')}
-                          />
-                          <ConfirmSubmit
-                            variant="outline"
-                            size="sm"
-                            title={t('stopTemplate')}
-                            subtitle={x.name}
-                            description={t('stopTemplateConfirm', { rules: ruleCounts.get(x.lineageId) ?? 0 })}
-                          >
-                            {t('stop')}
-                          </ConfirmSubmit>
-                        </form>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {r.firstOfTable ? (
+                        <>
+                          {r.validFrom}
+                          <span className="block">{r.validTo ?? t('stillRunning')}</span>
+                        </>
                       ) : null}
-                      {/* Delete is a LINEAGE action, so it belongs on the lineage's current version and on
-                          no other — including when that version is already stopped, which is exactly the
-                          never-used record somebody wants to clear away. */}
-                      {templateHeadIds.has(x.id) ? (
-                        deleteBlockText(templateDeleteBlocks.get(x.lineageId)) ? (
-                          <span className="max-w-[18rem] text-xs text-muted-foreground">
-                            {deleteBlockText(templateDeleteBlocks.get(x.lineageId))}
-                          </span>
-                        ) : (
-                          <form action={deleteEntitlementTemplateAction}>
-                            {returnField}
-                            <input type="hidden" name="lineageId" value={x.lineageId} />
-                            <input type="hidden" name="name" value={x.name} />
-                            <ConfirmSubmit
-                              size="sm"
-                              title={t('deleteTemplate')}
-                              subtitle={x.name}
-                              description={t('deleteTemplateConfirm')}
+                    </td>
+                    {/* r210 — the ways out of a record, where the record is. Drawn once per VERSION, on
+                        its first row: Stop and Delete act on the whole table, never on a service step. */}
+                    <td className="px-3 py-2">
+                      {r.firstOfTable && x ? (
+                        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                          {x.validTo == null ? (
+                            <Link
+                              href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)}
+                              className="text-sm underline"
                             >
-                              {t('delete')}
-                            </ConfirmSubmit>
-                          </form>
-                        )
+                              {t('edit')}
+                            </Link>
+                          ) : null}
+                          {x.validTo == null ? (
+                            <form action={retireEntitlementTemplateAction} className="flex items-center gap-1.5">
+                              {returnField}
+                              <input type="hidden" name="lineageId" value={x.lineageId} />
+                              <input type="hidden" name="name" value={x.name} />
+                              <input
+                                className={rowDateCls}
+                                type="date"
+                                name="validTo"
+                                defaultValue={today}
+                                required
+                                aria-label={t('stopFrom')}
+                              />
+                              <ConfirmSubmit
+                                variant="outline"
+                                size="sm"
+                                title={t('stopTemplate')}
+                                subtitle={x.name}
+                                description={t('stopTemplateConfirm', { rules: ruleCounts.get(x.lineageId) ?? 0 })}
+                              >
+                                {t('stop')}
+                              </ConfirmSubmit>
+                            </form>
+                          ) : null}
+                          {/* Delete is a LINEAGE action, so it belongs on the lineage's current version and
+                              on no other — including when that version is already stopped, which is exactly
+                              the never-used record somebody wants to clear away. */}
+                          {templateHeadIds.has(x.id) ? (
+                            deleteBlockText(templateDeleteBlocks.get(x.lineageId)) ? (
+                              <span className="max-w-[18rem] text-xs text-muted-foreground">
+                                {deleteBlockText(templateDeleteBlocks.get(x.lineageId))}
+                              </span>
+                            ) : (
+                              <form action={deleteEntitlementTemplateAction}>
+                                {returnField}
+                                <input type="hidden" name="lineageId" value={x.lineageId} />
+                                <input type="hidden" name="name" value={x.name} />
+                                <ConfirmSubmit
+                                  size="sm"
+                                  title={t('deleteTemplate')}
+                                  subtitle={x.name}
+                                  description={t('deleteTemplateConfirm')}
+                                >
+                                  {t('delete')}
+                                </ConfirmSubmit>
+                              </form>
+                            )
+                          ) : null}
+                        </div>
                       ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -76,9 +76,13 @@ describe('D2 · the grid shows what is in force TODAY, not what is merely unsupe
     expect(block).toContain('x.validFrom <= today && (x.validTo == null || x.validTo > today)');
     const call = block.indexOf('entitlementGridRows({');
     expect(call).toBeGreaterThan(-1);
-    const args = block.slice(call, call + 400);
-    expect(args, 'the grid must be fed the in-force set').toContain('running: [...inForceTemplates]');
-    expect(args, 'and not the open-version set').not.toContain('running: [...running]');
+    const args = block.slice(call, call + 600);
+    // r271 — the merged table draws EVERY version, so the derivation takes them all plus the set that is
+    // in force. D2's point is unchanged and still pinned: what counts as in force is the DATE test, never
+    // `validTo == null`, or a future-dated supersede prints next year's figures as today's.
+    expect(args, 'the derivation is told which versions are in force').toContain('inForceIds: new Set(inForceTemplates.map(');
+    expect(args, 'and it is not handed the open-version set as if it were in force').not.toContain('inForceIds: new Set(running');
+    expect(block, 'a version not in force reaches nobody, and says so').toContain("kind: 'stopped'");
   });
 });
 
@@ -87,22 +91,28 @@ describe('D3 · one table, described one way', () => {
     const block = read(BLOCK);
     // With one table in force and no scheme, the resolver hands it to EVERYBODY. The cell used to print
     // "No benefit scheme names this table" — read as nobody — while the grid said "Everyone".
-    const cell = block.indexOf("t('coversDefaultTable')");
+    // r271 — the Covers cell and the grid's Job grade cell BECAME the same cell when the two tables
+    // merged, which is the strongest possible form of "described one way". D3's states all survive inside
+    // the one renderer, and the sole-table case still must not read as "nobody".
+    const cell = block.indexOf('const gridGradeCell =');
     expect(cell).toBeGreaterThan(-1);
-    const region = block.slice(cell, cell + 1800);
-    expect(region).toContain('soleTableTypeIds.has(x.leaveTypeId)');
-    // Same string as the grid's own everyone-state, so the two cannot drift into two vocabularies.
-    expect(region).toContain("t('criteriaEveryone')");
-    expect(region).toContain("t('ruleNonePointsHere')");
+    const region = block.slice(cell, cell + 1400);
+    expect(region, 'the sole table reaches everyone').toContain("t('criteriaEveryone')");
+    expect(region, 'a table nothing reaches says so').toContain("t('gridNoGrade')");
+    expect(region, 'a stopped version reaches nobody, which is a different fact').toContain("reach.kind === 'stopped'");
+    expect(block, 'and the sole-table set is what decides it').toContain('soleTableTypeIds.has(x.leaveTypeId)');
   });
 });
 
 describe('D4 · the grid says what it cannot show', () => {
   it('an overlap note is rendered with the grid, not left for the reader to infer', () => {
     const block = read(BLOCK);
-    const title = block.indexOf("t('gridTitle')");
+    // r271 — the note moved with the table it qualifies: the merged table carries the LIST's heading now,
+    // so the anchor is `templatesTitle`. Still above the rows, because a caveat below them is one nobody
+    // reads, and that placement is the whole of D4.
+    const title = block.indexOf("t('templatesTitle')");
     expect(title).toBeGreaterThan(-1);
-    // Immediately under the heading, before the table — a caveat below the rows is a caveat nobody reads.
-    expect(block.slice(title, title + 1600)).toContain("t('gridOverlapNote')");
+    expect(block.slice(title, title + 900)).toContain("t('gridOverlapNote')");
+    expect(block, 'and it is not left behind on a heading that no longer exists').not.toContain("t('gridTitle')");
   });
 });

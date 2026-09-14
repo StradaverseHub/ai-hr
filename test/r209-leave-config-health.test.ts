@@ -419,8 +419,16 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     // unfiltered mount lists every type's tables together, so a single flag would either warn on a healthy
     // single-table type or stay silent on a broken multi-table one — and it is the same set the card above
     // it derives from, so the two cannot disagree about which zero is a fault.
-    expect(block).toContain('!soleTableTypeIds.has(x.leaveTypeId)');
-    expect(block).toContain("t('ruleNonePointsHere')");
+    // r271 (6d29e11c) — THE INVARIANT MOVED INTO THE DERIVATION, and is pinned where it now lives. When
+    // the grid and the tables list merged, this decision stopped being a condition inside a table cell and
+    // became one branch of `entitlementGridRows`, which asks it once per VERSION — still per leave type,
+    // which is the whole point of this assertion. The marker's words are `gridNoGrade` now, which names
+    // the consequence before the cause; `ruleNonePointsHere` retired with the column it lived in.
+    expect(block).toContain('input.soleTableTypeIds.has(x.leaveTypeId)');
+    expect(block, 'per leave type, never one boolean for the whole table').not.toMatch(
+      /soleTableApplies\s*\?\s*\{ kind: 'everyone' \}/,
+    );
+    expect(block).toContain("t('gridNoGrade')");
     // …and the expiry badges on the rules table, judged on the lineage's CURRENT version only.
     expect(block).toContain("t('ruleExpiredBadge')");
     expect(block).toContain("t('ruleExpiringBadge')");
