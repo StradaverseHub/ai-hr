@@ -61,14 +61,36 @@ describe('(a) employee Bank & Statutory — the contradiction is stated, not swa
   });
 
   it('does NOT regress 57840a6e: the company band never reaches the select', () => {
-    // The 57840a6e defect was the company band feeding the control's initial state, which turned an
-    // untouched card into a permanent explicit No. The warning reads the band for DISPLAY only — the
-    // select's defaultValue must still derive from the stored per-employee value and nothing else.
-    expect(card).toContain(
-      "defaultValue={statutory?.subjectToHrdf == null ? '' : statutory.subjectToHrdf ? 'yes' : 'no'}",
-    );
-    const select = card.slice(card.indexOf('<select'), card.indexOf('</select>'));
-    expect(select).not.toContain('companyHrdf');
+    // The 57840a6e defect was the company band feeding the control's INITIAL STATE, which turned an
+    // untouched card into a permanent explicit No and excluded those employees from the levy for ever.
+    // The warning may read the band for DISPLAY; the control's value may not.
+    //
+    // r277 (a72610af) moved the control itself into components/tax-relief-fields.tsx so the Create New
+    // Employee draft renders the SAME tri-state instead of a second copy that could regress separately.
+    // This assertion therefore spans BOTH files. It used to slice `<select>` out of the page and assert
+    // the slice was clean — after the extraction that slice is EMPTY, and an empty string satisfies every
+    // `not.toContain` in it. A guard that passes on nothing is worse than one that fails, so each half
+    // below starts by proving the thing it is about still exists.
+    const site = card.slice(card.indexOf('<HrdfSubjectField'), card.indexOf('/>', card.indexOf('<HrdfSubjectField')));
+    expect(site, 'the Bank & Statutory card still renders the HRDF control').not.toBe('');
+    // (1) The page hands it the STORED PER-EMPLOYEE VALUE and nothing else.
+    expect(site).toContain('value={statutory?.subjectToHrdf}');
+    expect(site, 'the company band must not reach the control').not.toContain('companyHrdf');
+
+    const FIELDS = read('components/tax-relief-fields.tsx');
+    const fn = FIELDS.slice(FIELDS.indexOf('export function HrdfSubjectField'), FIELDS.indexOf('export function', FIELDS.indexOf('export function HrdfSubjectField') + 1));
+    expect(fn, 'HrdfSubjectField still exists').not.toBe('');
+    // (2) Its form mode derives the initial state from its OWN value prop, tri-state, and posts a name.
+    expect(fn).toContain("name: props.name ?? 'subjectToHrdf', defaultValue: current");
+    expect(fn).toContain("props.value == null");
+    expect(fn, 'the control knows nothing about any company band').not.toContain('companyHrdf');
+    // (3) Still a three-option select, still not a checkbox — the 57840a6e collapse must stay impossible.
+    const select = fn.slice(fn.indexOf('<select'), fn.indexOf('</select>'));
+    expect(select, 'the tri-state is still a select').not.toBe('');
+    expect(fn).toContain('<option value="">');
+    expect(fn).toContain('<option value="yes">');
+    expect(fn).toContain('<option value="no">');
+    expect(fn).not.toContain('type="checkbox"');
     expect(card).not.toContain('type="checkbox"');
   });
 
