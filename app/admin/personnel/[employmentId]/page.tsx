@@ -22,6 +22,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
@@ -460,15 +461,22 @@ export default async function EmployeePage({
   // effect for payroll.
   const branchChangeDate = branchLocationSuggestion ? await branchChangeDateFor(s, employmentId) : null;
   const suggestedEffectiveDate = branchChangeDate ?? today;
-  // 1fff489c step 10 — the clocking pre-fill. Sites whose location_id matches the employee's CONFIRMED
-  // location (or, before Confirm, the suggested one) seed the multi-select's defaults. It seeds only: the
-  // save is still a full-set replace, so an admin who unticks one gets exactly what they ticked.
-  const preTickLocationId = emp.locationId ?? branchLocationSuggestion?.id ?? null;
-  const clockingDefaultIds = assignedClockingLocationIds.size
-    ? [...assignedClockingLocationIds]
-    : preTickLocationId
-      ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).map((cl) => cl.id)
-      : [];
+  /**
+   * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
+   *
+   * 1fff489c step 10 seeded this control from the sites linked to the employee's confirmed (or
+   * branch-suggested) work location whenever nothing was assigned. It seeded the CONTROL only — the save
+   * has always been a full-set replace of what is ticked, and `components/tab-save-scope.tsx` never posts
+   * a section the user did not touch, so it could not write on its own.
+   *
+   * It still had to go. The reporter filed a redesign asking us to "remove the dependency on Company,
+   * State, Holiday Calendar and Branch" for clocking locations — a dependency that has never existed in
+   * the engine (`resolveGeofence`, core/attendance.ts:194, joins the assignment table and nothing else).
+   * This pre-fill is what made them believe in it: open an employee with nothing assigned and the system
+   * appears to have chosen their sites from their branch. An empty assignment now renders empty and says
+   * what that means.
+   */
+  const clockingDefaultIds = [...assignedClockingLocationIds];
   // 1fff489c — how many points sit under the employee's RESOLVED location (confirmed, else suggested).
   // null when no location resolves at all: that is a DIFFERENT empty state, and it is answered on the Work
   // Location card above (branch unmapped / no branch recorded), not by a sentence about clocking points.
@@ -477,13 +485,13 @@ export default async function EmployeePage({
   // COMPANY having no points — while saying "This location has no clocking points yet", so a company that
   // had points but none under this employee's location (the case the wording describes) showed nothing at
   // all. Mirrors the admin screen's per-location groupNoPoints, which was already right.
-  const resolvedLocationPointCount = preTickLocationId
-    ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).length
-    : null;
-  // …and the mockup's third multi-select line: a mapped location that holds no point yet is LISTED and
-  // unselectable ("BU8 · Bandar Utama 8 · no clocking points yet") rather than silently absent, so the
-  // admin can see the location exists and why nothing can be ticked under it.
-  const locationsWithNoPoints = locations.filter((l) => !clockingLocations.some((cl) => cl.locationId === l.id));
+  /** r272 — the point count that explained the pre-tick goes with it. "N clocking points are linked to
+   *  this employee's work location" is a sentence ABOUT the branch coupling, on the card whose whole
+   *  complaint is that the coupling appears to exist. The assignment now speaks for itself. */
+  /** r272 — `locationsWithNoPoints` went with the multi-select. It rendered DISABLED options for company
+   *  locations holding no clocking point, so a configured location did not look absent. The picker lists
+   *  clocking sites only, and a location with no site is not a thing an employee can be assigned to; the
+   *  admin screen's own per-location empty state is where that gap belongs. */
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
@@ -2310,7 +2318,7 @@ export default async function EmployeePage({
   // of the company's active clocking sites; geofencing toggle + radius (required when enabling).
   const clockingCard = admin && !emp.terminatedOn ? (
     <Card id="section-clocking-location">
-      <SectionHeader title={tc('cardTitle')} />
+      <SectionHeader title={tc('assignmentTitle')} />
           {/* 420ebab5 part two (r255) — both forms in this card lose their Save buttons to the Attendance
               tab's one "Save Changes", and each becomes its own section: they write two different
               services (a set-based replace of the assigned sites, and the geofencing toggle + radius
@@ -2318,57 +2326,45 @@ export default async function EmployeePage({
               consolidated save is not. An untouched one is not in `sections` and is never called. */}
           <form action={setEmployeeClockingLocationsAction} data-save-section="clocking" className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={tc('assignedLocations')}>
-              <select
-                name="clockingLocationIds"
-                multiple
-                // 1fff489c step 10 — pre-ticked from the confirmed (or suggested) location when the
-                // employee has nothing assigned yet. Seeds the control only; the save is still a full-set
-                // replace of whatever is ticked at submit time.
-                defaultValue={clockingDefaultIds}
-                className={`${inputCls} h-28`}
-              >
-                {clockingLocations.map((cl) => (
-                  <option key={cl.id} value={cl.id}>
-                    {cl.locationCode ? `${cl.locationCode} · ` : ''}
-                    {cl.name}
-                    {cl.radiusM != null ? ` · ${tc('withinRadius', { radius: cl.radiusM })}` : ''}
-                  </option>
-                ))}
-                {/* The mockup's third line. A location with no points yet is shown DISABLED — it can
-                    never be ticked or submitted (there is nothing to clock at), but leaving it out made
-                    a configured location look like it did not exist. */}
-                {locationsWithNoPoints.map((l) => (
-                  <option key={`nopoints-${l.id}`} value="" disabled>
-                    {`${l.code} · ${l.name} · ${tc('noPointsYet')}`}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {/* The distinct empty states (spec section E). They used to render as one blank field, which
-                was the reporter's actual complaint: "No location" cannot be acted on because it does not
-                say WHICH thing is missing. State 2 (branch not mapped) is on the Work Location card
-                above, where the branch is the thing to fix.
-
-                f9afd1ce REWROTE the semantics here. Sites are SHARED now, so "no site is linked to this
-                employee's location" must never read as "clock-in is unavailable": every shared site is
-                in the list above regardless of the link. The line therefore says HOW MANY points are
-                linked to the resolved location (that is what resolvedLocationPointCount is for — the
-                pre-tick), and that every shared site is offered anyway. It renders only in the seeding
-                state (nothing assigned yet); once sites are saved, the saved set speaks for itself. */}
+            <LocationAssignment
+              name="clockingLocationIds"
+              locations={clockingLocations.map((cl) => ({
+                id: cl.id,
+                name: cl.name,
+                code: cl.locationCode ?? null,
+                address: cl.address ?? null,
+                radiusM: cl.radiusM ?? null,
+                radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
+                archived: cl.archivedAt != null,
+              }))}
+              defaultSelected={clockingDefaultIds}
+              labels={{
+                intro: tc('assignmentIntro'),
+                colLocation: tc('colLocation'),
+                colAddress: tc('colAddress'),
+                colRadius: tc('colRadius'),
+                colStatus: tc('colStatus'),
+                remove: tc('remove'),
+                none: tc('noneAssigned'),
+                addLocation: tc('addLocation'),
+                all: tc('allLabel'),
+                search: tc('searchPlaceholder'),
+                selectAll: tc('selectAll'),
+                clearAll: tc('clearAll'),
+                selectedCountTemplate: tc('selectedCount', { count: '{count}' }),
+                active: tc('statusActive'),
+                inactive: tc('statusInactive'),
+                noRadius: tc('noRadius'),
+              }}
+            />
+            {/* r272 — ONE empty state, and it is about the assignment rather than about the branch.
+                The three sentences that stood here explained how many clocking points were linked to the
+                employee's resolved work location, which is the coupling this item exists to remove; the
+                component above now says "no locations assigned" in its own words. This one remains
+                because it answers a different question: there is nothing to assign FROM. */}
             {clockingLocations.length === 0 ? (
               <p className="text-xs text-muted-foreground">{tc('noSharedSites')}</p>
-            ) : (
-              <>
-                {assignedClockingLocationIds.size === 0 && resolvedLocationPointCount != null && (
-                  <p className="text-xs text-muted-foreground">{tc('linkedPoints', { count: resolvedLocationPointCount })}</p>
-                )}
-                {/* "The sites ticked above are proposed…" is only true when something IS ticked. */}
-                {assignedClockingLocationIds.size === 0 && emp.locationId && (resolvedLocationPointCount ?? 0) > 0 && (
-                  <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>
-                )}
-              </>
-            )}
+            ) : null}
           </form>
           <form action={setGeofencingAction} data-save-section="geofencing" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />

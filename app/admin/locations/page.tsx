@@ -240,9 +240,25 @@ export default async function LocationsPage({
       <span className="text-xs text-muted-foreground">
         {groupAdmin ? t('assignedCount', { count: cl.assignedCount }) : t('assignedCountManaged', { count: cl.assignedCount })}
       </span>
-      {cl.archivedAt && (
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-          {t('statusArchived')}
+      {/* r272 (0e8cf366) — STATUS IS ALWAYS STATED. An archived row carried a badge and a live one
+          carried nothing, so "Active" was conveyed only by the ABSENCE of a badge plus 60% opacity on its
+          neighbours — which is not a status a reader can point at, and the reporter asked for one they
+          could. Same two strings the location group heading above already uses. */}
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+          cl.archivedAt ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'
+        }`}
+      >
+        {cl.archivedAt ? t('statusArchived') : t('statusActive')}
+      </span>
+      {/* r272 — A WAY IN FOR A COMPANY ADMIN. The detail page already renders a read-only fact list for
+          anyone who is not a group admin (clocking/[id]/page.tsx:48-57) — nothing linked to it, so the
+          only readers who could open a site were the ones allowed to change it. */}
+      {!groupAdmin && (
+        <span className="ml-auto flex items-center gap-2">
+          <Link href={clockingEditPage(cl.id)} className={btnGhost}>
+            {t('view')}
+          </Link>
         </span>
       )}
       {groupAdmin && (
@@ -330,9 +346,14 @@ export default async function LocationsPage({
             {groups.map((g) => (
               <div key={g.id} className="overflow-hidden rounded-lg border border-border">
                 <div className="flex flex-wrap items-center gap-2 bg-muted px-3 py-2 text-sm font-medium">
+                  {/* r272 (0e8cf366) — THE COMPANY NAME IS GONE FROM THIS HEADING. A clocking site has had
+                      no company since migration 0459; what it optionally links to is a `location`, which
+                      IS company-scoped, and printing that company here made the whole register read as
+                      company configuration. That reading is the premise of the reporter's redesign
+                      request — they asked us to remove a dependency that exists only in this heading.
+                      The location's own code and name stay: those identify the group. */}
                   <span>
                     {g.code} · {g.name}
-                    {g.companyName ? ` · ${g.companyName}` : ''}
                   </span>
                   <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                     {g.archived ? t('statusArchived') : t('statusActive')}
