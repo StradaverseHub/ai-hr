@@ -1,3 +1,77 @@
+## r276-plan (2026-09-14) — the whole open board planned, and a three-times-approved item unstuck. `main@d6eb74d9`, nothing built.
+
+Five plans pushed, each with a rendered mockup. Two were approved by the reporter within minutes of
+landing; a third approved while the next was being written. **The through-line of four of the five is
+that the reporter is asking us to build things they already own, under names that hide them.**
+
+### `8c59c664` — the requested rename is BACKWARDS, and doing it as asked would ship a wrong number
+
+The reporter asked to rename "YTD Entitled" to Full Entitlement and add "Earned to Date" beside it.
+**That column has never held the full year.** `components/leave/leave-balance-row.ts:126` computes
+`ytdEntitled: bd.currentYearEntitlement + bd.carriedForward`, where `currentYearEntitlement` is
+`cycleAccrual` — accrual-class ledger rows between cycle start and the as-at date. It is
+**accrued-to-date**, the deviation is deliberate (`components/leave/entitlement-panel-config.ts:132-141`)
+and pinned (`test/leave-details-panel.test.ts:185-196`).
+
+Renaming without changing the value would understate every Annual Leave row by ~30% today — production
+`02617b4a` reads 12.50 against a band of 18.00, `99e97e85` 17.00 against 24.00 — **and the error
+vanishes on 31 December**, so it would look correct precisely when someone finally checked it in January.
+Planned the other way round: today's field becomes Earned to Date; a new Full Entitlement binds to
+`bd.eligibleDays`, which already exists and already renders in the Explain panel as
+`leave.breakdown.field.eligible`. Also flagged: the grid adds `carriedForward` and the panel does not.
+
+### `870b79e2` / `e5ff7189` / `d91aee93` — "Schedule Group" already exists. We named it "Overtime Pattern".
+
+Three items across three tabs of Attendance → Schedule, all asking for a named group that several shifts
+share so attendance rules are not configured per shift. **`attendance_rule` is exactly that object** —
+tenant-wide (6da67ab7/0319 removed the company axis), `name` + `description` + `is_default`, holding the
+entire lateness and early-out section, selected by `shift.rule_id`. Its own schema comment at
+`db/schema.ts:4048` calls it *"Lateness, Early Out & Overtime Settings"*, and so does the screen's
+`moduleTitle`. **Only `nav.overtimePattern` lies**, and the sidebar is how the reporter navigates.
+
+Production settles it: 4 of 5 live shifts already share rule A02 — one setup, four shifts, which is the
+outcome their own §6 example asks for. Schedule Name is `name`; Schedule Label is `description`;
+**"Shift Allowed" is `shift.rule_id` read backwards** (the set of shifts pointing at a rule IS its allowed
+list — no junction table). The genuinely new part is `employment.attendance_rule_id` plus a refusal in
+`assignEmployeeShift`. Refused again, with the reason the reporter already accepted in r275: moving
+working days / Full-Half-Rest-Off into the group.
+
+**DECISIONS the tickets did not settle:**
+- **One rule per shift stays one**, so rule resolution is single-valued; a shift in two groups gives two
+  answers to which lateness rule applies and nothing could choose. Named in the plan as reject-and-say-so.
+- **`late_deduct_minutes` reaches no payslip** (grep of `core/payroll.ts` + `core/pay-components.ts`:
+  nothing), and this was deliberate — but **`ot_minutes` DOES**. So the reporter's "Offset Overtime by
+  Lateness" would make lateness cost money through a side door that 7c834696's deduction opt-in was built
+  to keep shut. Planned alone, off for every group, hand-verified, never combined.
+- Their three auto-approval options and our four `ot_approval_calculation` values **do not line up**, and
+  they do different jobs: ours pick the figure a *person* banks, theirs pick it when the *system* approves.
+  "Intersect Actual and Pre-Approved" has no counterpart; `attendance_correction.planned_start_time`/
+  `planned_end_time` already store what it needs. Both meanings must survive.
+- **Clocking methods: 1 of their 7 exists.** `clock_method` is `['web','import']`; 190 of 273 rows are web.
+  Location-specified is built but has 1 location, 0 employee assignments, 0 rows matched to a site. GPS→address
+  is `fa2db8cb`. Mobile app / offline / wi-fi / face detection have no client —
+  `components/mobile-preview/mobile-app.tsx` is a marketing mock. Refused to draw switches for the four.
+- **58 of 273 production rows have no clock-out**, so their "skip lateness if the clock is incomplete" is a
+  real gap hit on more than one day in five — their own data is the argument for it.
+
+### `fa2db8cb` — three approvals, two blocks, still no key: replanned to need nothing
+
+Block round 1 answered *"Option A"*; no key followed. Round 2 answered *"Free. Google Maps JavaScript API
++ Places/Geocoding rather than just Embed"* — **internally contradictory** (the Embed API is the free one;
+JS API + Places + Geocoding bills), and **both readings still require a key**. `.env.production` holds 15
+variables and none is a maps key. A third block repeats a move that has twice failed.
+
+**CORRECTION OWED AND PAID, to ourselves:** this item was raised as a question with the answer in
+`expected_behavior`, which the board's approve action can never carry — the same inversion caught on
+`6d29e11c`. Replanned as ONE course needing nothing from the reporter: build on keyless open map data now,
+behind a provider seam so a Google key later upgrades the same screen to Google tiles and satellite without
+a rebuild. Satellite renders visibly disabled rather than hidden.
+
+**NOT DONE:** nothing was built this round. `test/clocking-location-page.test.ts:206` and `:441` pin the
+map's absence and ADR-0070 (156, 186, 202, 219) records why — whoever builds `fa2db8cb` rewrites both
+guards with reasoning and supersedes the ADR, and does a real dev-server render check, because the map is
+necessarily a client island in a form deliberately built without one (the r272 500).
+
 ## r275-plan (2026-09-14) — the contested item re-planned and the draft item planned. `main@e49b5f26`, nothing built.
 
 ### `439565ff` CONTESTED, and the reply settled three of four disagreements OUR way
