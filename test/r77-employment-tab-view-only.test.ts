@@ -219,6 +219,50 @@ const actionsSrc = fs.readFileSync(
   'utf8',
 );
 
+
+/**
+ * r277 (a72610af) — THE EMPLOYMENT DATES INPUTS ARE NO LONGER ALL LITERAL IN page.tsx.
+ *
+ * a72610af extracted the period and confirmation controls into components/employment-period-fields.tsx so
+ * that the Create New Employee DRAFT could render the SAME controls the record renders, in `controlled`
+ * mode, instead of a second copy that could drift from them. In `form` mode the control still emits a real
+ * `name`, and `setEmploymentInfoAction` still reads the identical FormData keys — nothing about what this
+ * screen posts changed.
+ *
+ * So this guard pins the CONTRACT ACROSS BOTH FILES rather than grepping one of them. A single-file
+ * `toContain('name="X"')` went red on a refactor that changed no behaviour, which is a guard reporting on
+ * where a string lives rather than on what the screen does. Either the page still carries the input
+ * itself, or it hands the name to the shared control AND that control turns it into a real `name` — and if
+ * anyone deletes the emission in the component, every arm below fails, so this is not a way to pass by
+ * indirection.
+ */
+const PERIOD_FIELDS_SRC = fs.readFileSync(
+  path.join(process.cwd(), 'components/employment-period-fields.tsx'),
+  'utf8',
+);
+
+function postsFieldNamed(src: string, name: string): boolean {
+  // (a) Still a plain named input on the page.
+  if (src.includes(`name="${name}"`)) return true;
+  // (b) Handed to the extracted period control, which emits both halves as real names in form mode.
+  if (
+    (src.includes(`valueName="${name}"`) || src.includes(`unitName="${name}"`)) &&
+    PERIOD_FIELDS_SRC.includes('name: props.valueName') &&
+    PERIOD_FIELDS_SRC.includes('name: props.unitName')
+  ) {
+    return true;
+  }
+  // (c) The confirmation-date control, whose form mode defaults to this very name.
+  if (
+    name === 'confirmationDate' &&
+    src.includes('<ConfirmationDateField mode="form"') &&
+    PERIOD_FIELDS_SRC.includes("name: props.name ?? 'confirmationDate'")
+  ) {
+    return true;
+  }
+  return false;
+}
+
 describe('(D) the Employment tab has no writer for the fields it displays', () => {
   it('the only forms left on the Employment Information card are the dates save and the company correction', () => {
     // Slice the card, then enumerate its <form action={...}> handlers. A new writer appearing here is the
@@ -247,7 +291,7 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     // Probation / notice / resignation are lifecycle facts with no movement kind that owns them; silently
     // freezing them too would remove capability the item never asked to remove.
     for (const name of ['confirmationDate', 'probationValue', 'tenderResignationDate', 'lastWorkingDate']) {
-      expect(pageSrc, `${name} must remain editable`).toContain(`name="${name}"`);
+      expect(postsFieldNamed(pageSrc, name), `${name} must remain editable`).toBe(true);
     }
   });
 });
