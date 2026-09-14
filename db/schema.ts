@@ -4319,8 +4319,25 @@ export type ToilAccrualStatus = (typeof toilAccrualStatusEnum.enumValues)[number
 export type ToilExpiryUnit = (typeof toilExpiryUnitEnum.enumValues)[number];
 export type ToilReplacementLeaveFrom = (typeof toilReplacementLeaveFromEnum.enumValues)[number];
 // 296fc027 (migration 0381): which path minted a credit. NULL on every row banked before this existed.
-export const toilAccrualSourceEnum = pgEnum('toil_accrual_source', ['roster', 'auto_approval', 'employee_request']);
+//
+// 3fb1a611 / migration 0465 adds the two HR-MINTED sources. The first three are EARNING paths — somebody
+// worked a day and a manager approved the credit. These two are not: HR creates the credit directly.
+//   • 'hr_manual_grant' — a credit for a day nobody claimed (the reporter's case: work happened, no claim
+//     was ever submitted). Written through `bankToilCreditTx` like every other path, so it gets a frozen
+//     expiry, a FIFO position and a `toil.accrued` event rather than becoming a ghost.
+//   • 'adjustment' — a correction posted against an existing balance.
+// Both are the ONLY sources `reverseToilCredit` will undo: an EARNED credit is settled through the expiry
+// sweeps, never deleted.
+export const toilAccrualSourceEnum = pgEnum('toil_accrual_source', [
+  'roster',
+  'auto_approval',
+  'employee_request',
+  'hr_manual_grant',
+  'adjustment',
+]);
 export type ToilAccrualSource = (typeof toilAccrualSourceEnum.enumValues)[number];
+/** 3fb1a611 — the sources HR mints by hand, and therefore the only ones that may be reversed. */
+export const HR_MINTED_TOIL_SOURCES = ['hr_manual_grant', 'adjustment'] as const satisfies readonly ToilAccrualSource[];
 
 // One TOIL policy per company. allowFirstScheduleEligible is the per-company toggle (ADR-0033 §6): OFF ⇒
 // ≤RM4,000 staff cannot elect TOIL (cash only); ON ⇒ they may, but with a compliance warning + forced
@@ -4440,6 +4457,13 @@ export const toilAccrual = pgTable(
     // 296fc027 (migration 0381): which path minted this credit. NULLABLE with no backfill — a legacy row
     // genuinely does not know, and a guessed value would make the audit trail claim a precision it lacks.
     source: toilAccrualSourceEnum('source'),
+    // 3fb1a611 (migration 0465): the stated reason behind a HAND-MINTED credit — "Worked 8 Sep, no claim
+    // submitted". NULL on every earned credit and on every legacy row: an accrual banked from an approved
+    // roster election or attendance correction needs no prose, and back-filling one would be invention.
+    // Kept on the REGISTER and not only on the event because the admin ledger and the employee's own
+    // Replacement Leave table read rows, and a credit that appeared from nowhere with no reason is the
+    // complaint this round answers.
+    note: text('note'),
     policyId: uuid('policy_id').references((): AnyPgColumn => toilPolicy.id),
     ledgerEntryId: uuid('ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
     takenByRequestId: uuid('taken_by_request_id').references((): AnyPgColumn => leaveRequest.id),
