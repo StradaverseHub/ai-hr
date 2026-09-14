@@ -56,6 +56,10 @@ export async function GET(req: Request) {
       tInq('colLeaveCode'),
       t('colType'),
       tInq('colEntitlementYear'),
+      // r279 — Full Entitlement, in the screen's own position (before Earned to Date). This route's header
+      // states the invariant: the file exports the table that was on screen, so a column added to the screen
+      // and not to the file is exactly the disagreement it forbids.
+      tMe('colFullEntitlement'),
       tMe('colYtdEntitled'),
       tInq('colBroughtForward'),
       tMe('colTaken'),
@@ -77,6 +81,7 @@ export async function GET(req: Request) {
       r.code,
       r.leaveType,
       r.entitlementYear ?? '',
+      cell(r.fullEntitlement),
       cell(r.ytdEntitled),
       cell(r.broughtForward),
       cell(r.taken),

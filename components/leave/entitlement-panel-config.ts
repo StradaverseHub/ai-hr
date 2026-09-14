@@ -142,6 +142,20 @@ export type PanelSection = {
  * Eligible is the ONE line that is not ledger-derived — it is the winning policy's full-year days
  * (`eligibleDays`), because no ledger can say what a whole year would grant.
  *
+ * r279 — AND IT IS NOW ALSO A GRID COLUMN, OFF THIS SAME FIELD. HR's Employee Balances grid gained a Full
+ * Entitlement column that reads `bd.eligibleDays` and nothing else, exactly as the `eligible` field below
+ * does. It is a PICK on both surfaces on purpose: `eligibleDays` is resolved once, in core/read.ts, through
+ * the eligibility/band path. Anything that re-resolves a band for the grid becomes a second resolver and the
+ * panel and the grid start naming two different full-year allowances.
+ *
+ * r279 also corrected the GRID'S NAME for the line below. The reporter asked for "YTD Entitled" to be renamed
+ * "Full Entitlement"; it is the accrued-to-date figure, so that name would have understated the year by ~30%
+ * — and the understatement closes on 31 December, so it would have read correctly in January, when someone
+ * finally checked. The grid's label is now "Earned to Date" (`me.leaveBalanceTable.colYtdEntitled`) and the
+ * full-year figure got its own column. The PANEL's own wording is unchanged: "Eligible (full year
+ * entitlement)" / "YTD entitled" is the reporter's verbatim column from 1f6fd6d8, and the tooltip below
+ * already describes the field correctly.
+ *
  * Adding a future line is still ONE entry here and never a JSX change; that framework property (584edf44)
  * is unchanged, and the layout affordances the reporter asked for (signs, rules, result emphasis, the expiry
  * note) are declared as field properties for exactly that reason.

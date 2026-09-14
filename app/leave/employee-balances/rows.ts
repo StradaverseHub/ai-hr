@@ -31,7 +31,13 @@ export type EmployeeBalanceRow = {
   code: string;
   /** Leave-year/cycle the breakdown reconstructed against; null when no breakdown resolved. */
   entitlementYear: string | null;
+  /** r279 — the EARNED TO DATE column. Field name unchanged (it is a stored ESS component key); only the
+   *  label moved, and the carry it used to include came out. See components/leave/leave-balance-row.ts. */
   ytdEntitled: number | null;
+  /** r279 — the FULL ENTITLEMENT column: `bd.eligibleDays`, the same figure the Explain button beside this
+   *  row already shows as Eligible. Carried off the SAME `bd` as every other figure here, so the grid and
+   *  the panel cannot quote two different full-year allowances. */
+  fullEntitlement: number | null;
   /** 31e39d74 — why YTD Entitled reads what it reads. Same value the employee's own screen shows, through
    *  the same `deriveBalanceRow`, so HR and the employee are never told two different stories about a 0.00. */
   entitlementStatus: EntitlementStatus;
@@ -108,6 +114,7 @@ export async function employeeBalanceRows(
         code: b.code ?? '',
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
         ytdEntitled: row.ytdEntitled,
+        fullEntitlement: row.fullEntitlement,
         entitlementStatus: row.entitlementStatus,
         entitlementTemplateName: bd?.entitlementTemplateName ?? null,
         sharedBalance: row.sharedBalance,

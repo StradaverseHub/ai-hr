@@ -2576,7 +2576,8 @@
       "colTaken": "Diambil",
       "colAdjustment": "Pelarasan",
       "colOverutilized": "Terlebih Guna",
-      "colYtdEntitled": "Kelayakan YTD",
+      "colFullEntitlement": "Kelayakan Penuh",
+      "colYtdEntitled": "Diperoleh Setakat Ini",
       "daysValue": "{value} Hari",
       "sortBy": "Susun mengikut {column}",
       "asAtDate": "Setakat",
@@ -2585,7 +2586,7 @@
       "colCarriedForward": "Dibawa Ke Hadapan",
       "colBalance": "Baki",
       "tip": {
-        "ytdEntitled": "Jumlah cuti yang diberikan setakat ini tahun ini, termasuk sebarang bawa ke hadapan.",
+        "ytdEntitled": "Cuti yang anda peroleh setakat ini tahun ini. Hari yang dibawa ke hadapan dari tahun lalu mempunyai lajurnya sendiri.",
         "accrued": "Cuti yang boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
         "carriedForward": "Cuti tidak digunakan yang dibawa ke tahun ini dari tahun lepas.",
         "taken": "Cuti yang telah anda gunakan.",

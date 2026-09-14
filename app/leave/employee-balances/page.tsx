@@ -339,6 +339,13 @@ export default async function EmployeeBalancesPage({
                       </Link>
                     </th>
                     <th className={th}>{tInq('colEntitlementYear')}</th>
+                    {/* r279 — FULL ENTITLEMENT sits BEFORE Earned to Date, in the Explain panel's own order
+                        (Eligible, then what has been earned against it). It is the thirteenth column and the
+                        first FIGURE added since 026e16b9 measured this table; it is placed here rather than at
+                        the end because a full-year allowance read three columns away from the earned figure it
+                        explains is the mismatch this item exists to close. The table already scrolls in
+                        `overflow-x-auto` above. */}
+                    <th className={thNum}>{tMe('leaveBalanceTable.colFullEntitlement')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colYtdEntitled')}</th>
                     <th className={thNum}>{tInq('colBroughtForward')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colTaken')}</th>
@@ -348,16 +355,17 @@ export default async function EmployeeBalancesPage({
                     <th className={thNum}>{tInq('colForfeitedBf')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colBalance')}</th>
                     <th className={th}>{tInq('colDate')}</th>
-                    {/* r242 — the twelfth column, and the only one that is not a figure. It is LAST on
+                    {/* r242 — the LAST column, and the only one that is not a figure. It is last on
                         purpose: 026e16b9 measured this table to the pixel, and a control column at the end
-                        is the one addition that pushes no numeric column around. */}
+                        is the one addition that pushes no numeric column around. (It was the twelfth when
+                        r242 added it; r279's Full Entitlement made it the thirteenth without moving it.) */}
                     <th className={th}>{tInq('colExplanation')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={13} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRows')}
                       </td>
                     </tr>
@@ -379,7 +387,14 @@ export default async function EmployeeBalancesPage({
                             measurement is still right, because that column holds the Explanation CONTROL
                             rather than a number — but a live comment asserting the opposite of the file
                             three lines below it is how the next reader is misled. It is also, on its own,
-                            the plan's "rule that applied": this caption is already on the row. */}
+                            the plan's "rule that applied": this caption is already on the row.
+                            ⚠️ r279 ADDED A THIRTEENTH, AND IT IS A FIGURE. Full Entitlement is the first
+                            numeric column added since that measurement, so the twelve-column overflow this
+                            comment describes is now a thirteen-column one. It was accepted deliberately:
+                            the reporter asked for the full-year allowance ON the grid, and the alternative —
+                            a column three places from the earned figure it explains — is what the item
+                            exists to close. The resolved-table caption still belongs here, not beside the
+                            figures. */}
                         {r.entitlementTemplateName && (
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">
                             {tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}
@@ -399,6 +414,11 @@ export default async function EmployeeBalancesPage({
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
                         {r.entitlementYear ?? '—'}
                       </td>
+                      {/* r279 — the whole year's allowance for this person's band. `num()` is the shared
+                          formatter, so a type with no entitlement table (eligibleDays = 0 — fifteen of the
+                          sixteen today) prints a clean 0.00 with the status caption beside it explaining why,
+                          and only a row with NO breakdown at all (null) falls through to the em dash. */}
+                      <td className={tdNum}>{num(r.fullEntitlement)}</td>
                       {/* 31e39d74 — the caption sits UNDER the figure, in the existing column. No new
                           column: eleven columns already overflow this table on a laptop (026e16b9 measured
                           the last 23px out of the header), and the status belongs to YTD Entitled rather

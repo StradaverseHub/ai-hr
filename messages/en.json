@@ -2576,7 +2576,8 @@
       "colTaken": "Taken",
       "colAdjustment": "Adjustment",
       "colOverutilized": "Overutilized",
-      "colYtdEntitled": "YTD Entitled",
+      "colFullEntitlement": "Full Entitlement",
+      "colYtdEntitled": "Earned to Date",
       "daysValue": "{value} Days",
       "sortBy": "Sort by {column}",
       "asAtDate": "As at",
@@ -2585,7 +2586,7 @@
       "colCarriedForward": "Brought Forward",
       "colBalance": "Balance",
       "tip": {
-        "ytdEntitled": "Total leave granted so far this year, including any brought forward.",
+        "ytdEntitled": "Leave you have earned so far this year. Days brought forward from last year have their own column.",
         "accrued": "Leave you can take now, after pending requests are set aside.",
         "carriedForward": "Unused leave brought forward into this year from last year.",
         "taken": "Leave you have already used.",

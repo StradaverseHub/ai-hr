@@ -2576,7 +2576,8 @@
       "colTaken": "Đã dùng",
       "colAdjustment": "Điều chỉnh",
       "colOverutilized": "Dùng vượt",
-      "colYtdEntitled": "Quyền lợi trong năm",
+      "colFullEntitlement": "Quyền lợi cả năm",
+      "colYtdEntitled": "Đã tích lũy đến nay",
       "daysValue": "{value} ngày",
       "sortBy": "Sắp xếp theo {column}",
       "asAtDate": "Tính đến",
@@ -2585,7 +2586,7 @@
       "colCarriedForward": "Chuyển sang",
       "colBalance": "Số dư",
       "tip": {
-        "ytdEntitled": "Tổng số ngày nghỉ được cấp đến nay trong năm, bao gồm phần chuyển sang.",
+        "ytdEntitled": "Số ngày nghỉ bạn đã tích lũy đến nay trong năm. Số ngày chuyển sang từ năm trước có cột riêng.",
         "accrued": "Ngày nghỉ bạn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
         "carriedForward": "Ngày nghỉ chưa dùng chuyển từ năm ngoái sang năm nay.",
         "taken": "Ngày nghỉ bạn đã dùng.",

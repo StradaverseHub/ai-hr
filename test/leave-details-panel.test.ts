@@ -187,6 +187,16 @@ describe('1f6fd6d8: every row PICKS a precomputed figure (no hardcoded formula)'
     // grant is already in the ledger on day one, so a part-year share would stop the column reaching
     // Available Balance. Rendering the ledger figure keeps the column closed for BOTH earning methods.
     // Guard: YTD Entitled must never be derived from Eligible.
+    //
+    // r279 — THIS ASSERTION WAS NEVER WRONG; THE NAME IT WAS WRITTEN UNDER WAS. The reporter asked for the
+    // grid's "YTD Entitled" column to be renamed "Full Entitlement". These two lines are the proof that it
+    // could not be: the figure is `currentYearEntitlement` and is provably NOT `eligibleDays`, so the new
+    // name would have put an accrued-to-date number (12.50 against a band of 18.00 on employment 02617b4a,
+    // 17.00 against 24.00 on 99e97e85) under a full-year heading. The rename was done the other way round —
+    // the grid column is now "Earned to Date" and a new Full Entitlement column binds to `eligibleDays`, the
+    // very field the first assertion below forbids this one from reading. Keep both assertions: they are now
+    // ALSO the guard that the grid's two columns can never collapse into one number.
+    // See components/leave/leave-balance-row.ts and test/r279-earned-and-full-entitlement.test.ts.
     expect(value('ytdEntitled')).toBe(DATA.breakdown.currentYearEntitlement);
     expect(value('ytdEntitled')).not.toBe(DATA.breakdown.eligibleDays);
     // Changing Eligible alone must move NOTHING else on the column — proof there is no projection wired in.

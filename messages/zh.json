@@ -2576,7 +2576,8 @@
       "colTaken": "已用",
       "colAdjustment": "调整",
       "colOverutilized": "超用",
-      "colYtdEntitled": "年度应享",
+      "colFullEntitlement": "全年额度",
+      "colYtdEntitled": "至今已累积",
       "daysValue": "{value} 天",
       "sortBy": "按{column}排序",
       "asAtDate": "截至",
@@ -2585,7 +2586,7 @@
       "colCarriedForward": "结转",
       "colBalance": "余额",
       "tip": {
-        "ytdEntitled": "本年度至今授予的休假总额，包括任何结转。",
+        "ytdEntitled": "本年度至今您已累积的休假。上一年度结转的天数另有专栏显示。",
         "accrued": "在扣除待批准申请后，您现在可休的休假。",
         "carriedForward": "从去年结转到本年的未用休假。",
         "taken": "您已使用的休假。",

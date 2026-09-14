@@ -153,16 +153,19 @@ describe('20c699f8: Employee Balances', () => {
     expect(rowsHelper).toContain('essView: {}');
   });
 
-  it('renders all eleven requested columns, plus the twelfth r242 added', () => {
-    // UPDATED BY r242 (AGENTS rule 18), not rewritten. The eleven the reporter asked for in 20c699f8 are
-    // still asserted one by one and none of them moved; what changed is that a TWELFTH column was added on
-    // the reporter's approved plan — the Explanation column whose button opens the read-only entitlement
-    // side-sheet. Deleting the eleven-column claim to make room for it would have retired a promise that is
-    // still being kept; the empty-state colSpan is the one figure that HAD to move with it, because a
-    // colSpan that no longer spans the header is a visibly broken empty row.
+  it('renders all eleven requested columns, plus the twelfth r242 added and the thirteenth r279 added', () => {
+    // UPDATED BY r242 AND AGAIN BY r279 (AGENTS rule 18), not rewritten. The eleven the reporter asked for in
+    // 20c699f8 are still asserted one by one and none of them moved; what changed is that a TWELFTH column
+    // was added on the reporter's approved plan — the Explanation column whose button opens the read-only
+    // entitlement side-sheet — and then a THIRTEENTH, Full Entitlement. Deleting the eleven-column claim to
+    // make room for them would have retired a promise that is still being kept; the empty-state colSpan is
+    // the one figure that HAD to move with them, because a colSpan that no longer spans the header is a
+    // visibly broken empty row.
     for (const col of [
       "tInq('colLeaveCode')",
       "tInq('colEntitlementYear')",
+      // r279 — the full-year allowance, immediately before the earned-to-date figure it explains.
+      "tMe('leaveBalanceTable.colFullEntitlement')",
       "tMe('leaveBalanceTable.colYtdEntitled')",
       "tInq('colBroughtForward')",
       "tMe('leaveBalanceTable.colTaken')",
@@ -177,7 +180,7 @@ describe('20c699f8: Employee Balances', () => {
     ]) {
       expect(balancesPage.includes(col), col).toBe(true);
     }
-    expect(balancesPage).toContain('colSpan={12}');
+    expect(balancesPage).toContain('colSpan={13}');
   });
 
   /**

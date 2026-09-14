@@ -289,6 +289,9 @@ const balanceInput = (over: Partial<BalanceInput> = {}): BalanceInput => ({
 
 const breakdownInput = (status: EntitlementStatus): BreakdownInput => ({
   monthlyAccruedToDate: null,
+  // r279 — this fixture describes a type with NO days resolved at all, so its full-year band is 0 too. That
+  // is the honest reading for fifteen of the sixteen live leave types, and the grid prints it as 0.00.
+  eligibleDays: 0,
   currentYearEntitlement: 0,
   carriedForward: 0,
   forfeited: 0,
@@ -685,8 +688,10 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]');
     expect(src).toContain('ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]');
-    // The number stays: YTD Entitled = currentYearEntitlement + carriedForward, so an ungenerated type
-    // with a carry-in has a REAL non-zero figure here and replacing it would be a second wrong reading.
+    // The number stays: an ungenerated type with a carry-in still has REAL figures on the row and replacing
+    // one with the caption would be a second wrong reading.
+    // ⚠️ r279 CORRECTED THE ARITHMETIC THIS COMMENT DESCRIBED: the cell is currentYearEntitlement ALONE now
+    // (the carry has its own column), and the label under which it renders is "Earned to Date".
     expect(src).toContain('{fmt(r.ytdEntitled)}');
   });
 
@@ -694,12 +699,11 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     const src = read('app/leave/employee-balances/page.tsx');
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('{num(r.ytdEntitled)}');
-    // ⚠️ TWELVE SINCE r242, AND THE CLAIM THIS PINS IS UNCHANGED: the header row and the empty-state
-    // colSpan must agree, whatever the count is. 1ff969ed added the Explanation column, so the number
-    // moved and this assertion moved with it (AGENTS 18 — a guard that pins the arrangement being
-    // replaced gets UPDATED, never deleted). 026e16b9's pixel measurement still stands for the eleven
-    // FIGURE columns; the twelfth holds a control, not a number.
-    expect(src).toContain('colSpan={12}');
+    // ⚠️ THIRTEEN SINCE r279, AND THE CLAIM THIS PINS IS UNCHANGED: the header row and the empty-state
+    // colSpan must agree, whatever the count is. 1ff969ed added the Explanation column and r279 added the
+    // Full Entitlement figure, so the number moved twice and this assertion moved with it (AGENTS 18 — a
+    // guard that pins the arrangement being replaced gets UPDATED, never deleted).
+    expect(src).toContain('colSpan={13}');
   });
 
   it('the export carries it as a column, so the file cannot disagree with the screen', () => {

@@ -40,6 +40,9 @@ const baseBalance = (over: Partial<BalanceInput> = {}): BalanceInput => ({
 
 const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): BreakdownInput => ({
   monthlyAccruedToDate: 7,
+  // r279: the full-year BAND, deliberately DISTINCT from currentYearEntitlement (20 vs 12) so a regression
+  // that binds Full Entitlement to the accrued figure — the reporter's original request — fails loudly here.
+  eligibleDays: 20,
   currentYearEntitlement: 12,
   carriedForward: 5,
   forfeited: 1,
@@ -66,7 +69,13 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(row.adjustment).toBe(2);
     expect(row.adjustment).not.toBe(baseBreakdown()!.otherAdjustments);
     expect(row.overutilized).toBe(0); // available >= 0 ⇒ 0
-    expect(row.ytdEntitled).toBe(17); // currentYearEntitlement(12) + carriedForward(5)
+    // r279 — EARNED TO DATE is currentYearEntitlement ALONE. This read 17 (12 + carriedForward 5) until the
+    // column was renamed from "YTD Entitled": a column called Earned to Date that folds in last year's
+    // leftovers misreports the year, and Brought Forward (5, asserted two lines above) is its own column.
+    expect(row.ytdEntitled).toBe(12);
+    // r279 — FULL ENTITLEMENT is the band off the breakdown, never the accrued figure and never a re-resolve.
+    expect(row.fullEntitlement).toBe(20);
+    expect(row.fullEntitlement).not.toBe(row.ytdEntitled);
     // Balance surfaces the authoritative ledger figure b.balance DIRECTLY (6574c6b4) — it is NOT re-derived from
     // the columns. Here b.balance is the ledger-consistent 15 (see fixture), so the row shows 15.
     expect(row.balance).toBe(15);
@@ -94,6 +103,7 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(row.broughtForward).toBeNull();
     expect(row.adjustment).toBeNull();
     expect(row.ytdEntitled).toBeNull();
+    expect(row.fullEntitlement).toBeNull(); // r279 — no breakdown ⇒ no band to claim; the cell renders "—".
     // ...but ledger-sourced Available / Taken still show, and Balance is the ledger figure regardless of breakdown.
     expect(row.available).toBe(8.5);
     expect(row.taken).toBe(3);

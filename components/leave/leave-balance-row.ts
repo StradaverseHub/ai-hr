@@ -25,8 +25,35 @@ export type LeaveBalanceRow = {
   adjustment: number | null;
   /** Derived max(0, -available): how far the type is over-drawn. */
   overutilized: number | null;
-  /** Derived currentYearEntitlement + carriedForward. */
+  /** r279 — EARNED TO DATE. `currentYearEntitlement` alone: the accrual-class ledger sum between cycle start
+   *  and the as-at date, i.e. what this person has actually earned so far. It is NOT the year's allowance —
+   *  that is `fullEntitlement` below, and the reporter's request to rename this one "Full Entitlement" was
+   *  answered the other way round for exactly that reason (the understatement closes on 31 December, so the
+   *  wrong name would look right in January, when someone finally checked it).
+   *
+   *  THE FIELD KEEPS THE NAME `ytdEntitled` ON PURPOSE. That string is a stored ESS view component key
+   *  (`core/ess-view.ts`, persisted per leave type in `leave_type.ess_view_config`), so renaming the field
+   *  would be a data migration for a label change. Only the LABEL moved: `me.leaveBalanceTable.colYtdEntitled`
+   *  now reads "Earned to Date".
+   *
+   *  `+ bd.carriedForward` WAS DROPPED HERE. The Explain panel's YTD Entitled line has only ever read
+   *  `currentYearEntitlement`, and Brought Forward is already its own column — a column called Earned to Date
+   *  that silently folds in last year's leftovers is the same mismatch the rename exists to close. Every
+   *  production balance carried 0 when this shipped, so no displayed figure moved; test/r279-earned-and-full-
+   *  entitlement.test.ts pins BOTH halves of that (equal at carry 0, apart by exactly the carry otherwise). */
   ytdEntitled: number | null;
+  /** r279 — FULL ENTITLEMENT: the whole leave year's allowance for this employee's company/grade/service
+   *  band, before proration, carry, adjustment or usage.
+   *
+   *  It is `bd.eligibleDays` PICKED, never recomputed. That field already resolves the winning entitlement
+   *  band in `core/read.ts` and is what the Explain panel renders as `leave.breakdown.field.eligible`;
+   *  resolving a band again in the grid would make the grid a SECOND resolver, and the two would drift the
+   *  first time a tie-break or an eligibility rule changed.
+   *
+   *  0 when no entitlement table resolves for the type (15 of 16 types today have none) — an honest 0.00
+   *  beside the status caption that already explains it, not a gap. null ⇒ no breakdown loaded at all, or
+   *  the `eligible` ESS row is hidden for this type. */
+  fullEntitlement: number | null;
   /** 31e39d74 — the caption the YTD Entitled cell needs when the figure is 0.00 for a reason. Carried on
    *  the ROW (not re-derived per screen) so My Leave, Employee Balances and its export cannot disagree
    *  about whether an entitlement is merely ungenerated. `not_configured` when no breakdown loaded — the
@@ -79,6 +106,10 @@ export type BalanceInput = {
 /** The subset of leaveEntitlementBreakdown this table consumes (null ⇒ no breakdown loaded for the type). */
 export type BreakdownInput = {
   monthlyAccruedToDate: number | null;
+  /** r279 — the winning policy's FULL-YEAR days (`LeaveEntitlementBreakdown.eligibleDays`), the Full
+   *  Entitlement column's one and only source. Required rather than optional so a call site that hands this
+   *  helper a hand-built breakdown cannot silently render an em dash where a band exists. */
+  eligibleDays: number;
   currentYearEntitlement: number;
   carriedForward: number;
   forfeited: number;
@@ -93,13 +124,17 @@ export type BreakdownInput = {
 
 /**
  * Pure column mapping — the single source of truth for every figure in a table row (sans the `detail`
- * side-sheet, which the RSC instantiates). Keeps the derivations (Overutilized, YTD Entitled) + the ESS
+ * side-sheet, which the RSC instantiates). Keeps the derivation (Overutilized) + the ESS
  * gating unit-testable without a DOM. A figure gated off by essView, or missing its breakdown, is `null` ⇒
  * the cell renders "—" and never leaks a hidden number.
  */
 export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<LeaveBalanceRow, 'detail'> {
   const showAvailable = b.essView.available !== false;
   const showTaken = b.essView.taken !== false;
+  // r279 — Full Entitlement rides the ESS key the SAME figure already has in the panel (`eligible`). HR's own
+  // grid passes an empty essView, so it is always visible there; on an employee-facing surface a tenant that
+  // has hidden the panel's Eligible row must not get the identical number back as a grid column.
+  const showEligible = b.essView.eligible !== false;
   const overutilized = showAvailable ? Math.max(0, -b.available) : null;
   // Balance = the authoritative ledger remaining (b.balance = sum of ledger days, already nets entitlement +
   // carried + adjustments − taken − forfeited), surfaced DIRECTLY rather than re-derived (6574c6b4). The old
@@ -123,7 +158,11 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     // Overutilized = how far the type is over-drawn. Gated with Available (its own negation) so a hidden
     // balance can't leak.
     overutilized,
-    ytdEntitled: bd ? bd.currentYearEntitlement + bd.carriedForward : null,
+    // r279 — Earned to Date. `currentYearEntitlement` ONLY; see the field's doc above for why the
+    // `+ bd.carriedForward` that used to be here is gone and why the field name did not change with the label.
+    ytdEntitled: bd ? bd.currentYearEntitlement : null,
+    // r279 — Full Entitlement. A PICK off the breakdown, never a re-resolved band.
+    fullEntitlement: bd && showEligible ? bd.eligibleDays : null,
     // 31e39d74 — deliberately NOT gated by essView. It is not a figure: it is the reason a figure reads
     // 0.00, and hiding the reason while showing the zero is precisely the silence the reporter raised.
     // No breakdown loaded ⇒ 'not_configured' (we cannot claim a table exists), which shows no caption.

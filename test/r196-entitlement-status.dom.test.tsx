@@ -110,6 +110,8 @@ const row = (status: EntitlementStatus): LeaveBalanceRow => ({
   adjustment: 0,
   overutilized: 0,
   ytdEntitled: 0,
+  // r279 — the full-year band for a type with no entitlement table at all: 0, printed as an honest 0.00.
+  fullEntitlement: 0,
   entitlementStatus: status,
   balance: 0,
   // r209 — no shared pool on this fixture: the caption under test is the entitlement STATUS, and a pool
