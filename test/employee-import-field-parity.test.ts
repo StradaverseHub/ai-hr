@@ -230,6 +230,12 @@ const REGISTRY: Record<string, RegistryTable> = {
         ],
       },
       {
+        // 870b79e2 (r277, migration 0464) — the Schedule Group.
+        reason:
+          'Schedule Group: the direct sibling of holidayGroupId and payrollPolicyId above and excluded for the same reason — operational configuration chosen per employee after hire. It carries a SECOND reason of its own: r277 shipped the column, the rule resolution and the allowed-shift refusal, but no screen that sets it. An import column would therefore be this field\'s first and only writer, and the refusal it would bypass lives on SHIFT assignment (core/roster.ts assertShiftsAllowedForEmploymentsTx), not on group assignment — so importing a group could seat somebody in a group that does not allow the shift they are already on. The column is decided together with the assignment screen, not ahead of it.',
+        fields: ['attendanceRuleId'],
+      },
+      {
         reason:
           'free-text organisation dimensions (v1 has no master data behind them) — a template offering values it cannot validate is exactly the drift this file exists to stop',
         fields: [
