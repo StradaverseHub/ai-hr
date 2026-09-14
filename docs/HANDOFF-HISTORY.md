@@ -1,3 +1,94 @@
+## r274 (2026-09-14) — three items shipped. `main@83ffd5f1`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 13:01:33).
+
+**Gate:** 837 files as twelve foreground chunks, **zero assertion errors**. `tsc`, `eslint`, `next build`
+clean. **Items closed: `2420718d`, `d8fa582b`, `439565ff`.**
+
+### `2420718d` — Employee Attendance is a SECOND DOOR, not a move
+
+`/attendance` is `guard: 'scopedSession'` with **no admin gate**: one screen showing each viewer their own
+scope — one row to an employee, all 83 to an administrator. The Administration group gates at GROUP level,
+so a row moved inside it becomes **invisible**, not admin-only. `a324a4b3` rev2 did exactly that and rev3
+undid it. So Records stays and an admin-gated row was added beside it.
+
+- **KNOWN, ACCEPTED, DISCLOSED:** the same href now sits in two nodes, so both parent rows highlight on that
+  page (`isParentActive` matches any child path). Both alternatives are worse — a distinct route rendering
+  the same page **breaks the screen's own tab strip** (its tabs link to `/attendance`, `/attendance/daily`,
+  `/attendance/individual`, so entering by the admin door and clicking a tab drops you out of it), and
+  teaching the rail to prefer a node is new machinery for a cosmetic result.
+- **`test/attendance-menu-relocation.test.ts` gained its FIRST EXCEPTION**, stated rather than skipped. Its
+  premise is "a screen is protected by its own guard, never by which menu hides its link". This row points
+  at a screen that **scopes rather than refuses**, so the scope is now what gets asserted for it. Adding
+  `requireAdmin` would take the screen from the staff it exists for — the same regression, reversed.
+- The parity oracle now matches on **href + labelKey**, so "appears exactly once" still holds per ROW, plus
+  a new assertion naming the single duplicated href and pinning its two rows as Records-ungated and
+  EmployeeAttendance-gated.
+
+### `d8fa582b` — "Grade Group" ALREADY WORKED; the wrong control was in front of them
+
+`core/org-criteria-form.ts:133` already built `gradeIds` from `activeGrades` (live `job_grade`, active-only).
+Every acceptance criterion in the item was already met. They could not find it because an earlier round
+noticed they "reach for grade first" and hoisted a control above the collapsed `<details>` — **the grade
+GROUP picker, the shortcut** (`eligibility-rule-form.tsx:314` states that reasoning). The field carrying the
+condition stayed shut inside Employment information.
+
+Lifted, not rebuilt: still produced by the shared builder, still posting the same name, with **one
+`renderMulti`** serving the hoisted copy and every in-section field, and filtered out of the loop so it
+draws once. Renders even with **no** grade groups — the shortcut hides without them, the condition must not.
+
+- **DECLINED:** repointing `gradeGroupIds` at `job_grade`. It would duplicate `gradeIds`, orphan 16
+  configured groups and break approval rules, claim limits and mileage rates, which name groups too.
+
+### `439565ff` — Full Flexi: judged on hours worked, not on the clock
+
+The value existed since `0188` and the service always accepted it; **only the option was disabled and the
+engine had no branch**. Un-greying alone would have marked three of the four rows in the reporter's own
+worked example wrong.
+
+A `flexiDuration` flag, true only for this type, suppresses `status='late'`, `lateMinutes` and `earlyOut`,
+joins the half-day cut-off to the `semi_flexi` arm, and blocks the `window` OT basis (which measures time
+past an end this type has not got). **`lateMinutes` and `earlyOut` are NULL, not 0** — zero asserts they
+were on time against a start that does not exist, and both feed deduction figures.
+
+`start_time` / `end_time` stay populated as the accepted clocking window: thirteen readers depend on them,
+including `payableHoursForCycle`'s clamp, `absence-days.ts:319-320`, the OT window anchor and the clock
+screen.
+
+**The service now REFUSES a Full Flexi shift with no required hours.** Without one the engine falls back to
+the span between two times that are no longer a requirement — which is exactly the trap `SemiFlex01` sits
+in on production (07:00-20:00, no override, so no overtime until hour twelve). Told to the reporter.
+
+- **Tested through the WHOLE path** — punch in, punch out, read the derived row — because lateness and
+  overtime are money. **The control cases carry equal weight:** a `normal` shift is still late at 08:31 and
+  still early-out at 16:00.
+- **Verified on production after deploy: 6 `normal`, 1 `semi_flexi`, ZERO `full_flexi`.** Nothing was
+  converted, so no attendance or payroll figure moved on release day. That was the promise; it is measured.
+- **REFUSED, each with its reason in the plan:** a Half-Day shift TYPE (half days already exist per weekday
+  via `half_pattern`, `0429`, built to *retire* this tenant's stand-in "Half Day" shifts); moving Working
+  Days to Schedule (that screen already displays them, is read-only by design, and `weekly_pattern` is
+  per-shift while the screen is per-company — asked, unanswered); removing the General card
+  (`shiftFields()` is a full-row overwrite, so a removed input nulls its column — including
+  `shift.differential`, a **pay** figure).
+
+### THE GATE, AGAIN
+
+Chunk 11 reported one failed file with **zero assertion errors** and 116 "does not exist". Run alone it
+passed — **on this HEAD and on the pre-round commit** — so it was flaky under parallel load, not a
+regression. Chunk 6 in r272 had the same signature. **A zero-assertion red is an environment report; prove
+it by running the file alone against both commits before touching anything.**
+
+### `fa2db8cb` — BLOCKED TWICE, and it needs the owner
+
+The map item was approved, blocked on the missing key, and came back **approved again with no key and no
+answer in the `block_trail`**. Re-blocked once with a sharper ask. **There is no Google Maps key on the
+server and no keyless satellite basemap exists** — this cannot start until the owner opens an account or
+says to build the keyless version. Do not re-block a third time; it needs a human conversation.
+
+**NOT done:** `a72610af` (Draft Status Employee) is surveyed, not planned. Its survey found a **real defect
+reproduced on production**: `wizard.tsx:498` renders `value={data.employment?.employmentType ?? 'full_time'}`
+— a display default never committed, so two live drafts show "Full Time" selected, store nothing, and
+cannot be activated. `:516` has the identical pattern for Hire Date. Three lines, and it is the only part of
+that item that is a defect rather than a scope request.
+
 ## r273-plan (2026-09-14) — two more items planned. `main@28d0e6d2`, nothing built, no migration.
 
 **`d8fa582b` — "Grade Group". PLANNED. ALREADY WORKS; the reporter was shown the wrong control.**
