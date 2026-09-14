@@ -1,3 +1,76 @@
+## r278-plan (2026-09-14) — the two open items planned. `main@b27351d8`, nothing built.
+
+### `3fb1a611` "Leave Credit" — the reporter designed, in detail, the engine we already shipped
+
+They sent a fourteen-point architecture for replacement leave as an earned credit: earn on a non-working
+day, manager approves, credit with expiry, FIFO consumption, `Available = Earned − Used − Reserved`, an
+eligibility policy instead of a hard-coded salary rule. **`core/toil.ts` (1503 lines, ADR-0033) already is
+that engine, and TOIL and Replacement Leave are one thing named twice** — the UI already says "Replacement
+Leave" everywhere; "TOIL" survives only in table names and `/admin/toil`.
+
+Eight of their fourteen points are shipped: `bankToilCreditTx` (:575) behind three earn paths; the mint is
+the manager's approval (`core/replacement-request.ts:433`, and `submitReplacementLeaveRequest` says in its
+own header that it "GRANTS NOTHING"); expiry frozen at approval (`:701-703`); **FIFO by expiry at
+`core/toil.ts:970`** — the only such consumption in the repo; `availableLeaveBalance` already subtracts
+pending; the 8-criterion eligibility picker exists **and this tenant has already filled it in** (55 grades,
+21 positions, 18 departments, 9 companies, 6 named employees).
+
+**Why it looks absent — three switches, any one of them sufficient, all verified live:** no `tenant_module`
+row for `toil` (9 modules active, `toil` not among them); **no leave type with `role = 'replacement'`** —
+the only candidate, code `REPLACEMENT`, was archived 2026-08-14 **with `role` NULL**, so `leaveTypeIs` is
+false for it and un-archiving alone would not be enough; and `auto_accrue_on_approval = false` on both
+policies. Result: **0 credits, 0 requests, 0 `in_lieu_accrual` ledger rows — against 44 attendance days
+carrying 7,258 OT minutes (~121 h)** worked 2026-06-22 → 09-10. They saved that config screen four times in
+August and watched nothing happen.
+
+**DECISIONS the ticket did not settle:**
+- **Refused: a separate Leave Credit Ledger.** `leave_ledger` is the single balance authority
+  (`core/leave.ts:4499`); `toil_accrual` is a register whose `ledger_entry_id` points INTO it
+  (`core/toil.ts:762`), supplying the three things a flat ledger cannot express — per-lot identity, per-lot
+  expiry, partial consumption. Their proposed table maps almost column-for-column onto it. A second one
+  would make three structures each claim to know the replacement balance. §1. **Extend, and adopt their
+  word "Leave Credit" on screen, which costs nothing.**
+- **Their RM4,000 premise is inverted, and it is a legal point.** It is not "> RM4,000 ⇒ eligible". It is a
+  statutory floor: at or below the ceiling the employee is entitled to overtime **in cash**; banking time
+  instead is lawful only with `allow_first_schedule_eligible` **and** the employee's own recorded consent
+  (`core/toil.ts:660-669`, migration 0123), and unused credit must then convert to pay rather than lapse.
+  The figure is not hard-coded — it resolves from the country pack's `ot.wageCeiling`.
+- **The one genuinely user-visible dead end is cancellation.** `core/leave.ts:5097-5101` and `:5471-5473`
+  both hard-refuse cancelling an approved replacement leave because **there is no inverse of
+  `consumeReplacementLeaveTx`**. Building that inverse is the real work in this item.
+- **Money, on two independent paths, so hand-fixed:** a `toil_accrual` row SUPPRESSES that day's overtime
+  pay in both payroll reads (`EXCLUDE_TOIL_BANKED_DAYS`, `core/payroll.ts:501-506`, applied `:2588` and
+  `:3635`) **unconditionally, not behind the module flag**; and `convert_to_pay` expiry computes the EA
+  s.60(3)/s.60D(3) figure. So an HR manual grant and a reversal both move money.
+- **`toil_policy.replacement_leave_from` (0380) is written, defaulted and read by NOTHING** — the gate is
+  the hard-coded `RL_ELIGIBLE_DAY_TYPES = Set(['rest_day','holiday'])` at `core/toil.ts:467`. The screen
+  already admits it is recorded only.
+- **Off-day earning deferred with a reason:** `attendance_day_type` is a 3-value enum on purpose
+  (`core/attendance.ts:969-976`) because an off day is paid at ordinary 1.5× under EA s.60A(3)(a).
+  Widening it is money-bearing across `plan_ot`, `PlanOtDayType`, `OtDay` and `core/payroll.ts`.
+
+**CORRECTION TO THE SURVEY, made before planning:** the survey read the 2026-09-11 `entitlement-config.reset`
+as having destroyed the customer's RL type. `fe9c73bc` is the **reporter's own reset request**, and the
+replacement type was archived 2026-08-14, *before* it. The plan says so plainly rather than implying we
+broke something.
+
+**ATTACHMENT READ FIRST this time** (§8 — the r270 process miss). `Leave Credit.docx` is the Leave Config
+menu, **not** the "Credit Reference / Entitlement Year / Expiry Date" screen their §13 describes. No screen
+in this product carries those fields together, so their §13 is a TARGET, not a description of our UI — asked
+in the plan rather than assumed. (The survey agent was blocked from the attachment by the PII classifier;
+the parent had already extracted it by attachment id.)
+
+### `3fbf7a02` Leave Balance Health — a menu row, and the reporter is right
+
+`LeaveConfigHealthCard` is mounted at `app/admin/leave-config/types/page.tsx:241` — three clicks in, on the
+Entitlements screen's Leave types tab, with nothing in the menu naming it. So the one screen that explains
+why a balance reads 0.00 is the one you must already know about. Planned as its own row directly under
+Entitlements. The per-type `LeaveConfigHealthNotice` **stays** beside the tables it warns about.
+
+Not a two-line change: a new guarded `page.tsx` needs a `SCREENS` entry (`test/function-access.test.ts`),
+and three exact-set nav guards (`leave-flyout-nav`, `r266-leave-config-rows`,
+`r269-employee-leave-inquiry-row`) will fail and must be updated, not loosened.
+
 ## r277 (2026-09-14) — five items shipped: the Schedule Group, its two tabs, the draft's fields, the per-break allowance. `main@01d808ba`, **migration 0464**.
 
 Closed: `870b79e2` · `e5ff7189` · `d91aee93` · `a72610af` · `439565ff`. Three build worktrees, disjoint
