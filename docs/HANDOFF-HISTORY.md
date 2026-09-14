@@ -1,3 +1,66 @@
+## r273-plan (2026-09-14) — two more items planned. `main@28d0e6d2`, nothing built, no migration.
+
+**`d8fa582b` — "Grade Group". PLANNED. ALREADY WORKS; the reporter was shown the wrong control.**
+
+They asked for the Grade Group dropdown to be populated from the Job Grade labels in System Labels rather
+than hard-coded. **That dropdown already exists and already does exactly that.**
+`core/org-criteria-form.ts:133` builds `{ name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi',
+options: c.grades.map(...) }`, fed from `activeGrades` — `grades.filter((g) => g.archivedAt == null)` at
+`entitlement-tables-block.tsx:230` — i.e. the live `job_grade` table, active-only, nothing hard-coded.
+Their acceptance criteria 1-7 are all met by it today.
+
+**Why they could not find it, and it is our fault.** The criteria sections render as collapsed `<details>`
+(`eligibility-rule-form.tsx:356-357`). A previous round noticed the reporter "reaches for grade first" and
+hoisted a picker above them — **and hoisted the Grade GROUP picker, not `gradeIds`**. The reasoning is
+written out at `eligibility-rule-form.tsx:314`. The wrong one of the two was put in front of them; the
+field they wanted stayed closed behind a heading. Plan: hoist `gradeIds` up beside the group picker.
+
+- **Their attachment was decisive and nearly missed.** Two screenshots: the scheme form showing sixteen
+  GROUP names, and System Labels showing **both** categories in its sidebar — **Job Grade 11** and
+  **Grade Groups 16**. The product already distinguishes them and they have both configured.
+- **Extraction gotcha:** the same `Grade Group.docx` is attached to THREE feedback requests, so
+  `where file_name = …` returned three rows and the concatenated base64 decoded to a corrupt file. Select
+  by `feedback_attachment.id`, and write to a server-side file with `psql -o` then `scp` rather than
+  piping a large `encode(...,'base64')` through the terminal.
+- **DECLINED, with the reason in the plan:** repointing `gradeGroupIds` at `job_grade` rows. It would
+  duplicate `gradeIds`, orphan sixteen configured groups, and break approval rules, claim limits and
+  mileage rates, which name grade groups too (`admin.systemLabels.gradeInUseHint` lists all five
+  consumers).
+
+**`439565ff` — Shift configuration redesign. PLANNED.**
+
+- **Full Flexi already exists** as a `shift.type` value (`0188`), is accepted by the service
+  (`core/roster.ts:68-76`), and the duration-based arithmetic is already there as
+  `normal_minutes_override` (`core/attendance.ts:1090`, `:1146`). **Only the UI option is disabled**
+  (`components/shift-time-fields.tsx:223`). The engine has **no `full_flexi` branch at all** — the four
+  `shiftType` hits in `core/attendance.ts` all feed `halfDayCutoff`, which branches on `semi_flexi` alone.
+- **So the whole job is the suppression**, not the arithmetic: lateness (`:918`, `:930`), early-out
+  (`:1136`) and the half-day cut-off (`:1019`) are still fixed-clock. Un-greying the option alone would
+  mark three of the four rows in the reporter's own worked example wrong.
+- **`start_time` / `end_time` must NOT be dropped** — `NOT NULL` and thirteen readers, including
+  `payableHoursForCycle` (clamps payable hours), `absence-days.ts:319-320`, the OT window anchor and the
+  employee clock screen. They become the accepted clocking window.
+- **REFUSED, each with its reason:** a Half-Day shift TYPE (half days already exist per weekday via
+  `half_pattern`, `0429`, which was built to *retire* this tenant's two stand-in "Half Day" shifts);
+  moving Working Days to Schedule (that screen **already exists and already displays them**, is read-only
+  by design, and `weekly_pattern` is per-shift while the screen is per-company — the unanswered question
+  is asked in the plan); and removing the "General" card (**`shiftFields()` is a full-row overwrite**, so
+  a removed input nulls its column — including `shift.differential`, a **pay** figure).
+- **PRESENTATION VS COMPUTATION, stated in the plan:** enabling `full_flexi` flips the OT basis and
+  suppresses lateness/early-out, which feed `late_deduct_minutes` and `early_out_deduct_minutes`. It must
+  not ride along with section re-labelling.
+- **Told to the reporter:** their `SemiFlex01` shift is `semi_flexi` over 07:00-20:00 with **no**
+  `normal_minutes_override`, so its normal day reads as twelve hours and no overtime accrues until hour
+  twelve. One roster row, no money moved, fix before building on it.
+- **Defect found en route, NOT in this item and to be raised separately:** the Half DayKind is honoured
+  only on the default-shift branch of `scheduleFor` (`:785-812`); the roster branch (`:681-729`) never
+  reads `half_pattern`, while `generateRosterFromTemplate` writes an ordinary row for Half dates
+  (`core/roster.ts:1682-1684`) — so a generated Saturday half-day resolves at FULL hours.
+  `test/shift-four-way-and-cutoff.test.ts:71` admits it in a comment. AM02 has `half_pattern {6}` and
+  12 roster rows.
+
+**NOT done:** nothing built. `a72610af` (Draft Status Employee) is being surveyed, not yet planned.
+
 ## r272 (2026-09-14) — Location assignment. `main@9a24f608`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 11:59:06, restarted 11:59:13).
 
 **Gate:** 835 files as twelve foreground chunks, **zero assertion errors**, peak disk 40%. `tsc`, `eslint`,
