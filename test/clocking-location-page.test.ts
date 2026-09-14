@@ -203,8 +203,40 @@ describe('f9afd1ce rev 2 — the page of its own: two sections in the reporter�
     expect(form.match(/<form/g)?.length, 'ONE form — Cancel is not a second one').toBe(1);
     expect(form.match(/<ErrorBanner /g)?.length, 'one banner').toBe(1);
     expect(at(form, '<ErrorBanner message={error} />')).toBeLessThan(at(form, "t('sectionInfo')"));
-    expect(form, 'no placeholder for the search / map that are not in this item').not.toMatch(/leaflet|openstreetmap|<iframe|mapPreview|addressSearch/i);
-    expect(form, 'no client island').not.toContain("'use client'");
+    /**
+     * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. Until this round the two lines here read:
+     *
+     *   expect(form, 'no placeholder for the search / map that are not in this item')
+     *     .not.toMatch(/leaflet|openstreetmap|<iframe|mapPreview|addressSearch/i);
+     *   expect(form, 'no client island').not.toContain("'use client'");
+     *
+     * They held the owner's decision of 2026-09-11 — recorded in this form's own header and in ADR-0070
+     * — that the screen would carry no map and no placeholder until a map provider had been chosen.
+     * rev 2 REVERSES that decision: the item was approved three times and blocked twice asking the
+     * reporter for a Google key that never came, so the map is built now on free, keyless open map data
+     * behind a provider seam (./map-provider.ts) that a paid supplier's configuration later replaces
+     * without touching this screen. A guard pinning a decision you are reversing is UPDATED, not removed
+     * (CLAUDE.md §8), so the same lines now pin what replaced it — including the half of the old guard
+     * that still holds, which is the important one.
+     */
+    expect(form, 'STILL server-rendered — the islands are separate files, this one has no client island').not.toContain("'use client'");
+    expect(form, 'the search is mounted at the top of the form').toContain('<ClockingAddressSearch provider={mapProvider} />');
+    expect(form, 'the map is mounted inside GPS and clocking settings').toContain('<ClockingMap provider={mapProvider} />');
+    expect(at(form, '<ClockingAddressSearch'), 'the search is in Location information').toBeLessThan(at(form, "t('sectionGps')"));
+    expect(at(form, '<ClockingMap'), 'the map is in GPS and clocking settings').toBeGreaterThan(at(form, 'name="radiusM"'));
+    expect(form, 'the seam is resolved ONCE, on the server, from the environment').toContain('const mapProvider = resolveMapProvider(process.env);');
+    /**
+     * ⚠️ THE WHOLE REASON THIS ROUND WAS RISKY. r272 shipped a page that returned 500 because a server
+     * component passed a FUNCTION to a client one; tsc, eslint and thirteen source guards were green.
+     * Each island takes exactly ONE prop and it is the plain provider descriptor — asserted as the whole
+     * prop list, so adding a second prop of any kind has to come back through this line.
+     */
+    const islandProps = [...form.matchAll(/<Clocking(?:AddressSearch|Map)\s+([^/>]*)\/>/g)].map((m) => m[1].trim());
+    expect(islandProps, 'one serialisable prop each — nothing callable crosses the server→client boundary').toEqual([
+      'provider={mapProvider}',
+      'provider={mapProvider}',
+    ]);
+    expect(form, 'no embed: an <iframe> map is the option that still needs a key').not.toContain('<iframe');
   });
 
   it('both pages are headed, carry the way back to Locations, and gate the form on isGroupAdmin', () => {
@@ -425,7 +457,7 @@ describe('f9afd1ce rev 2 — Save lands on the list at the row; a refusal keeps 
 });
 
 describe('f9afd1ce rev 2 — the pages render', () => {
-  it('the NEW page: two section headings in order, Save, Cancel to the list, the pre-picked link, no map', async () => {
+  it('the NEW page: two section headings in order, Save, Cancel to the list, the pre-picked link, and the keyless map', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const html = visible(await renderNew({ addPoint: loc }));
     expect(count(html, 'sectionInfo')).toBe(1);
@@ -438,7 +470,26 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(html).toContain('newClockingTitle');
     expect(html).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
     expect(html).toContain('name="reportLabel"');
-    expect(html).not.toMatch(/leaflet|openstreetmap|<iframe/i);
+    /**
+     * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. This line used to read
+     *
+     *   expect(html).not.toMatch(/leaflet|openstreetmap|<iframe/i);
+     *
+     * and was the RENDERED half of the pair that held the 2026-09-11 "no map here" decision (the source
+     * half is in the section-order describe above, where the reasoning is written out). rev 2 reverses
+     * that decision, so the same line now pins the three things the reversal actually promised, ON THE
+     * PAGE rather than in the source — with NO map key set in this environment, which is the only
+     * configuration production has ever had.
+     */
+    expect(html, 'the free supplier is credited, server-rendered: visible before Leaflet loads and still visible if it never does').toContain(
+      '© OpenStreetMap contributors',
+    );
+    expect(html, 'the Satellite control is RENDERED and visibly DISABLED — never quietly dropped').toMatch(
+      /<button type="button" disabled=""[^>]*>Satellite<\/button>/,
+    );
+    expect(html, '…and it says why, in the page, not only in a tooltip').toContain('Satellite view is off');
+    console.log('LATDUMP>>>' + html.slice(html.indexOf('name="lat"') - 120, html.indexOf('name="lat"') + 400) + '<<<LATDUMP');
+    expect(html, 'still no embed — an <iframe> map needs the key that does not exist').not.toContain('<iframe');
     // A junk or unknown addPoint pre-picks nothing.
     const plain = visible(await renderNew({ addPoint: 'not-a-uuid' }));
     expect(plain).not.toMatch(/<option value="[0-9a-f-]{36}"[^>]*selected/);
