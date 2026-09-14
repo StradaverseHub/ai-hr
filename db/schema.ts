@@ -895,6 +895,24 @@ export const employment = pgTable(
     payrollPolicyId: uuid('payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id, {
       onDelete: 'set null',
     }),
+    // 870b79e2 (r277, migration 0464) — THE SCHEDULE GROUP. The named, tenant-wide attendance_rule this
+    // employment belongs to: the object the rail now calls "Schedule Group" and the reporter's
+    // Employee → Group → Shift chain. Third of the same family as the two columns above (holiday_group_id,
+    // payroll_policy_id): a reusable named template selected per employment, nullable, ON DELETE SET NULL
+    // so deleting a group never errors an FK — the employee simply falls back to the shift's own rule.
+    //
+    // NULLABLE WITH NO BACKFILL AND NO DEFAULT, AND THAT IS THE RELEASE-DAY PROMISE. Rule resolution
+    // (core/attendance.ts scheduleFor) becomes ADDITIVE: this column, else shift.rule_id, else the
+    // tenant's is_default rule — so with every row NULL, which is what ships, every employee resolves the
+    // rule they resolve today, byte for byte. test/attendance-rule-group-resolution.test.ts pins that.
+    //
+    // ⚠️ THIS IS ALSO THE ALLOWED-SHIFT LIST, READ SIDEWAYS. The shifts a group permits are exactly the
+    // shifts whose `rule_id` is this rule; core/roster.ts assertShiftAllowedForEmployment refuses an
+    // assignment outside that set. There is deliberately NO junction table and NO second column: one shift
+    // points at one rule, which is what keeps `ruleFor` single-valued.
+    attendanceRuleId: uuid('attendance_rule_id').references((): AnyPgColumn => attendanceRule.id, {
+      onDelete: 'set null',
+    }),
     // Configurable Multi-Shift (ec4cbf63): the shift this employee NORMALLY works, set once on the profile.
     // scheduleFor resolves roster row → THIS default shift (its weekly_pattern decides working vs rest) →
     // flat company policy; a dated roster row always wins, so /roster stays the exceptions surface. Null =

@@ -143,6 +143,9 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   it('ad52212d: the three settings categories lead the node, Shift first', () => {
     // The item's actual deliverable, stated positively. Shift / Overtime Pattern / Work Schedule are the
     // three categories the reporter named; everything else follows them.
+    // 870b79e2 (r277) — the middle row now READS "Schedule Group" (nav.overtimePattern → nav.scheduleGroup).
+    // Its href is unchanged, which is all this ordering assertion reads, so the local name `otPattern`
+    // below still points at the right row; the rename is pinned by test/attendance-pack.test.ts.
     const shift = node.indexOf(`'/admin/attendance'`);
     const otPattern = node.indexOf(`'/admin/attendance-policy'`);
     const workSchedule = node.indexOf(`'/admin/attendance-policy/schedule'`);

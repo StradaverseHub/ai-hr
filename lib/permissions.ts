@@ -573,9 +573,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     // screenKey stays 'attendancePolicyConfig' (label-only, as above).
     // ad52212d round 1: the row now reads "Overtime Pattern" (nav.attendancePolicy → nav.overtimePattern) —
     // the rule library IS an overtime pattern in substance. Label-only again; screenKey untouched.
+    // 870b79e2 (r277): "Overtime Pattern" → "Schedule Group" (nav.overtimePattern → nav.scheduleGroup).
+    // Label-only for the THIRD time, and the screenKey is STILL 'attendancePolicyConfig' on purpose — a
+    // screenKey is a permission identity, and renaming it would silently revoke every grant that names it.
+    // The reason for this rename is in packs/attendance/index.ts beside the row: the rail said OVERTIME
+    // over a screen that also owns every lateness and early-out rule, so the reporter kept asking us to
+    // build the thing they already had. The routes below are untouched.
     screenKey: 'attendancePolicyConfig',
     href: '/admin/attendance-policy',
-    labelKey: 'nav.overtimePattern',
+    labelKey: 'nav.scheduleGroup',
     guard: 'requireAdmin',
     // af7a8eb4 (r186): the working-hours schedule block moved off the policy page onto its own route.
     // requireAdmin, same guard as its parent, so it rides this screen rather than getting a column.

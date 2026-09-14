@@ -16,11 +16,26 @@ const LIST = '/admin/attendance-policy';
  * 6da67ab7 — no Company field: a rule belongs to the tenant and reaches employees through the shift that
  * selects it (Shift Settings → Attendance rule).
  */
+/**
+ * 870b79e2 (r277) — one row of the "Shifts allowed" editor. `otherGroupName` is the rule the shift points
+ * at TODAY when that is not this rule; it is shown so an administrator can see, before they tick, that
+ * they are moving the shift out of another group rather than adding it to a second one.
+ */
+export type RuleShiftChoice = {
+  id: string;
+  name: string;
+  code: string | null;
+  inThisGroup: boolean;
+  otherGroupName: string | null;
+};
+
 export async function RuleForm({
   rule,
+  shifts,
   error,
 }: {
   rule: AttendanceRuleView | null;
+  shifts: readonly RuleShiftChoice[];
   error?: string;
 }) {
   const t = await getTranslations('admin.attendanceRule');
@@ -175,6 +190,52 @@ export async function RuleForm({
               {rule?.deductionsEffectiveFrom ?? t('deductionsFromNone')}
             </span>
           </p>
+        </Card>
+
+        {/* ── 870b79e2 · Shifts allowed ────────────────────────────────────────────────────────────
+            THE LIST IS shift.rule_id READ BACKWARDS, not a new relation. The set of shifts pointing at
+            this rule IS the set of shifts this group allows, so the editor writes that one column for the
+            shifts that were ticked and clears it for the ones that were not. A shift belongs to exactly
+            one group — that cardinality is what keeps rule resolution single-valued — so the row says
+            which group a shift is leaving rather than pretending it could be in both.
+
+            ⚠️ THE HIDDEN MARKER IS LOAD-BEARING. Checkboxes are omitted by the browser when unchecked, so
+            "every box cleared" and "this form never carried the editor" both arrive as an EMPTY
+            getAll('allowedShiftIds'). Without the marker, clearing the last shift would silently do
+            nothing. The marker is read as a VALUE, never by presence — the trap 7c834696 hit on this very
+            form (see `bool` in ../rule-actions.ts). */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('shiftsAllowedTitle')}</h2>
+          <p className="text-xs text-muted-foreground">{t('shiftsAllowedHint')}</p>
+          <input type="hidden" name="allowedShiftsEditor" value="1" />
+          {shifts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('shiftsAllowedEmpty')}</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {shifts.map((sh) => (
+                <li key={sh.id}>
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm has-[:checked]:bg-primary/10">
+                    <input
+                      type="checkbox"
+                      name="allowedShiftIds"
+                      value={sh.id}
+                      defaultChecked={sh.inThisGroup}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    <span className="font-medium text-foreground">{sh.name}</span>
+                    {sh.code && <span className="font-mono text-xs text-muted-foreground">{sh.code}</span>}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {sh.inThisGroup
+                        ? null
+                        : sh.otherGroupName
+                          ? t('shiftsAllowedInGroup', { group: sh.otherGroupName })
+                          : t('shiftsAllowedNoGroup')}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
 
         {/* Section 3 — Overtime */}

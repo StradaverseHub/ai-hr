@@ -293,7 +293,25 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'overtimePattern', icon: SlidersHorizontal, adminOnly: true },
+    // 870b79e2 (r277) — "Overtime Pattern" → "Schedule Group". THE LABEL WAS HIDING THE SCREEN, and this
+    // is the whole of the item's first deliverable. The reporter asked us to BUILD a named group that
+    // several shifts share so attendance rules are set up once; `attendance_rule` has been exactly that
+    // since 88e94371 — tenant-wide, name + description, holding the lateness AND early-out AND overtime
+    // sections, chosen by `shift.rule_id`, and four of the five production shifts already share one. They
+    // could not find it because the only word in the rail said OVERTIME, while the screen's own title
+    // (admin.attendanceRule.moduleTitle) reads "Lateness, Early Out & Overtime Settings". Nobody hunting
+    // for their lateness rules would open a row called Overtime Pattern.
+    //
+    // WHY "Schedule Group" AND NOT A LONGER, MORE LITERAL NAME. It is the reporter's own word for the
+    // object, it is the word both sibling plans (e5ff7189, d91aee93) then use for the thing their tabs
+    // configure, and the Schedule screen's new group selector says the same word — so the three surfaces
+    // name one object once. A descriptive "Attendance & Overtime Rules" would be accurate and still not be
+    // the phrase they searched for. The screen's own H1 keeps the literal description; the rail carries the
+    // NAME. a324a4b3's rule (key == the string it resolves to) is kept: nav.overtimePattern → nav.scheduleGroup.
+    //
+    // The href does NOT change — /admin/attendance-policy is the same screen, same guard, same
+    // lib/permissions.ts column ('attendancePolicyConfig', label-only change, as at every prior rename).
+    { href: '/admin/attendance-policy', labelKey: 'scheduleGroup', icon: SlidersHorizontal, adminOnly: true },
     // ad52212d — the Work Schedule screen (af7a8eb4 gave it this route) finally has a menu row. CalendarCheck
     // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
     // row sharing its parent's or a sibling's icon is indistinguishable there.

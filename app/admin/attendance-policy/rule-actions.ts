@@ -8,6 +8,7 @@ import {
   createAttendanceRule,
   deleteAttendanceRule,
   setAttendanceRuleStatus,
+  setRuleShifts,
   updateAttendanceRule,
   type AttendanceRuleInput,
   type OtRowInput,
@@ -87,12 +88,45 @@ function ruleFields(fd: FormData): AttendanceRuleInput {
   };
 }
 
+/**
+ * 870b79e2 — the "Shifts allowed" selection, or `null` when this submission did not carry the editor.
+ *
+ * ⚠️ THE DISTINCTION IS THE WHOLE POINT, AND IT CANNOT BE READ FROM THE CHECKBOXES. A browser omits an
+ * unchecked checkbox entirely, so "the administrator cleared every shift" and "this form never had the
+ * editor on it" both arrive as an empty `getAll('allowedShiftIds')`. Reading the boxes alone would make
+ * removing the last shift from a group silently do nothing — the exact shape of defect CLAUDE.md §8 names
+ * ("a form field that is always submitted cannot be read by presence"), inverted.
+ *
+ * The marker is therefore a hidden field read as a VALUE ('1'), never by presence — the same correction
+ * 7c834696 had to make to `bool` above, for the same reason. A caller that does not send it (a script, a
+ * future partial form) leaves the group's shifts untouched instead of wiping them.
+ */
+function allowedShiftIds(fd: FormData): string[] | null {
+  if (fd.get('allowedShiftsEditor') !== '1') return null;
+  return fd.getAll('allowedShiftIds').map((v) => String(v)).filter(Boolean);
+}
+
 export async function createAttendanceRuleAction(fd: FormData) {
   const s = await getSession();
+  // ⚠️ TWO SEPARATE try BLOCKS, NOT ONE NESTED PAIR. `redirect()` works by THROWING, so a redirect written
+  // inside a try whose catch also redirects would be swallowed by that catch and turned into an error
+  // banner reading NEXT_REDIRECT. Same shape as copyAttendanceRuleAction below, and for the same reason.
+  let created: { id: string };
   try {
-    await createAttendanceRule(s, ruleFields(fd));
+    created = await createAttendanceRule(s, ruleFields(fd));
   } catch (e) {
     redirect(`${LIST}/rules/new?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  // 870b79e2 — the group's shifts are written AFTER the rule exists, because shift.rule_id needs an id to
+  // point at. A failure here surfaces on the new rule's OWN edit form: the rule was created, so sending
+  // the operator back to a blank New form would invite them to create it a second time.
+  const shiftIds = allowedShiftIds(fd);
+  if (shiftIds) {
+    try {
+      await setRuleShifts(s, { ruleId: created.id, shiftIds });
+    } catch (e) {
+      redirect(`${LIST}/rules/${created.id}?error=${encodeURIComponent((e as Error).message)}`);
+    }
   }
   revalidatePath(LIST);
   redirect(LIST);
@@ -103,6 +137,10 @@ export async function updateAttendanceRuleAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
   try {
     await updateAttendanceRule(s, { ruleId, ...ruleFields(fd) });
+    // 870b79e2 — and the Shifts allowed list, which writes shift.rule_id for the ticked shifts and clears
+    // it for the ones that were unticked. Null ⇒ this submission did not carry the editor; leave it alone.
+    const shiftIds = allowedShiftIds(fd);
+    if (shiftIds) await setRuleShifts(s, { ruleId, shiftIds });
   } catch (e) {
     redirect(`${LIST}/rules/${ruleId}?error=${encodeURIComponent((e as Error).message)}`);
   }

@@ -653,10 +653,45 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // yet ⇒ byte-identical legacy behaviour. 6da67ab7: one Standard per TENANT, not per company — the rule is
   // chosen by the shift, and shifts are tenant-wide, so the employee's company no longer selects it.
   const defaultRule = await resolveRuleTx(tx, { ruleId: null });
+  /**
+   * 870b79e2 (r277, migration 0464) — THE EMPLOYEE'S SCHEDULE GROUP, and the ONE line of this item that
+   * touches the engine.
+   *
+   * `employment.attendance_rule_id` is the reporter's Employee → Group → Shift chain: a person can now
+   * belong to a named attendance_rule directly, instead of only inheriting whichever rule their shift
+   * happens to point at. Resolution is ADDITIVE and in this order:
+   *
+   *     employment.attendance_rule_id  →  shift.rule_id  →  the tenant's is_default ("Standard") rule
+   *
+   * WHY THE GROUP OUTRANKS THE SHIFT. The group is a statement about the PERSON ("this employee is judged
+   * by these lateness and overtime rules"), the shift's rule_id is a default attached to a template many
+   * people share. When an administrator has said both, the one they said about the individual is the one
+   * they meant. It is also what makes the allowed-shift refusal coherent: every shift the group permits
+   * carries that same rule_id anyway (core/roster.ts assertShiftAllowedForEmployment), so on any assignment
+   * the system accepts, the two agree and the precedence is invisible.
+   *
+   * ⚠️ BYTE-IDENTICAL ON RELEASE DAY, AND THAT IS TESTED, NOT ASSERTED. The column ships NULL on every
+   * employment with no backfill and no default, so `groupRule` is null for everybody and both expressions
+   * below collapse to exactly what they evaluated to before this round.
+   * test/attendance-rule-group-resolution.test.ts resolves rules for seeded employments across all three
+   * branches (roster shift / default shift / company policy) and asserts no change.
+   *
+   * A null resolve is a SAFE fallback, never an error: the FK is ON DELETE SET NULL so a dangling id is
+   * unrepresentable, and if RLS or a missing row ever made the rule unreadable, `resolveRuleTx` returns
+   * null and the employee falls through to the pre-existing chain rather than losing their rules.
+   */
+  const [empRow] = await tx
+    .select({ ruleId: employment.attendanceRuleId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  const groupRule = empRow?.ruleId ? await resolveRuleTx(tx, { ruleId: empRow.ruleId }) : null;
+  /** The rule for a branch with NO shift of its own (company policy, rest day): the group's, else Standard. */
+  const baseRule = groupRule ?? defaultRule;
   // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
   // the rule's grace-period section; else the policy-derived grace / midpoint heuristic (null ⇒ legacy).
   const ruleFor = (ruleId: string | null): Promise<ResolvedAttendanceRule | null> =>
-    ruleId ? resolveRuleTx(tx, { ruleId }) : Promise.resolve(defaultRule);
+    groupRule ? Promise.resolve(groupRule) : ruleId ? resolveRuleTx(tx, { ruleId }) : Promise.resolve(defaultRule);
   // cf21e554 — the OT windows of one shift, in grid order, or null when it declares none (which is every
   // shift until someone opens the new tab). Null and [] are deliberately the same thing to the caller: no
   // windows ⇒ workday OT stays "time worked past the shift end", byte-identical.
@@ -728,7 +763,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     otRule: null,
     // The company-policy branch has no shift, so there is nothing to carry OT windows.
     otWindows: null,
-    rule: defaultRule,
+    // 870b79e2 — the group's rule when the employee has one, else Standard. `baseRule` IS `defaultRule`
+    // for every employment that has not been put in a group, which is all of them at release.
+    rule: baseRule,
     // The policy branch's schedule IS work_start → work_end, and its late grace is the policy's own
     // (late_after − work_start) — the same figure `lateAfter` above is built from, so the measurement and
     // the status threshold cannot drift apart. No explicit early-out grace exists at policy level, so the
@@ -736,7 +773,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     scheduledStart: pol.workStart,
     scheduledEnd: pol.workEnd,
     lateGraceMinutes: grace,
-    earlyGraceMinutes: defaultRule?.earlyGracePeriodMinutes ?? 0,
+    earlyGraceMinutes: baseRule?.earlyGracePeriodMinutes ?? 0,
     crossesMidnight: false,
     source: 'policy',
   });
