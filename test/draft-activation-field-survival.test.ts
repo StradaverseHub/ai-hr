@@ -510,6 +510,134 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(stat.eisCategory).toBe('none');
   });
 
+  /**
+   * ONE NEW GROUP AT A TIME — item a72610af, and this is the case §2 above cannot reach.
+   *
+   * §2 activates a draft with EVERYTHING set, so every writer it calls finds a statutory row already
+   * seeded by the one before it. Two of the new writers REFUSE when that row does not exist —
+   * `setTaxProfileMY` throws NoIcYetError and `setOthersStatutoryMY` throws NoStatutoryProfileError — and
+   * they run AFTER `hireEmployee` has committed. So a draft whose ONLY statutory value is an OKU claim,
+   * or only the training-levy switch, is precisely the shape that would half-create an employee: the
+   * person exists, the activation throws, and the draft is left behind.
+   *
+   * The same question applies to the other two new landings for the opposite reason: `setEmploymentInfo`
+   * refuses an EMPTY write set ("Nothing to change.") and `updatePerson` rewrites the core trio on every
+   * call, so each must be called only when the draft carries something for it, and must not damage what
+   * the hire already wrote when it is.
+   */
+  describe('a draft carrying only ONE of the new groups still activates', () => {
+    /** The four Create fields plus the three Activate needs, and nothing else. */
+    const minimal = (): EmployeeDraftData => ({
+      profile: {
+        fullName: 'Minimal Case',
+        employeeCode: `MIN${randomUUID().slice(0, 6).toUpperCase()}`,
+        employeeIdMode: 'manual',
+        primaryEmail: `minimal.${randomUUID().slice(0, 8)}@survival.test`,
+        phone: '+60 12-000 0001',
+      },
+      employment: { companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-03-01' },
+      payroll: { basicSalary: '3000' },
+    });
+    const statOf = async (employmentId: string) => {
+      const [emp] = await owner.db
+        .select({ personId: schema.employment.personId })
+        .from(schema.employment)
+        .where(eq(schema.employment.id, employmentId));
+      const [stat] = await owner.db
+        .select()
+        .from(schema.employeeStatutoryMy)
+        .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+      return { personId: emp.personId, stat };
+    };
+
+    it('only an OKU claim — the tax writer needs a statutory row and must still find one', async () => {
+      const ctx = adminCtx(b);
+      const data = minimal();
+      data.statutory = { disabledIndividual: 'yes' };
+      const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 3 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const { stat } = await statOf(employmentId);
+      expect(stat, 'a statutory row was seeded for the claim to land on').toBeTruthy();
+      expect(stat.disabledIndividual).toBe(true);
+      // …and nothing else was invented: no IC, and the tax defaults are the column defaults.
+      expect(stat.icNumber).toBeNull();
+      expect(stat.numChildren).toBe(0);
+    });
+
+    it('only the training levy switch — the others-statutory writer likewise', async () => {
+      const ctx = adminCtx(b);
+      const data = minimal();
+      data.statutory = { subjectToHrdf: 'no' };
+      const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 3 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const { stat } = await statOf(employmentId);
+      // An EXPLICIT No, which is not the same as the absent "follow the company default" — that is the
+      // whole point of the tri-state (feedback 57840a6e).
+      expect(stat.subjectToHrdf).toBe(false);
+    });
+
+    it('a draft that names NO statutory value at all leaves subject_to_hrdf following the company', async () => {
+      const ctx = adminCtx(b);
+      const { id } = await saveEmployeeDraft(ctx, { data: minimal(), currentStep: 1 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const { personId } = await statOf(employmentId);
+      const rows = await owner.db
+        .select()
+        .from(schema.employeeStatutoryMy)
+        .where(eq(schema.employeeStatutoryMy.personId, personId));
+      // No statutory row at all, exactly as before this item — the new fields cannot conjure one by
+      // omission, or every hire that has no statutory detail today would start getting one.
+      expect(rows, 'no statutory row is seeded for a draft with no statutory detail').toHaveLength(0);
+    });
+
+    it('only a passport — its writer seeds the row itself, and demands no IC to do it', async () => {
+      const ctx = adminCtx(b);
+      const data = minimal();
+      data.profile!.nationality = 'Malaysian';
+      data.profile!.passportNumber = 'P9988776';
+      data.profile!.passportIssueDate = '2022-01-10';
+      data.profile!.passportExpiryDate = '2032-01-09';
+      const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 1 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const { stat } = await statOf(employmentId);
+      expect(stat.passportNumber).toBe('P9988776');
+      expect(stat.icNumber, 'a passport holder needs no MyKad').toBeNull();
+    });
+
+    it('only the probation periods — and the hire the employment write follows is unharmed', async () => {
+      const ctx = adminCtx(b);
+      const data = minimal();
+      data.employment!.probationValue = '90';
+      data.employment!.probationUnit = 'day';
+      const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 2 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const [emp] = await owner.db
+        .select()
+        .from(schema.employment)
+        .where(eq(schema.employment.id, employmentId));
+      expect(emp.probationValue).toBe(90);
+      expect(emp.probationUnit).toBe('day');
+      expect(emp.hiredOn, 'the hire date the hire wrote is untouched').toBe('2026-03-01');
+    });
+
+    it('only a preferred name — and the phone the HIRE wrote survives the profile write', async () => {
+      // `updatePerson` REWRITES fullName / primaryEmail / phone on every call rather than leaving an
+      // omitted one alone. A landing that forgot to pass the phone through would blank the number
+      // `hireEmployee` had just stored — silently, and only for drafts that happened to carry a profile
+      // field, which is the worst possible shape for a defect.
+      const ctx = adminCtx(b);
+      const data = minimal();
+      data.profile!.preferredName = 'Min';
+      const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 1 });
+      const { employmentId } = await completeEmployeeDraft(ctx, id);
+      const { personId } = await statOf(employmentId);
+      const [person] = await owner.db.select().from(schema.person).where(eq(schema.person.id, personId));
+      expect(person.preferredName).toBe('Min');
+      expect(person.phone, 'the phone survived the profile write').toBe('+60 12-000 0001');
+      expect(person.fullName).toBe('Minimal Case');
+    });
+  });
+
   it('a draft saved on ANY tab activates the same employee — the tab is not part of the record', async () => {
     // The move onto tabs added one stored value that did not exist as a concept before: which tab was
     // open. It must be navigation and nothing else. Saving the identical payload from each of the five
