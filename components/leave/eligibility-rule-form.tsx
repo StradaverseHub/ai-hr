@@ -9,7 +9,7 @@ import { Button, Field, btnPrimary, inputCls } from '@/components/ui';
 // table cannot describe the identical write in two different ways. See that file's header: the note this
 // form ships with is the one it has never had, and the label now follows the date box.
 import { EntitlementSaveModeCaption, useEntitlementSaveMode } from '@/components/leave/entitlement-save-mode';
-import type { CriteriaOption, CriteriaSection } from '@/core/org-criteria-form';
+import type { CriteriaOption, CriteriaField, CriteriaSection } from '@/core/org-criteria-form';
 import {
   applyGradeGroupSelection,
   memberGradeIds,
@@ -260,6 +260,59 @@ export function EligibilityRuleForm({
    */
   const save = useEntitlementSaveMode({ openValidFrom, validFrom, today, createLabel: submitLabel });
 
+  /**
+   * r274 (d8fa582b) — ONE renderer for a multi-select criterion, so the Job Grade picker can be lifted out
+   * of the collapsed sections WITHOUT a second definition of it. The shared builder still owns the field —
+   * its name, label and options all come from `buildOrgCriteriaSections` exactly as before. Only where it
+   * is drawn has moved.
+   */
+  /**
+   * r274 (d8fa582b) — THE JOB GRADE PICKER COMES UP OUT OF THE COLLAPSED SECTIONS.
+   *
+   * The reporter asked for the Grade Group dropdown to be "populated from the Job Grade labels under
+   * System Labels instead of being hard-coded". That dropdown already exists and already does exactly
+   * that — `core/org-criteria-form.ts` builds `gradeIds` from the active `job_grade` rows. They could not
+   * find it: a previous round noticed they "reach for grade first" and hoisted a control above the
+   * collapsed `<details>`, but hoisted the grade GROUP picker — the shortcut — and left the actual Job
+   * Grade field shut inside Employment information.
+   *
+   * So the field is lifted, not rebuilt. It is still produced by the shared builder and still posts under
+   * the same name; `renderMulti` is the one renderer both call sites use. Filtered out of the loop below
+   * so it is drawn once.
+   */
+  const gradeField = criteriaSections.flatMap((sec) => sec.fields).find((f) => f.name === 'gradeIds');
+
+  const renderMulti = (f: CriteriaField) => (
+    <ChipMultiSelect
+      /* The Job Grade picker REMOUNTS when the Grade Group picker fills it in — see the nonce
+         note above. Every other field keys on its name and mounts once, exactly as before. */
+      key={f.name === 'gradeIds' ? `gradeIds-${gradeNonce}` : f.name}
+      name={f.name}
+      label={f.label}
+      options={optionsFor(f)}
+      defaultSelected={Array.isArray(criteria[f.name]) ? (criteria[f.name] as string[]) : []}
+      addPlaceholder={t('chipAddPlaceholder')}
+      removeLabelFor={(label) => t('chipRemoveLabel', { value: label })}
+      searchPlaceholder={t('chipSearchPlaceholder')}
+      selectAllLabel={t('chipSelectAll')}
+      clearAllLabel={t('chipDeselectAll')}
+      /* Both sentences the strip below used to print, now on the control and at ANY count —
+         the old count line only appeared past four, which is exactly the range where the chips
+         were already legible. `countLabelFor` is deliberately NOT passed alongside: it would be
+         dead, since supplying this suppresses the below-control lines. */
+      triggerSummaryFor={(n, allSelected) =>
+        allSelected ? t('chipAllSelected') : t('chipCountLabel', { count: n })
+      }
+      onSelectionChange={(values) => {
+        setMulti(f.name, values);
+        // Editing grades BY HAND must re-derive the group ticks: unticking one member of a
+        // group leaves the rule covering part of it, and a Grade Group control still showing
+        // that group ticked would be claiming a coverage the rule no longer has.
+        if (f.name === 'gradeIds') setGroupNonce((n) => n + 1);
+      }}
+    />
+  );
+
   return (
     <form action={action} className="space-y-4">
       {embeddedLeaveTypeId ? (
@@ -315,6 +368,15 @@ export function EligibilityRuleForm({
           open, which is also what the approved plan asks for ("the group list comes first because it is
           what you will use"). The individual Job Grade picker is untouched and still offered below.
           Hidden entirely when the tenant has no groups: an empty picker teaches nobody anything. */}
+      {/* Job Grade FIRST — it is the condition that is actually saved on the scheme — with the group
+          shortcut beside it so the relationship between them is visible rather than explained. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {gradeField ? (
+          <div className="space-y-2 rounded-md border border-border p-3">
+            {renderMulti(gradeField)}
+            <p className="text-xs text-muted-foreground">{t('ruleJobGradeHint')}</p>
+          </div>
+        ) : null}
       {gradeGroups.length > 0 ? (
         <div className="space-y-2 rounded-md border border-border p-3">
           <ChipMultiSelect
@@ -350,13 +412,15 @@ export function EligibilityRuleForm({
           ) : null}
         </div>
       ) : null}
+      </div>
 
-      {/* The criteria the SHARED builder produced. Rendered, never enumerated here. */}
+      {/* The criteria the SHARED builder produced. Rendered, never enumerated here.
+          `gradeIds` is filtered out — it is drawn above, by the same `renderMulti`. */}
       {criteriaSections.map((section) => (
         <details key={section.key} className="rounded-md border border-border">
           <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{section.title}</summary>
           <div className="grid gap-3 border-t border-border p-3 sm:grid-cols-2">
-            {section.fields.map((f) =>
+            {section.fields.filter((f) => f.name !== 'gradeIds').map((f) =>
               f.kind === 'multi' ? (
                 /* 74d00fd2 — the bulk affordances, which are OPT-IN props of the shared control and are
                    passed HERE, at this call site, so no other screen's picker changes. Search + Select all
@@ -367,34 +431,7 @@ export function EligibilityRuleForm({
                    ⚠️ Deselect all clears only what the SEARCH BOX is currently showing. Typing "ind" and
                    pressing it unticks Indonesian and leaves the other six picks alone. That is deliberate
                    and stated in the approved plan. */
-                <ChipMultiSelect
-                  /* The Job Grade picker REMOUNTS when the Grade Group picker fills it in — see the nonce
-                     note above. Every other field keys on its name and mounts once, exactly as before. */
-                  key={f.name === 'gradeIds' ? `gradeIds-${gradeNonce}` : f.name}
-                  name={f.name}
-                  label={f.label}
-                  options={optionsFor(f)}
-                  defaultSelected={Array.isArray(criteria[f.name]) ? (criteria[f.name] as string[]) : []}
-                  addPlaceholder={t('chipAddPlaceholder')}
-                  removeLabelFor={(label) => t('chipRemoveLabel', { value: label })}
-                  searchPlaceholder={t('chipSearchPlaceholder')}
-                  selectAllLabel={t('chipSelectAll')}
-                  clearAllLabel={t('chipDeselectAll')}
-                  /* Both sentences the strip below used to print, now on the control and at ANY count —
-                     the old count line only appeared past four, which is exactly the range where the chips
-                     were already legible. `countLabelFor` is deliberately NOT passed alongside: it would be
-                     dead, since supplying this suppresses the below-control lines. */
-                  triggerSummaryFor={(n, allSelected) =>
-                    allSelected ? t('chipAllSelected') : t('chipCountLabel', { count: n })
-                  }
-                  onSelectionChange={(values) => {
-                    setMulti(f.name, values);
-                    // Editing grades BY HAND must re-derive the group ticks: unticking one member of a
-                    // group leaves the rule covering part of it, and a Grade Group control still showing
-                    // that group ticked would be claiming a coverage the rule no longer has.
-                    if (f.name === 'gradeIds') setGroupNonce((n) => n + 1);
-                  }}
-                />
+                renderMulti(f)
               ) : (
                 <Field key={f.name} label={f.label}>
                   <input

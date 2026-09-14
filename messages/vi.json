@@ -8586,6 +8586,7 @@
       "chipSearchPlaceholder": "Tìm kiếm…",
       "chipAllSelected": "Đã chọn tất cả",
       "ruleGradeGroup": "Nhóm bậc",
+      "ruleJobGradeHint": "Nhãn Bậc công việc của bạn, đọc trực tiếp từ Nhãn hệ thống. Lưu trữ một mục ở đó thì nó biến mất khỏi đây.",
       "ruleGradeGroupApplied": "Đã chọn {count} bậc công việc.",
       "ruleGradeGroupNote": "Chọn một nhóm bậc sẽ điền vào các bậc công việc mà nhóm đó đang có hôm nay. Nếu sau này có bậc gia nhập nhóm, quy tắc này vẫn giữ các bậc đã lưu cho đến khi bạn chọn lại nhóm đó.",
       "ruleGradeGroupPartial": "Quy tắc này chỉ bao gồm một phần của {groups}. Hãy chọn lại nhóm để lấy tất cả các bậc trong đó — cho đến lúc đó, quy tắc không thể được gán cho mẫu phê duyệt.",

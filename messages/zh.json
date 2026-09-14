@@ -8586,6 +8586,7 @@
       "chipSearchPlaceholder": "搜索…",
       "chipAllSelected": "已全选",
       "ruleGradeGroup": "职级组",
+      "ruleJobGradeHint": "你的职级标签，直接读取自系统标签。在那里归档一个，这里就不再显示。",
       "ruleGradeGroupApplied": "已选择 {count} 个职级。",
       "ruleGradeGroupNote": "选择职级组会填入该组当前包含的职级。若日后有职级加入该组，本规则仍保留保存时的职级，直到您重新选择该组。",
       "ruleGradeGroupPartial": "本规则仅覆盖 {groups} 的一部分。请重新选择该组以纳入其全部职级——在此之前，它无法分配到审批模板。",

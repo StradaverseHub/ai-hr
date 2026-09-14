@@ -8586,6 +8586,7 @@
       "chipSearchPlaceholder": "Cari…",
       "chipAllSelected": "Semua dipilih",
       "ruleGradeGroup": "Kumpulan gred",
+      "ruleJobGradeHint": "Label Gred Pekerjaan anda, dibaca terus daripada Label Sistem. Arkibkan satu di sana dan ia hilang dari sini.",
       "ruleGradeGroupApplied": "{count} gred pekerjaan dipilih.",
       "ruleGradeGroupNote": "Memilih kumpulan gred akan mengisi gred pekerjaan yang ada dalam kumpulan itu hari ini. Jika satu gred menyertai kumpulan itu kemudian, peraturan ini kekal dengan gred yang disimpan sehingga anda memilih kumpulan itu semula.",
       "ruleGradeGroupPartial": "Peraturan ini hanya meliputi sebahagian daripada {groups}. Pilih kumpulan itu semula untuk mengambil setiap gred di dalamnya — sehingga itu, ia tidak boleh ditetapkan kepada templat kelulusan.",
