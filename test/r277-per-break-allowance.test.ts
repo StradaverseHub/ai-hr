@@ -32,6 +32,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, prefillOvertimeFromAttendance } from '../core/payroll';
+import { formatBreakDisplay } from '../core/shift-break-display';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -418,5 +419,36 @@ describe('r277 — Semi Flexi, where every break is flexible by rule', () => {
     const row = await shiftRow(sh.id);
     expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00', flexible: true, clockingRequired: false, flexibleMinutes: 30 }]);
     expect(row.breakMinutes).toBe(30);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * The Break Time column on the shift table flags a DRIFTED row — one whose windows do not add up to the
+ * break_minutes the engine deducts. A per-row allowance makes them differ ON PURPOSE, so the badge has
+ * to count the allowance rather than warn about the feature working.
+ */
+describe('r277 — the shift table’s drift badge counts the allowance, not the window', () => {
+  it('does not warn when the allowance is what break_minutes was written from', () => {
+    const d = formatBreakDisplay(
+      [
+        { start: '13:00:00', end: '14:00:00', flexible: true, flexibleMinutes: 30 },
+        { start: '16:00:00', end: '16:15:00' },
+      ],
+      45,
+    );
+    expect(d.mismatchMinutes).toBeUndefined();
+    // The window is still shown at its real length — 13:00–14:00 is an hour long whatever it is worth.
+    expect(d.rows.map((r) => r.minutes)).toEqual([60, 15]);
+  });
+
+  it('still warns on a genuinely drifted row', () => {
+    const d = formatBreakDisplay([{ start: '13:00:00', end: '14:00:00', flexible: true, flexibleMinutes: 30 }], 60);
+    expect(d.mismatchMinutes).toBe(60);
+  });
+
+  it('is unchanged for a shift with no allowance anywhere', () => {
+    expect(formatBreakDisplay([{ start: '13:00:00', end: '14:00:00' }], 60).mismatchMinutes).toBeUndefined();
+    expect(formatBreakDisplay([{ start: '13:00:00', end: '14:00:00' }], 45).mismatchMinutes).toBe(45);
   });
 });
