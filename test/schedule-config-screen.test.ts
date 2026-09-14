@@ -72,7 +72,7 @@ describe('1c5602cc — the Schedule screen is added ALONGSIDE Work Schedule', ()
   });
 });
 
-describe('1c5602cc — six named tabs, and ONLY General is built', () => {
+describe('1c5602cc — six named tabs; r277 built two more of them', () => {
   it('the tabs are the reporter\'s six, in the reporter\'s order', () => {
     expect([...SCHEDULE_TAB_KEYS]).toEqual([
       'general',
@@ -84,10 +84,32 @@ describe('1c5602cc — six named tabs, and ONLY General is built', () => {
     ]);
   });
 
-  it('the other five tabs render EMPTY — no panel is supplied for them', () => {
+  /**
+   * ⚠️ THE SCOPE FENCE, AND IT HAS MOVED ONCE — DELIBERATELY, WITH A REASON WRITTEN DOWN.
+   *
+   * 1c5602cc built General and left five tabs NAMED AND EMPTY, and this assertion said `['general']`. Its
+   * own message named the condition under which it should change: "Do not fill one in with a control
+   * unless the storage behind it actually ships; when it does, raise that tab as its own item and change
+   * this assertion with it." That is exactly what happened.
+   *
+   * r277 (e5ff7189 + d91aee93, each raised and approved as its own item) filled in Attendance and
+   * Overtime, and NOTHING on either tab is a control drawn at a value nothing stores. Every figure they
+   * render is a column that has existed on `attendance_rule` since 88e94371 and is already configured on
+   * both production rule sets: the two grace periods, the late-in / early-out interval-and-minutes pairs
+   * and the recording switch, the before-shift overtime switch, and the per-band rounding mode and step
+   * from `attendance_rule_ot_row`. AGENTS 28 is not weakened here; it is satisfied.
+   *
+   * THE FENCE IS STILL A FENCE. Holiday, Request and Notification remain named and empty, and the settings
+   * that belong to LATER stages of the two approved plans must not arrive on Attendance or Overtime
+   * either — pairing method, minimum interval between clockings, skip-lateness on an incomplete clocking,
+   * deduct-break, the clocking-method switches, Enable Overtime, the after-shift switch, backdated
+   * overtime without clocking, approval method, Intersect, and offset-overtime-by-lateness (which is the
+   * only one of them that moves money and ships alone). Adding a panel key here still fails, loudly.
+   */
+  it('exactly three tabs have panels — Holiday / Request / Notification still render EMPTY', () => {
     const src = read('app/admin/attendance/schedule/page.tsx');
     // The shell renders `emptyLabel` for any tab whose panel is absent (components/personnel-tabs.tsx),
-    // so "named and empty" is exactly "this object has one key".
+    // so "named and empty" is exactly "this object has no key for it".
     const m = src.match(/panels=\{\{([^}]*)\}\}/);
     expect(m, 'The page no longer passes a `panels={{ … }}` object to ClientTabs.').not.toBeNull();
     const supplied = m![1]
@@ -97,12 +119,60 @@ describe('1c5602cc — six named tabs, and ONLY General is built', () => {
       .sort();
     expect(
       supplied,
-      `Only the General tab is in scope for 1c5602cc. Holiday / Overtime / Attendance / Request / ` +
-        `Notification ship NAMED AND EMPTY so the shape is visible and nobody wonders whether they were ` +
-        `forgotten — AGENTS 28: an empty named tab is honest, a placeholder implying a setting exists is ` +
-        `worse than an absent one. Do not fill one in with a control unless the storage behind it actually ` +
-        `ships; when it does, raise that tab as its own item and change this assertion with it.`,
-    ).toEqual(['general']);
+      `The tabs with panels are General (1c5602cc), Attendance (e5ff7189 stage 1) and Overtime ` +
+        `(d91aee93 stage 1) — no more and no fewer. Holiday / Request / Notification ship NAMED AND EMPTY ` +
+        `so the shape is visible and nobody wonders whether they were forgotten. Do not fill one in with a ` +
+        `control unless the storage behind it actually ships; when it does, raise that tab as its own item ` +
+        `and change this assertion with it, as r277 did.`,
+    ).toEqual(['attendance', 'general', 'overtime']);
+  });
+
+  it('the two new tabs show settings that ALREADY EXIST, and read them from the Schedule Group', () => {
+    // Non-vacuity for the assertion above: "attendance" and "overtime" could be present as empty
+    // fragments and the key-set check would still pass. These are the stored columns the plans promised,
+    // named one by one, so a panel emptied out in a later round fails here rather than silently.
+    const src = read('app/admin/attendance/schedule/page.tsx');
+    for (const field of [
+      'lateGracePeriodMinutes',
+      'earlyGracePeriodMinutes',
+      'lateAfterMinutes',
+      'lateDeductMinutes',
+      'earlyAfterMinutes',
+      'earlyDeductMinutes',
+      'applyDeductions',
+      'applyToEarlyOt',
+      'roundingMode',
+      'roundToMinutes',
+    ]) {
+      expect(src, `the Attendance/Overtime tabs render attendance_rule.${field}`).toContain(field);
+    }
+    // And they render it FOR A CHOSEN GROUP — the screen has to know which one.
+    expect(src, 'a group selector exists').toMatch(/selectedGroup/);
+    expect(src, 'the groups come from the rule library, tenant-wide').toMatch(/listAttendanceRules/);
+  });
+
+  /**
+   * ⚠️ THE ONE SENTENCE THIS SCREEN MAY NEVER SAY.
+   *
+   * `late_deduct_minutes` and `early_out_deduct_minutes` are derived and STORED, and nothing in
+   * core/payroll.ts or core/pay-components.ts reads either. A screen that calls them a deduction from PAY
+   * asserts a behaviour the system deliberately has not built, and the reporter would discover the truth
+   * on a payslip that did not move. The wording is the deliverable, so it is pinned.
+   */
+  it('never describes the late / early minutes as reducing pay', () => {
+    const en = JSON.parse(read('messages/en.json')).admin.scheduleConfig;
+    const prose = [en.recordRulesTitle, en.recordRulesHint, en.colRecorded, en.recordSwitchLabel, en.notPayNote].join(' ');
+    for (const forbidden of [/deduct(s|ed|ion)? from (their |the )?pay/i, /reduce[sd]? (their |the )?(pay|salary|wage)/i, /docked/i]) {
+      expect(prose, `the Attendance tab must not claim these minutes change pay (${forbidden})`).not.toMatch(forbidden);
+    }
+    // Stated positively, so the guard cannot be satisfied by saying nothing at all.
+    expect(en.notPayNote, 'the tab says plainly that no payslip is reduced').toMatch(/no payslip is reduced/i);
+    // …and the claim stays true only while payroll really does not read the figure.
+    for (const f of ['core/payroll.ts', 'core/pay-components.ts']) {
+      const src = read(f);
+      expect(src, `${f} must not read lateDeductMinutes`).not.toMatch(/lateDeductMinutes|late_deduct_minutes/);
+      expect(src, `${f} must not read earlyOutDeductMinutes`).not.toMatch(/earlyOutDeductMinutes|early_out_deduct_minutes/);
+    }
   });
 });
 
