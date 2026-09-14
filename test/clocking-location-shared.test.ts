@@ -254,9 +254,25 @@ describe('f9afd1ce — the two screens', () => {
     const page = read('app/admin/personnel/[employmentId]/page.tsx');
     expect(page).toContain('await listClockingLocations(s) : []');
     expect(page).not.toContain('listClockingLocations(s, [emp.companyId])');
-    // The empty state must not claim clock-in is unavailable when shared sites exist: the sentence now
-    // reports the linked count and says every shared site is offered.
-    expect(page).toContain("tc('linkedPoints', { count: resolvedLocationPointCount })");
+    /**
+     * r272 (0e8cf366) — THE PROTECTION SURVIVES, THE SENTENCE DOES NOT.
+     *
+     * f9afd1ce's rule was: the empty state must not claim clock-in is unavailable when shared sites
+     * exist. It met that rule by reporting how many clocking points were linked to the employee's work
+     * location. That sentence was itself the problem the reporter filed 0e8cf366 about — it is the card
+     * telling you about their BRANCH when the engine has never consulted one — so it is gone.
+     *
+     * The rule is met a better way now. The empty state names the actual reason nothing resolves (nothing
+     * is assigned) and the actual consequence (with geofencing enforced, that employee is refused
+     * everywhere — `resolveGeofence` fails closed on zero assigned sites). It blames neither the work
+     * location nor the shared register, which is what the original assertion was defending.
+     */
+    expect(page).not.toContain('resolvedLocationPointCount');
+    expect(page, 'the empty state is about the ASSIGNMENT').toContain("tc('noneAssigned')");
+    const en = JSON.parse(read('messages/en.json'));
+    const empty = en.people.detail.clocking.noneAssigned as string;
+    expect(empty, 'it must not blame the work location or the branch').not.toMatch(/work location|branch/i);
+    expect(empty, 'and it states the real consequence').toMatch(/cannot clock in/i);
     expect(page).not.toContain("tc('noSites')");
   });
 
