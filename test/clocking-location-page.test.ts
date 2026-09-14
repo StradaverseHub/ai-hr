@@ -497,12 +497,24 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(count(clocking, 'delete'), 'Delete (the mocked translator echoes the key) on each row').toBeGreaterThanOrEqual(2);
   });
 
-  it('the LIST and the pages as a COMPANY-SCOPED admin: no Edit, no Add, no form — the note instead', async () => {
+  it('the LIST and the pages as a COMPANY-SCOPED admin: no Edit, no Add, no form — a View instead', async () => {
     const { id } = await createClockingLocation(ADMIN, { name: 'Gate B', lat: HQ.lat, lng: HQ.lng, radiusM: 200, reportLabel: 'GB' });
     ADMIN = await adminFor(b.companyId);
     const list = visible(await renderList());
     expect(list).toContain('sharedManagedByGroupAdmin');
-    expect(list).not.toContain(clockingEditPage(id));
+    /**
+     * r272 (0e8cf366) — UPDATED. This asserted the edit page's URL was ABSENT from the list, which was
+     * true only because nothing linked to it: a company-scoped admin could see a site on the list and had
+     * no way to open it, while `clocking/[id]/page.tsx` has always rendered them a read-only fact list.
+     * They now get a View.
+     *
+     * The subject of this test is unchanged and still asserted: no EDIT control, no Add, and no form at
+     * the destination — the loop below proves the last of those directly, which is why linking the URL is
+     * safe. What is forbidden is the affordance to change something, not the ability to read it.
+     */
+    expect(list, 'no Edit control for this role').not.toContain('>edit<');
+    expect(list, 'and it is a View that links there').toContain('>view<');
+    expect(list).toContain(clockingEditPage(id));
     expect(list).not.toContain(`href="${CLOCKING_NEW_PAGE}"`);
     expect(list).toContain('Gate B');
     expect(list).toContain('reportLabel</span> GB<');
