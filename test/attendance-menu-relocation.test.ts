@@ -58,7 +58,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // 1c5602cc (r263) — EIGHT: Schedule, the tabbed working-pattern configuration screen. It reads the
     // shift library and every in-scope company's working week, so it names tenant-wide configuration the
     // same way its neighbours do, and it carries its own requireAdmin below rather than trusting the row.
+    //
+    // r274 (2420718d) — NINE, and the new one is the FIRST EXCEPTION this file has ever carried.
+    // `/attendance` is Employee Attendance: an administrator-gated ROW pointing at a screen that is NOT
+    // admin-guarded, because it is self-service and scopes rather than refuses. See the exclusion and its
+    // replacement assertion below — the premise of this file survives, it is simply met a different way.
     expect(adminRoutes).toEqual([
+      '/attendance',
       '/admin/attendance',
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',
@@ -89,6 +95,26 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // Either helper is fine — both resolve the session server-side and refuse a non-administrator.
     // What must not happen is a page relying on the sidebar having hidden its link.
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
+  });
+
+  it('/attendance is the exception, and it is protected by SCOPING rather than by refusal', () => {
+    /**
+     * r274 (2420718d) — the one admin row whose screen is not admin-guarded, stated rather than skipped.
+     *
+     * `/attendance` is `guard: 'scopedSession'`: one screen that shows each viewer exactly their own
+     * scope — a single row to an employee, every employee to an administrator. Adding `requireAdmin` to
+     * it would take it away from the staff it primarily exists for, which is the regression this whole
+     * file is about, pointing the other way.
+     *
+     * This file's premise is unchanged: the screen is protected by something of its OWN and never by the
+     * sidebar having hidden its link. Here that protection is the scope, so the scope is what gets
+     * asserted. The `adminOnly` flag on the ROW is about not OFFERING an administrative entry point to a
+     * non-administrator; it was never what protects the data.
+     */
+    const src = read('app/attendance/page.tsx');
+    expect(src, 'it resolves the session and its scope server-side').toContain('await scopedSession()');
+    expect(src, 'and the reads are narrowed to that scope').toMatch(/companyIds:\s*scopeIds/);
+    expect(src, 'deliberately NOT admin-guarded — see above').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
   });
 
   it('rev3: the config menu is INSIDE Administration, between Leave config and Claims config — and is the ONLY thing called "Attendance"', () => {
@@ -174,9 +200,25 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
         .map((c) => c.href)
         .join(', ')}`,
     ).toBe(true);
-    for (const gone of ['/attendance', '/roster', '/attendance/import']) {
+    for (const gone of ['/roster', '/attendance/import']) {
       expect(merged.children.some((c) => c.href === gone), `${gone} must NOT be in the admin node`).toBe(false);
     }
+    /**
+     * r274 (2420718d) — `/attendance` LEFT this list, and what it was defending did not.
+     *
+     * The risk is an employee losing the screen because a row of theirs ended up behind a group-level
+     * gate. That is still forbidden: the ungated Records row must still be in the self-service node. What
+     * is now allowed beside it is an ADDITIONAL admin-gated row pointing at the same screen — the
+     * reporter's Employee Attendance — which takes nothing away from anybody.
+     */
+    const adminCopy = merged.children.filter((c) => c.href === '/attendance');
+    for (const c of adminCopy) {
+      expect(c.adminOnly, 'any /attendance row in the admin node must be gated').toBe(true);
+    }
+    const selfService = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
+    const records = selfService.children.find((c) => c.href === '/attendance');
+    expect(records, 'Records is still in the self-service node').toBeDefined();
+    expect(records?.adminOnly, 'and still ungated, which is the whole protection').toBeUndefined();
 
     // …and they are still reachable somewhere ungated.
     const mine = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
