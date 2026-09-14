@@ -1,3 +1,85 @@
+## r271 (2026-09-14) — the entitlement tables became ONE table. `main@8f93a5a4`, no migration (journal stays 379). DEPLOYED (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 10:31:51, restarted 10:31:57).
+
+**Gate:** 834 files as twelve foreground chunks, every chunk `exit=0` with counted == asked, **zero
+assertion errors**, peak disk 43%. `tsc`, `eslint` and `next build` clean. No `gate:shadow` — no migration.
+
+**Item closed:** `6d29e11c` — the item **I raised at the end of r270** to disclose that the tab shipped with
+three blocks where the approved sketch drew one.
+
+### THE MERGE, AND WHY MOST OF THE WORK WAS SUBTRACTION
+
+r270 built the four-column grid as a second Card above the managed list. The grid drew only versions IN
+FORCE; the list drew EVERY version, and **a stopped version's row is the only place its lineage's Delete
+button lives**. So the obvious merge — render the grid, drop the list — silently takes rows off the screen
+along with the only way to clear them. `entitlementGridRows` now owns every row the screen draws:
+
+- a **stopped** version gets its own reach kind, so it says "reaches nobody" rather than borrowing
+  "no benefit scheme names this table", which is a claim about a LIVE table;
+- a version with **no service bands** emits one row instead of falling out of a `forEach` over `[]`;
+- a stopped version is **not** credited with the schemes naming its lineage — a scheme names a lineage, and
+  drawing it against a closed version would say people receive those days.
+
+`firstOfTable` is true once per VERSION across all its reaches (two schemes would otherwise draw two Delete
+buttons for one table); `firstOfReach` heads each scheme's band run so the Job grade cell does not repeat.
+
+**The grid renders on BOTH mounts now.** Two layouts out of one component is the second implementation this
+area exists to prevent; `scoped` still hides the Leave type column.
+
+### DECISIONS
+
+- **"Anyone no benefit scheme covers", NOT the sketch's "Everyone else".** A default table on a leave type
+  with no schemes produces exactly one row, and "Everyone else" there is *else than nobody*. A mockup's
+  caveat covers wording; it does not cover saying something meaningless. The list's older wording is true
+  in both arrangements.
+- **Nine catalogue keys retired across six locales** as their surfaces merged — `gridTitle`, `colBands`,
+  `colCovers`, `colRules`, `gridEveryoneElse`, `ruleNonePointsHere`, `gridDefaultSuffix`,
+  `whoQualifiesLink`, plus `templateNoBands` added. Every guard that pinned one was **updated with its
+  reasoning**, never dropped: `r209`'s per-leave-type marker moved into the derivation and is pinned there;
+  `r269`'s rendering count went 3 → 2 *because surfaces merged*, which is the number doing its job;
+  `r210`'s row-action slice follows the new row map.
+- **The Company rules sentence** is built from the map's own screen title, so the sentence and the tab it
+  points at cannot drift.
+
+### A GUARD OF MINE WAS VACUOUS, AND THE MUTATION PASS CAUGHT IT
+
+`r271-one-table` §D checked that the group cells sit behind `r.firstOfTable` by looking for that flag
+within 260 characters BEFORE each cell. **The row's own `className={r.firstOfTable ? …}` sits a few
+characters above**, so stripping the condition off the Leave type cell left the test green. Five mutations
+were run; four failed correctly and this one did not. It now pins the exact conditionals.
+**A proximity window around a flag that also appears on the enclosing element measures nothing.**
+
+### ALSO THIS ROUND — `0e8cf366` PLANNED, and a decision raised
+
+The reporter filed a large Clocking Location redesign at 09:4x, ~15 minutes after creating their FIRST
+clocking location (09:29) and editing it (09:30) on the r267 screen and finding no map.
+
+**Its central premise is false and the plan opens by saying so.** `resolveGeofence`
+(`core/attendance.ts:194`) joins `employee_clocking_location` to `clocking_location` and nothing else —
+no company, no state, no holiday group, no branch; `clocking_location` has had no `company_id` since
+`0459`. **Eight of the eighteen requested points are already live** (shared master, create-before-assign,
+per-site radius, multi-assignment, clock-only-at-assigned, live master propagation, the correction-request
+escape hatch, the cross-company relationship). What makes it LOOK company-driven is three cosmetic things,
+all fixable: a branch-derived **pre-tick** that seeds a control and never saves, company-named headings on
+the admin list, and a string that sends a holiday-calendar problem to the clocking screen.
+
+- **CHALLENGED and declined: merging the two personnel cards.** `location` carries `state`,
+  `holiday_group_id` and `branch` and is joined by `core/holidays.ts:187`/`:311` to resolve the public
+  holiday calendar; its assignment is effective-dated and is the payroll/OT spine. `clocking_location` is a
+  geofence circle. Merging destroys a business fact. Proposed rename + declutter instead, with the reject
+  path offered.
+- **RAISED as its own item `fa2db8cb`: which map provider.** Satellite has **no keyless option** — Google,
+  Mapbox, MapTiler and Esri each need an account, a key and billing. Keyless OSM/Nominatim can do map,
+  marker, radius circle and search, at the cost of attribution, a no-search-as-you-type policy, no
+  availability guarantee and every searched address leaving the tenant. That is the owner's call, so it is
+  `raise`d rather than buried in a plan approve cannot answer.
+- **Timezone refused, with the reason.** No timezone column exists on either table and `lib/hr-date.ts:11`
+  hard-wires `Asia/Kuala_Lumpur`; a per-site timezone changes how every attendance date is computed.
+- **The honest headline given to the reporter:** none of this is switched on. **0 of 83** employments have
+  geofencing enabled, **0** location assignments exist, all 253 punches are `not_enforced`, and **0**
+  locations carry a branch — so the chain they describe has never had the data to fire.
+
+**NOT done:** `cleanroom-verify.sh` (the RLS-as-`ai_hr_app` run) again not performed; the receipt says so.
+
 ## r271-plan (2026-09-14) — the one open item planned. `main@afaae29b`, nothing built, no migration.
 
 Only item on the board was `6d29e11c`, **which I raised myself at the end of r270** to disclose that the
