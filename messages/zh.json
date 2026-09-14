@@ -270,7 +270,7 @@
     "notifications": "通知",
     "analytics": "分析",
     "shift": "班次",
-    "overtimePattern": "加班模式",
+    "scheduleGroup": "排班组",
     "workSchedule": "工作排程",
     "scheduleAssignment": "排班分配",
     "timeOffInLieu": "调休",
@@ -8323,7 +8323,12 @@
       "deductionsFromNone": "未启用",
       "otLadderGapWarning": "第 {row} 行必须从 {expected} 分钟开始才能接续第 {prev} 行——它从 {actual} 开始。在各行衔接之前无法保存。",
       "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。",
-      "scheduleBackToRules": "返回计算规则"
+      "scheduleBackToRules": "返回计算规则",
+      "shiftsAllowedTitle": "允许的班次",
+      "shiftsAllowedHint": "遵循本组迟到、早退与加班规则的班次。一个班次只属于一个组，因此在此勾选会把它从当前所属的组中移出；取消勾选则会让它沿用标准组。",
+      "shiftsAllowedEmpty": "目前还没有可选的班次。",
+      "shiftsAllowedInGroup": "当前属于 {group}",
+      "shiftsAllowedNoGroup": "尚未分组"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",

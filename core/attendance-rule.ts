@@ -212,6 +212,64 @@ export function listAttendanceRules(ctx: SessionContext): Promise<AttendanceRule
   });
 }
 
+/**
+ * 870b79e2 (r277) — THE SCHEDULE GROUP'S "SHIFTS ALLOWED" LIST, read and written from the group's side.
+ *
+ * The reporter asked for a "Shifts allowed" field on the group. The link they are describing already
+ * exists — it is `shift.rule_id` — but it can only be set one shift at a time from the shift's own form,
+ * which is why they read it as missing: nothing on the group's screen said which shifts belonged to it.
+ *
+ * ⚠️ NO JUNCTION TABLE AND NO NEW COLUMN, AND THAT IS A DESIGN DECISION, NOT A SHORTCUT. A shift points at
+ * exactly ONE rule. That cardinality is what makes rule resolution single-valued: core/attendance.ts
+ * ruleFor asks a shift for "its" rule and must get one answer. A many-to-many here would make two lateness
+ * rules applicable to the same person on the same day with nothing in the system able to choose — which is
+ * the case the approved plan asks the reporter to reject the design over if they ever need it.
+ *
+ * DETACHING IS NOT DELETING. A shift removed from a group has its rule_id set to NULL, which means it
+ * resolves the tenant's Standard rule — the same thing a shift that was never given a rule does. It is
+ * never left pointing at a rule it is not listed under.
+ *
+ * ⚠️ KNOWN AND ACCEPTED: this does NOT retroactively re-examine employees. Removing a shift from a group
+ * that one of the group's members is already rostered onto leaves that roster row alone. The refusal is on
+ * ASSIGNMENT (core/roster.ts assertShiftsAllowedForEmploymentsTx) and attendance already recorded is never
+ * re-derived, exactly as changing a backup shift has always behaved. Building the reverse check would mean
+ * a rule screen that can refuse a legitimate reorganisation because of one rostered day, and no plan asks
+ * for it. Disclosed rather than hidden.
+ */
+export function setRuleShifts(
+  ctx: SessionContext,
+  p: { ruleId: string; shiftIds: readonly string[] },
+): Promise<{ attached: number; detached: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [rule] = await tx.select({ id: attendanceRule.id }).from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1);
+    if (!rule) throw new Error('Rule not found');
+    // Only shifts that actually exist in this tenant can be attached; RLS scopes the read, so a posted id
+    // from another tenant simply is not in this list and is dropped rather than written.
+    const all = await tx.select({ id: shift.id, ruleId: shift.ruleId }).from(shift);
+    const known = new Set(all.map((r) => r.id));
+    const wanted = new Set([...p.shiftIds].filter((id) => known.has(id)));
+    const current = new Set(all.filter((r) => r.ruleId === p.ruleId).map((r) => r.id));
+    const toAttach = [...wanted].filter((id) => !current.has(id));
+    const toDetach = [...current].filter((id) => !wanted.has(id));
+    if (toAttach.length === 0 && toDetach.length === 0) return { attached: 0, detached: 0 };
+    if (toAttach.length > 0) {
+      await tx.update(shift).set({ ruleId: p.ruleId }).where(inArray(shift.id, toAttach));
+    }
+    if (toDetach.length > 0) {
+      await tx.update(shift).set({ ruleId: null }).where(inArray(shift.id, toDetach));
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-rule',
+      aggregateId: p.ruleId,
+      eventType: 'attendance-rule.shifts-assigned',
+      actor: actorOf(ctx),
+      payload: { attached: toAttach, detached: toDetach },
+    });
+    return { attached: toAttach.length, detached: toDetach.length };
+  });
+}
+
 /** One rule by id (with OT rows), or null. Read-only — no event. */
 export function getAttendanceRule(ctx: SessionContext, ruleId: string): Promise<AttendanceRuleView | null> {
   return withTenant(ctx, async (tx) => {

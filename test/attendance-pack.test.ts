@@ -86,8 +86,14 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // reporter's settings categories now, so "Shift settings" → "Shift" (the word "settings" is the node
     // above them) and "Attendance policy" → "Overtime Pattern". Parity is still about the ROW — same href,
     // same icon ref, same gate, still exactly once — which is what the assertions below read.
+    //
+    // 870b79e2 (r277) renamed the second of those two a THIRD time, and the string moved with it again:
+    // "Overtime Pattern" → "Schedule Group". Same href, same icon ref, same gate, still exactly once —
+    // which is everything this oracle asserts. The key is updated here rather than the row being
+    // re-declared in ADDED_SINCE, for the same reason ad52212d's renames were: this is the SAME row,
+    // and moving it would erase the record that it has been present since the pre-retrofit capture.
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'overtimePattern', icon: SlidersHorizontal, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'scheduleGroup', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
@@ -496,7 +502,16 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/admin/attendance': 'Shift',
       // ad52212d round 1 — "Overtime Pattern", the reporter's own name for what this screen already is:
       // a reusable library of hour-banded overtime rates (attendance_rule + attendance_rule_ot_row).
-      '/admin/attendance-policy': 'Overtime Pattern',
+      //
+      // ⚠️ 870b79e2 (r277) REVERSED THAT NAME, AND THE REASON IS THE OTHER HALF OF THE TABLE. ad52212d read
+      // attendance_rule as an overtime pattern; it is not only that. The same row owns the Lateness and
+      // Early Out sections (late_grace_period_minutes, late_after/deduct, and the four early twins) and the
+      // screen's own H1 has always said so — "Lateness, Early Out & Overtime Settings". The word OVERTIME
+      // alone in the rail is why the reporter spent three items asking us to build a shared, named group of
+      // attendance rules that they already owned and were already sharing across four of five shifts. So
+      // the row now carries the name THEY use for the object: "Schedule Group". The H1 is unchanged and
+      // still carries the literal description; this string is the NAME.
+      '/admin/attendance-policy': 'Schedule Group',
       // ad52212d round 1 — the third category. The screen is af7a8eb4's; the ROW is new.
       '/admin/attendance-policy/schedule': 'Work Schedule',
       // 1c5602cc (r263) — the KEY is `nav.schedule` and it resolves to "Schedule", the page's own title.

@@ -38,7 +38,12 @@ import {
   pickArrangementOn,
   type ArrangementPeriod,
 } from './shift-arrangement-resolve';
-import { ArchivedShiftError, BackupShiftRequiredError, ShiftHasNoWorkingPatternError } from './roster';
+import {
+  ArchivedShiftError,
+  BackupShiftRequiredError,
+  ShiftHasNoWorkingPatternError,
+  assertShiftsAllowedForEmploymentsTx,
+} from './roster';
 
 export {
   arrangementsForEmploymentTx,
@@ -154,6 +159,12 @@ export async function assignEmployeeShiftDated(
     // b8aa3466 — "has a working pattern" is Full ∪ HALF now: an all-half-days shift is walkable, and the
     // guard exists to stop an UNWALKABLE backup shift making every day a rest day, not to stop half days.
     if (new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size === 0) throw new ShiftHasNoWorkingPatternError();
+    // 870b79e2 (r277) — THE THIRD INVARIANT, and the reason it is here and not on the card that posts to
+    // this writer. The ladder is one of four writers of "which shift is this person on"; a check on the
+    // Shift arrangement form would leave roster generation, the roster brush and the profile backup shift
+    // able to put the same employee on a shift their Schedule Group forbids. One definition, four callers
+    // — see core/roster.ts assertShiftsAllowedForEmploymentsTx. No group ⇒ no-op.
+    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId }]);
 
     const rows = await arrangementsForEmploymentTx(tx, p.employmentId);
     const last: ArrangementPeriod | undefined = rows[rows.length - 1];

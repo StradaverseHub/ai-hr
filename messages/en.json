@@ -270,7 +270,7 @@
     "notifications": "Notifications",
     "analytics": "Analytics",
     "shift": "Shift",
-    "overtimePattern": "Overtime Pattern",
+    "scheduleGroup": "Schedule Group",
     "workSchedule": "Work Schedule",
     "scheduleAssignment": "Schedule Assignment",
     "timeOffInLieu": "Time off in lieu",
@@ -8323,7 +8323,12 @@
       "deductionsFromNone": "Not applied",
       "otLadderGapWarning": "Row {row} must start at {expected} minutes to continue from row {prev} — it starts at {actual}. Saving is blocked until the rows join up.",
       "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end.",
-      "scheduleBackToRules": "Back to calculation rules"
+      "scheduleBackToRules": "Back to calculation rules",
+      "shiftsAllowedTitle": "Shifts allowed",
+      "shiftsAllowedHint": "The shifts that follow this group’s lateness, early-out and overtime rules. A shift belongs to exactly one group, so ticking one here moves it out of the group it is in now; unticking one leaves it on the Standard group.",
+      "shiftsAllowedEmpty": "There are no shifts to choose from yet.",
+      "shiftsAllowedInGroup": "now in {group}",
+      "shiftsAllowedNoGroup": "no group yet"
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",

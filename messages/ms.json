@@ -270,7 +270,7 @@
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
     "shift": "Syif",
-    "overtimePattern": "Corak kerja lebih masa",
+    "scheduleGroup": "Kumpulan Jadual",
     "workSchedule": "Jadual kerja",
     "scheduleAssignment": "Penetapan Jadual",
     "timeOffInLieu": "Cuti ganti",
@@ -8323,7 +8323,12 @@
       "deductionsFromNone": "Tidak dikenakan",
       "otLadderGapWarning": "Baris {row} mesti bermula pada {expected} minit untuk menyambung baris {prev} — ia bermula pada {actual}. Simpanan disekat sehingga baris bersambung.",
       "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung.",
-      "scheduleBackToRules": "Kembali ke peraturan pengiraan"
+      "scheduleBackToRules": "Kembali ke peraturan pengiraan",
+      "shiftsAllowedTitle": "Syif yang dibenarkan",
+      "shiftsAllowedHint": "Syif yang mengikut peraturan lewat, balik awal dan kerja lebih masa kumpulan ini. Satu syif hanya milik satu kumpulan, jadi menandakannya di sini akan mengeluarkannya daripada kumpulan semasa; menyahtanda akan mengekalkannya pada kumpulan Standard.",
+      "shiftsAllowedEmpty": "Belum ada syif untuk dipilih.",
+      "shiftsAllowedInGroup": "kini dalam {group}",
+      "shiftsAllowedNoGroup": "belum ada kumpulan"
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",

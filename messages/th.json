@@ -270,7 +270,7 @@
     "notifications": "การแจ้งเตือน",
     "analytics": "การวิเคราะห์",
     "shift": "กะการทำงาน",
-    "overtimePattern": "รูปแบบล่วงเวลา",
+    "scheduleGroup": "กลุ่มตารางงาน",
     "workSchedule": "ตารางการทำงาน",
     "scheduleAssignment": "การกำหนดตารางเวร",
     "timeOffInLieu": "วันหยุดชดเชย",
@@ -8323,7 +8323,12 @@
       "deductionsFromNone": "ไม่ได้ใช้",
       "otLadderGapWarning": "แถวที่ {row} ต้องเริ่มที่ {expected} นาทีเพื่อต่อจากแถวที่ {prev} — แต่เริ่มที่ {actual} การบันทึกจะถูกระงับจนกว่าแถวจะต่อกัน",
       "otLadderOpenEndedWarning": "แถวที่ {row} ไม่มีขีดจำกัดบน จึงไม่มีแถวใดตามหลังได้ กรุณาใส่ค่า “ถึง” หรือย้ายไปไว้ท้ายสุด",
-      "scheduleBackToRules": "กลับไปที่กฎการคำนวณ"
+      "scheduleBackToRules": "กลับไปที่กฎการคำนวณ",
+      "shiftsAllowedTitle": "กะที่อนุญาต",
+      "shiftsAllowedHint": "กะที่ใช้กฎการมาสาย ออกก่อนเวลา และล่วงเวลาของกลุ่มนี้ กะหนึ่งกะสังกัดได้เพียงกลุ่มเดียว การติ๊กที่นี่จึงย้ายกะออกจากกลุ่มเดิม และการเอาติ๊กออกจะทำให้กะนั้นใช้กลุ่มมาตรฐาน",
+      "shiftsAllowedEmpty": "ยังไม่มีกะให้เลือก",
+      "shiftsAllowedInGroup": "ขณะนี้อยู่ใน {group}",
+      "shiftsAllowedNoGroup": "ยังไม่มีกลุ่ม"
     },
     "benefitScheme": {
       "groupsTitle": "กลุ่มระดับตำแหน่ง",
