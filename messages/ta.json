@@ -1719,7 +1719,10 @@
         "rateAmount": "விகிதத் தொகை",
         "familyMemberName": "குடும்ப உறுப்பினர் பெயர்",
         "familyMemberRelationship": "குடும்ப உறுப்பினர் உறவு",
-        "familyMemberDate": "குடும்ப உறுப்பினர் தேதி"
+        "familyMemberDate": "குடும்ப உறுப்பினர் தேதி",
+        "passport": "கடவுச்சீட்டு",
+        "confirmationDate": "உறுதிப்படுத்தல் தேதி",
+        "employmentPeriods": "தகுதிகாண் மற்றும் அறிவிப்பு காலம்"
       },
       "employmentType": {
         "full_time": "முழுநேரம்",

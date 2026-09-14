@@ -84,6 +84,16 @@ import { SocsoEisFields } from '@/components/socso-eis-fields';
 // 35b7af0a group 8 — the Nationality picker and the nationality-gated Identity No, shared with the
 // Personnel profile card's identity block.
 import { IdentityNumberField, NationalityPicker } from '@/components/identity-fields';
+// a72610af — the field groups this screen gained, every one of them the SHARED control the Personnel
+// record renders, in its `controlled` branch. Not one of them is a copy: the labels, the option lists and
+// the value encodings live in the component, so the draft and the record cannot word a question
+// differently. See each component's header for what it is and why it could be shared.
+import { PersonNameFields, PersonContactExtraFields } from '@/components/person-name-fields';
+import { PassportFields, PassportSectionTitle } from '@/components/passport-fields';
+import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
+import { EpfCategoryField } from '@/components/epf-election';
+import { EmployerBearsSwitch } from '@/components/employer-bears-fields';
+import { ChildReliefModeField, DisabledReliefField, DisabledReliefHints, HrdfSubjectField } from '@/components/tax-relief-fields';
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
@@ -119,6 +129,7 @@ export function EmployeeWizard({
   grades,
   managers,
   nationalityOptions,
+  profileOptions,
   relationshipOptions,
   countryOptions,
 }: {
@@ -143,6 +154,11 @@ export function EmployeeWizard({
   /** 35b7af0a group 8 — the tenant's nationality catalog (System Labels > Profile Options), the SAME list
    *  the Personnel profile card offers. PLAIN DATA, like every other prop crossing this boundary. */
   nationalityOptions: ComboboxOption[];
+  /** a72610af — the tenant's ACTIVE Salutation / Religion / Race options, read the SAME way the Personnel
+   *  profile card reads them, so a value HR can pick here is one `updatePerson` will accept at Activate.
+   *  Trimmed to value+label+id: this is a client component and a catalog row's sort order and active flag
+   *  would be columns in the browser bundle that nothing on the page reads. */
+  profileOptions: { salutation: ComboboxOption[]; religion: ComboboxOption[]; race: ComboboxOption[] };
   /** 759dfc7d — the `dependentRelationship` and `country` catalogs the Family step needs, resolved on the
    *  server exactly as the Personnel Family tab resolves them. Empty is meaningful for the first: the step
    *  falls back to the five built-in relationships, so an unseeded tenant never sees a blank dropdown. */
@@ -302,13 +318,28 @@ export function EmployeeWizard({
                 whole record. The Employee ID block that used to sit above them is gone from this screen:
                 the ID is settled, and it is shown in the header card, where it cannot be mistaken for a
                 field. */}
-            <Field label={t('fields.fullName')}>
-              <input
-                className={inputCls}
-                value={data.profile?.fullName ?? ''}
-                onChange={(e) => set('profile', { fullName: e.target.value })}
-              />
-            </Field>
+            {/* a72610af — Salutation, First / Last / Preferred Name, Religion and Race are the SHARED
+                group the Personnel Personal Details card renders (components/person-name-fields.tsx).
+                Full Name goes in its `afterSalutation` slot so the SIX fields appear in exactly the order
+                that card shows them (item 8c284478 put Salutation first deliberately) — the draft and the
+                record now read as one form rather than two arrangements of the same questions.
+                EVERY ONE OF THEM OPTIONAL: `missingByTab` judges none, because item 06f0cb8f split
+                creation from completion precisely so details stop blocking creation. */}
+            <PersonNameFields
+              mode="controlled"
+              value={data.profile ?? {}}
+              catalogs={profileOptions}
+              onChange={(patch) => set('profile', patch)}
+              afterSalutation={
+                <Field label={t('fields.fullName')}>
+                  <input
+                    className={inputCls}
+                    value={data.profile?.fullName ?? ''}
+                    onChange={(e) => set('profile', { fullName: e.target.value })}
+                  />
+                </Field>
+              }
+            />
             {/* 35b7af0a group 8 — Nationality and the Identity No (NRIC) are the SAME field group the
                 Personnel profile card renders (components/identity-fields.tsx). The wizard had a BARE
                 Identity No box and did not ask for a nationality AT ALL, so every hire it created arrived
@@ -360,6 +391,31 @@ export function EmployeeWizard({
               onMaritalStatusChange={(v) => set('profile', { maritalStatus: v })}
             />
           </div>
+          {/* a72610af — THE PASSPORT BLOCK, the SAME six fields the Personnel Identity Information card
+              renders (components/passport-fields.tsx), under the same heading and in the same order.
+              It sits inside Personal Details because that is where the record keeps it.
+
+              OPTIONAL FOR EVERYBODY HERE, including a non-Malaysian. `setPassportProfileMY` makes the
+              trio mandatory for a non-Malaysian WHENEVER IT IS CALLED, and `completeEmployeeDraft` calls
+              it only when the draft carries a passport value — so this screen never becomes stricter than
+              `hireEmployee` or the bulk importer. The one rule it does carry is all-or-nothing, judged by
+              `missingByTab` on this tab, where a refusal costs nothing.
+
+              THE ISSUING COUNTRY LIST IS THE NATIONALITY CATALOG, not the country one, because that is
+              what the Personnel card is fed (its own comment calls the value a demonym). Passing the
+              country catalog here instead would have HR storing "Malaysia" on a draft and "Malaysian" on
+              the record — two spellings in one column, which is exactly the drift this item is closing. */}
+          <div className="border-t border-border p-4">
+            <PassportSectionTitle className="mb-3 text-sm font-medium text-foreground" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <PassportFields
+                mode="controlled"
+                value={data.profile ?? {}}
+                countryOptions={nationalityOptions}
+                onChange={(patch) => set('profile', patch)}
+              />
+            </div>
+          </div>
         </Card>
         <Card>
           <SectionHeader title={t('sections.contactAddress')} />
@@ -383,6 +439,14 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { phone: e.target.value })}
               />
             </Field>
+            {/* a72610af — Home Phone and Personal E-mail, the SHARED pair the Personnel Contact & Address
+                card renders. The e-mail beside them above is the WORK address (`primaryEmail`, the login);
+                these two are the employee's own, and the record has always kept both. */}
+            <PersonContactExtraFields
+              mode="controlled"
+              value={data.profile ?? {}}
+              onChange={(patch) => set('profile', patch)}
+            />
           </div>
         </Card>
       </>
@@ -553,6 +617,72 @@ export function EmployeeWizard({
                 {isContractHire ? t('hints.contractEndDate') : t('hints.provisionalEndOn')}
               </p>
             </Field>
+            {/* a72610af — PROBATION, EXTENDED PROBATION, THE CONFIRMATION DATE AND THE TWO NOTICE
+                PERIODS, each the SHARED control the Personnel Employment Dates card renders
+                (components/employment-period-fields.tsx). All OPTIONAL.
+
+                THEY DO NOT LAND THROUGH `hireEmployee` — `HireParams` accepts none of them. The columns
+                live on `employment` and `setEmploymentInfo` writes them, which is why the draft could
+                not carry them before: `completeEmployeeDraft` now composes hire-then-setEmploymentInfo,
+                the same pair `commitEmployeeImport` has used since item 2983802f.
+
+                THE EXTENDED CONFIRMATION DATE IS NOT HERE and must not be added. Item d27961e3 made
+                probation extensions Movement-only: `setEmploymentInfo` honours that date solely under the
+                `probationExtension` movement tag and silently ignores an untagged save, so a box for it
+                on this screen would appear to work and do nothing. */}
+            <EmploymentPeriodField
+              mode="controlled"
+              labelKey="probationPeriod"
+              value={data.employment?.probationValue}
+              unit={data.employment?.probationUnit}
+              onChange={(patch) =>
+                set('employment', {
+                  ...(patch.value !== undefined ? { probationValue: patch.value } : {}),
+                  ...(patch.unit !== undefined ? { probationUnit: patch.unit } : {}),
+                })
+              }
+            />
+            <EmploymentPeriodField
+              mode="controlled"
+              labelKey="extendedProbationPeriod"
+              value={data.employment?.extendedProbationValue}
+              unit={data.employment?.extendedProbationUnit}
+              onChange={(patch) =>
+                set('employment', {
+                  ...(patch.value !== undefined ? { extendedProbationValue: patch.value } : {}),
+                  ...(patch.unit !== undefined ? { extendedProbationUnit: patch.unit } : {}),
+                })
+              }
+            />
+            <ConfirmationDateField
+              mode="controlled"
+              value={data.employment?.confirmationDate}
+              onChange={(confirmationDate) => set('employment', { confirmationDate })}
+            />
+            <EmploymentPeriodField
+              mode="controlled"
+              labelKey="noticeBeforeConfirmation"
+              value={data.employment?.noticeBeforeConfirmationValue}
+              unit={data.employment?.noticeBeforeConfirmationUnit}
+              onChange={(patch) =>
+                set('employment', {
+                  ...(patch.value !== undefined ? { noticeBeforeConfirmationValue: patch.value } : {}),
+                  ...(patch.unit !== undefined ? { noticeBeforeConfirmationUnit: patch.unit } : {}),
+                })
+              }
+            />
+            <EmploymentPeriodField
+              mode="controlled"
+              labelKey="noticeAfterConfirmation"
+              value={data.employment?.noticeAfterConfirmationValue}
+              unit={data.employment?.noticeAfterConfirmationUnit}
+              onChange={(patch) =>
+                set('employment', {
+                  ...(patch.value !== undefined ? { noticeAfterConfirmationValue: patch.value } : {}),
+                  ...(patch.unit !== undefined ? { noticeAfterConfirmationUnit: patch.unit } : {}),
+                })
+              }
+            />
           </div>
         </Card>
       </>
@@ -623,6 +753,45 @@ export function EmployeeWizard({
               country="MY"
               onChange={(patch) => set('statutory', patch)}
             />
+            {/* a72610af — THE EPF CATEGORY, the five-name election ADR-0046 defines, and the SAME control
+                the Personnel EPF card renders (components/epf-election.tsx, controlled branch). The
+                lawful KWSP enum underneath has three values and HR never sees it: the names ARE the
+                model, so they must be identical on both screens. The two elected rates are not offered
+                on a draft — see the component's header for why that is a deliberate narrowing. */}
+            <EpfCategoryField
+              value={data.statutory?.epfMode}
+              onChange={(epfMode) => set('statutory', { epfMode })}
+            />
+            {/* a72610af — the four EMPLOYER BEARS switches. The contribution is still computed and
+                reported IN FULL on both legs; what changes is who funds the EMPLOYEE's share — the
+                employer, out of cost, instead of a deduction from net pay. Nothing on a statutory return
+                moves; a payslip does. Each is the SAME switch the Personnel card renders. */}
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <EmployerBearsSwitch
+                mode="controlled"
+                field="employerBearsEpf"
+                value={data.statutory?.employerBearsEpf}
+                onChange={(employerBearsEpf) => set('statutory', { employerBearsEpf })}
+              />
+              <EmployerBearsSwitch
+                mode="controlled"
+                field="employerBearsSocso"
+                value={data.statutory?.employerBearsSocso}
+                onChange={(employerBearsSocso) => set('statutory', { employerBearsSocso })}
+              />
+              <EmployerBearsSwitch
+                mode="controlled"
+                field="employerBearsEis"
+                value={data.statutory?.employerBearsEis}
+                onChange={(employerBearsEis) => set('statutory', { employerBearsEis })}
+              />
+              <EmployerBearsSwitch
+                mode="controlled"
+                field="employerBearsSkbbk"
+                value={data.statutory?.employerBearsSkbbk}
+                onChange={(employerBearsSkbbk) => set('statutory', { employerBearsSkbbk })}
+              />
+            </div>
           </div>
         </Card>
         <Card>
@@ -668,6 +837,43 @@ export function EmployeeWizard({
                 <option value="no">{t('no')}</option>
               </select>
             </Field>
+            {/* a72610af — THE TWO DISABILITY RELIEFS (OKU) and HOW CHILD RELIEF IS MAINTAINED, the SAME
+                controls the Personnel Income Tax (PCB) card renders (components/tax-relief-fields.tsx).
+                Both default to "No", so a draft nobody has touched claims nothing.
+
+                WHY THEY BELONG AT HIRE rather than only afterwards: monthly tax is worked out from the
+                year to date, so setting a relief later makes the month of the change absorb the whole
+                year-to-date correction. Set here, there is no correction to absorb. */}
+            <DisabledReliefField
+              mode="controlled"
+              field="disabledIndividual"
+              value={data.statutory?.disabledIndividual}
+              onChange={(disabledIndividual) => set('statutory', { disabledIndividual })}
+            />
+            <DisabledReliefField
+              mode="controlled"
+              field="disabledSpouse"
+              value={data.statutory?.disabledSpouse}
+              onChange={(disabledSpouse) => set('statutory', { disabledSpouse })}
+            />
+            <ChildReliefModeField
+              mode="controlled"
+              value={data.statutory?.childReliefMode}
+              onChange={(childReliefMode) => set('statutory', { childReliefMode })}
+            />
+            {/* a72610af — the per-employee TRAINING LEVY switch (HRD Corp / HRDF). A TRI-STATE whose
+                default option is not "unset" but "follow the company's HRDF registration default", which
+                is what every employee does until somebody overrides them. Feedback 57840a6e is why that
+                distinction matters: a control that wrote an explicit No by default excluded a whole
+                company's staff from the levy for ever. */}
+            <HrdfSubjectField
+              mode="controlled"
+              value={data.statutory?.subjectToHrdf}
+              onChange={(subjectToHrdf) => set('statutory', { subjectToHrdf })}
+            />
+            <div className="sm:col-span-2">
+              <DisabledReliefHints />
+            </div>
           </div>
         </Card>
       </>

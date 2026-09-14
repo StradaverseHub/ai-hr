@@ -184,9 +184,21 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     expect(page.includes('action={setTaxAction}') || identityTaxCard.includes('action={action}')).toBe(true);
     // taxCategory is NOT in this list any more — 35b7af0a group 6 extracted it into a shared component so
     // the Create Employee wizard renders the identical control. It is asserted separately below.
-    for (const input of ['name="taxNumber"', 'name="taxResidency"', 'name="numChildren"', 'name="childReliefMode"', 'name="employerBearsTax"']) {
+    for (const input of ['name="taxNumber"', 'name="taxResidency"', 'name="numChildren"', 'name="employerBearsTax"']) {
       expect(identityTaxCard.includes(input), `${input} should exist in identity-tax-card.tsx`).toBe(true);
     }
+    // childReliefMode is NOT in the list above any more — item a72610af extracted it, with the two OKU
+    // selects, into components/tax-relief-fields.tsx so the Create New Employee draft renders the
+    // identical controls. THE CARD STILL POSTS ALL THREE, which is what is asserted here: the card
+    // renders the shared controls in `form` mode, and the shared file is what carries their names. A
+    // control that stopped posting would turn this card's Save into a silent no-op for that field.
+    const reliefGroup = read('components/tax-relief-fields.tsx');
+    expect(identityTaxCard).toContain('<ChildReliefModeField mode="form"');
+    expect(identityTaxCard).toContain('<DisabledReliefField mode="form" field="disabledIndividual"');
+    expect(identityTaxCard).toContain('<DisabledReliefField mode="form" field="disabledSpouse"');
+    expect(reliefGroup, 'the shared group posts childReliefMode in form mode')
+      .toContain("name: props.name ?? 'childReliefMode'");
+    expect(reliefGroup, 'and posts each OKU claim under its own field name').toContain('name: props.field');
   });
 
   /**

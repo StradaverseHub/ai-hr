@@ -104,6 +104,9 @@ export default async function CreateEmployeePage({
     nationalities,
     dependentRelationships,
     countries,
+    salutations,
+    religions,
+    races,
   ] = await Promise.all([
     listDepartments(session),
     listPositions(session, { companyIds: scopeIds }),
@@ -120,6 +123,12 @@ export default async function CreateEmployeePage({
     // falls back to the five built-ins, exactly as that tab does.
     listProfileOptions(session, 'dependentRelationship', { activeOnly: true }),
     listProfileOptions(session, 'country', { activeOnly: true }),
+    // a72610af — the three catalogs behind Salutation, Religion and Race, read exactly as the Personnel
+    // profile card reads them (active options only), so a value HR can pick on a draft is one
+    // `updatePerson`'s catalog check will accept at Activate.
+    listProfileOptions(session, 'salutation', { activeOnly: true }),
+    listProfileOptions(session, 'religion', { activeOnly: true }),
+    listProfileOptions(session, 'race', { activeOnly: true }),
   ]);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
@@ -199,6 +208,14 @@ export default async function CreateEmployeePage({
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
+        // PLAIN DATA across the boundary, trimmed to what the dropdowns render: this screen is a client
+        // component and a catalog row's sort order and active flag would be columns in the browser bundle
+        // that nothing on the page reads.
+        profileOptions={{
+          salutation: salutations.map((o) => ({ value: o.value, label: o.label })),
+          religion: religions.map((o) => ({ value: o.value, label: o.label })),
+          race: races.map((o) => ({ value: o.value, label: o.label })),
+        }}
         relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
         countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
       />

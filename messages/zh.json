@@ -1719,7 +1719,10 @@
         "rateAmount": "费率金额",
         "familyMemberName": "家庭成员姓名",
         "familyMemberRelationship": "家庭成员关系",
-        "familyMemberDate": "家庭成员日期"
+        "familyMemberDate": "家庭成员日期",
+        "passport": "护照",
+        "confirmationDate": "确认日期",
+        "employmentPeriods": "试用期与通知期"
       },
       "employmentType": {
         "full_time": "全职",

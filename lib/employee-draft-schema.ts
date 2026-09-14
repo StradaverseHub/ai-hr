@@ -57,6 +57,55 @@ export type EmployeeDraftProfile = {
    *  it is optional in the type as well as in the rules — an old draft must still open and still create. */
   nationality?: string;
   icNumber?: string;
+  /**
+   * ITEM a72610af — THE PROFILE FIELDS THE ACTIVATED RECORD HAS AND THE DRAFT DID NOT, all OPTIONAL.
+   *
+   * OPTIONAL IS NOT AN OVERSIGHT, IT IS THE DECISION 06f0cb8f MADE. That item split creation from
+   * completion precisely so details stop blocking creation, and the note on `missingByTab` below says the
+   * profile tab carries no required field ON PURPOSE. Adding fields is fine; making one required would
+   * reverse that decision, so not one of these is judged by anything except a FORMAT rule.
+   *
+   * They land through `updatePerson` — the same writer the Personnel Profile tab saves through, and the
+   * same one the bulk importer already uses for its address block (core/import.ts) — so a value typed on
+   * a draft is written by the code that owns the column rather than by a second inline update.
+   *
+   * `salutation`, `religion` and `race` are CATALOG-BACKED (`profile_option`), so the wizard offers the
+   * tenant's ACTIVE options exactly as it already does for nationality: a value HR can pick here is by
+   * construction one `assertProfileValueAllowed` will accept at Activate.
+   */
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
+  preferredName?: string;
+  religion?: string;
+  race?: string;
+  /** bf953339 — `phone` above IS the Mobile Phone Number; this is the separate Home Phone Number. */
+  homePhone?: string;
+  /** The employee's own address, distinct from `primaryEmail` (the work / login address). */
+  personalEmail?: string;
+  /**
+   * ITEM a72610af — THE PASSPORT BLOCK, landing through the company pack's `setPassport`.
+   *
+   * ALL SIX ARE OPTIONAL, AND THE ONE RULE THEY CARRY IS ALL-OR-NOTHING, judged by `missingByTab` below
+   * rather than by the writer. That is not a style preference: `setPassportProfileMY` throws
+   * `PassportRequiredError` on a partial passport, and it can only run AFTER `hireEmployee` has committed
+   * — so a half-typed passport discovered there fails an activation that has already created an employee.
+   * Judged on the tab instead, where the cost of a refusal is nothing, exactly as the family list is.
+   *
+   * THE NON-MALAYSIAN "MANDATORY TRIO" RULE IS NOT IMPORTED HERE, deliberately. That writer makes the trio
+   * mandatory for a non-Malaysian whenever it is CALLED; `completeEmployeeDraft` calls it only when the
+   * draft carries at least one passport value, so a draft that names no passport at all still activates.
+   * Doing otherwise would make the wizard stricter than `hireEmployee` and the bulk importer, which the
+   * header of this file names as exactly how the three creation paths drift apart.
+   */
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiryDate?: string;
+  passportIssuingCountry?: string;
+  /** e4b541c6 — the CP39's `Kod Negara`, ISO alpha-2. CHOSEN, never derived from the line above, which
+   *  holds a nationality demonym: "Malaysian" is not "MY". */
+  passportIssuingCountryCode?: string;
+  passportRemark?: string;
 };
 
 export type EmployeeDraftEmployment = {
@@ -69,7 +118,38 @@ export type EmployeeDraftEmployment = {
   employmentType?: string;
   hiredOn?: string;
   provisionalEndOn?: string;
+  /**
+   * ITEM a72610af — THE PROBATION, CONFIRMATION AND NOTICE FIELDS THE EMPLOYMENT TAB HAS, all OPTIONAL.
+   *
+   * THEY DO NOT LAND THROUGH `hireEmployee`, and that is the whole reason they were not here already:
+   * `HireParams` (core/org.ts) accepts none of them. The columns live on `employment` and their writer is
+   * `setEmploymentInfo`. The bulk importer has done hire-then-`setEmploymentInfo` since item 2983802f
+   * (core/import.ts) and already carries probation and notice, so both the precedent and the writer exist
+   * — `completeEmployeeDraft` composes the same two calls rather than inventing a third path.
+   *
+   * STRINGS, like every other value in this blob, because they are the raw values of a number input and a
+   * unit `<select>`; `setEmploymentInfo` parses and validates both. The 955c7de4 value+unit shape is the
+   * one the Personnel screen uses — a period is "3 months" or "2 weeks", never a bare month count.
+   *
+   * `extendedProbationValue`/`Unit` ARE THE PERIOD, NOT THE EXTENDED CONFIRMATION DATE. That date is
+   * MOVEMENT-ONLY (d27961e3: only `createMovementEvent`'s probationExtension may write it, and an
+   * untagged save posting it is silently ignored), so it is not here and must not be added.
+   */
+  probationValue?: string;
+  probationUnit?: string;
+  extendedProbationValue?: string;
+  extendedProbationUnit?: string;
+  confirmationDate?: string;
+  noticeBeforeConfirmationValue?: string;
+  noticeBeforeConfirmationUnit?: string;
+  noticeAfterConfirmationValue?: string;
+  noticeAfterConfirmationUnit?: string;
 };
+
+/** The period units `setEmploymentInfo` accepts (core/org.ts `EMPLOYMENT_PERIOD_UNITS`), restated here
+ *  so the client-side rule below and the shared field group can both read them without importing a
+ *  server module. `test/draft-activation-field-survival.test.ts` pins the two lists equal. */
+export const DRAFT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
 
 export type EmployeeDraftStatutory = {
   bankName?: string;
@@ -89,6 +169,65 @@ export type EmployeeDraftStatutory = {
   eisEligible?: string;
   isResident?: string;
   epfCitizenship?: string;
+  /**
+   * ITEM a72610af — THE EPF CATEGORY (`people.detail.epfMode`), the five-name election ADR-0046 defines.
+   *
+   * THE VALUE STORED HERE IS THE UI CATEGORY, not the lawful KWSP enum: 'auto' | 'manual_percentage' |
+   * 'semi_auto' | 'none'. `lib/epf-mode-map.ts` `mapEpfUiMode` maps the five names down to the three
+   * lawful enum values AT THE SERVER BOUNDARY, and `completeEmployeeDraft` calls the SAME mapper the
+   * Personnel action calls — the client never decides the persisted enum.
+   *
+   * THE TWO ELECTED RATES ARE DELIBERATELY NOT HERE, and it is a narrowing worth naming rather than
+   * hiding: `resolveEpfElection` REFUSES a rate below the statutory floor, and it runs inside
+   * `pack.statutory.set`, which `completeEmployeeDraft` can only call after `hireEmployee` has committed.
+   * A below-floor rate typed on a draft would therefore fail an activation that had already created the
+   * employee. Judging it here instead would need the floors on the client, and they are derived from the
+   * MY pack's statutory tables — a server module this file may not import (it is shared with the
+   * browser). A category with no rates is a lawful election that cannot throw: 'a blank side stays
+   * statutory', which is what the card's own hint already tells HR. The rates stay where they can be
+   * validated against the live tables, on the activated record.
+   */
+  epfMode?: string;
+  /**
+   * ITEM a72610af — THE FOUR "EMPLOYER BEARS" SWITCHES, 'yes' | 'no' | absent.
+   *
+   * STRINGS RATHER THAN BOOLEANS, unlike the family list's checkboxes, and for a concrete reason: every
+   * other value in this section is a string, and `hasAnyStatutory` (core/employee-draft.ts) decides
+   * whether a statutory row is created at all by trimming each value. A boolean in here would throw
+   * there. 'no' and ABSENT both mean the same thing to the writer (`?? false`, the column default), so
+   * the distinction costs nothing.
+   *
+   * What each one means is unchanged from the Personnel card: the contribution is still computed and
+   * reported IN FULL; only the employee's share is funded from employer cost instead of being deducted
+   * from net pay. `employerBearsSkbbk` is the SKBBK (Lindung 24 Jam) leg that rides on the SOCSO bands.
+   */
+  employerBearsEpf?: string;
+  employerBearsSocso?: string;
+  employerBearsEis?: string;
+  employerBearsSkbbk?: string;
+  /**
+   * ITEM a72610af — THE TWO DISABILITY RELIEFS AND THE CHILD RELIEF MODE (item d64d0df4's fields).
+   *
+   * These are the employee's CIRCUMSTANCE — tenant data. The relief AMOUNT each entitles them to is
+   * statutory and lives in the country pack's ruleset, never on a draft and never on the row.
+   *
+   * They land through `pack.setTax`, NOT through `pack.statutory.set`, because those are two different
+   * writers over the same table and the tax one owns these columns. `completeEmployeeDraft` therefore
+   * runs the tax write AFTER the statutory write and passes the statutory values through it — the same
+   * ordering rule `lib/personnel-tab-sections.ts` declares for the Personnel screen's consolidated save,
+   * and for the same reason: `setTaxProfileMY` is a partial-but-total overwrite of the tax columns.
+   */
+  disabledIndividual?: string;
+  disabledSpouse?: string;
+  childReliefMode?: string;
+  /**
+   * ITEM a72610af — THE TRAINING LEVY SWITCH (HRD Corp / HRDF), 'yes' | 'no' | absent.
+   *
+   * A TRI-STATE, and the absent case is the meaningful one: it means "follow the company's HRDF
+   * registration default", which is what every employee does today. Only an explicit yes/no is an
+   * override. It lands through `pack.setOthersStatutory`, its own partial-save writer.
+   */
+  subjectToHrdf?: string;
 };
 
 export type EmployeeDraftPayroll = {
@@ -376,6 +515,24 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   // so a typo is named on the tab that owns it rather than at Activate.
   const profile: string[] = [];
   if (!blank(p.dateOfBirth) && !DRAFT_DATE_RE.test((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
+  // ── The passport block (item a72610af) ─────────────────────────────────────────────────────────
+  // NOT REQUIRED — most new joiners will never have one recorded here, and a tab that demanded one would
+  // block every one of them. What IS required is that a passport somebody DID start can actually be
+  // written: `setPassportProfileMY` refuses a partial block (PassportRequiredError), and it runs AFTER
+  // `hireEmployee` has committed, so a half-typed passport discovered there fails an activation that has
+  // already created an employee. Judged here, where a refusal costs nothing — the same shape as the Bank
+  // tab's all-or-nothing rule and the Family tab's.
+  const passportTrio = [p.passportNumber, p.passportIssueDate, p.passportExpiryDate];
+  const passportAny = [...passportTrio, p.passportIssuingCountry, p.passportIssuingCountryCode, p.passportRemark]
+    .some((v) => !blank(v));
+  if (passportAny && passportTrio.some((v) => blank(v))) profile.push('passport');
+  // Both passport dates reach Postgres as a `date` and throw THERE — after the employee exists — so a
+  // value that is not ISO is named here instead, under the same name as the block it belongs to.
+  for (const d of [p.passportIssueDate, p.passportExpiryDate]) {
+    if (!blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim()) && !profile.includes('passport')) {
+      profile.push('passport');
+    }
+  }
 
   const job: string[] = [];
   if (blank(e.departmentId)) job.push('department');
@@ -384,6 +541,34 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) job.push('hiredOn');
   if (!blank(e.provisionalEndOn) && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
     job.push('provisionalEndOn');
+  // ── The probation / confirmation / notice block (item a72610af) ────────────────────────────────
+  // Every one of them OPTIONAL. The rules below are the ones `setEmploymentInfo` ENFORCES BY THROWING,
+  // restated here for the same reason the passport rule is: that writer runs after `hireEmployee` has
+  // committed, so its refusals have to be provoked while nothing has been created yet.
+  //
+  //   • a confirmation date must be ISO and cannot precede the hire date ("Confirmation date cannot be
+  //     earlier than the hire date." — core/org.ts). Checked against the draft's OWN hire date, which is
+  //     what the writer will compare it to.
+  //   • a period value must be a whole number of zero or more ("Period months/days must be whole
+  //     numbers of 0 or more."), and its unit must be one the writer knows.
+  const hiredOnIso = !blank(e.hiredOn) && DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())
+    ? (e.hiredOn ?? '').trim()
+    : null;
+  if (!blank(e.confirmationDate)) {
+    const c = (e.confirmationDate ?? '').trim();
+    if (!DRAFT_DATE_RE.test(c)) job.push('confirmationDate');
+    else if (hiredOnIso && c < hiredOnIso) job.push('confirmationDate');
+  }
+  const periodValues = [e.probationValue, e.extendedProbationValue, e.noticeBeforeConfirmationValue, e.noticeAfterConfirmationValue];
+  const periodUnits = [e.probationUnit, e.extendedProbationUnit, e.noticeBeforeConfirmationUnit, e.noticeAfterConfirmationUnit];
+  const badPeriod =
+    periodValues.some((v) => {
+      if (blank(v)) return false;
+      const n = Number((v ?? '').trim());
+      return !Number.isInteger(n) || n < 0;
+    }) ||
+    periodUnits.some((u) => !blank(u) && !(DRAFT_PERIOD_UNITS as readonly string[]).includes((u ?? '').trim()));
+  if (badPeriod) job.push('employmentPeriods');
 
   // Bank & Statutory has no REQUIRED field of its own — every value on it is optional in the writers
   // that consume it. The one rule it does carry is the importer's: bank name and account number are

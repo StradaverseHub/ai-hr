@@ -62,6 +62,12 @@ const OPTIONS = {
   grades: [{ id: 'gr-1', label: 'G3' }],
   managers: [{ id: 'mg-1', label: 'Aisha Rahman (E0001)' }],
   nationalityOptions: [{ value: 'Malaysian', label: 'Malaysian' }],
+  // a72610af — the three catalogs behind the shared Salutation / Religion / Race group.
+  profileOptions: {
+    salutation: [{ value: 'Mr', label: 'Mr' }],
+    religion: [{ value: 'Islam', label: 'Islam' }],
+    race: [{ value: 'Malay', label: 'Malay' }],
+  },
   relationshipOptions: [
     { value: 'spouse', label: 'Spouse' },
     { value: 'child', label: 'Child' },

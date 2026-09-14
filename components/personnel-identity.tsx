@@ -36,19 +36,28 @@
  * consolidated action reaches the same two services through the same helpers — it does not re-implement
  * them.
  *
- * WHY THE PASSPORT BLOCK IS NOT SHARED WITH THE WIZARD. It is not a field-definition question, it is a
- * write-path one. `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for a non-Malaysian,
- * so a wizard that offered these boxes would refuse to create a hire whose passport HR does not have to
- * hand — stricter than `hireEmployee` and the bulk importer, which lib/employee-draft-schema.ts's header
- * names as precisely how the three ways of creating an employee drift apart. Sharing it needs that rule
- * decided first, and that is a statutory decision rather than a refactor.
+ * THE PASSPORT BLOCK IS NOW SHARED WITH THE DRAFT (item a72610af) — components/passport-fields.tsx. The
+ * note that used to stand here said sharing it "is not a field-definition question, it is a write-path
+ * one": `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for a non-Malaysian, so a
+ * wizard that offered these boxes would refuse to create a hire whose passport HR does not have to hand —
+ * stricter than `hireEmployee` and the bulk importer, which lib/employee-draft-schema.ts's header names as
+ * precisely how the three ways of creating an employee drift apart.
+ *
+ * That reasoning was right and the WRITE PATH is what answers it, not a statutory decision.
+ * `completeEmployeeDraft` calls `setPassport` only when the draft carries at least one passport value —
+ * exactly what `commitEmployeeImport` has done since item 2983802f — so a draft that names no passport
+ * never reaches that writer and never meets its mandatory trio. What remains is the all-or-nothing rule,
+ * and that is judged on the draft's own Profile tab before anything is created, because a refusal from
+ * the writer would arrive after `hireEmployee` had already committed. Nothing about THIS card changed:
+ * `requiredTrio` still carries the non-Malaysian rule, and the server still re-derives it from the person
+ * record rather than trusting the client's live selection.
  */
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { type ComboboxOption } from '@/components/ui/combobox';
 import { Field, inputCls } from '@/components/ui';
-import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
+import { PassportFields } from '@/components/passport-fields';
 import {
   IdentityNumberField,
   NationalityPicker,
@@ -197,44 +206,20 @@ export function IdentityFields({
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
         <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('passportInfoTitle')}</p>
-        <Field label={t('passportNumber')}>
-          <input name="passportNumber" required={!isMY} defaultValue={passportNumber} placeholder={t('passportNumberPlaceholder')} className={inputCls} />
-        </Field>
-        <Field label={t('passportIssueDate')}>
-          <input name="passportIssueDate" type="date" required={!isMY} defaultValue={passportIssueDate} className={inputCls} />
-        </Field>
-        <Field label={t('passportExpiryDate')}>
-          <input name="passportExpiryDate" type="date" required={!isMY} defaultValue={passportExpiryDate} className={inputCls} />
-        </Field>
-        <Field label={t('passportIssuingCountry')}>
-          <Combobox
-            name="passportIssuingCountry"
-            value={passportIssuingCountry}
-            options={countryOptions}
-            placeholder={t('optionNotSet')}
-            searchPlaceholder={t('passportIssuingCountrySearchPlaceholder')}
-            noResultsLabel={t('passportIssuingCountryNoResults')}
-            legacySuffix={t('optionLegacySuffix')}
-          />
-        </Field>
-        {/* e4b541c6 — the ISO code the CP39's `Kod Negara` column wants. A SEPARATE field from the issuing
-            country above, which is fed from the tenant's nationality list and therefore holds a demonym:
-            "Malaysian" is not "MY", and deriving one from the other would print an invented code on a tax
-            document. HR picks it. */}
-        <Field label={t('passportIssuingCountryCode')}>
-          <Combobox
-            name="passportIssuingCountryCode"
-            value={passportIssuingCountryCode}
-            options={COUNTRY_CODE_OPTIONS}
-            placeholder={t('optionNotSet')}
-            searchPlaceholder={t('passportIssuingCountrySearchPlaceholder')}
-            noResultsLabel={t('passportIssuingCountryNoResults')}
-            legacySuffix={t('optionLegacySuffix')}
-          />
-        </Field>
-        <Field label={t('passportRemark')}>
-          <textarea name="passportRemark" rows={2} defaultValue={passportRemark} className={`${inputCls} sm:col-span-4`} />
-        </Field>
+        <PassportFields
+          mode="form"
+          requiredTrio={!isMY}
+          value={{
+            passportNumber,
+            passportIssueDate,
+            passportExpiryDate,
+            passportIssuingCountry,
+            passportIssuingCountryCode,
+            passportRemark,
+          }}
+          countryOptions={countryOptions}
+          remarkClassName="sm:col-span-4"
+        />
         <p className="text-xs text-muted-foreground sm:col-span-4">{t('passportHint')}</p>
       </form>
     </>

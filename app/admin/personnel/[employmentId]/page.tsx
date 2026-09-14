@@ -56,6 +56,12 @@ import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
 import { SocsoEisFields } from '@/components/socso-eis-fields';
+// a72610af — the field groups this screen now SHARES with the Create New Employee draft, so a draft and
+// the record it becomes ask the same questions in the same words. Each has a `mode`; this screen is 'form'.
+import { PersonNameFields, PersonContactExtraFields } from '@/components/person-name-fields';
+import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
+import { EmployerBearsSwitch } from '@/components/employer-bears-fields';
+import { HrdfSubjectField } from '@/components/tax-relief-fields';
 import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
@@ -973,48 +979,26 @@ export default async function EmployeePage({
               className={inputCls}
             />
           </Field>
-          {/* 8c284478 — Salutation BEFORE Full Name (natural data-entry order). Catalog-backed like
-              Religion below: active options from System Labels > Profile Options; an off-catalog stored
-              value renders as a pre-selected legacy extra so a Save never blanks it. Optional (blank ⇒ null). */}
-          <Field label={t('salutation')}>
-            <ProfileOptionSelect
-              name="salutation"
-              value={emp.salutation}
-              options={profileOptions.salutation}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
-          <Field label={t('fullNameIc')}>
-            <input name="fullName" required defaultValue={emp.name} className={inputCls} />
-          </Field>
-          <Field label={t('firstName')}>
-            <input name="firstName" defaultValue={emp.firstName ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('lastName')}>
-            <input name="lastName" defaultValue={emp.lastName ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('preferredName')}>
-            <input name="preferredName" defaultValue={emp.preferredName ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('religion')}>
-            <ProfileOptionSelect
-              name="religion"
-              value={emp.religion}
-              options={profileOptions.religion}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
-          <Field label={t('race')}>
-            <ProfileOptionSelect
-              name="race"
-              value={emp.race}
-              options={profileOptions.race}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
+          {/* a72610af — Salutation, the three name fields and the two demographics are now the SHARED
+              group the Create New Employee draft renders too (components/person-name-fields.tsx). The
+              markup, the catalog wiring, the legacy-value tolerance and the order (8c284478 — Salutation
+              BEFORE the names, the natural data-entry order) are carried over unchanged; this card still
+              posts the same six names with the same values. Full Name stays HERE, between them, because it
+              is required and the draft asks for it at Create rather than in this group. */}
+          <PersonNameFields
+            mode="form"
+            value={emp}
+            catalogs={{
+              salutation: profileOptions.salutation,
+              religion: profileOptions.religion,
+              race: profileOptions.race,
+            }}
+            afterSalutation={
+              <Field label={t('fullNameIc')}>
+                <input name="fullName" required defaultValue={emp.name} className={inputCls} />
+              </Field>
+            }
+          />
           {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
               single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
               wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
@@ -1103,12 +1087,11 @@ export default async function EmployeePage({
           <Field label={t('phone')}>
             <input id="perm-mobile-phone" name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
           </Field>
-          <Field label={t('homePhone')}>
-            <input id="perm-home-phone" name="homePhone" defaultValue={emp.homePhone ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('personalEmail')}>
-            <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
-          </Field>
+          {/* a72610af — the SHARED pair the Create New Employee draft renders too. `homePhoneId` keeps the
+              `perm-home-phone` id this input has carried since 3a25f5ee: the "Same as Permanent Address"
+              island copies the pair by id, so the id is a contract, not decoration. Mobile Phone above
+              stays here — it is the pre-existing `phone` column and is on both screens already. */}
+          <PersonContactExtraFields mode="form" value={emp} homePhoneId="perm-home-phone" />
 
           {/* 3a25f5ee — Contact & Address split into two independent address blocks. Permanent = where the
               employee lives (today's single address backfilled here in migration 0213); Correspondence =
@@ -3019,15 +3002,15 @@ export default async function EmployeePage({
           {/* Item 0d9bb2da — "Employer bears EPF Contribution". Mirrors the employer-bears SOCSO/EIS/tax
               controls: when ticked, the EPF employee + employer legs are still computed + reported in full,
               but the employee's EPF share is funded from employer cost instead of being deducted from net. */}
-          <label className="flex items-center gap-2 text-sm" title={t('employerBearsEpfHint')}>
-            <input
-              type="checkbox"
-              name="employerBearsEpf"
-              defaultChecked={statutory ? statutory.employerBearsEpf : false}
-              className="size-4 rounded"
-            />
-            {t('employerBearsEpf')}
-          </label>
+          {/* a72610af — the four employer-bears switches are now ONE shared control
+              (components/employer-bears-fields.tsx), rendered here and on the Create New Employee draft.
+              It stays INSIDE the EPF fieldset, beside the scheme it belongs to: the component is one
+              switch rather than a block of four precisely so neither screen's grouping has to move. */}
+          <EmployerBearsSwitch
+            mode="form"
+            field="employerBearsEpf"
+            defaultChecked={statutory ? statutory.employerBearsEpf : false}
+          />
         </fieldset>
 
         {/* Group 3 — dedicated SOCSO & EIS information card (item 5a461b99): the shared SOCSO & EIS
@@ -3074,18 +3057,9 @@ export default async function EmployeePage({
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground" title={t('employerBearsHint')}>
                 {t('employerBearsLegend')}
               </p>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="employerBearsSocso" defaultChecked={statutory ? statutory.employerBearsSocso : false} className="size-4 rounded" />
-                {t('employerBearsSocso')}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="employerBearsEis" defaultChecked={statutory ? statutory.employerBearsEis : false} className="size-4 rounded" />
-                {t('employerBearsEis')}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="employerBearsSkbbk" defaultChecked={statutory ? statutory.employerBearsSkbbk : false} className="size-4 rounded" />
-                {t('employerBearsSkbbk')}
-              </label>
+              <EmployerBearsSwitch mode="form" field="employerBearsSocso" defaultChecked={statutory ? statutory.employerBearsSocso : false} />
+              <EmployerBearsSwitch mode="form" field="employerBearsEis" defaultChecked={statutory ? statutory.employerBearsEis : false} />
+              <EmployerBearsSwitch mode="form" field="employerBearsSkbbk" defaultChecked={statutory ? statutory.employerBearsSkbbk : false} />
             </div>
           </div>
         </fieldset>
@@ -3194,18 +3168,11 @@ export default async function EmployeePage({
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
         <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
-        <Field label={t('subjectToHrdf')}>
-          <select
-            name="subjectToHrdf"
-            defaultValue={statutory?.subjectToHrdf == null ? '' : statutory.subjectToHrdf ? 'yes' : 'no'}
-            className={inputCls}
-            title={t('subjectToHrdfHint')}
-          >
-            <option value="">{t('subjectToHrdfFollowingDefault')}</option>
-            <option value="yes">{t('prorateYes')}</option>
-            <option value="no">{t('prorateNo')}</option>
-          </select>
-        </Field>
+        {/* a72610af — the same tri-state the Create New Employee draft now offers
+            (components/tax-relief-fields.tsx). The three options and their meanings are unchanged;
+            feedback 57840a6e is why the blank "follow the company default" option must stay distinct
+            from an explicit No, and one definition is how it stays that way on both screens. */}
+        <HrdfSubjectField mode="form" value={statutory?.subjectToHrdf} />
         <p className="text-xs text-muted-foreground">{t('subjectToHrdfHint')}</p>
         {/* Feedback efece4ce — the contradiction the reporter hit: an explicit Yes on a company with no HRDF
             Contribution Rate. The save is honest (the flag IS stored, and starts levying the moment the
@@ -3822,8 +3789,10 @@ export default async function EmployeePage({
   // Employment Dates keeps its OWN sibling <form> (it shared the old organisation form). It is a separate
   // concern with a separate Save, and its action no longer touches the eight org columns.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
-  // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
-  const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
+  // 955c7de4's PERIOD_UNIT_OPTIONS is gone from here: a72610af moved the unit list into the shared
+  // period control (components/employment-period-fields.tsx, reading DRAFT_PERIOD_UNITS), which both this
+  // card and the Create New Employee draft render. One list, pinned equal to core/org.ts's own by
+  // test/draft-activation-field-survival.test.ts.
   // ONE day-precise length-of-service formatter for every service figure this page shows (4ea70bb7).
   //
   // cc681bd5 — the smart format: zero LEADING units drop ("8 Months 15 Days" under a year, "25 Days" for a
@@ -4186,26 +4155,26 @@ export default async function EmployeePage({
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.probationGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t('employmentInfo.probationPeriod')}>
-                <div className="flex gap-2">
-                  <input name="probationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.probationValue ?? emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
-                  <select name="probationUnit" defaultValue={emp.probationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
-                    {PERIOD_UNIT_OPTIONS.map((u) => (
-                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
-                    ))}
-                  </select>
-                </div>
-              </Field>
-              <Field label={t('employmentInfo.extendedProbationPeriod')}>
-                <div className="flex gap-2">
-                  <input name="extendedProbationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.extendedProbationValue ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
-                  <select name="extendedProbationUnit" defaultValue={emp.extendedProbationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
-                    {PERIOD_UNIT_OPTIONS.map((u) => (
-                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
-                    ))}
-                  </select>
-                </div>
-              </Field>
+              {/* a72610af — the four value+unit periods on this card are now ONE shared component
+                  (components/employment-period-fields.tsx), which the Create New Employee draft renders
+                  too. `probationMonths` stays as the legacy fallback: 955c7de4 replaced the bare month
+                  count with value+unit and a row written before that still has only the old column. */}
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="probationPeriod"
+                valueName="probationValue"
+                unitName="probationUnit"
+                value={emp.probationValue ?? emp.probationMonths}
+                unit={emp.probationUnit}
+              />
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="extendedProbationPeriod"
+                valueName="extendedProbationValue"
+                unitName="extendedProbationUnit"
+                value={emp.extendedProbationValue}
+                unit={emp.extendedProbationUnit}
+              />
             </div>
             {/* d27961e3 — Extended Confirmation Date and Final Confirmation Date were REMOVED from this card.
                 Probation extensions are managed exclusively through the Movement tab (New Event → Probation
@@ -4213,9 +4182,7 @@ export default async function EmployeePage({
                 single mutator of the underlying extended/final columns (kept — they still drive the derived
                 probation status). Only the standard Confirmation Date stays editable here. */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t('employmentInfo.confirmationDate')}>
-                <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
-              </Field>
+              <ConfirmationDateField mode="form" value={emp.confirmationDate} />
             </div>
           </div>
 
@@ -4276,26 +4243,22 @@ export default async function EmployeePage({
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t('employmentInfo.noticeBeforeConfirmation')}>
-                <div className="flex gap-2">
-                  <input name="noticeBeforeConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeBeforeConfirmationValue ?? emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
-                  <select name="noticeBeforeConfirmationUnit" defaultValue={emp.noticeBeforeConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
-                    {PERIOD_UNIT_OPTIONS.map((u) => (
-                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
-                    ))}
-                  </select>
-                </div>
-              </Field>
-              <Field label={t('employmentInfo.noticeAfterConfirmation')}>
-                <div className="flex gap-2">
-                  <input name="noticeAfterConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeAfterConfirmationValue ?? emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
-                  <select name="noticeAfterConfirmationUnit" defaultValue={emp.noticeAfterConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
-                    {PERIOD_UNIT_OPTIONS.map((u) => (
-                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
-                    ))}
-                  </select>
-                </div>
-              </Field>
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="noticeBeforeConfirmation"
+                valueName="noticeBeforeConfirmationValue"
+                unitName="noticeBeforeConfirmationUnit"
+                value={emp.noticeBeforeConfirmationValue ?? emp.resignationNoticeMonths}
+                unit={emp.noticeBeforeConfirmationUnit}
+              />
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="noticeAfterConfirmation"
+                valueName="noticeAfterConfirmationValue"
+                unitName="noticeAfterConfirmationUnit"
+                value={emp.noticeAfterConfirmationValue ?? emp.shortNoticeMonths}
+                unit={emp.noticeAfterConfirmationUnit}
+              />
             </div>
           </div>
 
