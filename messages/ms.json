@@ -7751,7 +7751,7 @@
       "shiftTypeSemiFlexi": "Separa Fleksi",
       "shiftTypeFullFlexi": "Fleksi Penuh",
       "shiftTypeSemiFlexiNote": "Separa Fleksi: pekerja boleh mula bila-bila masa dalam tetingkap; waktu rehat sentiasa fleksibel tanpa perlu merekod masa.",
-      "shiftTypeFullFlexiNote": "Konfigurasi Syif Fleksi Penuh akan disediakan dalam keluaran akan datang.",
+      "shiftTypeFullFlexiNote": "Full Flexi: hari dinilai berdasarkan jumlah waktu kerja normal, bermula dari bila pekerja merekod masuk. Tiada lewat dan tiada keluar awal; masa di atas hanyalah waktu merekod paling awal dan paling lewat yang diterima.",
       "colTimeIn": "Masa masuk",
       "colTimeOut": "Masa keluar",
       "colBreakTime": "Masa rehat",

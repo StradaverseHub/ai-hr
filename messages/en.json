@@ -7751,7 +7751,7 @@
       "shiftTypeSemiFlexi": "Semi Flexi",
       "shiftTypeFullFlexi": "Full Flexi",
       "shiftTypeSemiFlexiNote": "Semi-Flexi: employees may start any time within the window; breaks are always flexible with no clocking required.",
-      "shiftTypeFullFlexiNote": "Full Flexi Shift configuration will be available in a future release.",
+      "shiftTypeFullFlexiNote": "Full Flexi: the day is judged on total normal working hours, from whenever the employee clocks in. There is no lateness and no early out, and the times above are only the earliest and latest clocking accepted.",
       "colTimeIn": "Time in",
       "colTimeOut": "Time out",
       "colBreakTime": "Break time",

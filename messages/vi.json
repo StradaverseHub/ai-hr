@@ -7751,7 +7751,7 @@
       "shiftTypeSemiFlexi": "Bán linh hoạt",
       "shiftTypeFullFlexi": "Linh hoạt hoàn toàn",
       "shiftTypeSemiFlexiNote": "Bán linh hoạt: nhân viên có thể bắt đầu bất kỳ lúc nào trong khung giờ; giờ nghỉ luôn linh hoạt và không cần chấm công.",
-      "shiftTypeFullFlexiNote": "Cấu hình ca Linh hoạt hoàn toàn sẽ có trong bản phát hành sau.",
+      "shiftTypeFullFlexiNote": "Linh hoạt toàn phần: ngày làm được đánh giá theo tổng giờ làm việc tiêu chuẩn, tính từ lúc nhân viên chấm công vào. Không có đi muộn và không có về sớm; các giờ ở trên chỉ là thời điểm chấm công sớm nhất và muộn nhất được chấp nhận.",
       "colTimeIn": "Giờ vào",
       "colTimeOut": "Giờ ra",
       "colBreakTime": "Thời gian nghỉ",

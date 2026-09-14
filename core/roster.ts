@@ -385,6 +385,18 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   }
 
   let normalMinutesOverride: number | null = null;
+  /**
+   * r274 (439565ff) — A FULL FLEXI SHIFT WITHOUT REQUIRED HOURS IS A TRAP, AND THE SERVICE REFUSES IT.
+   *
+   * On this type the start and end times are only the earliest and latest clocking accepted, so the span
+   * between them is not a working day. Without an override the engine would fall back to that span:
+   * SemiFlex01 on production is 07:00-20:00 with no override, which reads as a twelve-hour normal day and
+   * accrues no overtime until the twelfth hour. The form marks the field required; this is the rule behind
+   * it, so the same trap cannot be created through the service or an import.
+   */
+  if (type === 'full_flexi' && (p.normalMinutesOverride == null || Math.trunc(p.normalMinutesOverride) <= 0)) {
+    throw new Error('A Full Flexi shift needs its total normal working hours: they are what decides whether the day is complete.');
+  }
   if (p.normalMinutesOverride != null) {
     const o = Math.trunc(p.normalMinutesOverride);
     if (!Number.isFinite(o) || o < 0 || o > span) throw new Error('Normal-hours override must be between 0 and the shift span');

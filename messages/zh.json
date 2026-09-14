@@ -7751,7 +7751,7 @@
       "shiftTypeSemiFlexi": "半弹性",
       "shiftTypeFullFlexi": "全弹性",
       "shiftTypeSemiFlexiNote": "半弹性：员工可在时间窗口内任意时间开始；休息时间始终弹性且无需打卡。",
-      "shiftTypeFullFlexiNote": "全弹性班次配置将在未来版本中提供。",
+      "shiftTypeFullFlexiNote": "全弹性：以总正常工作时数判断当日是否完成，从员工打卡的那一刻起算。不计迟到、不计早退；上方时间仅是可接受的最早与最晚打卡时间。",
       "colTimeIn": "上班时间",
       "colTimeOut": "下班时间",
       "colBreakTime": "休息时间",

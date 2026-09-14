@@ -514,6 +514,22 @@ type ResolvedSchedule = {
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
   normalMinutesOverride: number | null;
+  /**
+   * r274 (439565ff) — FULL FLEXI: the day is judged on HOURS WORKED, not on the clock.
+   *
+   * TRUE only where the resolved shift's type is `full_flexi`. It suppresses every fixed-clock judgement
+   * — lateness, early-out and the half-day cut-off's grace fallback — because a shift with no required
+   * start has no time to be late for. It does NOT change how minutes are counted: the duration OT basis
+   * it forces is the same one `normal_minutes_override` already selects and Semi Flexi already runs on.
+   *
+   * `shiftStart` / `shiftEnd` stay populated and stay meaningful: on this type they are the earliest and
+   * latest clocking accepted, and thirteen readers depend on them existing (payableHoursForCycle clamps
+   * payable hours to them, absence-days treats a row with neither as unscheduled, the OT window grid
+   * anchors to the start, and the roster and clock screens print them).
+   *
+   * FALSE on the company-policy branch, which has no shift at all.
+   */
+  flexiDuration: boolean;
   // R17 3e8350db — the resolved shift's per-shift OT rule (eligibility / minimum block / daily cap). Shapes
   // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
@@ -567,7 +583,9 @@ function halfDayCutoff(p: {
   earlyGrace: number | null;
 }): string {
   if (p.explicit != null) return p.explicit;
-  if (p.type === 'semi_flexi' && p.normalMinutes > 0) {
+  // r274 (439565ff) — full flexi joins semi flexi here. Both are judged on required hours, so half a day
+  // is half those hours from whenever they started, never a wall-clock time.
+  if ((p.type === 'semi_flexi' || p.type === 'full_flexi') && p.normalMinutes > 0) {
     return fmtTime((toMinutes(p.start) + Math.floor(p.normalMinutes / 2)) % MINS_PER_DAY);
   }
   if (p.earlyGrace != null) return subGrace(p.end, p.earlyGrace);
@@ -661,6 +679,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     // …and no shift means no flexible break either: the policy branch keeps the 6h-cliff deduction.
     flexibleBreakMinutes: null,
     normalMinutesOverride: null,
+    // No shift on this branch, so nothing can be full flexi.
+    flexiDuration: false,
     otRule: null,
     // The company-policy branch has no shift, so there is nothing to carry OT windows.
     otWindows: null,
@@ -714,6 +734,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       dailyCutoffMinutes: ra.cutoffOn && ra.cutoffAt ? toMinutes(ra.cutoffAt) : null,
       flexibleBreakMinutes: ra.flexOn && ra.flexMin != null ? ra.flexMin : null,
       normalMinutesOverride: ra.override ?? null,
+      flexiDuration: ra.shiftType === 'full_flexi',
       otRule: ra.otRule ?? null,
       otWindows,
       rule,
@@ -838,6 +859,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         // the break too would deduct it twice over.
         flexibleBreakMinutes: ds.flexOn && ds.flexMin != null ? ds.flexMin : null,
         normalMinutesOverride: override,
+        flexiDuration: ds.shiftType === 'full_flexi',
         otRule: ds.otRule ?? null,
         otWindows,
         rule,
@@ -915,8 +937,14 @@ function deriveAttendance(
   checkOutAt: string | null,
   attendanceDate: string,
 ): DerivedDay {
+  // r274 (439565ff) — A FULL FLEXI DAY HAS NO TIME TO BE LATE FOR. `lateAfter` is still resolved (it is
+  // shift start + grace, and the column is NOT NULL), but on this type the shift's start is the earliest
+  // clocking accepted rather than a time anybody must arrive by, so comparing against it would record a
+  // 08:31 arrival as late on a shift whose only requirement is nine hours.
   let status: 'present' | 'late' | 'half_day' =
-    s.dayType === 'workday' && toMinutes(checkInAt) > toMinutes(s.lateAfter) ? 'late' : 'present';
+    s.dayType === 'workday' && !s.flexiDuration && toMinutes(checkInAt) > toMinutes(s.lateAfter)
+      ? 'late'
+      : 'present';
 
   // 7c834696 — the schedule's own timeline, resolved on every branch. anchorToShift is the SAME placement
   // rule the OT window uses, so a 00:30 arrival on a 22:00 shift reads as 2.5h late rather than 21.5h early.
@@ -927,8 +955,10 @@ function deriveAttendance(
   const deductible = deductionsApplyOn(s.rule, attendanceDate);
   // Lateness is a workday concept measured against a schedule; rest-day / holiday work has no start to be
   // late against (the same reason `status` never reads 'late' on those days).
+  // NULL on full flexi, not 0: zero minutes late asserts they arrived on time against a start that does
+  // not exist, and `late_deduct_minutes` reads this figure.
   const lateMinutes: number | null =
-    s.dayType === 'workday' && schedStartAbs != null && inAbsSched != null
+    s.dayType === 'workday' && !s.flexiDuration && schedStartAbs != null && inAbsSched != null
       ? latenessOf({
           checkInAbs: inAbsSched,
           startAbs: schedStartAbs,
@@ -1082,7 +1112,11 @@ function deriveAttendance(
     otMinutes = fromWindows.total;
     otWindowRows = fromWindows.rows;
     otBasis = 'shiftWindows';
-  } else if (w && s.normalMinutesOverride == null) {
+  } else if (w && s.normalMinutesOverride == null && !s.flexiDuration) {
+    // r274 — the window basis measures overtime as time past the shift END. A full flexi shift has no end
+    // to be past, so it never takes this branch. In practice its override is required, which would route
+    // it to `duration` anyway; the flag is checked here too so the basis cannot silently change if a shift
+    // is ever saved without one.
     otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs));
     earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
     otBasis = 'window';
@@ -1132,7 +1166,9 @@ function deriveAttendance(
   let earlyOut: number | null = null;
   let under: number | null = null;
   if (s.dayType === 'workday') {
-    if (schedEndAbs != null && outAbsSched != null) {
+    // r274 — and no time to leave early from. `under` below still measures short hours, because on a full
+    // flexi day that is the ONLY thing that can be short: the required minutes were not worked.
+    if (!s.flexiDuration && schedEndAbs != null && outAbsSched != null) {
       earlyOut = earlyOutOf({
         checkOutAbs: outAbsSched,
         endAbs: schedEndAbs,

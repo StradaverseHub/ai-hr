@@ -144,6 +144,15 @@ export function ShiftTimeFields({
   const [flexMin, setFlexMin] = useState(defaultFlexibleBreakMinutes);
 
   const semiFlexi = type === 'semi_flexi';
+  /**
+   * r274 (439565ff) — FULL FLEXI is enabled, and it needs the SAME required-hours treatment Semi Flexi
+   * already has. The figure is not a convenience on either type: it is the only thing that decides whether
+   * the day is complete, and a full flexi shift saved without one would fall back to the span between two
+   * times that are no longer a requirement — which is exactly the twelve-hour trap SemiFlex01 is sitting
+   * in on production today.
+   */
+  const fullFlexi = type === 'full_flexi';
+  const hoursRequired = semiFlexi || fullFlexi;
 
   const validBreaks = breaks.filter((bp) => bp.start && bp.end && bp.end > bp.start);
   // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)
@@ -173,19 +182,19 @@ export function ShiftTimeFields({
   // so a shift only carries an override once the operator actually disagrees with the arithmetic — which
   // is exactly the pre-b8aa3466 storage contract.
   // Semi Flexi: required, and never seeded from the span (the span is the flexible WINDOW, not a day's work).
-  const seed = defaultOverride !== '' ? Number(defaultOverride) : semiFlexi ? null : auto;
+  const seed = defaultOverride !== '' ? Number(defaultOverride) : hoursRequired ? null : auto;
   const [totalH, setTotalH] = useState(seed == null ? '' : String(Math.floor(seed / 60)));
   const [totalM, setTotalM] = useState(seed == null ? '' : String(seed % 60));
   const [totalTouched, setTotalTouched] = useState(defaultOverride !== '');
   // Untouched on a Normal shift ⇒ follow the live arithmetic as the operator edits the times and breaks.
-  const shownH = totalTouched || semiFlexi ? totalH : String(Math.floor(auto / 60));
-  const shownM = totalTouched || semiFlexi ? totalM : String(auto % 60);
+  const shownH = totalTouched || hoursRequired ? totalH : String(Math.floor(auto / 60));
+  const shownM = totalTouched || hoursRequired ? totalM : String(auto % 60);
   const totalMinutes =
     shownH === '' && shownM === '' ? null : Math.max(0, (Number(shownH) || 0) * 60 + (Number(shownM) || 0));
   // What actually POSTS into normalMinutesOverride: blank when it agrees with the computed figure on a
   // Normal shift (no override stored), the number otherwise.
   const postedOverride =
-    totalMinutes == null || (!semiFlexi && totalMinutes === auto) ? '' : String(totalMinutes);
+    totalMinutes == null || (!hoursRequired && totalMinutes === auto) ? '' : String(totalMinutes);
 
   const setTotal = (h: string, m: string) => {
     setTotalTouched(true);
@@ -220,9 +229,9 @@ export function ShiftTimeFields({
           >
             <option value="normal">{ta('shiftTypeNormal')}</option>
             <option value="semi_flexi">{ta('shiftTypeSemiFlexi')}</option>
-            <option value="full_flexi" disabled>
-              {ta('shiftTypeFullFlexi')}
-            </option>
+            {/* r274 (439565ff) — ENABLED. The value was always accepted and stored (migration 0188,
+                core/roster.ts validateShiftType); only this attribute kept it out of reach. */}
+            <option value="full_flexi">{ta('shiftTypeFullFlexi')}</option>
           </select>
         </Field>
 
@@ -291,13 +300,13 @@ export function ShiftTimeFields({
 
         {/* 3 — Total normal working hours. Hours + minutes on screen, MINUTES in the database. */}
         <div>
-          <Field label={t('totalNormalWorkingHours')} required={semiFlexi} requiredAriaLabel={t('requiredField')}>
+          <Field label={t('totalNormalWorkingHours')} required={hoursRequired} requiredAriaLabel={t('requiredField')}>
             <span className="flex items-center gap-1.5">
               <input
                 type="number"
                 min={0}
                 max={24}
-                required={semiFlexi}
+                required={hoursRequired}
                 value={shownH}
                 onChange={(e) => setTotal(e.target.value, shownM)}
                 className={inputCls}
@@ -319,7 +328,7 @@ export function ShiftTimeFields({
           {/* STORAGE STAYS MINUTES — this is the only thing that reaches the database. */}
           <input type="hidden" name="normalMinutesOverride" value={postedOverride} />
           <p className="mt-1 text-xs text-muted-foreground">
-            {semiFlexi ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
+            {hoursRequired ? t('totalNormalHoursSemiHint') : t('totalNormalHoursNormalHint')}
           </p>
         </div>
 
