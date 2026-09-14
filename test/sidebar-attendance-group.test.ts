@@ -204,7 +204,24 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     // through anything administrative; it is simply reached from the self-service node again.
     const mine = nodeBlock('MY_ATTENDANCE_NAV');
     expect(mine.indexOf(`{ href: '/attendance',`), 'Records is a child of My Attendance').toBeGreaterThan(-1);
-    expect(node.indexOf(`{ href: '/attendance',`), 'Records is NOT in the admin-gated config node').toBe(-1);
+    /**
+     * r274 (2420718d) — WHAT THIS GUARD IS FOR IS UNCHANGED; WHAT IT MEASURES HAD TO MOVE.
+     *
+     * The reporter asked for Records to be relocated to Administration and renamed Employee Attendance.
+     * Doing that literally is the rev2 regression this test was written to prevent, so Records STAYS
+     * above and an admin-gated row was ADDED beside it. The config node therefore now does contain the
+     * href — which is exactly what the old `toBe(-1)` forbade.
+     *
+     * The protection is re-expressed, not weakened: whatever `/attendance` row lives in the config node
+     * must carry `adminOnly` (so it is an addition for administrators, never the employee's only way in),
+     * and the self-service row must still carry no gate at all. An unguarded row appearing in this
+     * group-gated node is the failure mode, and it is still caught.
+     */
+    const adminLine = node.split('\n').find((l) => l.includes(`{ href: '/attendance',`));
+    if (adminLine !== undefined) {
+      expect(adminLine, 'a /attendance row in the config node must be adminOnly').toMatch(/adminOnly: true/);
+      expect(adminLine, 'and it is the renamed admin entry, not Records').toContain('employeeAttendance');
+    }
     const recordsIdx = mine.indexOf(`{ href: '/attendance',`);
     for (const href of TICKET_HREFS) {
       // The config rows live in the other node entirely now, so "Records comes first" is expressed as
@@ -261,10 +278,15 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
     expect(clockIdx, 'Clock in/out is a child of My Attendance').toBeGreaterThan(-1);
     expect(recordsIdx, 'Records is a child of My Attendance').toBeGreaterThan(-1);
     expect(clockIdx, 'Clock in/out is still first (5249d43f)').toBeLessThan(recordsIdx);
-    // Neither appears in the config node — listed in two places is its own bug, and a self-service row
-    // inside the admin-gated node would render for nobody but administrators.
+    // Clock in/out appears in ONE node only — listed twice is its own bug, and a self-service row inside
+    // the admin-gated node would render for nobody but administrators.
     expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'/attendance/clock'`), 'Clock in/out did NOT move').toBe(-1);
-    expect(nodeBlock('ATTENDANCE_NAV').indexOf(`{ href: '/attendance',`), 'Records is not in config').toBe(-1);
+    // r274 (2420718d) — `/attendance` is now DELIBERATELY in both: Records here for every employee, and an
+    // admin-gated Employee Attendance row in the config node, because that group hides as a whole and a
+    // move would take the screen away from staff. The rev3 guard above pins that the config copy is gated
+    // and is the renamed entry, so "listed twice" cannot slip back in unnoticed for anything else.
+    const cfg = nodeBlock('ATTENDANCE_NAV').split('\n').find((l) => l.includes(`{ href: '/attendance',`));
+    if (cfg !== undefined) expect(cfg, 'the config copy is the gated admin entry').toMatch(/adminOnly: true/);
   });
 
   it('keeps Clock in/out visible to every employee (no adminOnly/managerUp gate)', () => {

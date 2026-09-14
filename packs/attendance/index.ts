@@ -272,6 +272,26 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     //
     // lib/permissions.ts follows the labels (its `labelKey: 'nav.…'` entries) but KEEPS its screenKeys —
     // those may key stored role configs, the same split test/my-absence-nav.test.ts pinned for /leave.
+    /**
+     * r274 (2420718d) — EMPLOYEE ATTENDANCE, and it is a SECOND DOOR rather than a move.
+     *
+     * The reporter asked for "My Attendance > Records" to be relocated here and renamed. Taken literally
+     * that removes the screen from every employee: `/attendance` is `guard: 'scopedSession'`
+     * (lib/permissions.ts:186) with no admin gate — ONE screen that shows each viewer their own scope, a
+     * single row to an employee and all 83 to an administrator — and this group carries `adminOnly` at
+     * GROUP level, so a row moved inside it becomes INVISIBLE, not admin-only. a324a4b3 rev2 did exactly
+     * that and rev3 undid it; `test/sidebar-attendance-group.test.ts` exists to stop it happening a third
+     * time. So Records STAYS in MY_ATTENDANCE_NAV and this row is added beside it.
+     *
+     * ⚠️ KNOWN AND ACCEPTED: the same href now sits in two nodes, so on `/attendance` BOTH parent rows
+     * highlight (`isParentActive`, components/nav-flyout.tsx, matches any child path). The two ways out
+     * are worse. A distinct route rendering the same page breaks the screen's own tab strip — its tabs
+     * link to `/attendance`, `/attendance/daily` and `/attendance/individual`, so entering by the admin
+     * door and clicking a tab drops you out of it. And teaching the rail to prefer one node over another
+     * is new nav machinery for a cosmetic result. One screen genuinely reachable two ways is what the
+     * rail is reporting, and it is telling the truth. Disclosed to the reporter rather than hidden.
+     */
+    { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
     { href: '/admin/attendance-policy', labelKey: 'overtimePattern', icon: SlidersHorizontal, adminOnly: true },
     // ad52212d — the Work Schedule screen (af7a8eb4 gave it this route) finally has a menu row. CalendarCheck

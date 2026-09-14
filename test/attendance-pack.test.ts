@@ -100,6 +100,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // so a genuinely new row is DECLARED here instead. The parity assertions below then hold unchanged for
   // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
   const ADDED_SINCE = [
+    // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: this is a
+    // second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
+    // their own scope. It is the ONLY href in this pack that is listed twice, deliberately — see the row's
+    // own note, and the pair assertion below that pins exactly which two rows they are.
+    { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     // 0bb0e303 rev2 — Attendance Request, the third self-service row. Ungated like Clock in/out and
     // Records: the forms it opens are the caller's own requests (see the node in packs/attendance/index.ts).
     { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
@@ -215,6 +220,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // screen that USES the shift library the three above configure — so it goes after them, and the tail
     // keeps the ticket order it has always held among its own members.
     expect(merged.children.map((c) => c.href)).toEqual([
+      // r274 (2420718d) — EMPLOYEE ATTENDANCE LEADS, and it is not a settings category. The reporter asked
+      // for "all administrative attendance functions under ADMIN > Attendance"; this is the one that is a
+      // READING rather than a setting, so it sits above the configuration rows rather than among them.
+      // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
+      '/attendance', // Employee Attendance
       '/admin/attendance', // Shift
       '/admin/attendance-policy', // Overtime Pattern
       '/admin/attendance-policy/schedule', // Work Schedule
@@ -237,16 +247,33 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
     expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length);
+    /**
+     * r274 — MATCHED ON href + labelKey, not href alone. `/attendance` is now listed twice on purpose:
+     * Records for every employee in the self-service node, and the admin-gated Employee Attendance row in
+     * the config node, because that group hides as a whole and a move would take the screen away from
+     * staff. "Appears exactly once" is still asserted — per ROW, which is what it was always defending;
+     * the pair assertion below pins that the duplication is exactly these two and nothing else.
+     */
     [...EXPECTED, ...ADDED_SINCE]
       .filter((want) => !movedOutHrefs.includes(want.href))
       .forEach((want) => {
-        const got = flattened.filter((c) => c.href === want.href);
-        expect(got, `${want.href} appears exactly once`).toHaveLength(1);
+        const got = flattened.filter((c) => c.href === want.href && c.labelKey === want.labelKey);
+        expect(got, `${want.href} (${want.labelKey}) appears exactly once`).toHaveLength(1);
         expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
         expect(got[0].icon, `${want.href} icon ref`).toBe(want.icon);
         expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
         expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
       });
+    // The ONE duplicated href, named. Any other href appearing twice is the bug this file has always
+    // been about, and this line is what keeps "match on labelKey" from becoming a way to hide one.
+    const dupes = [...new Set(flattened.map((c) => c.href))].filter(
+      (h) => flattened.filter((c) => c.href === h).length > 1,
+    );
+    expect(dupes, 'exactly one href is listed twice, and it is /attendance').toEqual(['/attendance']);
+    const pair = flattened.filter((c) => c.href === '/attendance');
+    expect(pair.map((c) => c.labelKey).sort()).toEqual(['attendanceRecords', 'employeeAttendance']);
+    expect(pair.find((c) => c.labelKey === 'attendanceRecords')?.adminOnly, 'Records stays ungated').toBeUndefined();
+    expect(pair.find((c) => c.labelKey === 'employeeAttendance')?.adminOnly, 'the admin entry is gated').toBe(true);
   });
 
   it('a row declared MOVED_OUT is gone from the pack entirely — not left behind as a second copy', () => {
@@ -455,6 +482,10 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
   it('the Administration rows read as the screens they open', () => {
     const labels = Object.fromEntries(adminRows.map((r) => [r.href, en.nav[r.labelKey]]));
     expect(labels).toEqual({
+      // r274 (2420718d) — the reporter's own name for it. The screen is unchanged and so is its address;
+      // what is new is an administrator-gated way in that says what they will find there, because from
+      // this node the same screen lists every employee rather than the viewer's own month.
+      '/attendance': 'Employee Attendance',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.

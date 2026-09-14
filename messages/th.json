@@ -231,6 +231,7 @@
     "teamLeaveTracker": "ตัวติดตามการลาของทีม",
     "attendance": "บันทึกการเข้างาน",
     "attendanceSettings": "การเข้างาน",
+    "employeeAttendance": "การลงเวลาของพนักงาน",
     "myAttendance": "การลงเวลาของฉัน",
     "manage": "จัดการ",
     "approvals": "รายการอนุมัติ",
