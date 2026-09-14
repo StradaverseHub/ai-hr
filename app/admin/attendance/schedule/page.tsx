@@ -234,9 +234,17 @@ export default async function ScheduleConfigPage({
             </table>
           </div>
         )}
-        <div className="border-t border-border px-4 py-3">
+        {/* 870b79e2 — TWO links, because this table has two owners. Each shift's hours and pattern are
+            edited in the shift library; the lateness / early-out / overtime rules every one of these
+            shifts follows live on its SCHEDULE GROUP, which is the screen the reporter could not find
+            while the rail called it "Overtime Pattern". The General tab is where they arrive, so the
+            pointer belongs here as well as on the two tabs that render the group's settings. */}
+        <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-border px-4 py-3">
           <Link href="/admin/attendance" className="text-sm text-primary hover:underline">
             {t('shiftLibraryLink')}
+          </Link>
+          <Link href="/admin/attendance-policy" className="text-sm text-primary hover:underline">
+            {t('groupLibraryLink')}
           </Link>
         </div>
       </Card>

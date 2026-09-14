@@ -8833,6 +8833,7 @@
       "groupEmpty": "ยังไม่มีการตั้งค่ากลุ่มตารางงานใด ๆ",
       "groupDefault": "มาตรฐาน",
       "groupLink": "แก้ไขกลุ่มตารางงานนี้",
+      "groupLibraryLink": "กลุ่มตารางงาน",
       "minutes": "{n} นาที",
       "settingOn": "เปิด",
       "settingOff": "ปิด",

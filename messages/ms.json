@@ -8833,6 +8833,7 @@
       "groupEmpty": "Belum ada Kumpulan Jadual disediakan.",
       "groupDefault": "Standard",
       "groupLink": "Sunting Kumpulan Jadual ini",
+      "groupLibraryLink": "Kumpulan Jadual",
       "minutes": "{n} minit",
       "settingOn": "Hidup",
       "settingOff": "Mati",

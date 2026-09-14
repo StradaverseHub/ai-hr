@@ -8833,6 +8833,7 @@
       "groupEmpty": "Chưa có Nhóm lịch làm việc nào được thiết lập.",
       "groupDefault": "Chuẩn",
       "groupLink": "Sửa Nhóm lịch làm việc này",
+      "groupLibraryLink": "Nhóm lịch làm việc",
       "minutes": "{n} phút",
       "settingOn": "Bật",
       "settingOff": "Tắt",

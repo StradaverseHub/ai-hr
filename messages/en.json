@@ -8833,6 +8833,7 @@
       "groupEmpty": "No Schedule Group has been set up yet.",
       "groupDefault": "Standard",
       "groupLink": "Edit this Schedule Group",
+      "groupLibraryLink": "Schedule Groups",
       "minutes": "{n} minutes",
       "settingOn": "On",
       "settingOff": "Off",

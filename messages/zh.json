@@ -8833,6 +8833,7 @@
       "groupEmpty": "尚未设置任何排班组。",
       "groupDefault": "标准",
       "groupLink": "编辑此排班组",
+      "groupLibraryLink": "排班组",
       "minutes": "{n} 分钟",
       "settingOn": "开启",
       "settingOff": "关闭",
