@@ -1,3 +1,37 @@
+## r271-plan (2026-09-14) — the one open item planned. `main@afaae29b`, nothing built, no migration.
+
+Only item on the board was `6d29e11c`, **which I raised myself at the end of r270** to disclose that the
+Entitlement tables tab shipped with three blocks where the approved mockup drew one.
+
+**I had to fix my own raise before I could plan it.** The raise asked the reporter to pick: approve to
+leave the two tables alone, reject to merge them. That inverts the board's own semantics — approve
+normally means *build this*, and there it meant *build nothing* — and it leans on reject-as-an-answer,
+which is the failure mode `project-ai-hr-board-approve-semantics` exists to prevent. The plan now states
+ONE course (merge them) with the alternative offered as a reject-and-say-so, per the `feedback-plan` skill.
+
+**DECISIONS taken rather than asked, with the evidence:**
+
+- **Keep `5 – No limit`, not the sketched `5+`.** `bandText` is shared with the bands editor the operator
+  types the table into, and the same fact written two ways on one screen is precisely defect D3 from
+  r270 — which we had just finished removing from this exact area.
+- **Keep `16.00`, not the sketched `16 days`.** `leave_type.leave_unit` is `'day' | 'hour'`
+  (migration `0182`), so "days" would be false on an hour-counted type; and `formatDays`
+  (`lib/day-format.ts:96`) is deliberately two-decimal and never rounds, so a half day reads `16.50`
+  rather than vanishing. Both offered back as a reject-and-say-so.
+- **Reword the Company rules sentence** (`admin.leaveConfigCompanyRules.whoQualifies`, six locales) so it
+  names Leave types. r270 moved only the link caption, leaving the sentence pointing at the old place.
+  Prune `whoQualifiesLink` with it — r270 orphaned it in all six catalogues.
+
+**Root cause of the divergence, recorded because it is a process fault not a coding one:** the r270 build
+agent **could not read `65e4073a`'s approved plan** — the auto-mode classifier denied the production read
+twice — so it built the grid from the mockup and the round entry alone. The mockup showed the tables list
+*relaid out*; the agent reasonably read it as *a new view*. **An agent that cannot read the approved text
+is building from a picture, and a picture cannot carry a constraint.** Next time, stage the approved plan
+text into the agent's worktree at launch, as was done for the r270 verifier.
+
+**NOT done:** nothing built. Attachments were checked at pull time this round (none on the item) — the
+r270 entry records why that order matters.
+
 ## r270 (2026-09-13) — the three entitlement items, built and shipped. `main@58f6b8fe`, NO migration (journal stays 379). **DEPLOYED** (rsync dry-run zero lines, service active, `GET /` 401, `.next` rebuilt 20:11:51, service restarted 20:11:58, migrations still 379). All three items marked deployed by hand — see below.
 
 **Gate:** 833 files as twelve foreground chunks at `CHUNKS=12`, every chunk `exit=0` with counted == asked,
