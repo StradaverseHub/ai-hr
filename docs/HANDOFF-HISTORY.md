@@ -1,3 +1,109 @@
+## r277 (2026-09-14) — five items shipped: the Schedule Group, its two tabs, the draft's fields, the per-break allowance. `main@01d808ba`, **migration 0464**.
+
+Closed: `870b79e2` · `e5ff7189` · `d91aee93` · `a72610af` · `439565ff`. Three build worktrees, disjoint
+file clusters, merged with **zero conflicts**. Gate: 842/842 files, **12,704 tests**, 12/12 chunks green in
+the foreground, `gate:shadow` 380/380, `next build` clean. Verified live: rsync dry-run **0 paths**,
+service active, `GET /` **401**, fresh BUILD_ID, **380** migrations applied.
+
+**THE RELEASE-DAY PROMISE HELD, AND IT WAS MEASURED, NOT ASSERTED.** On production after deploy:
+`0` employments carry a Schedule Group and `0` shifts carry a per-row break allowance. Both features are
+inert until somebody configures them, so no attendance figure and no payroll figure moved.
+
+### ⚠️ MY MIGRATION ALLOCATION WAS WRONG, AND THE AGENT REFUSED IT
+
+I briefed 0380 from "the journal has 379 entries". **The journal's entry COUNT and its next NUMBER have not
+matched for a long time**: 379 entries, but the last `idx` is 463, and `0380_replacement_leave_config.sql`
+already exists and is applied. A 0380 written now carries a `when` below drizzle's watermark and is a
+**silent skip, exit 0** — the §6 hazard, delivered by my own brief. The agent caught it, used **0464**, and
+proved it with shadow. CLAUDE.md §3's state-check prints `entries.length`, which is the APPLIED total and
+must never be used to allocate. Allocate from `max(idx)`.
+
+### DECISIONS the tickets did not settle
+
+- **The Schedule Group is `attendance_rule`, renamed — not a new table.** `nav.overtimePattern` →
+  `nav.scheduleGroup` ("Schedule Group", the reporter's own word) in six catalogues. `screenKey` stays
+  `attendancePolicyConfig` — it is a permission identity and renaming it would silently revoke grants.
+  "Shifts allowed" is `shift.rule_id` read backwards; **no junction table, one shift one rule**, because a
+  many-to-many makes rule resolution multi-valued.
+- **The group outranks `shift.rule_id`.** Only observable on rows written before a group existed: every
+  allowed shift carries that same rule_id, so on any assignment the system accepts, the two agree.
+- **An empty group refuses every shift.** The strict reading, chosen so the guard fires on exactly the
+  misconfiguration it exists to catch. The message names the fix.
+- **The allowed-shift refusal also covers `copyRoster`**, which I never named in the brief — it writes
+  roster rows forward from a window nobody re-examines.
+- **`break_minutes` keeps the INVARIANT, not the number.** My build note said "keep the sum it writes
+  today", which read literally breaks the very invariant it exists to protect: a row with an allowance now
+  contributes its allowance, so scheduled hours, punch import and the payroll hourly clamp still agree with
+  what the engine deducts. Byte-identical wherever no allowance is set.
+- **An allowance is a permission, not a window**: a flexible row with an allowance deducts it whether or not
+  the clocking spanned the window — the same meaning the shift-level allowance already had. **Absent means
+  today's behaviour, never zero.**
+- **The four draft-only refusals** are recorded in the agent's own commit: no EPF elected rates (the floor
+  check runs after `hireEmployee` commits, so a below-floor draft value would fail an activation that had
+  already created the employee), no org-flat fields, no addresses/emergency contacts, no route B.
+
+### CORRECTIONS OWED TO THE REPORTER
+
+1. **The Attendance and Overtime tabs shipped READ-ONLY; the approved plan for `e5ff7189` said "reading and
+   writing".** The reason is good — the deduction switch's effective-from is stamped by the service and
+   never typed, so a second form over it is a second way to reach a closed payroll period, and the General
+   tab already establishes "show, and link to the owner" as this screen's idiom. But it is a real gap
+   against what they approved and must be put to them, not buried.
+2. **`employment.attendance_rule_id` has NO screen that sets it.** The column, the resolution and the
+   refusal shipped; the assignment UI did not. Until it does, the Employee → Group → Shift chain is only
+   half reachable.
+3. **Setting a group is not validated against the employee's current shift.** The refusal lives on SHIFT
+   assignment, not on group assignment, so a future writer could seat somebody in a group that does not
+   allow the shift they are already on. This is why `attendanceRuleId` is EXCLUDED from the import template
+   rather than carried — an import column would be its first and only writer and would bypass the refusal.
+4. **"The new invalidity contribution" in my `a72610af` plan was loose wording.** Invalidity is SOCSO First
+   Category; the fourth employer-bears switch is **SKBBK (Lindung 24 Jam)**. Confirmed by elimination —
+   there are exactly five `employerBears*` columns and SKBBK is the only candidate. Flag it if they meant
+   something else.
+5. **My plan said MB28 is the only production shift using a flexible break.** AM03 also carries a flexible
+   break window; it simply has no allowance. Behaviour is unchanged for it (pinned) but the claim was
+   imprecise.
+
+### TWO GUARD CLASSES BROKE ON AN EXTRACTION THAT CHANGED NO BEHAVIOUR — one would have gone VACUOUS
+
+`a72610af` extracted shared controls so the draft renders the SAME components as the record. Four guards
+grepped `page.tsx` for a string that moved into a component:
+
+- `employment-dates-simplify` + `r77-employment-tab-view-only` — `name="confirmationDate"`. Rewritten to pin
+  the contract ACROSS BOTH FILES (page hands the name over **and** the control emits it). Non-vacuity proven
+  by deleting the emission.
+- `hrdf-registration-visibility` — **this one was the dangerous one.** It sliced `<select>` out of the card
+  and asserted the slice was clean of the company band. After the extraction that slice is **empty**, and an
+  empty string satisfies every `not.toContain` in it. A redirected grep would have left a guard passing on
+  nothing. Rewritten so each half first proves its subject exists; verified non-vacuous twice — wiring the
+  company band back in fails it (the original 57840a6e defect), and collapsing the tri-state to a checkbox
+  fails it.
+- `employee-import-field-parity` — fired correctly on the new column and was answered with a reason, not a
+  widened allowlist.
+
+**The lesson for future extraction rounds:** a source-shape guard that greps ONE file for a string is a
+guard about where code lives, not about what the screen does. When a control moves into a shared component,
+every such guard must be re-pointed at the contract, and the empty-slice case checked — a guard that goes
+green on nothing is worse than one that goes red.
+
+### NOT DONE
+
+Everything in the later stages of both tab plans, deliberately and named in the panel guard so it fails
+loudly if it arrives early: pairing method · minimum interval · skip-lateness on an incomplete clocking ·
+deduct-break from the late/early calculation · the clocking-method switches · Enable Overtime · the
+after-shift switch · backdated overtime without clocking · approval method Manual/Auto · Intersect Actual
+and Pre-Approved · **offset overtime by lateness** (the only one that moves money — `ot_minutes` reaches the
+payslip where `late_deduct_minutes` deliberately does not, so it ships alone). Holiday, Request and
+Notification tabs remain named and empty. No reverse check that removing a shift from a group un-rosters
+members already on it.
+
+### FOUND EN ROUTE, worth its own item
+
+On the **company-policy branch** (an employee with no shift at all), the late-status threshold is
+`attendance_policy.late_after`, **not** the resolved rule's grace — so a Schedule Group's grace period
+cannot change a late verdict for those employees. That was already true of the tenant Standard rule before
+this round. The plans' framing of grace periods as universally decisive is not accurate on that branch.
+
 ## r276-plan (2026-09-14) — the whole open board planned, and a three-times-approved item unstuck. `main@d6eb74d9`, nothing built.
 
 Five plans pushed, each with a rendered mockup. Two were approved by the reporter within minutes of
