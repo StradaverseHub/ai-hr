@@ -80,22 +80,15 @@ function pages(dir = 'app/admin/leave-config', out: string[] = []): string[] {
 const SUB_SCREEN = 'app/admin/leave-config/records/page.tsx';
 const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin/leave-config/records/balances/page.tsx'];
 /**
- * r279 (3fbf7a02) — A FOURTH FILE UNDER THE MODULE THAT IS NOT A ROW-WITH-TABS PAGE, and it is named
- * here for a reason none of the three above share: it IS a fly-out row, it just has no map group.
- *
- * Leave Balance Health is a SIBLING of Entitlements, not a third tab of it. A map group is a row AND ITS
- * TABS — every group on LEAVE_CONFIG_MAP leads with its row's own href and lists the tabs under it — so
- * a group for a one-screen sibling would either draw a tab strip for a row with nothing to strip or read
- * as a tab of the row above, which is exactly what this screen is not. Without a group it cannot mount
- * `<LeaveConfigMap>` (there is no id to be current) and cannot read `leaveConfigPageHeader`, so §B's
- * "every page mounts the map once" and §C's "every page reads its header through the row helper" do not
- * apply to it. The heading rule they exist to enforce STILL DOES, and its own case below asserts the
- * stronger form directly: the page's PageHeader title is this row's `nav.*` label, read from the
- * catalogue rather than typed — which is what r266 was always about.
+ * r279 (3fbf7a02) — LEAVE BALANCE HEALTH IS NOT ON THIS EXCLUSION LIST, and it was the round's decision
+ * that it should not be. It is a new page under the module, so it takes a map group of its own (of one
+ * item, drawing no tab row) and reads its header through `leaveConfigPageHeader` like every other row
+ * page — which means §B's "every page mounts the map exactly once" and §C's "every page reads its
+ * header through the row helper" cover it on arrival, with nothing added here. The alternative, a page
+ * with no group, would have needed its own carve-out in both of those loops AND in
+ * test/leave-config-map.test.ts: three exceptions bought nothing that one map entry did not.
  */
-const MAPLESS_ROW_PAGE = 'app/admin/leave-config/balance-health/page.tsx';
-const MAPLESS_ROW_HREF = '/admin/leave-config/balance-health';
-const PAGES = pages().filter((p) => p !== SUB_SCREEN && p !== MAPLESS_ROW_PAGE && !STUBS.includes(p));
+const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
 const CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
@@ -108,50 +101,32 @@ const CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
  * means these five; the sixth has its own case in §A and in test/leave-flyout-nav.test.ts.
  */
 /**
- * r279 (3fbf7a02) — UPDATED, NOT LOOSENED, and the exclusion is a NAMED LIST, not a widened predicate.
- *
- * `/admin/leave-config/balance-health` is a Leave Config screen with a Leave Config page, so the prefix
- * filter alone would put it in ROWS and every case below would then demand a map group for it. It has
- * none, deliberately (see MAPLESS_ROW_PAGE above). ROWS therefore means what it has always meant — the
- * rows the MAP describes, i.e. the rows that have tabs — and every mapless row is pinned by name in the
- * `mapless` case in §A, which fails the moment this list stops being exhaustive.
+ * r279 (3fbf7a02) — SIX now, not five, and the FILTER IS UNCHANGED. Leave Balance Health joined as a row
+ * and as a map group in the same commit, so "the rows whose destinations live under the module" still
+ * describes exactly the groups of LEAVE_CONFIG_MAP, one for one, in order.
  */
-const MAPLESS_ROW_HREFS = new Set<string>([MAPLESS_ROW_HREF]);
-const ROWS = CHILDREN.filter((c) => c.href.startsWith('/admin/leave-config/') && !MAPLESS_ROW_HREFS.has(c.href));
+const ROWS = CHILDREN.filter((c) => c.href.startsWith('/admin/leave-config/'));
 
-describe('§A · the map is the five submenu rows, in the submenu\'s order', () => {
+describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
   it('group ↔ row agreement, both directions, first item = the row\'s own href', () => {
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(ROWS.map((r) => r.labelKey));
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(ROWS.map((r) => r.href));
-    expect(ROWS).toHaveLength(5);
+    // r279 — six, because Balance Health is a row AND a group. An exact count, not a floor: a row added
+    // without a group (or a group without a row) fails the two `toEqual`s above before reaching this.
+    expect(ROWS).toHaveLength(6);
   });
 
-  it('5ca446db + r279 — the children with no map group are exactly these two, for two different reasons', () => {
-    // UPDATED, NOT LOOSENED: `expect(ROWS).toHaveLength(5)` above still holds exactly, because ROWS is now
-    // the five rows the MAP describes. The children that are not among them are pinned here rather than
-    // excluded quietly — a THIRD mapless row fails the exact-set assertion immediately below.
+  it('5ca446db — the LAST child is the Leave Inquiry door, and it is the only child with no map group', () => {
+    // UPDATED, NOT LOOSENED: `expect(ROWS).toHaveLength(6)` above still holds exactly, because ROWS is
+    // the rows whose destinations live under the module. The extra child is pinned here rather than
+    // excluded quietly — a second mapless row would fail the last assertion in this case.
     //
-    // r279 (3fbf7a02) — the second entry, and its reason is the OPPOSITE of the first's. Employee Leave
-    // Inquiry is mapless because it has no page under `app/admin/leave-config/**`, so a map group would
-    // make `leaveConfigPageHeader` claim a page it does not own. Leave Balance Health HAS such a page and
-    // is still mapless because a map group is a row and its TABS: it is a SIBLING of Entitlements with
-    // one screen, so a group would draw a strip for a row with nothing to strip, or read as a third tab
-    // of Entitlements — the one thing this screen is not.
+    // r279 (3fbf7a02) — STILL ONE ENTRY. Leave Balance Health is a Leave Config page, so it took a map
+    // group rather than joining this list; that is exactly why this case did not have to grow.
     const mapless = CHILDREN.filter((c) => !ROWS.includes(c));
     expect(mapless.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
-      { href: MAPLESS_ROW_HREF, labelKey: 'leaveBalanceHealth' },
       { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
     ]);
-    // …and the Balance Health half of that, in full: second child, a real guarded page, ON the leaveConfig
-    // column (it is the listing that WAS the Leave types tab, so it invents no new permission), and off
-    // the map in both directions.
-    expect(CHILDREN.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
-    expect(fs.existsSync(path.join(ROOT, MAPLESS_ROW_PAGE))).toBe(true);
-    expect(read(MAPLESS_ROW_PAGE)).toContain('requireAdmin()');
-    expect(REGISTERED_ROUTES.has(MAPLESS_ROW_HREF)).toBe(true);
-    expect(SCREENS.find((s) => s.screenKey === 'leaveConfig')!.routes).toContain(MAPLESS_ROW_HREF);
-    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string)).not.toContain('leaveBalanceHealth');
-    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(MAPLESS_ROW_HREF);
     // It is LAST, immediately after Company rules — the position the reporter asked for.
     expect(CHILDREN.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
     expect(CHILDREN.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
@@ -173,25 +148,19 @@ describe('§A · the map is the five submenu rows, in the submenu\'s order', () 
     // It is on the key (guarded page), on no row, and linked from Adjust balances. The two tab addresses
     // it replaced are stubs and off the key. Every other route is on exactly one row, as before.
     //
-    // r279 (3fbf7a02) — A SECOND ROUTE THAT IS ON NO MAP ROW, and it is not a loosening: Leave Balance
-    // Health is reached from its OWN fly-out row, which is a stronger way in than a map entry (the map
-    // renders nothing at all for a row with one screen). The exemption is a named set, and the way in is
-    // asserted against the real menu below — so deleting the row fails this case exactly as deleting a
-    // map entry always did, and a THIRD mapless route fails it immediately.
+    // r279 (3fbf7a02) — STILL ONE named exception. Balance Health took a map group, so it is on exactly
+    // one row like every other route, and this loop needed no second exemption.
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
-    const OFF_MAP = new Set<string>([LEAVE_CONFIG_RECORDS_HREF, MAPLESS_ROW_HREF]);
     for (const r of leaveConfig.routes) {
-      expect(onMap.filter((h) => h === r), r).toHaveLength(OFF_MAP.has(r) ? 0 : 1);
+      expect(onMap.filter((h) => h === r), r).toHaveLength(r === LEAVE_CONFIG_RECORDS_HREF ? 0 : 1);
     }
     expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
-    expect(leaveConfig.routes).toContain(MAPLESS_ROW_HREF);
-    expect(CHILDREN.map((c) => c.href), 'the fly-out row IS the way in to the mapless screen').toContain(
-      MAPLESS_ROW_HREF,
-    );
     expect(read('app/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
     expect(onMap).toEqual([
       '/admin/leave-config/types',
       '/admin/leave-config/entitlement-tables',
+      // r279 — its row is second, so its screen is second on the flattened map.
+      '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
       '/admin/leave-config/generate',
@@ -214,33 +183,6 @@ describe('§A · the map is the five submenu rows, in the submenu\'s order', () 
     }
   });
 
-  it('r279 — the fourth non-row-page file is the MAPLESS ROW, and the heading rule still holds on it', () => {
-    // ⚠️ THIS PAGE IS EXCLUDED FROM §B AND §C'S LOOPS, so the property those loops exist for is asserted
-    // here directly and in its STRONGER form. r266's rule is "every page's heading is its ROW's nav.*
-    // label"; the loops enforce it through `leaveConfigPageHeader`, which needs a map group. This page has
-    // no group, so it reads the row's key itself — and the assertion below resolves the label out of the
-    // CATALOGUE and requires the page to render that key, so a page that titled itself with a typed
-    // string, or with some other row's key, fails exactly as it would inside the loop.
-    const src = read(MAPLESS_ROW_PAGE);
-    expect(src).toContain('requireAdmin()');
-    expect(src, 'a mapless row cannot mount a tab row: there is no id for it to be current').not.toContain(
-      '<LeaveConfigMap',
-    );
-    expect(src, 'and it cannot read the row helper either — that helper resolves a MAP id').not.toContain(
-      'leaveConfigPageHeader(',
-    );
-    // Its own PageHeader, titled from THIS row's nav key — the heading-equals-row rule, without the helper.
-    const row = CHILDREN.find((c) => c.href === MAPLESS_ROW_HREF)!;
-    expect(row.labelKey).toBe('leaveBalanceHealth');
-    expect(src).toContain('<PageHeader');
-    expect(src).toContain(`tNav('${row.labelKey}')`);
-    expect(typeof getPath(en, `nav.${row.labelKey}`), 'the row label must resolve').toBe('string');
-    // It is a SUB-SCREEN of nothing and a TAB of nothing: no back link, and it renders the shared card
-    // rather than a second copy of the derivation (the whole point of moving a mount rather than a list).
-    expect(src).not.toContain('back={{');
-    expect(src).toContain('<LeaveConfigHealthCard');
-    expect(src).toContain('leaveConfigHealthAll(');
-  });
 });
 
 describe('§B · no Leave Config page renders the nine-screen pill row', () => {
@@ -287,8 +229,10 @@ describe('§C · every page\'s heading is its submenu row, and its description i
   it('m4 — leaveConfigPageHeader(id) resolves, for all seven ids, to the ROW\'s nav label and the row\'s description', async () => {
     // 7f69bd71 — seven, not nine: the two record ids have no row any more (they label the sub-tabs of the
     // Reset records sub-screen and are excluded from MappedLeaveConfigScreenId by type).
+    // r279 (3fbf7a02) — eight: `balanceHealth` is the one screen of its own row, and it resolves through
+    // this helper exactly like every other, which is the whole reason it was given a group.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.id as MappedLeaveConfigScreenId));
-    expect(ids).toHaveLength(7);
+    expect(ids).toHaveLength(8);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -327,6 +271,10 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     }
     const descriptionKeys: Record<string, string> = {
       entitlements: 'admin.leaveConfigTypes.rowDescription',
+      // r279 (3fbf7a02) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`),
+      // so the row that answers "can this leave type produce a balance" describes itself in its own words
+      // rather than borrowing the Entitlements sentence.
+      balanceHealth: 'admin.leaveConfigBalanceHealth.pageDescription',
       adjustments: 'admin.leaveConfigAdjustments.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
       approval: 'admin.leaveConfigApprovalChains.pageDescription',
@@ -346,6 +294,7 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     }
     // The heading strings the reporter listed, in English.
     expect(en.nav.leaveEntitlements).toBe('Entitlements');
+    expect(en.nav.leaveBalanceHealth).toBe('Leave Balance Health');
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');

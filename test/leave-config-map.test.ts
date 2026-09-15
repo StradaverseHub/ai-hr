@@ -29,21 +29,6 @@ const declaredRoutes = new Set(
 
 const mapItems = LEAVE_CONFIG_MAP.flatMap((g) => g.items);
 
-/** Every fly-out row the leave pack contributes to the Administration group — the menu that is REAL. */
-const NAV_CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
-const NAV_HREFS = new Set(NAV_CHILDREN.map((c) => c.href));
-/**
- * r279 (3fbf7a02) — LEAVE BALANCE HEALTH IS A ROW WITHOUT A MAP GROUP, and this file has to know it.
- *
- * A map group is a row AND ITS TABS: every group leads with its own row's href and lists that row's tabs
- * under it, which is why `LeaveConfigMap` renders nothing for a group of one. Balance Health is a SIBLING
- * of Entitlements with a single screen and no tabs, so a group for it would either draw a tab strip with
- * nothing in it or read as a third tab of the row above — the one thing this screen is not. It is named
- * here rather than tolerated, and both cases below assert the property the map was standing in for
- * directly instead: the FLY-OUT reaches it, so it is not "a screen nobody can find".
- */
-const MAPLESS_ROW_HREFS = new Set<string>(['/admin/leave-config/balance-health']);
-
 describe('a6fe37fc — the leave configuration map', () => {
   it('points only at routes the permission registry actually declares', () => {
     const undeclared = mapItems.filter((i) => !declaredRoutes.has(i.href)).map((i) => i.href);
@@ -112,22 +97,15 @@ describe('a6fe37fc — the leave configuration map', () => {
     // reached from a link at the foot of Leave Adjustments instead — a menu entry for it would put the
     // records back where the reporter said they did not belong. "A screen nobody can find" is still the
     // property: the link is asserted below, so the sub-screen is reachable from a menu screen.
-    // r279 (3fbf7a02) — A SECOND NAMED EXCEPTION, AND IT IS NOT A LOOSENING: the property this case
-    // guards is "no screen nobody can find", and for Balance Health the menu that reaches it is the
-    // FLY-OUT ROW, which is stronger than a map entry (the map draws nothing at all for a row with one
-    // screen). The reachability assertion is therefore made against the real menu two lines below, so
-    // deleting the row fails this case exactly as deleting a map entry always did.
-    // Sorted on both sides: the registry's ORDER is not what this case is about, and pinning it here
-    // would redden on an unrelated insertion above these two entries.
+    // r279 (3fbf7a02) — NO SECOND EXCEPTION WAS NEEDED, and that is the point of how it was built. Leave
+    // Balance Health is a new Leave Config screen, so it took a map group of its own (one item — the tab
+    // row renders nothing for it) rather than becoming the one route the menu never reaches. This case is
+    // therefore untouched by that round: the Reset records sub-screen is still the single exception.
     expect(
-      [...missing].sort(),
+      missing,
       'a route on the leaveConfig screen key that the menu never reaches is a screen nobody can find — ' +
-        'the defect a6fe37fc exists to fix. The Reset records sub-screen (reached from a link at the ' +
-        'foot of Adjust balances) and Leave Balance Health (reached from its own fly-out row) are the ' +
-        'two named exceptions, and each has its own way in asserted here.',
-    ).toEqual([LEAVE_CONFIG_RECORDS_HREF, ...MAPLESS_ROW_HREFS].sort());
-    for (const href of MAPLESS_ROW_HREFS)
-      expect(NAV_HREFS, `${href} is off the map, so the fly-out row IS its way in`).toContain(href);
+        'the defect a6fe37fc exists to fix. The Reset records sub-screen is the one named exception.',
+    ).toEqual([LEAVE_CONFIG_RECORDS_HREF]);
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
     expect(readFileSync(new URL('../app/admin/leave-config/adjustments/page.tsx', import.meta.url), 'utf8')).toContain(
       '<Link href={LEAVE_CONFIG_RECORDS_HREF}',
@@ -165,33 +143,36 @@ describe('a6fe37fc — the leave configuration map', () => {
     // `app/admin/leave-config/**` and its own `leaveEmployeeBalances` permission column — giving it a group
     // here would make `leaveConfigPageHeader` claim a page it does not own and break this file's own "every
     // screen here IS a declared route on its screen key" case.
-    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED. The prefix filter alone would now pull in Leave Balance
-    // Health, which is a Leave Config screen WITH a Leave Config page and deliberately without a group
-    // (see MAPLESS_ROW_HREFS at the head of this file). The exclusion is a NAMED SET, and the `mapless`
-    // assertion two lines down is exact — so a third groupless row, or a silent widening of the set,
-    // fails here rather than quietly disappearing from the menu's contract.
-    const children = NAV_CHILDREN;
-    const rows = children.filter((c) => c.href.startsWith('/admin/leave-config/') && !MAPLESS_ROW_HREFS.has(c.href));
+    // r279 (3fbf7a02) — THE RULE IS UNCHANGED AND SO IS THIS FILTER: every fly-out row whose destination
+    // lives under the module IS a group here, one for one, in order. Leave Balance Health joined as a row
+    // AND as a group in the same commit, so the two lists moved together and the only child still outside
+    // them is the one whose destination is not a Leave Config page at all.
+    const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
+    const rows = children.filter((c) => c.href.startsWith('/admin/leave-config/'));
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).toEqual(rows.map((r) => r.labelKey));
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(rows.map((r) => r.href));
-    // The children deliberately NOT a group, named so the exclusion above cannot grow silently. Two, for
-    // two different reasons: Employee Leave Inquiry has no page under `app/admin/leave-config/**` at all,
-    // and Balance Health has one but no TABS — a group is a row and its tabs.
+    // The one child that is deliberately NOT a group, named so the exclusion above cannot grow silently.
     const mapless = children.filter((c) => !rows.includes(c));
     expect(mapless.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
-      { href: '/admin/leave-config/balance-health', labelKey: 'leaveBalanceHealth' },
       { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
     ]);
     expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain('/leave/employee-balances');
-    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(
-      '/admin/leave-config/balance-health',
-    );
-    expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual(['entitlements', 'adjustments', 'generate', 'approval', 'companyRules']);
+    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED: `balanceHealth` is SECOND, because its row is second.
+    expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual([
+      'entitlements',
+      'balanceHealth',
+      'adjustments',
+      'generate',
+      'approval',
+      'companyRules',
+    ]);
     const byGroup = Object.fromEntries(LEAVE_CONFIG_MAP.map((g) => [g.id, g.items.map((i) => i.id)]));
     // The two rows with tabs, exactly as the approved pictures draw them; the other three own one screen.
     // 7f69bd71 — TWO tabs each: `entitlementArchive` and `ledgerArchive` left the rows for the Reset
     // records sub-screen (its own test: test/reset-records-screen.test.ts). Put either back and this fails.
     expect(byGroup.entitlements).toEqual<LeaveConfigScreenId[]>(['leaveTypes', 'entitlementTables']);
+    // r279 — one screen, so no tab row is drawn for it (`LeaveConfigMap` returns null below two items).
+    expect(byGroup.balanceHealth).toEqual<LeaveConfigScreenId[]>(['balanceHealth']);
     expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'importLeaveData']);
     expect(byGroup.generate).toEqual<LeaveConfigScreenId[]>(['generateEntitlement']);
     expect(byGroup.approval).toEqual<LeaveConfigScreenId[]>(['approvalChain']);

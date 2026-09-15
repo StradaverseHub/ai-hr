@@ -8732,6 +8732,7 @@
         "leaveTypes": "休假类型",
         "companyRules": "公司规则",
         "entitlementTables": "额度表",
+        "balanceHealth": "假期余额健康检查",
         "approvalChain": "审批链",
         "replacementLeave": "替假",
         "payrollImpact": "薪资影响",
@@ -8768,6 +8769,9 @@
       "entitlementStep": {
         "schemeExplainer": "资格（“谁有资格”标签）决定员工能否休这种假。当存在多张额度表时，福利方案决定员工获得“哪一张”额度表；没有方案涵盖的员工，则获得此处指定的默认额度表。"
       }
+    },
+    "leaveConfigBalanceHealth": {
+      "pageDescription": "哪些假期类型今天可以产生余额，以及其余类型还缺少什么。"
     },
     "leaveConfigAdjustments": {
       "pageDescription": "手动更改员工余额、查看更改记录，并从文件加载余额。"

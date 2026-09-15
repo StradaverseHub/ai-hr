@@ -8732,6 +8732,7 @@
         "leaveTypes": "Leave types",
         "companyRules": "Company rules",
         "entitlementTables": "Entitlement tables",
+        "balanceHealth": "Leave balance health",
         "approvalChain": "Approval chain",
         "replacementLeave": "Replacement leave",
         "payrollImpact": "Payroll impact",
@@ -8768,6 +8769,9 @@
       "entitlementStep": {
         "schemeExplainer": "Eligibility (the Who is eligible tab) decides whether an employee can take this leave type. A benefit scheme decides WHICH entitlement table an employee receives where there is more than one; anyone no scheme covers receives the default entitlement table named here."
       }
+    },
+    "leaveConfigBalanceHealth": {
+      "pageDescription": "Which leave types can produce a balance today, and what is missing before the rest can."
     },
     "leaveConfigAdjustments": {
       "pageDescription": "Change an employee's balance by hand, see what was changed, and load balances from a file."

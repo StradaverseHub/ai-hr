@@ -1,7 +1,6 @@
-import { getTranslations } from 'next-intl/server';
-
 import { requireAdmin } from '@/lib/authz';
 import { PageHeader } from '@/components/ui';
+import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { leaveConfigHealthAll } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import { loadEntitlementTablesData } from '../../leave/entitlements/templates/entitlement-tables-block';
@@ -39,13 +38,17 @@ import { loadEntitlementTablesData } from '../../leave/entitlements/templates/en
  * card's only value is that it cannot disagree with them. It costs reads this page does not strictly
  * need; that is the price of one answer.
  *
- * ⚠️ NO `LeaveConfigMap` MOUNT AND NO MAP GROUP, and both halves are deliberate. Balance Health is a
- * SIBLING ROW of Entitlements, not a third tab of it, so `components/leave-config-map.tsx` gets no
- * entry — the map's groups ARE the rows that have tabs, and a group here would draw a tab strip for a
- * row with one screen or, worse, read as a tab of the row above. The heading is therefore this page's
- * own `PageHeader`, titled from the row's `nav.*` label, which is the same rule every other Leave
- * Config page follows (r266: a page's heading is its ROW's label) reached without the map helper.
- * test/r279-balance-health-row.test.ts and test/r266-leave-config-rows.test.ts both pin the absence.
+ * ⚠️ ITS OWN MAP GROUP, OF ONE — A SIBLING ROW, NOT A THIRD TAB OF ENTITLEMENTS. The Entitlements group
+ * keeps its two tabs (Leave types · Entitlement tables); Balance Health is its own group next to it,
+ * because it reads EVERY leave type at once, which is the one thing neither of those tabs does. A group
+ * of one renders NO tab row (`LeaveConfigMap` returns null below two items), exactly as Generate
+ * Entitlement, Approval Workflow and Company rules already do — so the group buys the two things the
+ * module is built on rather than any furniture: this page's heading and description come from its ROW
+ * through `leaveConfigPageHeader` (r266's heading-equals-row rule, one helper for every page in the
+ * area), and the row↔group agreement stays 1:1 in both directions, which is what
+ * test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts assert. A page here WITHOUT a
+ * group would have been the only Leave Config page outside that convention and would have forced a
+ * named exception into both of those guards.
  *
  * SERVER COMPONENT, and the card it mounts is one too: no client island, no props crossing a boundary
  * (components/leave/leave-config-health.tsx's header says why that is worth writing down —
@@ -53,7 +56,7 @@ import { loadEntitlementTablesData } from '../../leave/entitlements/templates/en
  */
 export default async function LeaveConfigBalanceHealthPage() {
   const s = await requireAdmin();
-  const tNav = await getTranslations('nav');
+  const header = await leaveConfigPageHeader('balanceHealth');
   const data = await loadEntitlementTablesData(s);
   // Read, never recomputed: the same call the Leave types tab makes, over the same loaded data, so the
   // badge on a leave type in that workspace and the row for it here are one derivation (IA §3.1 F2).
@@ -67,10 +70,14 @@ export default async function LeaveConfigBalanceHealthPage() {
 
   return (
     <div className="space-y-6">
-      {/* The heading is the fly-out row that opened this page, read from the row's own key so the menu
-          and the page cannot come to say different things. The card below carries the count and the
-          sentence that explains what the three states mean. */}
-      <PageHeader title={tNav('leaveBalanceHealth')} />
+      {/* The heading is the fly-out ROW that opened this page and the description is the row's, both read
+          through the one helper every Leave Config page uses, so the menu and the page cannot come to say
+          different things (r266 10b59703). */}
+      <PageHeader title={header.title} description={header.description} />
+      {/* `current="balanceHealth"` because this IS that row's only screen — so this renders NOTHING (a tab
+          row of one is furniture). It is mounted anyway, like every other single-screen page in the area:
+          the day this row gains a second screen, the strip appears without anybody remembering to add it. */}
+      <LeaveConfigMap current="balanceHealth" />
       <LeaveConfigHealthCard rows={rows} />
     </div>
   );

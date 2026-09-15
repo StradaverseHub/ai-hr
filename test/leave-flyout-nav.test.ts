@@ -238,7 +238,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   /**
    * r279 (3fbf7a02) — the second row, and the four things about it a later round could quietly undo.
    */
-  it('the Leave Balance Health row sits directly under Entitlements, opens its own page, and is on no map group', () => {
+  it('the Leave Balance Health row sits directly under Entitlements and owns its own group, not a tab of one', () => {
     expect(BALANCE_HEALTH_ROW, 'the Balance Health row is gone').toBeTruthy();
     expect(BALANCE_HEALTH_ROW.href).toBe('/admin/leave-config/balance-health');
     // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: it answers the
@@ -251,10 +251,13 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
     expect(BALANCE_HEALTH_ROW.adminOnly).toBeUndefined();
     expect(BALANCE_HEALTH_ROW.managerUp).toBeUndefined();
-    // NOT a tab of Entitlements: no map group, and Entitlements does not own its path either — owning it
-    // would light the row above while the reader is on this one.
-    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).not.toContain('leaveBalanceHealth');
-    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(BALANCE_HEALTH_ROW.href);
+    // A SIBLING, NOT A THIRD TAB: its own map group, of ONE item — so the tab row renders nothing, the
+    // Entitlements group still has exactly its two tabs, and Entitlements does not own this path (owning
+    // it would light the row above while the reader is on this one).
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveBalanceHealth')!;
+    expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
+    expect(group.items.map((i) => i.href)).toEqual([BALANCE_HEALTH_ROW.href]);
+    expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!.items).toHaveLength(2);
     expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
       BALANCE_HEALTH_ROW.href,
     );
@@ -288,19 +291,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // is still held to an exact set and a future map group for it would fail the "every row is a group"
     // half in test/r266-leave-config-rows.test.ts.
     //
-    // r279 (3fbf7a02) — a SECOND mapless row joins MAPLESS_ROWS, and its reason is the opposite of the
-    // first's. Employee Leave Inquiry has no page under `app/admin/leave-config/**`, so a map group
-    // would make `leaveConfigPageHeader` claim a page it does not own. Leave Balance Health DOES have
-    // such a page; it has no group because a map group is a row AND ITS TABS, and Balance Health is a
-    // SIBLING of Entitlements with one screen and no tabs — a group for it would either draw a strip
-    // for a single-screen row or read as a third tab of the row above, which is precisely what it is
-    // not. It owns NOTHING: no tabs, no sub-screen, so the exact set for it is the empty list, and a
-    // later round that hangs a sub-screen off it has to say so here.
+    // r279 (3fbf7a02) — MAPLESS_ROWS DID NOT GROW. Leave Balance Health is a Leave Config page, so it
+    // took a map group of its own (of one item, drawing no tab row) and is covered by the loop above
+    // instead: its group has no tabs and its row owns no sub-screen, so the loop asserts an empty
+    // `ownedSubpaths` for it — which is the right answer and is derived, not written down here.
     const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
-    const MAPLESS_ROWS: Record<string, string[]> = {
-      leaveBalanceHealth: [],
-      employeeLeaveInquiry: ['/leave/employee-records'],
-    };
+    const MAPLESS_ROWS: Record<string, string[]> = { employeeLeaveInquiry: ['/leave/employee-records'] };
     for (const group of LEAVE_CONFIG_MAP) {
       const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
       expect(row, `${group.navKey} has no fly-out row`).toBeTruthy();

@@ -101,7 +101,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
 import BalanceHealthPage from '../app/admin/leave-config/balance-health/page';
 import LeaveTypesPage from '../app/admin/leave-config/types/page';
-import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
+import { LEAVE_CONFIG_MAP, leaveConfigPageHeader } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 import { leavePack } from '../packs/leave';
@@ -182,11 +182,27 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     expect(SCREENS.map((s) => s.screenKey)).not.toContain('leaveBalanceHealth');
   });
 
-  it('it is a SIBLING row, not a third tab of Entitlements: no map group, and nobody owns its path', () => {
-    // A map group is a row AND ITS TABS — every group leads with its own row's href — so a group here
-    // would either draw a tab strip for a one-screen row or read as a tab of the row above.
-    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string)).not.toContain('leaveBalanceHealth');
-    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(HEALTH_HREF);
+  it('it is a SIBLING row with its OWN one-item group — not a third tab of Entitlements, not a mapless page', () => {
+    // ⚠️ THE SHAPE THIS CASE EXISTS FOR, and both halves of it are load-bearing.
+    //
+    // NOT A THIRD TAB. The Entitlements group keeps exactly its two tabs. Balance Health reads EVERY
+    // leave type at once, which is the one thing neither of those tabs does, so it is a row beside them.
+    const ent = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!;
+    expect(ent.items.map((i) => i.id)).toEqual(['leaveTypes', 'entitlementTables']);
+    expect(ent.items.map((i) => i.href), 'Balance Health must not be a tab of Entitlements').not.toContain(HEALTH_HREF);
+    //
+    // AND NOT MAPLESS. Its own group, of ONE item, at the position its row sits in — which keeps the
+    // row↔group agreement 1:1 in both directions and is what lets this page read its heading through the
+    // same helper as every other Leave Config page. A page here with no group would have been the only
+    // one outside that convention and would have forced a named exception into three separate guards.
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveBalanceHealth')!;
+    expect(group, 'every row whose page lives under the module IS a group').toBeTruthy();
+    expect(group.id).toBe('balanceHealth');
+    expect(group.items).toEqual([{ id: 'balanceHealth', href: HEALTH_HREF }]);
+    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string).indexOf('leaveBalanceHealth')).toBe(1);
+    // A group of one draws NO tab row, so nothing new appears on screen (components/leave-config-map.tsx).
+    expect(read('components/leave-config-map.tsx')).toContain('if (group.items.length < 2) return null;');
+    //
     // Nothing owns its path: `ownedSubpaths` is highlighting only, and the Entitlements row claiming this
     // address would light the row above while the reader is on this one.
     for (const c of NODE.children) expect(c.ownedSubpaths ?? [], `${c.labelKey} must not own it`).not.toContain(HEALTH_HREF);
@@ -194,16 +210,36 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     // Highlighting is not a gate: the Administration group is gated wholesale and the page guards itself.
     expect(HEALTH_ROW.adminOnly).toBeUndefined();
     expect(HEALTH_ROW.managerUp).toBeUndefined();
-    // Without a group it cannot read the row helper, so it carries its own PageHeader titled from the
-    // row's own key — the heading-equals-row rule (r266) reached without the map.
+    // The house pattern on the page itself: heading + description through the one helper, tab row mounted
+    // even though it draws nothing, so the day this row gains a second screen the strip simply appears.
     const src = read(HEALTH_PAGE);
-    expect(src).not.toContain('<LeaveConfigMap');
-    expect(src).not.toContain('leaveConfigPageHeader(');
-    expect(src).toContain('<PageHeader');
-    expect(src).toContain(`tNav('${HEALTH_ROW.labelKey}')`);
+    expect(src).toContain("leaveConfigPageHeader('balanceHealth')");
+    expect(src).toContain('<PageHeader title={header.title} description={header.description} />');
+    expect(src).toContain('<LeaveConfigMap current="balanceHealth" />');
+    expect(src, 'the heading must not be typed here or read from a second key').not.toContain("getTranslations('nav')");
   });
 
-  it('the label is its own key in all six catalogues, translated, and takes no ICU argument', () => {
+  it('r279 — the row\'s heading and description resolve, in all six catalogues, through the row helper', async () => {
+    // The heading-equals-row rule (r266 10b59703), exercised rather than grepped: the REAL helper over
+    // the REAL English catalogue. Breaking it (title → the tab label) leaves every source case green.
+    const header = await leaveConfigPageHeader('balanceHealth');
+    expect(header.title).toBe(str('en', 'nav.leaveBalanceHealth'));
+    expect(header.description).toBe(str('en', 'admin.leaveConfigBalanceHealth.pageDescription'));
+    // The row's name and the TAB's name are different strings in different places, exactly as the module
+    // requires — and neither borrows the Entitlements sentence, which is the drift r266 measured.
+    expect(header.description).not.toBe(str('en', 'admin.leaveConfigTypes.rowDescription'));
+    for (const loc of LOCALES) {
+      for (const key of ['nav.leaveBalanceHealth', 'admin.leaveConfigMap.item.balanceHealth', 'admin.leaveConfigBalanceHealth.pageDescription']) {
+        const v = str(loc, key);
+        expect(v.trim().length, `${loc}: ${key} is empty`).toBeGreaterThan(0);
+        // Rendered by a bare t() — a {brace} throws FORMATTING_ERROR at render behind a green 200.
+        expect(v, `${loc}: ${key} takes an unexpected ICU argument`).not.toMatch(/[{}]/);
+        if (loc !== 'en') expect(v, `${loc}: ${key} left in English`).not.toBe(str('en', key));
+      }
+    }
+  });
+
+  it('the row label is its own key in all six catalogues, and does not hijack the card\'s name', () => {
     for (const loc of LOCALES) {
       const v = str(loc, 'nav.leaveBalanceHealth');
       expect(v.trim().length, `${loc}: nav.leaveBalanceHealth is empty`).toBeGreaterThan(0);
@@ -228,6 +264,8 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     // …and the loader is the SHARED page-level load, not a bespoke reader free to drift from the tables
     // the card is quoting from.
     expect(src).toContain('loadEntitlementTablesData(s)');
+    // …and the shared header helper, not a bespoke heading (the house pattern, asserted next door too).
+    expect(src).toContain("leaveConfigPageHeader('balanceHealth')");
     // NOTHING ABOUT THE CHECK ITSELF CHANGED: the page states no verdict of its own. `leaveConfigHealthAll`
     // is the only thing on it that decides anything, and the three states are named nowhere in its CODE.
     const code = stripComments(src);
