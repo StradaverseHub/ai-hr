@@ -172,6 +172,33 @@ describe('§A every reason NAMES its subject, and none of them paints MISSING_ME
   }
 });
 
+describe('§A2 the production sentence, pinned whole', () => {
+  it('reads as the answer to the question that cost a day', async () => {
+    // ⚠️ THE REASON OBJECT BELOW IS NOT INVENTED. It is what `previewEarnedAccrualWithReasonAction`
+    // returned, character for character, when driven against a seeded database with the production shape
+    // reproduced (an active `AL` "*Annual Leave" beside an archived `ANNUAL`). Pinning the WHOLE sentence
+    // rather than a substring is the point: a reason that names its subject and still reads as a riddle
+    // has not fixed anything, and only a full-string assertion notices when it becomes one.
+    const text = await previewText({
+      emptyReason: {
+        kind: 'type_not_swept',
+        leaveTypeNames: ['*Annual Leave'],
+        sweptLeaveTypeNames: ['Hospitalization Leave', 'Sick Leave'],
+      },
+      archivedHint: [{ id: 'eb16fd15', code: 'ANNUAL', name: 'Annual Leave' }],
+    });
+    expect(text).toBe(
+      'Earned accrual covers only these leave types: Hospitalization Leave and Sick Leave. It does not ' +
+        'cover *Annual Leave, so this run had nothing to examine — no entitlement table or eligibility ' +
+        'rule on *Annual Leave can change that.',
+    );
+    expect(screen.getByTestId('earned-archived-hint').textContent).toBe(
+      'Also worth knowing: the leave type Annual Leave is archived. Archived types are hidden from every ' +
+        'picker on this screen and are never accrued — unarchive under Leave Config → Leave Types.',
+    );
+  });
+});
+
 describe('§B the fallback is kept for the one case the engine cannot name', () => {
   it('a null reason still renders the original sentence rather than an empty box', async () => {
     const text = await previewText({ emptyReason: null });
