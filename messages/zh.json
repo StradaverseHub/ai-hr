@@ -6662,6 +6662,11 @@
       "workspaceTypeListLabel": "休假类型",
       "workspaceReachesNobody": "无人可获得",
       "workspaceStepsLabel": "配置步骤",
+      "workspaceFilterLabel": "筛选休假类型",
+      "workspaceFilterActive": "启用",
+      "workspaceFilterArchived": "已归档",
+      "workspaceFilterAll": "全部",
+      "workspaceFilterEmpty": "此视图中没有休假类型。",
       "workspaceSubStepsLabel": "常规设置步骤",
       "conditionStepsLabel": "条件设置步骤",
       "subStep": {

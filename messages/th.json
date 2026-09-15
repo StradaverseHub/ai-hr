@@ -6662,6 +6662,11 @@
       "workspaceTypeListLabel": "ประเภทการลา",
       "workspaceReachesNobody": "ไปไม่ถึงใคร",
       "workspaceStepsLabel": "ขั้นตอนการตั้งค่า",
+      "workspaceFilterLabel": "กรองประเภทการลา",
+      "workspaceFilterActive": "ใช้งาน",
+      "workspaceFilterArchived": "เก็บถาวรแล้ว",
+      "workspaceFilterAll": "ทั้งหมด",
+      "workspaceFilterEmpty": "ไม่มีประเภทการลาในมุมมองนี้",
       "workspaceSubStepsLabel": "ขั้นตอนการตั้งค่าทั่วไป",
       "conditionStepsLabel": "ขั้นตอนการตั้งค่าเงื่อนไข",
       "subStep": {

@@ -6662,6 +6662,11 @@
       "workspaceTypeListLabel": "Leave types",
       "workspaceReachesNobody": "Reaches nobody",
       "workspaceStepsLabel": "Configuration steps",
+      "workspaceFilterLabel": "Filter leave types",
+      "workspaceFilterActive": "Active",
+      "workspaceFilterArchived": "Archived",
+      "workspaceFilterAll": "All",
+      "workspaceFilterEmpty": "No leave types in this view.",
       "workspaceSubStepsLabel": "General setup steps",
       "conditionStepsLabel": "Condition setup steps",
       "subStep": {

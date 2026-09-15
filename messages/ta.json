@@ -6662,6 +6662,11 @@
       "workspaceTypeListLabel": "விடுப்பு வகைகள்",
       "workspaceReachesNobody": "யாரையும் சென்றடையவில்லை",
       "workspaceStepsLabel": "கட்டமைப்பு படிநிலைகள்",
+      "workspaceFilterLabel": "விடுப்பு வகைகளை வடிகட்டு",
+      "workspaceFilterActive": "செயலில்",
+      "workspaceFilterArchived": "காப்பகப்படுத்தப்பட்டது",
+      "workspaceFilterAll": "அனைத்தும்",
+      "workspaceFilterEmpty": "இந்தக் காட்சியில் விடுப்பு வகைகள் இல்லை.",
       "workspaceSubStepsLabel": "பொது அமைப்பு படிகள்",
       "conditionStepsLabel": "நிபந்தனை அமைப்பு படிகள்",
       "subStep": {

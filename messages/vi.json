@@ -6662,6 +6662,11 @@
       "workspaceTypeListLabel": "Loại nghỉ phép",
       "workspaceReachesNobody": "Không đến được ai",
       "workspaceStepsLabel": "Các bước cấu hình",
+      "workspaceFilterLabel": "Lọc loại nghỉ phép",
+      "workspaceFilterActive": "Đang hoạt động",
+      "workspaceFilterArchived": "Đã lưu trữ",
+      "workspaceFilterAll": "Tất cả",
+      "workspaceFilterEmpty": "Không có loại nghỉ phép trong chế độ xem này.",
       "workspaceSubStepsLabel": "Các bước thiết lập chung",
       "conditionStepsLabel": "Các bước thiết lập Điều kiện",
       "subStep": {
