@@ -247,6 +247,7 @@
     "leaveBalanceHealth": "Kesihatan Baki Cuti",
     "leaveAdjustments": "Pelarasan Cuti",
     "leaveGenerate": "Jana Kelayakan",
+    "leaveEarnedAccrual": "Jalankan Pengumpulan Terkumpul",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
     "leaveApproval": "Rantaian kelulusan",
     "leaveReplacement": "Cuti Ganti",
@@ -6735,7 +6736,7 @@
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
         "tablesHint": "Tetapkan bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya bagi jenis cuti ini di bawah. Setiap jadual berkuat kuasa dari satu tarikh, dan peraturan kelayakan menentukan siapa yang terpakai.",
         "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan.",
-        "accrualMovedPointer": "Jalankan pengumpulan terkumpul berada di bawah Jana Kelayakan"
+        "accrualMovedPointer": "Jalankan pengumpulan terkumpul kini mempunyai baris menunya sendiri"
       },
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
@@ -8758,6 +8759,7 @@
         "replacementLeave": "Cuti ganti",
         "payrollImpact": "Kesan penggajian",
         "generateEntitlement": "Jana kelayakan",
+        "earnedAccrual": "Jalankan pengumpulan terkumpul",
         "adjustments": "Laraskan baki",
         "importLeaveData": "Import data cuti",
         "entitlementArchive": "Rekod konfigurasi",
@@ -8799,6 +8801,9 @@
     },
     "leaveConfigGenerate": {
       "pageDescription": "Jalankan kelayakan bagi satu tahun cuti, pratonton dahulu, dan baca log setiap larian."
+    },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "Tambah hak cuti yang telah diperoleh tetapi belum dicatat — pratonton larian percubaan dahulu, kemudian sahkan."
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",

@@ -210,9 +210,12 @@ export function LeaveTypeTabs({
   /** THIS TYPE'S Entitlement Tables + eligibility rules — the SAME shared block the all-types screen
    *  mounts, filtered to one type (IA §2.3: one component, two mount points, never two implementations). */
   entitlementTablesSection?: ReactNode;
-  /** 10b59703 — WHERE Run Earned Accrual WENT. The dialog itself is on Generate Entitlement now (it runs
-   *  a calculation, so it sits with the other run action); this slot carries the one-line pointer the
-   *  page composes, so the tab still says where the tool is. Server-composed like the other slots. */
+  /** 10b59703 — WHERE Run Earned Accrual WENT. The tool itself is out of the leave type entirely (it runs
+   *  a calculation over employees rather than defining one type's rules); this slot carries the one-line
+   *  pointer the page composes, so the tab still opens the tool in one click. Server-composed like the
+   *  other slots.
+   *  r281 (09386e29) — the pointer's target moved again, to the tool's own fly-out row and page; the page
+   *  resolves it through the map, so nothing here names an address. */
   accrualPointer?: ReactNode;
   /**
    * a6fe37fc ROUND 4 — tab 5's READ-ONLY chain read-out: which chain reaches THIS leave type, its
@@ -959,9 +962,9 @@ export function LeaveTypeTabs({
                 </form>
                 <p className="text-xs text-muted-foreground">{t('allowUplHelp')}</p>
               </div>
-              {/* F12 — Run Earned Accrual USED TO MOUNT HERE (R64). 10b59703 moved it to Generate
-                  Entitlement, because it processes entitlement rather than defining it; what sits last on
-                  this tab now is the pointer to it, where the button used to be. */}
+              {/* F12 — Run Earned Accrual USED TO MOUNT HERE (R64). 10b59703 moved it off the leave
+                    type, because it processes entitlement rather than defining it, and r281 gave it a menu
+                    row of its own; what sits last on this tab is the pointer to it, where the button was. */}
               <div>{accrualPointer}</div>
             </CardContent>
           </Card>

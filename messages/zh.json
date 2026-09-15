@@ -247,6 +247,7 @@
     "leaveBalanceHealth": "假期余额健康检查",
     "leaveAdjustments": "假期调整",
     "leaveGenerate": "生成假期额度",
+    "leaveEarnedAccrual": "运行已赚取累积",
     "leaveApprovalWorkflow": "审批流程",
     "leaveApproval": "审批链",
     "leaveReplacement": "替假",
@@ -6735,7 +6736,7 @@
         "gradesCompanyWideBadge": "适用于全公司",
         "tablesHint": "在下方设置本假期类型的天数、服务年资分段以及由谁享有。每张表按生效日期启用，并由适用规则决定适用对象。",
         "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。",
-        "accrualMovedPointer": "“运行已赚取累积”位于“生成假期额度”下"
+        "accrualMovedPointer": "“运行已赚取累积”已有独立的菜单行"
       },
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
@@ -8758,6 +8759,7 @@
         "replacementLeave": "替假",
         "payrollImpact": "薪资影响",
         "generateEntitlement": "生成额度",
+        "earnedAccrual": "运行已赚取累积",
         "adjustments": "调整余额",
         "importLeaveData": "导入休假数据",
         "entitlementArchive": "配置记录",
@@ -8799,6 +8801,9 @@
     },
     "leaveConfigGenerate": {
       "pageDescription": "运行某个假期年度的额度，先预览，再查看每次运行的日志。"
+    },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "补记已赚取但尚未入账的额度 — 先预览试运行结果，再确认执行。"
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",

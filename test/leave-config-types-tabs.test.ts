@@ -526,15 +526,22 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('<EntitlementTablesBlock');
     expect(pageSrc).toContain('leaveTypeId={leaveTypeId}');
     expect(tabsSrc).toContain('{entitlementTablesSection}');
-    // 10b59703 — F12 moved to Generate Entitlement (it runs a calculation); the tab keeps a one-line
-    // pointer in the slot the button occupied, resolved through the map. IA §3.1 F12 carries the date.
+    // 10b59703 — F12 moved OFF the leave type (it runs a calculation over employees); the tab keeps a
+    // one-line pointer in the slot the button occupied, resolved through the map. IA §3.1 F12 carries the
+    // dates. r281 (09386e29) — UPDATED, NOT LOOSENED: the tool moved once more, from Generate Entitlement
+    // to a page of its own, because that screen CREATES a leave year's entitlement and this one tops up
+    // what was already earned. This case's property — the tab has no dialog and DOES have a live pointer
+    // to wherever the tool is — is unchanged; the target is re-derived through the map, as before.
     expect(pageSrc).not.toContain('<EarnedAccrualDialog');
-    expect(pageSrc).toContain("leaveConfigScreenHref('generateEntitlement')");
+    expect(pageSrc).toContain("leaveConfigScreenHref('earnedAccrual')");
     expect(pageSrc).toContain("t('entitlementStep.accrualMovedPointer')");
     expect(pageSrc).toContain('accrualPointer={accrualPointer}');
     expect(tabsSrc).toContain('{accrualPointer}');
     expect(tabsSrc).not.toContain('{accrualSection}');
-    expect(read('app/admin/leave-config/generate/page.tsx')).toContain('<EarnedAccrualDialog');
+    // THE SCREEN IT MOVED TO — asserted here so this case can never go green on a tab that simply lost
+    // its pointer's destination.
+    expect(read('app/admin/leave-config/earned-accrual/page.tsx')).toContain('<EarnedAccrualDialog');
+    expect(read('app/admin/leave-config/generate/page.tsx')).not.toContain('<EarnedAccrualDialog');
   });
 
   it('F2 the health derivation is read, not recomputed — and the full LISTING is on its own screen now', () => {

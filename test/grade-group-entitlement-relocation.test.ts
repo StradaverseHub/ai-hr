@@ -167,7 +167,11 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // pointer to it. The assertion follows the mount rather than being dropped, for the reason above.
     expect(entitlementsCode).toContain('accrualPointer');
     expect(entitlementsCode).not.toContain('<EarnedAccrualDialog');
-    expect(stripComments(fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/generate/page.tsx'), 'utf8'))).toContain('<EarnedAccrualDialog');
+    // r281 (09386e29) — re-pointed: Run earned accrual has a page of its own now (it was a card filed
+    // inside Generate Entitlement, beside the one operation it must not be confused with). The property
+    // is unchanged — the dialog is mounted SOMEWHERE real, so the "not here" half above cannot go green
+    // on a tool that simply vanished.
+    expect(stripComments(fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/earned-accrual/page.tsx'), 'utf8'))).toContain('<EarnedAccrualDialog');
   });
 
   it('the destructure and the Promise.all still have the SAME arity, in the same order', () => {

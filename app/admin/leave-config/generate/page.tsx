@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
-import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
+import { requireAdmin } from '@/lib/authz';
 import { entitlementYearOptions } from '@/core/leave';
 import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
@@ -10,7 +10,6 @@ import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listLeaveGenerationRuns } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
-import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { openLeaveYearAction } from '../../actions';
 import { previewLeaveGenerationAction } from '../../leave/generate/actions';
@@ -99,23 +98,21 @@ export default async function LeaveConfigGeneratePage({
   const header = await leaveConfigPageHeader('generateEntitlement');
 
   /**
-   * 10b59703 — RUN EARNED ACCRUAL LIVES HERE NOW. It processes earned entitlement for a leave year over
-   * a scope: an execution, not a setting, so by the reporter's rule for this round it sits with the other
-   * run action, between the wizard and the run log. Until r266 it mounted ONLY inside every leave type's
-   * tab 3 (R64 7b945408 + 962077a8, at the reporter's earlier request; the plan says so). The dialog,
-   * the card it wraps and its two server actions are UNCHANGED — only the mount moved, and the tab it
-   * left keeps a one-line pointer here. Same scope inputs the leave type screen fed it: the grant-aware
-   * company list, active grades, active types, and the same year window (three back, six forward).
+   * r281 (09386e29) — RUN EARNED ACCRUAL HAS LEFT THIS PAGE, and the reason is the one thing this screen
+   * must never be ambiguous about.
+   *
+   * r266 moved it here from every leave type's tab 3 on the grounds that it is an execution rather than a
+   * setting, and filed it between the wizard and the run log. That put it next to the single operation it
+   * must not be confused with: this page CREATES a leave year's entitlement, while earned accrual posts
+   * only what has already been earned and is not yet on the ledger. It has a fly-out row and a page of
+   * its own now, directly after this one, so the two stay neighbours without one being filed inside the
+   * other. Nothing about either tool changed — only the address.
+   *
+   * THE FOUR READS THAT FED IT LEFT WITH IT: the grant-aware company list and the active grade list are
+   * derived on the new page, from the same calls. `grades` and `types` are still read HERE because the
+   * criteria builder and the wizard's leave-type picker need them, which is why this is a mount moving
+   * rather than a read moving.
    */
-  const effectiveGrants = withEffectiveGrants(s);
-  const canGroupWide = isGroupAdmin(effectiveGrants);
-  const accrualCompanies = (canGroupWide
-    ? companies
-    : companies.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id))
-  ).map((c) => ({ id: c.id, name: c.name }));
-  const accrualGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
-  const accrualTypes = types.map((lt) => ({ id: lt.id, name: lt.name }));
-  const earnedLeaveYears = years.map((y) => ({ year: y, status: 'draft' }));
 
   return (
     <div className="space-y-6">
@@ -145,20 +142,12 @@ export default async function LeaveConfigGeneratePage({
         </div>
       </Card>
 
-      {/* 10b59703 — F12, Run earned accrual, moved here from every leave type's tab 3. */}
-      <Card>
-        <SectionHeader title={t('runEarnedAccrual')} />
-        <div className="space-y-3 px-4 pb-4 pt-3">
-          <p className="max-w-2xl text-xs text-muted-foreground">{t('entitlementStep.accrualHint')}</p>
-          <EarnedAccrualDialog
-            companies={accrualCompanies}
-            grades={accrualGrades}
-            leaveTypes={accrualTypes}
-            leaveYears={earnedLeaveYears}
-            defaultYear={currentYear}
-          />
-        </div>
-      </Card>
+      {/* r281 (09386e29) — THE RUN EARNED ACCRUAL CARD STOOD HERE, between the wizard and the run log,
+          and is DELIBERATELY GONE rather than copied: it has a fly-out row and a page of its own directly
+          after this one. ONE PLACE, NOT TWO — leaving a second mount here would be two doors onto one
+          operation, and this page is the one screen that operation must never read as part of. No pointer
+          is left in its place either, because unlike tab 3 (which kept one, under a row that does not name
+          the tool at all) the menu itself now carries the name one row below this page's own. */}
 
       {/* F50 — the processing log the request asked for, and its audit-trail list. Absent from IA §3.2's
           F41 row; see this file's header. */}

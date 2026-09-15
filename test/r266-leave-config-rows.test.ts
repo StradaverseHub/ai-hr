@@ -113,7 +113,9 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(ROWS.map((r) => r.href));
     // r279 — six, because Balance Health is a row AND a group. An exact count, not a floor: a row added
     // without a group (or a group without a row) fails the two `toEqual`s above before reaching this.
-    expect(ROWS).toHaveLength(6);
+    // r281 — SEVEN: Run earned accrual took a row and a group in the same commit, exactly as Balance
+    // Health did, so the two lists moved together and no exception was needed anywhere in this file.
+    expect(ROWS).toHaveLength(7);
   });
 
   it('5ca446db — the LAST child is the Leave Inquiry door, and it is the only child with no map group', () => {
@@ -164,6 +166,8 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
       '/admin/leave-config/generate',
+      // r281 — its row is directly after Generate Entitlement, so its screen is directly after it here.
+      '/admin/leave-config/earned-accrual',
       '/admin/leave-config/approval-chains',
       '/admin/leave-config/company-rules',
     ]);
@@ -232,7 +236,9 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     // r279 (3fbf7a02) — eight: `balanceHealth` is the one screen of its own row, and it resolves through
     // this helper exactly like every other, which is the whole reason it was given a group.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.id as MappedLeaveConfigScreenId));
-    expect(ids).toHaveLength(8);
+    // r281 (09386e29) — nine: `earnedAccrual` is the one screen of its own row and resolves through
+      // this helper exactly like every other, which is the whole reason it was given a group.
+      expect(ids).toHaveLength(9);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -277,6 +283,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       balanceHealth: 'admin.leaveConfigBalanceHealth.pageDescription',
       adjustments: 'admin.leaveConfigAdjustments.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
+        // r281 (09386e29) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`),
+        // so the row that TOPS UP earned entitlement describes itself in its own words instead of
+        // borrowing the sentence belonging to the row that CREATES entitlement — which is exactly the
+        // confusion this item exists to end.
+        earnedAccrual: 'admin.leaveConfigEarnedAccrual.pageDescription',
       approval: 'admin.leaveConfigApprovalChains.pageDescription',
       companyRules: 'admin.leaveConfigCompanyRules.pageDescription',
     };
@@ -297,6 +308,7 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveBalanceHealth).toBe('Leave Balance Health');
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
+    expect(en.nav.leaveEarnedAccrual).toBe('Run Earned Accrual');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
     expect(en.nav.leaveCompanyRules).toBe('Company rules');
     // m7 was REVERTED: nav.leaveApproval labels the leaveApproval SCREEN in the users access grid and
@@ -330,18 +342,34 @@ describe('§D · the moves, and what deliberately did not move', () => {
       expect(getPath(cat, 'admin.leave.employeeBalancesAction'), `${loc}: the caption must be pruned`).toBeUndefined();
   });
 
-  it('Run earned accrual is on Generate Entitlement, once, and tab 3 keeps a pointer to it', () => {
+  it('r281 — Run earned accrual is on its OWN page, once, and tab 3 still points at it', () => {
+    // r281 (09386e29) — UPDATED, NOT LOOSENED, and the subject of this case is unchanged: the tool is
+    // mounted in exactly ONE place, the leave type tab that lost it keeps a pointer, and the tool's five
+    // inputs are untouched so nothing about the calculation moved with the mount. What changed is WHICH
+    // one place. r266 put it on Generate Entitlement; that screen CREATES a leave year's entitlement and
+    // this one tops up what was already earned, so filing the second inside the first put an operator one
+    // scroll from the operation it must never be confused with. It has a row and a page of its own now.
+    const accrual = read('app/admin/leave-config/earned-accrual/page.tsx');
     const generate = read('app/admin/leave-config/generate/page.tsx');
     const types = read('app/admin/leave-config/types/page.tsx');
     const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
-    expect(generate.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    expect(accrual.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    // ONE PLACE, NOT TWO: a half-done move that leaves a second mount behind fails here.
+    expect(generate.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
     expect(types.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
-    expect(types).toContain("leaveConfigScreenHref('generateEntitlement')");
+    expect(types).toContain("leaveConfigScreenHref('earnedAccrual')");
+    expect(types, 'the pointer must not still name the screen the tool left').not.toContain(
+      "leaveConfigScreenHref('generateEntitlement')",
+    );
     expect(types).toContain("t('entitlementStep.accrualMovedPointer')");
     expect(tabs).toContain('{accrualPointer}');
+    // …AND THE SENTENCE MOVED WITH THE HREF. It read "Run earned accrual is under Generate Entitlement"
+    // — a signpost that had already gone stale once — so repointing the link alone would have left a
+    // caption that says one thing and does another (the r270 defect). It names no parent screen now.
+    expect(en.admin.leave.entitlementStep.accrualMovedPointer).not.toMatch(/Generate Entitlement/);
     // The dialog's inputs are unchanged (the same five props), so the tool itself did not change.
     for (const prop of ['companies=', 'grades=', 'leaveTypes=', 'leaveYears=', 'defaultYear='])
-      expect(generate.slice(generate.indexOf('<EarnedAccrualDialog'))).toContain(prop);
+      expect(accrual.slice(accrual.indexOf('<EarnedAccrualDialog'))).toContain(prop);
   });
 
   it('eligibility rules stay under Entitlements; Company rules only points at them', () => {
@@ -420,6 +448,11 @@ describe('§E · the strings, six locales', () => {
     // translations of a caption alive forever. The sentence it sat beside is still pinned, above.
 
     'admin.leave.entitlementStep.accrualMovedPointer',
+    // r281 (09386e29) — Run earned accrual's own row: the nav label, the map item label and the row
+    // description. Pinned here because every one of them can ship English-only behind a green 200.
+    'nav.leaveEarnedAccrual',
+    'admin.leaveConfigMap.item.earnedAccrual',
+    'admin.leaveConfigEarnedAccrual.pageDescription',
     'admin.entitlementArchive.pageDescription',
   ];
   it('every key exists in all six catalogues and is not left in English outside en', () => {

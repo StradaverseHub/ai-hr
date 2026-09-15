@@ -113,6 +113,7 @@ import {
   ClipboardList,
   GitBranch,
   HeartPulse,
+  Play,
   Repeat2,
   SlidersHorizontal,
   UserSearch,
@@ -255,15 +256,18 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // row's first tab. A sibling ROW rather than a third tab of Entitlements: it reads every leave type
     // at once, which is the one thing neither of that row's two tabs does.
     //
-    // ⚠️ IT IS NOT IN components/leave-config-map.tsx AND MUST NOT BE, but for the OPPOSITE reason to
-    // the Employee Leave Inquiry row below. That row has no page under `app/admin/leave-config/**`, so
-    // a map group would make `leaveConfigPageHeader` claim a page it does not own; this one DOES have
-    // such a page, and the reason it still gets no group is the map's own meaning — a group is a row
-    // and its TABS, and giving Balance Health one would either draw a strip for a single-screen row or
-    // read as a third tab of Entitlements, which is exactly what it is not. Its page carries its own
-    // PageHeader, titled from this row's `nav.leaveBalanceHealth` key, so the heading-equals-row rule
-    // (r266 10b59703) still holds without the helper. test/leave-config-map.test.ts and
-    // test/r266-leave-config-rows.test.ts both name it as a mapless row rather than tolerating it.
+    // ⚠️ IT **IS** A GROUP IN components/leave-config-map.tsx, AND THIS NOTE USED TO SAY THE OPPOSITE.
+    // r279 built the page outside the convention first — a row with no group — and converted it back
+    // inside the same round when the carve-outs that choice forced started appearing in
+    // test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts; this comment was left
+    // describing the abandoned shape and is corrected here (r281) rather than left to misdirect the next
+    // row. The rule is the one the map's own header states: every fly-out row whose destination lives
+    // under `app/admin/leave-config/**` IS a group, one for one, in order — including a row that owns a
+    // single screen, whose tab strip then draws nothing. A group of one is not furniture: it is what
+    // makes `leaveConfigPageHeader` give the page this row's own `nav.leaveBalanceHealth` heading (r266
+    // 10b59703) and what keeps the row↔group agreement 1:1 in both directions. The only child of this
+    // node that is NOT a group is the one whose destination is not a Leave Config page at all (see the
+    // Employee Leave Inquiry row below).
     //
     // NO `ownedSubpaths`: the page has no tabs and no sub-screen, so there is nothing for the row to
     // stay lit on beyond its own href.
@@ -287,6 +291,20 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // child href to be a registered route with a real page, and a menu row pointing at a stub is a row
     // that reaches its screen through a wasted hop.
     { href: '/admin/leave-config/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
+    // r281 (09386e29) — RUN EARNED ACCRUAL, AND ITS POSITION IS THE ANSWER.
+    //
+    // It was a card filed underneath the generation wizard on the row above. Generate Entitlement CREATES
+    // a leave year's entitlement; this tops up what has already been EARNED and not yet posted, and must
+    // never be mistaken for the other. Filing one inside the other put the operator one scroll away from
+    // the wrong operation, on a tool they run regularly rather than once a year.
+    //
+    // DIRECTLY AFTER GENERATE ENTITLEMENT, not at the bottom: the two are neighbours in an operator's day
+    // and reading them side by side is what makes the difference between them legible. A row rather than a
+    // second tab of Generate Entitlement, because a tab strip would put them back on one screen.
+    //
+    // NO `ownedSubpaths`: the page has no tabs and no sub-screen, so there is nothing for the row to stay
+    // lit on beyond its own href.
+    { href: '/admin/leave-config/earned-accrual', labelKey: 'leaveEarnedAccrual', icon: Play },
     // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not. The label key still says
     // `leaveApprovalWorkflow` rather than `leaveApproval` for the reason stated above: `nav.leaveApproval`
     // labels the SCREEN in lib/permissions.ts, and reusing it here would silently rename that column.

@@ -446,6 +446,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave-config/company-rules',
       '/admin/leave-config/entitlement-tables',
       '/admin/leave-config/generate',
+      // r281 (09386e29) — RUN EARNED ACCRUAL's own address. It was a card filed underneath the generation
+      // wizard on `/admin/leave-config/generate`, which is the one operation it must not be confused with
+      // (that one CREATES a leave year's entitlement; this tops up what was already earned). It has a
+      // fly-out row and a page of its own now. Same admin surface behind the same `requireAdmin` guard as
+      // every other `/admin/leave-config/` screen, so it is a ROUTE on this screen key rather than a new
+      // one, and NO new permission is created: anybody who could open Generate Entitlement could already
+      // run it, because it WAS a section of Generate Entitlement.
+      // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
+      // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+      '/admin/leave-config/earned-accrual',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
       // 7f69bd71 — THE RESET RECORDS SUB-SCREEN: the two read-only registers as sub-tabs of one page

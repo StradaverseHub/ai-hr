@@ -158,11 +158,17 @@ describe('a6fe37fc — the leave configuration map', () => {
     ]);
     expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain('/leave/employee-balances');
     // r279 (3fbf7a02) — UPDATED, NOT LOOSENED: `balanceHealth` is SECOND, because its row is second.
+    // r281 (09386e29) — UPDATED, NOT LOOSENED: `earnedAccrual` sits immediately after `generate`. Run
+    // earned accrual was a card filed INSIDE Generate Entitlement, which is the one operation it must not
+    // be confused with (that one creates a leave year's entitlement; this tops up what was already
+    // earned). The position is the answer, so it is pinned as a position in this exact list rather than
+    // as membership.
     expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual([
       'entitlements',
       'balanceHealth',
       'adjustments',
       'generate',
+      'earnedAccrual',
       'approval',
       'companyRules',
     ]);
@@ -175,6 +181,9 @@ describe('a6fe37fc — the leave configuration map', () => {
     expect(byGroup.balanceHealth).toEqual<LeaveConfigScreenId[]>(['balanceHealth']);
     expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'importLeaveData']);
     expect(byGroup.generate).toEqual<LeaveConfigScreenId[]>(['generateEntitlement']);
+    // r281 — one screen, so no tab row is drawn for it. A SECOND TAB of `generate` would have been the
+    // wrong shape and is the whole point of the item: it would put the two operations back on one screen.
+    expect(byGroup.earnedAccrual).toEqual<LeaveConfigScreenId[]>(['earnedAccrual']);
     expect(byGroup.approval).toEqual<LeaveConfigScreenId[]>(['approvalChain']);
     expect(byGroup.companyRules).toEqual<LeaveConfigScreenId[]>(['companyRules']);
   });

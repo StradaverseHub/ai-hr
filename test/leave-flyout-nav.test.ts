@@ -138,6 +138,21 @@ const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = 
 ] as const;
 
 /**
+ * r281 (09386e29) — A ROW ADDED SINCE THE STRIP RETIRED THAT GOES IMMEDIATELY AFTER GENERATE ENTITLEMENT,
+ * and again the place is the point.
+ *
+ * Run earned accrual was a card filed UNDERNEATH the generation wizard on the Generate Entitlement page.
+ * That page CREATES a leave year's entitlement; this tool posts only what has already been earned and is
+ * not yet on the ledger, so filing one inside the other put the operator one scroll from the operation it
+ * must never be confused with. It is a NEIGHBOUR of Generate Entitlement now, not a section of it — and
+ * naming it in its own list with its own insertion point keeps RETIRED_STRIP meaning exactly what it has
+ * always meant instead of smuggling a new destination into it.
+ */
+const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
+  { href: '/admin/leave-config/earned-accrual', labelKey: 'leaveEarnedAccrual' },
+] as const;
+
+/**
  * The fly-out's children, EXACTLY: the retired strip in its own order, with each row added since spliced
  * in at the position its round chose. Still an exact-set guard — a deletion, a rename or a re-sort all
  * fail it — and a genuinely new row is added by naming it above, in the commit that adds it.
@@ -145,7 +160,10 @@ const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = 
 const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
   RETIRED_STRIP[0],
   ...ADDED_AFTER_ENTITLEMENTS,
-  ...RETIRED_STRIP.slice(1),
+  // Leave Adjustments and Generate Entitlement, then the row r281 spliced in behind the latter.
+  ...RETIRED_STRIP.slice(1, 3),
+  ...ADDED_AFTER_GENERATE,
+  ...RETIRED_STRIP.slice(3),
   ...ADDED_SINCE,
 ];
 
@@ -153,6 +171,8 @@ const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
 const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
 /** The child r279 added, resolved the same way. */
 const BALANCE_HEALTH_ROW = NODE.children.find((c) => c.labelKey === 'leaveBalanceHealth')!;
+/** The child r281 added, resolved the same way. */
+const EARNED_ACCRUAL_ROW = NODE.children.find((c) => c.labelKey === 'leaveEarnedAccrual')!;
 
 /** href → the route file that must exist for it to be a live destination. */
 const routeFile = (href: string) => `app${href}/page.tsx`;
@@ -166,6 +186,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(RETIRED_STRIP[0], 'the splice point moved').toEqual({
       href: '/admin/leave-config/types',
       labelKey: 'leaveEntitlements',
+    });
+    // r281 — the SECOND splice point, pinned the same way and for the same reason: Run earned accrual
+    // goes directly behind Generate Entitlement, so the entry it is spliced behind must still be that row.
+    expect(RETIRED_STRIP[2], 'the second splice point moved').toEqual({
+      href: '/admin/leave-config/generate',
+      labelKey: 'leaveGenerate',
     });
     expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
     expect(NODE.labelKey).toBe('leaveConfig');
@@ -186,6 +212,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       '/admin/leave-config/balance-health': 'leaveConfig',
       '/admin/leave-config/adjustments': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
+        // r281 (09386e29) — Run earned accrual is on `leaveConfig` ON PURPOSE: it WAS a section of the
+        // Generate Entitlement page, so anybody who could open that screen could already run it. A screen
+        // key of its own would invent a permission for a card that changed address.
+        '/admin/leave-config/earned-accrual': 'leaveConfig',
       '/admin/leave-config/company-rules': 'leaveConfig',
       // …and Approval Workflow, which has answered to the SEPARATE `leaveApproval` column since 0d147b78
       // absorbed the standalone approval-chain route. The substring scan this case replaced could not see
@@ -260,6 +290,39 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!.items).toHaveLength(2);
     expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
       BALANCE_HEALTH_ROW.href,
+    );
+  });
+
+  /**
+   * r281 (09386e29) — the Run earned accrual row, and the four things about it a later round could undo.
+   */
+  it('the Run Earned Accrual row sits directly after Generate Entitlement and owns its own group, not a tab of one', () => {
+    expect(EARNED_ACCRUAL_ROW, 'the Run earned accrual row is gone').toBeTruthy();
+    expect(EARNED_ACCRUAL_ROW.href).toBe('/admin/leave-config/earned-accrual');
+    // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: the screen it was
+    // filed inside is the one directly above it, and the two must read as neighbours rather than as one
+    // containing the other.
+    const labels = NODE.children.map((c) => c.labelKey);
+    expect(labels.slice(labels.indexOf('leaveGenerate'), labels.indexOf('leaveGenerate') + 2)).toEqual([
+      'leaveGenerate',
+      'leaveEarnedAccrual',
+    ]);
+    // A real page, guarded, with no tabs of its own to own.
+    expect(exists('app/admin/leave-config/earned-accrual/page.tsx')).toBe(true);
+    expect(EARNED_ACCRUAL_ROW.ownedSubpaths ?? []).toEqual([]);
+    // Highlighting is not a gate: the Administration group is gated wholesale and the page calls
+    // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
+    expect(EARNED_ACCRUAL_ROW.adminOnly).toBeUndefined();
+    expect(EARNED_ACCRUAL_ROW.managerUp).toBeUndefined();
+    // A SIBLING, NOT A SECOND TAB: its own map group, of ONE item — so the tab row renders nothing, the
+    // Generate group still owns exactly its one screen, and Generate does not own this path (owning it
+    // would light the row above while the reader is on this one, which is the very confusion this splits).
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEarnedAccrual')!;
+    expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
+    expect(group.items.map((i) => i.href)).toEqual([EARNED_ACCRUAL_ROW.href]);
+    expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveGenerate')!.items).toHaveLength(1);
+    expect(NODE.children.find((c) => c.labelKey === 'leaveGenerate')!.ownedSubpaths ?? []).not.toContain(
+      EARNED_ACCRUAL_ROW.href,
     );
   });
 

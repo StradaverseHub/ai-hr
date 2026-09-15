@@ -247,6 +247,7 @@
     "leaveBalanceHealth": "Tình trạng số dư nghỉ phép",
     "leaveAdjustments": "Điều chỉnh nghỉ phép",
     "leaveGenerate": "Tạo quyền lợi",
+    "leaveEarnedAccrual": "Chạy tích lũy đã hưởng",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
     "leaveApproval": "Chuỗi phê duyệt",
     "leaveReplacement": "Nghỉ bù",
@@ -6735,7 +6736,7 @@
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
         "tablesHint": "Đặt số ngày, các mốc thâm niên và ai được hưởng cho loại phép này ở bên dưới. Mỗi bảng có hiệu lực từ một ngày, và một quy tắc điều kiện quyết định bảng áp dụng cho ai.",
         "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận.",
-        "accrualMovedPointer": "Chạy tích lũy đã hưởng nằm trong mục Tạo quyền lợi"
+        "accrualMovedPointer": "Chạy tích lũy đã hưởng đã có một dòng menu riêng"
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
@@ -8758,6 +8759,7 @@
         "replacementLeave": "Nghỉ bù",
         "payrollImpact": "Ảnh hưởng lương",
         "generateEntitlement": "Tạo định mức",
+        "earnedAccrual": "Chạy tích lũy đã hưởng",
         "adjustments": "Điều chỉnh số dư",
         "importLeaveData": "Nhập dữ liệu nghỉ phép",
         "entitlementArchive": "Bản ghi cấu hình",
@@ -8799,6 +8801,9 @@
     },
     "leaveConfigGenerate": {
       "pageDescription": "Chạy định mức cho một năm nghỉ phép, xem trước rồi mới chạy, và đọc nhật ký của mọi lần chạy."
+    },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "Bổ sung phần định mức đã tích lũy nhưng chưa ghi sổ — xem trước bản chạy thử trước, rồi xác nhận."
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",

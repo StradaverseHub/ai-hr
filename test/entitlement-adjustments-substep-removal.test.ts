@@ -111,7 +111,13 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     // again: the group-aware company list is prepared on the page that mounts the dialog, by the same
     // two names. The leave type screen keeps neither (a list prepared for a dialog it no longer mounts
     // would be the e4238594 leftover this file exists to catch), only the pointer.
-    const liveScreen = stripComments(read('app/admin/leave-config/generate/page.tsx'));
+    // r281 (09386e29) — the dialog moved ONCE MORE, to a page of its own, and the guard follows the
+    // consumer for the third time. Generate Entitlement CREATES a leave year's entitlement while Run
+    // earned accrual posts only what was already earned, so the second could not stay filed inside the
+    // first. The property is untouched: whichever screen mounts the dialog prepares the group-aware
+    // company list for it, by the same two names, and no screen it has left keeps a list for a dialog it
+    // no longer mounts (which is the e4238594 leftover this file exists to catch).
+    const liveScreen = stripComments(read('app/admin/leave-config/earned-accrual/page.tsx'));
     // `festiveCompanies` was the name the OLD page gave the list it fed EarnedAccrualDialog; the new
     // screen calls the same list `accrualCompanies`, gated by the same `canGroupWide`. The rename is not
     // the removal this case guards against — what matters is that the dialog is still fed a group-aware
@@ -119,10 +125,13 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     for (const kept of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
       expect(liveScreen.includes(kept), `${kept} must survive — it feeds Run Earned Accrual`).toBe(true);
     }
-    const typeScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
-    for (const gone of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
-      expect(typeScreen.includes(gone), `${gone} left the leave type screen with the dialog`).toBe(false);
+    for (const rel of ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/generate/page.tsx']) {
+      const leftBehind = stripComments(read(rel));
+      for (const gone of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
+        expect(leftBehind.includes(gone), `${gone} must leave ${rel} with the dialog`).toBe(false);
+      }
     }
+    const typeScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
     expect(typeScreen).toContain('accrualPointer');
   });
 

@@ -98,6 +98,18 @@ export type LeaveConfigScreenId =
   | 'replacementLeave'
   | 'payrollImpact'
   | 'generateEntitlement'
+  /**
+   * r281 (09386e29) — `earnedAccrual` (`/admin/leave-config/earned-accrual`), a NEIGHBOUR of Generate
+   * Entitlement and not a section inside it.
+   *
+   * Run earned accrual was filed underneath the generation wizard, which is the one operation it must
+   * never be confused with: Generate Entitlement CREATES a leave year's entitlement, while this tops up
+   * what has already been earned and not yet posted. Filing the second inside the first put an operator
+   * one scroll away from the wrong button. It is run regularly (fifteen recorded runs, the latest the day
+   * before this round), so it takes a row of its own — directly after Generate Entitlement, so the two
+   * stay neighbours without one being filed inside the other.
+   */
+  | 'earnedAccrual'
   | 'adjustments'
   | 'importLeaveData'
   | 'entitlementArchive'
@@ -149,6 +161,10 @@ export type LeaveConfigGroupId =
   | 'balanceHealth'
   | 'adjustments'
   | 'generate'
+  // r281 (09386e29) — a one-screen row, like `generate` above it: Run earned accrual is an execution of
+  // its own rather than a section of the generator, and the group exists so its page reads its heading
+  // and description through the same helper every other Leave Config page does.
+  | 'earnedAccrual'
   | 'approval'
   | 'companyRules';
 
@@ -158,6 +174,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
   | 'leaveGenerate'
+  | 'leaveEarnedAccrual'
   | 'leaveApprovalWorkflow'
   | 'leaveCompanyRules';
 
@@ -204,6 +221,13 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     ],
   },
   { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },
+  // r281 (09386e29) — ONE SCREEN, ITS OWN ROW, IMMEDIATELY AFTER GENERATE ENTITLEMENT. The tab row draws
+  // nothing for a group of one, so this entry buys the same two things the Balance Health group buys: the
+  // page's heading is its ROW's `nav` label through `leaveConfigPageHeader`, and the row↔group agreement
+  // stays 1:1 in both directions. A THIRD OPTION — a second tab of the `generate` group — was the wrong
+  // shape and is the whole point of the item: a tab strip would put the two operations back on one screen,
+  // which is the confusion between creating entitlement and topping it up that this separates.
+  { id: 'earnedAccrual', navKey: 'leaveEarnedAccrual', items: [{ id: 'earnedAccrual', href: '/admin/leave-config/earned-accrual' }] },
   { id: 'approval', navKey: 'leaveApprovalWorkflow', items: [{ id: 'approvalChain', href: '/admin/leave-config/approval-chains' }] },
   // a6fe37fc ROUND 5 (cutover) — `replacementLeave` and `payrollImpact` are DELIBERATELY absent: their
   // screens were absorbed into Company rules, whose page renders `leaveConfigScreenTitle()` of each as a
@@ -313,6 +337,7 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
+  earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],
   approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],
   companyRules: ['admin.leaveConfigCompanyRules', 'pageDescription'],
 };

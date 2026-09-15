@@ -247,6 +247,7 @@
     "leaveBalanceHealth": "Leave Balance Health",
     "leaveAdjustments": "Leave Adjustments",
     "leaveGenerate": "Generate Entitlement",
+    "leaveEarnedAccrual": "Run Earned Accrual",
     "leaveApprovalWorkflow": "Approval Workflow",
     "leaveApproval": "Approval chain",
     "leaveReplacement": "Replacement Leave",
@@ -6735,7 +6736,7 @@
         "gradesCompanyWideBadge": "Applies company-wide",
         "tablesHint": "Set this leave type's days, service ranges and who receives them below. Each table takes effect from a date, and an eligibility rule decides who it applies to.",
         "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm.",
-        "accrualMovedPointer": "Run earned accrual is under Generate Entitlement"
+        "accrualMovedPointer": "Run earned accrual has a menu row of its own"
       },
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
@@ -8758,6 +8759,7 @@
         "replacementLeave": "Replacement leave",
         "payrollImpact": "Payroll impact",
         "generateEntitlement": "Generate entitlement",
+        "earnedAccrual": "Run earned accrual",
         "adjustments": "Adjust balances",
         "importLeaveData": "Import leave data",
         "entitlementArchive": "Configuration record",
@@ -8799,6 +8801,9 @@
     },
     "leaveConfigGenerate": {
       "pageDescription": "Run the entitlement for a leave year, preview it first, and read the log of every run."
+    },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "Top up the entitlement already earned and not yet posted — preview the dry run first, then confirm."
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",

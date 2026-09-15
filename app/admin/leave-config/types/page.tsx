@@ -179,15 +179,23 @@ export default async function LeaveConfigTypesPage({
   const approvalReadout = await loadLeaveTypeApprovalReadout(s, companyOptions);
   /**
    * 10b59703 — RUN EARNED ACCRUAL LEFT THIS TAB. It runs a calculation across employees, so by the
-   * reporter's rule for this round it sits with the other run action, on Generate Entitlement, next to
-   * the generation log (generate/page.tsx). R64 (7b945408 + 962077a8) had tucked it in here at the
-   * reporter's earlier request; the plan says so and offers reject-and-say-so. What stays in the slot
-   * is a one-line pointer, resolved through the map so it and the submenu cannot disagree about where
-   * the tool is. Server-composed, like every other slot: a plain rendered node crosses the boundary.
+   * reporter's rule for that round it sits with the other run actions rather than inside a leave type's
+   * configuration. R64 (7b945408 + 962077a8) had tucked it in here at the reporter's earlier request;
+   * the plan says so and offers reject-and-say-so. What stays in the slot is a one-line pointer,
+   * resolved through the map so it and the submenu cannot disagree about where the tool is.
+   * Server-composed, like every other slot: a plain rendered node crosses the boundary.
+   *
+   * r281 (09386e29) — THE POINTER'S TARGET MOVED WITH THE TOOL, AND THE SENTENCE MOVED WITH THE TARGET.
+   * The tool is a fly-out row and a page of its own now (it was filed under Generate Entitlement, the one
+   * operation it must not be confused with). Repointing the href alone would have left a caption reading
+   * "…is under Generate Entitlement" while opening somewhere else — the r270 defect, arriving by the
+   * fix's own door — so `accrualMovedPointer` was reworded in all six catalogues in the same commit. It
+   * no longer names a parent screen at all, because the menu now carries the tool's own name: a pointer
+   * that names a location is a second signpost to keep in step, and this one has already gone stale once.
    */
   const accrualPointer = (
     <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-      <Link href={leaveConfigScreenHref('generateEntitlement')} className="font-medium text-primary hover:underline">
+      <Link href={leaveConfigScreenHref('earnedAccrual')} className="font-medium text-primary hover:underline">
         {t('entitlementStep.accrualMovedPointer')} →
       </Link>
     </p>

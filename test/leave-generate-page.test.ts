@@ -350,15 +350,26 @@ describe('4b0e76ae · the reset keeps the table, and the year list stops reading
     expect(pack.includes('per-company leave-year cycle')).toBe(false);
   });
 
-  it('the Run Earned Accrual selector now offers the shared computed range', () => {
+  it('the Run Earned Accrual selector still offers the shared computed range, on the page that owns it now', () => {
     // r266 (10b59703) moved the Run earned accrual dialog from every leave type's tab 3 to the Generate
-    // Entitlement page; the shared computed range moved with it. The types page keeps only a pointer.
-    const page = read('app/admin/leave-config/generate/page.tsx');
+    // Entitlement page; the shared computed range moved with it. r281 (09386e29) moved BOTH once more, to
+    // the tool's own page — Generate Entitlement CREATES a leave year's entitlement and earned accrual
+    // tops up what was already earned, so one could not stay filed inside the other. The property this
+    // case guards is unchanged and is about the SELECTOR, not the address: it is the one shared computed
+    // range (three years back, six forward), built in exactly one place, and never a forward-only array.
+    const page = read('app/admin/leave-config/earned-accrual/page.tsx');
     expect(page).toContain('entitlementYearOptions(currentYear)');
     expect(page).toContain('leaveYears={earnedLeaveYears}');
-    // The old fallback array built currentYear..+6 with no past years.
+    // The old fallback array built currentYear..+6 with no past years, which silently removed the ability
+    // to run earned accrual for a past year.
     expect(page.includes('Array.from({ length: 7 }')).toBe(false);
+    // …and it is built in ONE place: neither screen the tool has left may build the accrual list again.
     const types = read('app/admin/leave-config/types/page.tsx');
     expect(types.includes('entitlementYearOptions(currentYear)'), 'the selector must not be built on the types page any more').toBe(false);
+    const generate = read('app/admin/leave-config/generate/page.tsx');
+    expect(generate.includes('leaveYears={earnedLeaveYears}'), 'the accrual selector must not survive on Generate Entitlement').toBe(false);
+    // Generate Entitlement keeps its OWN use of the shared range — the wizard's year dropdown — which is
+    // why this is a mount moving rather than a helper moving.
+    expect(generate).toContain('entitlementYearOptions(currentYear)');
   });
 });
