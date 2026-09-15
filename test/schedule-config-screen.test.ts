@@ -27,7 +27,7 @@
  * relocation.test.ts says why: requireAdmin() resolves a real session the harness cannot mint). No DB.
  */
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { attendancePack } from '../packs/attendance';
@@ -38,24 +38,68 @@ const root = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
 
 const NEW_ROUTE = '/admin/attendance/schedule';
-/** The screen this round deliberately did NOT touch. */
+/** The screen 1c5602cc deliberately did NOT touch, and e4471e3c (r287) consolidated INTO the one above. */
 const OLD_WORK_SCHEDULE_ROUTE = '/admin/attendance-policy/schedule';
+/** e4471e3c — the Schedule Group library, consolidated in the same round. */
+const OLD_SCHEDULE_GROUP_ROUTE = '/admin/attendance-policy';
+/** Both rows the reporter asked to be folded into Schedule. Their ROUTES survive; their rows do not. */
+const CONSOLIDATED = [OLD_SCHEDULE_GROUP_ROUTE, OLD_WORK_SCHEDULE_ROUTE] as const;
+const PAGE_REL = 'app/admin/attendance/schedule/page.tsx';
 
 const navHrefs = (attendancePack.navNodes ?? []).flatMap((n) => (n.children ?? []).map((c) => c.href));
 
-describe('1c5602cc — the Schedule screen is added ALONGSIDE Work Schedule', () => {
+describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Work Schedule', () => {
   it('the new Schedule row is in the Attendance menu', () => {
     expect(navHrefs, `The Schedule nav row (${NEW_ROUTE}) is missing from the attendance pack.`).toContain(NEW_ROUTE);
   });
 
-  it('the existing Work Schedule row is UNTOUCHED — this round is not the cutover', () => {
-    expect(
-      navHrefs,
-      `The "Work Schedule" row (${OLD_WORK_SCHEDULE_ROUTE}) was removed. The a6fe37fc playbook, which the ` +
-        `1c5602cc plan adopted in writing, keeps the old screen working until a round is EXPLICITLY the ` +
-        `cutover — and the reporter has been asked to steer whether it is absorbed at all. If this is that ` +
-        `round, retire the row and this assertion together, deliberately.`,
-    ).toContain(OLD_WORK_SCHEDULE_ROUTE);
+  /**
+   * ⚠️ THIS CASE WAS THE EXACT OPPOSITE ONE ROUND AGO, AND THAT WAS DELIBERATE IN BOTH DIRECTIONS.
+   *
+   * 1c5602cc adopted the a6fe37fc playbook in writing — build alongside, prove the old behaviour
+   * unchanged, and retire the old row only in a round that is EXPLICITLY the cutover — so this file
+   * asserted that the "Work Schedule" row was still there, and its own failure message named the
+   * condition for flipping it: "If this is that round, retire the row and this assertion together,
+   * deliberately." The reporter answered the open question by raising e4471e3c, which asks for Schedule
+   * Group AND Work Schedule to be consolidated into this sub-menu. So this IS that round, and the
+   * assertion is flipped rather than deleted — the guard's job did not change, only which way it points.
+   *
+   * It is also STRICTER than the assertion it replaces. Retiring a row is only safe if the screen behind
+   * it survives, stays registered, and stays reachable, so all four are asserted together: no row, page
+   * on disk, route registered (a screenKey is a permission identity — dropping it revokes grants), and a
+   * link from THIS screen, which is now the only way in.
+   */
+  it('the two consolidated rows are GONE from the menu — and their screens are not', () => {
+    for (const route of CONSOLIDATED) {
+      expect(
+        navHrefs,
+        `${route} still has a nav row. e4471e3c asked for Schedule Group and Work Schedule to be ` +
+          `consolidated into ${NEW_ROUTE}; if that is being reversed, reverse this case with it.`,
+      ).not.toContain(route);
+      expect(
+        existsSync(path.join(root, `app${route}/page.tsx`)),
+        `${route} lost its page. The plan says the ROUTES survive as the owning editors for everything ` +
+          `that did NOT move — the deduction switch above all — so retiring the row must never delete ` +
+          `the screen.`,
+      ).toBe(true);
+      expect(
+        REGISTERED_ROUTES.has(route),
+        `${route} is no longer registered in lib/permissions.ts. screenKey 'attendancePolicyConfig' is a ` +
+          `PERMISSION IDENTITY: removing or renaming it silently revokes whatever stored role ` +
+          `configuration references it.`,
+      ).toBe(true);
+    }
+  });
+
+  it('…and this screen links to both, because it is the only way in now', () => {
+    // An absence assertion with nothing positive beside it would be satisfied by a screen nobody can
+    // reach. The General tab points at the Work Schedule page (which still owns the tenant overtime
+    // rates, the registered devices and the backup-shift coverage card) and the Attendance / Overtime
+    // tabs point at the Schedule Group editor for the group in view (which still owns the deduction
+    // switch, the overtime bands and rates, and the group's name, status and allowed shifts).
+    const src = read(PAGE_REL);
+    expect(src, 'the General tab links to the Work Schedule page').toContain(`href="${OLD_WORK_SCHEDULE_ROUTE}"`);
+    expect(src, 'the group tabs link to the Schedule Group editor').toContain('/admin/attendance-policy/rules/');
   });
 
   it('both routes are registered in the function-access matrix', () => {
@@ -125,6 +169,45 @@ describe('1c5602cc — six named tabs; r277 built two more of them', () => {
         `control unless the storage behind it actually ships; when it does, raise that tab as its own item ` +
         `and change this assertion with it, as r277 did.`,
     ).toEqual(['attendance', 'general', 'overtime']);
+  });
+
+  /**
+   * ⚠️ THE SCOPE FENCE, SECOND HALF — e4471e3c (r287) MADE THESE TABS EDITABLE, SO THE FENCE HAD TO GROW
+   * A NEW SIDE.
+   *
+   * Until this round the fence only had to stop a later-stage setting being DRAWN here, because nothing
+   * on the screen could be saved. Now it can: the Attendance and Overtime tabs write. So the list of
+   * things that must not appear gains the one setting the approved plan carried forward as its single
+   * deliberate exception, and it is the most important entry on the list.
+   *
+   * `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394) stay on the
+   * Schedule Group editor. The effective-from date is stamped by the SERVICE when the switch flips and
+   * can never be typed, and a DB CHECK makes "deductions on with no start date" unrepresentable —
+   * together, that is what stops a deduction reaching a payroll month that is already closed. A second
+   * form over that switch is a second way to get that date wrong. The tab SHOWS the switch and says where
+   * it is edited; what it must never grow is a control.
+   *
+   * The action refuses it too — app/admin/attendance/schedule/actions.ts never reads a form field by that
+   * name, and test/schedule-tab-writers.test.ts proves that against a real row including for a crafted
+   * request body. This case is the other half: the CONTROL must not appear, because a control that saves
+   * nothing is its own defect even when the writer is safe.
+   */
+  it('the deduction switch is NOT editable here — the one setting that deliberately did not move', () => {
+    const src = read('app/admin/attendance/schedule/page.tsx');
+    expect(
+      src,
+      'no input, checkbox or select named applyDeductions may exist on this screen. It is edited on the ' +
+        'Schedule Group editor and only there; see the note beside the card and ./actions.ts.',
+    ).not.toMatch(/name=["'{`]?applyDeductions/);
+    expect(
+      src,
+      'nor may the effective-from date become a field — the service stamps it, it is never typed',
+    ).not.toMatch(/name=["'{`]?deductionsEffectiveFrom/);
+    // Stated positively, so the guard cannot be satisfied by the screen simply not mentioning the switch:
+    // the reporter must still be able to SEE its state and find out where to change it.
+    expect(src, 'the switch is still shown').toContain('applyDeductions');
+    expect(src, 'with the sentence explaining where it is edited').toContain("t('deductionsElsewhere')");
+    expect(src, 'and a link to the editor that owns it').toContain('/admin/attendance-policy/rules/');
   });
 
   it('the two new tabs show settings that ALREADY EXIST, and read them from the Schedule Group', () => {

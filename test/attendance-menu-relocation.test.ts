@@ -63,11 +63,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // `/attendance` is Employee Attendance: an administrator-gated ROW pointing at a screen that is NOT
     // admin-guarded, because it is self-service and scopes rather than refuses. See the exclusion and its
     // replacement assertion below — the premise of this file survives, it is simply met a different way.
+    //
+    // e4471e3c (r287) — SEVEN. '/admin/attendance-policy' (Schedule Group) and
+    // '/admin/attendance-policy/schedule' (Work Schedule) left this list, and NOT because their screens
+    // went anywhere: the reporter asked for both to be consolidated into the Schedule sub-menu, so their
+    // MENU ROWS were retired and the Schedule screen absorbed their settings. Both pages still exist, both
+    // are still requireAdmin, and both are still in the it.each below — see the note above that loop,
+    // because a screen with no menu row at all is the case this file's premise matters MOST for.
     expect(adminRoutes).toEqual([
       '/attendance',
       '/admin/attendance',
-      '/admin/attendance-policy',
-      '/admin/attendance-policy/schedule',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
@@ -81,6 +86,14 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   // test/holidays-system-settings-relocation.test.ts, beside the rest of that screen's new-home guards.
   // Losing it entirely would have been the exact failure this file exists to prevent — a screen whose
   // only remaining protection is that a menu happens not to show it.
+  //
+  // ⚠️ e4471e3c (r287) — '/admin/attendance-policy' AND '/admin/attendance-policy/schedule' STAY IN THIS
+  // LOOP THOUGH THEY ARE NO LONGER MENU ROWS, and that is the whole premise of this file rather than an
+  // exception to it. Their rows were retired into the Schedule sub-menu at the reporter's request; the
+  // SCREENS remain, still owning the deduction switch, the overtime bands and rates, the tenant overtime
+  // rates and the registered devices. A screen reachable only by URL is precisely the screen whose own
+  // guard is the only thing protecting it, so dropping it from this loop because "it is not in the menu"
+  // would retire the coverage at the exact moment it became load-bearing.
   it.each([
     '/admin/attendance',
     '/admin/attendance-policy',

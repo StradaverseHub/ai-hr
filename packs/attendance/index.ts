@@ -53,7 +53,6 @@
  * built here by design.
  */
 import {
-  CalendarCheck,
   CalendarClock,
   CalendarCog,
   CalendarRange,
@@ -65,7 +64,6 @@ import {
   Hourglass,
   MapPin,
   Plane,
-  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
@@ -329,41 +327,44 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
-    // 870b79e2 (r277) — "Overtime Pattern" → "Schedule Group". THE LABEL WAS HIDING THE SCREEN, and this
-    // is the whole of the item's first deliverable. The reporter asked us to BUILD a named group that
-    // several shifts share so attendance rules are set up once; `attendance_rule` has been exactly that
-    // since 88e94371 — tenant-wide, name + description, holding the lateness AND early-out AND overtime
-    // sections, chosen by `shift.rule_id`, and four of the five production shifts already share one. They
-    // could not find it because the only word in the rail said OVERTIME, while the screen's own title
-    // (admin.attendanceRule.moduleTitle) reads "Lateness, Early Out & Overtime Settings". Nobody hunting
-    // for their lateness rules would open a row called Overtime Pattern.
-    //
-    // WHY "Schedule Group" AND NOT A LONGER, MORE LITERAL NAME. It is the reporter's own word for the
-    // object, it is the word both sibling plans (e5ff7189, d91aee93) then use for the thing their tabs
-    // configure, and the Schedule screen's new group selector says the same word — so the three surfaces
-    // name one object once. A descriptive "Attendance & Overtime Rules" would be accurate and still not be
-    // the phrase they searched for. The screen's own H1 keeps the literal description; the rail carries the
-    // NAME. a324a4b3's rule (key == the string it resolves to) is kept: nav.overtimePattern → nav.scheduleGroup.
-    //
-    // The href does NOT change — /admin/attendance-policy is the same screen, same guard, same
-    // lib/permissions.ts column ('attendancePolicyConfig', label-only change, as at every prior rename).
-    { href: '/admin/attendance-policy', labelKey: 'scheduleGroup', icon: SlidersHorizontal, adminOnly: true },
-    // ad52212d — the Work Schedule screen (af7a8eb4 gave it this route) finally has a menu row. CalendarCheck
-    // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
-    // row sharing its parent's or a sibling's icon is indistinguishable there.
-    { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    /**
+     * ⚠️ e4471e3c (r287) — TWO ROWS WERE REMOVED HERE, AND THEIR SCREENS WERE NOT. READ THIS BEFORE
+     * ADDING EITHER BACK.
+     *
+     * `/admin/attendance-policy` ("Schedule Group", 870b79e2 — the attendance_rule library that names the
+     * lateness, early-out and overtime rules a set of shifts share) and
+     * `/admin/attendance-policy/schedule` ("Work Schedule", ad52212d — the per-company attendance_policy,
+     * the fallback for a day with no shift) both left this menu. The reporter asked for exactly that:
+     * "Schedule Group and Work Schedule shall be consolidated into the existing Schedule sub-menu ...
+     * to provide a single centralised Schedule configuration area".
+     *
+     * THE ROWS WENT; THE ROUTES STAYED, deliberately, and they are still registered in lib/permissions.ts
+     * under `attendancePolicyConfig` — a screenKey is a PERMISSION IDENTITY, and removing or renaming one
+     * silently revokes whatever stored role configuration references it. Both pages also still own things
+     * this round did not move:
+     *
+     *   · the deduction switch (`apply_deductions` + `deductions_effective_from`), which stays on the
+     *     Schedule Group editor because its start date is stamped by the service and can never be typed;
+     *   · the overtime BANDS and RATES, and the group's name / status / allowed shifts;
+     *   · the tenant overtime RATES, the registered-device table and backup-shift coverage, none of which
+     *     is a schedule setting at all.
+     *
+     * They are reached from the Schedule screen, which links to both — the General tab to the Work
+     * Schedule page, and the Attendance and Overtime tabs to the Schedule Group editor for the group in
+     * view. Removing those links would strand the settings above, so they are pinned in
+     * test/schedule-config-screen.test.ts.
+     */
     // 1c5602cc (r263) — SCHEDULE: the tabbed configuration screen for an employee's working pattern
     // (General built; Holiday / Overtime / Attendance / Request / Notification ship NAMED and EMPTY).
     //
-    // IT SITS BESIDE "Work Schedule", NOT INSTEAD OF IT, AND THAT IS THE POINT OF THIS ROUND. The
-    // a6fe37fc playbook: build alongside, prove the old behaviour unchanged, and only then move the menu
-    // and retire what it replaces. The row above keeps working and is deliberately untouched here — a
-    // later round is explicitly the cutover, and the reporter has been asked to steer whether "Work
-    // Schedule" is absorbed into these tabs. WE RECOMMEND ABSORBING IT, AND THE REASON IS THE CONTENTS,
-    // NOT THE NAME: /admin/attendance-policy/schedule already holds backup shift coverage
-    // (attendanceRule.coverageTitle), overtime rates (otRatesTitle), the per-company attendance policy and
-    // registered clocking devices (devicesTitle) — material that belongs to the Overtime and Attendance
-    // tabs of THIS screen. Two screens over one subject is what the cutover round is for.
+    // IT SAT BESIDE "Work Schedule" FOR FOUR ROUNDS, AND e4471e3c (r287) IS THE CUTOVER. The a6fe37fc
+    // playbook: build alongside, prove the old behaviour unchanged, and only then move the menu and
+    // retire what it replaces. r263 built alongside and recorded that the reporter had been asked to
+    // steer whether Work Schedule is absorbed; they answered by raising e4471e3c, which asks for Schedule
+    // Group AND Work Schedule to be consolidated into this row. So both of those rows are gone (the note
+    // above this one says where their screens went and why they survive), and THIS is now the single
+    // entry point for schedule configuration — the General tab edits the per-company working week, and
+    // the Attendance and Overtime tabs edit the Schedule Group's recording and rounding settings.
     //
     // ⚠️ CORRECTION, r263 verify — DO NOT "FIX" A NAME THAT IS ALREADY RIGHT. The 1c5602cc plan told the
     // reporter that the Work Schedule row opens a page headed "Shift settings", and an earlier draft of

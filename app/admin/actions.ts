@@ -158,6 +158,10 @@ const HOLIDAY_GROUPS = '/admin/holidays/groups';
 // no longer renders these forms at all, so redirecting there would drop the operator on a screen that does
 // not show what they just saved. Only setAttendancePolicyAction reads this constant.
 const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule';
+// e4471e3c (r287) — the OTHER screen the company work-schedule form is now rendered on: the General tab of
+// Attendance > Schedule, which is where the reporter asked the Work Schedule sub-menu to be consolidated.
+// Only setAttendancePolicyAction reads this constant, and only through the closed-list mapping in it.
+const SCHEDULE_TAB = '/admin/attendance/schedule';
 // 296fc027 split this route in two. /admin/toil keeps the balance LEDGER and the two settlement sweeps
 // (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to the Leave Config tab
 // below, which is where setToilPolicyAction now redirects. Both routes stay registered in lib/permissions.
@@ -1991,6 +1995,23 @@ export async function setLeaveEncashmentPolicyAction(fd: FormData) {
 // instead of a plain workingDays checkbox list — decode those into the two arrays the service expects.
 export async function setAttendancePolicyAction(fd: FormData) {
   const s = await getSession();
+  /**
+   * e4471e3c (r287) — WHERE THE SAVE LANDS, resolved against a CLOSED LIST and never taken as a URL.
+   *
+   * This one form is now rendered from two screens (app/admin/attendance-policy/schedule/work-schedule-form.tsx): its own page at
+   * /admin/attendance-policy/schedule, which survives as the owning editor, and the General tab of
+   * Attendance > Schedule, which is where the reporter asked for it to live. Both post the same fields to
+   * this action, so there is ONE writer and the two mounts cannot store different rows — but a save must
+   * return to the screen the operator was on, or they land on a page that does not show what they saved,
+   * and on the error path get a refusal about a form they can no longer see.
+   *
+   * ⚠️ READ AS A VALUE, MAPPED THROUGH A TWO-ENTRY TABLE. A hidden field is ALWAYS submitted, so this can
+   * never be a presence test (CLAUDE.md §8), and redirecting to a path taken from the request body would
+   * be an open redirect on an admin-authenticated action. An unknown or absent value resolves to the
+   * owning editor, which is where every save landed before this round.
+   */
+  const backTo =
+    fd.get('returnTo') === 'schedule-tab' ? `${SCHEDULE_TAB}?tab=general` : ATTENDANCE_POLICY;
   const workingDays: number[] = [];
   const halfWorkingDays: number[] = [];
   for (let d = 1; d <= 7; d++) {
@@ -2020,9 +2041,9 @@ export async function setAttendancePolicyAction(fd: FormData) {
       requireRegisteredDevice: fd.get('requireRegisteredDevice') != null,
     });
   } catch (e) {
-    fail(ATTENDANCE_POLICY, e);
+    fail(backTo, e);
   }
-  ok(ATTENDANCE_POLICY);
+  ok(backTo);
 }
 
 // ADR-0054 — Location master data CRUD. requireAdmin gates the route; RLS gates the write per company.

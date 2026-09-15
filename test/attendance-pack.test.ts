@@ -31,6 +31,7 @@ import {
   Users,
 } from 'lucide-react';
 import { attendancePack } from '../packs/attendance';
+import { REGISTERED_ROUTES } from '../lib/permissions';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/attendance/service';
 import * as coreAttendance from '../core/attendance';
@@ -184,6 +185,37 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   const movedOutHrefs: string[] = MOVED_OUT.map((r) => r.href);
 
   /**
+   * e4471e3c (r287) — rows whose NAV ENTRY was retired while the SCREEN stayed. A THIRD list, and it is
+   * deliberately not MOVED_OUT.
+   *
+   * MOVED_OUT means "this row now hangs off a different menu", and its sibling assertions say so: the
+   * href must be absent from the pack AND present in components/sidebar.tsx. These two rows are a
+   * different thing — they are in NO menu at all. The reporter asked for Schedule Group and Work Schedule
+   * to be consolidated into the Schedule sub-menu, so their rows went and the Schedule screen absorbed
+   * the settings; the ROUTES survive as the owning editors for what did NOT move (the deduction switch,
+   * the overtime bands and rates, the tenant overtime rates, the registered devices), and they keep their
+   * lib/permissions.ts registration, because a screenKey is a permission identity.
+   *
+   * Declaring them here rather than deleting their EXPECTED / ADDED_SINCE lines keeps the oracle's whole
+   * point intact: a row that disappears WITHOUT a line here still fails. And the case below turns the
+   * declaration into an obligation — a retired row must still have a reachable, registered route, so
+   * "retire the row" can never become a way to quietly strand a screen.
+   */
+  const RETIRED = [
+    {
+      href: '/admin/attendance-policy',
+      why: 'Schedule Group — consolidated into Attendance > Schedule (e4471e3c). Still the owning editor for the deduction switch, the overtime bands and rates, and the group name / status / allowed shifts.',
+    },
+    {
+      href: '/admin/attendance-policy/schedule',
+      why: 'Work Schedule — its per-company working-week editor is rendered on the Schedule screen’s General tab (components/work-schedule-form.tsx, same component, same action). The page keeps the tenant overtime rates, the registered devices and the backup-shift coverage card, none of which is a schedule setting.',
+    },
+  ] as const;
+  const retiredHrefs: string[] = RETIRED.map((r) => r.href);
+  /** Every href that is no longer expected in this pack's nav, whatever the reason. */
+  const goneHrefs = [...movedOutHrefs, ...retiredHrefs];
+
+  /**
    * The My Attendance node's rows, in order — stated ONCE and asserted from two cases below, which used
    * to carry two hand-typed copies of the same list.
    *
@@ -260,14 +292,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
       '/attendance', // Employee Attendance
       '/admin/attendance', // Shift
-      '/admin/attendance-policy', // Overtime Pattern
-      '/admin/attendance-policy/schedule', // Work Schedule
-      // 1c5602cc (r263) — Schedule, immediately after the Work Schedule row it will eventually absorb.
-      // TWO rows on purpose, for now: the a6fe37fc playbook builds alongside and retires only in a round
-      // that is explicitly the cutover, and the reporter has been asked to steer whether it is absorbed
-      // at all. It leads Schedule Assignment for the 0bade264 reason in reverse — it CONFIGURES the
-      // working pattern, where Schedule Assignment is the screen that uses it.
-      '/admin/attendance/schedule', // Schedule (tabbed configuration)
+      // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
+      // '/admin/attendance-policy/schedule' (Work Schedule) STOOD HERE and are gone, because the reporter
+      // asked for both to be consolidated into the Schedule row below: "to provide a single centralised
+      // Schedule configuration area for all schedule-related settings and avoid duplicated or separated
+      // schedule configuration screens". Their ROUTES survive as the owning editors for what did not
+      // move — see RETIRED above, and the case that makes that survival an obligation rather than a note.
+      '/admin/attendance/schedule', // Schedule (tabbed configuration — now the only schedule-config row)
       '/admin/attendance/schedule-assignment', // Schedule Assignment
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
@@ -280,7 +311,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
-    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length);
+    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length);
     /**
      * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
      * purpose: Records for every employee in the self-service node, and the admin-gated Employee
@@ -293,7 +324,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
      * listed twice at all. Those two together are strictly stronger than either.
      */
     [...EXPECTED, ...ADDED_SINCE]
-      .filter((want) => !movedOutHrefs.includes(want.href))
+      .filter((want) => !goneHrefs.includes(want.href))
       .forEach((want) => {
         const got = flattened.filter((c) => c.href === want.href && c.labelKey === want.labelKey);
         expect(got, `${want.href} (${want.labelKey}) appears exactly once`).toHaveLength(1);
@@ -332,6 +363,34 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         flattened.filter((c) => c.href === row.href),
         `${row.href} left the attendance pack for ${row.to}`,
       ).toHaveLength(0);
+    }
+  });
+
+  /**
+   * e4471e3c (r287) — RETIRING A ROW IS AN OBLIGATION, NOT A DELETION.
+   *
+   * "Declare it retired" must never become a way to make a screen unreachable and still be green. So each
+   * entry owes three things: the row really is gone from the pack, the PAGE still exists on disk, and the
+   * route is still registered in lib/permissions.ts — the last one matters most, because `screenKey` is a
+   * permission identity and dropping a route is how a stored role configuration silently loses a grant.
+   *
+   * Reachability itself — that the Schedule screen links to both of them, which is the only way in now —
+   * is pinned next door in test/schedule-config-screen.test.ts, beside the screen that does the linking.
+   */
+  it('a RETIRED row is gone from the nav, and its SCREEN and matrix column are not', () => {
+    for (const row of RETIRED) {
+      expect(
+        flattened.filter((c) => c.href === row.href),
+        `${row.href} still has a nav row. ${row.why}`,
+      ).toHaveLength(0);
+      const page = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      expect(fs.existsSync(page), `${row.href} lost its page. ${row.why}`).toBe(true);
+      expect(
+        REGISTERED_ROUTES.has(row.href),
+        `${row.href} is no longer registered in lib/permissions.ts. The screenKey is a permission ` +
+          `identity — removing the route revokes whatever stored role configuration references it, ` +
+          `silently. ${row.why}`,
+      ).toBe(true);
     }
   });
 
@@ -427,13 +486,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // row (position, key, glyph) is pinned by test/sidebar-system-settings-group.test.ts, and its
     // requireAdmin PAGE guard — the thing that actually protects it, whatever the rail renders — by
     // test/holidays-system-settings-relocation.test.ts.
+    // e4471e3c (r287) — '/admin/attendance-policy' and '/admin/attendance-policy/schedule' are NOT in this
+    // list any more, because they are not rows any more (RETIRED above). Their PAGES still carry their own
+    // requireAdmin, which is what actually protects them and is asserted in
+    // test/attendance-menu-relocation.test.ts — and that coverage matters MORE now, not less: with no menu
+    // row at all, the page guard is the only thing standing between a deep link and the screen.
     for (const href of [
       '/admin/attendance',
-      '/admin/attendance-policy',
-      // ad52212d round 1 — the new Work Schedule row. Declared here rather than tolerated: it lives in a
-      // group-gated node, so a row that arrived without adminOnly would still render for administrators
-      // only today and would silently widen the moment the node ever moved out of Administration.
-      '/admin/attendance-policy/schedule',
       '/admin/attendance-allowance',
       '/admin/locations',
       '/admin/toil',
@@ -556,15 +615,23 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // attendance rules that they already owned and were already sharing across four of five shifts. So
       // the row now carries the name THEY use for the object: "Schedule Group". The H1 is unchanged and
       // still carries the literal description; this string is the NAME.
-      '/admin/attendance-policy': 'Schedule Group',
-      // ad52212d round 1 — the third category. The screen is af7a8eb4's; the ROW is new.
-      '/admin/attendance-policy/schedule': 'Work Schedule',
+      // ⚠️ e4471e3c (r287) — TWO ENTRIES STOOD HERE AND ARE GONE, and the labels are the clearest record of
+      // WHY the reporter asked for the consolidation, so they are written out rather than deleted:
+      //
+      //     '/admin/attendance-policy': 'Schedule Group'
+      //     '/admin/attendance-policy/schedule': 'Work Schedule'
+      //
+      // Four rows under Attendance carried the word Schedule — Schedule, Schedule Group, Work Schedule
+      // and Schedule Assignment — and two of them held settings the Schedule screen already displayed.
+      // The uniqueness assertion at the foot of this case was doing real work on exactly that crowding,
+      // and the r263 comment it replaced said these two "are expected to READ similarly only until the
+      // cutover round decides whether Work Schedule is absorbed". This is that round; it absorbed both.
+      // `nav.scheduleGroup` and `nav.workSchedule` are NOT retired from the catalogues — see the orphan
+      // case at the foot of this file for which keys are dead and which are still live elsewhere.
+      //
       // 1c5602cc (r263) — the KEY is `nav.schedule` and it resolves to "Schedule", the page's own title.
       // a324a4b3's whole lesson: a key that does not equal the string it resolves to is what got this
       // module re-planned off a misreading, so the new row keeps them equal from the first commit.
-      // The uniqueness assertion below is doing real work here — "Schedule", "Work Schedule" and
-      // "Schedule Assignment" are three distinct rows, and the first two are expected to READ similarly
-      // only until the cutover round decides whether Work Schedule is absorbed.
       '/admin/attendance/schedule': 'Schedule',
       // 0bade264 (r209) — the reporter's own name for the new screen. Both words matter: it is the
       // SCHEDULE (which shift) ASSIGNED (to whom), not another settings category.

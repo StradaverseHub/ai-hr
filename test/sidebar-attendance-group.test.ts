@@ -140,28 +140,49 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('ad52212d: the three settings categories lead the node, Shift first', () => {
-    // The item's actual deliverable, stated positively. Shift / Overtime Pattern / Work Schedule are the
-    // three categories the reporter named; everything else follows them.
-    // 870b79e2 (r277) — the middle row now READS "Schedule Group" (nav.overtimePattern → nav.scheduleGroup).
-    // Its href is unchanged, which is all this ordering assertion reads, so the local name `otPattern`
-    // below still points at the right row; the rename is pinned by test/attendance-pack.test.ts.
+  it('ad52212d: the settings categories lead the node — and r287 retired two of the three', () => {
+    /**
+     * ⚠️ READ BEFORE PUTTING EITHER ROW BACK. ad52212d asked for THREE named settings categories to lead
+     * this node: Shift → Overtime Pattern (later renamed Schedule Group) → Work Schedule. Two of the
+     * three are gone as of e4471e3c (r287), and it is the same reporter retiring their own arrangement:
+     * "Schedule Group and Work Schedule shall be consolidated into the existing Schedule sub-menu ... to
+     * provide a single centralised Schedule configuration area for all schedule-related settings and
+     * avoid duplicated or separated schedule configuration screens."
+     *
+     * So the assertion is UPDATED, not loosened, and it now says three things instead of one:
+     *   · Shift still leads the node and still precedes the 5cb199b3 tail — the half of ad52212d that
+     *     this round did not touch is still asserted exactly as it was;
+     *   · the two retired hrefs are NOT rows anywhere in the rail — a half-done retirement that left one
+     *     of them behind in either source is the failure mode;
+     *   · their PAGES still exist, because retiring a row must never delete a screen. What did not move
+     *     (the deduction switch, the overtime bands and rates, the tenant overtime rates, the registered
+     *     devices) is still edited there, reached from the Schedule screen.
+     */
     const shift = node.indexOf(`'/admin/attendance'`);
-    const otPattern = node.indexOf(`'/admin/attendance-policy'`);
-    const workSchedule = node.indexOf(`'/admin/attendance-policy/schedule'`);
     expect(shift, 'Shift is a child').toBeGreaterThan(-1);
-    expect(otPattern, 'Overtime Pattern is a child').toBeGreaterThan(-1);
-    expect(workSchedule, 'Work Schedule is a child').toBeGreaterThan(-1);
-    expect(shift, 'Shift leads').toBeLessThan(otPattern);
-    expect(otPattern, 'Overtime Pattern second').toBeLessThan(workSchedule);
     for (const href of TICKET_TAIL_HREFS) {
-      expect(workSchedule, `the three categories precede ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
+      expect(shift, `Shift still precedes ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
     }
-    // …and Work Schedule is admin-gated like every other row in this group-gated node.
-    const line = node.split('\n').find((l) => l.includes(`'/admin/attendance-policy/schedule'`));
-    expect(line, 'Work Schedule row exists').toBeDefined();
-    expect(line, 'Work Schedule keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
-    expect(countQuoted(SRC, '/admin/attendance-policy/schedule'), 'listed exactly once across the rail').toBe(1);
+    const line = node.split('\n').find((l) => l.includes(`{ href: '/admin/attendance',`));
+    expect(line, 'Shift row exists').toBeDefined();
+    expect(line, 'Shift keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
+    expect(countQuoted(SRC, '/admin/attendance'), 'Shift is listed exactly once across the rail').toBe(1);
+
+    // e4471e3c — the two retired categories. Asserted as an ABSENCE FROM THE RAIL and a PRESENCE ON DISK,
+    // because those are the two halves of "the row went, the screen did not".
+    for (const href of ['/admin/attendance-policy', '/admin/attendance-policy/schedule']) {
+      expect(
+        countQuoted(SRC, href),
+        `${href} still has a nav row. r287 consolidated Schedule Group and Work Schedule into the ` +
+          `Schedule sub-menu at the reporter's request; if that is being reversed, reverse this ` +
+          `assertion with it and say why.`,
+      ).toBe(0);
+      expect(
+        fs.existsSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx')),
+        `${href} lost its page. Retiring a menu row must never delete a screen — that route is still the ` +
+          `owning editor for everything r287 did NOT move, starting with the deduction switch.`,
+      ).toBe(true);
+    }
   });
 
   it('admin-gates each of the four remaining children (permissions unchanged by the move)', () => {
