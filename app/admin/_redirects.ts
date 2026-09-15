@@ -26,13 +26,30 @@ import { redirect } from 'next/navigation';
 export const ENTITLEMENTS = '/admin/leave-config/types';
 /**
  * a6fe37fc ROUND 5 (cutover) — COMPANY RULES, the destination the company- and tenant-wide leave settings
- * were absorbed into (IA §2.0.3): the half-day full deduction, the shared leave groups and the encashment
- * policy. It is a NEW constant rather than a reuse of ENTITLEMENTS, and the distinction is the point —
- * those three writes used to return to the leave TYPE screen because that is where their cards happened
- * to be drawn, and after the cutover they are not on it. Returning them to ENTITLEMENTS would leave an
- * administrator who just saved a company rule looking at the leave type list, wondering whether it saved.
+ * were absorbed into (IA §2.0.3). It is a NEW constant rather than a reuse of ENTITLEMENTS, and the
+ * distinction is the point — those writes used to return to the leave TYPE screen because that is where
+ * their cards happened to be drawn, and after the cutover they were not on it. Returning them to
+ * ENTITLEMENTS would leave an administrator who just saved a company rule looking at the leave type list,
+ * wondering whether it saved.
+ *
+ * r281 — ONE CALLER LEFT, and the rule that produced it is what the other two followed out. The reporter
+ * asked for two of the three settings to move again: the half-day full deduction to the Special Setting
+ * row (`SPECIAL_SETTING` below) and the shared leave groups back onto the Leave types screen, at page
+ * level rather than inside the per-type workspace (`ENTITLEMENTS`). Each redirect moved WITH its card, on
+ * exactly the reasoning above. What still returns here is the encashment policy, which is still drawn
+ * here.
  */
 export const COMPANY_RULES = '/admin/leave-config/company-rules';
+/**
+ * r281 (a73d1e14) — SPECIAL SETTING, the row Half Day Deduction moved onto.
+ *
+ * A NEW CONSTANT RATHER THAN A REUSE OF `COMPANY_RULES`, for exactly the reason that constant exists at
+ * all: the half-day write used to return to Company rules because that is where its card was drawn, and
+ * it is not on that screen any more. Returning it there would leave an administrator who just ticked a
+ * company looking at a page with no half-day card on it, wondering whether it saved — and on the error
+ * path would show a refusal about a form they can no longer see. The redirect moves WITH the card.
+ */
+export const SPECIAL_SETTING = '/admin/leave-config/special-setting';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
  *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
 export const ADJUSTMENTS = '/admin/leave-config/adjustments';

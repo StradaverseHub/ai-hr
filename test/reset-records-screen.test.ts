@@ -286,8 +286,18 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/generate',
+      // r281 (09386e29) — UPDATED, NOT LOOSENED, and for the third time for the same reason. A later,
+      // unrelated item gave Run earned accrual a row of its own, directly after Generate Entitlement (it
+      // was a card filed INSIDE that page, beside the one operation it must not be confused with). This
+      // case's property is untouched — 7f69bd71 added no fly-out row and the Reset records sub-screen is
+      // still reached only from a link — so the list is restated exactly rather than turned into a count.
+      '/admin/leave-config/earned-accrual',
       '/admin/leave-config/approval-chains',
       '/admin/leave-config/company-rules',
+      // r281 (a73d1e14) — Special Setting, the row Half Day Deduction moved onto, named here for the same
+      // reason every other addition is: a row added under app/admin/leave-config by anything OTHER than
+      // the commit that names it here still fails.
+      '/admin/leave-config/special-setting',
     ]);
     // The one child that is deliberately NOT a Leave Config screen, named so the filter above cannot
     // silently start hiding a second one (its own shape is pinned in test/r269-*).
@@ -311,8 +321,10 @@ describe('7f69bd71 — one foot link on Adjust balances, below the recent adjust
       'app/admin/leave-config/types/page.tsx',
       'app/admin/leave-config/entitlement-tables/page.tsx',
       'app/admin/leave-config/generate/page.tsx',
+      'app/admin/leave-config/earned-accrual/page.tsx',
       'app/admin/leave-config/approval-chains/page.tsx',
       'app/admin/leave-config/company-rules/page.tsx',
+      'app/admin/leave-config/special-setting/page.tsx',
     ]) {
       const code = withoutComments(read(rel));
       expect(code, rel).not.toContain('LEAVE_CONFIG_RECORDS_HREF');

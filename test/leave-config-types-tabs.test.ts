@@ -526,15 +526,22 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('<EntitlementTablesBlock');
     expect(pageSrc).toContain('leaveTypeId={leaveTypeId}');
     expect(tabsSrc).toContain('{entitlementTablesSection}');
-    // 10b59703 — F12 moved to Generate Entitlement (it runs a calculation); the tab keeps a one-line
-    // pointer in the slot the button occupied, resolved through the map. IA §3.1 F12 carries the date.
+    // 10b59703 — F12 moved OFF the leave type (it runs a calculation over employees); the tab keeps a
+    // one-line pointer in the slot the button occupied, resolved through the map. IA §3.1 F12 carries the
+    // dates. r281 (09386e29) — UPDATED, NOT LOOSENED: the tool moved once more, from Generate Entitlement
+    // to a page of its own, because that screen CREATES a leave year's entitlement and this one tops up
+    // what was already earned. This case's property — the tab has no dialog and DOES have a live pointer
+    // to wherever the tool is — is unchanged; the target is re-derived through the map, as before.
     expect(pageSrc).not.toContain('<EarnedAccrualDialog');
-    expect(pageSrc).toContain("leaveConfigScreenHref('generateEntitlement')");
+    expect(pageSrc).toContain("leaveConfigScreenHref('earnedAccrual')");
     expect(pageSrc).toContain("t('entitlementStep.accrualMovedPointer')");
     expect(pageSrc).toContain('accrualPointer={accrualPointer}');
     expect(tabsSrc).toContain('{accrualPointer}');
     expect(tabsSrc).not.toContain('{accrualSection}');
-    expect(read('app/admin/leave-config/generate/page.tsx')).toContain('<EarnedAccrualDialog');
+    // THE SCREEN IT MOVED TO — asserted here so this case can never go green on a tab that simply lost
+    // its pointer's destination.
+    expect(read('app/admin/leave-config/earned-accrual/page.tsx')).toContain('<EarnedAccrualDialog');
+    expect(read('app/admin/leave-config/generate/page.tsx')).not.toContain('<EarnedAccrualDialog');
   });
 
   it('F2 the health derivation is read, not recomputed — and the full LISTING is on its own screen now', () => {
@@ -571,8 +578,15 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     // row on every Leave Config screen serves F47 strictly better than one link on one page, so the
     // assertion follows the property onto the row — and the link is asserted GONE, so a half-done change
     // that removes the link without adding the row fails here.
-    const ROW = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.at(-1)!;
-    expect(ROW.labelKey).toBe('employeeLeaveInquiry');
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. This resolved the row as `children.at(-1)`, which was a
+    // spelling of "the row exists" that happened to work while it was last. A later, unrelated item
+    // appended Special Setting below it (the reporter drew it at the very bottom), so the row is resolved
+    // BY NAME here and its position is pinned where positions belong — test/leave-flyout-nav.test.ts,
+    // which owns the fly-out's exact order. F47's property is about there being a way in at all.
+    const ROW = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.find(
+      (c) => c.labelKey === 'employeeLeaveInquiry',
+    )!;
+    expect(ROW, 'the way in F47 promised is gone from the menu').toBeTruthy();
     expect(ROW.href, 'the address r242 promised would not move').toBe('/leave/employee-balances');
     expect(ROW.ownedSubpaths).toEqual(['/leave/employee-records']);
     expect(pageSrc).not.toContain('href="/leave/employee-balances"');

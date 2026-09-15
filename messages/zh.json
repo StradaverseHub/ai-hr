@@ -247,11 +247,13 @@
     "leaveBalanceHealth": "假期余额健康检查",
     "leaveAdjustments": "假期调整",
     "leaveGenerate": "生成假期额度",
+    "leaveEarnedAccrual": "运行已赚取累积",
     "leaveApprovalWorkflow": "审批流程",
     "leaveApproval": "审批链",
     "leaveReplacement": "替假",
     "leaveCompanyRules": "公司规则",
     "employeeLeaveInquiry": "员工假期查询",
+    "leaveSpecialSetting": "特殊设置",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -6747,7 +6749,7 @@
         "gradesCompanyWideBadge": "适用于全公司",
         "tablesHint": "在下方设置本假期类型的天数、服务年资分段以及由谁享有。每张表按生效日期启用，并由适用规则决定适用对象。",
         "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。",
-        "accrualMovedPointer": "“运行已赚取累积”位于“生成假期额度”下"
+        "accrualMovedPointer": "“运行已赚取累积”已有独立的菜单行"
       },
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
@@ -8439,7 +8441,6 @@
       "companyFilterAll": "全部公司",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "补休不在此账户的套餐内，因此尚未累积任何额度。您现在即可在此设置——启用该附加功能后设置将立即生效。",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8764,12 +8765,14 @@
       "item": {
         "leaveTypes": "休假类型",
         "companyRules": "公司规则",
+        "specialSetting": "半天扣除",
         "entitlementTables": "额度表",
         "balanceHealth": "假期余额健康检查",
         "approvalChain": "审批链",
         "replacementLeave": "替假",
         "payrollImpact": "薪资影响",
         "generateEntitlement": "生成额度",
+        "earnedAccrual": "运行已赚取累积",
         "adjustments": "调整余额",
         "importLeaveData": "导入休假数据",
         "entitlementArchive": "配置记录",
@@ -8812,10 +8815,16 @@
     "leaveConfigGenerate": {
       "pageDescription": "运行某个假期年度的额度，先预览，再查看每次运行的日志。"
     },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "补记已赚取但尚未入账的额度 — 先预览试运行结果，再确认执行。"
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
-      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
+      "intro": "此处的休假设置属于某家公司或整个机构，而不属于任何单一休假类型，因此只需设置一次，无需在每个休假类型上重复设置。",
       "whoQualifies": "谁可以休某种假期类型、谁获得哪一张额度表，在“休假类型”下设置，而不是这里。"
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "适用于所有休假类型、而非属于其中任何一种的设置。"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",

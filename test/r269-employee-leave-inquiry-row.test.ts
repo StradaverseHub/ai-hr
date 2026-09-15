@@ -124,7 +124,12 @@ const RECORDS_HREF = '/leave/employee-records';
 const TRACKER_HREF = '/leave/tracker';
 
 const NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
-const INQUIRY_ROW = NODE.children.at(-1)!;
+/** r281 (a73d1e14) — BY NAME, not by index. This was `children.at(-1)`, which held only while the
+ *  inquiry row happened to be last; Special Setting was appended below it at the reporter's request.
+ *  Every case in this file is about THIS row's shape — its address, its owned path, the highlight — and
+ *  none of them is about its index. Its POSITION is still asserted, as the neighbour pair r269 actually
+ *  promised ("at the bottom, after Company rules"), in the case below. */
+const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
 
 // ────────────────────────────────── SOURCE SHAPE ──────────────────────────────────
 
@@ -137,18 +142,30 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     // list stays an exact set — a deletion, a rename or a re-sort still fails it.
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
+    // r281 — UPDATED, NOT LOOSENED, twice over. Run Earned Accrual joined directly after Generate
+    // Entitlement (it was a card filed INSIDE that page, beside the one operation it must not be confused
+    // with), and Special Setting joined at the very bottom, below this row, where the reporter drew it.
+    // The list stays an exact set — a deletion, a rename or a re-sort still fails it — and r269's own
+    // promise is restated exactly below: the inquiry row sits immediately after Company rules.
     expect(NODE.children.map((c) => c.labelKey)).toEqual([
       'leaveEntitlements',
       'leaveBalanceHealth',
       'leaveAdjustments',
       'leaveGenerate',
+      'leaveEarnedAccrual',
       'leaveApprovalWorkflow',
       'leaveCompanyRules',
       'employeeLeaveInquiry',
+      'leaveSpecialSetting',
     ]);
     // "At the bottom, after Company rules" — asserted as the PAIR, so the row cannot drift up the list
-    // while still technically being last of something.
-    expect(NODE.children.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
+    // while still technically being last of something. That pair is what r269 promised and it is intact;
+    // "last child of the node" never was the promise, and is no longer true of this row.
+    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
+      'leaveCompanyRules',
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
   });
 
   it('the row opens the EXISTING Employee Balances screen — the route is unmoved, not re-created', () => {

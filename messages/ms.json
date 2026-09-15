@@ -247,11 +247,13 @@
     "leaveBalanceHealth": "Kesihatan Baki Cuti",
     "leaveAdjustments": "Pelarasan Cuti",
     "leaveGenerate": "Jana Kelayakan",
+    "leaveEarnedAccrual": "Jalankan Pengumpulan Terkumpul",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
     "leaveApproval": "Rantaian kelulusan",
     "leaveReplacement": "Cuti Ganti",
     "leaveCompanyRules": "Peraturan syarikat",
     "employeeLeaveInquiry": "Pertanyaan Cuti Pekerja",
+    "leaveSpecialSetting": "Tetapan Khas",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
     "payrollGuide": "Panduan Aliran Kerja",
@@ -6747,7 +6749,7 @@
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
         "tablesHint": "Tetapkan bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya bagi jenis cuti ini di bawah. Setiap jadual berkuat kuasa dari satu tarikh, dan peraturan kelayakan menentukan siapa yang terpakai.",
         "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan.",
-        "accrualMovedPointer": "Jalankan pengumpulan terkumpul berada di bawah Jana Kelayakan"
+        "accrualMovedPointer": "Jalankan pengumpulan terkumpul kini mempunyai baris menunya sendiri"
       },
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
@@ -8439,7 +8441,6 @@
       "companyFilterAll": "Semua syarikat",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Cuti gantian bukan sebahagian daripada pelan akaun ini, jadi tiada kredit dibankkan lagi. Anda boleh menyediakannya di sini sekarang — tetapan akan berkuat kuasa sebaik sahaja tambahan itu dihidupkan.",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8764,12 +8765,14 @@
       "item": {
         "leaveTypes": "Jenis cuti",
         "companyRules": "Peraturan syarikat",
+        "specialSetting": "Potongan separuh hari",
         "entitlementTables": "Jadual kelayakan",
         "balanceHealth": "Kesihatan baki cuti",
         "approvalChain": "Rantaian kelulusan",
         "replacementLeave": "Cuti ganti",
         "payrollImpact": "Kesan penggajian",
         "generateEntitlement": "Jana kelayakan",
+        "earnedAccrual": "Jalankan pengumpulan terkumpul",
         "adjustments": "Laraskan baki",
         "importLeaveData": "Import data cuti",
         "entitlementArchive": "Rekod konfigurasi",
@@ -8812,10 +8815,16 @@
     "leaveConfigGenerate": {
       "pageDescription": "Jalankan kelayakan bagi satu tahun cuti, pratonton dahulu, dan baca log setiap larian."
     },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "Tambah hak cuti yang telah diperoleh tetapi belum dicatat — pratonton larian percubaan dahulu, kemudian sahkan."
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
-      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
+      "intro": "Tetapan cuti di sini menjadi milik sesebuah syarikat atau seluruh organisasi dan bukan mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali sahaja dan bukan diulang pada setiap jenis cuti.",
       "whoQualifies": "Siapa yang boleh mengambil sesuatu jenis cuti, dan siapa yang menerima jadual kelayakan yang mana, ditetapkan di bawah Jenis cuti, bukan di sini."
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "Tetapan yang terpakai merentasi setiap jenis cuti dan bukan milik mana-mana satu daripadanya."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",

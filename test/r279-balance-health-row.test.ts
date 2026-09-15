@@ -163,8 +163,14 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     // still technically being second to something.
     expect(NODE.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
     expect(NODE.children[0].href).toBe(TYPES_HREF);
-    // …and the row the reporter asked to stay at the bottom is still at the bottom (r269's promise).
-    expect(NODE.children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
+    // …and the row the reporter asked to sit after Company rules is still there (r269's promise).
+    // r281 — asserted as that PAIR rather than as `at(-1)`: Special Setting was appended below the
+    // inquiry row at the reporter's request, and "after Company rules" is what r269 actually promised.
+    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
+      'leaveCompanyRules',
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
   });
 
   it('it is a real guarded page on the EXISTING leaveConfig column — no new permission is invented', () => {

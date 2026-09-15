@@ -5,9 +5,11 @@ import { listLeaveTypes, listCompanies } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
+import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
+import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
@@ -22,9 +24,12 @@ import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../appro
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
   archiveLeaveTypeAction,
+  createLeaveSharedGroupAction,
   createLeaveTypeAction,
+  deleteLeaveSharedGroupAction,
   deleteLeaveTypeAction,
   setLeaveTypeRulesAction,
+  updateLeaveSharedGroupAction,
   updateLeaveTypeAction,
 } from '../../actions';
 
@@ -68,11 +73,16 @@ import {
  * The area map and the tour anchor came across with them, for the reasons at their sites below.
  *
  * WHAT IS NOT HERE, and where it IS (IA §3.1, none of it dropped):
- *   · the company-wide Half-Day Deduction card and Shared Leave Groups are on Company rules
- *     (`/admin/leave-config/company-rules`, F4/F26 and F3). They are a COMPANY and a TENANT rule, not
- *     properties of a leave type — which is why one of them used to be drawn once per leave type. Their
- *     three server actions were repointed at the new `COMPANY_RULES` constant in this same commit, so a
- *     save returns to the screen the setting is actually on rather than to this list.
+ *   · the company-wide Half-Day Deduction card is a COMPANY rule, not a property of a leave type —
+ *     which is why it used to be drawn once per leave type. It went to Company rules at the cutover and
+ *     to the Special Setting row at the reporter's request (r281, a73d1e14).
+ *
+ * ⚠️ WHAT CAME BACK, AND WHY IT IS DRAWN WHERE IT IS (r281, cdd7500b). SHARED LEAVE GROUPS is on this
+ * screen again, at PAGE level, above the per-type workspace. It was taken off this screen at the cutover
+ * because it sat INSIDE that workspace, where it read as a property of the selected leave type while a
+ * group spans several; the reporter has since asked for it back here, and that reasoning decides the
+ * mount POINT rather than the answer. Page level, not inside the workspace. The three actions moved with
+ * it unchanged and return to this screen.
  *   · tab 5's read-only chain read-out is here, and the chain EDITOR is Approval chains.
  */
 export default async function LeaveConfigTypesPage({
@@ -84,18 +94,28 @@ export default async function LeaveConfigTypesPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
+  // r281 (cdd7500b) — the shared-group card's own strings, read where the card is drawn.
+  const tGroup = await getTranslations('admin.leave.sharedGroup');
   const { error, editTemplate, editRule } = await searchParams;
   const header = await leaveConfigPageHeader('leaveTypes');
 
   // 10b59703 — the job-grade list LEFT this read with Run earned accrual, whose scope selector was its
   // only consumer here; Generate Entitlement reads it for the dialog now (generate/page.tsx).
-  const [types, companies, profileOptionsActive] = await Promise.all([
+  const [types, companies, profileOptionsActive, sharedGroups] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listCompanies(s),
     // The ACTIVE picker values for the eight org fields come from the SAME master list the profile
     // Organisation Assignment screen reads, so deleted/inactive values are never offered as new choices.
     listAllProfileOptions(s, { activeOnly: true }),
+    // r281 (cdd7500b) — the shared-group catalogue, for the page-level section below.
+    listLeaveSharedGroups(s),
   ]);
+  // r281 (cdd7500b) — DERIVED FROM THE READ THIS PAGE ALREADY MAKES, never read again. `types` is every
+  // leave type including the archived ones (the workspace rail lists both), and the group's member tick
+  // list offers only the ACTIVE ones — the same set `listLeaveTypes(s, { includeArchived: false })` would
+  // return. Calling that a second time would be a second derivation of "active leave types", which is the
+  // drift this repo keeps paying for.
+  const activeTypeOptions = types.filter((lt) => !lt.archivedAt).map((lt) => ({ id: lt.id, name: lt.name }));
 
   // One page-level prep — no N+1 per type.
   const orgAssignmentOptions = Object.fromEntries(
@@ -179,15 +199,23 @@ export default async function LeaveConfigTypesPage({
   const approvalReadout = await loadLeaveTypeApprovalReadout(s, companyOptions);
   /**
    * 10b59703 — RUN EARNED ACCRUAL LEFT THIS TAB. It runs a calculation across employees, so by the
-   * reporter's rule for this round it sits with the other run action, on Generate Entitlement, next to
-   * the generation log (generate/page.tsx). R64 (7b945408 + 962077a8) had tucked it in here at the
-   * reporter's earlier request; the plan says so and offers reject-and-say-so. What stays in the slot
-   * is a one-line pointer, resolved through the map so it and the submenu cannot disagree about where
-   * the tool is. Server-composed, like every other slot: a plain rendered node crosses the boundary.
+   * reporter's rule for that round it sits with the other run actions rather than inside a leave type's
+   * configuration. R64 (7b945408 + 962077a8) had tucked it in here at the reporter's earlier request;
+   * the plan says so and offers reject-and-say-so. What stays in the slot is a one-line pointer,
+   * resolved through the map so it and the submenu cannot disagree about where the tool is.
+   * Server-composed, like every other slot: a plain rendered node crosses the boundary.
+   *
+   * r281 (09386e29) — THE POINTER'S TARGET MOVED WITH THE TOOL, AND THE SENTENCE MOVED WITH THE TARGET.
+   * The tool is a fly-out row and a page of its own now (it was filed under Generate Entitlement, the one
+   * operation it must not be confused with). Repointing the href alone would have left a caption reading
+   * "…is under Generate Entitlement" while opening somewhere else — the r270 defect, arriving by the
+   * fix's own door — so `accrualMovedPointer` was reworded in all six catalogues in the same commit. It
+   * no longer names a parent screen at all, because the menu now carries the tool's own name: a pointer
+   * that names a location is a second signpost to keep in step, and this one has already gone stale once.
    */
   const accrualPointer = (
     <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-      <Link href={leaveConfigScreenHref('generateEntitlement')} className="font-medium text-primary hover:underline">
+      <Link href={leaveConfigScreenHref('earnedAccrual')} className="font-medium text-primary hover:underline">
         {t('entitlementStep.accrualMovedPointer')} →
       </Link>
     </p>
@@ -261,6 +289,42 @@ export default async function LeaveConfigTypesPage({
           `LeaveConfigHealthNotice` inside each type's Entitlements tab is the scoped arm of the ternary
           in the shared tables block. Both are the warning shown BESIDE the thing it is about, which is
           the half of r209 that deliberately did not move. */}
+
+      {/* ── F3 · Shared leave groups ───────────────────────────────────────────────────────────────────
+          r281 (cdd7500b) — BACK ON THIS SCREEN, AND AT PAGE LEVEL, WHICH IS THE WHOLE DISTINCTION.
+
+          The reporter asked for Shared Leave Groups to sit under Leave types rather than under Company
+          rules, because a shared group is about leave types. That reading is right. The history that
+          matters is not WHETHER it belongs here but WHERE on this screen: it used to sit inside the
+          per-leave-type workspace, beside Add Leave Type, where it read as a property of whichever type
+          you happened to have selected — and a group spans several types at once, which is exactly the
+          shape r88 took it OUT of Benefit Schemes to avoid. So that reasoning is not reversed by this
+          move; it is what decides the mount point. The card is drawn HERE, at page level, ABOVE the
+          per-type workspace and outside it, so it still reads as a tenant-wide catalogue rather than as a
+          setting on the selected type. A page-level section in this slot is a known shape: the
+          traffic-light health listing was mounted exactly here until r279 gave it a row of its own.
+
+          The member tick list offers every ACTIVE leave type, derived from the read this page already
+          makes. The at-most-one-group-per-type rule is enforced in the DATABASE (unique on
+          (tenant, leave_type), migration 0342) and reported by name from the action, never re-derived on
+          screen — which is why moving the screen cannot weaken it. */}
+      <Card>
+        <SectionHeader title={tGroup('title')} count={sharedGroups.length} />
+        <div className="space-y-3 px-4 py-3">
+          <p className="text-xs text-muted-foreground">{tGroup('help')}</p>
+          <div className="max-w-xs">
+            <LeaveSharedGroupConfig
+              groups={sharedGroups}
+              leaveTypes={activeTypeOptions}
+              actions={{
+                create: createLeaveSharedGroupAction,
+                update: updateLeaveSharedGroupAction,
+                remove: deleteLeaveSharedGroupAction,
+              }}
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* r126 9861b8a4 — THE LIST THE PLAN PROMISED, CARRIED ACROSS (r258 fix pass). Rendered only when the
           set is non-empty: a permanent empty banner is furniture, and furniture stops being read. */}

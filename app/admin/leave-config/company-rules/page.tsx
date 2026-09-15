@@ -3,19 +3,16 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { ALL_COMPANIES, resolveCompanyFilter } from '@/lib/company-filter';
-import { listCompanies, listDepartments, listEmployees, listJobGrades, listLeaveTypes } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees, listJobGrades } from '@/core/read';
 import { listPositions } from '@/core/admin';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { getEncashmentPolicies } from '@/core/leave-encashment';
-import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { listToilPolicies } from '@/packs/leave/service';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA } from '@/core/replacement-eligibility';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
-import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
-import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import Link from 'next/link';
 import {
   LeaveConfigMap,
@@ -23,14 +20,7 @@ import {
   leaveConfigScreenHref,
   leaveConfigScreenTitle,
 } from '@/components/leave-config-map';
-import {
-  createLeaveSharedGroupAction,
-  deleteLeaveSharedGroupAction,
-  setLeaveEncashmentPolicyAction,
-  setLeaveHalfDayFullDeductionCompaniesAction,
-  setToilPolicyAction,
-  updateLeaveSharedGroupAction,
-} from '../../actions';
+import { setLeaveEncashmentPolicyAction, setToilPolicyAction } from '../../actions';
 
 /** Not exported: Next refuses unknown exports from a page module. The company picker's hrefs are built
  *  here on the server, so the choice rides in the address bar and the page stays a server render. */
@@ -97,14 +87,49 @@ export default async function LeaveConfigCompanyRulesPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const tr = await getTranslations('admin.replacementLeave');
-  const tGroup = await getTranslations('admin.leave.sharedGroup');
   const tPage = await getTranslations('admin.leaveConfigCompanyRules');
   const { error, warning, saved, company } = await searchParams;
 
-  // 1cf5b37c — TWO QUESTIONS, NOT ONE, and this page carries the distinction verbatim rather than
-  // re-deriving it. `accrualLive` is whether replacement leave actually BANKS days for this tenant (the
-  // `toil` entitlement, enforced inside core/toil.ts on every accrual path). Whether an admin may EDIT
-  // these settings is always yes: saving writes configuration and cannot cause an accrual.
+  /**
+   * 1cf5b37c — TWO QUESTIONS, NOT ONE, and this page still carries the distinction rather than
+   * re-deriving it. `accrualLive` is whether replacement leave actually BANKS days for this tenant (the
+   * `toil` entitlement, enforced inside core/toil.ts on every accrual path). Whether an admin may EDIT
+   * the settings is a different question, and 1cf5b37c answered it "always yes" on the grounds that
+   * saving writes configuration and cannot cause an accrual.
+   *
+   * ⚠️ r281 (8a494721) — THE DISTINCTION IS REAL AND THE CONCLUSION IS WHAT CHANGED, which is why this
+   * note is updated rather than deleted. 1cf5b37c was answering a complaint that a disabled screen read
+   * as an unfinished placeholder, and it was right that editing cannot bank a day. What it did not
+   * weigh is the cost to the administrator of a form that is fully editable and can never take effect:
+   * the reporter filled in fifty-five job grades, twenty-one positions, eighteen departments, nine
+   * companies and six named employees across several days in August, against a module this tenant does
+   * not have. Nothing was ever banked and nothing ever could have been. A notice above a live form is
+   * not a gate — it is a caption on a trap.
+   *
+   * So the whole section is gated on the entitlement now, not just the banner. The tenant without the
+   * module is not shown replacement-leave configuration at all, the same way it is not shown Claims.
+   * The amber "module is off, set it up anyway" notice went with it: it was the sentence that invited
+   * the afternoon, and there is no reachable state where the module is present but lapsed —
+   * `isModuleEnabled` answers from the tenant's snapshot and a lapsed module is simply absent from it.
+   *
+   * ⚠️ WHAT IS **NOT** GATED, AND MUST NOT BE: `/admin/toil` — the running ledger and the two settlement
+   * sweeps. A tenant whose module lapses still owes its employees the days they already banked, and for
+   * a First-Schedule-eligible employee that debt is statutory. Configuration and settlement are gated
+   * differently ON PURPOSE, which is why 296fc027 split them across two screens in the first place.
+   *
+   * ⚠️ AND THE ENGINE STAYS. core/toil.ts, core/replacement-request.ts, core/replacement-eligibility.ts,
+   * the toil_* and replacement_leave_request tables and ADR-0033 are untouched. This deployment serves
+   * more than one tenant on shared code, and the module system (ADR-0077 slice 3) is the per-tenant
+   * boundary — so this is a tenant answer, reversible on the day the add-on is bought, rather than a
+   * deletion that would take the feature from a tenant that never asked for that.
+   *
+   * ⚠️ FALSE ALSO MEANS "COULD NOT FIND OUT". `isModuleEnabledOrFalse` swallows an entitlements
+   * RESOLUTION failure and answers false (core/entitlements.ts says why at length: a page-level read is
+   * a display decision and the honest degraded answer is "do not offer this control"). During such an
+   * incident this section is hidden for a tenant that does have the module. That is the documented
+   * degrade for every billable surface in the product, not a new exposure here — and it is the right
+   * direction: an unreadable snapshot must never open a billable feature.
+   */
   const accrualLive = isModuleEnabledOrFalse(s, 'toil');
 
   const companies = await listCompanies(s);
@@ -125,23 +150,22 @@ export default async function LeaveConfigCompanyRulesPage({
   const shown = selected === ALL_COMPANIES ? visible : visible.filter((c) => c.id === selected);
   const shownIds = shown.map((c) => c.id);
 
-  // ⚠️ THE HALF-DAY PICKER IS SCOPED TO `adminOnly`, WHICH IS NARROWER THAN `companies`. The company
-  // UPDATE policy is admin-for-company, so a company-scoped hr_admin can SEE companies it cannot write.
-  // Offering exactly the companies the write can reach keeps the screen and the database in agreement,
-  // and core.setLeaveHalfDayFullDeductionCompanies resolves the same `app.is_admin_for` set server-side
-  // so a hand-crafted post cannot widen it either. This is the old screen's scope, character for
-  // character — a different one here would be a different control.
-  const [halfDayCompanies, encashmentPolicies, sharedGroups, leaveTypes, policies] = await Promise.all([
-    listCompanies(s, { adminOnly: true }),
+  // r281 (a73d1e14) — THE `adminOnly` COMPANY READ LEFT THIS PAGE WITH THE HALF-DAY CARD, and the note
+  // that explained it went with it rather than being deleted. The narrow WRITE scope is a property of
+  // that control — the company UPDATE policy is admin-for-company, so offering a wider list would let an
+  // administrator tick a company whose row the write then refuses — so the reasoning is written down
+  // beside the control, on the Special Setting screen. Nothing left on this page reads a company list
+  // narrower than the page's own.
+  // r281 (cdd7500b) — THE SHARED-GROUP READ AND THE ACTIVE LEAVE-TYPE LIST LEFT WITH THE CARD. The
+  // Leave types screen already reads every leave type for its own workspace, so the list is narrowed to
+  // the active ones there rather than read a second time — "active leave types" derived twice is the
+  // drift this repo keeps paying for.
+  const [encashmentPolicies, policies] = await Promise.all([
     getEncashmentPolicies(s),
-    listLeaveSharedGroups(s),
-    listLeaveTypes(s, { includeArchived: false }),
     listToilPolicies(s, shownIds),
   ]);
-  const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);
   const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
-  const activeTypeOptions = leaveTypes.map((lt) => ({ id: lt.id, name: lt.name }));
 
   // The eight replacement-eligibility pickers' option lists. Loaded ONCE for the whole page rather than
   // per company card: the catalogues are tenant-wide (grades, profile options) or already company-filtered
@@ -230,7 +254,11 @@ export default async function LeaveConfigCompanyRulesPage({
         title={(await leaveConfigPageHeader('companyRules')).title}
         description={tPage('pageDescription')}
         actions={
-          visible.length > 0 ? (
+          // r281 (8a494721) — THE COMPANY PICKER IS GATED WITH THE SECTION IT NARROWS. 20e759a0 added it
+          // for one reason: the replacement-leave section is 180 controls across nine companies. It has
+          // never narrowed anything else on this page — the encashment list is one row per company and
+          // stays whole — so with that section gated it would be a control that changes nothing.
+          accrualLive && visible.length > 0 ? (
             <CompanyFilterSelect
               id="company-rules-company-filter"
               label={tr('companyFilterLabel')}
@@ -294,34 +322,13 @@ export default async function LeaveConfigCompanyRulesPage({
         </div>
       </Card>
 
-      {/* ── F4 / F26 · Half-day full deduction ─────────────────────────────────────────────────────────
-          Company-wide, and drawn ONCE. On the old screen this same card is composed on the Leave types
-          page and handed into every leave type's Condition step, which is why the badge below says
-          "applies to every leave type": it is one company decision wearing twenty-five costumes. */}
-      <Card>
-        <SectionHeader title={t('halfDayDeductionTitle')} />
-        <div className="space-y-2 px-4 py-3">
-          <span className="inline-block rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {t('conditionStep.halfDayCompanyWideBadge')}
-          </span>
-          <p className="text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
-          <p className="text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
-          <form action={setLeaveHalfDayFullDeductionCompaniesAction} className="space-y-2">
-            {/* `selected` is the CURRENT state, so first render reproduces today's configuration exactly
-                and saving an unrelated form on this screen cannot silently rewrite it. The post states the
-                WHOLE set (`getAll('companyIds')`), and an empty selection is a meaningful answer —
-                "applies nowhere" — which is why there is no master switch and no guard rejecting it. */}
-            <HalfDayCompanyPicker
-              companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}
-              selected={halfDayEnabledCompanyIds}
-            />
-            <p className="text-xs text-muted-foreground">{t('halfDayDeductionEmptyNote')}</p>
-            <Button type="submit" variant="outline" size="sm">
-              {t('save')}
-            </Button>
-          </form>
-        </div>
-      </Card>
+      {/* r281 (a73d1e14) — THE HALF-DAY FULL DEDUCTION CARD STOOD HERE and is DELIBERATELY GONE, not
+          copied: the reporter asked for it under a heading of its own that a second setting of the same
+          kind can later join, so it is the whole of the Special Setting row now (the last row of the
+          fly-out). ONE EDITOR, still — leaving a copy here would be two screens writing one column, which
+          is the duplication this page was built to end rather than to start. Its server action's return
+          address moved with it in the same commit, so a save lands on the screen the change was made on
+          rather than on this one. */}
 
       {/* ── F40 · Leave encashment policy ──────────────────────────────────────────────────────────────
           ADR-0069: one row per company. Eligible leave (Annual only) and the rounding rule are fixed text
@@ -370,44 +377,40 @@ export default async function LeaveConfigCompanyRulesPage({
         </div>
       </Card>
 
-      {/* ── F3 · Shared leave groups ───────────────────────────────────────────────────────────────────
-          Tenant-wide, and that is the point of moving it. On the old screen it sits beside Add Leave Type
-          inside the leave-type workspace, where it reads as a property of whichever type is selected; a
-          group spans several types, which is exactly the shape r88 took it OUT of Benefit Schemes to
-          avoid. The member tick list offers every ACTIVE leave type; the at-most-one-group-per-type rule
-          is enforced in the database and reported by name from the action, never re-derived here. */}
-      <Card>
-        <SectionHeader title={tGroup('title')} count={sharedGroups.length} />
-        <div className="space-y-3 px-4 py-3">
-          <p className="text-xs text-muted-foreground">{tGroup('help')}</p>
-          <div className="max-w-xs">
-            <LeaveSharedGroupConfig
-              groups={sharedGroups}
-              leaveTypes={activeTypeOptions}
-              actions={{
-                create: createLeaveSharedGroupAction,
-                update: updateLeaveSharedGroupAction,
-                remove: deleteLeaveSharedGroupAction,
-              }}
-            />
-          </div>
-        </div>
-      </Card>
+      {/* r281 (cdd7500b) — THE SHARED LEAVE GROUPS CARD STOOD HERE and is DELIBERATELY GONE, not
+          copied. The reporter asked for it on the Leave types screen, because a shared group is about
+          leave types — and they are right about that. The reason it was taken OFF that screen was never
+          that it belonged elsewhere in principle: it was that it sat INSIDE the per-leave-type workspace,
+          beside Add Leave Type, where it read as a property of whichever type happened to be selected,
+          while a group spans several. That reasoning is not reversed here, it is honoured: the card is
+          mounted at PAGE level on the Leave types screen, above the per-type workspace and outside it, so
+          it still reads as what it is. The whole argument is written down at the new site.
+          The three actions moved with it unchanged and their return address moved with them, so a save
+          lands on the screen the change was made on rather than on this one. */}
 
       {/* ── F38 · Replacement leave (TOIL) policy ──────────────────────────────────────────────────────
-          Per company, one card each, narrowed by the header's company picker. WHAT DELIBERATELY DID NOT
-          COME WITH IT: the running balance LEDGER and the two settlement sweeps stay on /admin/toil.
-          Those sweeps are NOT entitlement-gated — a tenant whose `toil` module lapses still owes its
-          employees the days they already banked, and for a First-Schedule-eligible employee that debt is
-          statutory. Configuration and settlement are gated differently on purpose, so they live on
-          different screens; pulling the sweeps behind a configuration screen would quietly re-gate them. */}
-      {!accrualLive && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-          {tr('moduleOff')}
-        </div>
-      )}
+          Per company, one card each, narrowed by the header's company picker.
 
-      {shown.length === 0 ? (
+          ⚠️ r281 (8a494721) — THE WHOLE SECTION IS GATED ON THE ENTITLEMENT, not just a notice above it.
+          Until this round `accrualLive` decided ONE thing: whether to draw an amber "the module is not
+          part of this account's plan — you can set it up here now" banner, with every control rendered
+          and saving underneath it. The reporter took that invitation and spent several days in August
+          filling in five scopes and six named employees for a module this tenant does not have. Not one
+          day was ever banked and none could have been. A caption above a live form is not a gate.
+
+          The banner went with the section rather than being kept outside the gate: it only ever rendered
+          when the module was absent, which is exactly when there is now nothing here to caption, and its
+          wording was the invitation itself. There is no reachable middle state to keep it for — a lapsed
+          module is absent from the tenant's snapshot, not present-and-expired.
+
+          ⚠️ WHAT DELIBERATELY DID NOT COME WITH IT, AND MUST NOT BE GATED WITH IT: the running balance
+          LEDGER and the two settlement sweeps stay on /admin/toil, ungated. A tenant whose `toil` module
+          lapses still owes its employees the days they already banked, and for a First-Schedule-eligible
+          employee that debt is statutory. Configuration and settlement are gated differently ON PURPOSE,
+          which is why they live on different screens; pulling the sweeps behind a configuration gate
+          would quietly re-gate a statutory obligation. */}
+      {accrualLive &&
+        (shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">{tr('noCompanies')}</p>
       ) : (
         shown.map((c) => {
@@ -566,9 +569,12 @@ export default async function LeaveConfigCompanyRulesPage({
             </Card>
           );
         })
-      )}
+      ))}
 
-      <p className="px-1 text-xs text-muted-foreground">{tr('footnote')}</p>
+      {/* The footnote is part of the replacement-leave section and is gated with it: it explains that a
+          credit's expiry date is fixed when it is approved, which says nothing to a tenant that cannot
+          bank a credit. */}
+      {accrualLive && <p className="px-1 text-xs text-muted-foreground">{tr('footnote')}</p>}
     </div>
   );
 }

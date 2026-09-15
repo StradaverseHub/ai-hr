@@ -189,8 +189,18 @@ describe('r242 → 5ca446db · Leave Config points at the inquiry surface with a
     // header link r242 shipped, so the link is gone and the Leave Config fly-out's last child carries the
     // way in. THE ADDRESS IS STILL THE POINT and is still unchanged: `/leave/employee-balances` is not a
     // Leave Config screen, no route moved, and every saved link and export link still resolves.
-    expect(CONFIG_NODE.children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(CONFIG_NODE.children.at(-1)!.href).toBe('/leave/employee-balances');
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. `children.at(-1)` was a spelling of "the inquiry row exists
+    // and sits at the bottom", and it held only while that row happened to be last. An unrelated item
+    // appended Special Setting below it — the reporter drew it at the very bottom of their own sketch — so
+    // the row is resolved BY NAME and its position is asserted as the NEIGHBOUR PAIR it was always about
+    // ("at the bottom, AFTER Company rules"). A row inserted between them still fails.
+    const inquiry = CONFIG_NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry');
+    expect(inquiry, 'the way in r242 promised is gone from the menu').toBeTruthy();
+    expect(inquiry!.href).toBe('/leave/employee-balances');
+    expect(CONFIG_NODE.children.map((c) => c.labelKey).slice(-2)).toEqual([
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
     expect(REGISTERED_ROUTES.has('/leave/employee-balances')).toBe(true);
     // The link it replaced is gone from the page — both halves asserted, so a half-done change is red.
     expect(leaveConfigLanding).not.toContain('href="/leave/employee-balances"');
@@ -303,8 +313,12 @@ describe('388e53c2 · My Leave means your own leave again', () => {
 describe('388e53c2 → 5ca446db · the sidebar lights exactly one row, and it is the right one', () => {
   const leaveRow = leavePack.navLinks!.find((l) => l.href === '/leave')!;
   const trackerRow = leavePack.navLinks!.find((l) => l.href === '/leave/tracker')!;
-  /** 5ca446db — the two inquiry paths' new owner: the Leave Config fly-out's last child. */
-  const inquiryRow = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.at(-1)!;
+  /** 5ca446db — the two inquiry paths' owner. r281 — resolved BY NAME: it was the fly-out's last child
+   *  until an unrelated item appended Special Setting below it, and what this block is about is which row
+   *  owns which path, never which index it sits at. */
+  const inquiryRow = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.find(
+    (c) => c.labelKey === 'employeeLeaveInquiry',
+  )!;
 
   it('declares the relationship as DATA on the pack, not as behaviour in the sidebar', () => {
     // The sidebar owns the predicate; the pack only says which paths belong to which row.

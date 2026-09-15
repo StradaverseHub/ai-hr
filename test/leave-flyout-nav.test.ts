@@ -120,6 +120,11 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
  */
 const ADDED_SINCE: readonly { href: string; labelKey: string }[] = [
   { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
+  // r281 (a73d1e14) — Special Setting, appended BELOW the inquiry row because that is where the reporter
+  // drew it. It holds Half Day Deduction, which came off Company rules. The rail is two levels deep
+  // (`NavChildDescriptor` has no `children`), so the sketch's third level is the PAGE this row opens
+  // rather than a nested row; the plan says that to the reporter and offers reject-and-say-so.
+  { href: '/admin/leave-config/special-setting', labelKey: 'leaveSpecialSetting' },
 ] as const;
 
 /**
@@ -138,6 +143,21 @@ const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = 
 ] as const;
 
 /**
+ * r281 (09386e29) — A ROW ADDED SINCE THE STRIP RETIRED THAT GOES IMMEDIATELY AFTER GENERATE ENTITLEMENT,
+ * and again the place is the point.
+ *
+ * Run earned accrual was a card filed UNDERNEATH the generation wizard on the Generate Entitlement page.
+ * That page CREATES a leave year's entitlement; this tool posts only what has already been earned and is
+ * not yet on the ledger, so filing one inside the other put the operator one scroll from the operation it
+ * must never be confused with. It is a NEIGHBOUR of Generate Entitlement now, not a section of it — and
+ * naming it in its own list with its own insertion point keeps RETIRED_STRIP meaning exactly what it has
+ * always meant instead of smuggling a new destination into it.
+ */
+const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
+  { href: '/admin/leave-config/earned-accrual', labelKey: 'leaveEarnedAccrual' },
+] as const;
+
+/**
  * The fly-out's children, EXACTLY: the retired strip in its own order, with each row added since spliced
  * in at the position its round chose. Still an exact-set guard — a deletion, a rename or a re-sort all
  * fail it — and a genuinely new row is added by naming it above, in the commit that adds it.
@@ -145,7 +165,10 @@ const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = 
 const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
   RETIRED_STRIP[0],
   ...ADDED_AFTER_ENTITLEMENTS,
-  ...RETIRED_STRIP.slice(1),
+  // Leave Adjustments and Generate Entitlement, then the row r281 spliced in behind the latter.
+  ...RETIRED_STRIP.slice(1, 3),
+  ...ADDED_AFTER_GENERATE,
+  ...RETIRED_STRIP.slice(3),
   ...ADDED_SINCE,
 ];
 
@@ -153,6 +176,8 @@ const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
 const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
 /** The child r279 added, resolved the same way. */
 const BALANCE_HEALTH_ROW = NODE.children.find((c) => c.labelKey === 'leaveBalanceHealth')!;
+/** The child r281 added, resolved the same way. */
+const EARNED_ACCRUAL_ROW = NODE.children.find((c) => c.labelKey === 'leaveEarnedAccrual')!;
 
 /** href → the route file that must exist for it to be a live destination. */
 const routeFile = (href: string) => `app${href}/page.tsx`;
@@ -166,6 +191,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(RETIRED_STRIP[0], 'the splice point moved').toEqual({
       href: '/admin/leave-config/types',
       labelKey: 'leaveEntitlements',
+    });
+    // r281 — the SECOND splice point, pinned the same way and for the same reason: Run earned accrual
+    // goes directly behind Generate Entitlement, so the entry it is spliced behind must still be that row.
+    expect(RETIRED_STRIP[2], 'the second splice point moved').toEqual({
+      href: '/admin/leave-config/generate',
+      labelKey: 'leaveGenerate',
     });
     expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
     expect(NODE.labelKey).toBe('leaveConfig');
@@ -186,6 +217,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       '/admin/leave-config/balance-health': 'leaveConfig',
       '/admin/leave-config/adjustments': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
+        // r281 (09386e29) — Run earned accrual is on `leaveConfig` ON PURPOSE: it WAS a section of the
+        // Generate Entitlement page, so anybody who could open that screen could already run it. A screen
+        // key of its own would invent a permission for a card that changed address.
+        '/admin/leave-config/earned-accrual': 'leaveConfig',
       '/admin/leave-config/company-rules': 'leaveConfig',
       // …and Approval Workflow, which has answered to the SEPARATE `leaveApproval` column since 0d147b78
       // absorbed the standalone approval-chain route. The substring scan this case replaced could not see
@@ -200,6 +235,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // payroll and perf-comp partners), which shows every adminOnly row to a non-admin partner who is then
       // redirected at the page. Disclosed, predates this row, not fixed here with a bespoke flag.
       '/leave/employee-balances': 'leaveEmployeeBalances',
+        // r281 (a73d1e14) — Special Setting is on `leaveConfig`, like every other Leave Config
+        // destination: the half-day card it holds was already behind that column on Company rules, so a
+        // screen key of its own would invent a permission for a card that changed address.
+        '/admin/leave-config/special-setting': 'leaveConfig',
     };
     for (const child of NODE.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
@@ -260,6 +299,39 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!.items).toHaveLength(2);
     expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
       BALANCE_HEALTH_ROW.href,
+    );
+  });
+
+  /**
+   * r281 (09386e29) — the Run earned accrual row, and the four things about it a later round could undo.
+   */
+  it('the Run Earned Accrual row sits directly after Generate Entitlement and owns its own group, not a tab of one', () => {
+    expect(EARNED_ACCRUAL_ROW, 'the Run earned accrual row is gone').toBeTruthy();
+    expect(EARNED_ACCRUAL_ROW.href).toBe('/admin/leave-config/earned-accrual');
+    // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: the screen it was
+    // filed inside is the one directly above it, and the two must read as neighbours rather than as one
+    // containing the other.
+    const labels = NODE.children.map((c) => c.labelKey);
+    expect(labels.slice(labels.indexOf('leaveGenerate'), labels.indexOf('leaveGenerate') + 2)).toEqual([
+      'leaveGenerate',
+      'leaveEarnedAccrual',
+    ]);
+    // A real page, guarded, with no tabs of its own to own.
+    expect(exists('app/admin/leave-config/earned-accrual/page.tsx')).toBe(true);
+    expect(EARNED_ACCRUAL_ROW.ownedSubpaths ?? []).toEqual([]);
+    // Highlighting is not a gate: the Administration group is gated wholesale and the page calls
+    // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
+    expect(EARNED_ACCRUAL_ROW.adminOnly).toBeUndefined();
+    expect(EARNED_ACCRUAL_ROW.managerUp).toBeUndefined();
+    // A SIBLING, NOT A SECOND TAB: its own map group, of ONE item — so the tab row renders nothing, the
+    // Generate group still owns exactly its one screen, and Generate does not own this path (owning it
+    // would light the row above while the reader is on this one, which is the very confusion this splits).
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEarnedAccrual')!;
+    expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
+    expect(group.items.map((i) => i.href)).toEqual([EARNED_ACCRUAL_ROW.href]);
+    expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveGenerate')!.items).toHaveLength(1);
+    expect(NODE.children.find((c) => c.labelKey === 'leaveGenerate')!.ownedSubpaths ?? []).not.toContain(
+      EARNED_ACCRUAL_ROW.href,
     );
   });
 
@@ -395,7 +467,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
   });
 
-  it('the Audit row is gone, Company rules closes the config rows, and Employee Leave Inquiry is last', () => {
+  it('the Audit row is gone, Company rules closes the ORIGINAL config rows, and the rows added since sit where they were asked for', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
     // a6fe37fc Round 5 — the row that ABSORBED Replacement leave closes the five CONFIGURE rows. The
     // position the reporter's team reads is unchanged; only what sits in it moved.
@@ -404,12 +476,24 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // of the five configuration rows", because the reporter asked for the inquiry row to sit at the BOTTOM,
     // after Company rules ("Add a sixth row to the Leave Config menu, at the bottom, after Company rules").
     // Both halves are pinned so neither the fifth position nor the sixth can drift.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED, and the two promises are separated rather than blurred.
+    // "Company rules closes the config rows" and "the inquiry row is last" were both spellings of
+    // POSITIONS, and this round adds a row BELOW the inquiry row because that is where the reporter drew
+    // it (Special Setting, holding Half Day Deduction). What each round actually promised is a NEIGHBOUR
+    // relationship, so each is pinned as a neighbour pair: Company rules immediately before the inquiry
+    // row, and the inquiry row immediately before the row r281 added. A row inserted anywhere between
+    // them still fails, and a row appended below Special Setting must name itself here — the same
+    // discipline the ADDED_SINCE list above applies.
+    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
+      'leaveCompanyRules',
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
+    expect(NODE.children.at(-1)!.href).toBe('/admin/leave-config/special-setting');
+    // Company rules is still the last of the rows the a6fe37fc cutover left, which is what that round
+    // promised: the only config row below it is the one r281 named above.
     const CONFIG_ROWS = NODE.children.filter((c) => c.href.startsWith('/admin/leave-config/'));
-    expect(CONFIG_ROWS.at(-1)!.href).toBe('/admin/leave-config/company-rules');
-    expect(NODE.children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(NODE.children.at(-1)!.href).toBe('/leave/employee-balances');
-    // …and it is IMMEDIATELY after Company rules, not merely somewhere below it.
-    expect(NODE.children.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
+    expect(CONFIG_ROWS.at(-2)!.href).toBe('/admin/leave-config/company-rules');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
   });
 

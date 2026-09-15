@@ -21,6 +21,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const entitlementsPage = read('/app/admin/leave-config/types/page.tsx');
 const generatePage = read('/app/admin/leave-config/generate/page.tsx');
+/** r281 (09386e29) — the page Run earned accrual moved to when it stopped being a section of Generate. */
+const accrualPage = read('/app/admin/leave-config/earned-accrual/page.tsx');
 
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The leave TYPE screen is
@@ -56,9 +58,15 @@ describe('962077a8 → 5ca446db: the PageHeader carries no actions at all, and t
     expect(entitlementsPage).not.toContain('employeeBalancesAction');
     // THE REPLACEMENT, so this case cannot pass on a page that lost the way in with nothing put in its
     // place. The row's own shape is pinned in test/leave-flyout-nav.test.ts and test/r269-*.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. The row was resolved as `children.at(-1)`, which was a
+    // spelling of "the way in exists" that happened to work while it was the last child; an unrelated
+    // item appended Special Setting below it, where the reporter drew it. The row is resolved BY NAME
+    // here and its POSITION is pinned where positions belong — test/leave-flyout-nav.test.ts, which owns
+    // the fly-out's exact order. What this case is about is that the link's replacement exists at all.
     const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
-    expect(children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(children.at(-1)!.href).toBe('/leave/employee-balances');
+    const inquiry = children.find((c) => c.labelKey === 'employeeLeaveInquiry');
+    expect(inquiry, 'the row that replaced the header link is gone').toBeTruthy();
+    expect(inquiry!.href).toBe('/leave/employee-balances');
     // The importer button and the three tab links are gone from the header cluster…
     expect(header).not.toContain("leaveConfigScreenHref('importLeaveData')");
     expect(header).not.toContain("leaveConfigScreenHref('entitlementTables')");
@@ -83,22 +91,30 @@ describe('962077a8 → 5ca446db: the PageHeader carries no actions at all, and t
   });
 });
 
-describe('962077a8 → 10b59703: Run Accrual is mounted exactly once, on Generate Entitlement, and in no header', () => {
-  it('EarnedAccrualDialog mounts once on generate/page.tsx, between the wizard and the run log, and never on the leave type screen', () => {
-    expect(generatePage.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+describe('962077a8 → 10b59703 → r281: Run Accrual is mounted exactly once, on its own screen, and in no header', () => {
+  it('EarnedAccrualDialog mounts once on earned-accrual/page.tsx, and on neither screen it has left', () => {
+    // r281 (09386e29) — UPDATED, NOT LOOSENED. 962077a8's rule is "mounted exactly once, and never in a
+    // PageHeader actions cluster", and that is what is still asserted. What moved is the one screen. r266
+    // put the tool on Generate Entitlement, between the wizard and the run log; that page CREATES a leave
+    // year's entitlement while this tool posts only what was already earned, so filing the second inside
+    // the first put an operator one scroll from the operation it must never be confused with. The
+    // ORDERING assertion (wizard → accrual → run log) retires with the arrangement it described: there is
+    // nothing left to order on that page, and what replaced it is the stronger claim that the mount is
+    // gone from it entirely.
+    expect(accrualPage.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    expect(generatePage.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
     expect(entitlementsPage.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
+    // Same page-level data prep both earlier screens fed it — nothing moved into a client component.
+    expect(accrualPage).toContain('leaveYears={earnedLeaveYears}');
+    expect(accrualPage).toContain('companies={accrualCompanies}');
+    // Not in a header either: 962077a8's rule holds on the page the tool moved to.
+    const accrualHeader = accrualPage.slice(accrualPage.indexOf('<PageHeader'), accrualPage.indexOf('<LeaveConfigMap'));
+    expect(accrualHeader).not.toContain('EarnedAccrualDialog');
+    // Generate Entitlement keeps the wizard and the run log, in that order, with nothing between them.
     const wizardAt = generatePage.indexOf('<GenerateForm');
-    const accrualAt = generatePage.indexOf('<EarnedAccrualDialog');
     const runsAt = generatePage.indexOf("t('generateRunsTitle')");
     expect(wizardAt).toBeGreaterThan(-1);
-    expect(accrualAt).toBeGreaterThan(wizardAt);
-    expect(runsAt).toBeGreaterThan(accrualAt);
-    // Same page-level data prep the leave type screen fed it — nothing moved into a client component.
-    expect(generatePage).toContain('leaveYears={earnedLeaveYears}');
-    expect(generatePage).toContain('companies={accrualCompanies}');
-    // Not in the Generate header either: 962077a8's rule holds on the page the tool moved to.
-    const generateHeader = generatePage.slice(generatePage.indexOf('<PageHeader'), generatePage.indexOf('<LeaveConfigMap'));
-    expect(generateHeader).not.toContain('EarnedAccrualDialog');
+    expect(runsAt).toBeGreaterThan(wizardAt);
     // The tab it left keeps the pointer where the button was.
     expect(entitlementsPage).toContain('accrualPointer={accrualPointer}');
   });

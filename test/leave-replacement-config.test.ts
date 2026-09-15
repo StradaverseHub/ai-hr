@@ -101,8 +101,16 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // is not a Leave Config screen at all — so the count-based spelling stopped expressing the promise. The
     // promise itself is unchanged and is restated exactly: Company rules is the LAST of the rows that open
     // a Leave Config screen. A new /admin/leave-config/* row placed after it still fails here.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED, and for the same reason r269 updated it before. "Company
+    // rules is the END of the leave config menu, where Replacement Leave was put" was a spelling of a
+    // POSITION; a later, unrelated item added a row below it (Special Setting, holding the half-day card
+    // the reporter asked to take off Company rules), drawn at the very bottom of their sketch. What this
+    // case promises is where Replacement Leave's absorbing screen sits among the rows that existed when
+    // it was put there, so it is restated exactly: Company rules is the last config row of the cutover
+    // set, and the only row below it is the one r281 added.
     const configHrefs = hrefs.filter((h) => h.startsWith('/admin/leave-config/'));
-    expect(configHrefs.at(-1)).toBe('/admin/leave-config/company-rules');
+    expect(configHrefs.at(-1)).toBe('/admin/leave-config/special-setting');
+    expect(configHrefs.at(-2)).toBe('/admin/leave-config/company-rules');
     // …and nothing but the named inquiry row sits outside that set, so the filter cannot hide a regression.
     expect(hrefs.filter((h) => !h.startsWith('/admin/leave-config/'))).toEqual(['/leave/employee-balances']);
     // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
@@ -151,28 +159,69 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(note).toMatch(/changes nothing today/i);
   });
 
-  // 1cf5b37c INVERTED THIS TEST, and the inversion is the item. It used to assert that every control
+  // 1cf5b37c INVERTED THIS TEST, and the inversion was the item. It used to assert that every control
   // was disabled and no Save rendered without the add-on — which is exactly what made the reporter read
-  // a finished screen as an unfinished placeholder. The screen is now always editable for an admin.
+  // a finished screen as an unfinished placeholder. So the screen became always editable for an admin,
+  // with an amber notice above it saying the module was not on.
   //
-  // What must NOT change is that the entitlement still decides whether anything is BANKED, so the two
-  // halves are asserted separately: the page no longer disables anything, and the accrual gate is still
-  // read (and still enforced inside core/toil.ts, covered by the behavioural tests in this file).
-  it('is EDITABLE for an admin even when the add-on is not switched on', () => {
+  // ⚠️ r281 (8a494721) — INVERTED AGAIN, DELIBERATELY, AND THE GUARD IS UPDATED RATHER THAN DELETED
+  // BECAUSE IT PINS A DECISION BEING REVERSED. 1cf5b37c's distinction is real — editing configuration
+  // cannot bank a day — and its conclusion is what changed. The reporter took the invitation the notice
+  // printed and spent several days in August filling in five scopes and six named employees against a
+  // module this tenant does not have; nothing was banked and nothing could have been. A notice above a
+  // live form is not a gate, it is a caption on a trap. So the section is not built at all for a tenant
+  // without the module, the same way the Claims screens are not.
+  //
+  // THREE HALVES, ASSERTED SEPARATELY, because each can be undone on its own:
+  it('r281 — the whole replacement section is gated on the entitlement, not just a banner above it', () => {
     const src = read(PAGE_REL);
-    expect(src, 'the entitlement is still read, for the banner').toContain('isModuleEnabledOrFalse');
-    expect(src, 'no control may be disabled by the entitlement any more').not.toContain('disabled={!');
-    expect(src, 'Save renders unconditionally').not.toContain('&& <button className={btnPrimary}>');
+    expect(src, 'the entitlement must still be read').toContain('isModuleEnabledOrFalse');
+    // The gate is on the SECTION. `{!accrualLive && (` was the banner-only spelling and must not survive:
+    // a page carrying both is a page that still draws the form under a notice.
+    expect(src, 'the section is drawn only when the module is live').toContain('{accrualLive &&');
+    expect(src, 'the banner-only gate must not survive the section gate').not.toContain('{!accrualLive && (');
+    // Nothing is DISABLED, which is 1cf5b37c's surviving half: for the tenant that HAS the module the
+    // screen is fully editable, exactly as that round made it. Gated is not disabled.
+    expect(src, 'no control may be disabled by the entitlement').not.toContain('disabled={!');
+    expect(src, 'Save renders unconditionally within the section').not.toContain('&& <button className={btnPrimary}>');
   });
 
-  it('still tells the admin that nothing accrues until the add-on is on', () => {
+  it('r281 — the "set it up here anyway" notice is gone, and its key with it', () => {
+    // The banner only ever rendered when the module was ABSENT, which is precisely when there is now
+    // nothing on the page to caption; and its wording ("you can set it up here now — the settings take
+    // effect as soon as the add-on is switched on") was the invitation itself. There is no reachable
+    // middle state to keep it for: `isModuleEnabled` answers from the tenant's entitlement snapshot, and
+    // a lapsed module is absent from it rather than present-and-expired.
     const src = read(PAGE_REL);
-    expect(src).toContain("{!accrualLive && (");
-    const banner = String(getPath(load('en'), 'admin.replacementLeave.moduleOff'));
-    // The old wording claimed the settings "cannot be changed". That is now false, and a banner that
-    // contradicts the screen is worse than no banner.
-    expect(banner).not.toMatch(/cannot be changed/i);
-    expect(banner).toMatch(/not part of this account's plan/i);
+    expect(src).not.toContain("tr('moduleOff')");
+    for (const loc of LOCALES) {
+      expect(
+        getPath(load(loc), 'admin.replacementLeave.moduleOff'),
+        `${loc}: the banner key must be pruned with its only reader`,
+      ).toBeUndefined();
+      // ⚠️ A DIFFERENT KEY WITH THE SAME LEAF NAME STAYS: /admin/toil's own notice, on the screen that
+      // keeps the ledger and both settlement sweeps ungated. Deleting by leaf name would have taken it.
+      expect(typeof getPath(load(loc), 'admin.toilPolicy.moduleOff'), `${loc}: /admin/toil's notice`).toBe('string');
+    }
+  });
+
+  it('r281 — the ENGINE is untouched: this is a tenant answer, not a deletion', () => {
+    // The plan promises the feature is not removed from the product, only from this tenant's screens,
+    // and that it is reversible on the day the add-on is bought. That promise is about files, so it is
+    // asserted over files. This deployment serves more than one tenant on shared code.
+    for (const kept of [
+      'core/toil.ts',
+      'core/replacement-request.ts',
+      'core/replacement-eligibility.ts',
+      'docs/adr/0033-leave-in-lieu-toil.md',
+    ]) {
+      expect(fs.existsSync(path.join(ROOT, kept)), `${kept} must survive — the engine is not deleted`).toBe(true);
+    }
+    // …and the configuration surface is GATED, not deleted: every control is still in this file, ready
+    // for the tenant that has the module.
+    const src = read(PAGE_REL);
+    expect(src).toContain('<ReplacementEligibilityPicker');
+    expect(src).toContain('setToilPolicyAction');
   });
 
   it('no longer cross-links to the legacy Time Off In Lieu page', () => {

@@ -113,10 +113,13 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     expect(LEAVE_CONFIG_MAP.map((g) => g.items[0].href)).toEqual(ROWS.map((r) => r.href));
     // r279 — six, because Balance Health is a row AND a group. An exact count, not a floor: a row added
     // without a group (or a group without a row) fails the two `toEqual`s above before reaching this.
-    expect(ROWS).toHaveLength(6);
+    // r281 — SEVEN: Run earned accrual took a row and a group in the same commit, exactly as Balance
+    // Health did, so the two lists moved together and no exception was needed anywhere in this file.
+    // r281 (a73d1e14) — EIGHT: Special Setting took a row and a group in the same commit too.
+    expect(ROWS).toHaveLength(8);
   });
 
-  it('5ca446db — the LAST child is the Leave Inquiry door, and it is the only child with no map group', () => {
+  it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
     // UPDATED, NOT LOOSENED: `expect(ROWS).toHaveLength(6)` above still holds exactly, because ROWS is
     // the rows whose destinations live under the module. The extra child is pinned here rather than
     // excluded quietly — a second mapless row would fail the last assertion in this case.
@@ -127,9 +130,18 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     expect(mapless.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
       { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
     ]);
-    // It is LAST, immediately after Company rules — the position the reporter asked for.
-    expect(CHILDREN.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(CHILDREN.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
+    // r269 asked for it "at the bottom, after Company rules", and it is still IMMEDIATELY after Company
+    // rules — the position the reporter asked for, pinned as the PAIR rather than as "last".
+    //
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. `CHILDREN.at(-1)` used to be this row and is now Special
+    // Setting, because THAT is where the reporter drew the new row: below the inquiry row, at the very
+    // bottom. "Last" was never this row's property — "immediately after Company rules" was — so the
+    // spelling follows the property rather than the index, and both neighbours are pinned.
+    expect(CHILDREN.map((c) => c.labelKey).slice(-3)).toEqual([
+      'leaveCompanyRules',
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
     // Its route is registered, unmoved, and on its OWN column — not on leaveConfig.
     expect(REGISTERED_ROUTES.has('/leave/employee-balances')).toBe(true);
     expect(SCREENS.find((s) => s.screenKey === 'leaveConfig')!.routes).not.toContain('/leave/employee-balances');
@@ -164,8 +176,13 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
       '/admin/leave-config/generate',
+      // r281 — its row is directly after Generate Entitlement, so its screen is directly after it here.
+      '/admin/leave-config/earned-accrual',
       '/admin/leave-config/approval-chains',
       '/admin/leave-config/company-rules',
+      // r281 — its ROW is last (after the inquiry row, where the reporter drew it), so its screen is last
+      // among the rows whose destinations live under the module.
+      '/admin/leave-config/special-setting',
     ]);
   });
 
@@ -232,7 +249,10 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     // r279 (3fbf7a02) — eight: `balanceHealth` is the one screen of its own row, and it resolves through
     // this helper exactly like every other, which is the whole reason it was given a group.
     const ids = LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.id as MappedLeaveConfigScreenId));
-    expect(ids).toHaveLength(8);
+    // r281 (09386e29) — nine: `earnedAccrual` is the one screen of its own row and resolves through
+      // this helper exactly like every other, which is the whole reason it was given a group.
+      // r281 (a73d1e14) — ten, with `specialSetting`.
+      expect(ids).toHaveLength(10);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -277,8 +297,17 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       balanceHealth: 'admin.leaveConfigBalanceHealth.pageDescription',
       adjustments: 'admin.leaveConfigAdjustments.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
+        // r281 (09386e29) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`),
+        // so the row that TOPS UP earned entitlement describes itself in its own words instead of
+        // borrowing the sentence belonging to the row that CREATES entitlement — which is exactly the
+        // confusion this item exists to end.
+        earnedAccrual: 'admin.leaveConfigEarnedAccrual.pageDescription',
       approval: 'admin.leaveConfigApprovalChains.pageDescription',
       companyRules: 'admin.leaveConfigCompanyRules.pageDescription',
+        // r281 (a73d1e14) — its own namespace, the house shape. The row describes the CATEGORY ("settings
+        // that apply across every leave type"), not the one setting on it today, so a second special
+        // setting joining the group needs no reworded sentence.
+        specialSetting: 'admin.leaveConfigSpecialSetting.pageDescription',
     };
     for (const [group, key] of Object.entries(descriptionKeys)) {
       const [ns, leaf] = [key.slice(0, key.lastIndexOf('.')), key.slice(key.lastIndexOf('.') + 1)];
@@ -297,8 +326,13 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveBalanceHealth).toBe('Leave Balance Health');
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
+    expect(en.nav.leaveEarnedAccrual).toBe('Run Earned Accrual');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
     expect(en.nav.leaveCompanyRules).toBe('Company rules');
+      expect(en.nav.leaveSpecialSetting).toBe('Special Setting');
+      // THE ROW IS THE CATEGORY AND THE TAB IS THE SETTING — the r266 rule, and what makes a second
+      // special setting an addition rather than a rename of a row the customer has learned.
+      expect(en.admin.leaveConfigMap.item.specialSetting).toBe('Half-day deduction');
     // m7 was REVERTED: nav.leaveApproval labels the leaveApproval SCREEN in the users access grid and
     // test/leave-flyout-nav.test.ts (645e67c4) pins that it stays DISTINCT from the menu row's label —
     // a render check once caught the silent rename. The two surfaces keep their own names.
@@ -330,18 +364,34 @@ describe('§D · the moves, and what deliberately did not move', () => {
       expect(getPath(cat, 'admin.leave.employeeBalancesAction'), `${loc}: the caption must be pruned`).toBeUndefined();
   });
 
-  it('Run earned accrual is on Generate Entitlement, once, and tab 3 keeps a pointer to it', () => {
+  it('r281 — Run earned accrual is on its OWN page, once, and tab 3 still points at it', () => {
+    // r281 (09386e29) — UPDATED, NOT LOOSENED, and the subject of this case is unchanged: the tool is
+    // mounted in exactly ONE place, the leave type tab that lost it keeps a pointer, and the tool's five
+    // inputs are untouched so nothing about the calculation moved with the mount. What changed is WHICH
+    // one place. r266 put it on Generate Entitlement; that screen CREATES a leave year's entitlement and
+    // this one tops up what was already earned, so filing the second inside the first put an operator one
+    // scroll from the operation it must never be confused with. It has a row and a page of its own now.
+    const accrual = read('app/admin/leave-config/earned-accrual/page.tsx');
     const generate = read('app/admin/leave-config/generate/page.tsx');
     const types = read('app/admin/leave-config/types/page.tsx');
     const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
-    expect(generate.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    expect(accrual.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    // ONE PLACE, NOT TWO: a half-done move that leaves a second mount behind fails here.
+    expect(generate.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
     expect(types.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
-    expect(types).toContain("leaveConfigScreenHref('generateEntitlement')");
+    expect(types).toContain("leaveConfigScreenHref('earnedAccrual')");
+    expect(types, 'the pointer must not still name the screen the tool left').not.toContain(
+      "leaveConfigScreenHref('generateEntitlement')",
+    );
     expect(types).toContain("t('entitlementStep.accrualMovedPointer')");
     expect(tabs).toContain('{accrualPointer}');
+    // …AND THE SENTENCE MOVED WITH THE HREF. It read "Run earned accrual is under Generate Entitlement"
+    // — a signpost that had already gone stale once — so repointing the link alone would have left a
+    // caption that says one thing and does another (the r270 defect). It names no parent screen now.
+    expect(en.admin.leave.entitlementStep.accrualMovedPointer).not.toMatch(/Generate Entitlement/);
     // The dialog's inputs are unchanged (the same five props), so the tool itself did not change.
     for (const prop of ['companies=', 'grades=', 'leaveTypes=', 'leaveYears=', 'defaultYear='])
-      expect(generate.slice(generate.indexOf('<EarnedAccrualDialog'))).toContain(prop);
+      expect(accrual.slice(accrual.indexOf('<EarnedAccrualDialog'))).toContain(prop);
   });
 
   it('eligibility rules stay under Entitlements; Company rules only points at them', () => {
@@ -381,8 +431,43 @@ describe('§D · the moves, and what deliberately did not move', () => {
     const approval = read('app/admin/leave-config/approval-chains/page.tsx');
     for (const needle of ['<ApprovalTemplateManager', '<ApprovalAssignmentManager', '<LeaveEscalationEditor'])
       expect(approval).toContain(needle);
-    for (const needle of ['<HalfDayCompanyPicker', '<LeaveSharedGroupConfig'])
-      expect(companyRules).toContain(needle);
+    // r281 (a73d1e14) — THE HALF-DAY CARD LEFT THIS SCREEN, so the assertion follows the editor rather
+    // than the address: it is on the Special Setting row now (the reporter asked for it under a heading
+    // of its own), and it must be on EXACTLY one screen — asserted in both directions so a half-done move
+    // that leaves a second copy behind, or one that loses the card altogether, both fail.
+    expect(read('app/admin/leave-config/special-setting/page.tsx')).toContain('<HalfDayCompanyPicker');
+    expect(companyRules, 'the half-day card must not survive on Company rules too').not.toContain(
+      '<HalfDayCompanyPicker',
+    );
+    // r281 (cdd7500b) — SHARED LEAVE GROUPS LEFT THIS SCREEN TOO, at the reporter's request, and the
+    // assertion follows the editor the same way. It is on the Leave types screen at PAGE LEVEL — above
+    // the per-type workspace and outside it — which is the distinction the whole item turns on: it was
+    // taken OFF that screen because it sat INSIDE the workspace, where it read as a property of the
+    // selected type while a group spans several. So both halves are pinned: it is drawn on the types
+    // page, and it is NOT inside the workspace's panels (a mount there would put it back where it was).
+    //
+    // ⚠️ "ABOVE THE WORKSPACE" IS ASSERTED AGAINST THE WORKSPACE'S OWN CARD, NOT AGAINST THE
+    // `<LeaveTypeWorkspace` TAG. The first draft of this assertion compared against the tag, and a
+    // deliberate break — moving the whole section INSIDE that Card, immediately before the workspace —
+    // passed it, because the section is still textually earlier. The Card that carries `data-tour=
+    // "leave-config"` IS the per-type workspace as far as the reader is concerned, so that is the
+    // boundary the section must sit outside of.
+    const types = read('app/admin/leave-config/types/page.tsx');
+    expect(types).toContain('<LeaveSharedGroupConfig');
+    expect(
+      types.indexOf('<LeaveSharedGroupConfig'),
+      'the shared-group section must render OUTSIDE and above the per-type workspace card — inside it, ' +
+        'it reads as a property of the selected leave type, which is why it was taken off this screen',
+    ).toBeLessThan(types.indexOf('<Card data-tour="leave-config">'));
+    // …and it is not handed into the workspace as a slot either, which would be the same defect by prop.
+    const workspaceMount = types.slice(types.indexOf('<LeaveTypeWorkspace'));
+    expect(workspaceMount.slice(0, workspaceMount.indexOf('/>'))).not.toContain('SharedGroup');
+    expect(companyRules, 'the shared-group card must not survive on Company rules too').not.toContain(
+      '<LeaveSharedGroupConfig',
+    );
+    // Company rules keeps the two sections the reporter did not ask to move.
+    expect(companyRules).toContain('setLeaveEncashmentPolicyAction');
+    expect(companyRules).toContain('setToilPolicyAction');
   });
 
   it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs (plus the named sub-screen)', () => {
@@ -420,6 +505,16 @@ describe('§E · the strings, six locales', () => {
     // translations of a caption alive forever. The sentence it sat beside is still pinned, above.
 
     'admin.leave.entitlementStep.accrualMovedPointer',
+    // r281 (09386e29) — Run earned accrual's own row: the nav label, the map item label and the row
+    // description. Pinned here because every one of them can ship English-only behind a green 200.
+    'nav.leaveEarnedAccrual',
+    'admin.leaveConfigMap.item.earnedAccrual',
+    'admin.leaveConfigEarnedAccrual.pageDescription',
+    // r281 (a73d1e14) — Special Setting's own row: the nav label, the map item label and the row
+    // description.
+    'nav.leaveSpecialSetting',
+    'admin.leaveConfigMap.item.specialSetting',
+    'admin.leaveConfigSpecialSetting.pageDescription',
     'admin.entitlementArchive.pageDescription',
   ];
   it('every key exists in all six catalogues and is not left in English outside en', () => {

@@ -150,10 +150,17 @@ describe('b55fdf33 · a server component may not pass functions to a client comp
     // now and `components/leave-type-panel.tsx`, the client component this file's header names as the
     // reason the idiom LOOKED safe, was deleted with it. The regression this case pins is unchanged: a
     // SERVER component may not hand a function across the boundary, and the wrapper is what stops it.
-    const page = readFileSync(join(ROOT, 'app/admin/leave-config/company-rules/page.tsx'), 'utf8');
+    // r281 (a73d1e14) — RE-POINTED AGAIN, and the regression this case pins is unchanged: a SERVER
+    // component may not hand a function across the boundary, and the wrapper is what stops it. The card
+    // moved off Company rules to the Special Setting row, where the reporter asked for it under a heading
+    // of its own. Both files are read, so the wrapper cannot be bypassed on either.
+    const page = readFileSync(join(ROOT, 'app/admin/leave-config/special-setting/page.tsx'), 'utf8');
     expect(page).not.toContain('<ChipMultiSelect');
     expect(page).not.toMatch(/from '@\/components\/ui\/chip-multi-select'/);
     expect(page).toContain('<HalfDayCompanyPicker');
+    const leftBehind = readFileSync(join(ROOT, 'app/admin/leave-config/company-rules/page.tsx'), 'utf8');
+    expect(leftBehind).not.toContain('<ChipMultiSelect');
+    expect(leftBehind, 'the card must not survive on the screen it left').not.toContain('<HalfDayCompanyPicker');
 
     const wrapper = readFileSync(join(ROOT, 'components/leave/half-day-company-picker.tsx'), 'utf8');
     expect(isClientFile(wrapper), 'the wrapper must be a client component').toBe(true);

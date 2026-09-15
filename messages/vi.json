@@ -247,11 +247,13 @@
     "leaveBalanceHealth": "Tình trạng số dư nghỉ phép",
     "leaveAdjustments": "Điều chỉnh nghỉ phép",
     "leaveGenerate": "Tạo quyền lợi",
+    "leaveEarnedAccrual": "Chạy tích lũy đã hưởng",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
     "leaveApproval": "Chuỗi phê duyệt",
     "leaveReplacement": "Nghỉ bù",
     "leaveCompanyRules": "Quy định của công ty",
     "employeeLeaveInquiry": "Tra cứu nghỉ phép nhân viên",
+    "leaveSpecialSetting": "Thiết lập đặc biệt",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
     "payrollGuide": "Hướng dẫn quy trình",
@@ -6747,7 +6749,7 @@
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
         "tablesHint": "Đặt số ngày, các mốc thâm niên và ai được hưởng cho loại phép này ở bên dưới. Mỗi bảng có hiệu lực từ một ngày, và một quy tắc điều kiện quyết định bảng áp dụng cho ai.",
         "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận.",
-        "accrualMovedPointer": "Chạy tích lũy đã hưởng nằm trong mục Tạo quyền lợi"
+        "accrualMovedPointer": "Chạy tích lũy đã hưởng đã có một dòng menu riêng"
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
@@ -8439,7 +8441,6 @@
       "companyFilterAll": "Tất cả công ty",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Nghỉ bù không nằm trong gói của tài khoản này nên chưa có ngày nào được tích lũy. Bạn vẫn có thể thiết lập tại đây — các thiết lập sẽ có hiệu lực ngay khi bật tiện ích bổ sung.",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8764,12 +8765,14 @@
       "item": {
         "leaveTypes": "Loại nghỉ phép",
         "companyRules": "Quy định của công ty",
+        "specialSetting": "Trừ lương nửa ngày",
         "entitlementTables": "Bảng định mức",
         "balanceHealth": "Tình trạng số dư nghỉ phép",
         "approvalChain": "Chuỗi phê duyệt",
         "replacementLeave": "Nghỉ bù",
         "payrollImpact": "Ảnh hưởng lương",
         "generateEntitlement": "Tạo định mức",
+        "earnedAccrual": "Chạy tích lũy đã hưởng",
         "adjustments": "Điều chỉnh số dư",
         "importLeaveData": "Nhập dữ liệu nghỉ phép",
         "entitlementArchive": "Bản ghi cấu hình",
@@ -8812,10 +8815,16 @@
     "leaveConfigGenerate": {
       "pageDescription": "Chạy định mức cho một năm nghỉ phép, xem trước rồi mới chạy, và đọc nhật ký của mọi lần chạy."
     },
+    "leaveConfigEarnedAccrual": {
+      "pageDescription": "Bổ sung phần định mức đã tích lũy nhưng chưa ghi sổ — xem trước bản chạy thử trước, rồi xác nhận."
+    },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
-      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
+      "intro": "Các thiết lập nghỉ phép ở đây thuộc về một công ty hoặc toàn tổ chức chứ không thuộc riêng loại nghỉ phép nào, nên chỉ cần đặt một lần thay vì lặp lại trên từng loại nghỉ phép.",
       "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Loại nghỉ phép, không phải ở đây."
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "Các thiết lập áp dụng cho mọi loại nghỉ phép thay vì thuộc về riêng loại nào."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",

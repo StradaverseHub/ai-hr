@@ -95,6 +95,21 @@ const companyRulesSrc = readFileSync(
   resolve(here, '../app/admin/leave-config/company-rules/page.tsx'),
   'utf8',
 );
+/**
+ * r281 (a73d1e14) — THE HALF-DAY CARD'S THIRD HOME, and the reason the constant above is no longer the
+ * one to assert it against.
+ *
+ * 08bc6841 moved the card onto the leave TYPE (composed once, handed into every panel through a slot);
+ * a6fe37fc moved it to Company rules, because it is a COMPANY decision and not a property of one leave
+ * type; and the reporter has now asked for it under a heading of its own that a second setting of the
+ * same kind can later join — the "Special Setting" row, last in the fly-out. Every invariant 08bc6841
+ * bought is asserted below against THIS file instead: single home, one post carrying the whole decision,
+ * the client wrapper, the narrow write scope, the badge and the frozen note.
+ */
+const specialSettingSrc = readFileSync(
+  resolve(here, '../app/admin/leave-config/special-setting/page.tsx'),
+  'utf8',
+);
 
 /** Slice ONE tab's rendered block: from its own gate to the next tab's. */
 function tabSegment(key: (typeof TABS)[number]): string {
@@ -481,11 +496,18 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     // The invariant 08bc6841 bought — SINGLE HOME, same write — is what is asserted, and it is stronger
     // here than it was: the slot is gone from the leave type screen entirely, so there is no second copy
     // to drift.
+    //
+    // r281 (a73d1e14) — AND AGAIN, to a heading of its own (the Special Setting row). The invariant is
+    // unchanged and is asserted in BOTH directions now: the card is on exactly one screen, and it is
+    // absent from the two it has left, so a move that leaves a copy behind fails here.
     const rules = subStepSlice(essSegment(), 'rules');
     expect(rules.includes('{halfDaySection}')).toBe(false);
     expect(panelSrc.includes('halfDaySection')).toBe(false);
-    expect(companyRulesSrc).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
-    expect(companyRulesSrc).toContain("t('conditionStep.halfDayCompanyWideBadge')");
+    expect(specialSettingSrc).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
+    expect(specialSettingSrc).toContain("t('conditionStep.halfDayCompanyWideBadge')");
+    expect(companyRulesSrc, 'the card must not survive on the screen it left').not.toContain(
+      'setLeaveHalfDayFullDeductionCompaniesAction',
+    );
   });
 });
 
@@ -501,16 +523,19 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
   // it still carries the company-wide badge and the frozen note. The row-shaped assertions below were
   // rewritten rather than deleted — the contract they pinned (one post carries the decision, and the user
   // is told it is company-wide) still exists, it is just expressed over a set instead of a single row.
-  it('Company rules composes ONE multi-select carrying the whole company set + the badge', () => {
+  it('r281 — Special Setting composes ONE multi-select carrying the whole company set + the badge', () => {
     // a6fe37fc Round 5 — RE-POINTED at the screen that now draws the card. Every assertion below is the
     // one 10e96227 and b55fdf33 wrote, unchanged: one post carries the whole decision, the picker is
     // reached through the client wrapper (a server component may not hand a closure across the boundary),
     // first render reproduces today's configuration, and the write scope and the picker's option list are
     // the SAME narrow list.
-    const start = companyRulesSrc.indexOf('<SectionHeader title={t(\'halfDayDeductionTitle\')} />');
+    //
+    // r281 (a73d1e14) — RE-POINTED AGAIN, at the Special Setting screen. Not one assertion below is
+    // loosened: the file this case reads is the file that draws the card.
+    const start = specialSettingSrc.indexOf('<SectionHeader title={t(\'halfDayDeductionTitle\')} />');
     expect(start).toBeGreaterThan(-1);
-    const section = companyRulesSrc.slice(start, companyRulesSrc.indexOf('</Card>', start));
-    const pageSrc = companyRulesSrc;
+    const section = specialSettingSrc.slice(start, specialSettingSrc.indexOf('</Card>', start));
+    const pageSrc = specialSettingSrc;
     expect(section).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
     // b55fdf33 — the picker moved BEHIND A CLIENT WRAPPER. This page is a server component, and passing
     // ChipMultiSelect's label closures across that boundary threw at render and took the tab down in
@@ -536,14 +561,14 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     expect(section).toContain('companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
     // The company-wide marker + the existing half-day strings, all still shown.
     expect(section).toContain("t('conditionStep.halfDayCompanyWideBadge')");
-    expect(companyRulesSrc).toContain("t('halfDayDeductionTitle')");
+    expect(specialSettingSrc).toContain("t('halfDayDeductionTitle')");
     expect(section).toContain("t('halfDayDeductionFrozenNote')");
     // An empty selection is a real decision, so the screen must say what it means.
     expect(section).toContain("t('halfDayDeductionEmptyNote')");
     // ⚠️ THE SLOT IS GONE, and its absence is the point: 08bc6841's "ONE shared node passed into every
     // panel" was the best a per-leave-type screen could do for a company-wide setting. Company rules draws
     // it once, for the company being configured, so there is no node to share and nothing to pass.
-    expect(companyRulesSrc.includes('halfDaySection={')).toBe(false);
+    expect(specialSettingSrc.includes('halfDaySection={')).toBe(false);
   });
 
   it('the per-company action is RETIRED — nothing posts one company any more', () => {
@@ -560,11 +585,13 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     expect(fn).toMatch(/setLeaveHalfDayFullDeductionCompanies\(s, \{/);
     expect(fn).toMatch(/formData\.getAll\('companyIds'\)\.map\(String\)\.filter\(Boolean\)/);
     // a6fe37fc ROUND 5 — the return target moved WITH the card. It named ENTITLEMENTS because that is
-    // where the card was drawn; the card is on Company rules now, and returning to the leave type list
-    // would drop the administrator on a screen that does not show what they just changed — and, on the
-    // error path, show a message about a form they can no longer see (the failEntitlements reasoning).
-    expect(fn).toMatch(/fail\(COMPANY_RULES, e\)/);
-    expect(fn).toMatch(/ok\(COMPANY_RULES\)/);
+    // where the card was drawn; returning to the leave type list would drop the administrator on a screen
+    // that does not show what they just changed — and, on the error path, show a message about a form
+    // they can no longer see (the failEntitlements reasoning).
+    // r281 (a73d1e14) — SPECIAL_SETTING for the third time and for the same reason: the redirect follows
+    // the card, or a save lands on a page with no half-day card on it.
+    expect(fn).toMatch(/fail\(SPECIAL_SETTING, e\)/);
+    expect(fn).toMatch(/ok\(SPECIAL_SETTING\)/);
     // No empty-post guard: [] means "applies nowhere", which must stay reachable.
     expect(fn).not.toMatch(/length === 0/);
   });
