@@ -1,3 +1,61 @@
+## r286 (2026-09-16) — text overspill: one shared component, and an SVG that cannot wrap. `main@7bf6e051`, **no migration**.
+
+Reported directly by the owner, not through the board: *"throughout the system, there's a lot of such cases
+where the words overspill"*, with the org chart and the Control Tower loop as the two screenshots.
+Gate: **857/857 files, 12,931 tests, 0 AssertionErrors**. Verified live: service active, `GET /` 401, fresh
+BUILD_ID, migrations 380, rsync dry-run clean.
+
+### THE SYSTEMIC HALF WAS ONE COMPONENT, WHICH IS WHY IT LOOKED EVERYWHERE
+
+`components/ui.tsx` `EmployeeName` renders from **28 files**. Callers pass `truncate` in `className` and
+reasonably expect clipping. **It could never work.** `truncate` is overflow-hidden + text-overflow-ellipsis
++ nowrap, and on an **inline-flex** box the ellipsis applies to that box's own inline text — of which it has
+none — never to its flex children. The name span was itself a flex item sitting at its automatic minimum
+content width, so it refused to shrink and ran straight through the card border.
+
+The reporter's screenshot contains the proof: in the same card the *role* line (a plain block with
+`truncate`) ellipsised correctly while the *name* beside it overspilled. Same class, same card, different
+box type.
+
+Fixed as: `min-w-0` on the group so it can shrink inside its parent; `min-w-0 truncate` on the NAME so it
+actually clips; `shrink-0` on the employee ID, because a half-eaten identifier is worse than a clipped name.
+
+### THE SECOND SCREENSHOT WAS A DIFFERENT BUG WITH THE SAME SYMPTOM
+
+The Control Tower loop's five step boxes are SVG `<text>`, which neither wraps nor ellipsises. A caption
+wider than the 172px box ran past both edges into its neighbours — `step4Sub` *"accept, fix, or approve what
+the AI proposes closing"* is ~250px at 10.5px. Replaced with `foreignObject` + HTML, which wraps on its own.
+**Shortening the English string would have fixed the screenshot and left the bug**, since the five other
+locales run longer again. Geometry unchanged, so every arrow and coordinate still lines up. Verified in a
+real browser: all five boxes report `scrollHeight == box height`, `overflows: false`.
+
+### THE GUARD IS SOURCE-SHAPE ON PURPOSE
+
+`test/r286-employee-name-truncation.test.ts` pins the three class names that carry the behaviour.
+**jsdom has no layout engine — it reports every width as 0** — so a rendered test cannot observe overflow and
+would pass just as happily against the broken version. This session found four vacuous guards; that reasoning
+is written into the test rather than left for a later reader to rediscover.
+
+### THE GATE COMPOUNDS ITS OWN ENVIRONMENT, AND THAT IS NEW
+
+Chunks 21-24 failed on the first pass with **zero AssertionErrors**, chunk 23 counting **34 of 35** files, and
+**116 "does not exist"** — the cluster-died signature. Load went **8.9 at chunk 12 to 56 by chunk 21**.
+
+Cause: each chunk rebuilds the Postgres cluster, and every rebuild moves the old one aside for a background
+`rm -rf` — queued behind a **116-deep backlog** of wedged clusters. Caught `rm -rf …wedged-20260910-081436`
+burning 20% CPU DURING the run, feeding Spotlight (**152% CPU**) and Trend Micro's endpoint extensions
+(38% + 16%). So a longer gate degrades the conditions it is running in. Re-run at load ~12: all four green,
+`counted==asked`, chunk 23 back to 35/35. **Durable fix is the owner's: AV/Spotlight exclusions for the repo
+and the pg RAM disk, and clearing the wedged backlog.**
+
+### TWO MISTAKES OF MINE, RECORDED
+
+1. **The gate receipt was invalid JSON** — heredoc written without a closing brace, so it would not parse.
+2. **`rsync … | tail -1` swallowed the exit code and I printed "rsync ok" over a real failure.** The transfer
+   had died with `Network is unreachable` and NOTHING deployed on that attempt. Same class as trusting a
+   background task's notification instead of reading its log: **the check must be on the thing itself, not on
+   what is printed near it.** Re-run with the exit code captured and branched on.
+
 ## r281 (2026-09-15) — eight approved items shipped: the Leave Config restructure, the archived filter, the approval tie-break, the Schedule Group assignment. `main@f7a0bc9e`, **no migration**.
 
 Closed: `09386e29` · `a73d1e14` · `cdd7500b` · `8a494721` · `a3411394` · `53e914fe` · `f513ec02` · `f3e6c36e`.
