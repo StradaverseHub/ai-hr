@@ -6725,7 +6725,9 @@
         "earningLegacyMethodNote": "This leave type stores an earning method that is no longer offered. It is shown here read-only and is kept exactly as it is when you save; the calculation still honours it. Choose one of the three current methods to replace it.",
         "accrualDayLabel": "Day of month",
         "accrualDayHelp": "Leave is credited on this day of each month. In a month shorter than the day you pick, it is credited on that month's last day — so 31 credits on 28 February, and on 29 February in a leap year. No month is ever skipped.",
-        "dailyRoundingWarning": "Daily Accrual applies your rounding rule to the running total, not to each day's slice, so a rule that rounds a decimal upward will credit a whole day from the employee's very first day. No rounding is the recommended pairing with Daily Accrual."
+        "dailyRoundingWarning": "Daily Accrual applies your rounding rule to the running total, not to each day's slice, so a rule that rounds a decimal upward will credit a whole day from the employee's very first day. No rounding is the recommended pairing with Daily Accrual.",
+        "earningNotSwept": "运行累积计提仅涵盖以下假期类型：{swept}。不涵盖此类型，因此此假期类型永远不会按日累积——任何额度表、日期或累积方式都无法改变这一点。该设置仍会保存。",
+        "earningNotSweptNoneActive": "运行累积计提不涵盖此假期类型，且其所涵盖的假期类型在本账户中均未启用——因此此假期类型永远不会按日累积。该设置仍会保存。"
       },
       "conditionStep": {
         "criteria": "资格条件",

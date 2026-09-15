@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 // core/leave-compute.ts is the RSC-SAFE half of the leave engine (it imports no db/postgres, see its
 // header), which is why a client component may pull VALUES from it. The worked example below runs the
 // real `applyRounding`: an administrator is shown what a rule produces BEFORE saving it, and a second
@@ -273,6 +273,40 @@ const earningMethodOf = (c: EarningChoice): string =>
         : '';
 
 /**
+ * r288 (686dc512) — WHAT THIS FORM NEEDS TO KNOW ABOUT THE EARNED SWEEP, DECIDED ON THE SERVER.
+ *
+ * `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` BEFORE it reads a single employment, so a
+ * leave type whose code is not one of those three NEVER accrues, whatever its earning method, its
+ * entitlement tables or their dates say. The engine's own comment at that exit reads "THIS IS THE
+ * PRODUCTION CASE: `AL` is not `ANNUAL`".
+ *
+ * Until this round NOTHING under app/ or messages/ referenced that constant, so this editor accepted the
+ * combination in silence and the only signal an administrator ever got was a run that came back empty,
+ * days later, on a different screen. That is how the reporting account came to hold a second leave type
+ * called "*Annual Leave" which looked correctly configured and could never accrue a day.
+ *
+ * ⚠️ EVERY FIELD IS DECIDED ON THE SERVER, OUT OF THE ENGINE'S OWN CONSTANTS, and crosses as plain data
+ * (test/server-client-boundary.test.ts). A client component may not import the engine module — it pulls
+ * the database in — and a second copy of either constant written HERE would be free to drift from the
+ * filter it is supposed to describe, which is the whole failure mode this warning exists to end.
+ */
+export type EarnedSweepFacts = {
+  /** This leave type's `code` is one of the three standing codes — i.e. the sweep can reach it at all.
+   *  Decided against the engine's constant; false is what raises the warning below. */
+  codeIsSwept: boolean;
+  /** The engine's earned-method family, verbatim. The value this form WOULD POST is tested against this
+   *  list rather than against a second spelling of "earned" written in this file. */
+  earnedMethods: string[];
+  /** ⚠️ THE TENANT'S OWN NAMES for the swept types that are ACTIVE, A–Z — the same rows, the same filter
+   *  and the same order the engine's `type_not_swept` empty state reads. NEVER the English defaults: the
+   *  three standing codes carry whatever name the tenant gave them, and the reporting account has two
+   *  leave types both called some variant of Annual Leave, so a hardcoded name would print a riddle on
+   *  the very account that raised this. EMPTY when the tenant has archived all three — which is that
+   *  account's actual state, and why the empty case has a sentence of its own rather than an empty list. */
+  sweptTypeNames: string[];
+};
+
+/**
  * Earning Method + Rounding — IA §3.1 F9, moved to TAB 3 out of the old *General setting* step, because
  * it is the first half of "how many days" and the tables below it are the second.
  *
@@ -285,12 +319,17 @@ export function EarningMethodForm({
   rules,
   action,
   leaveTypeId,
+  sweep,
 }: {
   t: ReturnType<typeof useTranslations>;
   rules: LeaveTypeRules;
   action: Action;
   leaveTypeId: string;
+  /** r288 (686dc512) — see EarnedSweepFacts. Required, not optional: a leave type editor that cannot
+   *  answer "would the sweep ever reach this type" is the state this round exists to remove. */
+  sweep: EarnedSweepFacts;
 }) {
+  const locale = useLocale();
   const storedMethod = rules.accrualMethod ?? '';
   const unknownStoredMethod = !isKnownEarningMethod(storedMethod);
   const unconfigured = rules.accrualUnconfigured != null;
@@ -303,6 +342,20 @@ export function EarningMethodForm({
   const [rounding, setRounding] = useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod));
   const [bandRows, setBandRows] = useState<BandRow[]>(() => rowsFromStored(rules.roundingBands));
   const showBands = rounding === 'custom';
+  /**
+   * r288 (686dc512) — THE COMBINATION THAT CAN NEVER PRODUCE A DAY.
+   *
+   * `methodToStore` is the value the hidden `method` input posts on whichever branch is rendered, so the
+   * warning is keyed on the literal string that WOULD BE STORED rather than on a second reading of the
+   * dropdown. That matters on the read-only branch too: a legacy `earned_quarterly` on a non-standing
+   * code is just as unreachable as `earned_monthly` is, and a check written against the three options
+   * this select happens to render would quietly exempt it.
+   *
+   * It is LIVE on `choice`: the point of the item is that the mismatch is visible while the
+   * administrator is still editing, not three days later through a run that finds nothing.
+   */
+  const methodToStore = unknownStoredMethod ? storedMethod : earningMethodOf(choice);
+  const neverAccrues = sweep.earnedMethods.includes(methodToStore) && !sweep.codeIsSwept;
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
       <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
@@ -370,6 +423,31 @@ export function EarningMethodForm({
             <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.dailyRoundingWarning')}</p>
           )}
         </>
+      )}
+      {/* r288 (686dc512) — ⚠️ WARN, DO NOT REFUSE, AND DO NOT TOUCH THE SAVE.
+          This paragraph is the entire change: it posts nothing, gates nothing and disables nothing, so a
+          save made while it is on screen stores exactly the row it stored before. That is deliberate and
+          it is the plan's own commitment — a tenant may legitimately keep such a type for a non-accruing
+          purpose, and a hard validation here would be an unrequested behaviour change on every existing
+          row. The same reasoning as the Daily Accrual rounding warning a few lines up.
+          Rendered OUTSIDE the unknown/known branch so the read-only branch is covered too, and rendered
+          only when true: a permanent banner is furniture, and furniture stops being read. */}
+      {neverAccrues && (
+        <p
+          role="note"
+          data-testid="earning-not-swept"
+          className="text-xs text-amber-600 dark:text-amber-400"
+        >
+          {sweep.sweptTypeNames.length
+            ? t('subStep.earningNotSwept', {
+                // Joined the way the READER'S language joins a list, exactly as the empty-result card
+                // does with the same three names — not with a hardcoded comma.
+                swept: new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(
+                  sweep.sweptTypeNames,
+                ),
+              })
+            : t('subStep.earningNotSweptNoneActive')}
+        </p>
       )}
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
       {/* Rounding sits directly UNDER Earning Method and rides the same rule row: it tidies whatever the
