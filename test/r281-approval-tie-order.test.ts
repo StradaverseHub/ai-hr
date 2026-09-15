@@ -144,6 +144,9 @@ describe('r281 53e914fe — the resolution is stable', () => {
     // ⚠️ THE NON-VACUITY LEVER. Drop the `id` term from `beats` and this fails on the spot: with the
     // three ranked terms all tied the old comparator returned false in both directions, so the winner
     // was whichever rule sat at index 0 — and here that is a different rule in each direction.
+    // (The pair has to be INSERTED for that to mean anything: with an empty table both sides fall to the
+    //  built-in chain and agree for the wrong reason. The r281 verify pass caught exactly that omission.)
+    await insertTiedPair();
     const set = await ruleSet();
     const forwards = decideApproval(set, b.companyId, b.annualLeaveTypeId, attrs());
     const backwards = decideApproval(reversed(set), b.companyId, b.annualLeaveTypeId, attrs());
