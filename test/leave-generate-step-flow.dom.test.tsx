@@ -37,6 +37,16 @@ const leaveTypes = [
   { value: 'lt-sick', label: 'Sick Leave' },
 ];
 
+/**
+ * r287 (ff1c935f) — step ③'s employee picker needs a list. Two rows is enough for THIS file, whose
+ * subject is the five-step walk; the picker's own three terminal states are pinned next door in
+ * test/r287-generate-employee-picker.dom.test.tsx.
+ */
+const employees = [
+  { id: 'emp-1', name: 'Irwin Tan', employeeCode: 'EMP-0008' },
+  { id: 'emp-2', name: 'Nadia Rahim', employeeCode: 'EMP-0011' },
+];
+
 const criteriaSections: CriteriaSection[] = [
   {
     key: 'company',
@@ -105,6 +115,7 @@ function mount() {
         defaultYear={2026}
         leaveTypes={leaveTypes}
         criteriaSections={criteriaSections}
+        employees={employees}
       />
     </NextIntlClientProvider>,
   );

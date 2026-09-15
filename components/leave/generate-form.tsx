@@ -1,16 +1,27 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
+import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 import { SubStepBar } from '@/components/leave-sub-step-bar';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { matchesEmployeeSearch } from '@/lib/employee-search';
+import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import type { CriteriaSection } from '@/core/org-criteria-form';
 import type { LeaveGenerationResult } from '@/core/leave-generation';
 
 type Opt = { value: string; label: string };
+
+/**
+ * r287 — ONE EMPLOYMENT, AS THE PICKER NEEDS IT. Three plain fields, nothing formatted: the server page
+ * hands over data, this client component composes every string it shows. `employeeCode` is nullable
+ * because the column is (`db/schema.ts` `employment.employee_code`), and a tenant that has not adopted
+ * Employee IDs must still be able to pick people by name.
+ */
+export type EmployeePickOption = { id: string; name: string; employeeCode: string | null };
 type Action = (fd: FormData) => void | Promise<void>;
 type PreviewAction = (p: {
   year: number;
@@ -87,6 +98,7 @@ export function GenerateForm({
   defaultYear,
   leaveTypes,
   criteriaSections,
+  employees,
 }: {
   action: Action;
   previewAction: PreviewAction;
@@ -94,6 +106,12 @@ export function GenerateForm({
   defaultYear: number;
   leaveTypes: Opt[];
   criteriaSections: CriteriaSection[];
+  /**
+   * r287 — every employment the signed-in administrator's companies hold, read once by the server page.
+   * REQUIRED, not optional: an optional list defaulting to `[]` would render a picker that silently
+   * offers nobody on any page that forgot to pass it, which is the failure this round exists to remove.
+   */
+  employees: EmployeePickOption[];
 }) {
   const t = useTranslations('admin.leave');
   const [step, setStep] = useState<StepKey>('types');
@@ -102,8 +120,30 @@ export function GenerateForm({
   const [preview, setPreview] = useState<LeaveGenerationResult | null>(null);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [, startPreview] = useTransition();
+  /**
+   * r287 — DID THE LAST PREVIEW FAIL? This flag is the reporter's screenshot.
+   *
+   * `refreshPreview` swallows a rejected preview and sets `preview` back to null, and null was rendered as
+   * "Working it out…" — the PENDING sentence. So a preview that threw was indistinguishable from one still
+   * in flight, and the screen sat on "Working it out…" forever with no result and no reason.
+   *
+   * It threw for a reason worth writing down: `employmentIdsRaw` is fed to `resolveOrgCriteriaTargets` as
+   * `IN (…)` against `employment.id`, a **uuid** column. Typing a NAME there does not "match nothing" —
+   * Postgres rejects the statement outright (`invalid input syntax for type uuid: "Irwin"`), the action
+   * rejects, and this catch runs. The picker below is why an operator no longer has to type into it, and
+   * this flag is why the screen says so when something still does.
+   */
+  const [previewFailed, setPreviewFailed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── ③ PICK INDIVIDUALLY: two ways in, one list out ──────────────────────────────────────────────────
+  // The popover's chosen ids, and the paste box's text. Both are held HERE rather than read off the form
+  // for display, because the Next button and the chip strip must update on the keystroke, not 250ms later
+  // when the debounced preview happens to run. What is POSTED is still the form's own fields, and
+  // `refreshPreview` still reads those — see its header.
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [pastedRaw, setPastedRaw] = useState('');
 
   // Hydrate the persisted step in an effect (client-only ⇒ no SSR hydration mismatch), the same trade-off
   // LeaveTypePanel and AdjustmentForm both make. eslint's react-hooks/set-state-in-effect flags the setStep
@@ -167,20 +207,25 @@ export function GenerateForm({
       leaveTypeIds,
       targetMode: mode,
       criteria: mode === 'criteria' ? criteria : {},
+      // r287 — THE SAME MERGE THE WRITE PATH USES (lib/employment-selection.ts), over the SAME two fields,
+      // read off the LIVE form so the preview describes exactly what a submit would post. If these two
+      // ever parse differently the screen confirms one population and the sweep grants to another, and
+      // both halves' tests still pass — which is why the rule is one shared function, not two.
       employmentIds:
         mode === 'individual'
-          ? String(fd.get('employmentIdsRaw') ?? '')
-              .split(/[\s,]+/)
-              .filter(Boolean)
+          ? mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''))
           : [],
     };
     startPreview(async () => {
       try {
         setPreview(await previewAction(payload));
+        setPreviewFailed(false);
       } catch {
-        // A failed preview must not block the flow or invent a number — the screen says nothing until the
-        // next change succeeds. The write path validates independently.
+        // A failed preview must not block the flow or invent a number. It must also not go on claiming to
+        // be working: `previewFailed` is what lets the screen print a terminal sentence instead of the
+        // pending one. The write path validates independently.
         setPreview(null);
+        setPreviewFailed(true);
       }
     });
   };
@@ -204,6 +249,50 @@ export function GenerateForm({
   const shown = (key: StepKey) => (step === key ? undefined : 'hidden');
   const chipRemove = (label: string) => t('chipRemoveAria', { name: label });
 
+  // ── r287 · THE EMPLOYEE PICKER'S DERIVED DATA ───────────────────────────────────────────────────────
+  // The row behind an option id, so the chips can show name and Employee ID as two things rather than one
+  // pre-joined string, and so the search rule can read the real fields.
+  const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // "Irwin Tan · EMP-0008" for the popover row, which is a single line of text by construction. Composed
+  // on THIS side of the boundary: the server page hands over data, never sentences.
+  const employeeOptions = useMemo(
+    () => employees.map((e) => ({ id: e.id, name: e.employeeCode ? `${e.name} · ${e.employeeCode}` : e.name })),
+    [employees],
+  );
+  // THE HOUSE RULE, not a second one (lib/employee-search.ts): partial name OR partial Employee ID, folded
+  // so "emp0008" finds "EMP-0008". A picker that prints an Employee ID and then cannot find it when typed
+  // is the same broken promise the paste box made.
+  const matchEmployee = useMemo(
+    () => (option: { id: string }, query: string) => {
+      const row = employeeById.get(option.id);
+      return row ? matchesEmployeeSearch(row, query) : false;
+    },
+    [employeeById],
+  );
+  // The chosen rows in the SERVER'S order (listEmployees sorts by full name), so the strip never reshuffles
+  // for a reason the operator cannot see. A `Set` is also why the same person cannot be added twice.
+  const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
+  // THE ONE LIST OUT. Identical rule to the one the posted form goes through — see lib/employment-selection.ts.
+  const individualIds = useMemo(() => mergeEmploymentSelection([...picked], pastedRaw), [picked, pastedRaw]);
+  /**
+   * THE ONE WRITER for the picked set (the ChipMultiSelect `apply` idiom). The popover and the chips' ×
+   * are two views of ONE selection, so removing a chip and unticking the row are the same operation and
+   * the two can never disagree about who the run will cover.
+   *
+   * ⚠️ `schedulePreview` is not optional here. A checkbox inside the popover is not a `change` the
+   * enclosing `<form onChange>` hears — the same trap ChipMultiSelect's `onSelectionChange` docblock
+   * names — so without this the matched count would go on describing the previous selection.
+   */
+  const applyPicked = (next: Set<string>) => {
+    setPicked(next);
+    schedulePreview();
+  };
+  const unpick = (id: string) => {
+    const next = new Set(picked);
+    next.delete(id);
+    applyPicked(next);
+  };
+
   /**
    * Is there anything to process? `employeesReached` is what the ENGINE actually visited — selected AND
    * active across the year boundary — not what the criteria matched. Those differ whenever somebody
@@ -211,6 +300,15 @@ export function GenerateForm({
    * nothing is how an operator concludes the feature is broken.
    */
   const canProcess = (preview?.employeesReached ?? 0) > 0;
+  /**
+   * r287 — Next is OFF while Pick individually has nobody in it. The plan's words: "keep Next switched off
+   * until at least one is chosen."
+   *
+   * ONLY on step ③, and ONLY in individual mode. In CRITERIA mode an empty set is a legitimate choice
+   * meaning "everyone" (`generateEveryoneWarning` says so on screen), so blocking it there would break the
+   * behaviour the bare Generate button this screen replaces has always had.
+   */
+  const nextBlocked = step === 'employees' && mode === 'individual' && individualIds.length === 0;
   const failures = (preview?.lines ?? []).filter((l) => l.outcome !== 'granted' && l.outcome !== 'already_open');
 
   return (
@@ -371,17 +469,97 @@ export function GenerateForm({
             )}
           </div>
         ) : (
-          <Field label={t('adjustmentsEmploymentIds')}>
-            {/* Parsed SERVER-side out of this one block (the Notice Board / Adjustments idiom) rather than
-                mirrored into hidden inputs, so the ids the action sees are the ids the user typed. */}
-            <textarea name="employmentIdsRaw" rows={4} className={cn(inputCls, 'w-full font-mono text-xs')} />
-            <p className="pt-1 text-[11px] text-muted-foreground">{t('adjustmentsEmploymentIdsHelp')}</p>
-          </Field>
+          /**
+           * r287 (ff1c935f) — PICK INDIVIDUALLY IS A PICKER NOW. TWO WAYS IN, ONE LIST OUT.
+           *
+           * WHAT WAS HERE: this box alone. Its help text invites you to "paste employee references", but
+           * what `resolveOrgCriteriaTargets` does with the contents is `employment.id IN (…)` against a
+           * **uuid** column — so the box has never accepted a reference OR a name. Typing "Irwin" does not
+           * match nothing; Postgres rejects the statement (`invalid input syntax for type uuid`), the
+           * preview action rejects, and the screen sat on "Working it out…". The reporter was right to
+           * call it a bug, and right that it is not a search box.
+           *
+           * THE PICKER IS THE HOUSE ONE. `MultiSelectPopover` — the same control behind Run Earned Accrual
+           * and Location Assignment — not a second multi-select. Its form contract does the work: one
+           * hidden `employmentIds` input per chosen id, rendered OUTSIDE its open/closed guard, so what is
+           * posted survives the panel closing before submit.
+           *
+           * THE PASTE BOX STAYS. It is how a bulk run is set up today and deleting it would be an
+           * unrequested regression. The two fields are merged by ONE shared rule
+           * (`lib/employment-selection.ts`) that the live preview above and `openLeaveYearAction` both
+           * call, so the population this screen confirms cannot differ from the one the sweep grants to.
+           *
+           * NO SERVER-SIDE SEARCH, DELIBERATELY. 84 employments on production; the list is already read by
+           * the page, and filtering it in the browser is faster than a round trip. If that ever stops being
+           * true, the criteria path beside this one already resolves populations server-side through
+           * `core/org-criteria.ts` — extend that rather than minting an employee-search endpoint.
+           */
+          <div className="space-y-3">
+            <MultiSelectPopover
+              name="employmentIds"
+              label={t('generateEmployeePicker')}
+              allLabel={t('generateEmployeeNoneChosen')}
+              options={employeeOptions}
+              selected={picked}
+              onChange={applyPicked}
+              searchPlaceholder={t('generateEmployeeSearchPlaceholder')}
+              selectAllLabel={t('adjustmentsSelectAll')}
+              clearAllLabel={t('adjustmentsDeselectAll')}
+              selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
+              matchOption={matchEmployee}
+              // THE TERMINAL STATE THE COMPLAINT IS ABOUT: a search that finds nobody says so, and names
+              // what was searched. An empty panel asserts nothing.
+              emptyLabelFor={(query) => t('generateEmployeeNoMatch', { query })}
+            />
+            {pickedRows.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {pickedRows.map((e) => {
+                  const chipLabel = e.employeeCode ? `${e.name} · ${e.employeeCode}` : e.name;
+                  return (
+                    <span
+                      key={e.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary"
+                    >
+                      {chipLabel}
+                      <button
+                        type="button"
+                        aria-label={chipRemove(chipLabel)}
+                        title={chipRemove(chipLabel)}
+                        onClick={() => unpick(e.id)}
+                        className="grid size-4 shrink-0 place-items-center rounded-full text-primary/70 transition-colors hover:bg-primary/20 hover:text-primary"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+                {t('generateEmployeeNonePicked')}
+              </p>
+            )}
+            <Field label={t('generatePasteAlternative')}>
+              {/* Controlled, so the count and the Next button move on the keystroke rather than 250ms
+                  later when the debounced preview happens to run. The field name and what the server does
+                  with it are UNCHANGED — this round changed the control, not the contract. */}
+              <textarea
+                name="employmentIdsRaw"
+                rows={4}
+                value={pastedRaw}
+                onChange={(e) => setPastedRaw(e.target.value)}
+                className={cn(inputCls, 'w-full font-mono text-xs')}
+              />
+              <p className="pt-1 text-[11px] text-muted-foreground">{t('generatePasteAlternativeHelp')}</p>
+            </Field>
+          </div>
         )}
         <p className="text-xs font-medium text-foreground">
           {preview
             ? t('generateMatched', { count: preview.employeesSelected })
-            : t('adjustmentsMatchedPending')}
+            : previewFailed
+              ? t('generateMatchedUnknown')
+              : t('adjustmentsMatchedPending')}
         </p>
       </section>
 
@@ -460,7 +638,11 @@ export function GenerateForm({
             )}
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">{t('adjustmentsMatchedPending')}</p>
+          // r287 — the same three-state rule as step ③: a preview that FAILED says so rather than
+          // going on claiming to be working.
+          <p className="text-xs text-muted-foreground">
+            {previewFailed ? t('generateMatchedUnknown') : t('adjustmentsMatchedPending')}
+          </p>
         )}
       </section>
 
@@ -512,10 +694,14 @@ export function GenerateForm({
           </Button>
         )}
         {stepIndex < STEP_KEYS.length - 1 && (
-          <Button type="button" size="sm" onClick={() => goto(stepIndex + 1)}>
+          <Button type="button" size="sm" onClick={() => goto(stepIndex + 1)} disabled={nextBlocked}>
             {t('adjustmentsNext')}
           </Button>
         )}
+        {/* r287 — WHY Next IS OFF, beside the button that is off. A disabled control with no sentence is
+            the same silence the pending string was. Scoped to Pick individually on purpose: an EMPTY
+            criteria set legitimately means "everyone" and has its own warning above. */}
+        {nextBlocked && <span className="text-[11px] text-muted-foreground">{t('generateEmployeeNonePicked')}</span>}
       </div>
     </form>
   );

@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 // 9da61c86 — the Holiday master pages, so its row actions have to answer WHICH page a row is on.
 import { pageOfIndex, parsePageSize } from '@/lib/pagination';
+import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import { grantAssistant, revokeAssistant } from '@/core/assistant-grant';
 import {
   archiveBusinessUnit,
@@ -1159,11 +1160,17 @@ export async function openLeaveYearAction(formData: FormData) {
               },
             )
           : undefined,
+      // r287 (ff1c935f) — TWO WAYS IN, ONE LIST OUT. Step ③ now offers a picker (hidden `employmentIds`
+      // inputs, the MultiSelectPopover form contract) BESIDE the pasted block, which is kept: it is how a
+      // bulk run is set up today. `mergeEmploymentSelection` is the SAME function the screen's live
+      // preview calls on the SAME two fields, so the population confirmed on screen cannot differ from
+      // the one this run grants to. Do not inline either half.
       employmentIds:
         targetMode === 'individual'
-          ? String(formData.get('employmentIdsRaw') ?? '')
-              .split(/[\s,]+/)
-              .filter(Boolean)
+          ? mergeEmploymentSelection(
+              formData.getAll('employmentIds').map(String),
+              String(formData.get('employmentIdsRaw') ?? ''),
+            )
           : undefined,
     });
   } catch (e) {

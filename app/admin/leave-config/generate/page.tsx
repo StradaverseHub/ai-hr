@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { entitlementYearOptions } from '@/core/leave';
-import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
+import { listLeaveTypes, listCompanies, listDepartments, listJobGrades, listEmployees } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listAllProfileOptions } from '@/core/profile-options';
@@ -71,8 +71,18 @@ export default async function LeaveConfigGeneratePage({
 
   const companies = await listCompanies(s);
   const companyIds = companies.map((c) => c.id);
-  const [types, departments, profileOptions, grades, positions, costCenters, businessUnits, locations, runs] =
-    await Promise.all([
+  const [
+    types,
+    departments,
+    profileOptions,
+    grades,
+    positions,
+    costCenters,
+    businessUnits,
+    locations,
+    runs,
+    employments,
+  ] = await Promise.all([
       listLeaveTypes(s, { includeArchived: false }),
       listDepartments(s),
       listAllProfileOptions(s),
@@ -84,6 +94,21 @@ export default async function LeaveConfigGeneratePage({
       // administrator who can see no company can narrow by no site either.
       companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
       listLeaveGenerationRuns(s, { limit: 10 }),
+      /**
+       * r287 (ff1c935f) — STEP ③'s "Pick individually" picker, read ONCE for the page.
+       *
+       * `listEmployees` is the UNPAGINATED picker read (see its header: "Do NOT swap in the paginated
+       * `listEmployeesPage`" — a checkbox set that silently drops people past a page boundary is the
+       * defect this screen cannot afford). Scoped to the administrator's own companies, exactly as the
+       * location list above is.
+       *
+       * ⚠️ NOT FILTERED TO ACTIVE EMPLOYMENTS, and that is a decision rather than an omission. This list is
+       * the SECOND door onto the same population the paste box has always reached, and narrowing one door
+       * but not the other is how "two ways in, one list out" stops being true. Whether a selected person
+       * actually qualifies is `resolveOrgCriteriaTargets`'s to decide — as at 1 January of the chosen year,
+       * identically for both doors — and the live matched count on step ③ reports its answer.
+       */
+      listEmployees(s, companyIds),
     ]);
 
   const criteriaSections = buildOrgCriteriaSections(
@@ -138,6 +163,15 @@ export default async function LeaveConfigGeneratePage({
             defaultYear={currentYear}
             leaveTypes={types.map((x) => ({ value: x.id, label: x.name }))}
             criteriaSections={criteriaSections}
+            /* r287 — THREE PLAIN FIELDS, NO FUNCTIONS AND NO PRE-JOINED SENTENCES. r123/r124 took tabs
+               down in production by handing a client component a server closure, and
+               test/server-client-boundary.test.ts pins that class; the form composes every string it
+               shows from this data on its own side of the boundary. */
+            employees={employments.map((e) => ({
+              id: e.employmentId,
+              name: e.name,
+              employeeCode: e.employeeCode,
+            }))}
           />
         </div>
       </Card>
