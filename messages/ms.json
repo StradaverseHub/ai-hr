@@ -6655,6 +6655,11 @@
       "workspaceTypeListLabel": "Jenis cuti",
       "workspaceReachesNobody": "Tidak sampai kepada sesiapa",
       "workspaceStepsLabel": "Langkah konfigurasi",
+      "workspaceFilterLabel": "Tapis jenis cuti",
+      "workspaceFilterActive": "Aktif",
+      "workspaceFilterArchived": "Diarkib",
+      "workspaceFilterAll": "Semua",
+      "workspaceFilterEmpty": "Tiada jenis cuti dalam paparan ini.",
       "workspaceSubStepsLabel": "Langkah persediaan umum",
       "conditionStepsLabel": "Langkah tetapan Syarat",
       "subStep": {
