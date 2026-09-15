@@ -44,7 +44,11 @@ describe('R37 e5a158d3: /leave now hosts the detailed balance table', () => {
 describe('R37 e5a158d3: same source, scoped to the viewer (no data change)', () => {
   it('feeds the table from the per-employment leaveBalances + leaveEntitlementBreakdown (same as /me used)', () => {
     // /leave uses the VIEWER's own employment — the self-service detailed view, not the admin pivot.
-    expect(leavePage).toMatch(/leaveBalances\(session, me\.employmentId, locale\)/);
+    // ec991c2a relaxed the closing paren out of this pattern: the call now passes an explicit
+    // `{ includeArchived: false }`. What this guard is for — the VIEWER's own employment, localized, not
+    // the admin pivot — is asserted by the three arguments that remain, and `leaveBalancesAll` is still
+    // excluded below.
+    expect(leavePage).toMatch(/leaveBalances\(session, me\.employmentId, locale\b/);
     expect(leavePage).toMatch(/leaveEntitlementBreakdown\(session, me\.employmentId, b\.leaveTypeId, breakdownAsOf, locale\)/);
     // a7cbd895 (My Absence): the ENTIRE /me Leave tab has since moved to /leave, so /me reads no leave
     // sources at all anymore — the /leave reads above are now the single self-service source.

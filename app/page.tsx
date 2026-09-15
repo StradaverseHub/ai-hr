@@ -194,7 +194,10 @@ export default async function DashboardPage() {
   }
   if (role === 'employee' && me) {
     const [balances, feedbackRequests] = await Promise.all([
-      leaveBalances(s, me.employmentId, locale),
+      // ec991c2a — the dashboard's own leave card is the SAME employee-facing list as My Leave, and an
+      // archived type must not sit on it either. `false` is the default; written out for the same reason
+      // the /leave call site writes it out.
+      leaveBalances(s, me.employmentId, locale, { includeArchived: false }),
       myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));

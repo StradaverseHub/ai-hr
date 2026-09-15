@@ -272,7 +272,9 @@ const myLeaveBalances: AssistantTool = {
       // NO `locale`, and NEVER `includeHidden`. That flag defeats the visible-to-employee gate, and
       // core/read.ts names its only two legitimate callers — an admin screen and the shared-pool summer.
       // An assistant answering an employee would be a third, on an employee-facing path.
-      const rows = await leaveBalances(ctx, e.employmentId);
+      // ec991c2a — and never `includeArchived` either, for the same reason: this answers an EMPLOYEE about
+      // their own leave, so it must return the list their own screen returns. Stated explicitly.
+      const rows = await leaveBalances(ctx, e.employmentId, undefined, { includeArchived: false });
       employments.push({
         employmentId: e.employmentId,
         company: e.company,

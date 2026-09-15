@@ -322,7 +322,9 @@ export default async function EmployeePage({
     assignmentHistory(s, employmentId),
     // 994a5287: an ADMIN read — `includeHidden` keeps leave types HR has hidden from employee self-service,
     // which is a rule about what the EMPLOYEE sees and never about what HR may look up on this profile.
-    leaveBalances(s, employmentId, undefined, { includeHidden: true }),
+    // ec991c2a: `includeArchived` is the same statement about an ARCHIVED type. The employee's own list
+    // stops offering a retired type; this profile must still show the balance standing under it.
+    leaveBalances(s, employmentId, undefined, { includeHidden: true, includeArchived: true }),
     leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
