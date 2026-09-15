@@ -1,3 +1,34 @@
+## r279 addendum (2026-09-15) — the block that wrote an audit event for a transition that never happened
+
+Correcting the r279 entry below, which recorded only half of this.
+
+`scripts/improve/remote.ts` `markBlockedSql` runs THREE statements in one transaction:
+
+1. `UPDATE feedback_request SET status='blocked' … WHERE id = X AND status = 'approved'` — guarded
+2. `INSERT INTO feedback_block … WHERE EXISTS (… status = 'blocked')` — guarded
+3. `INSERT INTO domain_event … 'feedback.blocked' …` — **UNGUARDED**
+
+Blocking `3fb1a611` while it was `building` therefore changed nothing (0 rows), recorded no block question
+(`blocked_reason` NULL, no `feedback_block` row), and **still wrote a `feedback.blocked` domain event** —
+2026-09-15 12:13:41, with `updated_at` still reading the previous day's `build.started`. The audit trail
+asserts a transition the state never made, and the CLI printed success throughout. **The unguarded
+statement is the one that writes history.** Fix: guard statement 3 like statement 2. Not done here — it is
+tooling, and it wants its own change rather than a drive-by.
+
+**The false status blocked its own cleanup.** `core/feedback.ts:377` refuses `cancelFeedback` for a
+`building` item and `assertReporter` limits withdrawal to the reporter, so the item could not be cancelled
+*because* it claimed to be building. There is no `cancel` verb in the improve CLI (12 verbs; the 20 existing
+cancellations came from the app), and production is SELECT-only. Resolved through the only supported lever:
+**`push-plan` revision 2 on `3fb1a611`**, which moved it `building` → `planned` and asks the reporter to
+press Withdraw — stated plainly as "do not approve this one".
+
+**Chronology, verified from `domain_event`, since it is the whole justification for stopping the build:**
+`3fb1a611` submitted 14 Sep 17:25, approved 18:09, build started 18:18. `8a494721` (remove Replacement
+Leave) submitted 14 Sep **19:18 — an hour after that build began** — and approved 15 Sep 10:32. The removal
+is the later instruction, so Leave Credit does not ship. `build/r279-credit` keeps its 6 commits unmerged;
+main's journal stays 380 entries / max idx 464 and 0465 is not in the tree. **If it is ever resumed, do not
+reuse 0465 — re-derive from max(idx) then.**
+
 ## r279 (2026-09-15) — Earned to Date + Full Entitlement, the Balance Health row, and a keyless clocking map. `main@2652fefd`, **no migration**.
 
 Closed: `8c59c664` · `3fbf7a02` · `fa2db8cb`. **HALTED and NOT merged: `3fb1a611`** (see below).
