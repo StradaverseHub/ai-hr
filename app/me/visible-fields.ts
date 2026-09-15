@@ -524,6 +524,12 @@ export const ME_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = 
   holidayCalendar: 'WITHHELD — which holiday calendar HR assigned; the holidays themselves are on My Absence.',
   holidayCalendarGroupOptgroup: 'WITHHELD — a grouping label inside the holiday-calendar picker.',
   holidayCalendarStateOptgroup: 'WITHHELD — a grouping label inside the holiday-calendar picker.',
+  // f513ec02 (r281) — the Schedule Group assignment, added to the Personnel Attendance tab this round.
+  // Withheld for the same reason as the holiday calendar directly above it, and stated the same way:
+  // it is an operational setting HR assigns, and what it DECIDES — whether a day counts as late, when
+  // early out starts, which overtime bands apply — already reaches the employee as their own attendance
+  // figures. The assignment itself is not a fact about the person.
+  scheduleGroup: 'WITHHELD — which Schedule Group HR assigned; what it decides (lateness, early out, overtime) shows on My Attendance.',
 
   // ── Not a card this screen carries ────────────────────────────────────────────────────────────────
   'qualification.description': 'NOT A CARD HERE — the Qualification tab is not one of the six tabs the plan names.',
