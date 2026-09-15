@@ -31,7 +31,11 @@ const meActions = read('app/me/actions.ts');
 
 describe('/leave: leave types are localized and sorted ONCE at the source', () => {
   it('passes the viewer locale to listLeaveTypes', () => {
-    expect(page.includes('listLeaveTypes(session, { locale })')).toBe(true);
+    // ec991c2a widened this from an exact-string match to a prefix match on the OPTIONS OBJECT. The
+    // decision it pins is unchanged — the viewer's locale reaches listLeaveTypes — but that call now also
+    // states `includeArchived: false` explicitly, and an exact-literal guard would have to be rewritten
+    // every time a second option is named. The `locale` term itself is still required.
+    expect(page).toMatch(/listLeaveTypes\(session, \{ locale\b/);
   });
 
   it('sorts the array alphabetically with a locale-aware, case-insensitive comparison', () => {

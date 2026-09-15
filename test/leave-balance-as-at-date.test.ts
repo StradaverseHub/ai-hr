@@ -280,7 +280,12 @@ describe('3ddae357: the page comment no longer claims something false', () => {
 
   it('rows.ts passes the SAME asOf to both of its reads', () => {
     const rows = read('app/leave/employee-balances/rows.ts');
-    expect(rows).toContain('leaveBalances(ctx, employmentId, locale, { includeHidden: true, asOf })');
+    // ec991c2a: `includeArchived: true` joined `includeHidden: true` here — this is an ADMIN read and an
+    // archived leave type must keep showing the balance standing under it. The decision this guard pins is
+    // untouched: the SAME asOf reaches both reads.
+    expect(rows).toContain(
+      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
+    );
     expect(rows).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
   });
 });

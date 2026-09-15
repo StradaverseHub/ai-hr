@@ -37,7 +37,10 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     expect(leavePage).toMatch(/const ess = !admin;/);
     // The two balance reads no longer run for an admin — the item asks for the BACKEND dependency to go,
     // not only the markup.
-    expect(leavePage).toContain('const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : []');
+    // ec991c2a: the call now carries an explicit `{ includeArchived: false }`, so this is a prefix match
+    // rather than the whole line. The decision pinned is untouched — the READ itself, not just the markup,
+    // is behind the `ess` gate, so an admin page load pays nothing for balances nobody renders.
+    expect(leavePage).toContain('const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale');
     expect(leavePage).toContain('const selfRequests = ess && me ?');
     // My Balances: the primary cards and the detailed balance card.
     expect(leavePage).toContain('{ess && primaryCards.length > 0 && (');
@@ -146,7 +149,11 @@ describe('20c699f8: Employee Balances', () => {
     // every date. `includeHidden` is still required and is still asserted; only the "and nothing else"
     // half was retired. Both reads must now take THE SAME `asOf` — that is the property this case exists
     // to hold, and a screen where the two reads disagree about the date is the bug returning.
-    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, { includeHidden: true, asOf })');
+    // ec991c2a: `includeArchived: true` joined `includeHidden: true` — an ADMIN read keeps showing the
+    // balance standing under a retired leave type. Same two reads, same helper; only the flag list grew.
+    expect(rowsHelper).toContain(
+      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
+    );
     expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.

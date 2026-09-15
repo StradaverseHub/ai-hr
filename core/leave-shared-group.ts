@@ -429,8 +429,15 @@ export async function sharedLeaveGroupBalances(
   if (!shown) return [];
 
   // Step 2 — the member types' own Available figures, UNFILTERED by visibility. See the warning above.
+  // ec991c2a — `includeArchived` here for the SAME reason as `includeHidden`, and it is the one
+  // SELF-SERVICE caller that opts out of that gate. This sum displays no leave-type name: it produces ONE
+  // pooled figure for a shared group. The group guard (`enforceSharedLeaveGroupLimit`) has never consulted
+  // `archived_at` — no more than it consults `visible_to_employee` — so summing the FILTERED list would put
+  // a number on screen that disagrees with the verdict the engine gives, which is the one thing that must
+  // not happen. No archived type's own name or per-type figure reaches the employee through this path.
   const balances = await leaveBalances(ctx, employmentId, opts.locale, {
     includeHidden: true,
+    includeArchived: true,
     ...(opts.asOf ? { asOf: opts.asOf } : {}),
   });
   const availableByType = new Map(balances.map((b) => [b.leaveTypeId, b.available]));

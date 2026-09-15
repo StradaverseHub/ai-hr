@@ -2382,6 +2382,30 @@ export function leaveBalances(
      *  Any THIRD caller on an employee-facing path is a leak until it can say which of these it is. */
     includeHidden?: boolean;
     /**
+     * ec991c2a — keep leave types an administrator has ARCHIVED. Default false: self-service does not show
+     * a retired type, which is the whole of this item.
+     *
+     * WHY THE DEFAULT IS THE RESTRICTIVE ONE, matching `includeHidden`: every one of the three tails below
+     * can only produce an archived row from HISTORY (an old ledger entry or an old pending request) — the
+     * eligible-but-inactive tail reads `types`, which has excluded archived types since R18. So "archived"
+     * on this read always means "a type this employee once used and HR has since retired", and an employee
+     * choosing from this list must not be offered it. A future caller that forgets the flag therefore gets
+     * the employee-safe answer, and only a caller that can say why opts out.
+     *
+     * WHO OPTS OUT, and there are three:
+     *   1. Employee Balances and 2. the Personnel leave card — the ADMIN screens, same reason as
+     *      `includeHidden`: retiring a type is a statement about what EMPLOYEES see, and HR answering
+     *      "what does this person hold" must still see the 759 days sitting under a retired ANNUAL.
+     *   3. `sharedLeaveGroupBalances` — the shared-pool summer, which displays no type name at all and must
+     *      keep summing every member type or the figure on screen stops matching the engine's verdict.
+     *
+     * WHAT THIS DOES NOT TOUCH: `leaveRequestsFor` / the ledger. A request already applied for or approved
+     * under an archived type keeps rendering in leave history exactly as it does today
+     * (test/leave-archived-type-hidden.test.ts pins it). This hides the type from the list an employee
+     * CHOOSES from; it does not rewrite what they have already taken.
+     */
+    includeArchived?: boolean;
+    /**
      * 3ddae357 — POINT-IN-TIME cut-off, `YYYY-MM-DD`. Ledger rows count when `effective_on <= asOf`, and a
      * pending request counts when it STARTS on or before it. OMIT for the running total: absent ⇒ the
      * whole ledger and every pending request, which is what every caller but Employee Balances wants.
@@ -2530,17 +2554,21 @@ export function leaveBalances(
     // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
     const visualByType = new Map<
       string,
-      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null }
+      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null; archivedAt: Date | null }
     >();
     if (seenIds.length > 0) {
       const visuals = await tx
         // r209 — `balanceSourceTypeId` rides along on the select that already runs for every seen type. It
         // is not a visual, and it is here for the same reason the placement columns are: one query over the
         // ids already in hand, rather than a second one for a column that is null on almost every type.
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId })
+        // ec991c2a — `archivedAt` rides along for the same reason `balanceSourceTypeId` does: this select
+        // already runs over exactly the ids in hand, and the archived gate at the bottom needs the column.
+        // Read EXPLICITLY rather than inferred from "absent from `types`" — the two are equivalent today
+        // (`types` is the non-archived catalogue) but only one of them says so in the code.
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt })
         .from(leaveType)
         .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId });
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId, archivedAt: v.archivedAt });
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -2633,7 +2661,8 @@ export function leaveBalances(
     // entry all disappear. SINGLE choke point covering all three ways a row enters `out` (ledger rows, the
     // pending-only tail, the eligible-no-activity tail): build the hidden-type-id set from the active `types`
     // select and filter `out` once here. NULL ⇒ visible (backward compatible). Archived types (present only
-    // via old ledger rows, not in `types`) are never flagged hidden — they already surface as today.
+    // via old ledger rows, not in `types`) are never flagged hidden — they are dropped by the SEPARATE
+    // archived gate immediately below (ec991c2a), which is a different question with a different flag.
     //
     // 994a5287: the gate is SELF-SERVICE ONLY, which is what `includeHidden` now makes true rather than
     // merely asserted. Hiding a leave type from employees is a statement about what THEY see; it was never
@@ -2646,7 +2675,33 @@ export function leaveBalances(
       opts.includeHidden || hiddenTypeIds.size === 0
         ? out
         : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
-    return visible.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+
+    // ec991c2a — ARCHIVED gate. An administrator archiving a leave type means it is retired; until this
+    // item it still sat in the employee's balance list beside the live ones, because the two ledger/pending
+    // selects above join `leave_type` with no `archived_at` predicate. (The third tail, eligible-but-
+    // inactive, reads `types` and has excluded archived types since R18 — so only HISTORY could produce
+    // one of these rows.) Filtered at the SAME single choke point as the visibility gate, and for the same
+    // reason: three ways into `out` and one place that decides what leaves it.
+    //
+    // WHY HERE AND NOT IN THE TWO `where`s. Adding `archived_at is null` to the joins would have been the
+    // narrower diff and the wrong one: `includeArchived` has to be able to put those rows BACK for the two
+    // admin screens, and a predicate in the SQL cannot be un-applied by a flag without writing each `where`
+    // twice. One gate, one flag, one place to read.
+    //
+    // WHY IT RUNS AFTER THE POOLING PASS (r209), which is load-bearing. When a live type draws its balance
+    // from an archived source, the pool is still the archived type's ledger — that is what the submit guard
+    // and the approval debit actually spend (core/leave.ts, `resolveBalanceSourceTypeId`). Pooling first
+    // and dropping after means the surviving borrower keeps the engine's figure; dropping first would leave
+    // it reading its own empty ledger, i.e. a number no approval could produce.
+    const archivedTypeIds = new Set(
+      [...visualByType.entries()].filter(([, v]) => v.archivedAt != null).map(([id]) => id),
+    );
+    const live =
+      opts.includeArchived || archivedTypeIds.size === 0
+        ? visible
+        : visible.filter((r) => !archivedTypeIds.has(r.leaveTypeId));
+
+    return live.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
 
@@ -2703,7 +2758,12 @@ export async function subordinateLeaveSummary(
   });
   if (!managed) return null;
 
-  const balances = await leaveBalances(ctx, employmentId, locale);
+  // ec991c2a — NO `includeArchived`, and that is the deliberate answer rather than an omission. This
+  // section's whole contract (see the docblock) is that a manager and the employee read the same numbers
+  // for the same leave type; the moment the employee's own list stops carrying an archived type, a manager
+  // summary that still carried it would be the two disagreeing. HR's full picture lives on the Personnel
+  // profile and Employee Balances, which both opt in.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeArchived: false });
   if (balances.length === 0) return [];
 
   return withTenant(ctx, async (tx) => {

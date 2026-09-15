@@ -92,7 +92,13 @@ export async function employeeBalanceRows(
   // whole of the fix on this side: `deriveBalanceRow` maps whatever it is handed and needs no change,
   // which is exactly the property to preserve — HR's screen and the employee's own screen keep ONE
   // derivation.
-  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, asOf });
+  //
+  // ec991c2a: `includeArchived` for the SAME reason and with the same boundary. Archiving a leave type
+  // retires it from the employee's own list; it does not delete the balance sitting under it, and this is
+  // the screen HR opens to answer "what does this person hold". Production has ANNUAL archived with 759
+  // days across 55 employments — an admin screen that stopped showing those days would be a worse defect
+  // than the one this item fixes.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf });
   const breakdowns = await Promise.all(
     balances.map((b) => leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)),
   );

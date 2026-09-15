@@ -222,7 +222,13 @@ export default async function LeavePage({
     // not-can-apply type, so filtering it away would drop that name from the breakdown. (2) the
     // EditLeaveDialog list, which must keep a request's OWN type selectable even when the employee no
     // longer qualifies for it. What it no longer feeds is the apply dropdown.
-    listLeaveTypes(session, { locale }),
+    //
+    // ec991c2a — `includeArchived: false` written out, and it is already `listLeaveTypes`' default
+    // (core/read.ts: `.where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt))`). The item's
+    // build notes read this call as the one deciding the apply list; it is NOT — see the line below. It
+    // feeds `unpaidTypeName`, the EditLeaveDialog list and the replacement-leave notice, all of which want
+    // the live catalogue. Stated explicitly so the next reader does not have to go and check the default.
+    listLeaveTypes(session, { locale, includeArchived: false }),
     // …which now comes from HERE: the types this employee actually qualifies for, resolved through the ONE
     // gate in core/read.ts (conditions + employee_can_apply + hidden placement). An ineligible type is
     // ABSENT — no message, no greyed row, no badge, no count. requestLeave still refuses the submission.
@@ -367,7 +373,13 @@ export default async function LeavePage({
   // (`isReplacementLeaveType`), because production's own replacement type is coded `RL` (5ff7daff).
   const tenantHasReplacementLeave = leaveTypes.some(isReplacementLeaveType);
   const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
-  const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : [];
+  // ec991c2a — THE SCREEN THIS ITEM WAS RAISED ABOUT, and the flag is written out even though `false` is
+  // the default. The reporter archived Annual Leave and kept seeing it in My Leave; a default that later
+  // flips meaning is how that comes back, so this call site states which answer it wants rather than
+  // inheriting one. The admin reads (Employee Balances, the Personnel leave card) opt IN instead; a guard
+  // in test/leave-archived-type-hidden.test.ts pins that this file is not one of them, so do not quote
+  // their opt-in literally in a comment here — the guard reads the source text.
+  const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale, { includeArchived: false }) : [];
   const selfRequests = ess && me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
   const selfBreakdowns = me
     ? await Promise.all(

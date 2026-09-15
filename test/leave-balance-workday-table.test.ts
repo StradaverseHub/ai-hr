@@ -313,7 +313,10 @@ describe('Leave Balance table: /leave composes it while preserving R22 (panel + 
   });
 
   it('scopes the balances to the VIEWER via per-employment leaveBalances (not the all-employee pivot)', () => {
-    expect(page).toMatch(/leaveBalances\(session, me\.employmentId, locale\)/);
+    // ec991c2a: same relaxation as test/leave-balance-relocation.test.ts — the call carries an explicit
+    // `{ includeArchived: false }` now. Viewer-scoped + localized is still what is asserted, and the
+    // all-employee pivot is still ruled out on the next line.
+    expect(page).toMatch(/leaveBalances\(session, me\.employmentId, locale\b/);
     expect(page.includes('leaveBalancesAll')).toBe(false);
   });
 });
