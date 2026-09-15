@@ -29,6 +29,26 @@
  *
  * Presentation-only: all copy arrives already translated via props, so t() lookups stay static at the
  * call sites and the i18n coverage test keeps working. No translation hook belongs in this file.
+ *
+ * ── r287 (ff1c935f) — TWO OPT-IN PROPS, BOTH DEFAULTED, NO CALL SITE CHANGES ──────────────────────────
+ * `matchOption` and `emptyLabelFor` were added for the Generate Entitlement employee picker. Omit either
+ * and this component behaves EXACTLY as it did for all five pre-existing call sites.
+ *
+ * · `emptyLabelFor` is not polish. The reported defect on that screen was a control that searched, found
+ *   nothing, and said nothing — so the operator sat on "Working it out…" with no idea why. Filtering to
+ *   zero rows here previously rendered an EMPTY BOX, which asserts nothing. The terminal state must name
+ *   what was searched, or it is the same silence in a different font.
+ *
+ * · `matchOption` exists because the default filter is a plain substring over `name`, and this repo
+ *   already owns the "find an employee by partial ID or partial name" rule in `lib/employee-search.ts`
+ *   (folding, so "emp0008" finds "EMP-0008"). A picker that shows an Employee ID on screen and then fails
+ *   to find it when typed is the same broken promise one layer down. Callers with a domain search rule
+ *   pass it in; everyone else keeps the substring default.
+ *
+ * Both are FUNCTIONS, matching the `selectedCount` prop this component has always required — so they add
+ * no constraint that was not already there: every call site is a client component. A SERVER page cannot
+ * mount this control at all (see components/attendance/location-assignment.tsx, which crosses the
+ * boundary with plain strings and builds the functions on the client side of it).
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
@@ -49,6 +69,8 @@ export function MultiSelectPopover({
   selectedCount,
   name,
   disabled,
+  matchOption,
+  emptyLabelFor,
 }: {
   /** Translated caption shown above the trigger (owned by the component — no <Field> at the call site). */
   label: string;
@@ -65,6 +87,16 @@ export function MultiSelectPopover({
   /** Opt-in form contract: emit one hidden <input name={name} value={id}> per selected id. */
   name?: string;
   disabled?: boolean;
+  /**
+   * Opt-in: the caller's own search rule, e.g. `(o, q) => matchesEmployeeSearch(rowFor(o.id), q)`.
+   * Omitted ⇒ a case-insensitive substring over `name`, which is what every earlier call site had.
+   */
+  matchOption?: (option: MultiSelectPopoverOption, query: string) => boolean;
+  /**
+   * Opt-in: translated "nothing matched {query}" line, rendered INSTEAD of the (empty) row list when a
+   * non-blank search matches no option. Omitted ⇒ an empty panel, the pre-r287 behaviour.
+   */
+  emptyLabelFor?: (query: string) => string;
 }) {
   const captionId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -72,11 +104,16 @@ export function MultiSelectPopover({
   const [search, setSearch] = useState('');
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return options;
-    return options.filter((o) => o.name.toLowerCase().includes(q));
-  }, [options, search]);
+    if (matchOption) return options.filter((o) => matchOption(o, q));
+    const lower = q.toLowerCase();
+    return options.filter((o) => o.name.toLowerCase().includes(lower));
+  }, [options, search, matchOption]);
   const visibleIds = useMemo(() => new Set(visible.map((o) => o.id)), [visible]);
+  // r287 — THE TERMINAL EMPTY STATE. `search.trim()` rather than `search`, so a box holding only spaces
+  // (which filters nothing and shows everything) never claims a failed search.
+  const noMatches = search.trim() !== '' && visible.length === 0;
 
   // Close on outside click — document mousedown against the root ref (combobox.tsx idiom). No backdrop
   // element exists, so no future <label> wrapper can ever re-activate the trigger and undo the close.
@@ -151,6 +188,11 @@ export function MultiSelectPopover({
               </button>
               <span className="ml-auto text-muted-foreground">{selectedCount(selected.size)}</span>
             </div>
+            {/* r287 — said out loud, naming what was typed. An empty box asserts nothing (CLAUDE.md §8);
+                this is the difference between "no such employee" and "the screen is still thinking". */}
+            {noMatches && emptyLabelFor != null && (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor(search.trim())}</p>
+            )}
             <div className="max-h-56 overflow-y-auto">
               {options.map((o) => (
                 <label
