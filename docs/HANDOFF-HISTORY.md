@@ -1,3 +1,135 @@
+## r287 (2026-09-16) — four approved items, three worktrees, and six plan claims that did not survive contact. `main@69967dc2`, **no migration**.
+
+`f3e6c36e` + `e4471e3c` (attendance, sequential in one worktree because they rewrite the same nav arrays and
+the same exact-set guards), `ec991c2a` (archived leave types), `ff1c935f` (Pick individually).
+`3fb1a611` deliberately NOT built — superseded, its own rev-2 plan says press Withdraw.
+Gate: **862 files, 12,997 tests, 0 AssertionErrors** across 24 chunks at 2 workers, every chunk counted==asked, no chunk with a single failure. `next build` exit 0..
+
+### THE PLANS WERE RIGHT ABOUT WHAT WAS WRONG AND WRONG ABOUT WHY — AGAIN
+
+Three of the four builds corrected a plan I wrote. The conclusions held every time; the **mechanisms** did not.
+That is now a nine-round pattern and it is worth naming: a plan that reasons from a grep is confident in
+exactly the places it should not be.
+
+**`ff1c935f` — the worst of them.** I wrote that the resolver "tries to match typed text against employee
+REFERENCES" and a name "resolves to nothing". There is no reference resolution anywhere on that path.
+`core/org-criteria.ts:338` does `inArray(employment.id, scopeIds)` against a **uuid** column, so Postgres
+rejects the statement outright:
+
+```
+ERROR:  invalid input syntax for type uuid: "Irwin"
+```
+
+The action throws, the caller's `catch` set `preview = null`, and null rendered as the **pending** sentence.
+So the reporter's screenshot was **two defects wearing one symptom**, and my framing described one of them.
+I also named the wrong file: the textarea is in `components/leave/generate-form.tsx`, not the page.
+
+**`ec991c2a` — half the plan was already built.** I cited `app/leave/page.tsx:225` as feeding the Apply Leave
+dropdown. The line was right, the claim was wrong: the dropdown comes from `listEligibleLeaveTypesFor` on
+:228, which has carried `isNull(leaveType.archivedAt)` all along, and `listLeaveTypes` already defaults to
+excluding archived. The page's own comment says so. **Only the `core/read.ts` balance leak was real** — that
+citation (:2364) was correct and both `where` clauses genuinely had no archived predicate.
+
+**`f3e6c36e` — a guard claim that was conditional, not factual.** I wrote that a new route "needs a SCREENS
+entry or `test/function-access.test.ts` fails". It does not: that test only collects pages whose source
+matches `/requireAdmin|…|scopedSession/`, and all five sibling self-service rows deliberately use
+`getSession()` and are unregistered. The agent made the claim true rather than dodging it.
+
+### AN ACCESS-CONTROL GUARD THAT A COMMENT CAN SATISFY
+
+`test/function-access.test.ts:41` is `GUARD_RE.test(fs.readFileSync(p, 'utf8'))` — **raw source, comments
+included**. A doc comment quoting `'scopedSession'` is enough to make an unguarded page count as guarded.
+It over-includes rather than under-includes (a real guard call always contains the string), so this is a
+wart and not a hole — but it is a wart on the file that decides which pages get access-checked at all,
+and it should be reading stripped source.
+
+### TWO MORE VACUOUS GUARDS, BOTH CAUGHT BY THE AGENT THAT WROTE THEM
+
+That is the fifth and sixth this session, and the first two found by the author rather than by me.
+
+- **`ec991c2a`**: the history assertion passed with the fix reverted, because an *approved* request enters
+  none of `leaveBalances`' three tails. Adding a ledger accrual made it live — the non-vacuity probe went
+  from 3 failures to 4.
+- **`ff1c935f`**: "picked AND pasted for the same person is ONE person" passed with de-duplication removed,
+  because `core/leave-generation.ts` calls `dedupe()` further down and the engine reported 2 either way.
+  **The guard was measuring the engine, not the merge.** Fixed by asserting the merge's own output.
+
+Both wrote the reason into the test file so nobody strengthens it back out. That is the habit that works.
+
+### THE DEFECT ONLY A LIVE SAVE COULD FIND
+
+`e4471e3c`'s rounding form was first keyed on `attendance_rule_ot_row.id`. `updateAttendanceRule`
+**deletes and re-inserts the bands**, so every row id changes on every save of the rule — an id-keyed field
+silently matches nothing after any intervening save and the edit is discarded **behind a 303**. No type
+error, no failing assertion, no log line. Re-keyed on `fromMinutes` (unique per rule by the ladder
+validation, stable across re-insert) with a guard that reproduces the churn.
+
+**This is the argument for rendering instead of reasoning, in one paragraph.** tsc was clean, the tests were
+green, and the form silently threw away the user's edit.
+
+### WHAT WAS DECLINED, AND WHY THAT WAS RIGHT
+
+- **`ec991c2a` — no server-side refusal of an archived type in `requestLeave`.** It looks like the obvious
+  completion of "cannot be chosen for a new request". It would have broken production: Emergency Leave
+  decomposes into **ANNUAL + UNPAID children** (`core/leave.ts:2712`), and ANNUAL is the archived type on
+  this tenant. A hard refusal kills EL submissions on the very account that raised the item.
+- **`ff1c935f` — did not fix the same bug on Leave Adjustments and Notice Board.** Same `inArray` over a uuid
+  column, same shared "paste employee references" help string, worse symptoms (a **stale** matched count,
+  and a refusal that only lands at Save). Widening an approved item into two screens the reporter never
+  approved is not thoroughness. **Raised as `8521e160` with its own plan.**
+- **`e4471e3c` — the deduction switch did not move**, as the plan promised. Proven three ways: no control in
+  the page source, the action never reads the field, and a crafted request body cannot flip it.
+
+### A CORRECTION OWED TO THE REPORTER, NOW ON THE BOARD (`686dc512`)
+
+`cf9dcb98`'s business half told them `*Annual Leave` generates nothing because its entitlement tables start
+on 14/15 September — which implies that changing those dates would fix it. **It never will.**
+`STANDING_LEAVE_CODES` (`core/leave.ts:6031`) is `['ANNUAL','SICK','HOSPITALIZATION']` and the filter at
+:7362 runs **before any employment is read**. The engine's own comment at :7195 already said
+*"THIS IS THE PRODUCTION CASE: AL is not ANNUAL"* — the build was right and the explanation was not.
+
+The raised item also closes the gap that created the problem: **nothing under `app/` or `messages/`
+references `STANDING_LEAVE_CODES`**, so the Leave Type editor accepts an earned accrual method on a code
+that can never accrue, in silence. That is how `*Annual Leave` came to look correctly configured.
+
+### THE "DATA LEAK" WAS A COMMENT THAT WAS WRONG, AND IT IS NOW THE COMMENT THAT IS FIXED
+
+`f3e6c36e`'s agent reported that a plain employee opening `/attendance` saw a colleague's month-summary row.
+Its evidence for "plain employee" was the absence of the recompute / import / OT-export controls — and those
+are gated on `hr_admin || super_admin` ONLY, so their absence proves very little. I expected a misread.
+
+**The observation was right and my expected explanation was wrong.** `EMP-0004` really does hold `employee`
+and nothing else, and really can see three other employments. Evaluated `app.can_see_employment` directly
+with the RLS GUCs set, branch by branch:
+
+| row | branch that grants it |
+|---|---|
+| EMP-0002 | `heads_department_of` |
+| EMP-0006 | `is_admin_report_of` |
+| EMP-0007 | `heads_department_of` |
+
+**It is not a leak.** Line management and department headship are ORG-STRUCTURE facts held on the employment
+row; they are independent of the RBAC role list. Someone can carry only `employee` and still be an HOD, and
+RLS is correct to show them their tree.
+
+What was actually wrong is `lib/permissions.ts:19`, which said a `scopedSession` page means "an employee opens
+the page but sees only their own rows". That is false for any line manager or HOD, and **an agent checking the
+screen against that sentence correctly concluded something was broken.** Replaced with the four branches
+spelled out and the seed evidence, so the next reader stops where this round stopped.
+
+Method note worth keeping: RLS was confirmed live along the way by accident — an un-tenanted `ai_hr_app`
+session reads `SELECT count(*) FROM employment` as **0**, because `tenant_id = app.current_tenant_id()` is
+false. `postgres` (BYPASSRLS) sees 8. That contrast is a cheap standing check that RLS is actually on.
+
+### ENVIRONMENT — THE SAME ONE, STILL UNFIXED
+
+69 abandoned Postgres clusters (~233 MB each, ~16 GB) still sit in `/opt/homebrew/var`. Clearing them is
+what r286 identified as the durable fix and **the permission classifier blocks the bulk delete**; I did not
+route around it. Note for whoever does: `scripts/dev-db-rebuild.sh` rebuilds the cluster at 5433, which
+hosts **both** `ai_hr_dev` and `ai_hr_test` — so a running gate wipes the dev database, and an agent doing a
+live render check against it mid-gate will see its data vanish. One agent hit exactly that and reported it
+as "another agent re-seeded the database".
+
 ## r286 (2026-09-16) — text overspill: one shared component, and an SVG that cannot wrap. `main@7bf6e051`, **no migration**.
 
 Reported directly by the owner, not through the board: *"throughout the system, there's a lot of such cases
