@@ -231,8 +231,26 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     expect(card).toContain('action={closeReplacementLeaveYearAction}');
     // The wind-down region must contain no module-only gate of its own — that would restore the hole
     // one level down, which is precisely how the original fix came to be illusory.
-    const cardEnd = card.indexOf('{t(\'footnote\')}');
-    expect(card.slice(0, cardEnd)).not.toMatch(/\{\s*moduleOn\s*&&/);
+    //
+    // 3fb1a611 — THE REGION'S END MARKER MOVED, and the reason is worth stating because the old one
+    // looked permanent. The footnote used to be the next thing on the page after the settlement card, so
+    // `indexOf("{t('footnote')}")` was a serviceable proxy for "end of the wind-down region". This round
+    // adds the manual-grant surface between them, and that surface IS module-gated ON PURPOSE — granting
+    // creates a NEW obligation, so it belongs on the accrual side of ADR-0077 slice 3, not the settlement
+    // side. Left as it was, this assertion would read the grant card and fail for the right reason in the
+    // wrong place. The boundary is now the grant card itself.
+    const GRANT_MARKER = '3fb1a611 · GRANT A CREDIT BY HAND';
+    const grantAt = card.indexOf(GRANT_MARKER);
+    expect(grantAt, 'the manual-grant surface must follow the settlement card').toBeGreaterThan(-1);
+    expect(card.slice(0, grantAt)).not.toMatch(/\{\s*moduleOn\s*&&/);
+
+    // 3b. AND THE OTHER HALF OF THE SAME SPLIT, asserted rather than left implied. Settlement discharges
+    //     a debt already incurred and must survive a lapsed entitlement; granting creates a new one and
+    //     must not. Pinning only the first half would let the second drift into being ungated too, which
+    //     is the mirror-image hole.
+    const grantCard = card.slice(grantAt);
+    expect(grantCard, 'granting must be gated on the module').toMatch(/\{moduleOn && visible\.length > 0 && \(/);
+    expect(grantCard).toContain('action={grantToilCreditAction}');
 
     // 4. THE OTHER SIDE OF THE SPLIT, which the wind-down argument does NOT extend to (review r2).
     //    Ungating the ledger and the two sweeps is about settling days already banked. The per-company

@@ -1316,6 +1316,32 @@ async function planReplacementLeaveRestore(
     backBy.set(r.accrualId, round2((backBy.get(r.accrualId) ?? 0) + Number(r.days ?? 0)));
   }
 
+  // 2b · THE CROSS-CHECK, because reading the allocation out of the event log has one failure mode and it
+  //      is a silent one. `domain_event`'s read policy is `app.is_admin() OR
+  //      app.can_see_employment(subject_employment_id)`, while `toil_accrual`'s read side is wider (0314
+  //      added a payroll-partner SELECT). A caller who can see the REGISTER but not the EVENTS would find
+  //      no allocation, restore nothing, log a shortfall — and the ledger credit would go back with no lot
+  //      behind it. That is precisely the ghost credit this whole function exists to prevent, arrived at
+  //      from the other direction.
+  //
+  //      `taken_by_request_id` is the independent witness: consumption stamps it on every lot it consumed
+  //      IN FULL. A lot carrying this request's id that the events did not account for means the event
+  //      record could not be read whole, so this refuses rather than half-restoring. It cannot fire on an
+  //      ordinary cancellation — the two are written in the same transaction by the same function.
+  const stamped = await tx
+    .select({ id: toilAccrual.id, workedDate: toilAccrual.workedDate })
+    .from(toilAccrual)
+    .where(eq(toilAccrual.takenByRequestId, p.requestId));
+  const seen = new Set(consumed.map((c) => c.accrualId));
+  const unaccounted = stamped.filter((r) => !seen.has(r.id));
+  if (unaccounted.length > 0) {
+    throw new ReplacementLeaveRestoreBlockedError(
+      `this replacement leave cannot be given back: the record of which credits it used could not be read in full (${unaccounted
+        .map((r) => r.workedDate)
+        .join(', ')}). An HR administrator can cancel it.`,
+    );
+  }
+
   // 3 · THE PLAN, built whole before a single write, so the expiry refusal below can name every blocking
   //     lot at once instead of failing on the first one it happens to reach.
   const plan: { accrualId: string; take: number }[] = [];
