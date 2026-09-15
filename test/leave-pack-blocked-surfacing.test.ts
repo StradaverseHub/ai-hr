@@ -65,7 +65,14 @@ describe('no leave sweep skips an employment silently', () => {
   // undefined and the honest empty list becomes a special case.
   it('early returns carry an empty blocked list rather than omitting it', () => {
     expect(SRC).toContain('const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };');
-    expect(SRC).toContain('return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };');
+    // r285 (cf9dcb98) — THE EARNED-ACCRUAL SWEEP NOW FUNNELS EVERY EMPTY EXIT THROUGH ONE HELPER, and that
+    // is strictly stronger than the one-line literal this used to grep for. Previously each `return` had to
+    // remember `packBlocked: []` on its own; now none of them can omit it, because none of them constructs
+    // the result — `emptyResult` does, and its own comment says a new exit "cannot ship without deciding
+    // what it says". So assert the funnel and its field rather than a spelling that adding a field breaks.
+    const e = SRC.indexOf('const emptyResult = async (');
+    expect(e, 'the earned-accrual sweep still funnels every empty return through one helper').toBeGreaterThan(0);
+    expect(SRC.slice(e, e + 600), 'that helper still carries an empty blocked list').toContain('packBlocked: [],');
   });
 
   // reprojectEntitlementForEmployment has no such loop; giving it the field would imply a check it
