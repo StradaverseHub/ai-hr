@@ -73,6 +73,11 @@ const WIDE_LIST_SCREENS = [
   // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
   // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
   'app/attendance/requests/page.tsx',
+  // f3e6c36e (r287) — My Records, the employee's own attendance. Added on the SAME reasoning r227 gave:
+  // the full-width property belongs to the SCREEN, not to who may open it, and this one carries the same
+  // seventeen-column day table the Individual tab does. Listed from the start rather than after somebody
+  // complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
+  'app/attendance/my-records/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
@@ -163,10 +168,27 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it('the relocated schedule page still carries every moved block — moving is not deleting', () => {
     const src = read('app/admin/attendance-policy/schedule/page.tsx');
     expect(src).toContain('requireAdmin()');
-    expect(src).toContain('setAttendancePolicyAction'); // per-company work schedule form
     expect(src).toContain('StatutoryComponentForm'); // overtime rates
     expect(src).toContain('revokeDeviceAction'); // registered devices
     expect(src).toContain('employmentsWithoutBackupShift'); // backup-shift coverage card
+    /**
+     * e4471e3c (r287) — THE WORK-SCHEDULE FORM MOVED INTO A COMPONENT, SO THE ASSERTION FOLLOWED IT.
+     *
+     * This case used to look for `setAttendancePolicyAction` in the page source. The reporter asked for
+     * the Work Schedule sub-menu to be consolidated into Attendance > Schedule, so the per-company
+     * working-week editor now has to render on BOTH screens — and rather than draw a second form (which
+     * would have silently wiped the four settings the Schedule tab does not display, because that action
+     * is a full-row writer), the editor moved into ONE component that both screens mount.
+     *
+     * Following the block is the point of this case: "moving is not deleting" is exactly as true of a
+     * move into a component as of a move into another route, and re-pointing the assertion is what keeps
+     * it from either failing on a legitimate refactor or passing over a genuine deletion. Both halves are
+     * checked — this page still renders the editor, and the editor still posts to the same action.
+     */
+    expect(src, 'the page still renders the company work-schedule editor').toContain('<WorkScheduleForm');
+    const form = read('app/admin/attendance-policy/schedule/work-schedule-form.tsx');
+    expect(form, 'and that editor is still the setAttendancePolicyAction form').toContain('setAttendancePolicyAction');
+    expect(form, 'still posting the per-weekday day-type selects the action decodes').toContain('dayType_');
   });
 
   it('the write paths return to the screen the operator was on', () => {

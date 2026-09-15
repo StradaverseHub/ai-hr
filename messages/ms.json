@@ -290,6 +290,7 @@
     "attendanceAllowance": "Elaun kehadiran",
     "attendanceClock": "Daftar masuk/keluar",
     "attendanceRecords": "Rekod",
+    "myRecords": "Rekod Saya",
     "attendanceRequest": "Ketidakteraturan Kehadiran",
     "planOvertime": "Kerja Lebih Masa Sendiri",
     "myTravel": "Perjalanan Saya",
@@ -2537,6 +2538,12 @@
       "scopeEmployees": "{count, plural, other {# pekerja}}",
       "runNoChanges": "Pengiraan semula ini tidak mengubah apa-apa.",
       "recentNote": "Setiap pengiraan semula disimpan secara kekal — siapa yang menjalankannya, pekerja dan tarikh mana, serta angka sebelum dan selepas bagi setiap hari yang berubah. Setiap pengiraan semula juga muncul dalam Jejak Audit di bawah Kehadiran."
+    },
+    "myRecords": {
+      "title": "Rekod Saya",
+      "intro": "Kehadiran anda sendiri, hari demi hari. Hanya rekod anda dipaparkan di sini.",
+      "notLinked": "Log masuk anda tidak dipautkan kepada pekerjaan aktif, jadi tiada rekod kehadiran untuk dipaparkan.",
+      "correctionNote": "Ada hari yang tidak betul? Failkan di bawah Permohonan Kehadiran — skrin ini ialah rekod, bukan tempat untuk mengubahnya."
     }
   },
   "org": {
@@ -7514,6 +7521,7 @@
         "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
         "leaveTracker": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus lihat bawahan mereka, dan pentadbir mendapat carian pekerja dan bukan kalendar.",
         "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "myAttendanceRecords": "Semua orang boleh membukanya; sesiapa pun anda, ia hanya memaparkan kehadiran anda sendiri.",
         "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
@@ -8901,7 +8909,7 @@
       "colBreak": "Rehat",
       "breakMinutes": "{n} min",
       "usingDefaults": "Lalai sistem",
-      "workScheduleLink": "Buka Jadual Kerja untuk menyunting minggu bekerja syarikat →",
+      "workScheduleLink": "Kadar kerja lebih masa, peranti berdaftar dan liputan syif sandaran →",
       "groupTitle": "Kumpulan Jadual",
       "groupHint": "Tetapan ini milik satu Kumpulan Jadual — set peraturan bernama yang diikuti oleh setiap syif di bawahnya. Pilih kumpulan untuk melihat tetapannya.",
       "groupEmpty": "Belum ada Kumpulan Jadual disediakan.",
@@ -8925,6 +8933,7 @@
       "recordSwitchLabel": "Rekodkan minit ini",
       "recordSwitchFrom": "direkod mulai {date}",
       "notPayNote": "Minit ini ditulis pada rekod kehadiran sahaja. Tiada apa-apa dalam penggajian membacanya, jadi tiada slip gaji dikurangkan kerananya. Menjadikannya mempengaruhi gaji seseorang adalah keputusan berasingan, dengan perbandingan sebelum dan selepasnya sendiri.",
+      "deductionsElsewhere": "Suis ini disunting pada Kumpulan Jadual itu sendiri, dan di situ sahaja. Tarikh mula dicap oleh sistem apabila anda menghidupkannya dan tidak boleh ditaip, supaya bulan gaji yang sudah ditutup tidak sekali-kali boleh menerima potongan selepas itu. Tempat kedua untuk menukarnya bermakna satu lagi cara untuk tersilap tarikh.",
       "otEarlyTitle": "Kerja lebih masa sebelum syif",
       "otEarlyHint": "Sama ada waktu direkod sebelum waktu mula dikira sebagai kerja lebih masa. Tiada langkah kelulusan di belakangnya: apabila dihidupkan, setiap minit sebelum syif menjadi kerja lebih masa.",
       "otEarlyLabel": "Kira waktu direkod sebelum waktu mula sebagai kerja lebih masa",

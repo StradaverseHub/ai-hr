@@ -53,7 +53,6 @@
  * built here by design.
  */
 import {
-  CalendarCheck,
   CalendarClock,
   CalendarCog,
   CalendarRange,
@@ -65,7 +64,6 @@ import {
   Hourglass,
   MapPin,
   Plane,
-  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
@@ -108,8 +106,14 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  * manager also sees Roster + Import, an admin sees all nine. That also matches the picture, which
  * shows Attendance in the upper section beside My Absence and Claims, above the MANAGE heading.
  *
- * THE FLAGS ARE PER ROW AND MUST STAY THAT WAY. attendanceRecords carries NEITHER flag — carrying it
+ * THE FLAGS ARE PER ROW AND MUST STAY THAT WAY. The self-service rows carry NEITHER flag — carrying one
  * into a node whose other members are adminOnly must not make it, or the node, admin-only.
+ *
+ * f3e6c36e (r287) — the `attendanceRecords` row that this paragraph and the one above used to name is
+ * gone from here. It pointed at `/attendance`, the screen both audiences shared; it is now `myRecords`
+ * pointing at `/attendance/my-records`, the employee's own screen, and `/attendance` belongs to the
+ * Administration row alone. The reasoning is on the row itself. `nav.attendanceRecords` is NOT retired —
+ * app/reports/page.tsx still labels its `/attendance` link with it, and that link is the admin screen.
  */
 const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'myAttendance',
@@ -120,12 +124,32 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // action. Records moved out to the merged Attendance node (a324a4b3 rev2), so this is now the node's
     // only row; it remains visible to every employee (self-service, like /me).
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    // a324a4b3 rev3 — Records comes BACK here. rev2 pulled it up into the merged Attendance node while
-    // that node sat in the ungated day-to-day group, which was fine. The reporter has now asked for that
-    // node to move into Administration, and the admin group gates at GROUP level — so a Records row left
-    // inside it would vanish from every plain employee's rail. It is self-service (no gate), so its home
-    // is the self-service node.
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
+    /**
+     * f3e6c36e (r287) — THE SPLIT. This row used to point at `/attendance`, the same screen the admin
+     * "Employee Attendance" row opens. It now points at the employee's OWN screen and the admin screen is
+     * left to the administrator alone. Read the history before moving it back:
+     *
+     *   • a324a4b3 rev2 moved Records into the merged Attendance node; rev3 undid it, because that node
+     *     went into Administration and the Administration sidebar group gates `adminOnly` at GROUP level —
+     *     a row inside it renders for NOBODY but administrators, whatever its own flag says. So moving
+     *     this row does not make the screen admin-only, it makes it invisible to staff.
+     *     `test/sidebar-attendance-group.test.ts` exists to stop a third attempt and is still live.
+     *   • The reporter then asked a SECOND time, in writing, for the administrative Record function to
+     *     leave My Attendance. Under the fight-back rule an instruction reaffirmed after a challenge is
+     *     the owner's decision, so r287 takes it — and delivers it by SPLITTING rather than by moving,
+     *     which is the one way both things can be true at once. Their own point 7 (employee-facing
+     *     attendance functions stay under My Attendance) is what the new screen honours.
+     *
+     * UNGATED, like every sibling in this node: `/attendance/my-records` resolves the caller's own
+     * employment (`myEmployment(s)`) and can show nobody else's rows. A gate here would take an employee's
+     * own record away from them, which is the opposite of what the item asked for.
+     *
+     * Clock rather than a new glyph: the collapsed rail renders glyphs only, and this is the same row the
+     * reporter has always known as Records — it is the address and the audience that changed, not the job.
+     * It shares Clock with `/attendance/clock` exactly as it did before the split (that pair predates this
+     * round and is unchanged by it).
+     */
+    { href: '/attendance/my-records', labelKey: 'myRecords', icon: Clock },
     // 0bb0e303 rev2 — the third self-service row the reporter listed. The attendance/overtime/travel
     // request forms existed already, but only as fold-outs on the employee's own My Profile page: you
     // had to know they were there. This row is the whole point of the item — the menu now reads Clock
@@ -281,53 +305,66 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * single row to an employee and all 83 to an administrator — and this group carries `adminOnly` at
      * GROUP level, so a row moved inside it becomes INVISIBLE, not admin-only. a324a4b3 rev2 did exactly
      * that and rev3 undid it; `test/sidebar-attendance-group.test.ts` exists to stop it happening a third
-     * time. So Records STAYS in MY_ATTENDANCE_NAV and this row is added beside it.
+     * time. So Records STAYED in MY_ATTENDANCE_NAV and this row was added beside it.
      *
-     * ⚠️ KNOWN AND ACCEPTED: the same href now sits in two nodes, so on `/attendance` BOTH parent rows
-     * highlight (`isParentActive`, components/nav-flyout.tsx, matches any child path). The two ways out
-     * are worse. A distinct route rendering the same page breaks the screen's own tab strip — its tabs
-     * link to `/attendance`, `/attendance/daily` and `/attendance/individual`, so entering by the admin
-     * door and clicking a tab drops you out of it. And teaching the rail to prefer one node over another
-     * is new nav machinery for a cosmetic result. One screen genuinely reachable two ways is what the
-     * rail is reporting, and it is telling the truth. Disclosed to the reporter rather than hidden.
+     * ── f3e6c36e (r287): THE SECOND DOOR IS NOW THE ONLY DOOR, AND THE DISCLOSURE BELOW IS DISCHARGED ──
+     *
+     * r274 disclosed a known cost: the same href in two nodes, so opening `/attendance` lit BOTH parent
+     * rows (`isParentActive`, components/nav-flyout.tsx, matches any child path). It recorded the two ways
+     * out and why each was worse — in particular that a distinct route rendering the SAME page breaks the
+     * screen's own tab strip (`/attendance`, `/attendance/daily`, `/attendance/individual`), so entering by
+     * one door and clicking a tab drops you out of it.
+     *
+     * The reporter reaffirmed after that challenge, so r287 takes the owner's decision and resolves it the
+     * third way r274 did not have: not a second route onto the same page, but a genuinely DIFFERENT
+     * employee screen — `/attendance/my-records`, its own reads keyed on the caller's own employment, and
+     * NO tab strip at all (that decision and its reasoning are written into the page). `/attendance` is
+     * now reached from this row alone.
+     *
+     * So this row is no longer a duplicate href, it is simply THE Employee Attendance row: the
+     * administrative reading of everybody's attendance, admin-gated, in the Administration menu where the
+     * reporter asked for it twice. The employee keeps their own record next door, which is their point 7.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
-    // 870b79e2 (r277) — "Overtime Pattern" → "Schedule Group". THE LABEL WAS HIDING THE SCREEN, and this
-    // is the whole of the item's first deliverable. The reporter asked us to BUILD a named group that
-    // several shifts share so attendance rules are set up once; `attendance_rule` has been exactly that
-    // since 88e94371 — tenant-wide, name + description, holding the lateness AND early-out AND overtime
-    // sections, chosen by `shift.rule_id`, and four of the five production shifts already share one. They
-    // could not find it because the only word in the rail said OVERTIME, while the screen's own title
-    // (admin.attendanceRule.moduleTitle) reads "Lateness, Early Out & Overtime Settings". Nobody hunting
-    // for their lateness rules would open a row called Overtime Pattern.
-    //
-    // WHY "Schedule Group" AND NOT A LONGER, MORE LITERAL NAME. It is the reporter's own word for the
-    // object, it is the word both sibling plans (e5ff7189, d91aee93) then use for the thing their tabs
-    // configure, and the Schedule screen's new group selector says the same word — so the three surfaces
-    // name one object once. A descriptive "Attendance & Overtime Rules" would be accurate and still not be
-    // the phrase they searched for. The screen's own H1 keeps the literal description; the rail carries the
-    // NAME. a324a4b3's rule (key == the string it resolves to) is kept: nav.overtimePattern → nav.scheduleGroup.
-    //
-    // The href does NOT change — /admin/attendance-policy is the same screen, same guard, same
-    // lib/permissions.ts column ('attendancePolicyConfig', label-only change, as at every prior rename).
-    { href: '/admin/attendance-policy', labelKey: 'scheduleGroup', icon: SlidersHorizontal, adminOnly: true },
-    // ad52212d — the Work Schedule screen (af7a8eb4 gave it this route) finally has a menu row. CalendarCheck
-    // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
-    // row sharing its parent's or a sibling's icon is indistinguishable there.
-    { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    /**
+     * ⚠️ e4471e3c (r287) — TWO ROWS WERE REMOVED HERE, AND THEIR SCREENS WERE NOT. READ THIS BEFORE
+     * ADDING EITHER BACK.
+     *
+     * `/admin/attendance-policy` ("Schedule Group", 870b79e2 — the attendance_rule library that names the
+     * lateness, early-out and overtime rules a set of shifts share) and
+     * `/admin/attendance-policy/schedule` ("Work Schedule", ad52212d — the per-company attendance_policy,
+     * the fallback for a day with no shift) both left this menu. The reporter asked for exactly that:
+     * "Schedule Group and Work Schedule shall be consolidated into the existing Schedule sub-menu ...
+     * to provide a single centralised Schedule configuration area".
+     *
+     * THE ROWS WENT; THE ROUTES STAYED, deliberately, and they are still registered in lib/permissions.ts
+     * under `attendancePolicyConfig` — a screenKey is a PERMISSION IDENTITY, and removing or renaming one
+     * silently revokes whatever stored role configuration references it. Both pages also still own things
+     * this round did not move:
+     *
+     *   · the deduction switch (`apply_deductions` + `deductions_effective_from`), which stays on the
+     *     Schedule Group editor because its start date is stamped by the service and can never be typed;
+     *   · the overtime BANDS and RATES, and the group's name / status / allowed shifts;
+     *   · the tenant overtime RATES, the registered-device table and backup-shift coverage, none of which
+     *     is a schedule setting at all.
+     *
+     * They are reached from the Schedule screen, which links to both — the General tab to the Work
+     * Schedule page, and the Attendance and Overtime tabs to the Schedule Group editor for the group in
+     * view. Removing those links would strand the settings above, so they are pinned in
+     * test/schedule-config-screen.test.ts.
+     */
     // 1c5602cc (r263) — SCHEDULE: the tabbed configuration screen for an employee's working pattern
     // (General built; Holiday / Overtime / Attendance / Request / Notification ship NAMED and EMPTY).
     //
-    // IT SITS BESIDE "Work Schedule", NOT INSTEAD OF IT, AND THAT IS THE POINT OF THIS ROUND. The
-    // a6fe37fc playbook: build alongside, prove the old behaviour unchanged, and only then move the menu
-    // and retire what it replaces. The row above keeps working and is deliberately untouched here — a
-    // later round is explicitly the cutover, and the reporter has been asked to steer whether "Work
-    // Schedule" is absorbed into these tabs. WE RECOMMEND ABSORBING IT, AND THE REASON IS THE CONTENTS,
-    // NOT THE NAME: /admin/attendance-policy/schedule already holds backup shift coverage
-    // (attendanceRule.coverageTitle), overtime rates (otRatesTitle), the per-company attendance policy and
-    // registered clocking devices (devicesTitle) — material that belongs to the Overtime and Attendance
-    // tabs of THIS screen. Two screens over one subject is what the cutover round is for.
+    // IT SAT BESIDE "Work Schedule" FOR FOUR ROUNDS, AND e4471e3c (r287) IS THE CUTOVER. The a6fe37fc
+    // playbook: build alongside, prove the old behaviour unchanged, and only then move the menu and
+    // retire what it replaces. r263 built alongside and recorded that the reporter had been asked to
+    // steer whether Work Schedule is absorbed; they answered by raising e4471e3c, which asks for Schedule
+    // Group AND Work Schedule to be consolidated into this row. So both of those rows are gone (the note
+    // above this one says where their screens went and why they survive), and THIS is now the single
+    // entry point for schedule configuration — the General tab edits the per-company working week, and
+    // the Attendance and Overtime tabs edit the Schedule Group's recording and rounding settings.
     //
     // ⚠️ CORRECTION, r263 verify — DO NOT "FIX" A NAME THAT IS ALREADY RIGHT. The 1c5602cc plan told the
     // reporter that the Work Schedule row opens a page headed "Shift settings", and an earlier draft of

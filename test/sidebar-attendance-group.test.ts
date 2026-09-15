@@ -140,28 +140,49 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('ad52212d: the three settings categories lead the node, Shift first', () => {
-    // The item's actual deliverable, stated positively. Shift / Overtime Pattern / Work Schedule are the
-    // three categories the reporter named; everything else follows them.
-    // 870b79e2 (r277) — the middle row now READS "Schedule Group" (nav.overtimePattern → nav.scheduleGroup).
-    // Its href is unchanged, which is all this ordering assertion reads, so the local name `otPattern`
-    // below still points at the right row; the rename is pinned by test/attendance-pack.test.ts.
+  it('ad52212d: the settings categories lead the node — and r287 retired two of the three', () => {
+    /**
+     * ⚠️ READ BEFORE PUTTING EITHER ROW BACK. ad52212d asked for THREE named settings categories to lead
+     * this node: Shift → Overtime Pattern (later renamed Schedule Group) → Work Schedule. Two of the
+     * three are gone as of e4471e3c (r287), and it is the same reporter retiring their own arrangement:
+     * "Schedule Group and Work Schedule shall be consolidated into the existing Schedule sub-menu ... to
+     * provide a single centralised Schedule configuration area for all schedule-related settings and
+     * avoid duplicated or separated schedule configuration screens."
+     *
+     * So the assertion is UPDATED, not loosened, and it now says three things instead of one:
+     *   · Shift still leads the node and still precedes the 5cb199b3 tail — the half of ad52212d that
+     *     this round did not touch is still asserted exactly as it was;
+     *   · the two retired hrefs are NOT rows anywhere in the rail — a half-done retirement that left one
+     *     of them behind in either source is the failure mode;
+     *   · their PAGES still exist, because retiring a row must never delete a screen. What did not move
+     *     (the deduction switch, the overtime bands and rates, the tenant overtime rates, the registered
+     *     devices) is still edited there, reached from the Schedule screen.
+     */
     const shift = node.indexOf(`'/admin/attendance'`);
-    const otPattern = node.indexOf(`'/admin/attendance-policy'`);
-    const workSchedule = node.indexOf(`'/admin/attendance-policy/schedule'`);
     expect(shift, 'Shift is a child').toBeGreaterThan(-1);
-    expect(otPattern, 'Overtime Pattern is a child').toBeGreaterThan(-1);
-    expect(workSchedule, 'Work Schedule is a child').toBeGreaterThan(-1);
-    expect(shift, 'Shift leads').toBeLessThan(otPattern);
-    expect(otPattern, 'Overtime Pattern second').toBeLessThan(workSchedule);
     for (const href of TICKET_TAIL_HREFS) {
-      expect(workSchedule, `the three categories precede ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
+      expect(shift, `Shift still precedes ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
     }
-    // …and Work Schedule is admin-gated like every other row in this group-gated node.
-    const line = node.split('\n').find((l) => l.includes(`'/admin/attendance-policy/schedule'`));
-    expect(line, 'Work Schedule row exists').toBeDefined();
-    expect(line, 'Work Schedule keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
-    expect(countQuoted(SRC, '/admin/attendance-policy/schedule'), 'listed exactly once across the rail').toBe(1);
+    const line = node.split('\n').find((l) => l.includes(`{ href: '/admin/attendance',`));
+    expect(line, 'Shift row exists').toBeDefined();
+    expect(line, 'Shift keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
+    expect(countQuoted(SRC, '/admin/attendance'), 'Shift is listed exactly once across the rail').toBe(1);
+
+    // e4471e3c — the two retired categories. Asserted as an ABSENCE FROM THE RAIL and a PRESENCE ON DISK,
+    // because those are the two halves of "the row went, the screen did not".
+    for (const href of ['/admin/attendance-policy', '/admin/attendance-policy/schedule']) {
+      expect(
+        countQuoted(SRC, href),
+        `${href} still has a nav row. r287 consolidated Schedule Group and Work Schedule into the ` +
+          `Schedule sub-menu at the reporter's request; if that is being reversed, reverse this ` +
+          `assertion with it and say why.`,
+      ).toBe(0);
+      expect(
+        fs.existsSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx')),
+        `${href} lost its page. Retiring a menu row must never delete a screen — that route is still the ` +
+          `owning editor for everything r287 did NOT move, starting with the deduction switch.`,
+      ).toBe(true);
+    }
   });
 
   it('admin-gates each of the four remaining children (permissions unchanged by the move)', () => {
@@ -200,42 +221,69 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('keeps Records in the SELF-SERVICE node, not the config node (a324a4b3 rev3)', () => {
-    // rev2 put Records at the top of the merged menu. rev3 moved that menu into the group-gated
-    // Administration section, where a row with no gate of its own renders for nobody but administrators —
-    // so Records went back to My Attendance. An employee still finds their own record without passing
-    // through anything administrative; it is simply reached from the self-service node again.
-    const mine = nodeBlock('MY_ATTENDANCE_NAV');
-    expect(mine.indexOf(`{ href: '/attendance',`), 'Records is a child of My Attendance').toBeGreaterThan(-1);
+  it('keeps the EMPLOYEE’S OWN record in the self-service node (a324a4b3 rev3, re-expressed by f3e6c36e)', () => {
     /**
-     * r274 (2420718d) — WHAT THIS GUARD IS FOR IS UNCHANGED; WHAT IT MEASURES HAD TO MOVE.
+     * ⚠️ THIS GUARD HAS NOW BEEN RE-EXPRESSED TWICE AND THE RULE BEHIND IT HAS NEVER CHANGED. READ THIS
+     * BEFORE MOVING ANYTHING — deleting it is never the answer, and neither is loosening it.
      *
-     * The reporter asked for Records to be relocated to Administration and renamed Employee Attendance.
-     * Doing that literally is the rev2 regression this test was written to prevent, so Records STAYS
-     * above and an admin-gated row was ADDED beside it. The config node therefore now does contain the
-     * href — which is exactly what the old `toBe(-1)` forbade.
+     * THE RULE: an employee must always reach their own attendance from a row that is NOT inside the
+     * group-gated Administration node. The Administration sidebar group is `adminOnly` at GROUP level and
+     * the sidebar filters group-first, so a row in there renders for nobody but administrators whatever
+     * its own flag says. "Move Records into Administration" therefore does not make the screen admin-only;
+     * it makes it INVISIBLE to the staff it exists for.
      *
-     * The protection is re-expressed, not weakened: whatever `/attendance` row lives in the config node
-     * must carry `adminOnly` (so it is an addition for administrators, never the employee's only way in),
-     * and the self-service row must still carry no gate at all. An unguarded row appearing in this
-     * group-gated node is the failure mode, and it is still caught.
+     * THE HISTORY: a324a4b3 rev2 moved Records into the merged node; rev3 undid it when that node went
+     * into Administration. This file was written to stop a third attempt.
+     *
+     * f3e6c36e (r287) — THE REPORTER ASKED A SECOND TIME, AND WAS TOLD THE ABOVE, AND REAFFIRMED. Under
+     * the fight-back rule (CLAUDE.md §1) an instruction reaffirmed after a challenge is the owner's
+     * decision, so r287 takes it. It is delivered by SPLITTING, not by moving, because splitting is the
+     * only way both of the reporter's own requirements hold at once: the administrative Record function
+     * leaves My Attendance entirely (their words, twice), AND employee-facing attendance functions stay
+     * under My Attendance (their own point 7).
+     *
+     * SO WHAT THIS CASE MEASURES MOVED, AND WHAT IT PROTECTS DID NOT. The self-service row now points at
+     * `/attendance/my-records` — the employee's own screen, reads keyed on their own employment — and
+     * `/attendance` belongs to the admin row alone. The three things still asserted are the three things
+     * that were ever at risk:
+     *
+     *   1. the employee's row is in MY_ATTENDANCE_NAV, not in the config node;
+     *   2. it carries NO gate, so every employee sees it;
+     *   3. any `/attendance` row in the config node is `adminOnly` and is the renamed admin entry.
+     *
+     * A future round that deletes the employee row, gates it, or points it back at `/attendance` while
+     * leaving the admin row in place fails here — which is the same regression rev2 shipped, reached by a
+     * different road.
      */
+    const EMPLOYEE_ROW = `{ href: '/attendance/my-records',`;
+    const mine = nodeBlock('MY_ATTENDANCE_NAV');
+    expect(mine.indexOf(EMPLOYEE_ROW), 'the employee’s own record is a child of My Attendance').toBeGreaterThan(-1);
+    expect(
+      node.indexOf(EMPLOYEE_ROW),
+      'the employee’s own record must NOT be in the group-gated config node — it would render for nobody',
+    ).toBe(-1);
     const adminLine = node.split('\n').find((l) => l.includes(`{ href: '/attendance',`));
     if (adminLine !== undefined) {
       expect(adminLine, 'a /attendance row in the config node must be adminOnly').toMatch(/adminOnly: true/);
-      expect(adminLine, 'and it is the renamed admin entry, not Records').toContain('employeeAttendance');
+      expect(adminLine, 'and it is the renamed admin entry, not the employee’s record').toContain('employeeAttendance');
     }
-    const recordsIdx = mine.indexOf(`{ href: '/attendance',`);
+    const recordsIdx = mine.indexOf(EMPLOYEE_ROW);
     for (const href of TICKET_HREFS) {
-      // The config rows live in the other node entirely now, so "Records comes first" is expressed as
-      // "Records is not among them" rather than as a position comparison across two files' worth of text.
+      // The config rows live in the other node entirely, so "the employee's record comes first" is
+      // expressed as "it is not among them" rather than as a position comparison across two files.
       expect(node.indexOf(`'${href}'`), `${href} is a config row`).toBeGreaterThan(-1);
-      expect(recordsIdx, 'Records resolved in the self-service node').toBeGreaterThan(-1);
+      expect(recordsIdx, 'the employee’s record resolved in the self-service node').toBeGreaterThan(-1);
     }
-    // …and it carries NO gate. Read from the SELF-SERVICE node, which is where the row now lives.
-    const line = mine.split('\n').find((l) => l.includes(`{ href: '/attendance',`));
-    expect(line, 'Records row exists').toBeDefined();
-    expect(line, 'Records stays visible to every employee').not.toMatch(/adminOnly|managerUp/);
+    // …and it carries NO gate. Read from the SELF-SERVICE node, which is where the row lives.
+    const line = mine.split('\n').find((l) => l.includes(EMPLOYEE_ROW));
+    expect(line, 'the employee’s record row exists').toBeDefined();
+    expect(line, 'it stays visible to every employee').not.toMatch(/adminOnly|managerUp/);
+    // The screen itself must stay the employee's own: keyed on their employment, with no admin page guard.
+    // Without this the row could point at a screen that shows everybody and the assertions above would
+    // still pass — the row is not what protects the data.
+    const page = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-records/page.tsx'), 'utf8');
+    expect(page, 'the employee screen resolves the caller’s own employment').toContain('myEmployment(s)');
+    expect(page, 'and carries no admin page guard').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
   });
 
   it('keeps Import (/attendance/import) last in the merged node, still manager-gated', () => {
@@ -275,21 +323,27 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
   // Attendance Request joined them (declared in its own `it` below).
   const node = nodeBlock('MY_ATTENDANCE_NAV');
 
-  it('keeps Clock in/out first, with Records beside it and neither in the config node', () => {
+  it('keeps Clock in/out first, with My Records beside it and neither in the config node', () => {
     const clockIdx = node.indexOf(`'/attendance/clock'`);
-    const recordsIdx = node.indexOf(`{ href: '/attendance',`);
+    // f3e6c36e (r287) — the employee's Records row points at its OWN screen now, not at the shared
+    // `/attendance`. Position and gate are unchanged; only the address is. Matching on the old href here
+    // would silently stop measuring anything, because the string is no longer in this node.
+    const recordsIdx = node.indexOf(`{ href: '/attendance/my-records',`);
     expect(clockIdx, 'Clock in/out is a child of My Attendance').toBeGreaterThan(-1);
-    expect(recordsIdx, 'Records is a child of My Attendance').toBeGreaterThan(-1);
+    expect(recordsIdx, 'My Records is a child of My Attendance').toBeGreaterThan(-1);
     expect(clockIdx, 'Clock in/out is still first (5249d43f)').toBeLessThan(recordsIdx);
     // Clock in/out appears in ONE node only — listed twice is its own bug, and a self-service row inside
     // the admin-gated node would render for nobody but administrators.
     expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'/attendance/clock'`), 'Clock in/out did NOT move').toBe(-1);
-    // r274 (2420718d) — `/attendance` is now DELIBERATELY in both: Records here for every employee, and an
-    // admin-gated Employee Attendance row in the config node, because that group hides as a whole and a
-    // move would take the screen away from staff. The rev3 guard above pins that the config copy is gated
-    // and is the renamed entry, so "listed twice" cannot slip back in unnoticed for anything else.
+    // r274 put `/attendance` in BOTH nodes deliberately, because one screen served two audiences. r287
+    // split that screen, so the href belongs to the config node alone now and the employee's own route
+    // must never appear there — an ungated row inside the group-gated node renders for nobody.
     const cfg = nodeBlock('ATTENDANCE_NAV').split('\n').find((l) => l.includes(`{ href: '/attendance',`));
     if (cfg !== undefined) expect(cfg, 'the config copy is the gated admin entry').toMatch(/adminOnly: true/);
+    expect(
+      nodeBlock('ATTENDANCE_NAV').indexOf(`'/attendance/my-records'`),
+      'the employee route did NOT travel into the admin-gated node',
+    ).toBe(-1);
   });
 
   it('keeps Clock in/out visible to every employee (no adminOnly/managerUp gate)', () => {
@@ -314,11 +368,13 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
   // down, so a row that arrives without a line here is still a failure.
   it('carries Attendance Request THIRD, ungated, exactly once across the rail', () => {
     const clockIdx = node.indexOf(`'/attendance/clock'`);
-    const recordsIdx = node.indexOf(`{ href: '/attendance',`);
+    // f3e6c36e (r287) — the employee's Records row is `/attendance/my-records` now. Same position, same
+    // absence of a gate; only the address moved, because the shared screen was split.
+    const recordsIdx = node.indexOf(`{ href: '/attendance/my-records',`);
     const requestsIdx = node.indexOf(`'/attendance/requests'`);
     expect(requestsIdx, 'Attendance Request is a child of My Attendance').toBeGreaterThan(-1);
     expect(clockIdx, 'Clock in/out still precedes it').toBeLessThan(requestsIdx);
-    expect(recordsIdx, 'Records still precedes it').toBeLessThan(requestsIdx);
+    expect(recordsIdx, 'My Records still precedes it').toBeLessThan(requestsIdx);
 
     // NOT in the config node: that node sits in the group-gated Administration section, where a
     // self-service row renders for administrators and nobody else — which for a request form staff are
@@ -368,7 +424,17 @@ describe('sidebar Attendance labels (f60cd403 rename)', () => {
   ) as { nav: Record<string, string> };
 
   it('renames Attendance record → Records', () => {
+    // f3e6c36e (r287) — `nav.attendanceRecords` is DELIBERATELY not retired even though no sidebar row
+    // uses it any more: app/reports/page.tsx still labels its `/attendance` link with it, and that link
+    // is the administrator's Employee Attendance screen. Deleting the key would blank a label on the
+    // Reports index in six locales, which nothing else here would catch.
     expect(en.nav.attendanceRecords).toBe('Records');
+    // …and the row that used to carry it in My Attendance is now the employee's own screen, with its own
+    // key. Asserted here so the split is written down beside the rename it grew out of: one key for the
+    // administrator's reading of everybody, one for the employee's reading of themselves, and the two
+    // must not read the same, in any locale, or the rail says the same word twice for different things.
+    expect(en.nav.myRecords).toBe('My Records');
+    expect(en.nav.myRecords).not.toBe(en.nav.attendanceRecords);
   });
 
   it('renames Attendance import → Import', () => {

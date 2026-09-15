@@ -290,6 +290,7 @@
     "attendanceAllowance": "Attendance allowance",
     "attendanceClock": "Clock in/out",
     "attendanceRecords": "Records",
+    "myRecords": "My Records",
     "attendanceRequest": "Attendance Irregularity",
     "planOvertime": "Self Overtime",
     "myTravel": "My Travel",
@@ -2537,6 +2538,12 @@
       "scopeEmployees": "{count, plural, =1 {# employee} other {# employees}}",
       "runNoChanges": "This run changed nothing.",
       "recentNote": "Every run is kept permanently — who ran it, which employees and dates, and the before-and-after figures for each day that moved. Each run also appears in the Audit Trail under Attendance."
+    },
+    "myRecords": {
+      "title": "My Records",
+      "intro": "Your own attendance, day by day. Only your record is shown here.",
+      "notLinked": "Your login is not linked to an active employment, so there is no attendance record to show.",
+      "correctionNote": "Something wrong with a day? Raise it under Attendance Request — this screen is a record, not a place to change one."
     }
   },
   "org": {
@@ -7514,6 +7521,7 @@
         "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
         "leaveTracker": "Everyone can open this; you see your own leave, managers see their reports, and administrators get the employee lookups instead of the calendar.",
         "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
+        "myAttendanceRecords": "Everyone can open this; whoever you are, it shows only your own attendance.",
         "approvals": "Managers and above; what appears follows your actual reporting lines.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "performance": "Managers and above; what appears follows your actual reporting lines.",
@@ -8901,7 +8909,7 @@
       "colBreak": "Break",
       "breakMinutes": "{n} min",
       "usingDefaults": "System default",
-      "workScheduleLink": "Open Work Schedule to edit a company's working week →",
+      "workScheduleLink": "Overtime rates, registered devices and backup-shift coverage →",
       "groupTitle": "Schedule Group",
       "groupHint": "These settings belong to a Schedule Group — the named rule set every shift under it follows. Pick a group to see its settings.",
       "groupEmpty": "No Schedule Group has been set up yet.",
@@ -8925,6 +8933,7 @@
       "recordSwitchLabel": "Record these minutes",
       "recordSwitchFrom": "recording from {date}",
       "notPayNote": "These minutes are written on the attendance record only. Nothing in payroll reads them, so no payslip is reduced by them. Making them affect someone’s pay would be a separate decision, with its own before and after.",
+      "deductionsElsewhere": "This switch is edited on the Schedule Group itself, and only there. The date it starts from is stamped when you turn it on and can never be typed, so a payroll month you have already closed can never pick up a deduction afterwards. A second place to flip it would be a second way to get that date wrong.",
       "otEarlyTitle": "Before-shift overtime",
       "otEarlyHint": "Whether time clocked before the scheduled start counts as overtime. There is no approval step behind it: with it on, every pre-shift minute becomes overtime.",
       "otEarlyLabel": "Count time clocked before the scheduled start as overtime",

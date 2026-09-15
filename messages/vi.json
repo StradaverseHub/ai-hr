@@ -290,6 +290,7 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceClock": "Chấm công vào/ra",
     "attendanceRecords": "Hồ sơ",
+    "myRecords": "Hồ sơ của tôi",
     "attendanceRequest": "Bất thường chấm công",
     "planOvertime": "Tự đăng ký làm thêm giờ",
     "myTravel": "Công tác của tôi",
@@ -2537,6 +2538,12 @@
       "scopeEmployees": "{count, plural, other {# nhân viên}}",
       "runNoChanges": "Lần chạy này không thay đổi gì.",
       "recentNote": "Mọi lần chạy đều được giữ vĩnh viễn — ai đã chạy, những nhân viên và ngày nào, cùng các con số trước và sau cho mỗi ngày đã thay đổi. Mỗi lần chạy cũng xuất hiện trong Nhật ký kiểm toán ở mục Chấm công."
+    },
+    "myRecords": {
+      "title": "Hồ sơ của tôi",
+      "intro": "Chấm công của chính bạn, theo từng ngày. Chỉ hồ sơ của bạn được hiển thị ở đây.",
+      "notLinked": "Tài khoản của bạn chưa được liên kết với một hợp đồng lao động đang hoạt động nên không có hồ sơ chấm công để hiển thị.",
+      "correctionNote": "Có ngày nào chưa đúng? Hãy gửi tại Yêu cầu chấm công — màn hình này là hồ sơ, không phải nơi để sửa."
     }
   },
   "org": {
@@ -7514,6 +7521,7 @@
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý thấy của cấp dưới, còn quản trị viên nhận phần tra cứu nhân viên thay cho lịch.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "myAttendanceRecords": "Mọi người đều có thể mở; dù bạn là ai, màn hình này chỉ hiển thị chấm công của chính bạn.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
@@ -8901,7 +8909,7 @@
       "colBreak": "Nghỉ giải lao",
       "breakMinutes": "{n} phút",
       "usingDefaults": "Mặc định hệ thống",
-      "workScheduleLink": "Mở Lịch làm việc công ty để sửa tuần làm việc →",
+      "workScheduleLink": "Mức tăng ca, thiết bị đã đăng ký và độ phủ ca dự phòng →",
       "groupTitle": "Nhóm lịch làm việc",
       "groupHint": "Các thiết lập này thuộc về một Nhóm lịch làm việc — bộ quy tắc có tên mà mọi ca trong nhóm đều tuân theo. Chọn một nhóm để xem thiết lập của nhóm đó.",
       "groupEmpty": "Chưa có Nhóm lịch làm việc nào được thiết lập.",
@@ -8925,6 +8933,7 @@
       "recordSwitchLabel": "Ghi lại số phút này",
       "recordSwitchFrom": "ghi từ {date}",
       "notPayNote": "Những phút này chỉ được ghi vào bản ghi chấm công. Không có phần nào của bảng lương đọc chúng, nên không phiếu lương nào bị trừ vì chúng. Để chúng ảnh hưởng đến lương của ai đó là một quyết định riêng, với so sánh trước và sau của riêng nó.",
+      "deductionsElsewhere": "Công tắc này chỉ được chỉnh trên chính Nhóm lịch làm việc. Ngày bắt đầu do hệ thống đóng dấu khi bạn bật lên và không bao giờ gõ tay được, nên một tháng lương đã chốt sẽ không thể phát sinh khoản trừ về sau. Có nơi thứ hai để bật tắt nghĩa là có thêm một cách làm sai ngày đó.",
       "otEarlyTitle": "Tăng ca trước ca",
       "otEarlyHint": "Thời gian chấm công trước giờ bắt đầu có được tính là tăng ca hay không. Không có bước phê duyệt nào phía sau: khi bật, mọi phút trước ca đều thành tăng ca.",
       "otEarlyLabel": "Tính thời gian chấm công trước giờ bắt đầu là tăng ca",

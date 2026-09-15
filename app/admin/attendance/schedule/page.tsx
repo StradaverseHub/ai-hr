@@ -9,15 +9,21 @@ import { listShiftsForTenant } from '@/core/roster';
 import { ClientTabs } from '@/components/personnel-tabs';
 import {
   Card,
+  ErrorBanner,
+  Field,
   PageHeader,
   SectionHeader,
+  btnPrimary,
+  inputCls,
   pageWideCls,
   tableWrapCls,
   tbodyCls,
   theadCls,
   thCls,
 } from '@/components/ui';
+import { WorkScheduleForm } from '../../attendance-policy/schedule/work-schedule-form';
 import { SCHEDULE_TAB_KEYS, type ScheduleTabKey } from './tabs';
+import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from './actions';
 
 /**
  * Schedule (feedback 1c5602cc, r263) — the tabbed configuration screen for an employee's WORKING PATTERN.
@@ -44,26 +50,46 @@ import { SCHEDULE_TAB_KEYS, type ScheduleTabKey } from './tabs';
  * 28: a control drawn at a value nothing wires up is worse than an absent one. Do not "finish" this
  * screen by adding those four controls; finish it by shipping the storage first.
  *
- * WHY IT IS READ-ONLY, WHICH IS A DESIGN DECISION AND NOT AN UNFINISHED EDGE. Everything the General tab
- * shows already HAS an editor: the shift library (/admin/attendance/[shiftId]) and the company work
- * schedule (/admin/attendance-policy/schedule). Adding a second form over `shift` and `attendance_policy`
- * here would be two write paths over one table, which is exactly how the Schedule Assignment screen
- * (0bade264) argued itself into being a link rather than a form — and those editors carry validation
- * (disjoint Full/Half/Off CHECKs, coherent start/end) a copy would have to re-implement and eventually
- * re-implement differently. Every section therefore ends in a link to the editor that owns the value.
+ * ⚠️ IT WAS READ-ONLY UNTIL e4471e3c (r287), AND THE REVERSAL IS THE REPORTER'S, NOT A DRIFT.
  *
- * r277 KEEPS THAT DECISION, and it applies with more force to the two new tabs than it did to General.
- * `attendance_rule` is edited at /admin/attendance-policy/rules/[ruleId], and that editor owns rules a
- * copy here would have to reproduce and would eventually reproduce differently: the continuous-ladder
- * check on the overtime bands, the "after X cannot exceed deduct Y" pairs, and — the one that matters —
- * the recording switch's effective-from date, which is STAMPED BY THE SERVICE and never typed, so that
- * recording can never reach a period that is already closed. A second form over that switch is a second
- * way to get the date wrong. So these tabs SHOW and LINK, exactly like the General tab's three cards.
- * The group selector is therefore a plain GET link, not a form: no client island, no RSC boundary.
+ * r263 and r277 built these tabs as read-only mirrors, each section ending in a link to the editor that
+ * owns the value, and said why in writing: a second form over one table is two write paths, and those
+ * editors carry validation (disjoint Full/Half/Rest, coherent start/end, the continuous-ladder check on
+ * the overtime bands) a copy would have to re-implement and would eventually re-implement differently.
+ * The reporter approved that. They have since asked for the opposite — "Schedule Group and Work Schedule
+ * shall be consolidated into the existing Schedule sub-menu ... to provide a single centralised Schedule
+ * configuration area" — and that is a fair change of mind, so r287 makes these tabs edit.
  *
- * ALONGSIDE, NOT INSTEAD (the a6fe37fc playbook). The existing "Work Schedule" row → /admin/attendance-
- * policy/schedule is UNTOUCHED by this round and keeps working. Nothing is moved or removed until a round
- * is explicitly the cutover.
+ * THE ORIGINAL REASONING IS NOT DISCARDED; IT IS SATISFIED A DIFFERENT WAY. Nothing here is a second
+ * form over a table:
+ *
+ *   · THE GENERAL TAB renders app/admin/attendance-policy/schedule/work-schedule-form.tsx, which IS the Work Schedule page's
+ *     editor — the same component, the same field names, the same `setAttendancePolicyAction`. One
+ *     writer, two mounts, so the two screens cannot store different rows and cannot drift.
+ *   · THE ATTENDANCE AND OVERTIME TABS post to ./actions.ts, which re-reads the stored Schedule Group,
+ *     carries every column forward verbatim and overlays ONLY the fields the tab renders, then writes
+ *     through the SAME `updateAttendanceRule` the rule editor calls. Posting to it cannot change a
+ *     setting the tab does not show. Read that file before touching either action: posting a partial
+ *     form to `updateAttendanceRuleAction` instead would have turned the deduction switch OFF and
+ *     DELETED every overtime band, silently.
+ *
+ * ⚠️ THE ONE SETTING THAT DID NOT MOVE. `apply_deductions` + `deductions_effective_from` stay on the
+ * Schedule Group editor. The effective-from date is STAMPED BY THE SERVICE when the switch flips and can
+ * never be typed, and a DB CHECK (migration 0394) makes "deductions on with no start date"
+ * unrepresentable — that is what stops a deduction reaching a closed payroll period. A second form over
+ * that switch is a second way to get the date wrong. The Attendance tab shows it read-only and says
+ * where it is edited. The reporter was told this in the plan they approved. Do not add a checkbox.
+ *
+ * Also NOT editable here, for the same "the editor owns rules a copy would re-implement" reason: the
+ * shift library (its own screen), and the overtime BAND boundaries and RATES, which are the ladder the
+ * continuous-ladder validation guards, and are money.
+ *
+ * THE CUTOVER HAPPENED (the a6fe37fc playbook, completed). r263 built alongside; the "Schedule Group" and
+ * "Work Schedule" nav rows are gone as of this round. Both ROUTES survive as the owning editors for what
+ * did not move, they keep their lib/permissions.ts registration under the `attendancePolicyConfig`
+ * screenKey (a permission identity — renaming or removing it would silently revoke grants), and this
+ * screen links to both. Those links are the only way in now, so they are pinned by
+ * test/schedule-config-screen.test.ts.
  *
  * ⚠️ r277 (e5ff7189 / d91aee93 stage 1) — ATTENDANCE AND OVERTIME ARE NO LONGER EMPTY, AND THE REASON IS
  * THE OPPOSITE OF "we filled a tab in". Both tabs now render settings that ALREADY EXIST and have existed
@@ -92,7 +118,7 @@ import { SCHEDULE_TAB_KEYS, type ScheduleTabKey } from './tabs';
 export default async function ScheduleConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; group?: string }>;
+  searchParams: Promise<{ tab?: string; group?: string; error?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.scheduleConfig');
@@ -250,57 +276,36 @@ export default async function ScheduleConfigPage({
       </Card>
 
       {/* ── Rest days, off days and working-hour limits, per company ───────────────────────────────
+          e4471e3c (r287) — EDITABLE HERE NOW, and it is the same editor, not a copy of it.
+
           attendance_policy is the schedule for a day with NO shift assigned (core/attendance.ts
           scheduleFor's last fallback), and its working-days list is ALSO read for every employee by
           absence derivation and by roster generation — so it governs the working pattern even where a
-          shift exists. `isDefault` marks a company with no row of its own: those figures are the
-          code defaults, not something anybody chose, and the row says so. */}
+          shift exists. `isDefault` marks a company with no row of its own: those figures are the code
+          defaults, not something anybody chose, and the card says so.
+
+          Until this round the tab showed these values and pointed at "Work Schedule" to change them. The
+          reporter asked for that sub-menu to be consolidated into this screen, so the editor MOVED into
+          app/admin/attendance-policy/schedule/work-schedule-form.tsx and is rendered here and on its own page, posting the same
+          field names to the same server action. One writer, two mounts — see that file for why a
+          hand-drawn form over the fields this tab happened to display would have wiped four settings it
+          does not show. */}
       <Card>
         <SectionHeader title={t('weekTitle')} count={visible.length} subtitle={t('weekHint')} />
-        {visible.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">{t('weekEmpty')}</p>
-        ) : (
-          <div className={tableWrapCls}>
-            <table className="w-full text-sm">
-              <thead className={theadCls}>
-                <tr>
-                  <th className={thCls}>{t('colCompany')}</th>
-                  <th className={thCls}>{t('colWorkingHours')}</th>
-                  <th className={thCls}>{t('colBreak')}</th>
-                  <th className={thCls}>{t('colFullDays')}</th>
-                  <th className={thCls}>{t('colHalfDays')}</th>
-                  <th className={thCls}>{t('colRestDays')}</th>
-                </tr>
-              </thead>
-              <tbody className={tbodyCls}>
-                {policies.map((p) => {
-                  const assigned = new Set<number>([...(p.workingDays ?? []), ...(p.halfWorkingDays ?? [])]);
-                  const rest = ISO_DAYS.filter((d) => !assigned.has(d));
-                  return (
-                    <tr key={p.companyId}>
-                      <td className="px-3 py-2">
-                        {companyName.get(p.companyId) ?? p.companyId}
-                        {p.isDefault && (
-                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                            {t('usingDefaults')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {hhmm(p.workStart)}–{hhmm(p.workEnd)}
-                      </td>
-                      <td className="px-3 py-2">{t('breakMinutes', { n: p.breakMinutes })}</td>
-                      <td className="px-3 py-2">{days(p.workingDays)}</td>
-                      <td className="px-3 py-2">{days(p.halfWorkingDays)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{days(rest)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="border-t border-border px-4 py-3">
+        {visible.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('weekEmpty')}</p>}
+      </Card>
+      {visible.map((c) => {
+        const p = policies.find((x) => x.companyId === c.id);
+        return p ? (
+          <WorkScheduleForm key={c.id} company={{ id: c.id, name: companyName.get(c.id) ?? c.id }} policy={p} returnTo="schedule-tab" />
+        ) : null;
+      })}
+      <Card>
+        {/* What is LEFT on the Work Schedule page, which survives as the owning editor for it: the tenant
+            overtime RATES (a statutory ruleset, not attendance_policy), the registered clocking devices
+            and the backup-shift coverage card. None of those is a schedule setting, so none of them moved
+            — and with the menu row gone this link is how an administrator reaches them. */}
+        <div className="px-4 py-3">
           <Link href="/admin/attendance-policy/schedule" className="text-sm text-primary hover:underline">
             {t('workScheduleLink')}
           </Link>
@@ -393,9 +398,6 @@ export default async function ScheduleConfigPage({
     </div>
   );
 
-  /** A stored minutes figure, in words. `0` is a real, chosen value and must not print as an em dash. */
-  const mins = (n: number) => t('minutes', { n });
-
   /**
    * e5ff7189 stage 1 — THE ATTENDANCE TAB: the four settings the reporter asked for, which already exist.
    *
@@ -411,47 +413,118 @@ export default async function ScheduleConfigPage({
       {groupPicker('attendance')}
       {selectedGroup == null ? null : (
         <>
-          <Card>
-            <SectionHeader title={t('graceTitle')} subtitle={t('graceHint', { group: selectedGroup.name })} />
-            <dl className="divide-y divide-border">
-              <div className="flex items-center justify-between px-4 py-3">
-                <dt className="text-sm font-medium">{t('graceLate')}</dt>
-                <dd className="text-sm tabular-nums text-foreground">{mins(selectedGroup.lateGracePeriodMinutes)}</dd>
-              </div>
-              <div className="flex items-center justify-between px-4 py-3">
-                <dt className="text-sm font-medium">{t('graceEarly')}</dt>
-                <dd className="text-sm tabular-nums text-foreground">{mins(selectedGroup.earlyGracePeriodMinutes)}</dd>
-              </div>
-            </dl>
-            {groupEditLink}
-          </Card>
+          {/* ── EDITABLE, as of e4471e3c (r287) ──────────────────────────────────────────────────────
+              One form over both cards, so the six figures that describe "when does a clocking count as
+              late or early, and how many minutes are recorded" are saved together. It posts to this
+              screen's OWN narrow action, NOT to updateAttendanceRuleAction — that one builds a complete
+              rule out of the submission and would have turned the deduction switch off and deleted every
+              overtime band. See app/admin/attendance/schedule/actions.ts. */}
+          <form action={saveScheduleGroupAttendanceAction} className="space-y-6">
+            <input type="hidden" name="ruleId" value={selectedGroup.id} />
 
+            <Card>
+              <SectionHeader title={t('graceTitle')} subtitle={t('graceHint', { group: selectedGroup.name })} />
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
+                <Field label={t('graceLate')}>
+                  <input
+                    type="number"
+                    min={0}
+                    name="lateGracePeriodMinutes"
+                    defaultValue={selectedGroup.lateGracePeriodMinutes}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('graceEarly')}>
+                  <input
+                    type="number"
+                    min={0}
+                    name="earlyGracePeriodMinutes"
+                    defaultValue={selectedGroup.earlyGracePeriodMinutes}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader title={t('recordRulesTitle')} subtitle={t('recordRulesHint')} />
+              <div className={tableWrapCls}>
+                <table className="w-full text-sm">
+                  <thead className={theadCls}>
+                    <tr>
+                      <th className={thCls}>{t('colRule')}</th>
+                      <th className={thCls}>{t('colAfter')}</th>
+                      <th className={thCls}>{t('colRecorded')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className={tbodyCls}>
+                    <tr>
+                      <td className="px-3 py-2">{t('ruleLate')}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          name="lateAfterMinutes"
+                          defaultValue={selectedGroup.lateAfterMinutes}
+                          aria-label={`${t('ruleLate')} — ${t('colAfter')}`}
+                          className={inputCls}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          name="lateDeductMinutes"
+                          defaultValue={selectedGroup.lateDeductMinutes}
+                          aria-label={`${t('ruleLate')} — ${t('colRecorded')}`}
+                          className={inputCls}
+                        />
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2">{t('ruleEarly')}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          name="earlyAfterMinutes"
+                          defaultValue={selectedGroup.earlyAfterMinutes}
+                          aria-label={`${t('ruleEarly')} — ${t('colAfter')}`}
+                          className={inputCls}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          name="earlyDeductMinutes"
+                          defaultValue={selectedGroup.earlyDeductMinutes}
+                          aria-label={`${t('ruleEarly')} — ${t('colRecorded')}`}
+                          className={inputCls}
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
+              <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+                <button className={btnPrimary}>{tr('save')}</button>
+              </div>
+            </Card>
+          </form>
+
+          {/* ⚠️ THE ONE SETTING THAT DID NOT MOVE, AND IT IS READ-ONLY HERE ON PURPOSE.
+              `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394): the
+              effective-from date is STAMPED BY THE SERVICE the moment the switch flips and can never be
+              typed, and a DB CHECK makes "deductions on with no start date" unrepresentable. Together that
+              is what stops a deduction reaching a payroll month that is already closed. A second form over
+              this switch would be a second way to get that date wrong, so it stays on the Schedule Group
+              editor and this card shows it and says where it is edited. The reporter was told this in the
+              plan they approved. DO NOT "finish" this tab by adding a checkbox here. */}
           <Card>
-            <SectionHeader title={t('recordRulesTitle')} subtitle={t('recordRulesHint')} />
-            <div className={tableWrapCls}>
-              <table className="w-full text-sm">
-                <thead className={theadCls}>
-                  <tr>
-                    <th className={thCls}>{t('colRule')}</th>
-                    <th className={thCls}>{t('colAfter')}</th>
-                    <th className={thCls}>{t('colRecorded')}</th>
-                  </tr>
-                </thead>
-                <tbody className={tbodyCls}>
-                  <tr>
-                    <td className="px-3 py-2">{t('ruleLate')}</td>
-                    <td className="px-3 py-2 tabular-nums">{mins(selectedGroup.lateAfterMinutes)}</td>
-                    <td className="px-3 py-2 tabular-nums">{mins(selectedGroup.lateDeductMinutes)}</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2">{t('ruleEarly')}</td>
-                    <td className="px-3 py-2 tabular-nums">{mins(selectedGroup.earlyAfterMinutes)}</td>
-                    <td className="px-3 py-2 tabular-nums">{mins(selectedGroup.earlyDeductMinutes)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <dl className="divide-y divide-border border-t border-border">
+            <SectionHeader title={tr('deductionsSectionTitle')} />
+            <dl className="divide-y divide-border">
               <div className="flex items-center justify-between px-4 py-3">
                 <dt className="text-sm font-medium">{t('recordSwitchLabel')}</dt>
                 <dd className="text-sm text-foreground">
@@ -464,7 +537,9 @@ export default async function ScheduleConfigPage({
                 </dd>
               </div>
             </dl>
-            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
+            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+              {t('deductionsElsewhere')}
+            </p>
             {groupEditLink}
           </Card>
         </>
@@ -480,21 +555,37 @@ export default async function ScheduleConfigPage({
    * The Overtime Pattern is NOT a field on this tab, and that is the 870b79e2 answer restated: the
    * Overtime Pattern IS the Schedule Group. It is the thing these settings belong to, so it is the
    * selector at the top, not a dropdown inside.
+   *
+   * e4471e3c (r287) — EDITABLE NOW, but only the two things this tab has always shown: the before-shift
+   * switch and each band's rounding. The band BOUNDARIES and the RATES stay on the Schedule Group editor
+   * with the deduction switch — they are the overtime ladder, they carry a continuous-ladder validation,
+   * and the rate is money. The action rebuilds the band table from the STORED rows and overlays rounding
+   * matched BY ROW ID, so nothing here can move a boundary or a rate.
    */
   const overtime = (
     <>
       {groupPicker('overtime')}
       {selectedGroup == null ? null : (
-        <>
+        <form action={saveScheduleGroupOvertimeAction} className="space-y-6">
+          <input type="hidden" name="ruleId" value={selectedGroup.id} />
+          {/* ⚠️ THE MARKER, read as a VALUE by the action and never by presence. A browser omits an
+              unchecked checkbox, so without this "turned off" and "this form did not carry the control"
+              are the same bytes — the trap 7c834696 hit on this exact setting. */}
+          <input type="hidden" name="earlyOtEditor" value="1" />
+
           <Card>
             <SectionHeader title={t('otEarlyTitle')} subtitle={t('otEarlyHint')} />
-            <dl className="divide-y divide-border">
-              <div className="flex items-center justify-between px-4 py-3">
-                <dt className="text-sm font-medium">{t('otEarlyLabel')}</dt>
-                <dd className="text-sm text-foreground">{selectedGroup.applyToEarlyOt ? t('settingOn') : t('settingOff')}</dd>
-              </div>
-            </dl>
-            {groupEditLink}
+            <div className="px-4 py-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
+                <input
+                  type="checkbox"
+                  name="applyToEarlyOt"
+                  defaultChecked={selectedGroup.applyToEarlyOt}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                {t('otEarlyLabel')}
+              </label>
+            </div>
           </Card>
 
           <Card>
@@ -520,23 +611,40 @@ export default async function ScheduleConfigPage({
                       <tr key={row.id}>
                         {/* A band whose "To" is at or below its "From" is OPEN-ENDED (db/schema.ts), which
                             is a different sentence from a range and must read as one — "120 minutes and
-                            above", never "120–0 minutes". */}
+                            above", never "120–0 minutes". The band itself is NOT editable here. */}
                         <td className="px-3 py-2 whitespace-nowrap">
                           {row.toMinutes <= row.fromMinutes
                             ? t('bandOpenEnded', { from: row.fromMinutes })
                             : t('bandRange', { from: row.fromMinutes, to: row.toMinutes })}
                         </td>
                         <td className="px-3 py-2">
-                          {row.roundingMode === 'down'
-                            ? tr('roundingModeDown')
-                            : row.roundingMode === 'up'
-                              ? tr('roundingModeUp')
-                              : tr('roundingModeNone')}
+                          {/* ⚠️ KEYED ON THE BAND'S "FROM" BOUNDARY — not on its position, and NOT on
+                              `row.id`. `updateAttendanceRule` replaces the band table wholesale, so every
+                              row id changes on every save of this rule; an id-keyed field silently stops
+                              matching after any save made since this page was rendered, and the rounding
+                              edit would be discarded without a word. The "From" boundary is unique per
+                              rule (the continuous-ladder validation guarantees it) and survives the
+                              re-insert. See ./actions.ts. */}
+                          <select
+                            name={`roundingMode_${row.fromMinutes}`}
+                            defaultValue={row.roundingMode}
+                            aria-label={t('colRoundingMode')}
+                            className={inputCls}
+                          >
+                            <option value="none">{tr('roundingModeNone')}</option>
+                            <option value="down">{tr('roundingModeDown')}</option>
+                            <option value="up">{tr('roundingModeUp')}</option>
+                          </select>
                         </td>
-                        {/* 'none' has no step, and a step printed beside "no rounding" would be a figure
-                            that does nothing — the exact thing this screen's audit refuses to draw. */}
-                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                          {row.roundingMode === 'none' || !row.roundToMinutes ? '—' : mins(row.roundToMinutes)}
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            min={0}
+                            name={`roundToMinutes_${row.fromMinutes}`}
+                            defaultValue={row.roundToMinutes ?? ''}
+                            aria-label={t('colRoundTo')}
+                            className={inputCls}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -544,9 +652,12 @@ export default async function ScheduleConfigPage({
                 </table>
               </div>
             )}
+            <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+              <button className={btnPrimary}>{tr('save')}</button>
+            </div>
             {groupEditLink}
           </Card>
-        </>
+        </form>
       )}
     </>
   );
@@ -554,6 +665,9 @@ export default async function ScheduleConfigPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('pageTitle')} description={t('pageSubtitle')} />
+      {/* r287 — the tabs WRITE now, so a refusal has to land somewhere the operator can read it. The
+          save actions redirect back to the tab they were made on carrying ?error=. */}
+      <ErrorBanner message={sp.error} />
       <ClientTabs<ScheduleTabKey>
         ariaLabel={t('tabsAria')}
         defaultTab={defaultTab}
