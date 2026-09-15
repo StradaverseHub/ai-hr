@@ -205,7 +205,7 @@ describe('fa2db8cb rev 2 — the two client islands keep the promises no behavio
     expect(search, 'typing updates a local string and nothing else').toContain('onChange={(e) => setQuery(e.target.value)}');
     // The only two things that may start a request: the button and Enter. Counted, so a third cannot be
     // added quietly — an effect that searched on mount would show up here too.
-    expect(search.match(/runSearch\(\)/g)?.length, 'exactly two call sites').toBe(2);
+    expect(search.match(/void runSearch\(\)/g)?.length, 'exactly two call sites — the button and the Enter key').toBe(2);
     expect(search).toContain('onClick={() => void runSearch()}');
     expect(search).toMatch(/if \(e\.key !== 'Enter'\) return;\s*e\.preventDefault\(\);\s*void runSearch\(\);/);
     expect(search, 'no debounce, no timer: a settle delay here would BE search-as-you-type').not.toContain('setTimeout');

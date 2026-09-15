@@ -488,7 +488,20 @@ describe('f9afd1ce rev 2 — the pages render', () => {
       /<button type="button" disabled=""[^>]*>Satellite<\/button>/,
     );
     expect(html, '…and it says why, in the page, not only in a tooltip').toContain('Satellite view is off');
-    console.log('LATDUMP>>>' + html.slice(html.indexOf('name="lat"') - 120, html.indexOf('name="lat"') + 400) + '<<<LATDUMP');
+    /**
+     * The fallback the whole keyless design rests on: the coordinates are still ORDINARY REQUIRED BOXES,
+     * so a site can be created when the map is slow, blocked or simply not there. Read as the whole
+     * <input> tag rather than as a regex across attributes — React 19 emits `name` and `value` AFTER
+     * `class` on an input, so an order-sensitive pattern here pins React's internals, not the screen.
+     */
+    const inputTag = (field: string) => {
+      const i = at(html, `name="${field}"`);
+      return html.slice(html.lastIndexOf('<input', i), html.indexOf('>', i) + 1);
+    };
+    for (const field of ['lat', 'lng', 'radiusM']) {
+      expect(inputTag(field), `${field} is still a plain typed box`).toContain('type="number"');
+      expect(inputTag(field), `${field} is still required by the form itself`).toContain('required=""');
+    }
     expect(html, 'still no embed — an <iframe> map needs the key that does not exist').not.toContain('<iframe');
     // A junk or unknown addPoint pre-picks nothing.
     const plain = visible(await renderNew({ addPoint: 'not-a-uuid' }));
