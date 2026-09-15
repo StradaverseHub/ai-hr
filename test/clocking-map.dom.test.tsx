@@ -39,6 +39,8 @@ type FakeState = {
   circle: { latLng: [number, number] | null; radius: number; onMap: boolean } | null;
   views: [number, number][];
   fits: number;
+  /** Set false to stand for "the circle has grown out of the frame". */
+  containsCircle: boolean;
   invalidated: number;
   removed: number;
 };
@@ -51,6 +53,7 @@ vi.mock('leaflet', () => {
     circle: null,
     views: [],
     fits: 0,
+    containsCircle: true,
     invalidated: 0,
     removed: 0,
   };
@@ -67,6 +70,7 @@ vi.mock('leaflet', () => {
       return mapApi;
     },
     getZoom: () => 14,
+    getBounds: () => ({ contains: () => state.containsCircle }),
     invalidateSize() {
       state.invalidated += 1;
     },
@@ -154,6 +158,7 @@ vi.mock('leaflet', () => {
         circle: null,
         views: [],
         fits: 0,
+        containsCircle: true,
         invalidated: 0,
         removed: 0,
       });
@@ -283,6 +288,33 @@ describe('fa2db8cb rev 2 — the map: a marker, the radius as a circle, and a Sa
     expect(b.lat.value).toBe(PENANG.lat);
     expect(b.lng.value).toBe(PENANG.lng);
     expect(b.radiusM.value).toBe('');
+  });
+
+  it('a radius change leaves the view alone UNLESS the circle has grown out of it', async () => {
+    render(<Harness provider={OSM_PROVIDER} />);
+    await mapReady();
+    const b = boxes();
+    typeInto(b.lat, PENANG.lat);
+    typeInto(b.lng, PENANG.lng);
+    typeInto(b.radiusM, '150');
+    await waitFor(() => expect(fake.__state.circle?.radius).toBe(150));
+
+    // While the circle still fits, typing a radius must not fly the map about: 1 → 15 → 150.
+    const fitsBefore = fake.__state.fits;
+    const viewsBefore = fake.__state.views.length;
+    for (const r of ['1', '15', '150', '400']) {
+      typeInto(b.radiusM, r);
+      await waitFor(() => expect(fake.__state.circle?.radius).toBe(Number(r)));
+    }
+    expect(fake.__state.fits, 'no reframe while it fits').toBe(fitsBefore);
+    expect(fake.__state.views.length, 'and no pan either — a radius is not a move').toBe(viewsBefore);
+
+    // ⚠️ At the service's own 5000 m advisory ceiling the circle is many times the height of the card.
+    // A flat blue wash with no visible edge is exactly what this map exists to prevent.
+    fake.__state.containsCircle = false;
+    typeInto(b.radiusM, '5000');
+    await waitFor(() => expect(fake.__state.fits, 'grown out of frame — reframe once').toBeGreaterThan(fitsBefore));
+    expect(fake.__state.circle?.radius).toBe(5000);
   });
 
   it('a half-typed or out-of-range coordinate draws nothing — it is not a location yet', async () => {

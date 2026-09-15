@@ -137,7 +137,19 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
 
           const how = placed ? mode : 'fit';
           placed = true;
-          if (how === 'still') return;
+          if (how === 'still') {
+            /**
+             * A radius change does NOT chase the view — typing 1, 15, 150 must not fly the map about.
+             * The ONE exception is the circle growing out of the frame: at the service's own 5000 m
+             * advisory ceiling the circle is many times the height of this card, so the operator would
+             * be looking at a flat blue wash with no edge to judge. A circle you cannot see is exactly
+             * what this map exists to prevent, so when it no longer fits, and only then, reframe.
+             */
+            if (radius > 0 && map.hasLayer(circle) && !map.getBounds().contains(circle.getBounds())) {
+              map.fitBounds(circle.getBounds(), { maxZoom: 18, padding: [24, 24] });
+            }
+            return;
+          }
           if (how === 'fit' && radius > 0) map.fitBounds(circle.getBounds(), { maxZoom: 18, padding: [24, 24] });
           else if (how === 'fit') map.setView(here, POINT_ZOOM);
           else map.setView(here, map.getZoom(), { animate: false });
@@ -250,7 +262,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         </div>
       </div>
 
-      <div className="relative h-72 w-full overflow-hidden rounded-md border border-border bg-muted">
+      <div className="relative h-80 w-full overflow-hidden rounded-md border border-border bg-muted sm:h-96">
         <div ref={canvasRef} className="absolute inset-0" />
         {status !== 'ready' && (
           <p className="absolute inset-0 z-[800] flex items-center justify-center p-4 text-center text-xs text-muted-foreground">
