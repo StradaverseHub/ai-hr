@@ -23,6 +23,7 @@ import {
   ViewConfigSection,
   asEligList,
   type Action,
+  type EarnedSweepFacts,
   type LeaveEligibilityRule,
   type LeaveTypeRules,
 } from './leave-type-sub-forms';
@@ -175,6 +176,7 @@ export type LeaveTypeTabsData = {
 
 export function LeaveTypeTabs({
   type,
+  sweep,
   orgAssignmentOptions,
   balanceSourceOptions,
   formulaTemplate,
@@ -188,6 +190,16 @@ export function LeaveTypeTabs({
   setTypeRulesAction,
 }: {
   type: LeaveTypeTabsData;
+  /**
+   * r288 (686dc512) — whether the earned sweep could ever reach THIS type, and what it does reach
+   * instead, both decided on the server out of the engine's own constants (see `EarnedSweepFacts`).
+   *
+   * It is a prop of the TABS rather than a field of `LeaveTypeTabsData` on purpose: only `codeIsSwept`
+   * is a property of this leave type. The other two are facts about the tenant and about the engine, and
+   * folding them into the per-type data object would have copied one tenant-wide list onto every panel
+   * and invited a future edit to derive it per type.
+   */
+  sweep: EarnedSweepFacts;
   /**
    * r270 (995387c6) — THE TAB THE URL ASKED FOR, and the only thing that outranks stored state.
    *
@@ -895,7 +907,13 @@ export function LeaveTypeTabs({
                   this is the first half of "how many days" and the tables below are the second. */}
               <div className="space-y-1.5">
                 <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
-                <EarningMethodForm t={t} rules={rules} action={setTypeRulesAction} leaveTypeId={id} />
+                <EarningMethodForm
+                  t={t}
+                  rules={rules}
+                  action={setTypeRulesAction}
+                  leaveTypeId={id}
+                  sweep={sweep}
+                />
                 <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
               </div>
               {/* F10 — carry forward, moved here for the same reason. */}

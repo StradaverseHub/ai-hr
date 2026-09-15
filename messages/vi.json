@@ -6725,7 +6725,9 @@
         "earningLegacyMethodNote": "This leave type stores an earning method that is no longer offered. It is shown here read-only and is kept exactly as it is when you save; the calculation still honours it. Choose one of the three current methods to replace it.",
         "accrualDayLabel": "Day of month",
         "accrualDayHelp": "Leave is credited on this day of each month. In a month shorter than the day you pick, it is credited on that month's last day — so 31 credits on 28 February, and on 29 February in a leap year. No month is ever skipped.",
-        "dailyRoundingWarning": "Daily Accrual applies your rounding rule to the running total, not to each day's slice, so a rule that rounds a decimal upward will credit a whole day from the employee's very first day. No rounding is the recommended pairing with Daily Accrual."
+        "dailyRoundingWarning": "Daily Accrual applies your rounding rule to the running total, not to each day's slice, so a rule that rounds a decimal upward will credit a whole day from the employee's very first day. No rounding is the recommended pairing with Daily Accrual.",
+        "earningNotSwept": "Chạy Tích lũy chỉ áp dụng cho các loại nghỉ phép sau: {swept}. Không áp dụng cho loại này, nên loại nghỉ phép này sẽ không bao giờ tích lũy theo từng ngày — không bảng quyền lợi, ngày tháng hay phương thức tích lũy nào thay đổi được điều đó. Thiết lập vẫn được lưu.",
+        "earningNotSweptNoneActive": "Chạy Tích lũy không áp dụng cho loại nghỉ phép này, và không có loại nghỉ phép nào mà nó áp dụng đang hoạt động trên tài khoản này — nên loại nghỉ phép này sẽ không bao giờ tích lũy theo từng ngày. Thiết lập vẫn được lưu."
       },
       "conditionStep": {
         "criteria": "Tiêu chí",

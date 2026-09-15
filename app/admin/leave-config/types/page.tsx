@@ -3,6 +3,12 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+// r288 (686dc512) — THE TWO CONSTANTS THE EARNED SWEEP IS ACTUALLY DECIDED ON, read from the engine that
+// decides it. Before this round nothing under app/ or messages/ referenced either, which is precisely the
+// gap the item closes: this screen would accept an earned method on a code `accrueEarnedLeave` can never
+// reach and say nothing at all. Imported here, on the SERVER, and handed across as plain data — the
+// editor is a client island and the engine module pulls the database in.
+import { EARNED_METHODS, STANDING_LEAVE_CODES } from '@/core/leave';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
@@ -116,6 +122,29 @@ export default async function LeaveConfigTypesPage({
   // return. Calling that a second time would be a second derivation of "active leave types", which is the
   // drift this repo keeps paying for.
   const activeTypeOptions = types.filter((lt) => !lt.archivedAt).map((lt) => ({ id: lt.id, name: lt.name }));
+
+  /**
+   * r288 (686dc512) — THE THREE TYPE NAMES THE EARNED SWEEP ACTUALLY COVERS, READ FROM THIS TENANT'S OWN
+   * ROWS.
+   *
+   * ⚠️ NOT HARDCODED, and that is the load-bearing part. The three standing CODES are fixed; the NAMES
+   * against them are whatever the tenant typed. The account that raised this holds two leave types both
+   * called some variant of Annual Leave, so "Annual Leave is not accrued here" would be a riddle on the
+   * very account it was written for. The engine's own `type_not_swept` empty state re-reads the rows for
+   * the same reason, with this same filter (standing code AND not archived) and this same A–Z order.
+   *
+   * DERIVED FROM THE READ THIS PAGE ALREADY MAKES — `types` is every leave type including the archived
+   * ones — so the warning below costs no query. The archived ones are excluded because the sweep excludes
+   * them: an archived ANNUAL is not something the run reaches either. On the reporting account that
+   * leaves this list EMPTY, which is true and has a sentence of its own.
+   */
+  const standingCodes = new Set<string>([...STANDING_LEAVE_CODES]);
+  const sweptTypeNames = types
+    .filter((lt) => standingCodes.has(lt.code) && !lt.archivedAt)
+    .map((lt) => lt.name)
+    .sort((a, b) => a.localeCompare(b));
+  /** The engine's earned-method family, handed over verbatim rather than respelled in the editor. */
+  const earnedMethods = [...EARNED_METHODS];
 
   // One page-level prep — no N+1 per type.
   const orgAssignmentOptions = Object.fromEntries(
@@ -456,6 +485,13 @@ export default async function LeaveConfigTypesPage({
                 <LeaveTypeTabs
                   key={lt.id}
                   type={data}
+                  /* r288 (686dc512) — a plain object of a boolean and two string arrays. Serialisable,
+                     so it may cross into the client island (test/server-client-boundary.test.ts). */
+                  sweep={{
+                    codeIsSwept: standingCodes.has(lt.code),
+                    earnedMethods,
+                    sweptTypeNames,
+                  }}
                   orgAssignmentOptions={orgAssignmentOptions}
                   /* The candidates THIS type may point at: exclude self, exclude archived, and exclude any
                      type that already borrows — the service refuses chains, so offering one would only
