@@ -66,8 +66,10 @@ const read = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8');
 const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
 type Locale = keyof typeof CATALOGUES;
 const LOCALES = Object.keys(CATALOGUES) as Locale[];
+/** `admin.leave` holds nested objects as well as strings (subStep, dayTypeInclusion, …), so the cast goes
+ *  through `unknown`: every key this file reads IS a string, and §I asserts that rather than assuming it. */
 const leaveStrings = (loc: Locale) =>
-  (CATALOGUES[loc] as { admin: { leave: Record<string, string> } }).admin.leave;
+  (CATALOGUES[loc] as unknown as { admin: { leave: Record<string, string> } }).admin.leave;
 const EN = leaveStrings('en');
 
 /**
