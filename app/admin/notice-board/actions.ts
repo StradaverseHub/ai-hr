@@ -12,6 +12,7 @@ import {
   type NoticeInput,
 } from '@/core/notice';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
+import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import { fail, okToast } from '@/app/admin/_redirects';
 
 /**
@@ -44,13 +45,15 @@ function inputFrom(fd: FormData): NoticeInput {
     showEndDate: fd.get('showEndDate') === 'on',
     targetMode,
     criteria: targetMode === 'criteria' ? orgCriteriaFromFields(list) : undefined,
-    // One pasted block, split on whitespace or commas. Parsed HERE rather than mirrored into hidden inputs
-    // by the browser, so the ids the action sees are the ids the user typed even with JS disabled.
+    // r288 (8521e160) — TWO WAYS IN, ONE LIST OUT. The audience step now offers a picker (hidden
+    // `employmentIds` inputs, the MultiSelectPopover form contract) BESIDE the pasted block, which is
+    // KEPT: it is how a bulk audience is set up today. `mergeEmploymentSelection` is the SAME rule the
+    // screen shows its chosen-count from and the SAME rule the two leave screens use, so a Save cannot
+    // store a different audience from the one the form displayed. Parsed HERE rather than mirrored into
+    // hidden inputs by the browser, so the ids the action sees are the ids the user chose or typed.
     employmentIds:
       targetMode === 'individual'
-        ? String(fd.get('employmentIdsRaw') ?? '')
-            .split(/[\s,]+/)
-            .filter(Boolean)
+        ? mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''))
         : undefined,
     notifyOnPublish: fd.get('notifyOnPublish') === 'on',
     popupEnabled: fd.get('popupEnabled') === 'on',

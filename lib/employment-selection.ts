@@ -56,3 +56,23 @@ export function mergeEmploymentSelection(
   }
   return out;
 }
+
+/**
+ * ── r288 (8521e160) — ONE EMPLOYMENT, AS A PICKER NEEDS IT ────────────────────────────────────────────
+ *
+ * Declared HERE rather than in any one screen because three screens now mount the same picker over the
+ * same population — Generate Entitlement (r287), Leave Adjustments and Notice Board's individual-target
+ * mode — and a fourth copy of this three-field row is a fourth thing to keep in step with `listEmployees`.
+ * `components/leave/generate-form.tsx` re-exports it under the name r287 gave it so its importers are
+ * undisturbed.
+ *
+ * THREE PLAIN FIELDS, NOTHING FORMATTED, AND THAT IS THE POINT. Every one of the three screens is a CLIENT
+ * island mounted from a SERVER page. r123/r124 took tabs down in production by handing a client component a
+ * server closure and `test/server-client-boundary.test.ts` pins that class, so the server page hands over
+ * DATA and each form composes the sentences it shows on its own side of the boundary.
+ *
+ * `employeeCode` is nullable because the column is (`db/schema.ts` `employment.employee_code`): a tenant
+ * that has not adopted Employee IDs must still be able to pick people by name, and a chip must read
+ * "Nadia Rahim" rather than "Nadia Rahim · null".
+ */
+export type EmployeePickOption = { id: string; name: string; employeeCode: string | null };

@@ -10,6 +10,7 @@ import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { mergeEmploymentSelection } from '@/lib/employment-selection';
+import type { EmployeePickOption } from '@/lib/employment-selection';
 import type { CriteriaSection } from '@/core/org-criteria-form';
 import type { LeaveGenerationResult } from '@/core/leave-generation';
 
@@ -17,11 +18,14 @@ type Opt = { value: string; label: string };
 
 /**
  * r287 — ONE EMPLOYMENT, AS THE PICKER NEEDS IT. Three plain fields, nothing formatted: the server page
- * hands over data, this client component composes every string it shows. `employeeCode` is nullable
- * because the column is (`db/schema.ts` `employment.employee_code`), and a tenant that has not adopted
- * Employee IDs must still be able to pick people by name.
+ * hands over data, this client component composes every string it shows.
+ *
+ * r288 (8521e160) MOVED THE DECLARATION to `lib/employment-selection.ts`, beside the merge rule, because
+ * Leave Adjustments and Notice Board now mount the same picker over the same population and a copy per
+ * screen is a copy per screen to keep in step with `listEmployees`. Re-exported here under the name r287
+ * gave it so this file's importers are undisturbed; the shape is unchanged.
  */
-export type EmployeePickOption = { id: string; name: string; employeeCode: string | null };
+export type { EmployeePickOption };
 type Action = (fd: FormData) => void | Promise<void>;
 type PreviewAction = (p: {
   year: number;

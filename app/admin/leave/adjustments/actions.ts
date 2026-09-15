@@ -8,6 +8,7 @@ import {
   type AdjustmentCriteria,
 } from '@/core/leave-adjustment';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
+import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import { ADJUSTMENTS, fail, okToast } from '@/app/admin/_redirects';
 
 /**
@@ -38,11 +39,18 @@ function criteriaFrom(fd: FormData): AdjustmentCriteria {
   );
 }
 
-/** One pasted block of employment references, split on whitespace or commas. */
+/**
+ * r288 (8521e160) — TWO WAYS IN, ONE LIST OUT. Step ② now offers a picker (hidden `employmentIds` inputs,
+ * the MultiSelectPopover form contract) BESIDE the pasted block, which is KEPT: it is how a bulk
+ * adjustment is set up today.
+ *
+ * `mergeEmploymentSelection` is the SAME function the screen's live matched count calls on the SAME two
+ * fields, so the population confirmed on screen cannot differ from the one this batch adjusts. Do not
+ * inline either half — that seam is the dangerous part, because two fields parsed two ways leaves both
+ * halves' tests green while the screen and the write disagree about who is affected.
+ */
 const idsFrom = (fd: FormData): string[] =>
-  String(fd.get('employmentIdsRaw') ?? '')
-    .split(/[\s,]+/)
-    .filter(Boolean);
+  mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''));
 
 /**
  * 18103ba4 — the amount and its DIRECTION arrive as two fields and are recomposed into the ONE signed

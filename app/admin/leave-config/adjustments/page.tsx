@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
+import { listLeaveTypes, listCompanies, listDepartments, listJobGrades, listEmployees } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listLeaveAdjustmentBatches } from '@/core/leave-adjustment';
@@ -72,20 +72,45 @@ export default async function LeaveConfigAdjustmentsPage({
 
   const companies = await listCompanies(s);
   const companyIds = companies.map((c) => c.id);
-  const [types, departments, batches, profileOptions, grades, positions, costCenters, businessUnits, locations] =
-    await Promise.all([
-      listLeaveTypes(s, { includeArchived: false }),
-      listDepartments(s),
-      listLeaveAdjustmentBatches(s, { limit: 20 }),
-      listAllProfileOptions(s),
-      listJobGrades(s),
-      listPositions(s),
-      listCostCenters(s),
-      listBusinessUnits(s),
-      // The only list keyed by company rather than tenant. Empty scope ⇒ no locations, which is honest:
-      // an administrator who can see no company can narrow by no site either.
-      companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
-    ]);
+  const [
+    types,
+    departments,
+    batches,
+    profileOptions,
+    grades,
+    positions,
+    costCenters,
+    businessUnits,
+    locations,
+    employments,
+  ] = await Promise.all([
+    listLeaveTypes(s, { includeArchived: false }),
+    listDepartments(s),
+    listLeaveAdjustmentBatches(s, { limit: 20 }),
+    listAllProfileOptions(s),
+    listJobGrades(s),
+    listPositions(s),
+    listCostCenters(s),
+    listBusinessUnits(s),
+    // The only list keyed by company rather than tenant. Empty scope ⇒ no locations, which is honest:
+    // an administrator who can see no company can narrow by no site either.
+    companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
+    /**
+     * r288 (8521e160) — STEP ②'s "Pick individually" picker, read ONCE for the page.
+     *
+     * `listEmployees` is the UNPAGINATED picker read (see its header: "Do NOT swap in the paginated
+     * `listEmployeesPage`" — a checkbox set that silently drops people past a page boundary is the defect
+     * this screen cannot afford). Scoped to the administrator's own companies, exactly as the location
+     * list above is, and exactly as Generate Entitlement's identical read is.
+     *
+     * ⚠️ NOT FILTERED TO ACTIVE EMPLOYMENTS, and that is a decision rather than an omission — the same
+     * one r287 recorded. This list is the SECOND door onto the population the paste box has always
+     * reached, and narrowing one door but not the other is how "two ways in, one list out" stops being
+     * true. Whether a selected person actually qualifies is `resolveAdjustmentTargets`'s to decide — as at
+     * the EFFECTIVE DATE on step ③, identically for both doors — and the live matched count reports it.
+     */
+    listEmployees(s, companyIds),
+  ]);
 
   const criteriaSections = buildOrgCriteriaSections(
     { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
@@ -120,6 +145,15 @@ export default async function LeaveConfigAdjustmentsPage({
             today={todayInKualaLumpur()}
             leaveTypes={types.map((x) => ({ value: x.id, label: x.name }))}
             criteriaSections={criteriaSections}
+            /* r288 — THREE PLAIN FIELDS, NO FUNCTIONS AND NO PRE-JOINED SENTENCES. r123/r124 took tabs
+               down in production by handing a client component a server closure, and
+               test/server-client-boundary.test.ts pins that class; the form composes every string it
+               shows from this data on its own side of the boundary. */
+            employees={employments.map((e) => ({
+              id: e.employmentId,
+              name: e.name,
+              employeeCode: e.employeeCode,
+            }))}
           />
         </div>
       </Card>
