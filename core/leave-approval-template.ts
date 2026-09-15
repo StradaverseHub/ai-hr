@@ -245,7 +245,7 @@ export async function listOrgScopedApprovalRules(ctx: SessionContext): Promise<O
                or ${leaveApprovalPolicy.positionId} is not null)`,
         ),
       )
-      .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+      .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt, leaveApprovalPolicy.id);
     return rows.map((r) => ({ ...r, levels: sanitizeLevels(r.levels) }));
   });
 }

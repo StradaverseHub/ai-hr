@@ -193,7 +193,7 @@ export async function listLegacyApprovalRules(tx: Tx): Promise<LegacyApprovalRul
         sql`(${leaveApprovalPolicy.templateId} is null or ${leaveApprovalPolicy.leaveTypeId} is null)`,
       ),
     )
-    .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+    .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt, leaveApprovalPolicy.id);
   return rows.map((r) => {
     const reasons: LegacyApprovalReason[] = [];
     if (r.templateId === null) reasons.push('no-template');
@@ -465,7 +465,7 @@ export async function listActiveApprovalRules(tx: Tx): Promise<ActiveApprovalRul
     })
     .from(leaveApprovalPolicy)
     .where(eq(leaveApprovalPolicy.active, true))
-    .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+    .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt, leaveApprovalPolicy.id);
 }
 
 export type ActiveApprovalRule = {

@@ -224,9 +224,19 @@ describe('241817ef — the dry run and the proof', () => {
 
   it('THROWS and rolls back when the rewrite would move an approver', async () => {
     // An "any leave type" rule scoped to a department (specificity 1) and a leave-type-scoped rule with
-    // no other scope (also specificity 1). Today the newer of the two wins the tie for a Finance employee
+    // no other scope (also specificity 1). The newer of the two wins the tie for a Finance employee
     // asking for ANNUAL. Expanding the department rule to ANNUAL makes it specificity 2 — it would start
     // winning, which is exactly the silent re-route this conversion exists to prevent.
+    //
+    // r281 53e914fe — THE TIMESTAMPS ARE SET EXPLICITLY, and that is the whole fix to this test. It used
+    // to lean on two consecutive inserts landing on two different `created_at` values. They do differ in
+    // the DATABASE (microseconds), but `beats` compares them as JS `Date`s, whose `getTime()` is
+    // MILLISECONDS — so two inserts inside one millisecond tied, the ranking separated nothing, and the
+    // winner fell through to row order. That is why this line went red once inside a loaded gate chunk
+    // and green on re-run at the same commit. Sixty and thirty seconds ago, derived from the clock, put
+    // the pair a comfortable distance apart on the term this test is actually about: RECENCY. The tie
+    // case itself is pinned on purpose in test/r281-approval-tie-order.test.ts.
+    const now = Date.now();
     const deptTpl = await createApprovalTemplate(ctx(), { name: 'Dept chain', levels: ['department_head'] });
     const typeTpl = await createApprovalTemplate(ctx(), { name: 'Type chain', levels: ['payroll'] });
     await owner.db.insert(schema.leaveApprovalPolicy).values({
@@ -236,6 +246,7 @@ describe('241817ef — the dry run and the proof', () => {
       departmentId: b.deptA,
       templateId: deptTpl.id,
       levels: [],
+      createdAt: new Date(now - 60_000),
     });
     await owner.db.insert(schema.leaveApprovalPolicy).values({
       tenantId: b.tenantId,
@@ -243,11 +254,12 @@ describe('241817ef — the dry run and the proof', () => {
       leaveTypeId: b.annualLeaveTypeId,
       templateId: typeTpl.id,
       levels: [],
+      createdAt: new Date(now - 30_000),
     });
 
     const attrs = { departmentId: b.deptA };
     const before = await resolve(b.annualLeaveTypeId, attrs);
-    expect(before).toEqual(['payroll']); // the newer, equally-specific rule wins today
+    expect(before).toEqual(['payroll']); // the NEWER of the two equally-specific rules wins — by 30s, not by luck
 
     const err = await convertLegacyApprovalRules(ctx(), { apply: true }).catch((e) => e);
     expect(err).toBeInstanceOf(ApprovalRoutingChangedError);

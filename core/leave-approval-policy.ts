@@ -129,12 +129,24 @@ function dayRangeWidth(rule: RuleRow): number {
 
 /** Deterministic tie-break for two equally-specific matching rules (ADR-0071 1(c)): narrower day-range
  *  wins; if still tied, the MOST-RECENTLY-CREATED wins (created_at, never updated_at — an unrelated edit
- *  must not change which rule wins). Returns true if `a` beats `b`. */
+ *  must not change which rule wins); and if the creation instants are equal too, the LOWER `id` wins.
+ *  That last term is what makes this a TOTAL order (r281 53e914fe): without it the comparison returned
+ *  false in both directions and `decideApproval` fell back to row order, so who approved a person's leave
+ *  depended on the query plan. Returns true if `a` beats `b`. */
 function beats(a: RuleRow, b: RuleRow): boolean {
   const wa = dayRangeWidth(a);
   const wb = dayRangeWidth(b);
   if (wa !== wb) return wa < wb;
-  return a.createdAt.getTime() > b.createdAt.getTime();
+  // r281 53e914fe — `createdAt` is NOT a total order here, for two independent reasons: Postgres `now()`
+  // is transaction-start time, so rules written by one statement or one script share a byte-identical
+  // instant; and the driver hands this column back as a JS `Date`, whose `getTime()` is MILLISECONDS,
+  // so two rows written microseconds apart also compare equal. Falling through to `false` in both
+  // directions left the winner to be `matching[0]` — i.e. to row order. `id` is the total-order key, and
+  // it is ASCENDING to agree with `loadApprovalRuleSet`'s `ORDER BY created_at, id`: the first row of a
+  // tied group wins, by both mechanisms, permanently. Arbitrary but fixed is the whole point — see
+  // r270's `winReasonFor`, which names exactly this state 'arbitrary' rather than dressing it up.
+  if (a.createdAt.getTime() !== b.createdAt.getTime()) return a.createdAt.getTime() > b.createdAt.getTime();
+  return a.id < b.id;
 }
 
 /** Where a resolved chain came from. `'rule'` is the only source that names a rule — the other two mean
@@ -203,7 +215,13 @@ export async function loadApprovalRuleSet(tx: Tx, companyId?: string): Promise<A
       companyId === undefined
         ? eq(leaveApprovalPolicy.active, true)
         : and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)),
-    )) as RuleRow[];
+    )
+    // r281 53e914fe — TOTAL ORDER ON THE ROUTING READ. This read had no ORDER BY at all, and
+    // `decideApproval` keeps `matching[0]` when `beats` separates nothing, so the winner of a tie was
+    // whatever row the planner happened to hand back first. Same shape as r270's fix on
+    // `entitlement_eligibility_rule` (core/entitlement-template.ts): `created_at` then `id`, ascending,
+    // so the first row of a tied group is fixed forever.
+    .orderBy(leaveApprovalPolicy.createdAt, leaveApprovalPolicy.id)) as RuleRow[];
 
   // 6fadb036: the tenant's ACTIVE templates (few rows). A rule with template_id draws its chain from the
   // template; the tenant-default template is the fallback just above the built-in chain.
@@ -704,7 +722,7 @@ export async function listLeaveApprovalRules(
       })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)))
-      .orderBy(leaveApprovalPolicy.createdAt);
+      .orderBy(leaveApprovalPolicy.createdAt, leaveApprovalPolicy.id);
     return rows
       .map((r) => ({
         id: r.id,
