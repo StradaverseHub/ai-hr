@@ -76,6 +76,7 @@ import {
   setEmploymentInfoAction,
   setLocationAction,
   setEmploymentHolidayCalendarAction,
+  setEmploymentScheduleGroupAction,
   setPersonAction,
   setPersonPhotoAction,
   // 420ebab5 part two — the Profile tab's consolidated Save. Calls the SAME per-section services, in order.
@@ -147,14 +148,18 @@ import { FamilyRelationshipFields } from '@/components/family-relationship-field
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { PAYMENT_METHODS } from '@/core/org';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
-import { listShiftsForTenant } from '@/core/roster';
+import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
 // 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
 import { shiftArrangementHistory } from '@/core/shift-arrangement';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
 import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/core/location';
-import { listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
+// f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
+// library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
+// the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
+// refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
+import { listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
@@ -382,6 +387,24 @@ export default async function EmployeePage({
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  /**
+   * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
+   *
+   * The options are the tenant's ACTIVE attendance_rule rows, matching the shift editor's own convention
+   * ("inactive rules stay assigned but are hidden from the picker", db/schema.ts attendance_rule.status).
+   *
+   * ⚠️ THE ASSIGNED RULE IS ADDED BACK EVEN WHEN IT IS INACTIVE, and that is not cosmetic. A select whose
+   * stored value is absent from its options renders the FIRST option instead — here, the blank one — so
+   * an employee whose group was later deactivated would show "no group" and the next save of this tab
+   * would write that lie into the column. It is the same defect as feedback 57840a6e (a control rendering
+   * something other than what is stored, then persisting it), reached by a different route. The extra
+   * option is marked inactive so the reader is told why it is there.
+   */
+  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
+  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupOptions = attendanceRules.filter(
+    (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
+  );
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
   // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
   const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
@@ -928,7 +951,7 @@ export default async function EmployeePage({
   const tabSaveCovers = {
     profile: [t('personalDetails'), t('contactAddressTitle')],
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
-    attendance: [t('holidayCalendarCardTitle'), ...whenLive(tc('cardTitle'))],
+    attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('cardTitle'))],
     job: [t('employmentInfo.title')],
     // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
@@ -4462,6 +4485,68 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
+  /**
+   * f513ec02 (r281) — THE BOX THAT PUTS A PERSON IN A SCHEDULE GROUP.
+   *
+   * r277 shipped the column (employment.attendance_rule_id, migration 0464), the additive rule resolution
+   * that reads it and the refusal that stops a grouped employee being put on a shift the group forbids —
+   * but nothing that ASSIGNS the group. The chain the reporter drew (Employee → Schedule Group → Shift)
+   * was reachable from both ends and from neither middle. This card is the middle.
+   *
+   * IT SITS DIRECTLY UNDER HOLIDAY CALENDAR, which is the control it is modelled on: the same one-select
+   * card, the same "blank means fall back" semantics, the same tab. The approved plan's own words are
+   * "put a person in a group the same way you set their Holiday Group today", and Holiday Group is on THIS
+   * tab (item 52a30630 relocated it here and pinned it first) — not on the Employment tab. A Schedule
+   * Group is attendance configuration: it decides lateness, early-out and overtime rules, and the Shift
+   * Arrangement its refusal is measured against is two cards below.
+   *
+   * ⚠️ BLANK IS A REAL OPTION AND IT MEANS SOMETHING. "No Schedule Group" ⇒ the column stays NULL ⇒ rules
+   * resolve from the shift exactly as they do today. It is NOT an unset, NOT a placeholder, and the save
+   * must never read it as "leave whatever was there". Feedback 57840a6e is what a collapsed tri-state cost
+   * on this very file: a checkbox that could not carry three states rendered the company default, and an
+   * untouched card saved for an unrelated reason pinned employees to an explicit "No" they never chose.
+   * A select with a meaning-bearing blank option is the shape that cannot do that, and the writer
+   * (core/roster.ts setEmploymentScheduleGroup) maps '' to null once, in one place.
+   */
+  const scheduleGroupCard = admin ? (
+    <Card id="section-schedule-group">
+      <SectionHeader title={t('scheduleGroupCardTitle')} />
+      {/* No Save button and `data-save-section` present, like every other card inside this scope: the
+          Attendance tab's one "Save Changes" writes it (ATTENDANCE_TAB_SECTION_ORDER, second, which is
+          where it reads). The per-card action stays wired because it is where the writer is attached and
+          because a <form> with no action would POST to the current URL. */}
+      <form action={setEmploymentScheduleGroupAction} data-save-section="schedule" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <Field label={t('scheduleGroup')}>
+          <select name="attendanceRuleId" defaultValue={scheduleGroupCurrentId ?? ''} className={inputCls}>
+            {/* FIRST and always present. Its value is the empty string, which the writer maps to NULL. */}
+            <option value="">{t('scheduleGroupNone')}</option>
+            {scheduleGroupOptions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.status === 'active' ? r.name : t('scheduleGroupInactiveOption', { name: r.name })}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <p className="text-xs text-muted-foreground sm:col-span-3">{t('scheduleGroupHint')}</p>
+        {/* EMPTY STATE. Found by rendering the screen: the seeded tenant has NO attendance_rule rows, so
+            the select offers the blank option and nothing else — a control that looks broken rather than
+            one whose library is empty. Naming the reason (and the screen that fixes it) is what makes it
+            actionable; the same shape the Work Location card uses for its four empty states. */}
+        {scheduleGroupOptions.length === 0 && (
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('scheduleGroupEmpty')}</p>
+        )}
+      </form>
+      {/* The General-tab precedent the plan quotes back to the reporter: show the setting, and send them to
+          the screen that OWNS it rather than growing a second editor for it here. */}
+      <div className="border-t border-border px-4 py-3 text-xs">
+        <Link href="/admin/attendance-policy" className="text-primary hover:underline">
+          {t('scheduleGroupManage')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
   const locationCard = admin ? (
     <Card id="section-location">
       <SectionHeader title={t('locationTitle')} />
@@ -4661,6 +4746,9 @@ export default async function EmployeePage({
           >
             {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
             {holidayCalendarCard}
+            {/* f513ec02 — the Schedule Group assignment, directly under the Holiday Group it is modelled
+                on, and above Clocking so the two "which rules judge this person" cards read together. */}
+            {scheduleGroupCard}
             {clockingCard}
           </TabSaveScope>
         )}

@@ -30,6 +30,11 @@ import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
 import { cellKey, monthDates, monthRange, type AssignedCell, type UsualShift } from '../lib/roster-month';
 import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
+// f513ec02 — the dated shift ladder, for the reverse check's "which shift is this person on TODAY".
+// core/shift-arrangement-resolve.ts is a declared LEAF (its only value import is db/schema), which is
+// exactly why the resolver lives there and not in core/shift-arrangement.ts: that module imports THIS
+// one, so importing it back would close a cycle. See its header.
+import { arrangementsForEmploymentTx, pickArrangementOn } from './shift-arrangement-resolve';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -1319,6 +1324,185 @@ export async function assertShiftsAllowedForEmploymentsTx(
       allowed: bucket?.names ?? [],
     });
   }
+}
+
+// ── Putting a PERSON in a Schedule Group (f513ec02, r281) ──────────────────────────────────────────
+
+/**
+ * f513ec02 — THE WRITER r277 DID NOT SHIP, and with it the REVERSE of the refusal above.
+ *
+ * r277 shipped `employment.attendance_rule_id` (migration 0464), the additive rule resolution that reads
+ * it (core/attendance.ts scheduleFor) and the allowed-shift refusal that four shift writers call. What it
+ * did not ship was anything that PUTS a person in a group: the column had no writer and no screen, which
+ * is what this item closes. The screen is the Schedule Group card on the Personnel → Attendance tab; this
+ * is the service behind it.
+ *
+ * ⚠️ THE REFUSAL HAS TO RUN IN BOTH DIRECTIONS, AND UNTIL NOW IT RAN IN ONE. Every existing caller of
+ * `assertShiftsAllowedForEmploymentsTx` asks "may this person go on that shift?" while the person's group
+ * stands still. This writer moves the OTHER side of the same pair: it changes the group while the shift
+ * stands still. Without the check below, the one write that could not be refused is the one that seats
+ * somebody in a group that forbids the shift they are already working — the exact state the four refusals
+ * exist to make unreachable, arrived at from the other end.
+ *
+ * HOW THE CHECK IS REUSED RATHER THAN RE-STATED. The column is written FIRST and the assertion runs
+ * AFTER, inside the same transaction, so `assertShiftsAllowedForEmploymentsTx` reads the group being
+ * assigned exactly as it reads a group that was already stored — one definition of "what this group
+ * allows", one error message, one place a future change to the rule has to be made. A refusal throws and
+ * the transaction rolls the UPDATE back, so a rejected assignment leaves no trace and no event.
+ *
+ * ⚠️ CLEARING IS NEVER REFUSED. `attendanceRuleId: null` is "resolve from the shift as before" — the
+ * blank option on the card — and an employment in no group is constrained by nothing, so the assertion is
+ * a no-op on that path by construction rather than by a branch. Taking somebody OUT of a group can never
+ * fail, which matters: the way out of a contradiction must not itself be blocked.
+ *
+ * WHAT THIS DOES NOT RE-EXAMINE, disclosed rather than hidden. The check reads every shift stored for the
+ * employee TODAY (see `currentShiftIdsForEmploymentTx` for why all three sources, not one).
+ * Roster rows dated AFTER today are not re-examined, for the same reason core/attendance-rule.ts
+ * setRuleShifts does not re-examine them when a shift leaves a group: a future roster is a schedule that
+ * can still be redrawn, and refusing a group assignment over one day next month would block a legitimate
+ * reorganisation with no way to proceed. The four assignment-side refusals still cover every roster row
+ * written from here on.
+ */
+
+/** The posted group id is not a rule this tenant has (or RLS cannot see it). */
+export class ScheduleGroupNotFoundError extends Error {
+  constructor() {
+    super('That Schedule Group no longer exists. Choose one from the list, or leave the field blank.');
+    this.name = 'ScheduleGroupNotFoundError';
+  }
+}
+
+/**
+ * EVERY SHIFT THIS EMPLOYMENT IS CURRENTLY ON — all THREE places the answer is stored, not merely the one
+ * a resolver would stop at:
+ *
+ *   1. the ROSTER ROW for that date          (a brushed or generated day)
+ *   2. the dated ARRANGEMENT in force        (employment_shift_arrangement, migration 0421)
+ *   3. the BACKUP SHIFT cache                (employment.default_shift_id)
+ *
+ * ⚠️ A UNION, NOT A LADDER, AND THE DIFFERENCE IS LOAD-BEARING. core/attendance.ts stops at the first rung
+ * that answers, because it is deciding what ONE day is judged against. This function is deciding whether a
+ * GROUP may be assigned, which is a question about every (employment, shift) pair the row currently holds
+ * — and all three are pairs the four assignment-side writers would refuse to create if the group already
+ * existed. Stop at rung 1 and a person rostered onto an allowed shift today, whose BACKUP shift the group
+ * forbids, is admitted into the group; tomorrow has no roster row, they fall onto that backup shift, and
+ * the system is sitting in exactly the state `assertShiftsAllowedForEmploymentsTx` declares unreachable.
+ * The invariant those refusals maintain is "no stored pair contradicts the group", so the reverse check
+ * has to read every stored pair.
+ *
+ * Rung 3 is a CACHE of the period in force today and is deliberately left alone by a future-dated ladder
+ * write, so it can be null or stale while rung 2 is the real answer — which is the second reason none of
+ * the three may be skipped. A rest-day roster row carries no shift and contributes nothing.
+ *
+ * Returned in rung order and deduplicated, so the refusal names the same shift on every run (the message
+ * is read by the reporter — CLAUDE.md §8, pin invariants not positions).
+ */
+export async function currentShiftIdsForEmploymentTx(
+  tx: Tx,
+  employmentId: string,
+  onDate: string,
+): Promise<string[]> {
+  const found: string[] = [];
+  const [rostered] = await tx
+    .select({ shiftId: rosterAssignment.shiftId })
+    .from(rosterAssignment)
+    .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, onDate)))
+    .limit(1); // (tenant, employment, shift_date) is UNIQUE — roster_assignment_emp_date_uq.
+  if (rostered?.shiftId) found.push(rostered.shiftId);
+
+  const inForce = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), onDate);
+  if (inForce?.shiftId) found.push(inForce.shiftId);
+
+  const [emp] = await tx
+    .select({ shiftId: employment.defaultShiftId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (emp?.shiftId) found.push(emp.shiftId);
+
+  return [...new Set(found)];
+}
+
+/** This employment's Schedule Group, or null when it is in none. Read-only; no event. */
+export function employmentScheduleGroupId(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ ruleId: employment.attendanceRuleId })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    return row?.ruleId ?? null;
+  });
+}
+
+/**
+ * Put one employment in a Schedule Group, or take it out of one (`attendanceRuleId: null`).
+ *
+ * UNCHANGED IS A NO-OP, with no write and no event — the same shape `setEmployeeCode` uses. It matters
+ * more here than it does there: this card sits inside the Attendance tab's consolidated Save, and an
+ * employment's audit trail should not grow a "schedule group changed" row every time somebody saves the
+ * tab for the sake of the Holiday Calendar next to it.
+ *
+ * AN INACTIVE RULE IS STILL ASSIGNABLE THROUGH THIS SERVICE, deliberately. The card offers only ACTIVE
+ * rules plus the one already assigned, and the rule library's own convention is that "inactive rules stay
+ * assigned but are hidden from the picker" (db/schema.ts attendance_rule.status). Refusing an inactive id
+ * here would mean an employment whose group was deactivated could not have its own card saved at all.
+ */
+export async function setEmploymentScheduleGroup(
+  ctx: SessionContext,
+  p: { employmentId: string; attendanceRuleId: string | null },
+): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  const ruleId = p.attendanceRuleId?.trim() || null;
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ id: employment.id, before: employment.attendanceRuleId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new Error('Employment not found');
+    if ((emp.before ?? null) === ruleId) {
+      return { id: p.employmentId, attendanceRuleId: ruleId, changed: false };
+    }
+
+    if (ruleId) {
+      // RLS scopes the read, so a rule id from another tenant simply is not found.
+      const [rule] = await tx
+        .select({ id: attendanceRule.id })
+        .from(attendanceRule)
+        .where(eq(attendanceRule.id, ruleId))
+        .limit(1);
+      if (!rule) throw new ScheduleGroupNotFoundError();
+    }
+
+    await tx
+      .update(employment)
+      .set({ attendanceRuleId: ruleId })
+      .where(eq(employment.id, p.employmentId));
+
+    // THE REVERSE CHECK. Written above, asserted here, in that order on purpose: the shared refusal reads
+    // `employment.attendance_rule_id` out of the transaction's own snapshot, so it judges the group being
+    // assigned without needing a second signature or a second copy of the rule. A throw rolls the UPDATE
+    // back. Clearing (`ruleId === null`) cannot refuse — an employment in no group is unconstrained.
+    const shiftIds = await currentShiftIdsForEmploymentTx(tx, p.employmentId, todayInKualaLumpur());
+    await assertShiftsAllowedForEmploymentsTx(
+      tx,
+      shiftIds.map((shiftId) => ({ employmentId: p.employmentId, shiftId })),
+    );
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.schedule-group.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: emp.before ?? null, after: ruleId },
+    });
+    return { id: p.employmentId, attendanceRuleId: ruleId, changed: true };
+  });
 }
 
 // ── Per-employee default shift (ec4cbf63 rev-6: "assigned to the staff in their profile") ──────────

@@ -111,10 +111,19 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
  * "Holiday Calendar pinned first". The scope leads the tab instead, and the Save bar names the cards it
  * owns rather than relying on being last.)
  *
- * The three here are independent writers on the employment row with no shared column, so the order is
+ * The four here are independent writers on the employment row with no shared column, so the order is
  * simply the reading order of the cards.
+ *
+ * f513ec02 (r281) ADDED `schedule` — the Schedule Group card, which puts an employee in an attendance_rule
+ * (`employment.attendance_rule_id`). It is bucket (a) on the classification's own test: one column
+ * overwritten with a value a Discard can put straight back, and no dated record opened. It is placed
+ * SECOND because that is where it renders — directly under Holiday Calendar, which item 52a30630 pinned to
+ * the top of this tab and which stays pinned there. Its writer is the one on this tab that can REFUSE
+ * (the group must allow the shift the employee is already on), and `runTabSave` reports that per-section
+ * rather than as one all-or-nothing error, so a refused Schedule Group leaves the Holiday Calendar saved
+ * and says which card broke.
  */
-export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'clocking', 'geofencing'] as const;
+export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'geofencing'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.

@@ -28,6 +28,9 @@ import {
   ShiftBackInsertError,
   ShiftEffectiveBeforeStartError,
 } from '@/core/shift-arrangement';
+// f513ec02 — the Schedule Group card's writer. It carries the REVERSE of the allowed-shift refusal (the
+// group moves while the shift stands still), which is why it lives beside that refusal in core/roster.ts.
+import { setEmploymentScheduleGroup } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionMidMonthError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
@@ -934,6 +937,52 @@ export async function setEmploymentHolidayCalendarAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/**
+ * f513ec02 — the WRITE half of the Schedule Group card (see `applyStatutorySection` for the pattern).
+ *
+ * ⚠️ BLANK IS A VALUE HERE, NOT AN ABSENCE, and that distinction is the whole control. The select's first
+ * option posts `''`, which means "this employee has NO Schedule Group — resolve their rules from the shift
+ * exactly as before"; a named group posts its id. Feedback 57840a6e is the recorded cost of collapsing a
+ * tri-state on THIS FILE'S OWN screen: the Others Statutory control was a checkbox, an untouched card
+ * saved for some other reason read as an explicit "No", and employees were silently pinned out of the HRD
+ * Corp levy. The shape that prevents it is the same one used here — a select whose blank option carries a
+ * real meaning, mapped once, at one place, rather than derived from whether a field arrived.
+ *
+ * `|| null` therefore maps BOTH '' and a missing field to null, which is the same answer for a different
+ * reason: the card always mounts the select, so a missing field can only mean a caller that is not this
+ * card, and "no group" is the safe reading for it. The service treats null as "take them out of the
+ * group", never refuses it, and appends nothing when the value has not moved.
+ */
+async function applyScheduleGroupSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  await setEmploymentScheduleGroup(s, {
+    employmentId: String(formData.get('employmentId')),
+    attendanceRuleId: (formData.get('attendanceRuleId') as string) || null,
+  });
+}
+
+/**
+ * f513ec02 — save ONLY the Schedule Group. Its own thin partial-save action beside the Holiday Calendar's,
+ * for the same reason that one exists: HTML forms cannot span the tab panels and a card that shares a form
+ * with its neighbour can wipe the neighbour's column. The refusal the service can raise
+ * (ShiftNotInScheduleGroupError — the group does not allow the shift this employee is already on) reaches
+ * the screen through the same `?error=` redirect every sibling action uses, message and allowed-shift list
+ * intact.
+ */
+export async function setEmploymentScheduleGroupAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await applyScheduleGroupSection(s, formData);
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
 /* r78c — setEmploymentGradeAction (item 52a30630) was DELETED here. This is the writer the reporter's
  * duplicate row came from.
  *
@@ -1696,7 +1745,10 @@ export async function saveBankStatutoryTabAction(formData: FormData): Promise<Ta
 }
 
 /**
- * r255 420ebab5 — ONE "Save Changes" for the Attendance tab's three field-edit cards.
+ * r255 420ebab5 — ONE "Save Changes" for the Attendance tab's field-edit cards. f513ec02 (r281) made it
+ * FOUR: the Schedule Group card joined them, and it belongs in bucket (a) on the classification's own
+ * test — it overwrites one column on the employment record with a value a Discard can put straight back,
+ * and it opens no dated record of any kind.
  *
  * Work Location and Shift Arrangement are NOT here and must never be added: each appends a DATED record
  * (a transfer movement event, a shift period the service refuses to back-insert) rather than overwriting
@@ -1707,6 +1759,7 @@ export async function saveAttendanceTabAction(formData: FormData): Promise<TabSa
   const s = await requireAdmin();
   return runTabSave(s, formData, ATTENDANCE_TAB_SECTION_ORDER, {
     holiday: applyHolidayCalendarSection,
+    schedule: applyScheduleGroupSection,
     clocking: applyClockingLocationsSection,
     geofencing: applyGeofencingSection,
   });
