@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
+import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
 import { Markdown } from '@/components/markdown';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { matchesEmployeeSearch } from '@/lib/employee-search';
+import { mergeEmploymentSelection, type EmployeePickOption } from '@/lib/employment-selection';
 
 type Opt = { value: string; label: string };
 type Action = (fd: FormData) => void | Promise<void>;
@@ -43,8 +46,28 @@ export type NoticeFormLabels = {
   companies: string;
   departments: string;
   employmentTypes: string;
-  employmentIds: string;
-  employmentIdsHelp: string;
+  /**
+   * r288 (8521e160) — the individual-target picker's copy. ELEVEN PLAIN STRINGS, three of them TEMPLATES
+   * carrying a `{query}` / `{count}` / `{name}` placeholder that this component substitutes itself.
+   *
+   * WHY TEMPLATES AND NOT FUNCTIONS. `MultiSelectPopover` takes `selectedCount`, `matchOption` and
+   * `emptyLabelFor` as FUNCTIONS, and this component is a client island mounted from a SERVER page — r124
+   * took a whole tab down in production by sending a translator closure across exactly that boundary and
+   * test/server-client-boundary.test.ts pins the class. So the strings cross as strings and the functions
+   * are built on THIS side, which is the same crossing components/attendance/location-assignment.tsx makes
+   * with `selectedCountTemplate`.
+   */
+  employeePicker: string;
+  employeeNoneChosen: string;
+  employeeSearch: string;
+  employeeNoMatchTemplate: string;
+  employeeNonePicked: string;
+  employeeSelectedCountTemplate: string;
+  employeeSelectAll: string;
+  employeeClearAll: string;
+  employeeRemoveTemplate: string;
+  pasteAlternative: string;
+  pasteAlternativeHelp: string;
   everyoneWarning: string;
   targetingFrozen: string;
   fNotify: string;
@@ -83,6 +106,7 @@ export function NoticeForm({
   departments,
   employmentTypes,
   orgCriteria,
+  employees,
   targetingFrozen,
   labels,
 }: {
@@ -95,6 +119,12 @@ export function NoticeForm({
   employmentTypes: Opt[];
   /** The eight org axes, each already resolved to its label and its catalogue options. */
   orgCriteria: { key: string; label: string; options: Opt[] }[];
+  /**
+   * r288 — every employment the signed-in administrator's companies hold, read once by the server page.
+   * REQUIRED, not optional: an optional list defaulting to `[]` would render a picker that silently offers
+   * nobody on any page that forgot to pass it, which is the failure this round exists to remove.
+   */
+  employees: EmployeePickOption[];
   /** True once the notice is published — the audience snapshot is fixed and the step is read-only. */
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
@@ -105,6 +135,70 @@ export function NoticeForm({
   const [anyCriteria, setAnyCriteria] = useState(
     Object.values(values.criteria).some((v) => (v ?? []).length > 0),
   );
+
+  /**
+   * ── r288 (8521e160) · PICK INDIVIDUALLY: TWO WAYS IN, ONE LIST OUT ───────────────────────────────────
+   *
+   * A SAVED notice is split back across the two doors rather than dumped into the paste box: any stored id
+   * this administrator can actually see becomes a CHIP, and anything else (an id outside their company
+   * scope, or the free text an earlier save let through) stays in the box where it is visible and
+   * editable. The union of the two is the stored list, so opening an individual notice and pressing Save
+   * without touching the audience stores exactly what was there before — order is not meaningful
+   * downstream (`employment.id IN (…)`), and `cleanNotice` de-duplicates on the way in regardless.
+   *
+   * Dropping the unknown half instead would be the worst option available: it would silently shrink the
+   * audience of a notice on a plain Save.
+   */
+  const known = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(values.employmentIds.filter((id) => known.has(id))),
+  );
+  const [pastedRaw, setPastedRaw] = useState(() =>
+    values.employmentIds.filter((id) => !known.has(id)).join('\n'),
+  );
+
+  // The row behind an option id, so a chip can show name and Employee ID as two things rather than one
+  // pre-joined string, and so the search rule can read the real fields.
+  const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // "Irwin Tan · EMP-0008" for the popover row, which is a single line of text by construction. Composed
+  // on THIS side of the boundary: the server page hands over data, never sentences.
+  const employeeOptions = useMemo(
+    () => employees.map((e) => ({ id: e.id, name: e.employeeCode ? `${e.name} · ${e.employeeCode}` : e.name })),
+    [employees],
+  );
+  // THE HOUSE RULE, not a second one (lib/employee-search.ts): partial name OR partial Employee ID, folded
+  // so "emp0008" finds "EMP-0008" here exactly as it does in the Personnel switcher and on the two leave
+  // screens. A picker that prints an Employee ID and cannot find it when typed is a broken promise.
+  const matchEmployee = useMemo(
+    () => (option: { id: string }, query: string) => {
+      const row = employeeById.get(option.id);
+      return row ? matchesEmployeeSearch(row, query) : false;
+    },
+    [employeeById],
+  );
+  // The chosen rows in the SERVER'S order (listEmployees sorts by full name), so the strip never reshuffles
+  // for a reason the operator cannot see. A `Set` is also why the same person cannot be added twice.
+  const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
+  // THE ONE LIST OUT — the same rule `createNoticeAction` / `updateNoticeAction` run over the same two
+  // posted fields (lib/employment-selection.ts). This copy exists only to decide what the screen SAYS.
+  const individualIds = useMemo(() => mergeEmploymentSelection([...picked], pastedRaw), [picked, pastedRaw]);
+  const unpick = (id: string) => {
+    const next = new Set(picked);
+    next.delete(id);
+    setPicked(next);
+  };
+  const removeLabel = (name: string) => labels.employeeRemoveTemplate.replace('{name}', name);
+
+  /**
+   * r288 — SAVE IS OFF while Pick individually has nobody in it. The reporter's words: Notice Board should
+   * "check who you have chosen while you are choosing, not at the end".
+   *
+   * It was checked at the end, by `cleanNotice` ("Choose at least one employee…"), which meant writing the
+   * whole notice first and being refused on submit. Scoped to individual mode on purpose: an EMPTY criteria
+   * set legitimately means everyone and has its own warning. Never while `targetingFrozen` — a published
+   * notice posts no audience at all and its Save must keep working for a typo fix.
+   */
+  const audienceBlocked = !targetingFrozen && mode === 'individual' && individualIds.length === 0;
 
   return (
     <form action={action} className="space-y-6">
@@ -263,15 +357,87 @@ export function NoticeForm({
                 )}
               </div>
             ) : (
-              <Field label={labels.employmentIds}>
-                <textarea
-                  name="employmentIdsRaw"
-                  rows={3}
-                  defaultValue={values.employmentIds.join('\n')}
-                  className={cn(inputCls, 'w-full')}
-                  placeholder={labels.employmentIdsHelp}
+              /**
+               * r288 (8521e160) — PICK INDIVIDUALLY IS A PICKER HERE TOO. TWO WAYS IN, ONE LIST OUT.
+               *
+               * WHAT WAS HERE: this box alone, under a help string inviting a paste of "employee
+               * references". Typing a name into it did NOT fail at Save, which is what the ticket said and
+               * what a reading of `createNotice` suggests — `notice.criteria` is a **jsonb** column, so
+               * `cleanNotice` stores "Irwin" quite happily. The draft page then reports a reach of ONE
+               * EMPLOYEE (it counts the stored strings), the publish confirmation repeats that number, and
+               * `publishNotice` is where it finally dies, on `employment.id IN (…)` against a **uuid**
+               * column. Verified against a real database, not reasoned about
+               * (test/r288-employee-pickers.test.ts §A): the failure lands at PUBLISH, one step later and
+               * one step worse than reported.
+               *
+               * THE PICKER IS THE HOUSE ONE, AND IT IS r287's, NOT A FOURTH. `MultiSelectPopover` with the
+               * two opt-in props that round added — `matchOption` (the house `matchesEmployeeSearch`) and
+               * `emptyLabelFor` (a search that finds nobody must SAY SO and name what was searched). Its
+               * form contract does the rest: one hidden `employmentIds` input per chosen id, rendered
+               * OUTSIDE its open/closed guard, so what is posted survives the panel closing before submit.
+               *
+               * THE PASTE BOX STAYS. It is how a bulk audience is set up today and deleting it would be an
+               * unrequested regression. Both fields are merged by ONE shared rule
+               * (`lib/employment-selection.ts`) that `inputFrom` runs on the server for create AND update.
+               */
+              <div className="space-y-3">
+                <MultiSelectPopover
+                  name="employmentIds"
+                  label={labels.employeePicker}
+                  allLabel={labels.employeeNoneChosen}
+                  options={employeeOptions}
+                  selected={picked}
+                  onChange={setPicked}
+                  searchPlaceholder={labels.employeeSearch}
+                  selectAllLabel={labels.employeeSelectAll}
+                  clearAllLabel={labels.employeeClearAll}
+                  selectedCount={(n) => labels.employeeSelectedCountTemplate.replace('{count}', String(n))}
+                  matchOption={matchEmployee}
+                  // THE TERMINAL STATE THE COMPLAINT IS ABOUT: a search that finds nobody says so, and
+                  // names what was searched. An empty panel asserts nothing (CLAUDE.md §8).
+                  emptyLabelFor={(query) => labels.employeeNoMatchTemplate.replace('{query}', query)}
                 />
-              </Field>
+                {pickedRows.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {pickedRows.map((e) => {
+                      const chipLabel = e.employeeCode ? `${e.name} · ${e.employeeCode}` : e.name;
+                      return (
+                        <span
+                          key={e.id}
+                          className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary"
+                        >
+                          {chipLabel}
+                          <button
+                            type="button"
+                            aria-label={removeLabel(chipLabel)}
+                            title={removeLabel(chipLabel)}
+                            onClick={() => unpick(e.id)}
+                            className="grid size-4 shrink-0 place-items-center rounded-full text-primary/70 transition-colors hover:bg-primary/20 hover:text-primary"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+                    {labels.employeeNonePicked}
+                  </p>
+                )}
+                <Field label={labels.pasteAlternative}>
+                  {/* Controlled, so the Save button moves on the keystroke. The field name and what the
+                      server does with it are UNCHANGED — this round changed the control, not the contract. */}
+                  <textarea
+                    name="employmentIdsRaw"
+                    rows={3}
+                    value={pastedRaw}
+                    onChange={(e) => setPastedRaw(e.currentTarget.value)}
+                    className={cn(inputCls, 'w-full font-mono text-xs')}
+                  />
+                  <p className="pt-1 text-[11px] text-muted-foreground">{labels.pasteAlternativeHelp}</p>
+                </Field>
+              </div>
             )}
           </>
         )}
@@ -313,9 +479,17 @@ export function NoticeForm({
         </Field>
       </section>
 
-      <Button type="submit" size="sm">
-        {labels.submit}
-      </Button>
+      {/* r288 — Save is OFF, and SAYS WHY, while Pick individually holds nobody. `cleanNotice` refuses the
+          same thing server-side and stays the authority; this is the half that tells the operator before
+          they have written the whole notice rather than after. */}
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={audienceBlocked}>
+          {labels.submit}
+        </Button>
+        {audienceBlocked && (
+          <span className="text-[11px] text-muted-foreground">{labels.employeeNonePicked}</span>
+        )}
+      </div>
     </form>
   );
 }

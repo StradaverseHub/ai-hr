@@ -22,6 +22,15 @@ import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { AdjustmentForm, type CriteriaSection } from '../components/leave/adjustment-form';
 
+/**
+ * r288 — the individual-target picker's population. Real-shaped uuids: the field holds uuids, and a
+ * fixture that pretends otherwise proves less.
+ */
+const employees = [
+  { id: '33333333-3333-4333-8333-333333333333', name: 'Daniel Tan', employeeCode: 'EMP-0005' },
+  { id: '11111111-1111-4111-8111-111111111111', name: 'Irwin Tan', employeeCode: 'EMP-0008' },
+];
+
 const leaveTypes = [
   { value: 'lt-annual', label: 'Annual Leave' },
   { value: 'lt-sick', label: 'Sick Leave' },
@@ -71,6 +80,7 @@ function mount() {
         today="2026-08-05"
         leaveTypes={leaveTypes}
         criteriaSections={criteriaSections}
+        employees={employees}
       />
     </NextIntlClientProvider>,
   );
@@ -204,10 +214,22 @@ describe('18103ba4 · the live matched count', () => {
     expect(await screen.findAllByText('7 employees')).not.toHaveLength(0);
   });
 
-  it('does not invent a number when the count fails', async () => {
+  /**
+   * r288 (8521e160) UPDATED THIS GUARD RATHER THAN DELETING IT — CLAUDE.md §8: "a guard pinning a decision
+   * you are reversing is updated, not deleted."
+   *
+   * 18103ba4 pinned that a failed count printed `adjustmentsMatchedPending`. That WAS the decision, and it
+   * was the defect: "Working it out…" is a PENDING sentence, so a count that had already failed was
+   * indistinguishable from one still in flight and the screen sat on it forever. The half of the old
+   * promise that still holds — no number is invented — is asserted below, alongside the terminal sentence
+   * that now replaces the pending one.
+   */
+  it('does not invent a number when the count fails, and stops claiming to be working', async () => {
     preview.mockRejectedValueOnce(new Error('nope'));
     mount();
-    await screen.findByText(messages.admin.leave.adjustmentsMatchedPending);
+    await screen.findAllByText(messages.admin.leave.adjustmentsMatchedUnknown);
+    expect(screen.queryByText(messages.admin.leave.adjustmentsMatchedPending)).toBeNull();
+    expect(screen.queryByText('7 employees')).toBeNull();
   });
 
   it('switching to Pick individually re-asks, because the two modes resolve different sets', async () => {

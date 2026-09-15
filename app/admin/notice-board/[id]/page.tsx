@@ -166,6 +166,9 @@ export default async function NoticeDetailPage({
             departments={vocab.departments}
             employmentTypes={vocab.employmentTypes}
             orgCriteria={vocab.orgCriteria}
+            /* r288 — the audience step's picker, read once in ../criteria-options.ts and handed over as
+               PLAIN DATA: no functions cross this boundary (test/server-client-boundary.test.ts). */
+            employees={vocab.employees}
             targetingFrozen={published}
             labels={{
               sectionBasics: t('sectionBasics'),
@@ -186,8 +189,27 @@ export default async function NoticeDetailPage({
               companies: t('fCompanies'),
               departments: t('fDepartments'),
               employmentTypes: t('fEmploymentTypes'),
-              employmentIds: t('fEmploymentIds'),
-              employmentIdsHelp: t('fEmploymentIdsHelp'),
+              employeePicker: t('fEmployeePicker'),
+              employeeNoneChosen: t('fEmployeeNoneChosen'),
+              employeeSearch: t('fEmployeeSearch'),
+              /* ⚠️ THE THREE TEMPLATES PASS THEIR OWN PLACEHOLDER BACK IN, and that is not a trick — it
+                 is the app/admin/personnel/[employmentId]/page.tsx idiom. These messages carry an ICU
+                 variable that `NoticeForm` substitutes on the CLIENT side of the boundary (it has a
+                 string, not a translator). A bare `t('fEmployeeNoMatch')` does not return the raw
+                 message: next-intl FORMATS it, finds no `query`, throws FORMATTING_ERROR and renders
+                 the KEY PATH — a 200 with "notices.fEmployeeNoMatch" in the popover. Found by rendering
+                 this page on a dev server and reading the log; tsc, eslint and every jsdom guard were
+                 green, because a jsdom guard builds these labels straight out of messages/en.json and
+                 never goes through next-intl at all (CLAUDE.md §8: a 200 is not a render check).
+                 `t.raw()` would also work but would take these keys out of i18n check C's sight. */
+              employeeNoMatchTemplate: t('fEmployeeNoMatch', { query: '{query}' }),
+              employeeNonePicked: t('fEmployeeNonePicked'),
+              employeeSelectedCountTemplate: t('fEmployeeSelectedCount', { count: '{count}' }),
+              employeeSelectAll: t('fEmployeeSelectAll'),
+              employeeClearAll: t('fEmployeeClearAll'),
+              employeeRemoveTemplate: t('fEmployeeRemove', { name: '{name}' }),
+              pasteAlternative: t('fPasteAlternative'),
+              pasteAlternativeHelp: t('fPasteAlternativeHelp'),
               everyoneWarning: t('everyoneWarning'),
               targetingFrozen: t('targetingFrozen'),
               fNotify: t('fNotify'),
