@@ -122,18 +122,52 @@ const ADDED_SINCE: readonly { href: string; labelKey: string }[] = [
   { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
 ] as const;
 
-/** The child this round added, resolved from the node so a rename here cannot silently pass. */
+/**
+ * r279 (3fbf7a02) — A ROW ADDED SINCE THE STRIP RETIRED THAT DOES **NOT** GO AT THE END.
+ *
+ * ADDED_SINCE above is appended, because the inquiry row was asked for "at the bottom, after Company
+ * rules". Leave Balance Health was asked for in a different place and the place is the point: it answers
+ * the question you ask ABOUT entitlements — can this leave type produce a balance at all — so it sits
+ * directly under Entitlements, whose first tab it was drawn on until this round. Naming it in its own
+ * list with its own insertion point keeps RETIRED_STRIP meaning exactly what it has always meant (the
+ * retired strip, in the strip's order, nothing lost and nothing re-sorted) instead of smuggling a new
+ * destination into it, which is the one edit that list cannot survive honestly.
+ */
+const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = [
+  { href: '/admin/leave-config/balance-health', labelKey: 'leaveBalanceHealth' },
+] as const;
+
+/**
+ * The fly-out's children, EXACTLY: the retired strip in its own order, with each row added since spliced
+ * in at the position its round chose. Still an exact-set guard — a deletion, a rename or a re-sort all
+ * fail it — and a genuinely new row is added by naming it above, in the commit that adds it.
+ */
+const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
+  RETIRED_STRIP[0],
+  ...ADDED_AFTER_ENTITLEMENTS,
+  ...RETIRED_STRIP.slice(1),
+  ...ADDED_SINCE,
+];
+
+/** The child r269 added, resolved from the node so a rename here cannot silently pass. */
 const INQUIRY_ROW = NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry')!;
+/** The child r279 added, resolved the same way. */
+const BALANCE_HEALTH_ROW = NODE.children.find((c) => c.labelKey === 'leaveBalanceHealth')!;
 
 /** href → the route file that must exist for it to be a live destination. */
 const routeFile = (href: string) => `app${href}/page.tsx`;
 
 describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () => {
-  it('carries every retired tab destination, same hrefs, same order, then what was added since — no broken bookmarks', () => {
-    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual([
-      ...RETIRED_STRIP,
-      ...ADDED_SINCE,
-    ]);
+  it('carries every retired tab destination, same hrefs, same order, plus what was added since at its own position — no broken bookmarks', () => {
+    // r279 (3fbf7a02) — UPDATED, NOT LOOSENED. The comparison was `[...RETIRED_STRIP, ...ADDED_SINCE]`;
+    // it is EXPECTED_CHILDREN now, which is the same thing with one row spliced in after Entitlements.
+    // The splice is pinned rather than assumed: RETIRED_STRIP[0] must still be the Entitlements row, or
+    // the new row would silently land somewhere else and this list would still read as correct.
+    expect(RETIRED_STRIP[0], 'the splice point moved').toEqual({
+      href: '/admin/leave-config/types',
+      labelKey: 'leaveEntitlements',
+    });
+    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
   });
@@ -144,8 +178,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // screen" but never actually checked. It now resolves the REGISTRY and names the owning screen key for
     // every child, so the one child that is deliberately on a different column has to say so out loud.
     const OWNING_SCREEN: Record<string, string> = {
-      // Four Leave Config destinations on the one leaveConfig column…
+      // Five Leave Config destinations on the one leaveConfig column…
       '/admin/leave-config/types': 'leaveConfig',
+      // r279 (3fbf7a02) — Leave Balance Health is the fifth, and it is on `leaveConfig` ON PURPOSE: it
+      // is the listing that WAS the Leave types tab, so anybody who could open that tab could already
+      // read it. A screen key of its own would invent a permission for a page that moved address.
+      '/admin/leave-config/balance-health': 'leaveConfig',
       '/admin/leave-config/adjustments': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
       '/admin/leave-config/company-rules': 'leaveConfig',
@@ -198,6 +236,34 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   /**
+   * r279 (3fbf7a02) — the second row, and the four things about it a later round could quietly undo.
+   */
+  it('the Leave Balance Health row sits directly under Entitlements and owns its own group, not a tab of one', () => {
+    expect(BALANCE_HEALTH_ROW, 'the Balance Health row is gone').toBeTruthy();
+    expect(BALANCE_HEALTH_ROW.href).toBe('/admin/leave-config/balance-health');
+    // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: it answers the
+    // question you ask about entitlements, and it is the tab it left that sits above it.
+    expect(NODE.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
+    // A real page, guarded, with no tabs of its own to own.
+    expect(exists('app/admin/leave-config/balance-health/page.tsx')).toBe(true);
+    expect(BALANCE_HEALTH_ROW.ownedSubpaths ?? []).toEqual([]);
+    // Highlighting is not a gate: the Administration group is gated wholesale and the page calls
+    // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
+    expect(BALANCE_HEALTH_ROW.adminOnly).toBeUndefined();
+    expect(BALANCE_HEALTH_ROW.managerUp).toBeUndefined();
+    // A SIBLING, NOT A THIRD TAB: its own map group, of ONE item — so the tab row renders nothing, the
+    // Entitlements group still has exactly its two tabs, and Entitlements does not own this path (owning
+    // it would light the row above while the reader is on this one).
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveBalanceHealth')!;
+    expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
+    expect(group.items.map((i) => i.href)).toEqual([BALANCE_HEALTH_ROW.href]);
+    expect(LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveEntitlements')!.items).toHaveLength(2);
+    expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain(
+      BALANCE_HEALTH_ROW.href,
+    );
+  });
+
+  /**
    * df00b85f — the Summary entry is retired and Entitlements leads the menu.
    *
    * The listing it opened (code / name / description / paid / status, an Edit link INTO Entitlements, a
@@ -224,6 +290,11 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // Config screen. It is NOT left unpinned — `MAPLESS_ROWS` names it and its owned path here, so the row
     // is still held to an exact set and a future map group for it would fail the "every row is a group"
     // half in test/r266-leave-config-rows.test.ts.
+    //
+    // r279 (3fbf7a02) — MAPLESS_ROWS DID NOT GROW. Leave Balance Health is a Leave Config page, so it
+    // took a map group of its own (of one item, drawing no tab row) and is covered by the loop above
+    // instead: its group has no tabs and its row owns no sub-screen, so the loop asserts an empty
+    // `ownedSubpaths` for it — which is the right answer and is derived, not written down here.
     const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
     const MAPLESS_ROWS: Record<string, string[]> = { employeeLeaveInquiry: ['/leave/employee-records'] };
     for (const group of LEAVE_CONFIG_MAP) {

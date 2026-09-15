@@ -412,6 +412,21 @@ export const SCREENS: readonly ScreenEntry[] = [
       // and the menu moves in Round 5, not now; test/leave-config-map.test.ts carries that exemption by
       // name, and test/leave-config-types-tabs.test.ts pins the absence so it cannot happen by accident.
       '/admin/leave-config/types',
+      // r279 (3fbf7a02) — LEAVE BALANCE HEALTH's own address. The traffic-light listing was drawn at
+      // page level on the Leave types tab and named nowhere in the menu; it has a fly-out row and a page
+      // of its own now (packs/leave/index.ts, second child). Same admin surface behind the same
+      // `requireAdmin` guard as every other `/admin/leave-config/` screen, so it is a ROUTE on this
+      // screen key rather than a new one — the precedent every route below it set, and the rule this
+      // file's head states: a key "may key stored role configs", so `leaveConfig` is never renamed and
+      // only `href` and `routes` ever move. No new permission is created: anyone who could open the
+      // Leave types tab could already read this listing, because it WAS the Leave types tab.
+      // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
+      // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+      // IT IS DELIBERATELY OFF components/leave-config-map.tsx: it is a sibling ROW, not a tab of the
+      // Entitlements group, and the map's groups are rows-and-their-tabs. test/leave-config-map.test.ts
+      // names it as a mapless row and asserts the fly-out reaches it instead, so "a screen nobody can
+      // find" — the defect a6fe37fc exists to fix — is still asserted, against the menu that is real.
+      '/admin/leave-config/balance-health',
       // a6fe37fc ROUND 3 — the rest of the new module, SEVEN routes, all built alongside the screens
       // they will replace and none of them replacing anything yet. They attach to THIS screen key for
       // the same reason `/admin/leave-config/types` does one line up: same admin surface, same

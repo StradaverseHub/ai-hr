@@ -82,6 +82,18 @@ export type LeaveConfigScreenId =
   | 'companyRules'
   | 'leaveTypes'
   | 'entitlementTables'
+  /**
+   * r279 (3fbf7a02) — `balanceHealth` (`/admin/leave-config/balance-health`), a SIBLING of the two
+   * Entitlements tabs and not a third one of them.
+   *
+   * The traffic-light listing — which leave types can produce a balance at all, and what is missing
+   * before the rest can — was drawn at page level on the Leave types tab and named NOWHERE in the menu.
+   * The screen that explains a 0.00 balance was the screen you had to already know about before you
+   * could find it, so it takes a fly-out row of its own, directly under Entitlements, and a group of its
+   * own here. A THIRD ITEM in the entitlements group would have been the wrong shape: it reads EVERY
+   * leave type at once, which is the one thing neither of that row's two tabs does.
+   */
+  | 'balanceHealth'
   | 'approvalChain'
   | 'replacementLeave'
   | 'payrollImpact'
@@ -92,18 +104,24 @@ export type LeaveConfigScreenId =
   | 'ledgerArchive';
 
 /**
- * 10b59703 — GROUPED BY THE FIVE ROWS OF THE LEFT SUBMENU, and nothing else.
+ * 10b59703 — GROUPED BY THE ROWS OF THE LEFT SUBMENU, and nothing else.
  *
- * ⚠️ 5ca446db (r269) — THE FLY-OUT HAS SIX ROWS NOW AND THIS MAP STILL HAS FIVE GROUPS. THAT IS CORRECT.
- * The sixth row ("Employee Leave Inquiry", packs/leave/index.ts LEAVE_ADMIN_NAV, last child) opens
+ * ⚠️ 5ca446db (r269) — THE FLY-OUT HAS ONE MORE ROW THAN THIS MAP HAS GROUPS, AND THAT IS CORRECT.
+ * (r279: seven rows, six groups. The counts move; the RULE below does not, which is why it is written as
+ * a rule rather than as two numbers. Every row whose destination is a page under
+ * `app/admin/leave-config/**` IS a group here, one for one, in the same order — including a row that owns
+ * a single screen, whose tab row then renders nothing. The ONE row that is not a group is the one whose
+ * destination is not a Leave Config page at all:)
+ * The LAST row ("Employee Leave Inquiry", packs/leave/index.ts LEAVE_ADMIN_NAV, last child) opens
  * `/leave/employee-balances` — a LEAVE INQUIRY screen that is not a Leave Config screen: it has no page
  * under `app/admin/leave-config/**`, it is registered on its own `leaveEmployeeBalances` permission
  * column rather than on `leaveConfig`, and its heading comes from its own PageHeader
  * (`leave.inquiry.balancesTitle`), not from `leaveConfigPageHeader`. Adding a group for it here would make
  * `leaveConfigPageHeader` claim a page it does not own and would break
  * test/leave-config-map.test.ts's "every screen here IS a declared route on its screen key". The
- * row↔group agreement below is therefore pinned as "the five map groups are the FIRST five rows", with
- * the sixth named explicitly — see test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts.
+ * row↔group agreement below is therefore pinned as "the map groups ARE the rows whose destinations live
+ * under the module, in order", with the one exception named explicitly — see
+ * test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts.
  * This note is here because the next person WILL assume the row belongs in this list.
  *
  * Until r266 the groups were configure / run / history and the component rendered ALL nine screens as a
@@ -112,7 +130,7 @@ export type LeaveConfigScreenId =
  * page ("Configuration record" in the header, "Entitlement archive" in the pills). The reporter's
  * instruction was that the submenu IS the navigation. So:
  *
- *   · a group is a submenu ROW (`packs/leave/index.ts` LEAVE_ADMIN_NAV, same order, same five);
+ *   · a group is a submenu ROW (`packs/leave/index.ts` LEAVE_ADMIN_NAV, same order, same set);
  *   · the first item of every group is the row's own href — that agreement is pinned by
  *     test/leave-config-map.test.ts, not derived, for the same reason the permission registry is not
  *     derived from (see the header above);
@@ -123,11 +141,21 @@ export type LeaveConfigScreenId =
  *
  * `leaveConfigScreenHref` is unchanged: every cross-screen link still resolves through the one list.
  */
-export type LeaveConfigGroupId = 'entitlements' | 'adjustments' | 'generate' | 'approval' | 'companyRules';
+export type LeaveConfigGroupId =
+  | 'entitlements'
+  // r279 (3fbf7a02) — a one-screen row, like `generate`, `approval` and `companyRules` below it: the
+  // tab row renders nothing for it, and the group exists so the page reads its heading and description
+  // through the same helper every other Leave Config page does.
+  | 'balanceHealth'
+  | 'adjustments'
+  | 'generate'
+  | 'approval'
+  | 'companyRules';
 
 /** The `nav.*` key of the submenu row each group IS — the heading of every page in the group. */
 export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
+  | 'leaveBalanceHealth'
   | 'leaveAdjustments'
   | 'leaveGenerate'
   | 'leaveApprovalWorkflow'
@@ -153,6 +181,12 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       // the old address is a redirect stub that lands there with `?capture=` kept.
     ],
   },
+  // r279 (3fbf7a02) — ONE SCREEN, ITS OWN ROW, SECOND. The tab row renders nothing for a group of one
+  // (see `LeaveConfigMap` below), so this entry buys exactly two things and they are the two the module
+  // is built on: the page's heading is its ROW's `nav` label through `leaveConfigPageHeader`, and the
+  // row↔group agreement stays 1:1 in both directions — which is what test/leave-config-map.test.ts and
+  // test/r266-leave-config-rows.test.ts assert, and what a mapless row would have forced an exception to.
+  { id: 'balanceHealth', navKey: 'leaveBalanceHealth', items: [{ id: 'balanceHealth', href: '/admin/leave-config/balance-health' }] },
   {
     id: 'adjustments',
     navKey: 'leaveAdjustments',
@@ -276,6 +310,7 @@ export async function leaveConfigRowTitle(groupId: LeaveConfigGroupId): Promise<
  */
 const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: string]> = {
   entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
+  balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
   approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],

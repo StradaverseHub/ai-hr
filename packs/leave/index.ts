@@ -112,6 +112,7 @@ import {
   CalendarRange,
   ClipboardList,
   GitBranch,
+  HeartPulse,
   Repeat2,
   SlidersHorizontal,
   UserSearch,
@@ -242,6 +243,31 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
       icon: ClipboardList,
       ownedSubpaths: ['/admin/leave-config/entitlement-tables'],
     },
+    // r279 (3fbf7a02) — LEAVE BALANCE HEALTH, THE SECOND ROW, AND ITS POSITION IS THE ANSWER.
+    //
+    // The listing that says which leave types can produce a balance at all was drawn at page level on
+    // the Leave types tab and named NOWHERE in the menu: the screen that explains a missing balance was
+    // the one you had to already know about before you could find it. It has its own address now
+    // (`app/admin/leave-config/balance-health/page.tsx`) and this is the row that opens it.
+    //
+    // DIRECTLY AFTER ENTITLEMENTS, not at the bottom, because it answers the question you ask ABOUT
+    // entitlements — can this leave type produce a balance at all — and the tab it left is the first
+    // row's first tab. A sibling ROW rather than a third tab of Entitlements: it reads every leave type
+    // at once, which is the one thing neither of that row's two tabs does.
+    //
+    // ⚠️ IT IS NOT IN components/leave-config-map.tsx AND MUST NOT BE, but for the OPPOSITE reason to
+    // the Employee Leave Inquiry row below. That row has no page under `app/admin/leave-config/**`, so
+    // a map group would make `leaveConfigPageHeader` claim a page it does not own; this one DOES have
+    // such a page, and the reason it still gets no group is the map's own meaning — a group is a row
+    // and its TABS, and giving Balance Health one would either draw a strip for a single-screen row or
+    // read as a third tab of Entitlements, which is exactly what it is not. Its page carries its own
+    // PageHeader, titled from this row's `nav.leaveBalanceHealth` key, so the heading-equals-row rule
+    // (r266 10b59703) still holds without the helper. test/leave-config-map.test.ts and
+    // test/r266-leave-config-rows.test.ts both name it as a mapless row rather than tolerating it.
+    //
+    // NO `ownedSubpaths`: the page has no tabs and no sub-screen, so there is nothing for the row to
+    // stay lit on beyond its own href.
+    { href: '/admin/leave-config/balance-health', labelKey: 'leaveBalanceHealth', icon: HeartPulse },
     // a6fe37fc ROUND 5 (cutover) — the destination moved, the row did not (see the Generate row below).
     // 10b59703 — same for Leave Adjustments: Import leave data is its other tab.
     // 7f69bd71 — `'/admin/leave-config/records/balances'` (the Balance record tab) STOOD HERE and is

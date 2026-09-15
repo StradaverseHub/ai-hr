@@ -537,10 +537,28 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(read('app/admin/leave-config/generate/page.tsx')).toContain('<EarnedAccrualDialog');
   });
 
-  it('F2 the health derivation is read, not recomputed', () => {
+  it('F2 the health derivation is read, not recomputed — and the full LISTING is on its own screen now', () => {
+    // r279 (3fbf7a02) — UPDATED, NOT DELETED, and the subject of this case is unchanged: the health facts
+    // this screen shows are READ from `leaveConfigHealthAll`, never recomputed. What moved is the full
+    // traffic-light CARD. It was drawn at page level here and named nowhere in the menu, so the screen
+    // that explains a 0.00 balance could only be found by already knowing it was here and scrolling; it
+    // has its own fly-out row and its own page now. What stays on this screen is the derivation and the
+    // two SCOPED surfaces it feeds — the rail's per-type "reaches nobody" badge, and the per-type
+    // `LeaveConfigHealthNotice` beside each type's own tables — because a warning shown away from the
+    // thing it is about gets ignored. So the assertion follows the property: the derivation is still
+    // read here, and the card is asserted GONE, so a half-done move that leaves two copies fails.
     expect(pageSrc).toContain('leaveConfigHealthAll(');
-    expect(pageSrc).toContain('<LeaveConfigHealthCard');
     expect(pageSrc).toContain('tablesReachNobody(h)');
+    expect(pageSrc, 'the full listing moved to its own page; two copies of one list drift').not.toContain(
+      '<LeaveConfigHealthCard',
+    );
+    // THE SCREEN IT MOVED TO — asserted here so this case can never go green on a page that simply lost
+    // its card with nothing put in its place.
+    const moved = read('app/admin/leave-config/balance-health/page.tsx');
+    expect(moved).toContain('<LeaveConfigHealthCard');
+    expect(leavePack.navNodes!.find((n) => n.group === 'admin')!.children.map((c) => c.href)).toContain(
+      '/admin/leave-config/balance-health',
+    );
   });
 
   it('F47 the Employee Balances way in (r242) is a Leave Config SUBMENU ROW now, at its unchanged address', () => {

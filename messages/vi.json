@@ -244,6 +244,7 @@
     "systemLabels": "Nhãn hệ thống",
     "leaveConfig": "Cấu hình nghỉ phép",
     "leaveEntitlements": "Quyền lợi",
+    "leaveBalanceHealth": "Tình trạng số dư nghỉ phép",
     "leaveAdjustments": "Điều chỉnh nghỉ phép",
     "leaveGenerate": "Tạo quyền lợi",
     "leaveApprovalWorkflow": "Quy trình phê duyệt",
@@ -8732,6 +8733,7 @@
         "leaveTypes": "Loại nghỉ phép",
         "companyRules": "Quy định của công ty",
         "entitlementTables": "Bảng định mức",
+        "balanceHealth": "Tình trạng số dư nghỉ phép",
         "approvalChain": "Chuỗi phê duyệt",
         "replacementLeave": "Nghỉ bù",
         "payrollImpact": "Ảnh hưởng lương",
@@ -8768,6 +8770,9 @@
       "entitlementStep": {
         "schemeExplainer": "Điều kiện (thẻ Ai đủ điều kiện) quyết định nhân viên có được nghỉ loại phép này hay không. Chế độ phúc lợi quyết định nhân viên nhận BẢNG định mức nào khi có nhiều hơn một bảng; người không được chế độ nào áp dụng sẽ nhận bảng định mức mặc định chỉ định ở đây."
       }
+    },
+    "leaveConfigBalanceHealth": {
+      "pageDescription": "Những loại nghỉ phép nào có thể tạo ra số dư hôm nay, và những loại còn lại còn thiếu gì."
     },
     "leaveConfigAdjustments": {
       "pageDescription": "Thay đổi số dư của nhân viên bằng tay, xem những gì đã thay đổi, và nạp số dư từ tệp."

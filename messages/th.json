@@ -244,6 +244,7 @@
     "systemLabels": "ป้ายระบบ",
     "leaveConfig": "ตั้งค่าการลา",
     "leaveEntitlements": "สิทธิ์การลา",
+    "leaveBalanceHealth": "สุขภาพยอดคงเหลือการลา",
     "leaveAdjustments": "การปรับปรุงวันลา",
     "leaveGenerate": "สร้างสิทธิ์การลา",
     "leaveApprovalWorkflow": "ขั้นตอนการอนุมัติ",
@@ -8732,6 +8733,7 @@
         "leaveTypes": "ประเภทการลา",
         "companyRules": "กฎของบริษัท",
         "entitlementTables": "ตารางสิทธิ",
+        "balanceHealth": "สุขภาพยอดคงเหลือการลา",
         "approvalChain": "สายอนุมัติ",
         "replacementLeave": "ลาชดเชย",
         "payrollImpact": "ผลต่อเงินเดือน",
@@ -8768,6 +8770,9 @@
       "entitlementStep": {
         "schemeExplainer": "คุณสมบัติ (แท็บ “ใครมีสิทธิ์”) กำหนดว่าพนักงานลาประเภทนี้ได้หรือไม่ ส่วนแผนสวัสดิการกำหนดว่าพนักงานได้รับตารางสิทธิ์ “ใบใด” เมื่อมีมากกว่าหนึ่งใบ ผู้ที่ไม่มีแผนครอบคลุมจะได้รับตารางสิทธิ์เริ่มต้นที่กำหนดไว้ที่นี่"
       }
+    },
+    "leaveConfigBalanceHealth": {
+      "pageDescription": "ประเภทการลาใดสร้างยอดคงเหลือได้ในวันนี้ และประเภทที่เหลือยังขาดสิ่งใด"
     },
     "leaveConfigAdjustments": {
       "pageDescription": "แก้ไขยอดคงเหลือของพนักงานด้วยตนเอง ดูสิ่งที่เปลี่ยนแปลง และโหลดยอดคงเหลือจากไฟล์"

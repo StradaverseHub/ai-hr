@@ -244,6 +244,7 @@
     "systemLabels": "Label Sistem",
     "leaveConfig": "Konfigurasi cuti",
     "leaveEntitlements": "Kelayakan",
+    "leaveBalanceHealth": "Kesihatan Baki Cuti",
     "leaveAdjustments": "Pelarasan Cuti",
     "leaveGenerate": "Jana Kelayakan",
     "leaveApprovalWorkflow": "Aliran Kelulusan",
@@ -8732,6 +8733,7 @@
         "leaveTypes": "Jenis cuti",
         "companyRules": "Peraturan syarikat",
         "entitlementTables": "Jadual kelayakan",
+        "balanceHealth": "Kesihatan baki cuti",
         "approvalChain": "Rantaian kelulusan",
         "replacementLeave": "Cuti ganti",
         "payrollImpact": "Kesan penggajian",
@@ -8768,6 +8770,9 @@
       "entitlementStep": {
         "schemeExplainer": "Kelayakan (tab Siapa yang layak) menentukan sama ada pekerja boleh mengambil jenis cuti ini. Skim faedah menentukan jadual kelayakan YANG MANA diterima oleh pekerja apabila terdapat lebih daripada satu; sesiapa yang tiada skim merangkuminya menerima jadual kelayakan lalai yang dinamakan di sini."
       }
+    },
+    "leaveConfigBalanceHealth": {
+      "pageDescription": "Jenis cuti yang boleh menghasilkan baki hari ini, dan apa yang masih kurang sebelum yang lain boleh."
     },
     "leaveConfigAdjustments": {
       "pageDescription": "Ubah baki pekerja secara manual, lihat apa yang diubah, dan muatkan baki daripada fail."
