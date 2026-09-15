@@ -171,6 +171,11 @@ describe('a6fe37fc — the leave configuration map', () => {
       'earnedAccrual',
       'approval',
       'companyRules',
+      // r281 (a73d1e14) — `specialSetting` is LAST, because its ROW is last. It sits after the Employee
+      // Leave Inquiry row in the fly-out, which is not a group here (its destination is not a Leave
+      // Config page), so the two orders still agree — the agreement below is over the rows whose
+      // destinations live under the module, and this is the last of those.
+      'specialSetting',
     ]);
     const byGroup = Object.fromEntries(LEAVE_CONFIG_MAP.map((g) => [g.id, g.items.map((i) => i.id)]));
     // The two rows with tabs, exactly as the approved pictures draw them; the other three own one screen.
@@ -186,5 +191,9 @@ describe('a6fe37fc — the leave configuration map', () => {
     expect(byGroup.earnedAccrual).toEqual<LeaveConfigScreenId[]>(['earnedAccrual']);
     expect(byGroup.approval).toEqual<LeaveConfigScreenId[]>(['approvalChain']);
     expect(byGroup.companyRules).toEqual<LeaveConfigScreenId[]>(['companyRules']);
+    // r281 — one screen, so no tab row is drawn. The reporter's sketch nests Half Day Deduction under
+    // Special Setting; the rail is two levels, so the row IS Special Setting and the setting is its page.
+    // A SECOND special setting later becomes a second item here and the strip appears by itself.
+    expect(byGroup.specialSetting).toEqual<LeaveConfigScreenId[]>(['specialSetting']);
   });
 });

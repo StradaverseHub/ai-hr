@@ -33,6 +33,16 @@ export const ENTITLEMENTS = '/admin/leave-config/types';
  * administrator who just saved a company rule looking at the leave type list, wondering whether it saved.
  */
 export const COMPANY_RULES = '/admin/leave-config/company-rules';
+/**
+ * r281 (a73d1e14) — SPECIAL SETTING, the row Half Day Deduction moved onto.
+ *
+ * A NEW CONSTANT RATHER THAN A REUSE OF `COMPANY_RULES`, for exactly the reason that constant exists at
+ * all: the half-day write used to return to Company rules because that is where its card was drawn, and
+ * it is not on that screen any more. Returning it there would leave an administrator who just ticked a
+ * company looking at a page with no half-day card on it, wondering whether it saved — and on the error
+ * path would show a refusal about a form they can no longer see. The redirect moves WITH the card.
+ */
+export const SPECIAL_SETTING = '/admin/leave-config/special-setting';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
  *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
 export const ADJUSTMENTS = '/admin/leave-config/adjustments';

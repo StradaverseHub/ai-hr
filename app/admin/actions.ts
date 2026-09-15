@@ -134,7 +134,7 @@ import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
 // async functions, so these helpers could never be exported from here).
-import { COMPANY_RULES, ENTITLEMENTS, GENERATE, SYSTEM_LABELS, fail, ok, okToast, okEntitlements } from './_redirects';
+import { COMPANY_RULES, ENTITLEMENTS, GENERATE, SPECIAL_SETTING, SYSTEM_LABELS, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 // a6fe37fc ROUND 5 (cutover) — REPOINTED. This named `/admin/leave`, itself a redirect stub to the leave
@@ -872,14 +872,16 @@ export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: Form
       companyIds: formData.getAll('companyIds').map(String).filter(Boolean),
     });
   } catch (e) {
-    // a6fe37fc ROUND 5 (cutover) — RETURNS TO COMPANY RULES, not to the leave type screen. This card is
-    // a COMPANY decision that used to be drawn once per leave type on the Leave types page; it lives on
-    // Company rules now (IA §2.0.3), so returning to ENTITLEMENTS would drop the administrator on a
-    // screen that no longer shows the setting they just changed — and, on the error path, would show a
-    // message about a form they can no longer see.
-    fail(COMPANY_RULES, e);
+    // a6fe37fc ROUND 5 (cutover) — RETURNS TO WHERE THE CARD IS, not to the leave type screen. This is a
+    // COMPANY decision that used to be drawn once per leave type on the Leave types page; returning to
+    // ENTITLEMENTS would drop the administrator on a screen that no longer shows the setting they just
+    // changed — and, on the error path, would show a message about a form they can no longer see.
+    // r281 (a73d1e14) — SPECIAL_SETTING, not COMPANY_RULES. The card moved to a heading of its own (the
+    // reporter's "Special Setting" row) and the return address moves WITH it, for exactly the reason it
+    // moved off ENTITLEMENTS in the first place.
+    fail(SPECIAL_SETTING, e);
   }
-  ok(COMPANY_RULES);
+  ok(SPECIAL_SETTING);
 }
 
 // b1b81a08 — createJobGradeAction / updateJobGradeAction / archiveJobGradeAction / deleteJobGradeAction and

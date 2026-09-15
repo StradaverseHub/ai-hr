@@ -114,6 +114,7 @@ import {
   GitBranch,
   HeartPulse,
   Play,
+  Settings2,
   Repeat2,
   SlidersHorizontal,
   UserSearch,
@@ -371,6 +372,22 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
       icon: UserSearch,
       ownedSubpaths: ['/leave/employee-records'],
     },
+    // r281 (a73d1e14) — SPECIAL SETTING, LAST, where the reporter drew it, holding Half Day Deduction.
+    //
+    // ⚠️ THE REPORTER'S SKETCH HAS THREE LEVELS AND THE RAIL HAS TWO. `NavChildDescriptor` (packs/registry
+    // .ts) carries href/labelKey/icon/adminOnly/managerUp and NO `children`, so a row cannot hold a row.
+    // Rather than refuse the shape, the row IS Special Setting and Half Day Deduction is the page it
+    // opens: same destination, same grouping, one click instead of two. A second special setting later
+    // becomes a second item in the map group and the tab strip appears by itself, with this row's name
+    // unchanged — which is why the row is named for the CATEGORY and not for the half-day rule.
+    //
+    // WHY IT IS BELOW THE INQUIRY ROW rather than with the configuration rows it resembles: the reporter
+    // drew it there. The map group order still agrees with the row order, because that agreement is
+    // asserted over the rows whose destinations live under `app/admin/leave-config/**`, and the inquiry
+    // row is not one of them (see its note above).
+    //
+    // NO `ownedSubpaths`: one screen, no tabs, no sub-screen.
+    { href: '/admin/leave-config/special-setting', labelKey: 'leaveSpecialSetting', icon: Settings2 },
   ],
 };
 

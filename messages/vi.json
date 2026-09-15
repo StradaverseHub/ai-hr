@@ -253,6 +253,7 @@
     "leaveReplacement": "Nghỉ bù",
     "leaveCompanyRules": "Quy định của công ty",
     "employeeLeaveInquiry": "Tra cứu nghỉ phép nhân viên",
+    "leaveSpecialSetting": "Thiết lập đặc biệt",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
     "payrollGuide": "Hướng dẫn quy trình",
@@ -8753,6 +8754,7 @@
       "item": {
         "leaveTypes": "Loại nghỉ phép",
         "companyRules": "Quy định của công ty",
+        "specialSetting": "Trừ lương nửa ngày",
         "entitlementTables": "Bảng định mức",
         "balanceHealth": "Tình trạng số dư nghỉ phép",
         "approvalChain": "Chuỗi phê duyệt",
@@ -8809,6 +8811,9 @@
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
       "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
       "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Loại nghỉ phép, không phải ở đây."
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "Các thiết lập áp dụng cho mọi loại nghỉ phép thay vì thuộc về riêng loại nào."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",

@@ -14,7 +14,6 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
-import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import Link from 'next/link';
 import {
@@ -27,7 +26,6 @@ import {
   createLeaveSharedGroupAction,
   deleteLeaveSharedGroupAction,
   setLeaveEncashmentPolicyAction,
-  setLeaveHalfDayFullDeductionCompaniesAction,
   setToilPolicyAction,
   updateLeaveSharedGroupAction,
 } from '../../actions';
@@ -125,20 +123,18 @@ export default async function LeaveConfigCompanyRulesPage({
   const shown = selected === ALL_COMPANIES ? visible : visible.filter((c) => c.id === selected);
   const shownIds = shown.map((c) => c.id);
 
-  // ⚠️ THE HALF-DAY PICKER IS SCOPED TO `adminOnly`, WHICH IS NARROWER THAN `companies`. The company
-  // UPDATE policy is admin-for-company, so a company-scoped hr_admin can SEE companies it cannot write.
-  // Offering exactly the companies the write can reach keeps the screen and the database in agreement,
-  // and core.setLeaveHalfDayFullDeductionCompanies resolves the same `app.is_admin_for` set server-side
-  // so a hand-crafted post cannot widen it either. This is the old screen's scope, character for
-  // character — a different one here would be a different control.
-  const [halfDayCompanies, encashmentPolicies, sharedGroups, leaveTypes, policies] = await Promise.all([
-    listCompanies(s, { adminOnly: true }),
+  // r281 (a73d1e14) — THE `adminOnly` COMPANY READ LEFT THIS PAGE WITH THE HALF-DAY CARD, and the note
+  // that explained it went with it rather than being deleted. The narrow WRITE scope is a property of
+  // that control — the company UPDATE policy is admin-for-company, so offering a wider list would let an
+  // administrator tick a company whose row the write then refuses — so the reasoning is written down
+  // beside the control, on the Special Setting screen. Nothing left on this page reads a company list
+  // narrower than the page's own.
+  const [encashmentPolicies, sharedGroups, leaveTypes, policies] = await Promise.all([
     getEncashmentPolicies(s),
     listLeaveSharedGroups(s),
     listLeaveTypes(s, { includeArchived: false }),
     listToilPolicies(s, shownIds),
   ]);
-  const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);
   const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
   const activeTypeOptions = leaveTypes.map((lt) => ({ id: lt.id, name: lt.name }));
@@ -294,34 +290,13 @@ export default async function LeaveConfigCompanyRulesPage({
         </div>
       </Card>
 
-      {/* ── F4 / F26 · Half-day full deduction ─────────────────────────────────────────────────────────
-          Company-wide, and drawn ONCE. On the old screen this same card is composed on the Leave types
-          page and handed into every leave type's Condition step, which is why the badge below says
-          "applies to every leave type": it is one company decision wearing twenty-five costumes. */}
-      <Card>
-        <SectionHeader title={t('halfDayDeductionTitle')} />
-        <div className="space-y-2 px-4 py-3">
-          <span className="inline-block rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {t('conditionStep.halfDayCompanyWideBadge')}
-          </span>
-          <p className="text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
-          <p className="text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
-          <form action={setLeaveHalfDayFullDeductionCompaniesAction} className="space-y-2">
-            {/* `selected` is the CURRENT state, so first render reproduces today's configuration exactly
-                and saving an unrelated form on this screen cannot silently rewrite it. The post states the
-                WHOLE set (`getAll('companyIds')`), and an empty selection is a meaningful answer —
-                "applies nowhere" — which is why there is no master switch and no guard rejecting it. */}
-            <HalfDayCompanyPicker
-              companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}
-              selected={halfDayEnabledCompanyIds}
-            />
-            <p className="text-xs text-muted-foreground">{t('halfDayDeductionEmptyNote')}</p>
-            <Button type="submit" variant="outline" size="sm">
-              {t('save')}
-            </Button>
-          </form>
-        </div>
-      </Card>
+      {/* r281 (a73d1e14) — THE HALF-DAY FULL DEDUCTION CARD STOOD HERE and is DELIBERATELY GONE, not
+          copied: the reporter asked for it under a heading of its own that a second setting of the same
+          kind can later join, so it is the whole of the Special Setting row now (the last row of the
+          fly-out). ONE EDITOR, still — leaving a copy here would be two screens writing one column, which
+          is the duplication this page was built to end rather than to start. Its server action's return
+          address moved with it in the same commit, so a save lands on the screen the change was made on
+          rather than on this one. */}
 
       {/* ── F40 · Leave encashment policy ──────────────────────────────────────────────────────────────
           ADR-0069: one row per company. Eligible leave (Annual only) and the rounding rule are fixed text

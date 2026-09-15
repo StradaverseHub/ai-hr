@@ -468,6 +468,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // handlers were never listed and have not moved: the reverse-completeness scan reads page.tsx
       // files only, and a route handler has no screen column to describe.
       '/admin/leave-config/records',
+      // r281 (a73d1e14) — SPECIAL SETTING's own address, the last row of the fly-out, holding Half Day
+      // Deduction. The card is a COMPANY-wide rule that was drawn on Company rules with three other
+      // settings; the reporter asked for it under a heading of its own that a second setting of the same
+      // kind can later join. Same admin surface behind the same `requireAdmin` guard as every other
+      // `/admin/leave-config/` screen, so it is a ROUTE on this screen key rather than a new one, and no
+      // new permission is created: anybody who could open Company rules could already edit this card.
+      // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
+      // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+      '/admin/leave-config/special-setting',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an

@@ -253,6 +253,7 @@
     "leaveReplacement": "Replacement Leave",
     "leaveCompanyRules": "Company rules",
     "employeeLeaveInquiry": "Employee Leave Inquiry",
+    "leaveSpecialSetting": "Special Setting",
     "holidays": "Holidays",
     "payroll": "Payroll",
     "payrollGuide": "Workflow Guide",
@@ -8753,6 +8754,7 @@
       "item": {
         "leaveTypes": "Leave types",
         "companyRules": "Company rules",
+        "specialSetting": "Half-day deduction",
         "entitlementTables": "Entitlement tables",
         "balanceHealth": "Leave balance health",
         "approvalChain": "Approval chain",
@@ -8809,6 +8811,9 @@
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
       "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
       "whoQualifies": "Who may take a leave type, and who receives which entitlement table, is set under Leave types, not here."
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "Settings that apply across every leave type rather than belonging to any one of them."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",

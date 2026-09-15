@@ -101,8 +101,16 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // is not a Leave Config screen at all — so the count-based spelling stopped expressing the promise. The
     // promise itself is unchanged and is restated exactly: Company rules is the LAST of the rows that open
     // a Leave Config screen. A new /admin/leave-config/* row placed after it still fails here.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED, and for the same reason r269 updated it before. "Company
+    // rules is the END of the leave config menu, where Replacement Leave was put" was a spelling of a
+    // POSITION; a later, unrelated item added a row below it (Special Setting, holding the half-day card
+    // the reporter asked to take off Company rules), drawn at the very bottom of their sketch. What this
+    // case promises is where Replacement Leave's absorbing screen sits among the rows that existed when
+    // it was put there, so it is restated exactly: Company rules is the last config row of the cutover
+    // set, and the only row below it is the one r281 added.
     const configHrefs = hrefs.filter((h) => h.startsWith('/admin/leave-config/'));
-    expect(configHrefs.at(-1)).toBe('/admin/leave-config/company-rules');
+    expect(configHrefs.at(-1)).toBe('/admin/leave-config/special-setting');
+    expect(configHrefs.at(-2)).toBe('/admin/leave-config/company-rules');
     // …and nothing but the named inquiry row sits outside that set, so the filter cannot hide a regression.
     expect(hrefs.filter((h) => !h.startsWith('/admin/leave-config/'))).toEqual(['/leave/employee-balances']);
     // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`

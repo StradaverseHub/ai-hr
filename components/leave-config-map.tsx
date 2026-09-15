@@ -113,7 +113,24 @@ export type LeaveConfigScreenId =
   | 'adjustments'
   | 'importLeaveData'
   | 'entitlementArchive'
-  | 'ledgerArchive';
+  | 'ledgerArchive'
+  /**
+   * r281 (a73d1e14) — `specialSetting` (`/admin/leave-config/special-setting`), the LAST row, holding
+   * Half Day Deduction.
+   *
+   * The reporter drew three levels — Leave Config, then Special Setting, then Half Day Deduction under
+   * it. THE RAIL IS TWO LEVELS: `NavChildDescriptor` (packs/registry.ts) carries href/labelKey/icon and
+   * no `children`, so a row cannot hold a row. The answer is the house's own single-screen shape:
+   * Special Setting is the ROW and Half Day Deduction is the page it opens — same destination, same
+   * grouping, one click instead of two. The plan says this to the reporter in those words and offers
+   * reject-and-say-so.
+   *
+   * ⚠️ THE ID IS THE ROW, NOT THE SETTING, and that is deliberate. A second special setting later becomes
+   * a second ITEM in this group, and the tab strip appears by itself with the row's name unchanged. An id
+   * named for the half-day rule would have had to be renamed on that day, which is the rename of a screen
+   * the customer has already learned that this component exists to avoid.
+   */
+  | 'specialSetting';
 
 /**
  * 10b59703 — GROUPED BY THE ROWS OF THE LEFT SUBMENU, and nothing else.
@@ -166,7 +183,11 @@ export type LeaveConfigGroupId =
   // and description through the same helper every other Leave Config page does.
   | 'earnedAccrual'
   | 'approval'
-  | 'companyRules';
+  | 'companyRules'
+  // r281 (a73d1e14) — LAST, after Employee Leave Inquiry, where the reporter drew it. A one-screen row
+  // like `generate`, `earnedAccrual` and `companyRules`: the tab strip draws nothing for it today and
+  // appears on its own the day a second special setting joins the group.
+  | 'specialSetting';
 
 /** The `nav.*` key of the submenu row each group IS — the heading of every page in the group. */
 export type LeaveConfigRowNavKey =
@@ -176,7 +197,8 @@ export type LeaveConfigRowNavKey =
   | 'leaveGenerate'
   | 'leaveEarnedAccrual'
   | 'leaveApprovalWorkflow'
-  | 'leaveCompanyRules';
+  | 'leaveCompanyRules'
+  | 'leaveSpecialSetting';
 
 type Group = {
   id: LeaveConfigGroupId;
@@ -233,6 +255,11 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   // screens were absorbed into Company rules, whose page renders `leaveConfigScreenTitle()` of each as a
   // section heading. Two entries reaching one screen is what this component exists to stop.
   { id: 'companyRules', navKey: 'leaveCompanyRules', items: [{ id: 'companyRules', href: '/admin/leave-config/company-rules' }] },
+  // r281 (a73d1e14) — LAST, AFTER EMPLOYEE LEAVE INQUIRY, which is where the reporter drew it. That row
+  // is not a group here (its destination is not a Leave Config page), so this group follows Company rules
+  // in THIS list while its row follows the inquiry row in the fly-out — the two orders still agree,
+  // because the agreement is asserted over the rows whose destinations live under the module.
+  { id: 'specialSetting', navKey: 'leaveSpecialSetting', items: [{ id: 'specialSetting', href: '/admin/leave-config/special-setting' }] },
 ];
 
 /**
@@ -340,6 +367,7 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],
   approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],
   companyRules: ['admin.leaveConfigCompanyRules', 'pageDescription'],
+  specialSetting: ['admin.leaveConfigSpecialSetting', 'pageDescription'],
 };
 
 /** The PageHeader of any Leave Config screen: its row's title and its row's description. Every page in

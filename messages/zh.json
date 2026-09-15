@@ -253,6 +253,7 @@
     "leaveReplacement": "替假",
     "leaveCompanyRules": "公司规则",
     "employeeLeaveInquiry": "员工假期查询",
+    "leaveSpecialSetting": "特殊设置",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -8753,6 +8754,7 @@
       "item": {
         "leaveTypes": "休假类型",
         "companyRules": "公司规则",
+        "specialSetting": "半天扣除",
         "entitlementTables": "额度表",
         "balanceHealth": "假期余额健康检查",
         "approvalChain": "审批链",
@@ -8809,6 +8811,9 @@
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
       "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
       "whoQualifies": "谁可以休某种假期类型、谁获得哪一张额度表，在“休假类型”下设置，而不是这里。"
+    },
+    "leaveConfigSpecialSetting": {
+      "pageDescription": "适用于所有休假类型、而非属于其中任何一种的设置。"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",

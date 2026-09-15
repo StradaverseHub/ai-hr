@@ -120,6 +120,11 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
  */
 const ADDED_SINCE: readonly { href: string; labelKey: string }[] = [
   { href: '/leave/employee-balances', labelKey: 'employeeLeaveInquiry' },
+  // r281 (a73d1e14) — Special Setting, appended BELOW the inquiry row because that is where the reporter
+  // drew it. It holds Half Day Deduction, which came off Company rules. The rail is two levels deep
+  // (`NavChildDescriptor` has no `children`), so the sketch's third level is the PAGE this row opens
+  // rather than a nested row; the plan says that to the reporter and offers reject-and-say-so.
+  { href: '/admin/leave-config/special-setting', labelKey: 'leaveSpecialSetting' },
 ] as const;
 
 /**
@@ -230,6 +235,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // payroll and perf-comp partners), which shows every adminOnly row to a non-admin partner who is then
       // redirected at the page. Disclosed, predates this row, not fixed here with a bespoke flag.
       '/leave/employee-balances': 'leaveEmployeeBalances',
+        // r281 (a73d1e14) — Special Setting is on `leaveConfig`, like every other Leave Config
+        // destination: the half-day card it holds was already behind that column on Company rules, so a
+        // screen key of its own would invent a permission for a card that changed address.
+        '/admin/leave-config/special-setting': 'leaveConfig',
     };
     for (const child of NODE.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
@@ -458,7 +467,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     }
   });
 
-  it('the Audit row is gone, Company rules closes the config rows, and Employee Leave Inquiry is last', () => {
+  it('the Audit row is gone, Company rules closes the ORIGINAL config rows, and the rows added since sit where they were asked for', () => {
     expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
     // a6fe37fc Round 5 — the row that ABSORBED Replacement leave closes the five CONFIGURE rows. The
     // position the reporter's team reads is unchanged; only what sits in it moved.
@@ -467,12 +476,24 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // of the five configuration rows", because the reporter asked for the inquiry row to sit at the BOTTOM,
     // after Company rules ("Add a sixth row to the Leave Config menu, at the bottom, after Company rules").
     // Both halves are pinned so neither the fifth position nor the sixth can drift.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED, and the two promises are separated rather than blurred.
+    // "Company rules closes the config rows" and "the inquiry row is last" were both spellings of
+    // POSITIONS, and this round adds a row BELOW the inquiry row because that is where the reporter drew
+    // it (Special Setting, holding Half Day Deduction). What each round actually promised is a NEIGHBOUR
+    // relationship, so each is pinned as a neighbour pair: Company rules immediately before the inquiry
+    // row, and the inquiry row immediately before the row r281 added. A row inserted anywhere between
+    // them still fails, and a row appended below Special Setting must name itself here — the same
+    // discipline the ADDED_SINCE list above applies.
+    expect(NODE.children.map((c) => c.labelKey).slice(-3)).toEqual([
+      'leaveCompanyRules',
+      'employeeLeaveInquiry',
+      'leaveSpecialSetting',
+    ]);
+    expect(NODE.children.at(-1)!.href).toBe('/admin/leave-config/special-setting');
+    // Company rules is still the last of the rows the a6fe37fc cutover left, which is what that round
+    // promised: the only config row below it is the one r281 named above.
     const CONFIG_ROWS = NODE.children.filter((c) => c.href.startsWith('/admin/leave-config/'));
-    expect(CONFIG_ROWS.at(-1)!.href).toBe('/admin/leave-config/company-rules');
-    expect(NODE.children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(NODE.children.at(-1)!.href).toBe('/leave/employee-balances');
-    // …and it is IMMEDIATELY after Company rules, not merely somewhere below it.
-    expect(NODE.children.map((c) => c.labelKey).slice(-2)).toEqual(['leaveCompanyRules', 'employeeLeaveInquiry']);
+    expect(CONFIG_ROWS.at(-2)!.href).toBe('/admin/leave-config/company-rules');
     expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
   });
 

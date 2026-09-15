@@ -91,6 +91,15 @@ const SCREENS_BUILT = {
     route: '/admin/leave-config/records',
     mapId: 'ledgerArchive',
   },
+  // r281 (a73d1e14) — SPECIAL SETTING, the eighth. Not a Round 3 screen, but the half-day card this file
+  // guards moved onto it, and the assertions follow the EDITOR rather than the address (the same rule the
+  // cutover table below already applies). Registering it here also holds it to this file's own
+  // per-screen rules: a declared route, a map mount with its own id, and no server action of its own.
+  specialSetting: {
+    file: 'app/admin/leave-config/special-setting/page.tsx',
+    route: '/admin/leave-config/special-setting',
+    mapId: 'specialSetting',
+  },
 } as const;
 
 type ScreenKey = keyof typeof SCREENS_BUILT;
@@ -295,10 +304,29 @@ const MOUNTS: [string, ScreenKey, string][] = [
   ['F41 the five-step generate wizard', 'generate', '<GenerateForm'],
   ['F42 the four-step adjustment flow', 'adjustments', '<AdjustmentForm'],
   ['F44 the ledger importer', 'import', '<LeaveLedgerImport />'],
-  ['F4/F26 the half-day company picker', 'companyRules', '<HalfDayCompanyPicker'],
+  // r281 (a73d1e14) — the half-day card is on the Special Setting row now; the mount follows the editor.
+  ['F4/F26 the half-day company picker', 'specialSetting', '<HalfDayCompanyPicker'],
   ['F3 the shared leave group manager', 'companyRules', '<LeaveSharedGroupConfig'],
   ['F38 the replacement eligibility picker', 'companyRules', '<ReplacementEligibilityPicker'],
 ];
+
+/**
+ * r281 — WHERE EACH OF THE FOUR COMPANY/TENANT SETTINGS IS EDITED TODAY, one screen each.
+ *
+ * Round 3 gathered all four onto Company rules and this file asserted them there. The reporter has since
+ * asked for some of them to move again — the half-day card to a "Special Setting" row of its own — so the
+ * table says which file carries which editor, and the property this file has always guarded (exactly ONE
+ * screen answers for each setting) is asserted against the current answer rather than against an address
+ * that has stopped being true.
+ */
+const POSTED_FROM: Record<string, string> = {
+  setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
+  setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+  setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+  createLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
+  updateLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
+  deleteLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
+};
 
 describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemented (IA §2.3)', () => {
   it.each(MOUNTS)('%s is mounted on the new page', (_fn, key, mount) => {
@@ -327,16 +355,13 @@ describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemen
         false,
       );
     }
-    for (const action of [
-      'setLeaveHalfDayFullDeductionCompaniesAction',
-      'setLeaveEncashmentPolicyAction',
-      'setToilPolicyAction',
-      'createLeaveSharedGroupAction',
-      'updateLeaveSharedGroupAction',
-      'deleteLeaveSharedGroupAction',
-    ]) {
+    // r281 — the four settings are no longer all on one screen (the reporter asked for three of them to
+    // move), so each action is checked against the FILE that carries its editor today. The property is
+    // unchanged and is Round 2's rule 2: the action already exists, its signature is untouched, and the
+    // page that posts it declares none of its own.
+    for (const [action, file] of Object.entries(POSTED_FROM)) {
       expect(actionsSrc).toContain(`export async function ${action}(`);
-      expect(src.companyRules).toContain(action);
+      expect(read(file), `${action} is not posted from ${file}`).toContain(action);
     }
   });
 
@@ -486,9 +511,17 @@ const ACTION_FIELDS: Record<string, { mountedIn?: string[]; fields: PostedField[
   },
 };
 
-/** Every `<form>` on Company rules, with the source of the components it mounts folded in. */
+/**
+ * Every `<form>` on the screen that CARRIES the action, with the source of the components it mounts
+ * folded in.
+ *
+ * r281 — it used to read `src.companyRules` unconditionally, because Round 3 gathered all four editors
+ * there. Three of them have since been asked to move, so the screen is looked up in POSTED_FROM rather
+ * than assumed: the property ("every field the action READS is posted by the form that posts it") is
+ * about a form and an action, never about an address.
+ */
 function scopeFor(action: string, mountedIn: string[] = []): string | null {
-  const body = src.companyRules
+  const body = read(POSTED_FROM[action])
     .split('<form')
     .slice(1)
     .map((chunk) => chunk.slice(0, chunk.indexOf('</form>')))
@@ -534,12 +567,34 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     }
   });
 
-  it('the four settings are gathered from FOUR different surfaces — that is what the screen is for', () => {
-    // IA §2.0.3: Company rules is the only genuinely new destination, and this is the whole of its case.
-    expect(src.companyRules).toContain('setLeaveHalfDayFullDeductionCompaniesAction'); // F4/F26, from every leave type
-    expect(src.companyRules).toContain('setLeaveEncashmentPolicyAction'); //             F40,     from Payroll impact
-    expect(src.companyRules).toContain('listLeaveSharedGroups('); //                     F3,      from Leave types
-    expect(src.companyRules).toContain('setToilPolicyAction'); //                        F38,     from Replacement leave
+  it('r281 — each of the four settings has exactly ONE editor, and the screen it is on is named', () => {
+    // ROUND 3's version read "the four settings are gathered from FOUR different surfaces — that is what
+    // the screen is for", and asserted all four on Company rules. That premise has been overtaken by the
+    // reporter: they asked for the half-day card to sit under a "Special Setting" heading of its own, and
+    // gathering-for-its-own-sake was never the property worth guarding. THE PROPERTY IS: one setting, one
+    // editor, and it is findable — so each is asserted on the file that carries it, and asserted ABSENT
+    // from every other Leave Config page, which is the half that catches a move leaving a copy behind.
+    const OWNER: Record<string, string> = {
+      // F4/F26, from every leave type → Company rules → Special Setting (r281, a73d1e14)
+      setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
+      // F40, from Payroll impact. Stays on Company rules.
+      setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+      // F3, from Leave types. Stays on Company rules for now.
+      'listLeaveSharedGroups(': 'app/admin/leave-config/company-rules/page.tsx',
+      // F38, from Replacement leave. Stays on Company rules.
+      setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+    };
+    const modulePages = readdirSync(resolve(here, '..', 'app/admin/leave-config'), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => `app/admin/leave-config/${e.name}/page.tsx`)
+      .filter((f) => existsSync(resolve(here, '..', f)));
+    for (const [needle, owner] of Object.entries(OWNER)) {
+      expect(read(owner), `${needle} is not on ${owner}`).toContain(needle);
+      for (const other of modulePages) {
+        if (other === owner) continue;
+        expect(read(other).includes(needle), `${needle} is on ${other} as well as ${owner}`).toBe(false);
+      }
+    }
   });
 
   it('the replacement section keeps its company filter, and keeps it OUT of the global scope cookie', () => {
@@ -578,21 +633,21 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     // Asserted STRUCTURALLY — which name the adminOnly read is bound to, and which list the picker is
     // handed — rather than by a bare `toContain('adminOnly')`: keeping the call while handing the picker
     // `visible` is the same defect with the reassuring string still in the file.
-    const batch = /const \[([^\]]+)\] = await Promise\.all\(\[([\s\S]*?)\n\s*\]\);/.exec(src.companyRules);
+    //
+    // r281 (a73d1e14) — RE-POINTED AT THE SCREEN THAT CARRIES THE PICKER, exactly as the Round 3 note
+    // above instructed the next mover to do ("re-point this case at wherever `halfDayCompanies` is now
+    // bound, never drop it"). The card is the whole of the Special Setting page now, so the read is a
+    // single await rather than one slot of a batch; what is asserted is unchanged — which call the name
+    // is bound to, and which list the picker is handed.
+    const picker = read(POSTED_FROM.setLeaveHalfDayFullDeductionCompaniesAction);
+    const binding = /const halfDayCompanies = await (listCompanies\([^;]*?\));/.exec(picker);
     expect(
-      batch,
-      'Company rules no longer batches its reads in one Promise.all — re-point this case at wherever ' +
-        '`halfDayCompanies` is now bound, never drop it',
+      binding,
+      '`halfDayCompanies` is no longer bound by a single read on the screen that carries the picker — ' +
+        're-point this case at wherever it is now bound, never drop it',
     ).not.toBeNull();
-    const names = batch![1].split(',').map((x) => x.trim());
-    const calls = batch![2]
-      .split('\n')
-      .map((l) => l.trim().replace(/,$/, ''))
-      .filter(Boolean);
-    const i = names.indexOf('halfDayCompanies');
-    expect(i, '`halfDayCompanies` is no longer read on Company rules').toBeGreaterThan(-1);
     expect(
-      calls[i],
+      binding![1],
       "the half-day picker's company list is no longer the adminOnly scope — a company-scoped hr_admin " +
         'would be offered companies whose row the write can never reach, and the untick would vanish on save',
     ).toBe('listCompanies(s, { adminOnly: true })');
@@ -600,7 +655,7 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     // …and that narrower list is what the PICKER is handed. Scoped to the form, so a wider list read
     // elsewhere on the page for a different question cannot satisfy it.
     const form = scopeFor('setLeaveHalfDayFullDeductionCompaniesAction');
-    expect(form, 'no form on Company rules posts setLeaveHalfDayFullDeductionCompaniesAction').not.toBeNull();
+    expect(form, 'no form posts setLeaveHalfDayFullDeductionCompaniesAction').not.toBeNull();
     expect(form!).toContain('companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
     for (const wider of ['companies', 'visible', 'shown']) {
       expect(
@@ -610,7 +665,7 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     }
     // The ticked state is derived from the SAME narrow list: derived from a wider one, the card would
     // show ticks for companies the picker does not even offer.
-    expect(src.companyRules).toContain(
+    expect(picker).toContain(
       'const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);',
     );
   });
@@ -744,6 +799,18 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
    * **the function did not evaporate in the move**. Before its screen's commit the needle must be on the
    * old page; after it, on the new one. Either way exactly one screen answers for it.
    */
+  /**
+   * r281 — the needles whose destination is no longer the one their CUTOVER entry names.
+   *
+   * The cutover table answers "which commit moved this", which is still the right key for "did it leave
+   * the old screen too early". It stopped being the right answer for "where is it now" the moment the
+   * reporter asked for a second move, so the two questions get two tables rather than one that quietly
+   * means both.
+   */
+  const DESTINATION: Record<string, string> = {
+    'the half-day card': 'app/admin/leave-config/special-setting/page.tsx',
+  };
+
   const NEW_FILE: Record<string, string> = {
     // Half-day and shared groups leave the leave TYPE page for Company rules, so `leaveTypes` names the
     // file those needles must ARRIVE in, which is Company rules — not the new leave type screen.
@@ -779,9 +846,8 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
       // TYPE screen and land on Company rules, so they move when the leave type page is emptied — with
       // `leaveTypes`, not with the Company rules screen's own absorbed entries.
       if (CUTOVER[absorbedBy].cutOver) {
-        expect(read(NEW_FILE[absorbedBy]), `${_what} did not arrive at ${CUTOVER[absorbedBy].to}`).toContain(
-          needle,
-        );
+        const arrivedAt = DESTINATION[_what] ?? NEW_FILE[absorbedBy];
+        expect(read(arrivedAt), `${_what} did not arrive at ${arrivedAt}`).toContain(needle);
       } else {
         expect(OLD[file], `${_what} left the old screen before its cutover commit`).toContain(needle);
       }
