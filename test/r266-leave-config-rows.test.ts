@@ -439,8 +439,21 @@ describe('§D · the moves, and what deliberately did not move', () => {
     expect(companyRules, 'the half-day card must not survive on Company rules too').not.toContain(
       '<HalfDayCompanyPicker',
     );
-    for (const needle of ['<LeaveSharedGroupConfig'])
-      expect(companyRules).toContain(needle);
+    // r281 (cdd7500b) — SHARED LEAVE GROUPS LEFT THIS SCREEN TOO, at the reporter's request, and the
+    // assertion follows the editor the same way. It is on the Leave types screen at PAGE LEVEL — above
+    // the per-type workspace and outside it — which is the distinction the whole item turns on: it was
+    // taken OFF that screen because it sat INSIDE the workspace, where it read as a property of the
+    // selected type while a group spans several. So both halves are pinned: it is drawn on the types
+    // page, and it is NOT inside the workspace's panels (a mount there would put it back where it was).
+    const types = read('app/admin/leave-config/types/page.tsx');
+    expect(types).toContain('<LeaveSharedGroupConfig');
+    expect(types.indexOf('<LeaveSharedGroupConfig')).toBeLessThan(types.indexOf('<LeaveTypeWorkspace'));
+    expect(companyRules, 'the shared-group card must not survive on Company rules too').not.toContain(
+      '<LeaveSharedGroupConfig',
+    );
+    // Company rules keeps the two sections the reporter did not ask to move.
+    expect(companyRules).toContain('setLeaveEncashmentPolicyAction');
+    expect(companyRules).toContain('setToilPolicyAction');
   });
 
   it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs (plus the named sub-screen)', () => {

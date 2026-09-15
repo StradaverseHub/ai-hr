@@ -100,6 +100,14 @@ const SCREENS_BUILT = {
     route: '/admin/leave-config/special-setting',
     mapId: 'specialSetting',
   },
+  // r281 (cdd7500b) — THE LEAVE TYPE SCREEN, the ninth, and for the same reason as the eighth: the shared
+  // leave groups this file guards moved onto it (at PAGE level, above the per-type workspace — see the
+  // comment at the mount for why that distinction is the whole item), so the assertions follow the editor.
+  leaveTypesScreen: {
+    file: 'app/admin/leave-config/types/page.tsx',
+    route: '/admin/leave-config/types',
+    mapId: 'leaveTypes',
+  },
 } as const;
 
 type ScreenKey = keyof typeof SCREENS_BUILT;
@@ -306,7 +314,8 @@ const MOUNTS: [string, ScreenKey, string][] = [
   ['F44 the ledger importer', 'import', '<LeaveLedgerImport />'],
   // r281 (a73d1e14) — the half-day card is on the Special Setting row now; the mount follows the editor.
   ['F4/F26 the half-day company picker', 'specialSetting', '<HalfDayCompanyPicker'],
-  ['F3 the shared leave group manager', 'companyRules', '<LeaveSharedGroupConfig'],
+  // r281 (cdd7500b) — the shared groups are on the leave TYPE screen now, at page level; mount follows.
+  ['F3 the shared leave group manager', 'leaveTypesScreen', '<LeaveSharedGroupConfig'],
   ['F38 the replacement eligibility picker', 'companyRules', '<ReplacementEligibilityPicker'],
 ];
 
@@ -323,9 +332,9 @@ const POSTED_FROM: Record<string, string> = {
   setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
   setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
   setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
-  createLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
-  updateLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
-  deleteLeaveSharedGroupAction: 'app/admin/leave-config/company-rules/page.tsx',
+  createLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
+  updateLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
+  deleteLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
 };
 
 describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemented (IA §2.3)', () => {
@@ -579,8 +588,10 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
       setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
       // F40, from Payroll impact. Stays on Company rules.
       setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
-      // F3, from Leave types. Stays on Company rules for now.
-      'listLeaveSharedGroups(': 'app/admin/leave-config/company-rules/page.tsx',
+      // F3, from Leave types → Company rules → back to Leave types at PAGE level (r281, cdd7500b). The
+      // reporter asked for it under leave types; the reason it left that screen was that it sat INSIDE
+      // the per-type workspace, so the mount POINT — not the screen — is what changed on the way back.
+      'listLeaveSharedGroups(': 'app/admin/leave-config/types/page.tsx',
       // F38, from Replacement leave. Stays on Company rules.
       setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
     };
@@ -809,6 +820,7 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
    */
   const DESTINATION: Record<string, string> = {
     'the half-day card': 'app/admin/leave-config/special-setting/page.tsx',
+    'shared leave groups': 'app/admin/leave-config/types/page.tsx',
   };
 
   const NEW_FILE: Record<string, string> = {

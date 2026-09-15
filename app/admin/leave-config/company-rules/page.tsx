@@ -3,18 +3,16 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { ALL_COMPANIES, resolveCompanyFilter } from '@/lib/company-filter';
-import { listCompanies, listDepartments, listEmployees, listJobGrades, listLeaveTypes } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees, listJobGrades } from '@/core/read';
 import { listPositions } from '@/core/admin';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { getEncashmentPolicies } from '@/core/leave-encashment';
-import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { listToilPolicies } from '@/packs/leave/service';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA } from '@/core/replacement-eligibility';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
-import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import Link from 'next/link';
 import {
   LeaveConfigMap,
@@ -22,13 +20,7 @@ import {
   leaveConfigScreenHref,
   leaveConfigScreenTitle,
 } from '@/components/leave-config-map';
-import {
-  createLeaveSharedGroupAction,
-  deleteLeaveSharedGroupAction,
-  setLeaveEncashmentPolicyAction,
-  setToilPolicyAction,
-  updateLeaveSharedGroupAction,
-} from '../../actions';
+import { setLeaveEncashmentPolicyAction, setToilPolicyAction } from '../../actions';
 
 /** Not exported: Next refuses unknown exports from a page module. The company picker's hrefs are built
  *  here on the server, so the choice rides in the address bar and the page stays a server render. */
@@ -95,7 +87,6 @@ export default async function LeaveConfigCompanyRulesPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const tr = await getTranslations('admin.replacementLeave');
-  const tGroup = await getTranslations('admin.leave.sharedGroup');
   const tPage = await getTranslations('admin.leaveConfigCompanyRules');
   const { error, warning, saved, company } = await searchParams;
 
@@ -129,15 +120,16 @@ export default async function LeaveConfigCompanyRulesPage({
   // administrator tick a company whose row the write then refuses — so the reasoning is written down
   // beside the control, on the Special Setting screen. Nothing left on this page reads a company list
   // narrower than the page's own.
-  const [encashmentPolicies, sharedGroups, leaveTypes, policies] = await Promise.all([
+  // r281 (cdd7500b) — THE SHARED-GROUP READ AND THE ACTIVE LEAVE-TYPE LIST LEFT WITH THE CARD. The
+  // Leave types screen already reads every leave type for its own workspace, so the list is narrowed to
+  // the active ones there rather than read a second time — "active leave types" derived twice is the
+  // drift this repo keeps paying for.
+  const [encashmentPolicies, policies] = await Promise.all([
     getEncashmentPolicies(s),
-    listLeaveSharedGroups(s),
-    listLeaveTypes(s, { includeArchived: false }),
     listToilPolicies(s, shownIds),
   ]);
   const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
-  const activeTypeOptions = leaveTypes.map((lt) => ({ id: lt.id, name: lt.name }));
 
   // The eight replacement-eligibility pickers' option lists. Loaded ONCE for the whole page rather than
   // per company card: the catalogues are tenant-wide (grades, profile options) or already company-filtered
@@ -345,29 +337,16 @@ export default async function LeaveConfigCompanyRulesPage({
         </div>
       </Card>
 
-      {/* ── F3 · Shared leave groups ───────────────────────────────────────────────────────────────────
-          Tenant-wide, and that is the point of moving it. On the old screen it sits beside Add Leave Type
-          inside the leave-type workspace, where it reads as a property of whichever type is selected; a
-          group spans several types, which is exactly the shape r88 took it OUT of Benefit Schemes to
-          avoid. The member tick list offers every ACTIVE leave type; the at-most-one-group-per-type rule
-          is enforced in the database and reported by name from the action, never re-derived here. */}
-      <Card>
-        <SectionHeader title={tGroup('title')} count={sharedGroups.length} />
-        <div className="space-y-3 px-4 py-3">
-          <p className="text-xs text-muted-foreground">{tGroup('help')}</p>
-          <div className="max-w-xs">
-            <LeaveSharedGroupConfig
-              groups={sharedGroups}
-              leaveTypes={activeTypeOptions}
-              actions={{
-                create: createLeaveSharedGroupAction,
-                update: updateLeaveSharedGroupAction,
-                remove: deleteLeaveSharedGroupAction,
-              }}
-            />
-          </div>
-        </div>
-      </Card>
+      {/* r281 (cdd7500b) — THE SHARED LEAVE GROUPS CARD STOOD HERE and is DELIBERATELY GONE, not
+          copied. The reporter asked for it on the Leave types screen, because a shared group is about
+          leave types — and they are right about that. The reason it was taken OFF that screen was never
+          that it belonged elsewhere in principle: it was that it sat INSIDE the per-leave-type workspace,
+          beside Add Leave Type, where it read as a property of whichever type happened to be selected,
+          while a group spans several. That reasoning is not reversed here, it is honoured: the card is
+          mounted at PAGE level on the Leave types screen, above the per-type workspace and outside it, so
+          it still reads as what it is. The whole argument is written down at the new site.
+          The three actions moved with it unchanged and their return address moved with them, so a save
+          lands on the screen the change was made on rather than on this one. */}
 
       {/* ── F38 · Replacement leave (TOIL) policy ──────────────────────────────────────────────────────
           Per company, one card each, narrowed by the header's company picker. WHAT DELIBERATELY DID NOT

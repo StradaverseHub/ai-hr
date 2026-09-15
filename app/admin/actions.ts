@@ -2366,18 +2366,23 @@ function maxDaysPerApplicationFrom(fd: FormData): number | null {
  *  same way every other typed core error is (the core throws structured data, never a display string). */
 async function sharedGroupFailure(e: unknown): Promise<never> {
   const t = await getTranslations('admin.leave.sharedGroup');
-  // a6fe37fc ROUND 5 (cutover) — COMPANY_RULES, not ENTITLEMENTS. A shared leave group is a TENANT
-  // catalogue, not a property of one leave type; it sat at the foot of the Leave types screen and moved
-  // to Company rules with the other three company/tenant settings (IA §2.0.3, F3). These messages name
-  // the clashing group by name, so landing them on a screen with no group editor on it would show an
-  // administrator a sentence about a form they can no longer see.
+  // a6fe37fc ROUND 5 (cutover) — a shared leave group is a TENANT catalogue, not a property of one leave
+  // type; it sat at the foot of the Leave types screen and moved to Company rules with the other three
+  // company/tenant settings (IA §2.0.3, F3). These messages name the clashing group by name, so landing
+  // them on a screen with no group editor on it would show an administrator a sentence about a form they
+  // can no longer see.
+  //
+  // r281 (cdd7500b) — ENTITLEMENTS, not COMPANY_RULES. The reporter asked for the catalogue back on the
+  // Leave types screen; it is drawn there at PAGE level, above the per-type workspace and outside it, so
+  // it still reads as spanning several types rather than as a property of the selected one. The return
+  // address follows the editor, exactly as it did at the cutover and for the same reason.
   if (e instanceof LeaveTypeAlreadyGroupedError) {
-    return fail(COMPANY_RULES, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
+    return fail(ENTITLEMENTS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
   }
   if (e instanceof LeaveSharedGroupNameTakenError) {
-    return fail(COMPANY_RULES, t('errorNameTaken', { name: e.groupName }));
+    return fail(ENTITLEMENTS, t('errorNameTaken', { name: e.groupName }));
   }
-  return fail(COMPANY_RULES, e);
+  return fail(ENTITLEMENTS, e);
 }
 
 export async function createLeaveSharedGroupAction(fd: FormData) {
@@ -2396,7 +2401,7 @@ export async function createLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(COMPANY_RULES);
+  ok(ENTITLEMENTS);
 }
 
 export async function updateLeaveSharedGroupAction(fd: FormData) {
@@ -2416,7 +2421,7 @@ export async function updateLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(COMPANY_RULES);
+  ok(ENTITLEMENTS);
 }
 
 export async function deleteLeaveSharedGroupAction(fd: FormData) {
@@ -2424,7 +2429,7 @@ export async function deleteLeaveSharedGroupAction(fd: FormData) {
   try {
     await deleteLeaveSharedGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
-    fail(COMPANY_RULES, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(COMPANY_RULES);
+  ok(ENTITLEMENTS);
 }

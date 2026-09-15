@@ -157,7 +157,17 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // type; it sat at the foot of this screen for the same reason the half-day card did — that is where
     // the code grew (IA §1.2/§2.0.3). What f12d77e5 cared about is that the editor still EXISTS on a real
     // screen after a relocation, which is exactly what is checked here.
-    expect(stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'))).toContain('<LeaveSharedGroupConfig');
+    //
+    // r281 (cdd7500b) — IT CAME BACK TO THIS SCREEN, at the reporter's request, but NOT to where it was.
+    // It sat at the FOOT of the screen, inside the per-type workspace, where it read as a property of
+    // whichever type was selected; a group spans several. It is a PAGE-LEVEL section above the workspace
+    // now, which is the whole of the difference and is asserted as the ordering below. The property
+    // f12d77e5 cared about is unchanged: the editor exists on a real screen after a relocation.
+    expect(entitlementsCode).toContain('<LeaveSharedGroupConfig');
+    expect(entitlementsCode.indexOf('<LeaveSharedGroupConfig')).toBeLessThan(
+      entitlementsCode.indexOf('<LeaveTypeWorkspace'),
+    );
+    expect(stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'))).not.toContain('<LeaveSharedGroupConfig');
     // ee6b7c69 renamed this slot, and the rename IS the surface change: `entitlementTablesLink` held a
     // caption and a link to a separate screen; `entitlementTablesSection` holds the tables themselves,
     // filtered to the panel's leave type. Updated rather than loosened — the guard's job is to fail if the
@@ -185,14 +195,20 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // 10b59703 (r266) — `grades` left this destructure WITH the accrual dialog it fed (Generate
     // Entitlement reads its own grade list), the same shape of edit as `sharedGroups` above: the expected
     // shape shrinks to the three that remain, and the arity + position assertions are unchanged.
+    // r281 (cdd7500b) — `sharedGroups` is BACK in this destructure, because the editor it feeds is back
+    // on this screen (at page level, above the per-type workspace). The expected shape grows to four and
+    // the arity + position assertions are unchanged — they are the guard, and adding a name in the wrong
+    // slot is the same silent shift as dropping one.
     const { names, calls } = destructuredAwaitAll(entitlementsCode, 'const [types,');
-    expect(names).toEqual(['types', 'companies', 'profileOptionsActive']);
+    expect(names).toEqual(['types', 'companies', 'profileOptionsActive', 'sharedGroups']);
     expect(calls).toHaveLength(names.length);
     expect(calls[0]).toMatch(/^listLeaveTypes\(/);
     expect(calls[names.indexOf('profileOptionsActive')]).toMatch(/^listAllProfileOptions\(/);
-    // …and the read went to the screen that now renders the editor, rather than being lost.
+    expect(calls[names.indexOf('sharedGroups')]).toMatch(/^listLeaveSharedGroups\(/);
+    // …and the read did NOT stay behind on the screen the editor left: an unmounted card's data prep is a
+    // query per render for a surface nobody sees (the e4238594 precedent this file cites twice).
     const companyRules = stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'));
-    expect(companyRules).toContain('listLeaveSharedGroups(');
+    expect(companyRules).not.toContain('listLeaveSharedGroups(');
   });
 });
 

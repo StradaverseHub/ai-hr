@@ -26,11 +26,18 @@ import { redirect } from 'next/navigation';
 export const ENTITLEMENTS = '/admin/leave-config/types';
 /**
  * a6fe37fc ROUND 5 (cutover) — COMPANY RULES, the destination the company- and tenant-wide leave settings
- * were absorbed into (IA §2.0.3): the half-day full deduction, the shared leave groups and the encashment
- * policy. It is a NEW constant rather than a reuse of ENTITLEMENTS, and the distinction is the point —
- * those three writes used to return to the leave TYPE screen because that is where their cards happened
- * to be drawn, and after the cutover they are not on it. Returning them to ENTITLEMENTS would leave an
- * administrator who just saved a company rule looking at the leave type list, wondering whether it saved.
+ * were absorbed into (IA §2.0.3). It is a NEW constant rather than a reuse of ENTITLEMENTS, and the
+ * distinction is the point — those writes used to return to the leave TYPE screen because that is where
+ * their cards happened to be drawn, and after the cutover they were not on it. Returning them to
+ * ENTITLEMENTS would leave an administrator who just saved a company rule looking at the leave type list,
+ * wondering whether it saved.
+ *
+ * r281 — ONE CALLER LEFT, and the rule that produced it is what the other two followed out. The reporter
+ * asked for two of the three settings to move again: the half-day full deduction to the Special Setting
+ * row (`SPECIAL_SETTING` below) and the shared leave groups back onto the Leave types screen, at page
+ * level rather than inside the per-type workspace (`ENTITLEMENTS`). Each redirect moved WITH its card, on
+ * exactly the reasoning above. What still returns here is the encashment policy, which is still drawn
+ * here.
  */
 export const COMPANY_RULES = '/admin/leave-config/company-rules';
 /**
