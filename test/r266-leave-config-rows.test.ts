@@ -445,9 +445,23 @@ describe('§D · the moves, and what deliberately did not move', () => {
     // taken OFF that screen because it sat INSIDE the workspace, where it read as a property of the
     // selected type while a group spans several. So both halves are pinned: it is drawn on the types
     // page, and it is NOT inside the workspace's panels (a mount there would put it back where it was).
+    //
+    // ⚠️ "ABOVE THE WORKSPACE" IS ASSERTED AGAINST THE WORKSPACE'S OWN CARD, NOT AGAINST THE
+    // `<LeaveTypeWorkspace` TAG. The first draft of this assertion compared against the tag, and a
+    // deliberate break — moving the whole section INSIDE that Card, immediately before the workspace —
+    // passed it, because the section is still textually earlier. The Card that carries `data-tour=
+    // "leave-config"` IS the per-type workspace as far as the reader is concerned, so that is the
+    // boundary the section must sit outside of.
     const types = read('app/admin/leave-config/types/page.tsx');
     expect(types).toContain('<LeaveSharedGroupConfig');
-    expect(types.indexOf('<LeaveSharedGroupConfig')).toBeLessThan(types.indexOf('<LeaveTypeWorkspace'));
+    expect(
+      types.indexOf('<LeaveSharedGroupConfig'),
+      'the shared-group section must render OUTSIDE and above the per-type workspace card — inside it, ' +
+        'it reads as a property of the selected leave type, which is why it was taken off this screen',
+    ).toBeLessThan(types.indexOf('<Card data-tour="leave-config">'));
+    // …and it is not handed into the workspace as a slot either, which would be the same defect by prop.
+    const workspaceMount = types.slice(types.indexOf('<LeaveTypeWorkspace'));
+    expect(workspaceMount.slice(0, workspaceMount.indexOf('/>'))).not.toContain('SharedGroup');
     expect(companyRules, 'the shared-group card must not survive on Company rules too').not.toContain(
       '<LeaveSharedGroupConfig',
     );
