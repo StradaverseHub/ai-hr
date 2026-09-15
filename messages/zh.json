@@ -2016,7 +2016,10 @@
         "pendingHint": "等待直属经理批准",
         "approvedLabel": "替代假",
         "approvedHint": "已批准，可以使用",
-        "cardPending": "{days} 待批"
+        "cardPending": "{days} 待批",
+        "expiringSoonLabel": "即将到期",
+        "expiringSoonHint": "请在 {date} 之前使用这些天数，否则将会失效",
+        "expiringSoonBadge": "即将到期"
       },
       "statusNotGeneratedTitle": "已配置，但尚未生成",
       "statusNotGeneratedBody": "本休假年度此假期类型已有适用的额度表。额度尚未生成，因此下方数字并非您应得的额度。请运行“生成额度”以发放。若之后数字仍无变化，此余额可能因套现而被冻结，或此公司所属的国家配套未启用。",

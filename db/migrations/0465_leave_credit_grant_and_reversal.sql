@@ -23,11 +23,21 @@
 --   • 'adjustment'      — a correction posted against an existing balance.
 --
 -- ⚠️ A TYPE SWAP, NOT `ALTER TYPE … ADD VALUE`, and 0448's header records why at length: a value added by
--- ADD VALUE cannot be USED in the same transaction (55P04 `unsafe use of new value`). Nothing in this file
--- uses them, so ADD VALUE would in fact work here — but drizzle applies the journal as one unit in
--- `gate:shadow`, the failure mode is a hard error in a LATER migration rather than here, and the swap has
--- no such footgun at any distance. `toil_accrual.source` is the type's only column and carries NO default
--- (a legacy row genuinely does not know its path and stays NULL), so the swap is three statements.
+-- ADD VALUE cannot be USED in the same transaction (55P04 `unsafe use of new value`).
+--
+-- AND THE SCOPE OF "THE SAME TRANSACTION" IS THE WHOLE JOURNAL, which is worth writing down because it is
+-- not obvious and it bit this very file. drizzle's `migrate()` wraps EVERY pending migration in ONE
+-- transaction (`PgDialect.migrate` → `sql.begin`), so on a fresh database — every `gate:shadow` run, every
+-- test bootstrap, every restore — 0001 and 0465 are inside the same BEGIN. The first draft of the NOTICE
+-- block below compared `leave_ledger.entry_type` to the literal `'in_lieu_accrual'`, a value that migration
+-- 0076 adds to `leave_entry_type`, and it failed with exactly that 55P04 against a real bootstrap. The
+-- comparison is cast to `text` for that reason: an enum LABEL added earlier in the same transaction cannot
+-- be named, but the column can always be read as text.
+--
+-- So a `toil_accrual_source` added here by ADD VALUE would be un-nameable by every later migration and by
+-- any statement in this one, for the life of a fresh bootstrap. The swap has no such footgun at any
+-- distance. `toil_accrual.source` is the type's only column and carries NO default (a legacy row genuinely
+-- does not know its path and stays NULL), so it is three statements.
 --
 -- ── 2 · toil_accrual.note ────────────────────────────────────────────────────────────────────────────
 -- The reason line the approved plan promises ("Let HR grant a credit by hand, WITH A REASON"). It lives on
@@ -68,9 +78,11 @@ BEGIN
   -- The ghost credits this round exists to stop being created: a REPLACEMENT-type ledger credit with no
   -- register row behind it. Reported, never repaired here — a backfill would have to invent a worked date
   -- and an expiry for each, which is the fabrication the whole register exists to prevent.
+  -- `::text` and not `= 'in_lieu_accrual'` — see the 55P04 note in the header. On a fresh bootstrap this
+  -- statement runs in the same transaction that created the label, so it cannot be named directly.
   SELECT count(*) INTO ghosts
     FROM leave_ledger ll
-   WHERE ll.entry_type = 'in_lieu_accrual'
+   WHERE ll.entry_type::text = 'in_lieu_accrual'
      AND NOT EXISTS (SELECT 1 FROM toil_accrual ta WHERE ta.ledger_entry_id = ll.id);
   RAISE NOTICE '0465 toil_accrual: % existing credit rows keep their source verbatim (NULL stays NULL); % in_lieu_accrual ledger rows have no register row behind them (pre-existing ghost credits, NOT repaired here).', total, ghosts;
 END $$;

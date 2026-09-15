@@ -380,7 +380,13 @@ describe('Partial Leave Cancellation — gates', () => {
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
-  it('cannot cancel a REPLACEMENT (time-off-in-lieu) leave', async () => {
+  // ⚠️ 3fb1a611 (r279) INVERTED THIS TEST. It used to assert that a REPLACEMENT give-back is refused
+  // outright, because there was no inverse of consumeReplacementLeaveTx and restoring the day through the
+  // ledger alone would leave a balance with no register lot behind it. restoreReplacementLeaveTx is that
+  // inverse; the refusal now applies only to a credit that has EXPIRED since it was spent, which
+  // test/r279-leave-credit.test.ts pins against a real toil_accrual register (this fixture has none — the
+  // balance here is a hand-written ledger grant, i.e. the ghost-credit case, which is cancellable).
+  it('CAN cancel a REPLACEMENT (time-off-in-lieu) leave now that the register has an inverse', async () => {
     const [repl] = await owner.db
       .insert(schema.leaveType)
       .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
@@ -393,9 +399,17 @@ describe('Partial Leave Cancellation — gates', () => {
       endDate: '2026-08-12',
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
-    await expect(
-      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
-    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+    const gb = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-11'],
+    });
+    expect(gb.requestedDays).toBe(1);
+    const out = await decideLeaveCancellation(adminCtx(b), {
+      cancellationRequestId: gb.cancellationRequestId,
+      decision: 'approved',
+    });
+    expect(out.restoredDays).toBe(1);
   });
 
   it('a per-date-approval request (ADR-0068 single row) IS cancellable, but an interior-REJECTED date is not cancel-eligible', async () => {

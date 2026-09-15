@@ -2016,7 +2016,10 @@
         "pendingHint": "Đang chờ quản lý trực tiếp phê duyệt",
         "approvedLabel": "Nghỉ Bù",
         "approvedHint": "Đã duyệt và sẵn sàng sử dụng",
-        "cardPending": "{days} chờ duyệt"
+        "cardPending": "{days} chờ duyệt",
+        "expiringSoonLabel": "Sắp hết hạn",
+        "expiringSoonHint": "Hãy dùng những ngày này trước {date}, nếu không sẽ bị mất",
+        "expiringSoonBadge": "Sắp hết hạn"
       },
       "statusNotGeneratedTitle": "Đã cấu hình, nhưng chưa được tạo",
       "statusNotGeneratedBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này. Định mức chưa được tạo, nên các con số bên dưới không phải là số ngày bạn được hưởng. Hãy chạy Tạo định mức để cấp. Nếu sau đó các con số vẫn không thay đổi, số dư này có thể đang bị đóng băng để quy đổi thành tiền, hoặc gói quốc gia của công ty này có thể chưa được kích hoạt.",

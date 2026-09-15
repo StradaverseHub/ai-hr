@@ -2016,7 +2016,10 @@
         "pendingHint": "Menunggu kelulusan penyelia anda",
         "approvedLabel": "Cuti Gantian",
         "approvedHint": "Diluluskan dan boleh digunakan",
-        "cardPending": "{days} dalam proses"
+        "cardPending": "{days} dalam proses",
+        "expiringSoonLabel": "Hampir luput",
+        "expiringSoonHint": "Gunakan hari ini sebelum {date} atau ia akan hilang",
+        "expiringSoonBadge": "Hampir luput"
       },
       "statusNotGeneratedTitle": "Telah dikonfigurasi, tetapi belum dijana",
       "statusNotGeneratedBody": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini. Kelayakan belum dijana, jadi angka di bawah bukan jumlah kelayakan anda. Jalankan Jana Kelayakan untuk memberikannya. Jika angka tidak berubah selepas itu, baki ini mungkin dibekukan untuk penunaian, atau pakej negara bagi syarikat ini mungkin tidak aktif.",

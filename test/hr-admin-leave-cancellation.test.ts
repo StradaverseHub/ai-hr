@@ -6,7 +6,8 @@
  * any open give-back on the same leave is superseded, a distinct `leave-request.admin-cancelled` event records
  * the REAL HR actor + display facts, and the employee is notified. HR cannot cancel their own leave here
  * (self-ban; super_admin excepted), a company-scoped admin can't reach another company's leave (RLS), and
- * already-cancelled / rejected / approved-REPLACEMENT / closed-payroll leave are refused.
+ * already-cancelled / rejected / closed-payroll leave are refused. (Approved REPLACEMENT leave USED to be
+ * refused too; r279 built the TOIL-register inverse that refusal stood in for — see the note on that test.)
  *
  * Future dates (Aug 2026) so no future-gate interferes; the service intentionally allows past/started leave.
  */
@@ -323,7 +324,19 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
     return lt.id;
   }
 
-  it('blocks an APPROVED replacement leave (no TOIL-register inverse)', async () => {
+  // ⚠️ 3fb1a611 (r279) INVERTED THIS TEST, and the inversion IS the round. It used to assert that an
+  // APPROVED replacement leave is refused outright — "blocks an APPROVED replacement leave (no
+  // TOIL-register inverse)" — and the reason was true when it was written: consumeReplacementLeaveTx had
+  // no inverse, so giving the day back through the ledger alone would leave a balance with no register
+  // lot behind it (the ghost credit). restoreReplacementLeaveTx is that inverse, so the refusal narrows
+  // from the TYPE to the one case that genuinely cannot be undone — a credit that expired since it was
+  // spent, which test/r279-leave-credit.test.ts pins with a real register.
+  //
+  // THIS fixture has no register rows at all (the ledger debit is hand-written), so it is exactly the
+  // GHOST-CREDIT case: nothing to give back to the register, everything to give back to the ledger. It
+  // must succeed and it must SAY that the register could not be reconciled, rather than silently
+  // pretending it was.
+  it('cancels an APPROVED replacement leave, and flags the register gap when there is no lot behind it', async () => {
     const rt = await replacementType();
     const [row] = await owner.db
       .insert(schema.leaveRequest)
@@ -347,8 +360,11 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
       sourceRequestId: row.id,
       effectiveOn: '2026-08-10',
     });
-    await expect(adminCancelLeave(adminCtx(b), { leaveRequestId: row.id })).rejects.toThrow(/replacement/i);
-    expect(await statusOf(row.id)).toBe('approved');
+    const out = await adminCancelLeave(adminCtx(b), { leaveRequestId: row.id });
+    expect(out.restoredDays, 'the ledger gave the day and the ledger takes it back').toBe(1);
+    expect(await statusOf(row.id)).toBe('cancelled');
+    // The mirror of toil.consumption.shortfall: the bookkeeping gap is recorded, never thrown.
+    expect(await eventTypesFor(b.tenantId, row.id)).toContain('toil.restore.shortfall');
   });
 
   it('cancels a PENDING replacement leave cleanly (register never consumed)', async () => {

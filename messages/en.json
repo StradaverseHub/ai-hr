@@ -2016,7 +2016,10 @@
         "pendingHint": "Waiting for your line manager",
         "approvedLabel": "Replacement Leave",
         "approvedHint": "Approved and ready to use",
-        "cardPending": "{days} in lieu"
+        "cardPending": "{days} in lieu",
+        "expiringSoonLabel": "Expiring soon",
+        "expiringSoonHint": "Use these days by {date} or they will be lost",
+        "expiringSoonBadge": "Expiring soon"
       },
       "statusNotGeneratedTitle": "Configured, but not yet generated",
       "statusNotGeneratedBody": "An entitlement table applies to this leave type for this leave year. The entitlement has not been generated yet, so the figures below are not the amount you are entitled to. Running Generate Entitlement grants it. If the figures do not change afterwards, this balance may be frozen for an encashment, or the country pack for this company may not be active.",

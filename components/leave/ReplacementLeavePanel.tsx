@@ -89,6 +89,29 @@ function asDay(v: string | null): string | null {
   return v.slice(0, 10);
 }
 
+/**
+ * 3fb1a611 — "EXPIRING SOON", the reporter's last ask on this card: show it, so a credit is USED rather
+ * than lost. Purely presentational; every field it reads (`status`, `remaining`, `expiresOn`) has ridden
+ * on each row since 0113, and `asOf` is already a prop. Nothing new is fetched and no formula is computed
+ * here — the r75 rule still holds, the Available figure above the table is `leaveBalances`' and this only
+ * annotates rows.
+ *
+ * THIRTY DAYS, and the number is a judgement rather than a constant from somewhere. It has to be long
+ * enough for the employee to do something about it: applying for replacement leave goes through the
+ * ordinary approval chain, so a seven-day warning on a credit whose manager is on leave is a warning
+ * nobody can act on. It also has to be short enough to mean something against the default 90-day expiry
+ * (core/toil.ts POLICY_DEFAULTS) — a 60-day window would flag two thirds of every credit ever banked and
+ * the badge would stop being read. It is deliberately NOT derived from the policy's expiry period: this
+ * is "act now", not "a third of the way through", and an employee with credits from two companies must
+ * not see the same urgency drawn at two different distances.
+ */
+const EXPIRING_SOON_DAYS = 30;
+
+/** Whole days from `asOf` to `expiresOn`. Negative ⇒ already past. Both are plain YYYY-MM-DD. */
+function daysUntil(asOf: string, expiresOn: string): number {
+  return Math.round((Date.parse(`${expiresOn}T00:00:00Z`) - Date.parse(`${asOf}T00:00:00Z`)) / 86_400_000);
+}
+
 export function ReplacementLeavePanel({
   leaveTypeName,
   visual,
@@ -157,6 +180,20 @@ export function ReplacementLeavePanel({
   };
   const isSpent = (r: ReplacementCreditRow) => r.status !== 'active';
 
+  // 3fb1a611 — the credits that are still spendable AND about to stop being spendable. A row that is
+  // already past its date is NOT "expiring soon": it has expired, and `statusKey` above already says so
+  // once the sweep has run. Ordered by expiry so the summary names the FIRST deadline, never an arbitrary
+  // row's (CLAUDE.md §8 — pin invariants, not positions).
+  const expiringSoon = rows
+    .filter((r) => {
+      if (r.status !== 'active' || r.remaining <= 0) return false;
+      const left = daysUntil(asOf, r.expiresOn);
+      return left >= 0 && left <= EXPIRING_SOON_DAYS;
+    })
+    .sort((a, b) => (a.expiresOn < b.expiresOn ? -1 : a.expiresOn > b.expiresOn ? 1 : 0));
+  const expiringSoonIds = new Set(expiringSoon.map((r) => r.id));
+  const expiringSoonDays = Math.round(expiringSoon.reduce((s, r) => s + r.remaining, 0) * 100) / 100;
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -215,6 +252,27 @@ export function ReplacementLeavePanel({
                   {formatDays(available)}
                 </span>
               </div>
+              {/* 3fb1a611 — EXPIRING SOON. A third row rather than a banner, so the card reads as one
+                  column of facts: what is waiting, what is available, and what is about to be lost. It is
+                  ABSENT entirely when nothing is close to expiring — an always-present "0.00 expiring
+                  soon" line is noise that trains the reader to skip the row that matters. Amber, because
+                  a balance the employee is about to lose is not a neutral figure. The date named is the
+                  FIRST deadline (the list is sorted by expiry), which is the one that needs acting on. */}
+              {expiringSoon.length > 0 && (
+                <div className="flex items-baseline justify-between gap-3 bg-amber-50/60 px-3 py-2.5 dark:bg-amber-500/5">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-amber-800 dark:text-amber-300">
+                      {t('replacement.expiringSoonLabel')}
+                    </span>
+                    <span className="block text-xs text-amber-700/80 dark:text-amber-400/80">
+                      {t('replacement.expiringSoonHint', { date: expiringSoon[0].expiresOn })}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-lg font-semibold tabular-nums text-amber-800 dark:text-amber-300">
+                    {formatDays(expiringSoonDays)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <section>
@@ -317,6 +375,15 @@ export function ReplacementLeavePanel({
                               {sk && (
                                 <span className="ml-2 rounded-full border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
                                   {t(sk)}
+                                </span>
+                              )}
+                              {/* 3fb1a611 — WHICH credit the summary row above is about. Without this the
+                                  employee is told "1.00 expiring by 4 October" and then has to work out
+                                  which line that is; with it the table answers the question the card
+                                  raised. Only ever on an ACTIVE row with days left (see expiringSoon). */}
+                              {expiringSoonIds.has(r.id) && (
+                                <span className="ml-2 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                                  {t('replacement.expiringSoonBadge')}
                                 </span>
                               )}
                             </td>
