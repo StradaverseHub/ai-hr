@@ -16,7 +16,14 @@
  *   • requireAdmin / scopedAdmin  → { hr_admin, super_admin }
  *       (scopedAdmin calls requireAdmin internally, then narrows the DATA to the company scope.)
  *   • scopedSession               → every authenticated role reaches the page; the DATA is company /
- *       reporting-line scoped by RLS, so an employee opens the page but sees only their own rows.
+ *       reporting-line scoped by RLS. NOT "only their own rows" — app.can_see_employment grants a row
+ *       when the caller owns it, administers the company, is an administrative manager of it
+ *       (is_admin_report_of, direct OR indirect), or heads its department (heads_department_of). The
+ *       last two are ORG-STRUCTURE facts and are INDEPENDENT OF THE ROLE LIST: an employment carrying
+ *       only the `employee` role still sees its whole tree if it is a line manager or an HOD. r287
+ *       verified this on the seed — EMP-0004 holds `employee` alone and can see three other
+ *       employments, two via heads_department_of and one via is_admin_report_of. That is CORRECT, and
+ *       the sentence this replaces read as a leak to someone checking the screen against it.
  *
  * NOTE ON PARTNERS: payroll_partner / performance_comp_partner appear in the admin nav group (they are
  * "admins of their function"), but every payroll/config page is guarded by requireAdmin/scopedAdmin,
