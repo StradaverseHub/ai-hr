@@ -10159,7 +10159,7 @@
     "noAssignments": "Belum ada penetapan templat.",
     "unassign": "Buang",
     "unassignConfirm": "Buang penetapan ini? Jenis cuti akan kembali kepada rantaian lalai.",
-    "rolesGatedNote": "Langkah diarahkan seperti berikut: Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu di bawah Tetapan → Label Sistem (langkah ketua dilangkau apabila tiada ketua ditetapkan); HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai.",
+    "rolesGatedNote": "Langkah diarahkan seperti berikut: Pengurus langsung pergi kepada penyelia langsung yang direkodkan bagi pekerja itu; Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu dalam lajur Ketua (pelulus cuti) di bawah Tetapan → Label Sistem; HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Sesuatu langkah dilangkau apabila tiada sesiapa memenuhi peranannya — tiada penyelia langsung direkodkan, atau tiada ketua ditetapkan untuk unit itu. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai.",
     "reason": "Sebab perubahan (pilihan)",
     "reasonPlaceholder": "Mengapa ini diubah?",
     "workflowsTitle": "Aliran kerja kelulusan",

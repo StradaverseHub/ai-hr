@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { isGroupAdmin } from '@/lib/authz';
-import { adminCompanies, listCompanies, listJobGrades } from '@/core/read';
+import { adminCompanies, listCompanies, listEmployees, listJobGrades } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
@@ -65,7 +65,7 @@ export default async function SystemLabelsPage({
   // ⚠️ A NAME ADDED TO THIS DESTRUCTURE MUST BE ADDED TO THE ARRAY BELOW IN THE SAME POSITION. Every
   // element is an array, so a mismatch shifts each later variable by one slot and NOTHING type-errors —
   // each catalogue silently becomes a different one.
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups, writableCompanies] =
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups, writableCompanies, employees] =
     await Promise.all([
       listCompanies(s, { includeArchived: true }),
       listDepartmentsForLabels(s),
@@ -93,6 +93,11 @@ export default async function SystemLabelsPage({
       // grid renders every row outside this set read-only, because this is exactly the predicate the
       // `tenant_isolation` WITH CHECK on these four tables applies to the UPDATE (0016:101-103).
       adminCompanies(s),
+      // r285 — the Head (leave approver) options for the department / business-unit grids. Unpaginated
+      // and unfiltered on purpose: `resolveHeadEmploymentId` validates the chosen head against the unit's
+      // OWN company, so the grid buckets by company below, and a head already stored must be present in
+      // its bucket or its select would render blank and state "no head" about a unit that has one.
+      listEmployees(s),
     ]);
 
   const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -183,8 +188,20 @@ export default async function SystemLabelsPage({
   // 71bacb95: the Business Unit select was removed from the Department config grid (the BU link is now
   // maintained via the employee's organisation assignment), so the per-company BU option list it fed is no
   // longer built or passed here. department.businessUnitId + its hire-form / payroll cascade are unchanged.
-  // 797e3523: the Head column was removed from the System Labels surface, so employee/head options are no
-  // longer loaded here. Dept/BU heads (approval routing) are maintained via the organisation admin surface.
+  // r285 — HEAD OPTIONS ARE BACK, and the note that replaced them was not true. 797e3523 removed the Head
+  // column and said heads were "maintained via the organisation admin surface"; no such surface has one —
+  // after that commit no `name="headEmploymentId"` control existed anywhere in the app. So department_head
+  // and business_unit_head stayed selectable approval steps that could never fire (generateApprovalSteps
+  // drops a head step whose head is unset), and on the live tenant 0 of 25 departments and 0 of 7 business
+  // units had a head. The select, its per-company options and the same-company guard behind them are the
+  // ones that shipped with 6fadb036; only the surface had gone missing.
+  const headByCompany: Record<string, { id: string; label: string }[]> = {};
+  for (const e of employees) {
+    (headByCompany[e.companyId] ??= []).push({
+      id: e.employmentId,
+      label: e.employeeCode ? `${e.name} (${e.employeeCode})` : e.name,
+    });
+  }
 
   const gridCompanies = scopedCompanies.map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }));
 
@@ -288,6 +305,7 @@ export default async function SystemLabelsPage({
         data={data}
         companies={gridCompanies}
         writableCompanyIds={writableCompanies.map((c) => c.id)}
+        headByCompany={headByCompany}
         isGroupAdmin={isGroupAdmin(s)}
         actions={actions}
         gradesSlot={gradesSlot}

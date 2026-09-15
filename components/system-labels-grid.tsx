@@ -181,6 +181,7 @@ export function SystemLabelsGrid({
   data,
   companies,
   writableCompanyIds,
+  headByCompany = {},
   isGroupAdmin,
   actions,
   gradesSlot,
@@ -205,6 +206,24 @@ export function SystemLabelsGrid({
    * this set are therefore read-only, with the Criteria, archive and Duplicate actions withheld too.
    */
   writableCompanyIds: string[];
+  /**
+   * r285 — HEAD OPTIONS PER COMPANY, for the Head (leave approver) column on the department and
+   * business_unit kinds. Keyed by the row's OWN company, because `resolveHeadEmploymentId`
+   * (core/admin.ts) refuses a head from another company (ADR-0071 §i same-company guard) — offering a
+   * cross-company name here would only produce a refusal on Save.
+   *
+   * WHY IT IS BACK. 797e3523 dropped this column from the grid and left the value round-tripping
+   * silently; since then nothing anywhere in the app could set a head, so `department_head` /
+   * `business_unit_head` were selectable approval steps that could NEVER fire — generateApprovalSteps
+   * drops a head step whose head is unset (core/leave.ts), so every such step was silently skipped. On
+   * the live tenant that was 0 of 25 departments and 0 of 7 business units.
+   *
+   * NOT filtered to active employments on purpose: a select whose current value is absent from its
+   * options renders BLANK, which on this column would state "no head" about a department that has one.
+   * The list therefore has to be a superset of whatever is stored. Absent ⇒ the column renders with the
+   * None option alone (the shape the DOM tests that do not exercise heads see).
+   */
+  headByCompany?: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
   actions: GridActions;
   /** b1b81a08 — the Grades BODY (components/grade-labels-grid.tsx), rendered in place of the company-scoped
@@ -240,6 +259,11 @@ export function SystemLabelsGrid({
   optionSlots?: { key: string; label: string; count: number; body: ReactNode }[];
 }) {
   const t = useTranslations('admin.systemLabels');
+  // r285 — the Head column reuses the org-settings labels (fieldHead / headNone) that shipped with the
+  // approval-routing feature and are still translated in all six locales. No new i18n key: the wording
+  // "Head (leave approver)" is also what the Approval Workflow footnote now points the admin at, and two
+  // sentences naming the same control should not be free to drift apart.
+  const to = useTranslations('admin.organization');
   const [kind, setKind] = useState<GridKind>('department');
   // b1b81a08 — which BODY the rail is showing. `kind` keeps its last company-scoped value throughout, so
   // switching to Grades and back restores the category the admin was on.
@@ -383,8 +407,8 @@ export function SystemLabelsGrid({
       jobFamily: r.jobFamily,
       label: r.label,
       businessUnitId: r.businessUnitId,
-      // 797e3523: the Head column was removed from this surface, but the loaded value is preserved and
-      // re-sent unchanged so a save never clears an approval-routing head that lives on the record.
+      // r285: the Head column is EDITED on this surface again (797e3523 had removed it, leaving this
+      // field a silent round-trip). A draft carries whatever the Head select holds — null for None.
       headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
@@ -402,8 +426,10 @@ export function SystemLabelsGrid({
       jobFamily: r.jobFamily,
       label: r.label,
       businessUnitId: r.businessUnitId,
-      // 797e3523: Head removed from the UI; re-send the loaded value unchanged so a text edit never
-      // clears an approval-routing head stored on the department / business-unit record.
+      // r285: ALWAYS SENT, never by presence — the service's tri-state reads `undefined` as "untouched",
+      // and a field that is always submitted cannot carry "the admin did not open this select". So a
+      // text-only edit re-sends the loaded head unchanged (no clear), and choosing None sends null, which
+      // the service reads as an explicit CLEAR. Both are the same statement: what the cell now shows.
       headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
@@ -585,6 +611,25 @@ export function SystemLabelsGrid({
     if (extra.length === 0) return companyName.get(r.companyId) ?? t('scopeOwn');
     return t('scopeCompaniesN', { n: extra.length + 1 });
   }
+
+  /** r285 — the Head cell's text on a READ-ONLY row, where the select is stated rather than offered.
+   *  Falls back to the None label when no head is set, and to the stored id when the row's company is
+   *  outside this admin's employee read (a foreign Global row) — never to an empty cell, which would
+   *  read as "no head" about a unit that has one. */
+  function headLabel(r: RowState): string {
+    if (!r.headEmploymentId) return to('headNone');
+    return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? r.headEmploymentId;
+  }
+  /** r285 — the options a row's Head select offers. The row's CURRENT head is always among them, even
+   *  when it is missing from the company's option list: a `<select>` whose value matches no option
+   *  renders blank, and blank on this column means "no head". The one thing this cell may never do is
+   *  say a unit has no head when it has one. */
+  function headOptions(r: RowState): { id: string; label: string }[] {
+    const opts = headByCompany[r.companyId] ?? [];
+    if (!r.headEmploymentId || opts.some((o) => o.id === r.headEmploymentId)) return opts;
+    return [{ id: r.headEmploymentId, label: headLabel(r) }, ...opts];
+  }
+  const kindHasHead = kind === 'department' || kind === 'business_unit';
 
   function exportCsv() {
     const cols = TEXT_COLS[kind].map((c) => String(c.field));
@@ -891,7 +936,10 @@ export function SystemLabelsGrid({
                     maintained via the employee's organisation assignment, not per-department here. The
                     department.businessUnitId column + its hire-form / payroll cascade are unchanged; the grid
                     simply re-sends each row's loaded value unedited (see save() below). */}
-                {/* 797e3523: Head column removed from the System Labels surface. */}
+                {/* r285: Head (leave approver) — RESTORED. 797e3523 removed it and nothing replaced it,
+                    which left department_head / business_unit_head as approval steps that could never
+                    fire. Departments and business units only; the other two kinds head nobody. */}
+                {kindHasHead && <th className={thCls}>{to('fieldHead')}</th>}
                 <th className={thCls}>{t('col.scope')}</th>
                 <th className={sortableThCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
                 {/* 797e3523: Last-updated column removed — history lives in the Audit Trail. */}
@@ -958,7 +1006,37 @@ export function SystemLabelsGrid({
                     ))}
                     {/* 71bacb95: Business Unit select removed — see the header note. r.businessUnitId is still
                         carried on the row and re-sent unchanged by save(), so existing links are preserved. */}
-                    {/* 797e3523: Head column removed from the System Labels surface. */}
+                    {/* r285: Head (leave approver) — the employment a `department_head` /
+                        `business_unit_head` approval step routes to. The BLANK option is a real value,
+                        not a placeholder: the row re-sends `headEmploymentId` on every Save, and the
+                        service reads blank ⇒ null ⇒ CLEAR (core/admin.ts resolveHeadEmploymentId), so
+                        choosing None removes the head rather than leaving it untouched. Like every other
+                        write on this grid it is stated, not offered, on a row whose company this admin
+                        does not administer — RLS would refuse the UPDATE and Save is atomic. */}
+                    {kindHasHead && (
+                      <td className="px-3 py-1.5">
+                        {readOnly ? (
+                          <span title={t('readOnlyRow')} className="text-xs text-muted-foreground">
+                            {headLabel(r)}
+                          </span>
+                        ) : (
+                          <select
+                            name="headEmploymentId"
+                            aria-label={to('fieldHead')}
+                            value={r.headEmploymentId ?? ''}
+                            onChange={(e) => updateCell(r.key, 'headEmploymentId', e.target.value || null)}
+                            className={`${cellInput} w-full min-w-0 ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
+                          >
+                            <option value="">{to('headNone')}</option>
+                            {headOptions(r).map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                    )}
                     {/* Criteria (scope) */}
                     <td className="relative px-3 py-1.5">
                       {r.isNew ? (
