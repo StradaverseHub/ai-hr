@@ -253,9 +253,22 @@ export function EmployeeName({
   codeClassName?: string;
 }) {
   return (
-    <span className={cn('inline-flex items-baseline gap-1.5', className)}>
-      <EmployeeCode code={code} className={codeClassName} />
-      <span>{name}</span>
+    /* r286 — WHY `min-w-0` AND WHY THE NAME CARRIES ITS OWN `truncate`.
+     *
+     * Callers pass `truncate` in `className` expecting the name to ellipsise (the org-chart card does,
+     * beside a sibling role line that truncates correctly). It never worked here: `truncate` is
+     * overflow-hidden + text-overflow-ellipsis + nowrap, and on an INLINE-FLEX box the ellipsis applies to
+     * the box's own text — of which there is none — never to its flex children. Meanwhile the name span
+     * was a flex item at its automatic minimum width, so it refused to shrink and simply overflowed the
+     * card. That is the "words overspill" this component was causing in every one of its call sites.
+     *
+     * `min-w-0` on the group lets it shrink inside whatever flex/grid parent holds it; `min-w-0 truncate`
+     * on the name is what actually clips. The CODE keeps `shrink-0` because it is the identifier — a
+     * half-eaten employee id is worse than a clipped name, and it is short and fixed-width by nature.
+     * In a roomy container nothing changes: `truncate` only bites once the content exceeds the box. */
+    <span className={cn('inline-flex min-w-0 items-baseline gap-1.5', className)}>
+      <EmployeeCode code={code} className={cn('shrink-0', codeClassName)} />
+      <span className="min-w-0 truncate">{name}</span>
     </span>
   );
 }

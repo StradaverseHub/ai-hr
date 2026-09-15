@@ -68,12 +68,19 @@ export default async function HowItWorksPage() {
                   }
                   strokeWidth={1}
                 />
-                <text x={b.x + 86} y={59} textAnchor="middle" className="fill-foreground text-[12px] font-semibold">
-                  {t(`${b.key}Title`)}
-                </text>
-                <text x={b.x + 86} y={78} textAnchor="middle" className="fill-muted-foreground text-[10.5px]">
-                  {t(`${b.key}Sub`)}
-                </text>
+                {/* r286 — foreignObject, NOT <text>. SVG text neither wraps nor ellipsises, so any caption
+                    wider than the 172px box ran straight past both edges and collided with its neighbours:
+                    "accept, fix, or approve what the AI proposes closing" is roughly 250px at 10.5px, which
+                    is the overspill that was reported. HTML inside the SVG wraps on its own, and keeps
+                    wrapping in the five non-English locales where a translated caption is usually longer
+                    again — shortening the English string would have fixed the screenshot and left the bug.
+                    The box geometry is unchanged, so the arrows and every other coordinate still line up. */}
+                <foreignObject x={b.x} y={34} width={172} height={62}>
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-2 text-center">
+                    <div className="text-[12px] font-semibold leading-tight text-foreground">{t(`${b.key}Title`)}</div>
+                    <div className="text-[10.5px] leading-tight text-muted-foreground">{t(`${b.key}Sub`)}</div>
+                  </div>
+                </foreignObject>
                 {i < 4 && (
                   <line
                     x1={b.x + 174}
