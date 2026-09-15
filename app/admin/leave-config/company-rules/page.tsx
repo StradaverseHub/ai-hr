@@ -487,10 +487,16 @@ export default async function LeaveConfigCompanyRulesPage({
                   <p className="mt-1.5 text-xs text-muted-foreground">{tr('expiryHint')}</p>
                 </div>
 
-                {/* Replacement Leave From — RECORDED ONLY, AND THE PAGE SAYS SO. Nothing validates against
-                    this setting: no attendance, timesheet or overtime figure is checked against it. Saying
-                    so on screen is the difference between a recorded intention and a promise the system
-                    does not keep. */}
+                {/* Replacement Leave From — ENFORCED as of 3fb1a611, and the note below says what it now
+                    does instead of admitting that it does nothing.
+                    ⚠️ THE NOTE IS NOT DECORATION. This control is MONEY-BEARING in one direction: choosing
+                    "Working hours plus overtime" lets an ordinary working day be banked, and a banked day
+                    is struck out of the overtime prefill (core/payroll.ts EXCLUDE_TOIL_BANKED_DAYS, both
+                    reads, unconditional). The screen has to say so before the choice is made, not after
+                    payroll is run. `leaveFromRecordedOnly` is the superseded note and is deliberately left
+                    in the catalogue rather than deleted — two other branches are editing these six locale
+                    files this round, and a key DELETION merges badly (CLAUDE.md §10: presence is a value).
+                    It is no longer rendered anywhere; removing it is a tidy-up for a later round. */}
                 <div>
                   <Field label={tr('leaveFrom')}>
                     <select name="replacementLeaveFrom" defaultValue={p.replacementLeaveFrom} className={inputCls}>
@@ -500,7 +506,7 @@ export default async function LeaveConfigCompanyRulesPage({
                     </select>
                   </Field>
                   <p className="mt-1.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    {tr('leaveFromRecordedOnly')}
+                    {tr('leaveFromEnforced')}
                   </p>
                 </div>
 

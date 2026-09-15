@@ -141,14 +141,21 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(src).toContain('<ReplacementEligibilityPicker');
   });
 
-  it('SAYS ON SCREEN that Replacement Leave From is recorded only', () => {
-    // The request is explicit that this setting changes nothing today and that the page must say so, or
-    // an admin will configure it and expect overtime to start being validated against it. Assert both
-    // that the page renders the note and that the note actually makes the claim.
-    expect(read(PAGE_REL)).toContain("tr('leaveFromRecordedOnly')");
-    const note = String(getPath(load('en'), 'admin.replacementLeave.leaveFromRecordedOnly'));
-    expect(note).toMatch(/recorded only/i);
-    expect(note).toMatch(/changes nothing today/i);
+  // ⚠️ 3fb1a611 (r279) INVERTED THIS TEST, and the inversion is the point of the item. It used to assert
+  // that the page ADMITS Replacement Leave From is recorded only — true when written (nothing read the
+  // column; the gate was the hard-coded RL_ELIGIBLE_DAY_TYPES in core/toil.ts) and the honest thing to
+  // print. The setting is now enforced, so the same screen printing "changes nothing today" would be the
+  // lie the original note existed to avoid. What replaces it is stronger than "no longer says recorded
+  // only": the note must state the one consequence that costs money.
+  it('SAYS ON SCREEN what Replacement Leave From now does — including that banking a day stops its overtime pay', () => {
+    const src = read(PAGE_REL);
+    expect(src).toContain("tr('leaveFromEnforced')");
+    expect(src, 'the superseded note must not be rendered anywhere').not.toContain("tr('leaveFromRecordedOnly')");
+    const note = String(getPath(load('en'), 'admin.replacementLeave.leaveFromEnforced'));
+    expect(note, 'it must say which days it decides').toMatch(/which worked days/i);
+    // The money sentence. Choosing "Working hours plus overtime" admits an ordinary working day, and a
+    // banked day is struck out of the overtime prefill — the admin has to be told before they choose.
+    expect(note).toMatch(/stops being paid as overtime/i);
   });
 
   // 1cf5b37c INVERTED THIS TEST, and the inversion is the item. It used to assert that every control
@@ -287,7 +294,8 @@ describe('296fc027 · Replacement Leave configuration page', () => {
       'admin.replacementLeave.expiryUnitMonths',
       'admin.replacementLeave.expiryHint',
       'admin.replacementLeave.leaveFrom',
-      'admin.replacementLeave.leaveFromRecordedOnly',
+      // 3fb1a611: leaveFromRecordedOnly is superseded by leaveFromEnforced (see the inverted test above).
+      'admin.replacementLeave.leaveFromEnforced',
       // 1cf5b37c — ledgerMovedNote / ledgerMovedLink are GONE. They keyed the cross-link from this
       // screen to the legacy /admin/toil page, and the reporter asked for this submenu to be
       // self-contained. The link on /admin/toil pointing HERE stays (admin.toilPolicy.configMoved*

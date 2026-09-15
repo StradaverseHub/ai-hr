@@ -26,6 +26,7 @@ import {
   HR_MINTED_TOIL_SOURCES,
   leaveLedger,
   leaveType,
+  person,
   toilAccrual,
   toilPolicy,
   type ReplacementRequestEligibility,
@@ -1654,6 +1655,74 @@ export async function reverseToilCredit(
       overtimeRestoredForDate: acc.otMinutes > 0 ? acc.workedDate : null,
       overtimeRestoredMinutes: acc.otMinutes,
     };
+  });
+}
+
+export type HrMintedCreditRow = {
+  id: string;
+  employmentId: string;
+  employeeName: string;
+  workedDate: string;
+  daysCredited: number;
+  daysTaken: number;
+  expiresOn: string;
+  source: ToilAccrualSource;
+  note: string | null;
+  /** false ⇒ `reverseToilCredit` would refuse it; the screen disables the button and says why. */
+  reversible: boolean;
+};
+
+/**
+ * 3fb1a611 · the HAND-MINTED credits an administrator may still undo, newest worked day first.
+ *
+ * Lives here rather than in core/read.ts because it exists only to serve `reverseToilCredit` on the
+ * screen beside it, and the two have to agree about what "reversible" means — `reversible` below is the
+ * same three conditions that function refuses on, in the same file, so the button cannot offer something
+ * the service will reject. It deliberately does NOT list earned credits: the ledger card above already
+ * counts those and there is no action to offer against them.
+ */
+export function listHrMintedToilCredits(
+  ctx: SessionContext,
+  companyIds?: string[],
+): Promise<HrMintedCreditRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (companyIds && companyIds.length === 0) return [];
+    const rows = await tx
+      .select({
+        id: toilAccrual.id,
+        employmentId: toilAccrual.employmentId,
+        employeeName: person.fullName,
+        workedDate: toilAccrual.workedDate,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        expiresOn: toilAccrual.expiresOn,
+        status: toilAccrual.status,
+        source: toilAccrual.source,
+        note: toilAccrual.note,
+      })
+      .from(toilAccrual)
+      .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(toilAccrual.source, [...HR_MINTED_TOIL_SOURCES]),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      // ORDER BY, always: an asserted or rendered list without one is the planner's opinion (CLAUDE.md §8).
+      .orderBy(sql`${toilAccrual.workedDate} desc`, asc(toilAccrual.id));
+    return rows.map((r) => ({
+      id: r.id,
+      employmentId: r.employmentId,
+      employeeName: r.employeeName,
+      workedDate: r.workedDate,
+      daysCredited: Number(r.daysCredited),
+      daysTaken: Number(r.daysTaken),
+      expiresOn: r.expiresOn,
+      source: r.source as ToilAccrualSource,
+      note: r.note,
+      reversible: r.status === 'active' && Number(r.daysTaken) === 0,
+    }));
   });
 }
 
