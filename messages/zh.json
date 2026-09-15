@@ -8429,7 +8429,6 @@
       "companyFilterAll": "全部公司",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "补休不在此账户的套餐内，因此尚未累积任何额度。您现在即可在此设置——启用该附加功能后设置将立即生效。",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8809,7 +8808,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "属于某家公司或整个机构的休假设置，集中在一处。",
-      "intro": "这四项设置并不属于任何单一休假类型，因此在此统一设置一次，而不必在每个休假类型上重复设置、分散在三个页面。",
+      "intro": "此处的休假设置属于某家公司或整个机构，而不属于任何单一休假类型，因此只需设置一次，无需在每个休假类型上重复设置。",
       "whoQualifies": "谁可以休某种假期类型、谁获得哪一张额度表，在“休假类型”下设置，而不是这里。"
     },
     "leaveConfigSpecialSetting": {

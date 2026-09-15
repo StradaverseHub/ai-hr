@@ -8429,7 +8429,6 @@
       "companyFilterAll": "Semua syarikat",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Cuti gantian bukan sebahagian daripada pelan akaun ini, jadi tiada kredit dibankkan lagi. Anda boleh menyediakannya di sini sekarang — tetapan akan berkuat kuasa sebaik sahaja tambahan itu dihidupkan.",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8809,7 +8808,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
-      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
+      "intro": "Tetapan cuti di sini menjadi milik sesebuah syarikat atau seluruh organisasi dan bukan mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali sahaja dan bukan diulang pada setiap jenis cuti.",
       "whoQualifies": "Siapa yang boleh mengambil sesuatu jenis cuti, dan siapa yang menerima jadual kelayakan yang mana, ditetapkan di bawah Jenis cuti, bukan di sini."
     },
     "leaveConfigSpecialSetting": {

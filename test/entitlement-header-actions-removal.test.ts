@@ -58,9 +58,15 @@ describe('962077a8 → 5ca446db: the PageHeader carries no actions at all, and t
     expect(entitlementsPage).not.toContain('employeeBalancesAction');
     // THE REPLACEMENT, so this case cannot pass on a page that lost the way in with nothing put in its
     // place. The row's own shape is pinned in test/leave-flyout-nav.test.ts and test/r269-*.
+    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. The row was resolved as `children.at(-1)`, which was a
+    // spelling of "the way in exists" that happened to work while it was the last child; an unrelated
+    // item appended Special Setting below it, where the reporter drew it. The row is resolved BY NAME
+    // here and its POSITION is pinned where positions belong — test/leave-flyout-nav.test.ts, which owns
+    // the fly-out's exact order. What this case is about is that the link's replacement exists at all.
     const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
-    expect(children.at(-1)!.labelKey).toBe('employeeLeaveInquiry');
-    expect(children.at(-1)!.href).toBe('/leave/employee-balances');
+    const inquiry = children.find((c) => c.labelKey === 'employeeLeaveInquiry');
+    expect(inquiry, 'the row that replaced the header link is gone').toBeTruthy();
+    expect(inquiry!.href).toBe('/leave/employee-balances');
     // The importer button and the three tab links are gone from the header cluster…
     expect(header).not.toContain("leaveConfigScreenHref('importLeaveData')");
     expect(header).not.toContain("leaveConfigScreenHref('entitlementTables')");

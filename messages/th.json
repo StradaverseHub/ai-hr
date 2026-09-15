@@ -8429,7 +8429,6 @@
       "companyFilterAll": "ทุกบริษัท",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "การลาชดเชยไม่ได้อยู่ในแพ็กเกจของบัญชีนี้ จึงยังไม่มีการสะสมวันลา คุณตั้งค่าไว้ล่วงหน้าที่นี่ได้ — การตั้งค่าจะมีผลทันทีที่เปิดใช้ส่วนเสริมนี้",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8809,7 +8808,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "การตั้งค่าการลาที่เป็นของบริษัทหนึ่งหรือขององค์กรทั้งหมด รวมไว้ในที่เดียว",
-      "intro": "การตั้งค่าทั้งสี่รายการนี้ไม่ได้เป็นคุณสมบัติของประเภทการลาใดประเภทหนึ่ง จึงตั้งค่าที่นี่เพียงครั้งเดียว แทนการตั้งซ้ำในทุกประเภทการลาและกระจายอยู่ในสามหน้าจอ",
+      "intro": "การตั้งค่าการลาที่นี่เป็นของบริษัทหนึ่งหรือขององค์กรทั้งหมด ไม่ใช่ของประเภทการลาใดประเภทหนึ่ง จึงตั้งค่าเพียงครั้งเดียวแทนการตั้งซ้ำในทุกประเภทการลา",
       "whoQualifies": "ใครลาประเภทใดได้ และใครได้รับตารางสิทธิ์ใด ตั้งค่าไว้ใต้ ประเภทการลา ไม่ใช่ที่นี่"
     },
     "leaveConfigSpecialSetting": {

@@ -8429,7 +8429,6 @@
       "companyFilterAll": "Tất cả công ty",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Nghỉ bù không nằm trong gói của tài khoản này nên chưa có ngày nào được tích lũy. Bạn vẫn có thể thiết lập tại đây — các thiết lập sẽ có hiệu lực ngay khi bật tiện ích bổ sung.",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",
@@ -8809,7 +8808,7 @@
     },
     "leaveConfigCompanyRules": {
       "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
-      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
+      "intro": "Các thiết lập nghỉ phép ở đây thuộc về một công ty hoặc toàn tổ chức chứ không thuộc riêng loại nghỉ phép nào, nên chỉ cần đặt một lần thay vì lặp lại trên từng loại nghỉ phép.",
       "whoQualifies": "Ai được nghỉ một loại phép, và ai nhận bảng định mức nào, được đặt trong mục Loại nghỉ phép, không phải ở đây."
     },
     "leaveConfigSpecialSetting": {
