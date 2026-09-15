@@ -2,14 +2,17 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { toCsv } from '@/lib/csv';
 import { Button, Field, inputCls } from './ui';
 import { MultiSelectPopover } from './ui/multi-select-popover';
-import { previewEarnedAccrualAction, runEarnedAccrualAction } from '@/app/admin/actions';
-import type { EarnedAccrualGroup } from '@/core/leave';
+import { runEarnedAccrualAction } from '@/app/admin/actions';
+// feedback cf9dcb98 — the preview comes from the screen's own action, which forwards the engine's named
+// reason; the COMMIT is unchanged and still posts through app/admin/actions.ts. See that file's header.
+import { previewEarnedAccrualWithReasonAction } from '@/app/admin/leave-config/earned-accrual/actions';
+import type { ArchivedLeaveTypeHint, EarnedAccrualEmptyReason, EarnedAccrualGroup } from '@/core/leave';
 
 export type EarnedScopeOption = { id: string; name: string };
 export type EarnedLeaveYearOption = { year: number; status: string };
@@ -44,6 +47,7 @@ export function EarnedAccrualCard({
   defaultYear: number;
 }) {
   const t = useTranslations('admin.leave');
+  const locale = useLocale();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +57,12 @@ export function EarnedAccrualCard({
   const [leaveTypeIds, setLeaveTypeIds] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<EarnedAccrualGroup[] | null>(null);
   const [previewAsOf, setPreviewAsOf] = useState<string | null>(null);
+  // feedback cf9dcb98 — the engine's own account of an empty preview. Held exactly as it arrived: this
+  // component derives nothing from it beyond choosing which sentence to render, because the moment a
+  // screen starts recomputing "why was this empty" it is free to disagree with the engine that decided it.
+  const [emptyReason, setEmptyReason] = useState<EarnedAccrualEmptyReason | null>(null);
+  const [archivedHint, setArchivedHint] = useState<ArchivedLeaveTypeHint[]>([]);
+  const [earnedToDateTotal, setEarnedToDateTotal] = useState(0);
   // Once a real run commits, flip the table's Status column from Pending → Done (until the next preview).
   const [committed, setCommitted] = useState(false);
 
@@ -75,7 +85,7 @@ export function EarnedAccrualCard({
     start(async () => {
       setError(null);
       setCommitted(false);
-      const res = await previewEarnedAccrualAction(scope);
+      const res = await previewEarnedAccrualWithReasonAction(scope);
       if (res.error) {
         setError(res.error);
         setRows(null);
@@ -83,6 +93,9 @@ export function EarnedAccrualCard({
       }
       setRows(res.rows ?? []);
       setPreviewAsOf(res.asOf ?? null);
+      setEmptyReason(res.emptyReason ?? null);
+      setArchivedHint(res.archivedHint ?? []);
+      setEarnedToDateTotal(res.earnedToDateTotal ?? 0);
     });
 
   const onRun = () =>
@@ -103,6 +116,9 @@ export function EarnedAccrualCard({
     setError(null);
     setCommitted(false);
     setPreviewAsOf(null);
+    setEmptyReason(null);
+    setArchivedHint([]);
+    setEarnedToDateTotal(0);
   };
 
   const onExport = () => {
@@ -143,6 +159,57 @@ export function EarnedAccrualCard({
     () => (rows ? Math.round(rows.reduce((s, r) => s + r.entitlementGenerated, 0) * 100) / 100 : 0),
     [rows],
   );
+
+  /**
+   * feedback cf9dcb98 — names, joined the way the reader's language joins a list ("A, B and C"), not with
+   * a hardcoded comma. Every reason below names leave types, grades, companies or countries, and a list of
+   * names is the whole point of the change: a count would leave the administrator exactly where the old
+   * flat sentence left them.
+   */
+  const nameList = (names: string[]) =>
+    new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(names);
+
+  /**
+   * feedback cf9dcb98 — THE EMPTY PREVIEW, EXPLAINED. One `switch` over the engine's own discriminant, and
+   * NOTHING is recomputed here: each branch only chooses the sentence and hands the engine's values to it.
+   * `null` — a scope pointing at leave types this tenant does not have — falls back to the flat sentence
+   * this whole item exists to replace, which is the one case where it is still the honest answer.
+   */
+  const emptyMessage = (): string => {
+    const r = emptyReason;
+    if (!r) return t('earnedPreviewEmpty');
+    switch (r.kind) {
+      case 'type_not_swept':
+        return r.sweptLeaveTypeNames.length
+          ? t('earnedEmptyNotSwept', {
+              types: nameList(r.leaveTypeNames),
+              swept: nameList(r.sweptLeaveTypeNames),
+            })
+          : t('earnedEmptyNotSweptNoneActive', { types: nameList(r.leaveTypeNames) });
+      case 'type_archived':
+        return t('earnedEmptyTypeArchived', { types: nameList(r.leaveTypeNames) });
+      case 'table_not_yet_in_force':
+        return t('earnedEmptyTableNotYetInForce', {
+          type: r.leaveTypeName,
+          validFrom: r.validFrom,
+          asOf: r.asOf,
+        });
+      case 'no_entitlement_table':
+        return t('earnedEmptyNoTable', { types: nameList(r.leaveTypeNames), asOf: r.asOf });
+      case 'type_not_earned':
+        return t('earnedEmptyNotEarned', { types: nameList(r.leaveTypeNames) });
+      case 'no_employment_in_scope':
+        return r.scopeNames.length
+          ? t('earnedEmptyNoEmployment', { scope: nameList(r.scopeNames), asOf: r.asOf })
+          : t('earnedEmptyNoEmploymentAll', { asOf: r.asOf });
+      case 'no_eligibility_match':
+        return t('earnedEmptyNoEligibilityMatch', { types: nameList(r.leaveTypeNames) });
+      case 'country_pack_inactive':
+        return t('earnedEmptyPackInactive', { countries: nameList(r.countries) });
+      case 'balance_frozen':
+        return t('earnedEmptyFrozen', { types: nameList(r.leaveTypeNames) });
+    }
+  };
 
   return (
     <div className="space-y-4 px-4 py-3">
@@ -208,9 +275,18 @@ export function EarnedAccrualCard({
       {rows !== null && (
         <div className="space-y-3">
           {rows.length === 0 ? (
-            <p className="rounded-lg bg-background px-3 py-4 text-center text-xs text-muted-foreground">
-              {t('earnedPreviewEmpty')}
-            </p>
+            <div className="space-y-2 rounded-lg bg-background px-3 py-4 text-center text-xs text-muted-foreground">
+              <p data-testid="earned-empty-reason">{emptyMessage()}</p>
+              {/* feedback cf9dcb98 reason (d) — the archived twin rides ALONGSIDE the reason rather than
+                  replacing it, because on the reporting account both are true at once: the type they could
+                  pick is not one this sweep covers, AND the type holding their 163 ledger rows is archived.
+                  Showing only one of the two would send them down the wrong half of the problem. */}
+              {archivedHint.length > 0 && (
+                <p data-testid="earned-archived-hint">
+                  {t('earnedArchivedHint', { types: nameList(archivedHint.map((a) => a.name)) })}
+                </p>
+              )}
+            </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[720px] text-left text-xs">
@@ -266,6 +342,24 @@ export function EarnedAccrualCard({
                 </tfoot>
               </table>
             </div>
+          )}
+          {/* feedback cf9dcb98 reason (c) — IDEMPOTENCY, AND IT IS NOT AN EMPTY PREVIEW. This was the one
+              reason in the plan that cannot reach the block above: the engine counts an eligible employee
+              into their group BEFORE it works out the top-up, so an accrual that is already posted returns
+              a FULL table of rows reading 0.00 days. What HR saw was a grid of zeros with a live Run
+              button and nothing saying why — and "already posted" and "nothing earned yet at this date"
+              look identical in that grid while wanting opposite actions. `earnedToDateTotal` is the
+              engine's Σ of what HAS been earned to the as-at date, so the two are told apart on the
+              engine's figure rather than on a guess made here. */}
+          {rows.length > 0 && totalEntitlement === 0 && previewAsOf && (
+            <p
+              data-testid="earned-nothing-outstanding"
+              className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground"
+            >
+              {earnedToDateTotal > 0
+                ? t('earnedNothingOutstanding', { days: earnedToDateTotal, date: previewAsOf })
+                : t('earnedNothingEarnedYet', { date: previewAsOf })}
+            </p>
           )}
           {previewAsOf && (
             <p className="text-[11px] text-muted-foreground">{t('earnedAsOfNote', { date: previewAsOf })}</p>
