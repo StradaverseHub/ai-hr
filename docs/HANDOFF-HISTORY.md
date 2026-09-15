@@ -1,3 +1,105 @@
+## r279 (2026-09-15) — Earned to Date + Full Entitlement, the Balance Health row, and a keyless clocking map. `main@2652fefd`, **no migration**.
+
+Closed: `8c59c664` · `3fbf7a02` · `fa2db8cb`. **HALTED and NOT merged: `3fb1a611`** (see below).
+Gate: **846/846 files, 12,767 tests, 0 AssertionErrors** across 24 chunks; `next build` clean. Verified live:
+install ran, leaflet 1.9.4 on the box, service active, `GET /` 401, fresh BUILD_ID, migrations still **380**
+and **0465 absent** — the journal is untouched because the credit branch never merged.
+
+### ⚠️ `3fb1a611` WAS STOPPED MID-BUILD, AND THAT WAS THE RIGHT CALL
+
+The reporter approved Leave Credit, then **the next day raised `8a494721` asking to remove Replacement
+Leave completely** — the exact feature it extends. I stopped the build rather than build and remove one
+thing in a week, checkpointed it, and put the contradiction in `8a494721`'s plan. **The reporter then
+approved `8a494721`**, so the decision is made: Replacement Leave goes, Leave Credit does not ship.
+
+`build/r279-credit` keeps five commits — migration **0465**, the inverse of `consumeReplacementLeaveTx`,
+the HR grant surface, Expiring-soon — permanently unmerged. Had it shipped, 0465 would now sit in an
+append-only journal for a feature being deleted.
+
+**The root cause of `8a494721` is ours:** `app/admin/leave-config/company-rules/page.tsx:108` computes
+`accrualLive` from the `toil` entitlement and `:404` uses it for **one thing** — an amber "module off"
+banner — then renders the entire Replacement Leave configuration underneath anyway. The reporter read the
+notice, then filled in 55 grades, 21 positions, 18 departments, 9 companies and 6 named employees across
+several days in August. None of it could ever bank a day.
+
+### DECISIONS the tickets did not settle
+
+- **`ytdEntitled` keeps its FIELD name; only the label moved.** The string is a stored ESS view key
+  (`core/ess-view.ts:54`, persisted in `leave_type.ess_view_config`) and **12 production leave types store
+  it** — renaming the field would have been a data migration for a label change.
+- **The Full Entitlement change reaches `/leave` and `/me`, not just Employee Balances**, because
+  `me.leaveBalanceTable.colYtdEntitled` is also the employee's own grid header and `deriveBalanceRow` feeds
+  it. Right, but wider than the approved plan said. **Correction owed.**
+- **The CSV/XLSX export renders from the same rows** and its header forbids disagreeing with the screen —
+  the plan never mentioned it, and a screen-only change would have shipped that disagreement.
+- **A Google key alone will NOT switch the map over, contrary to the approved plan.** No two suppliers share
+  a tile URL and Google's raster tiles need a session token from a POST, not a static template. The seam
+  switches on **configuration** (`MAPS_TILE_URL` + `MAPS_ATTRIBUTION`, optional satellite/geocoder, `{key}`
+  from `MAPS_API_KEY`): one `.env.production` edit, no rebuild. **Correction owed: a key PLUS one line of
+  configuration.**
+- **Leaflet is a pinned npm dependency, not a CDN script** — the test environment must never reach the
+  network. Server pnpm is **10.33.2** and the lockfile was rewritten by pnpm 12.3.4, so before merging I
+  proved in a scratch tree that pnpm 10 accepts it `--frozen-lockfile` and leaves it **byte-identical**.
+  `lockfileVersion` stayed '9.0'; the only new packages are leaflet + its types, everything else is
+  peer-suffix re-annotation with no version moved.
+
+### MY PLAN WAS WRONG TWICE, AND THE AGENTS WERE RIGHT
+
+1. **`3fbf7a02`: I cited `packs/leave/index.ts:309` as the reason to keep Balance Health out of the
+   leave-config map. That comment is about Employee Leave Inquiry, which has NO page under
+   `app/admin/leave-config/**`. Ours does.** Worse, my "add only one message key" constraint forced the page
+   off the house pattern, and the symptom was **carve-outs appearing in two guard files**. I lifted the
+   constraint and had it converted: one-item map group + `leaveConfigPageHeader` + `<LeaveConfigMap>`, same
+   as `company-rules` and `generate`. **Deleting the nav row now fails 14 assertions across 6 files instead
+   of 5 in 1** — that coupling is what conforming bought, and it is why the extra cycle was worth it.
+2. The map plan's Google-key promise, above.
+
+### A GUARD THAT PASSED ON NOTHING, CAUGHT BY THE AGENT ITSELF
+
+The map build's attribution assertion (`toContain('© OpenStreetMap contributors')`) **stayed green after
+deleting the map's caption entirely**, because the address-search credit line ends in the same words. Each
+credit is now pinned to its own element. That is the third vacuous-guard class this week, after r277's
+empty `<select>` slice — **a source-shape guard that greps one file is a guard about where code lives.**
+
+### ENVIRONMENT, NOT CODE — and it cost hours
+
+The first two gate attempts went red with **zero AssertionErrors**, four files never spawning, and durations
+50× normal (import 10,255s). Cause: **Spotlight `mds` at 104% CPU and Trend Micro `iCoreService` at 35%**,
+scanning every file the suite creates — the gate rebuilds the Postgres cluster per chunk on a RAM disk.
+Fix that worked: **24 chunks instead of 12** (35 files each) at `VITEST_MAX_WORKERS=2`, so a `resetDb` never
+queues behind 70 workers. Chunks 1/8/12 re-ran green unchanged; the four files that timed out at 30s inside
+a 71-file chunk pass **alone in 43s**. Durable fix is a machine-level AV/Spotlight exclusion — the owner's
+call, not ours.
+
+**I made it worse:** I piped the gate through `grep | tail`, which buffered all output AND backgrounded it —
+the exact thing this file already warns against. Redirect to a file; never pipe a gate.
+
+### FOUND EN ROUTE — raised separately, deliberately NOT fixed here
+
+**Which approver routes a leave request is decided by an unstable sort.** Four `ORDER BY` clauses on
+`leave_approval_policy` end at `createdAt` with no `id` tiebreak — `core/leave-approval-policy.ts:707`,
+`core/leave-approval-template.ts:248`, `core/leave-approval-consolidation.ts:196` and `:468`. `createdAt`
+is `defaultNow()` and **Postgres `now()` is transaction-start time**, so two policies written in one
+transaction tie exactly and the order is formally undefined. Same defect class as r270's `winReasonFor`.
+Not fixed in this round on purpose: adding the tiebreak changes **which** policy wins wherever timestamps
+currently tie, and that is a live change to approval authority with no business in a round about balance
+columns, a menu row and a map.
+
+### PROCESS TRAPS RECORDED
+
+- **`pnpm improve:block` prints success unconditionally but its SQL is `WHERE … AND status = 'approved'`.**
+  The item was `building`, so the update matched nothing and the block silently did not apply. Same shape as
+  the migration-watermark trap: exit 0, success message, nothing happened. Only the status listing disagreed.
+- **Three agents died mid-flight** — one stall, two on an `ENOTFOUND` API outage. Every one had real
+  uncommitted work; I committed a WIP checkpoint on each branch BEFORE touching anything and resumed them
+  from it. Restarting instead would have rebuilt 0465 from scratch and risked re-deriving its number.
+
+### NOT DONE
+
+Employee-level rows on the earned-accrual preview (grouped Company×Grade×Type with a headcount today).
+Marker drag / click-to-set on the map; no reverse geocoding; no CSP (none exists — still worth raising).
+`f513ec02` (Schedule Group assignment field) approved and not started.
+
 ## r278-plan (2026-09-14) — the two open items planned. `main@b27351d8`, nothing built.
 
 ### `3fb1a611` "Leave Credit" — the reporter designed, in detail, the engine we already shipped
