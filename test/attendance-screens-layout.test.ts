@@ -73,6 +73,11 @@ const WIDE_LIST_SCREENS = [
   // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
   // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
   'app/attendance/requests/page.tsx',
+  // f3e6c36e (r287) — My Records, the employee's own attendance. Added on the SAME reasoning r227 gave:
+  // the full-width property belongs to the SCREEN, not to who may open it, and this one carries the same
+  // seventeen-column day table the Individual tab does. Listed from the start rather than after somebody
+  // complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
+  'app/attendance/my-records/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.

@@ -207,23 +207,36 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
      * r274 (2420718d) — `/attendance` LEFT this list, and what it was defending did not.
      *
      * The risk is an employee losing the screen because a row of theirs ended up behind a group-level
-     * gate. That is still forbidden: the ungated Records row must still be in the self-service node. What
-     * is now allowed beside it is an ADDITIONAL admin-gated row pointing at the same screen — the
-     * reporter's Employee Attendance — which takes nothing away from anybody.
+     * gate. That was still forbidden: the ungated Records row had to stay in the self-service node. What
+     * r274 allowed beside it was an ADDITIONAL admin-gated row pointing at the same screen — the
+     * reporter's Employee Attendance — which took nothing away from anybody.
+     *
+     * f3e6c36e (r287) — THE SHARED SCREEN WAS SPLIT, AND THE PROTECTION IS UNCHANGED. The reporter asked
+     * a second time for the administrative Record function to leave My Attendance and reaffirmed after
+     * being told that moving the row would HIDE the screen from staff rather than restrict it. So
+     * `/attendance` is the administrator's alone now, and the employee's own record is a different screen
+     * at `/attendance/my-records`. The risk this block guards is the same risk and is stated the same way:
+     * whatever the employee's row points at, it must be in the self-service node and carry no gate.
      */
     const adminCopy = merged.children.filter((c) => c.href === '/attendance');
     for (const c of adminCopy) {
       expect(c.adminOnly, 'any /attendance row in the admin node must be gated').toBe(true);
     }
+    const EMPLOYEE_RECORDS = '/attendance/my-records';
     const selfService = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
-    const records = selfService.children.find((c) => c.href === '/attendance');
-    expect(records, 'Records is still in the self-service node').toBeDefined();
+    const records = selfService.children.find((c) => c.href === EMPLOYEE_RECORDS);
+    expect(records, 'the employee’s own record is still in the self-service node').toBeDefined();
     expect(records?.adminOnly, 'and still ungated, which is the whole protection').toBeUndefined();
+    // …and it did NOT travel into the admin group, where an ungated row renders for nobody but admins.
+    expect(
+      merged.children.some((c) => c.href === EMPLOYEE_RECORDS),
+      'the employee’s own record must not be in the admin-gated node',
+    ).toBe(false);
 
-    // …and they are still reachable somewhere ungated.
+    // …and it is still reachable somewhere ungated.
     const mine = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.some((c) => c.href === '/attendance'), 'Records is self-service').toBe(true);
-    expect(mine.children.find((c) => c.href === '/attendance')?.adminOnly).toBeUndefined();
+    expect(mine.children.some((c) => c.href === EMPLOYEE_RECORDS), 'My Records is self-service').toBe(true);
+    expect(mine.children.find((c) => c.href === EMPLOYEE_RECORDS)?.adminOnly).toBeUndefined();
     const manageLinks = (attendancePack.navLinks ?? []).filter((l) => l.group === 'manage');
     expect(manageLinks.map((l) => l.href).sort()).toEqual(['/attendance/import', '/roster']);
     expect(manageLinks.every((l) => l.managerUp === true), 'both stay managerUp').toBe(true);
@@ -265,7 +278,13 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
   it('adds the row to My Attendance, ungated, in the reporter’s order', () => {
     expect(mine.children.map((c) => c.href)).toEqual([
       '/attendance/clock',
-      '/attendance',
+      // f3e6c36e (r287) — the employee's Records row points at its OWN screen now. The reporter asked
+      // twice for the administrative Record function to leave this menu and reaffirmed after being told
+      // that MOVING the row would hide the screen from staff rather than restrict it (the Administration
+      // group gates adminOnly at GROUP level). So the screen was SPLIT: `/attendance` is the
+      // administrator's, `/attendance/my-records` is the employee's, and this node's membership rule —
+      // six rows, written down, none of them gated — is unchanged.
+      '/attendance/my-records',
       '/attendance/requests',
       // 1e9145d4 — Plan OT joined the node as the fourth self-service row when overtime moved off the
       // Attendance Request screen. Ungated for the same reason, and pinned by its own describe below.
@@ -280,7 +299,17 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
     ]);
     // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
     // and it now renders the employee's own overtime plans like the two beside it.
-    for (const href of ['/attendance/plan-ot', '/attendance/travel', '/attendance/request-status']) {
+    // f3e6c36e (r287) — `/attendance/my-records` joins this loop, and that is the point of adding it here
+    // rather than only pinning the nav row: the employee's own record is now a SCREEN of its own, so it
+    // has to prove the same two things its siblings do — no admin page guard (which would lock an
+    // employee out of their own attendance), and the caller's own employment resolved server-side (which
+    // is what makes it incapable of showing anybody else's rows).
+    for (const href of [
+      '/attendance/my-records',
+      '/attendance/plan-ot',
+      '/attendance/travel',
+      '/attendance/request-status',
+    ]) {
       const added = mine.children.find((c) => c.href === href)!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,

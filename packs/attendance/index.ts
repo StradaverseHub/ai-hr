@@ -108,8 +108,14 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  * manager also sees Roster + Import, an admin sees all nine. That also matches the picture, which
  * shows Attendance in the upper section beside My Absence and Claims, above the MANAGE heading.
  *
- * THE FLAGS ARE PER ROW AND MUST STAY THAT WAY. attendanceRecords carries NEITHER flag — carrying it
+ * THE FLAGS ARE PER ROW AND MUST STAY THAT WAY. The self-service rows carry NEITHER flag — carrying one
  * into a node whose other members are adminOnly must not make it, or the node, admin-only.
+ *
+ * f3e6c36e (r287) — the `attendanceRecords` row that this paragraph and the one above used to name is
+ * gone from here. It pointed at `/attendance`, the screen both audiences shared; it is now `myRecords`
+ * pointing at `/attendance/my-records`, the employee's own screen, and `/attendance` belongs to the
+ * Administration row alone. The reasoning is on the row itself. `nav.attendanceRecords` is NOT retired —
+ * app/reports/page.tsx still labels its `/attendance` link with it, and that link is the admin screen.
  */
 const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'myAttendance',
@@ -120,12 +126,32 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // action. Records moved out to the merged Attendance node (a324a4b3 rev2), so this is now the node's
     // only row; it remains visible to every employee (self-service, like /me).
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    // a324a4b3 rev3 — Records comes BACK here. rev2 pulled it up into the merged Attendance node while
-    // that node sat in the ungated day-to-day group, which was fine. The reporter has now asked for that
-    // node to move into Administration, and the admin group gates at GROUP level — so a Records row left
-    // inside it would vanish from every plain employee's rail. It is self-service (no gate), so its home
-    // is the self-service node.
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
+    /**
+     * f3e6c36e (r287) — THE SPLIT. This row used to point at `/attendance`, the same screen the admin
+     * "Employee Attendance" row opens. It now points at the employee's OWN screen and the admin screen is
+     * left to the administrator alone. Read the history before moving it back:
+     *
+     *   • a324a4b3 rev2 moved Records into the merged Attendance node; rev3 undid it, because that node
+     *     went into Administration and the Administration sidebar group gates `adminOnly` at GROUP level —
+     *     a row inside it renders for NOBODY but administrators, whatever its own flag says. So moving
+     *     this row does not make the screen admin-only, it makes it invisible to staff.
+     *     `test/sidebar-attendance-group.test.ts` exists to stop a third attempt and is still live.
+     *   • The reporter then asked a SECOND time, in writing, for the administrative Record function to
+     *     leave My Attendance. Under the fight-back rule an instruction reaffirmed after a challenge is
+     *     the owner's decision, so r287 takes it — and delivers it by SPLITTING rather than by moving,
+     *     which is the one way both things can be true at once. Their own point 7 (employee-facing
+     *     attendance functions stay under My Attendance) is what the new screen honours.
+     *
+     * UNGATED, like every sibling in this node: `/attendance/my-records` resolves the caller's own
+     * employment (`myEmployment(s)`) and can show nobody else's rows. A gate here would take an employee's
+     * own record away from them, which is the opposite of what the item asked for.
+     *
+     * Clock rather than a new glyph: the collapsed rail renders glyphs only, and this is the same row the
+     * reporter has always known as Records — it is the address and the audience that changed, not the job.
+     * It shares Clock with `/attendance/clock` exactly as it did before the split (that pair predates this
+     * round and is unchanged by it).
+     */
+    { href: '/attendance/my-records', labelKey: 'myRecords', icon: Clock },
     // 0bb0e303 rev2 — the third self-service row the reporter listed. The attendance/overtime/travel
     // request forms existed already, but only as fold-outs on the employee's own My Profile page: you
     // had to know they were there. This row is the whole point of the item — the menu now reads Clock
@@ -281,15 +307,25 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * single row to an employee and all 83 to an administrator — and this group carries `adminOnly` at
      * GROUP level, so a row moved inside it becomes INVISIBLE, not admin-only. a324a4b3 rev2 did exactly
      * that and rev3 undid it; `test/sidebar-attendance-group.test.ts` exists to stop it happening a third
-     * time. So Records STAYS in MY_ATTENDANCE_NAV and this row is added beside it.
+     * time. So Records STAYED in MY_ATTENDANCE_NAV and this row was added beside it.
      *
-     * ⚠️ KNOWN AND ACCEPTED: the same href now sits in two nodes, so on `/attendance` BOTH parent rows
-     * highlight (`isParentActive`, components/nav-flyout.tsx, matches any child path). The two ways out
-     * are worse. A distinct route rendering the same page breaks the screen's own tab strip — its tabs
-     * link to `/attendance`, `/attendance/daily` and `/attendance/individual`, so entering by the admin
-     * door and clicking a tab drops you out of it. And teaching the rail to prefer one node over another
-     * is new nav machinery for a cosmetic result. One screen genuinely reachable two ways is what the
-     * rail is reporting, and it is telling the truth. Disclosed to the reporter rather than hidden.
+     * ── f3e6c36e (r287): THE SECOND DOOR IS NOW THE ONLY DOOR, AND THE DISCLOSURE BELOW IS DISCHARGED ──
+     *
+     * r274 disclosed a known cost: the same href in two nodes, so opening `/attendance` lit BOTH parent
+     * rows (`isParentActive`, components/nav-flyout.tsx, matches any child path). It recorded the two ways
+     * out and why each was worse — in particular that a distinct route rendering the SAME page breaks the
+     * screen's own tab strip (`/attendance`, `/attendance/daily`, `/attendance/individual`), so entering by
+     * one door and clicking a tab drops you out of it.
+     *
+     * The reporter reaffirmed after that challenge, so r287 takes the owner's decision and resolves it the
+     * third way r274 did not have: not a second route onto the same page, but a genuinely DIFFERENT
+     * employee screen — `/attendance/my-records`, its own reads keyed on the caller's own employment, and
+     * NO tab strip at all (that decision and its reasoning are written into the page). `/attendance` is
+     * now reached from this row alone.
+     *
+     * So this row is no longer a duplicate href, it is simply THE Employee Attendance row: the
+     * administrative reading of everybody's attendance, admin-gated, in the Administration menu where the
+     * reporter asked for it twice. The employee keeps their own record next door, which is their point 7.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },

@@ -185,7 +185,34 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'nav.attendance',
     guard: 'scopedSession',
     // Attendance>Records tabs (314ea061): Overview (/attendance) · Daily · Individual.
+    //
+    // f3e6c36e (r287) — `/attendance/my-records` is NOT on this line, deliberately. It is a different
+    // SCREEN with a different audience (the column below), not a fourth tab of this one: the split is the
+    // whole item, and collapsing the two back into one column here would tell a reader of the access grid
+    // that the employee's own record and the administrator's reading of everybody are the same surface.
     routes: ['/attendance', '/attendance/daily', '/attendance/individual'],
+    hasScopeNote: true,
+  },
+  /**
+   * f3e6c36e (r287) — MY RECORDS: the employee's own attendance, and the employee half of the split that
+   * took the administrative Record function out of My Attendance.
+   *
+   * `scopedSession`, so every authenticated role reaches it — which is the honest coarse answer, because
+   * the screen refuses nobody. What it shows is narrower than the guard implies and narrower than every
+   * other scopedSession row in this file: the page resolves the CALLER'S OWN employment
+   * (`myEmployment(s)`) and keys its single attendance read on that employment id, so an administrator
+   * opening this screen sees their own record and nobody else's. That is what the scope note says.
+   *
+   * A NEW screenKey rather than a route added to the `attendance` column above: they are two screens for
+   * two audiences, which is the point of the round. The key is new, so it revokes nothing — no stored role
+   * config can reference a column that did not exist.
+   */
+  {
+    screenKey: 'myAttendanceRecords',
+    href: '/attendance/my-records',
+    labelKey: 'nav.myRecords',
+    guard: 'scopedSession',
+    routes: ['/attendance/my-records'],
     hasScopeNote: true,
   },
   // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so

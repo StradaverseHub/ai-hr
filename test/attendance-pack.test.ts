@@ -75,7 +75,24 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // pixel/behaviour-parity oracle: same rows, same order, same icon refs, same gates.
   const EXPECTED = [
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
+    /**
+     * f3e6c36e (r287) — THE SAME ROW, RE-POINTED. This is the employee's Records row: second in the
+     * self-service node, ungated, Clock glyph, present since the pre-retrofit capture. It has NOT left the
+     * pack, so it is not a MOVED_OUT entry; its ADDRESS and its LABEL changed together, which is the
+     * ad52212d / 870b79e2 precedent for updating an oracle line rather than re-declaring the row.
+     *
+     * WHAT IT WAS: `{ href: '/attendance', labelKey: 'attendanceRecords' }` — pointing at the screen BOTH
+     * audiences shared. That is deliberately written out here so the update does not erase the record.
+     *
+     * WHY IT MOVED: the reporter asked twice, in writing, for the administrative Record function to leave
+     * My Attendance. `/attendance` could not simply be moved (the Administration group gates adminOnly at
+     * GROUP level, so the row would vanish for staff rather than become admin-only — a324a4b3 rev2's
+     * regression, still pinned by test/sidebar-attendance-group.test.ts). The approved plan splits instead:
+     * the employee gets their own screen at `/attendance/my-records` and `/attendance` is left to the
+     * admin row. Every parity property this oracle exists for is unchanged and still asserted below —
+     * same icon ref, still ungated, still exactly once, still second in its node.
+     */
+    { href: '/attendance/my-records', labelKey: 'myRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     // a324a4b3 renamed three labelKeys so each names the screen it opens. The rendered STRINGS are
     // unchanged (they were already right — R17 c9f7211), so this stays a parity oracle: only the key
@@ -106,10 +123,14 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // so a genuinely new row is DECLARED here instead. The parity assertions below then hold unchanged for
   // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
   const ADDED_SINCE = [
-    // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: this is a
-    // second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
-    // their own scope. It is the ONLY href in this pack that is listed twice, deliberately — see the row's
-    // own note, and the pair assertion below that pins exactly which two rows they are.
+    // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: it began as
+    // a second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
+    // their own scope, and it was the ONLY href in this pack listed twice.
+    //
+    // f3e6c36e (r287) — IT IS NO LONGER A DUPLICATE. The employee's row moved to its own screen
+    // (`/attendance/my-records`, see EXPECTED above), so `/attendance` is reached from this row alone and
+    // the duplicate-href assertion below is now an empty list. The row itself is untouched: same href,
+    // same key, same glyph, same gate.
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     // 0bb0e303 rev2 — Attendance Request, the third self-service row. Ungated like Clock in/out and
     // Records: the forms it opens are the caller's own requests (see the node in packs/attendance/index.ts).
@@ -172,10 +193,17 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
    * reporter has since asked for the opposite, in writing and confirmed: four functions, four screens.
    * So plan-ot renders its own list again, and Travel and the request history get the rows they never
    * had. Clock in/out and Records are untouched, in their original positions.
+   *
+   * f3e6c36e (r287) — STILL SIX ROWS, AND RECORDS IS STILL SECOND; what changed is where the second row
+   * POINTS. It was `/attendance`, the screen shared with the administrator's Employee Attendance row; it
+   * is now `/attendance/my-records`, the employee's own. The reporter asked twice for the administrative
+   * Record function to leave this menu and reaffirmed after being told why it could not simply be moved,
+   * so the approved plan splits the screen instead of moving the row. The membership rule this list has
+   * always guarded is unchanged: six rows, written down, none of them gated.
    */
   const SELF_SERVICE_ROWS = [
     '/attendance/clock',
-    '/attendance',
+    '/attendance/my-records',
     '/attendance/requests',
     // 1e9145d4 — Plan OT lands after Attendance Request, exactly where the reporter's screenshot put it.
     '/attendance/plan-ot',
@@ -254,11 +282,15 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
     expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length);
     /**
-     * r274 — MATCHED ON href + labelKey, not href alone. `/attendance` is now listed twice on purpose:
-     * Records for every employee in the self-service node, and the admin-gated Employee Attendance row in
-     * the config node, because that group hides as a whole and a move would take the screen away from
-     * staff. "Appears exactly once" is still asserted — per ROW, which is what it was always defending;
-     * the pair assertion below pins that the duplication is exactly these two and nothing else.
+     * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
+     * purpose: Records for every employee in the self-service node, and the admin-gated Employee
+     * Attendance row in the config node, because that group hides as a whole and a move would have taken
+     * the screen away from staff.
+     *
+     * f3e6c36e (r287) — THAT DUPLICATION IS GONE, and the match is deliberately LEFT on href + labelKey
+     * anyway. Narrowing it back to href alone would be a silent re-tightening that hides the next
+     * deliberate pair; the empty-dupes assertion below is what now states, positively, that no href is
+     * listed twice at all. Those two together are strictly stronger than either.
      */
     [...EXPECTED, ...ADDED_SINCE]
       .filter((want) => !movedOutHrefs.includes(want.href))
@@ -270,16 +302,25 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
         expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
       });
-    // The ONE duplicated href, named. Any other href appearing twice is the bug this file has always
-    // been about, and this line is what keeps "match on labelKey" from becoming a way to hide one.
+    // NO href is listed twice. This assertion has been TIGHTENED, not loosened: r274 allowed exactly one
+    // duplicate (`/attendance`, deliberately, as the only way one screen could serve two audiences from
+    // two menus), and f3e6c36e removed the CAUSE rather than the symptom by giving the employee their own
+    // screen. An empty list is the strongest form this line has ever taken, and it is what keeps
+    // "match on href + labelKey" above from becoming a way to hide a duplicate.
     const dupes = [...new Set(flattened.map((c) => c.href))].filter(
       (h) => flattened.filter((c) => c.href === h).length > 1,
     );
-    expect(dupes, 'exactly one href is listed twice, and it is /attendance').toEqual(['/attendance']);
-    const pair = flattened.filter((c) => c.href === '/attendance');
-    expect(pair.map((c) => c.labelKey).sort()).toEqual(['attendanceRecords', 'employeeAttendance']);
-    expect(pair.find((c) => c.labelKey === 'attendanceRecords')?.adminOnly, 'Records stays ungated').toBeUndefined();
-    expect(pair.find((c) => c.labelKey === 'employeeAttendance')?.adminOnly, 'the admin entry is gated').toBe(true);
+    expect(dupes, 'no href is listed twice — r287 split the one screen that was').toEqual([]);
+    // The two rows the split produced, named, so "no duplicates" cannot be satisfied by losing one of
+    // them. `/attendance` is the administrator's, gated; `/attendance/my-records` is the employee's own
+    // and carries no gate. That pairing IS the item, so it is asserted positively rather than implied.
+    const adminRow = flattened.filter((c) => c.href === '/attendance');
+    expect(adminRow.map((c) => c.labelKey)).toEqual(['employeeAttendance']);
+    expect(adminRow[0].adminOnly, 'the admin entry is gated').toBe(true);
+    const mineRow = flattened.filter((c) => c.href === '/attendance/my-records');
+    expect(mineRow.map((c) => c.labelKey)).toEqual(['myRecords']);
+    expect(mineRow[0].adminOnly, 'the employee entry stays ungated').toBeUndefined();
+    expect(mineRow[0].managerUp, 'the employee entry stays ungated').toBeUndefined();
   });
 
   it('a row declared MOVED_OUT is gone from the pack entirely — not left behind as a second copy', () => {
@@ -366,7 +407,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // homes. Records must still carry none, and Roster/Import must still be managerUp: a move that
     // widened or narrowed either would be the silent permissions change this whole item risks.
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    const records = mine.children.find((c) => c.href === '/attendance')!;
+    // f3e6c36e (r287) — read at the employee's OWN route now. The gate rule is unchanged and is the point:
+    // whatever address the employee's Records row points at, it must carry no gate, or an employee loses
+    // sight of their own attendance. Re-pointing it at `/attendance` here would make this case pass
+    // against the admin row and quietly stop covering the employee's.
+    const records = mine.children.find((c) => c.href === '/attendance/my-records')!;
     expect({ adminOnly: records.adminOnly, managerUp: records.managerUp }).toEqual({
       adminOnly: undefined,
       managerUp: undefined,

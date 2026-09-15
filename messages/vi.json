@@ -290,6 +290,7 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceClock": "Chấm công vào/ra",
     "attendanceRecords": "Hồ sơ",
+    "myRecords": "Hồ sơ của tôi",
     "attendanceRequest": "Bất thường chấm công",
     "planOvertime": "Tự đăng ký làm thêm giờ",
     "myTravel": "Công tác của tôi",
@@ -2537,6 +2538,12 @@
       "scopeEmployees": "{count, plural, other {# nhân viên}}",
       "runNoChanges": "Lần chạy này không thay đổi gì.",
       "recentNote": "Mọi lần chạy đều được giữ vĩnh viễn — ai đã chạy, những nhân viên và ngày nào, cùng các con số trước và sau cho mỗi ngày đã thay đổi. Mỗi lần chạy cũng xuất hiện trong Nhật ký kiểm toán ở mục Chấm công."
+    },
+    "myRecords": {
+      "title": "Hồ sơ của tôi",
+      "intro": "Chấm công của chính bạn, theo từng ngày. Chỉ hồ sơ của bạn được hiển thị ở đây.",
+      "notLinked": "Tài khoản của bạn chưa được liên kết với một hợp đồng lao động đang hoạt động nên không có hồ sơ chấm công để hiển thị.",
+      "correctionNote": "Có ngày nào chưa đúng? Hãy gửi tại Yêu cầu chấm công — màn hình này là hồ sơ, không phải nơi để sửa."
     }
   },
   "org": {
@@ -7506,6 +7513,7 @@
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý thấy của cấp dưới, còn quản trị viên nhận phần tra cứu nhân viên thay cho lịch.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "myAttendanceRecords": "Mọi người đều có thể mở; dù bạn là ai, màn hình này chỉ hiển thị chấm công của chính bạn.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
