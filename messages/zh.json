@@ -1975,8 +1975,8 @@
         "summary": "假期摘要"
       },
       "field": {
-        "eligible": "应享（全年额度）",
-        "ytdEntitled": "年初至今应享",
+        "eligible": "全年额度",
+        "ytdEntitled": "至今已累积",
         "broughtForward": "结转",
         "adjustments": "调整",
         "total": "合计",

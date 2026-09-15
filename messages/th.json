@@ -1975,8 +1975,8 @@
         "summary": "สรุปการลา"
       },
       "field": {
-        "eligible": "สิทธิ์ (สิทธิ์เต็มปี)",
-        "ytdEntitled": "สิทธิ์สะสมปีนี้",
+        "eligible": "สิทธิ์เต็มปี",
+        "ytdEntitled": "สะสมถึงปัจจุบัน",
         "broughtForward": "ยกมา",
         "adjustments": "การปรับปรุง",
         "total": "รวม",

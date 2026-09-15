@@ -1975,8 +1975,8 @@
         "summary": "Leave summary"
       },
       "field": {
-        "eligible": "Eligible (full year entitlement)",
-        "ytdEntitled": "YTD entitled",
+        "eligible": "Full Entitlement",
+        "ytdEntitled": "Earned to Date",
         "broughtForward": "Brought forward",
         "adjustments": "Adjustments",
         "total": "Total",

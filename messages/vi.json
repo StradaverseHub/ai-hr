@@ -1975,8 +1975,8 @@
         "summary": "Tóm tắt nghỉ phép"
       },
       "field": {
-        "eligible": "Được hưởng (quyền lợi cả năm)",
-        "ytdEntitled": "Quyền lợi từ đầu năm",
+        "eligible": "Quyền lợi cả năm",
+        "ytdEntitled": "Đã tích lũy đến nay",
         "broughtForward": "Chuyển sang",
         "adjustments": "Điều chỉnh",
         "total": "Tổng",

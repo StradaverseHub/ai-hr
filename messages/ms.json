@@ -1975,8 +1975,8 @@
         "summary": "Ringkasan cuti"
       },
       "field": {
-        "eligible": "Layak (kelayakan setahun penuh)",
-        "ytdEntitled": "Kelayakan setakat ini",
+        "eligible": "Kelayakan Penuh",
+        "ytdEntitled": "Diperoleh Setakat Ini",
         "broughtForward": "Bawa ke hadapan",
         "adjustments": "Pelarasan",
         "total": "Jumlah",

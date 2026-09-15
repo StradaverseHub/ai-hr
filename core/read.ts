@@ -2846,7 +2846,11 @@ export type LeaveEntitlementBreakdown = {
    *  RECONCILIATION PARTITION below closes onto. Same expression leaveBalances/leaveBalancesAll use. */
   balance: number;
   /** Pending (not-yet-approved) request days for this (employment, type) — `balance − pendingApproval =
-   *  totalAvailable`, the last line of the reconciliation block. */
+   *  totalAvailable`, the last line of the reconciliation block.
+   *
+   *  r285: bounded by `start_date <= asOf`, the SAME predicate leaveBalances applies (3ddae357). It has to
+   *  be the same one: the panel's own Available Balance line is leaveBalances' `available`, so any second
+   *  rule here makes the explanation column miss the total printed underneath it. */
   pendingApproval: number;
   // ── Reconciliation partition (feedback 0315dac7) ────────────────────────────────────────────────────
   // The six DISJOINT buckets every ledger row ≤ asOf falls into EXACTLY ONE of, so the identity
@@ -3081,6 +3085,20 @@ export function leaveEntitlementBreakdown(
             ),
           ),
         ),
+      // r285 — THE SAME DATE BOUND leaveBalances' pending query carries, and for the same reason.
+      // A pending request has no ledger row yet, so it has no `effective_on` to cut on — its LEAVE DATES
+      // are the only date it carries. `start_date <= asOf` is "pending approval affecting the position at
+      // this date": a request that has not begun by `asOf` was not yet weighing on it. The request's whole
+      // `days` then counts, not the part before `asOf` — a pending request is an all-or-nothing claim on
+      // the balance until it is decided, and splitting it would report a figure no approval could ever
+      // produce. (`asOf` is required here, so there is no undated branch to mirror.)
+      //
+      // WITHOUT THE BOUND THE PANEL CONTRADICTED ITSELF. This figure is the panel's "Pending Approval"
+      // line; the panel's last line, Available Balance, is leaveBalances' `available` — which subtracts
+      // the BOUNDED pending. An unbounded figure here therefore made the explanation column miss the
+      // total printed at the bottom of the same panel by exactly the days of every pending request
+      // starting after `asOf`. Production: Mei Ling / ANNUAL / asOf 2026-08-04 read 6.00 here against the
+      // grid's 4.00, and the column implied −12.50 beside an Available Balance of −10.50.
       tx
         .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
         .from(leaveRequest)
@@ -3089,6 +3107,7 @@ export function leaveEntitlementBreakdown(
             eq(leaveRequest.employmentId, employmentId),
             eq(leaveRequest.leaveTypeId, leaveTypeId),
             eq(leaveRequest.status, 'pending'),
+            lte(leaveRequest.startDate, asOf),
           ),
         ),
       tx

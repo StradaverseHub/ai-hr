@@ -128,6 +128,19 @@ export type PanelSection = {
  * balance` is an identity, not an agreement. `totalEntitlement` and `adjustments` are those buckets summed
  * server-side (core/read.ts), which is what keeps every row here a pure PICK.
  *
+ * THE IDENTITY STOPS AT `balance`, AND THE LAST TWO LINES ARE WHERE IT USED TO BREAK. Pending Approval is
+ * NOT a ledger bucket — a pending request has no ledger row — and Available Balance is not computed here at
+ * all: it is leaveBalances' `available` (see the `available` field below). So the last step of the column,
+ * `balance − pendingApproval = Available Balance`, holds only while BOTH sides count the same pending
+ * requests. Until r285 they did not: leaveBalances bounded pending by `start_date <= asOf` (3ddae357) and
+ * `breakdown.pendingApproval` bounded it by nothing, so a request starting after the As-at date was
+ * subtracted on this column and not in the figure underneath it, and the column visibly failed to close
+ * (Mei Ling / ANNUAL / 2026-08-04: 6.00 here, 4.00 there, −12.50 implied against a printed −10.50). r285
+ * gave the breakdown query the SAME predicate rather than a second rule. The claim above is an identity
+ * again down to `balance`, and an identity from there to Available Balance only because one predicate now
+ * decides "pending" for both reads — which is why this row must never acquire a date rule of its own.
+ * test/r285-explain-panel-wording.test.ts pins it.
+ *
  * THE ONE DEVIATION, AND WHY IT IS DELIBERATE. The reporter's formula reads
  * `YTD Entitled = Eligible × (days elapsed ÷ days in leave year)`. That is a PROJECTION, and it is right for
  * leave earned month by month — 57 of 67 production entitlement rows. But 10 rows grant the whole year up
@@ -152,9 +165,19 @@ export type PanelSection = {
  * "Full Entitlement"; it is the accrued-to-date figure, so that name would have understated the year by ~30%
  * — and the understatement closes on 31 December, so it would have read correctly in January, when someone
  * finally checked. The grid's label is now "Earned to Date" (`me.leaveBalanceTable.colYtdEntitled`) and the
- * full-year figure got its own column. The PANEL's own wording is unchanged: "Eligible (full year
- * entitlement)" / "YTD entitled" is the reporter's verbatim column from 1f6fd6d8, and the tooltip below
- * already describes the field correctly.
+ * full-year figure got its own column.
+ *
+ * r285 — AND THE PANEL NOW USES THE GRID'S WORDS. r279 deliberately left this panel reading "Eligible (full
+ * year entitlement)" / "YTD entitled", on the grounds that its own wording was accurate and was the
+ * reporter's verbatim column from 1f6fd6d8. It was accurate alone; beside the renamed grid it read as two
+ * names for one figure, one click apart, and the same reporter said so. `leave.breakdown.field.eligible` and
+ * `.ytdEntitled` now carry the grid's exact strings in all six locales — the LABELS only. The field keys
+ * `eligible` / `ytdEntitled` are unchanged because `ytdEntitled` is a stored ESS component key in
+ * `leave_type.ess_view_config` (core/ess-view.ts) that production rows hold, exactly as r279 handled it. The
+ * tooltips are unchanged: neither quoted the old label, and both still describe the field correctly.
+ * NOT renamed with them: the HR-side checklist labels `admin.leaveConfig.essView.{eligible,ytdEntitled}`
+ * ("Eligible" / "YTD Entitled"), which name the same two rows on Leave Config → Employee Leave View
+ * Configuration. Out of r285's scope; they are the next place this divergence will be noticed.
  *
  * Adding a future line is still ONE entry here and never a JSX change; that framework property (584edf44)
  * is unchanged, and the layout affordances the reporter asked for (signs, rules, result emphasis, the expiry
