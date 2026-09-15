@@ -154,7 +154,7 @@ Two deferrals recorded below are now CLOSED, and one decision here was reversed:
   the location already holding the branch, resolved in a SECOND transaction because the one that hit
   the violation is aborted.
 - Still deferred: the embedded map picker (no tile provider is configured and the deployed host has
-  no outbound key for one).
+  no outbound key for one). **[SUPERSEDED — see "Amended 2026-09-15 (fa2db8cb rev 2, r279)" below.]**
 
 ## Amended 2026-09-11 (f9afd1ce) — a clocking location is a shared, tenant-level record
 Migration 0459. Three changes to the decision above; §1 (a separate table from `location`) stands.
@@ -183,7 +183,8 @@ Migration 0459. Three changes to the decision above; §1 (a separate table from 
   rather than as unlinked. The personnel pre-tick (sites whose `location_id` matches the employee's
   resolved location) is kept; its empty state now reports how many sites are linked and that every
   shared site is offered, and never claims clock-in is unavailable when shared sites exist.
-- Not done, as the plan said: no map, no address search, no timezone, no deduplication. "Used by"
+- Not done, as the plan said: no map, no address search, no timezone, no deduplication. **[SUPERSEDED — see "Amended 2026-09-15 (fa2db8cb rev 2, r279)" below.]**
+  (The timezone and the deduplication are still not done.) "Used by"
   on the admin screen is derived from assignments (distinct companies of assigned employees), never
   stored.
 
@@ -200,7 +201,58 @@ Migration 0461. The shared record above is unchanged; two things are added aroun
   and clocking settings. The list's rows are read-only with Edit; Archive / Restore / Delete stay on the
   row. The clocking register now leads the Locations page so the "Clocking location" menu row lands on
   it. Address search and a map preview are a separate item, planned once a map provider is chosen; the
-  page's section order leaves room for them and carries no placeholder.
+  page's section order leaves room for them and carries no placeholder. **[SUPERSEDED — see "Amended 2026-09-15 (fa2db8cb rev 2, r279)" below.]**
+
+## Amended 2026-09-15 (fa2db8cb rev 2, r279) — the map and the address search are BUILT, keylessly
+No migration. This SUPERSEDES the four "deferred / not done" lines above that record the absence of a
+map: the two in §"Amended 2026-09-11", the one in §"Amended 2026-09-11 … rev 2, r267", and the Phase 2
+line under Consequences. Everything else in this ADR stands. The screen is
+`/admin/locations/clocking/new` and `/admin/locations/clocking/[id]`; nothing stored changed and the
+posted field set (`CLOCKING_FIELDS`) is the same eight.
+
+- **WHY NOW, WITH NO KEY.** The original deferral said "no tile provider is configured and the deployed
+  host has no outbound key for one". That is still true and is no longer a reason to wait. The item was
+  approved three times and blocked twice asking the reporter for a Google Maps key; no key followed
+  either time, and `.env.production` on the box holds fifteen variables, none of them one. A third
+  block would repeat a move that has twice failed. The decision taken instead: build on free, keyless
+  open map data now, so the reporter gets the thing they asked for without owing us anything.
+- **THE PROVIDER IS A SEAM, NOT A CHOICE BAKED INTO THE SCREEN.**
+  `app/admin/locations/clocking/map-provider.ts` is the one module that knows where tiles come from,
+  where an address search goes and WHETHER SATELLITE EXISTS. The default is OpenStreetMap raster tiles
+  plus Nominatim search, keyless. `resolveMapProvider({})` returns a working provider and never throws.
+- **A KEY ALONE DOES NOT FLIP IT — the supplier's templates do, and that is deliberate.** The approved
+  plan told the reporter that sending a Google key would switch the same screen over. The seam delivers
+  the switch as a `.env.production` edit with no rebuild, but selection is by CONFIGURATION
+  (`MAPS_TILE_URL` + `MAPS_ATTRIBUTION`, optional `MAPS_SATELLITE_TILE_URL` / `MAPS_GEOCODE_URL`, with
+  `{key}` substituted from `MAPS_API_KEY`) rather than by the presence of a key. No two suppliers agree
+  on a tile URL and Google's own 2D raster tiles are issued against a session token obtained by a POST,
+  not a static template — writing that branch from memory would have been inventing third-party API
+  behaviour, which this repo forbids. A correction is owed to the reporter on the exact wording: a key
+  plus one line of configuration, not a key alone.
+- **NO SATELLITE, SAID OUT LOUD.** Every supplier of satellite imagery (Google, Mapbox, MapTiler, Esri)
+  requires an account and billing. The seam reports `satelliteTileUrl: null`, and the Satellite control
+  renders VISIBLY DISABLED with the reason beside it rather than being quietly dropped. That disabled
+  state is a promise made to the reporter and is pinned by test, in source and in rendered HTML.
+- **THE POLICY LIMITS ARE DESIGN CONSTRAINTS, not footnotes.** The OSMF tile policy and the Nominatim
+  usage policy forbid search-as-you-type, require attribution and guarantee no availability. So: the
+  search runs ON SUBMIT ONLY (button or Enter, never `onChange`), nothing is cached, the attribution is
+  rendered by us in the page's own markup (Leaflet's own control is off) so it is visible before the
+  library loads and still visible if it never does, and latitude, longitude and radius REMAIN ORDINARY
+  REQUIRED BOXES so a site can be created with no map at all.
+- **THE CLIENT-ISLAND RULE THIS SCREEN NOW LIVES UNDER.** `clocking-form.tsx` stays a server component;
+  the map and the search are two separate `'use client'` files (`clocking-map.tsx`, `address-search.tsx`)
+  and each takes exactly ONE prop — the resolved provider descriptor, a plain object of strings, numbers
+  and nulls. Their localised text comes from `useTranslations` inside the island, not from label props,
+  so nothing callable crosses the boundary (r272 shipped a 500 doing exactly that). The islands own no
+  posted value: the search WRITES `address` / `lat` / `lng` into the uncontrolled inputs and the map
+  READS `lat` / `lng` / `radiusM` out of them, so the refusal-echo contract in `form-fields.ts` is
+  untouched.
+- **Leaflet 1.9.4 is a pinned npm dependency**, not a CDN script tag: this is a self-hosted product and
+  the test environment must not reach the network. It is imported dynamically inside the mount effect
+  because the library reads `window` while it initialises.
+- Still NOT done, and still deferred: a timezone per clocking location (the whole system assumes
+  Malaysian time); deduplication of sites; reverse-geocoding captured punch coordinates into a street
+  address; dragging or clicking the marker to set the point (the boxes and the search set it).
 
 ## Consequences
 - Two site registries exist side by side (see §1); the nullable
@@ -216,8 +268,9 @@ Migration 0461. The shared record above is unchanged; two things are added aroun
   is recorded — one translated sentence, one step beyond the literal ask, reviewer may strike it.
   Retention rides on the existing attendance-record retention posture; whether these fields need
   stronger personal-data-vault treatment is flagged as a follow-up, not decided here.
-- Deferred (Phase 2, not built): an embedded map picker (coordinates are typed in as plain numbers,
-  copied from Google Maps, for now); reverse-geocoding captured coordinates into a street address
+- Deferred (Phase 2, not built): **[SUPERSEDED in part — the map picker is BUILT; see "Amended
+  2026-09-15 (fa2db8cb rev 2, r279)" above.]** an embedded map picker (coordinates are typed in as plain
+  numbers, copied from Google Maps, for now); reverse-geocoding captured coordinates into a street address
   (we store coordinates + the matched named site, which satisfies "address if available" without a
   paid geocoding service); kiosk or native-mobile enforcement (neither exists in this codebase);
   additional anti-spoofing hardening; the `location` ↔ `clocking_location` convergence link (this

@@ -80,7 +80,7 @@ vi.mock('leaflet', () => {
       state.mapOptions = options;
       return mapApi;
     },
-    tileLayer(url: string, _options: unknown) {
+    tileLayer(url: string) {
       state.tileUrls.push(url);
       const layer = {
         addTo: () => layer,
