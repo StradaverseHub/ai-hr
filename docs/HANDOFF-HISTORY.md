@@ -1,3 +1,104 @@
+## r281 (2026-09-15) — eight approved items shipped: the Leave Config restructure, the archived filter, the approval tie-break, the Schedule Group assignment. `main@f7a0bc9e`, **no migration**.
+
+Closed: `09386e29` · `a73d1e14` · `cdd7500b` · `8a494721` · `a3411394` · `53e914fe` · `f513ec02` · `f3e6c36e`.
+Gate: **849/849 files, 12,828 tests, 0 AssertionErrors** across 24 chunks; `next build` clean. Verified live:
+rsync dry-run clean, service active, `GET /` 401, fresh BUILD_ID, migrations **380** (unchanged — no
+migration this round), **0 employments in a Schedule Group**, **toil module not granted** so the Replacement
+Leave section stays gated. Four worktrees, disjoint clusters, merged with zero conflicts.
+
+### MY PLANS WERE WRONG IN SEVEN PLACES AND THE AGENTS WERE RIGHT EVERY TIME
+
+Recording this as a pattern, not as seven incidents: **the plans were written faster than their specifics
+were verified against the code.** Each correction below came from an agent reading the file I cited.
+
+1. **`53e914fe`: I named the wrong code entirely.** All four `ORDER BY` sites I cited are listings —
+   `listLeaveApprovalRules`, `listOrgScopedApprovalRules`, `listLegacyApprovalRules`,
+   `listActiveApprovalRules`. **None routes anything.** The read that decides is `loadApprovalRuleSet`
+   (`core/leave-approval-policy.ts:183`), which had **no `ORDER BY` at all**, and `decideApproval` takes
+   `matching[0]` whenever `beats()` separates nothing. My plan would have shipped an item titled "this
+   changes who approves a person's leave" that changed nothing about approval.
+2. **…and the mechanism was half right.** `now()` being transaction-start is real, but the operative cause
+   needs no transaction: the driver returns `created_at` as a JS `Date` in **milliseconds** while the column
+   holds **microseconds**, so rows written 300µs apart tie in JS and not in SQL. That is what actually made
+   the flaky test flaky — it used two consecutive autocommit inserts that never shared a transaction.
+3. **…and the test shape I prescribed would have been vacuous.** "Stability across repeated calls" stays
+   green against the defect, because repeated identical queries return the same heap order. The agent ranked
+   the in-memory array in both directions instead — and its own first draft passed with the fix reverted
+   (it had omitted the tied-pair insert), which it caught and fixed in its own second commit.
+4. **`f513ec02`: "the Employment tab, beside Holiday Group" is self-contradictory.** Holiday Group has been
+   on the **Attendance** tab since `52a30630`. Built where it actually lives.
+5. **…and "the same service that writes the column" did not exist.** r277 shipped the column, the resolution
+   and the refusal but **no writer at all**.
+6. **`cdd7500b`: "`activeTypeOptions` already exists on the types page" — it does not.** The agent derived
+   the active subset from the existing `includeArchived: true` read rather than adding a second query.
+7. **`8a494721`: the "mid-lapse" banner state I told it to preserve is unreachable.** `isModuleEnabled`
+   answers from the tenant snapshot; a lapsed module is *absent*, not present-and-expired. The banner can
+   never render once the section is gated, so `admin.replacementLeave.moduleOff` was pruned with its only
+   reader. **And a stale comment of mine in `packs/leave/index.ts` + `lib/permissions.ts`** still claimed
+   Balance Health "IS NOT in leave-config-map.tsx AND MUST NOT BE" — that described the shape r279 abandoned,
+   and would have misdirected exactly these two new rows.
+
+### THE GATE CAUGHT WHAT NO AGENT COULD
+
+`test/me-profile-visibility.test.ts` failed on the new Schedule Group field: every field the Personnel
+record renders must be **either shown on My Profile or withheld with a written reason** — "adding a field to
+Personnel is then a choice to be made in writing", as the guard's own header puts it. The Schedule Group
+agent ran twelve files and got 189 green; this one was not among them because **it is a cross-screen
+contract that only fires on a full-suite run**. Exactly CLAUDE.md §8's "guards only the full gate sees".
+Withheld (`f7a0bc9e`) for the reason its neighbour `holidayCalendar` already gives: HR assigns it, and what
+it DECIDES — lateness, early out, overtime bands — already reaches the employee as their own figures.
+
+### A FOURTH VACUOUS GUARD, CAUGHT BY ITS OWN AUTHOR
+
+The Leave Config agent's "shared groups render above the workspace" assertion compared against the
+`&lt;LeaveTypeWorkspace` tag, so mounting the section **inside** the card still read as "earlier" and the
+mutation passed. Rewritten against the Card, plus a rejection for a `SharedGroup` prop handed into the
+workspace; re-derived red, then green. **Four this week** (r277's empty `&lt;select&gt;` slice, r279's attribution
+line, r279's `name="X"` greps, this). The pattern is settled: *a source-shape guard that greps ONE file is a
+guard about where code lives, not about what the screen does.*
+
+### DECISIONS the tickets did not settle
+
+- **Zero production ties for `53e914fe`.** 190 of 202 active rules share timestamps across four bulk writes,
+  but every tied group is separated by leave type, grade group or employment type — and an employment has
+  exactly one of each per request, with no grade in two groups. **No employee's approver moves; the change is
+  provably inert and only the tests differ.** Direction chosen: lower `id` wins, matching r270's shape.
+- **The Schedule Group reverse check is a UNION, not a ladder.** A ladder stopping at an allowed roster row
+  would admit someone whose *backup* shift the group forbids, and tomorrow — no roster row — they work it.
+  Per-rung ablation proves each rung load-bearing (rung 1 off → only test 12 fails; rung 2 → only 11;
+  rung 3 → 6/10/13/15).
+- **Standard stays in the Schedule Group picker** even though selecting it will usually be refused (shifts
+  with `rule_id` NULL fall back to Standard without pointing at it). Hiding it would be wrong the moment
+  someone points a shift at it; the refusal already names the fix.
+- **Archived filter defaults to Active, and selection follows the filter** — otherwise `aria-current` points
+  at a hidden panel and Unarchive, which lives *inside* the row, becomes unreachable. A `#type-&lt;id&gt;` deep
+  link to an archived type widens the view to All.
+- **Company Rules keeps its intro Card and Payroll impact / encashment.** Not retired — that was put to the
+  reporter as their call.
+- **`/admin/toil` deliberately NOT gated.** Its own comment records why: a tenant whose module lapses still
+  owes days already banked, and for a First-Schedule-eligible employee that debt is statutory.
+- **`f3e6c36e` needed no build.** Two of its three points shipped in r274; the third would have removed every
+  employee's access to their own attendance. Closed against `2420718d` rather than pretending work happened.
+
+### `3fb1a611` — the approve-means-agree trap, and the block finally applied
+
+The reporter **approved** the revision-2 plan whose one instruction was "press Withdraw, not Approve" —
+approve being the only affirmative button. That left it `approved`, i.e. inviting a future run to build the
+thing the plan says not to build. Blocked with a reason explaining we read the approval as agreement.
+
+**The block worked this time and that confirms the r279 addendum's diagnosis:** `markBlockedSql`'s UPDATE is
+guarded `AND status = 'approved'`, so the earlier attempt against a `building` item changed nothing while
+still writing a `feedback.blocked` event. Status is now `blocked`, `blocked_reason` set, `updated_at` bumped.
+`build/r279-credit` stays unmerged; journal still 380 / max idx 464; 0465 not in the tree.
+
+### NOT DONE
+
+Employee-level rows on the earned-accrual preview. The replacement-leave option reads (six `list*` calls)
+still run for a tenant without the module — wasted work on every Company Rules load, worth a follow-up.
+`ensureTemplateFor` (`core/leave-approval-consolidation.ts:1038`) and
+`scripts/report-unreachable-approval-rules.ts:177` carry the same missing-total-order defect, flagged not
+fixed. Five-locale strings across all four items are machine-written and want a native read.
+
 ## r279 addendum (2026-09-15) — the block that wrote an audit event for a transition that never happened
 
 Correcting the r279 entry below, which recorded only half of this.
