@@ -180,6 +180,9 @@ import {
   company,
   department,
   employment,
+  // feedback cf9dcb98 — read ONLY on the empty-preview path, to answer "when does this type's entitlement
+  // table actually start" with the date rather than with silence. Never on a path that produces figures.
+  entitlementTemplate,
   gradeGroupMember,
   jobGrade,
   leaveApprovalStep,
@@ -7168,13 +7171,97 @@ export type EarnedAccrualGroup = {
   /** Σ of per-employee `toGrant` (days) for the group. */
   entitlementGenerated: number;
 };
+/**
+ * feedback cf9dcb98 (r285) — WHY THE PREVIEW CAME BACK WITH NOTHING, NAMED.
+ *
+ * ⚠️ THE MESSAGE IT REPLACES WAS TRUE AND USELESS. "No earned-accrual entitlement to generate for this
+ * scope" is what HR saw after picking `AL` "*Annual Leave" on production; it cost them a day, because the
+ * sentence is compatible with a broken engine, a mis-set date, a half-built configuration and an archived
+ * leave type, and says which of the four it is for none of them. Every variant below NAMES the thing —
+ * the type, the date, the country, the grade — for the same reason `lib/leave-config-health.ts` findings
+ * do: a count tells an administrator that something is wrong, a name tells them where to go.
+ *
+ * ⚠️ IT IS COMPUTED HERE, IN THE ENGINE, AT THE EXIT IT EXPLAINS — never re-derived by a screen. Each
+ * variant is emitted at the `return` whose condition produced it, out of the values that condition was
+ * decided on, so a filter cannot be changed without the sentence that explains it moving too. A second
+ * derivation in the page would be free to drift from the engine and would eventually describe a run the
+ * engine did not do.
+ *
+ * ⚠️ AND IT NEVER MOVES A FIGURE. Every variant is reached only on a path that already returned an empty
+ * breakdown; the counters feeding them are accumulators beside the engine's own branches. `granted`,
+ * `forfeits` and every `entitlementGenerated` are byte-identical to what this engine produced before.
+ *
+ * In the order the engine decides them:
+ *  • `type_not_swept`          the chosen type is not one of STANDING_LEAVE_CODES — the earned sweep
+ *                              covers only the three standing statutory types and never touches another,
+ *                              whatever its accrual method says (see the ADR-0066 note on that constant).
+ *                              THIS IS THE PRODUCTION CASE: `AL` is not `ANNUAL`.
+ *  • `type_archived`           the chosen type is archived (reachable only from a stale screen — the
+ *                              picker does not offer archived types, and deliberately must not).
+ *  • `table_not_yet_in_force`  the type's entitlement table starts AFTER the as-at date. Names the date.
+ *  • `no_entitlement_table`    the type has no entitlement table in force at the as-at date at all.
+ *  • `type_not_earned`         the type grants its days rather than earning them (or its accrual method
+ *                              has never been set), so an accrual run has nothing to post for it.
+ *  • `no_employment_in_scope`  nobody in the chosen companies/grades was on the books at the as-at date.
+ *  • `no_eligibility_match`    r209's second zero: tables exist for the type and NO eligibility rule points
+ *                              any of these employees at one. A half-built configuration, not an empty one.
+ *  • `country_pack_inactive`   every employment in scope sits in a country with no active localization pack.
+ *  • `balance_frozen`          every (employee, type) pair is frozen for encashment (ADR-0069).
+ */
+export type EarnedAccrualEmptyReason =
+  | { kind: 'type_not_swept'; leaveTypeNames: string[]; sweptLeaveTypeNames: string[] }
+  | { kind: 'type_archived'; leaveTypeNames: string[] }
+  | { kind: 'table_not_yet_in_force'; leaveTypeName: string; validFrom: string; asOf: string }
+  | { kind: 'no_entitlement_table'; leaveTypeNames: string[]; asOf: string }
+  | { kind: 'type_not_earned'; leaveTypeNames: string[] }
+  | { kind: 'no_employment_in_scope'; asOf: string; scopeNames: string[] }
+  | { kind: 'no_eligibility_match'; leaveTypeNames: string[] }
+  | { kind: 'country_pack_inactive'; countries: string[] }
+  | { kind: 'balance_frozen'; leaveTypeNames: string[] };
+
+/**
+ * An archived leave type the empty preview owes the reader a word about (feedback cf9dcb98, reason (d)).
+ *
+ * ⚠️ THIS IS THE CASE THAT COST A DAY. Archiving hides a leave type from every picker in the product,
+ * including this one — correctly, because running an accrual into a type no other screen shows would be
+ * worse — so an archived type is indistinguishable from a missing feature. Two shapes are reported:
+ * an archived type whose NAME collides with one the scope asked for ("Annual Leave" vs "*Annual Leave"),
+ * and an archived STANDING type with an earned method, which is a type this sweep would have covered had
+ * it been active. Both are facts about the tenant, not guesses about intent: the sentence says the type is
+ * archived and where to unarchive it, and proposes nothing about the data sitting under it.
+ */
+export type ArchivedLeaveTypeHint = { id: string; code: string; name: string };
+
 export type EarnedAccrualResult = {
   granted: number;
   forfeits: number;
   breakdown: EarnedAccrualGroup[];
   /** Employments this sweep could not compute, and why — never a silent skip (slice 6). */
   packBlocked: PackBlockedEmployment[];
+  /** feedback cf9dcb98 — the named reason, present ONLY when `breakdown` is empty. `null` when the engine
+   *  cannot name one (e.g. the scope pointed at leave types that do not exist), and the screen then falls
+   *  back to the flat sentence this type exists to replace. */
+  emptyReason: EarnedAccrualEmptyReason | null;
+  /** feedback cf9dcb98 — archived types worth naming beside an empty result. Computed ONLY on the empty
+   *  path: it answers a question nobody asks about a preview that found something. */
+  archivedHint: ArchivedLeaveTypeHint[];
+  /** feedback cf9dcb98 — Σ of the accrual EARNED to `asOf` across the breakdown. `entitlementGenerated` is
+   *  the OUTSTANDING REMAINDER of this figure, so `earnedToDateTotal > 0` with a zero total generated is
+   *  the idempotency case (reason (c)): the accrual is already posted, and a re-run adds nothing. Without
+   *  it a screen cannot tell that apart from "these employees have earned nothing yet". */
+  earnedToDateTotal: number;
 };
+
+/**
+ * feedback cf9dcb98 — "*Annual Leave" and "Annual Leave" are the same name to the person reading the
+ * screen, and the whole point of the archived-twin hint is to connect the two. Case is folded and
+ * punctuation, symbols and separators are dropped; letters and digits in ANY script survive, so a
+ * Chinese or Tamil type name normalises to itself rather than to the empty string. An empty result never
+ * matches anything — a type named only in punctuation must not collide with every other type.
+ */
+export function normaliseLeaveTypeName(name: string): string {
+  return name.toLowerCase().replace(/[\p{P}\p{S}\p{Z}\s]+/gu, '');
+}
 
 /**
  * Leave Year → asOf mapping for the "Run Earned Accrual" scope selector (feedback 2c7c6385, product
@@ -7225,6 +7312,45 @@ export async function accrueEarnedLeave(
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+
+    // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
+    //    the engine is already returning nothing, and reads only what that exit decided on.
+    //
+    // ⚠️ THE ARCHIVED HINT IS TWO FACTS, NOT A GUESS. (1) an archived type whose NAME collides with one the
+    // scope asked for — "Annual Leave" against the "*Annual Leave" HR could pick — and (2) an archived
+    // STANDING type carrying an earned method, which is a type this sweep would have covered were it not
+    // archived. On the reporting account both point at the same row, which is the point: an archived leave
+    // type is invisible on every screen in the product, so an empty result has to say the word out loud.
+    const archivedHintFor = async (scopedNames: string[]): Promise<ArchivedLeaveTypeHint[]> => {
+      const archived = await tx
+        .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, accrualMethod: leaveType.accrualMethod })
+        .from(leaveType)
+        .where(sql`${leaveType.archivedAt} is not null`);
+      const wanted = new Set(scopedNames.map(normaliseLeaveTypeName).filter(Boolean));
+      const standing = new Set<string>([...STANDING_LEAVE_CODES]);
+      return archived
+        .filter(
+          (a) =>
+            wanted.has(normaliseLeaveTypeName(a.name)) ||
+            (standing.has(a.code) && isEarnedMethod(a.accrualMethod)),
+        )
+        .map((a) => ({ id: a.id, code: a.code, name: a.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    };
+    /** Every empty return goes through here, so a new exit cannot ship without deciding what it says. */
+    const emptyResult = async (
+      emptyReason: EarnedAccrualEmptyReason | null,
+      scopedNames: string[],
+    ): Promise<EarnedAccrualResult> => ({
+      granted: 0,
+      forfeits: 0,
+      breakdown: [],
+      packBlocked: [],
+      emptyReason,
+      archivedHint: await archivedHintFor(scopedNames),
+      earnedToDateTotal: 0,
+    });
+
     const types = await tx
       // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
       // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
@@ -7240,7 +7366,51 @@ export async function accrueEarnedLeave(
         ),
       );
     const typeIds = types.map((t) => t.id);
-    if (typeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
+    if (typeIds.length === 0) {
+      // feedback cf9dcb98 — EXIT 1, AND THE ONE THE REPORTER HIT. Nothing the scope asked for survived the
+      // `code IN STANDING_LEAVE_CODES AND archived_at IS NULL` filter above, so this run was over before it
+      // read an employment. Re-ask for the SAME rows without that filter — the only way to name what was
+      // declined — and say which half of the filter declined it.
+      const declined = await tx
+        .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, archivedAt: leaveType.archivedAt })
+        .from(leaveType)
+        .where(
+          scopeTypeIds.length
+            ? inArray(leaveType.id, scopeTypeIds)
+            : inArray(leaveType.code, [...STANDING_LEAVE_CODES]),
+        );
+      const scopedNames = declined.map((d) => d.name);
+      const standing = new Set<string>([...STANDING_LEAVE_CODES]);
+      const notSwept = declined.filter((d) => !d.archivedAt && !standing.has(d.code));
+      const archivedPick = declined.filter((d) => d.archivedAt);
+      if (notSwept.length) {
+        // ⚠️ NAME WHAT *IS* SWEPT TOO. "Annual Leave is not accrued here" is a riddle on an account that has
+        // two types called Annual Leave; "this screen accrues Annual Leave, Medical Leave and Hospitalization
+        // Leave" is the sentence that ends the search. Read from the tenant's own rows, never hardcoded — the
+        // three standing codes carry whatever name the tenant gave them.
+        const swept = await tx
+          .select({ name: leaveType.name })
+          .from(leaveType)
+          .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
+        return emptyResult(
+          {
+            kind: 'type_not_swept',
+            leaveTypeNames: notSwept.map((d) => d.name).sort((a, b) => a.localeCompare(b)),
+            sweptLeaveTypeNames: swept.map((s) => s.name).sort((a, b) => a.localeCompare(b)),
+          },
+          scopedNames,
+        );
+      }
+      if (archivedPick.length) {
+        return emptyResult(
+          { kind: 'type_archived', leaveTypeNames: archivedPick.map((d) => d.name).sort((a, b) => a.localeCompare(b)) },
+          scopedNames,
+        );
+      }
+      // Nothing to name — a scope pointing at ids this tenant does not have. The flat sentence is the
+      // honest answer here, and it is why `emptyReason` is nullable rather than exhaustive.
+      return emptyResult(null, scopedNames);
+    }
 
     // WHICH TYPES DOES THIS SWEEP TOUCH — configuration first, then earning method.
     //
@@ -7263,7 +7433,60 @@ export async function accrueEarnedLeave(
         return isEarnedMethod(t.accrualMethod);
       })
       .map((t) => t.id);
-    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
+    if (earnedTypeIds.length === 0) {
+      // feedback cf9dcb98 — EXIT 2, partitioned by the SAME three conditions the filter above applies, in
+      // the same order, so the sentence and the gate can never disagree about which one bit.
+      const scopedNames = types.map((t) => t.name);
+      const noTable = types.filter((t) => !templateConfigured.has(t.id));
+      const notEarned = types.filter(
+        (t) => templateConfigured.has(t.id) && (isAccrualUnconfigured(t) || !isEarnedMethod(t.accrualMethod)),
+      );
+      if (noTable.length) {
+        // ⚠️ THE DATE IS THE ANSWER, WHEN THERE IS ONE. A table written on 14 September is not in force on
+        // an as-at date in a past leave year, and "no entitlement table" would send HR to build a second
+        // one on top of the table they already wrote. Ask for the earliest version that starts AFTER the
+        // as-at date and name that day instead; only where there is no such version is the table genuinely
+        // absent. Half-open [validFrom, validTo) throughout, as everywhere else in the template layer.
+        const upcoming = await tx
+          .select({ leaveTypeId: entitlementTemplate.leaveTypeId, validFrom: entitlementTemplate.validFrom })
+          .from(entitlementTemplate)
+          .where(
+            and(
+              inArray(entitlementTemplate.leaveTypeId, noTable.map((t) => t.id)),
+              gt(entitlementTemplate.validFrom, p.asOf),
+            ),
+          )
+          .orderBy(asc(entitlementTemplate.validFrom), asc(entitlementTemplate.leaveTypeId));
+        const first = upcoming[0];
+        if (first) {
+          return emptyResult(
+            {
+              kind: 'table_not_yet_in_force',
+              leaveTypeName: types.find((t) => t.id === first.leaveTypeId)!.name,
+              validFrom: first.validFrom,
+              asOf: p.asOf,
+            },
+            scopedNames,
+          );
+        }
+        return emptyResult(
+          {
+            kind: 'no_entitlement_table',
+            leaveTypeNames: noTable.map((t) => t.name).sort((a, b) => a.localeCompare(b)),
+            asOf: p.asOf,
+          },
+          scopedNames,
+        );
+      }
+      return emptyResult(
+        notEarned.length
+          ? { kind: 'type_not_earned', leaveTypeNames: notEarned.map((t) => t.name).sort((a, b) => a.localeCompare(b)) }
+          : null,
+        scopedNames,
+      );
+    }
+    /** The scoped types by their own names — the archived-twin hint's left-hand side at every later exit. */
+    const scopedTypeNames = types.map((t) => t.name);
 
     const emps = await tx
       .select({
@@ -7286,7 +7509,30 @@ export async function accrueEarnedLeave(
           scopeGradeIds.length ? inArray(employment.gradeId, scopeGradeIds) : undefined,
         ),
       );
-    if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
+    if (emps.length === 0) {
+      // feedback cf9dcb98 — EXIT 3. The configuration is fine and the POPULATION is empty: nobody the
+      // company/grade scope names was on the books at the as-at date. Name the companies and grades that
+      // were asked for, because "this scope" is precisely the thing the old sentence would not say.
+      const scopeNames: string[] = [];
+      if (scopeCompanyIds.length) {
+        const rows = await tx
+          .select({ name: company.legalName })
+          .from(company)
+          .where(inArray(company.id, scopeCompanyIds));
+        scopeNames.push(...rows.map((r) => r.name));
+      }
+      if (scopeGradeIds.length) {
+        const rows = await tx
+          .select({ name: jobGrade.name })
+          .from(jobGrade)
+          .where(inArray(jobGrade.id, scopeGradeIds));
+        scopeNames.push(...rows.map((r) => r.name));
+      }
+      return emptyResult(
+        { kind: 'no_employment_in_scope', asOf: p.asOf, scopeNames: scopeNames.sort((a, b) => a.localeCompare(b)) },
+        scopedTypeNames,
+      );
+    }
     const empIds = emps.map((e) => e.employmentId);
 
     // 6e9a126e — the entitlement TEMPLATE layer for the earned types, resolved at the RUN date. `p.asOf`
@@ -7431,6 +7677,13 @@ export async function accrueEarnedLeave(
     let granted = 0;
     let forfeits = 0;
     const packBlocked: PackBlockedEmployment[] = [];
+    // feedback cf9dcb98 — WHY EACH (employee, type) PAIR WAS PASSED OVER, tallied ON the engine's own
+    // branches rather than re-derived after the fact. They are read only where the breakdown comes out
+    // empty, and they are what separates "this configuration reaches nobody" from "every balance is
+    // frozen for encashment" — two states the one flat sentence described identically.
+    let skipNoEntitlement = 0;
+    let skipFrozen = 0;
+    let earnedToDateTotal = 0;
     for (const e of emps) {
       const pack = packFor(e.country);
       if (!pack) {
@@ -7469,8 +7722,14 @@ export async function accrueEarnedLeave(
           rules: type,
         });
         const pol = composed.policy;
-        if (!isEarnedMethod(pol?.method)) continue;
-        if (frozenSet.has(`${e.employmentId}|${typeId}`)) continue; // ADR-0069: balance frozen for encashment
+        if (!isEarnedMethod(pol?.method)) {
+          skipNoEntitlement += 1; // cf9dcb98: no entitlement table resolved for THIS employee (r209's 2nd zero)
+          continue;
+        }
+        if (frozenSet.has(`${e.employmentId}|${typeId}`)) {
+          skipFrozen += 1; // cf9dcb98 — ADR-0069, and it is not the same silence as the line above
+          continue;
+        } // ADR-0069: balance frozen for encashment
         // Grouped preview accumulator (feedback 2c7c6385): this (employee, type) resolves an earned policy,
         // so it belongs to the Company×Grade×Type group. Count it here (regardless of `toGrant`) — the
         // "Employee Count" column is the eligible population, not only those with a non-zero top-up.
@@ -7555,6 +7814,11 @@ export async function accrueEarnedLeave(
           const room = Math.max(0, Math.round((Math.max(0, pol!.maxBalanceDays) - retainedCarry) * 100) / 100);
           earnedToDate = Math.min(earnedToDate, room);
         }
+        // feedback cf9dcb98 — reason (c), and it is accumulated HERE because this is the only line that
+        // knows the figure. `toGrant` below is `earnedToDate - already`: a preview whose every group reads
+        // 0.00 means either "nothing has been earned yet at this date" or "everything earned is already on
+        // the ledger", and the two want opposite actions from HR. Σ earnedToDate is what tells them apart.
+        earnedToDateTotal = Math.round((earnedToDateTotal + earnedToDate) * 100) / 100;
         const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
         // c8052ae3 — the SAME closed interval the profile recalc uses. This sum had a start and no end,
         // so a grant already written for the NEXT leave year counted as this cycle's accrual and the
@@ -7631,7 +7895,41 @@ export async function accrueEarnedLeave(
         },
       });
     }
-    return { granted, forfeits, breakdown, packBlocked };
+    // feedback cf9dcb98 — EXIT 4, the last one: the configuration is present, the population is present,
+    // and not one (employee, type) pair reached an earned entitlement. Three different states arrive here
+    // and the old sentence described all three identically; the counters above, tallied on the engine's own
+    // branches, are what separates them.
+    let emptyReason: EarnedAccrualEmptyReason | null = null;
+    let archivedHint: ArchivedLeaveTypeHint[] = [];
+    if (breakdown.length === 0) {
+      const earnedTypeRows = types.filter((t) => earnedTypeIds.includes(t.id));
+      const earnedTypeNames = earnedTypeRows.map((t) => t.name).sort((a, b) => a.localeCompare(b));
+      if (packBlocked.length === emps.length) {
+        // Every employment sits in a country with no active pack — nothing was even attempted.
+        emptyReason = {
+          kind: 'country_pack_inactive',
+          countries: [...new Set(packBlocked.map((b) => b.country).filter((c): c is string => !!c))].sort(),
+        };
+      } else if (skipFrozen > 0 && skipNoEntitlement === 0) {
+        // ADR-0069: the balances are deliberately held for encashment. Not a configuration fault at all.
+        emptyReason = { kind: 'balance_frozen', leaveTypeNames: earnedTypeNames };
+      } else {
+        // r209's SECOND ZERO, and the one worth a sentence: the type HAS entitlement tables (it had to, to
+        // reach `earnedTypeIds`) and no eligibility rule points any of these employees at one. A
+        // half-built configuration, which reads on screen exactly like an empty one until it is named.
+        //
+        // `hasTemplatesFor` is r209's free reader over the SAME `activeTemplatesAt` map the resolution was
+        // built from; it is asked rather than assumed so that if the two datings ever diverge, this names
+        // the types the resolver actually saw tables for, not the ones an earlier filter believed in.
+        const withTables = earnedTypeRows.filter((t) => templates.hasTemplatesFor(t.id)).map((t) => t.name);
+        emptyReason = {
+          kind: 'no_eligibility_match',
+          leaveTypeNames: (withTables.length ? withTables : earnedTypeNames).sort((a, b) => a.localeCompare(b)),
+        };
+      }
+      archivedHint = await archivedHintFor(scopedTypeNames);
+    }
+    return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal };
   });
 }
 
