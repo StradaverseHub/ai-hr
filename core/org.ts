@@ -7,7 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
-import { nextEmployeeCode } from './comp';
+// r285 (a3a3acd6) — `closedPeriodsTx` + `overlapsClosedPeriod` are the repo's SINGLE definition of payroll
+// evidence (core/pay-components.ts:1977). setEmploymentInfo's closed-payroll gate reuses them rather than
+// writing a fourth one; org.ts already imported from comp.ts, so this adds no new edge to the import graph.
+import { closedPeriodsTx, nextEmployeeCode, overlapsClosedPeriod } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 // 06f0cb8f — "is this Employee ID free?" is a TWO-table question now (an employment may carry it, or a
 // draft may be holding it). Its own module because core/employee-draft.ts imports hireEmployee from here,
@@ -2575,6 +2578,98 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   'contractEndDate',
 ] as const;
 
+/**
+ * r285 (a3a3acd6) — THE CLOSED-PAYROLL GATE ON EMPLOYMENT INFORMATION.
+ *
+ * Until this item `setEmploymentInfo` had NO closed-period check of any kind, so a confirmation date or a
+ * resignation date could be typed over inside a payroll month that was already closed, with nothing
+ * stopping it. Compensation (core/comp.ts:344/379/472), recurring pay items (core/pay-components.ts:2003)
+ * and Movement corrections (core/movement.ts:2965) all refuse that; employment information did not.
+ *
+ * ONE DEFINITION OF "PAYROLL EVIDENCE", NOT A FOURTH. The helpers are `closedPeriodsTx` +
+ * `overlapsClosedPeriod` imported from core/comp.ts — the same pair every other gate above uses, for the
+ * reason core/pay-components.ts:1977 spells out: a second definition of "closed" is how two rules that are
+ * supposed to agree start disagreeing.
+ *
+ * ⚠️ SCOPED BY FIELD, NOT BY SAVE. A blanket "this employment has a closed month ⇒ nothing may be saved"
+ * would block editing a contract remark because January is closed, which is a worse bug than the hole it
+ * closes. A field is gated only when BOTH hold:
+ *   (a) its value answers a question AS AT A DATE that a payroll-relevant computation asks, and
+ *   (b) the change therefore has a datable window, so the refusal can name a span rather than be forever.
+ *
+ * Exactly two thresholds qualify, and they are the two the derived Employee Status is built from
+ * (core/employment-status-sql.ts:47-53 — `onProbationSql` and `least(resignation, lastWorking, terminated)`):
+ *
+ *   1. THE PROBATION THRESHOLD — `finalConfirmationDate ?? confirmationDate`. `onProbationAsOf`
+ *      (core/leave.ts:1079) reads it to decide who may take a `confirmed_only` leave type (:1141, :1369),
+ *      and `onProbationSql` reads it for the Leave Adjustments / entitlement-template org criteria
+ *      (core/org-criteria.ts:404). Moving it across a closed month retroactively changes who was eligible
+ *      for leave that the closed run's absence lines already priced.
+ *   2. THE LIFECYCLE-END THRESHOLD — `least(resignationDate, lastWorkingDate, terminatedOn)`. It is what
+ *      flips the derived status to `resigned` (core/employment-status.ts:130), which narrows org-criteria
+ *      populations (core/org-criteria.ts:395) and is the status the Payroll Register prints for a closed
+ *      run (core/payroll-view.ts:1181).
+ *
+ * DELIBERATELY NOT GATED, with the evidence:
+ *   • `contractRemark` — free text, no reader but the screen. The named counter-case.
+ *   • the period/unit fields (probation*, *Notice*) — grep says their only readers are core/read.ts
+ *     (display) and core/import-sections.ts / core/employee-draft.ts (import). No payroll, no leave.
+ *   • `tenderResignationDate` — NOT one of the three dates `least(...)` takes; display only.
+ *   • `contractStartDate` / `contractEndDate` — the employment-review renewal window, no payroll reader.
+ *   • the eight flat org columns — they fail test (b): they are an UNDATED snapshot, so a change has no
+ *     window and the only possible rule would be "refuse forever once any month closes", i.e. exactly the
+ *     blanket failure this gate exists to avoid. Their authorised writer is the dated movement leg anyway.
+ *
+ * AND NOT ON A MOVEMENT-TAGGED SAVE. Every tagged call arrives from core/movement.ts, which owns its own
+ * closed-payroll posture and has done since 66a63bd6: a CORRECTION of a state-changing event is refused
+ * (:2965), a NEW dated event inside a processed period is flagged, not refused (:2174). Repeating the
+ * refusal here would silently convert an allowed movement into a rejection — a behaviour change in a
+ * module this item does not touch. The hole being closed is the UNTAGGED overwrite: a save with no
+ * effective date, no reason and no event of its own saying why the past moved.
+ *
+ * There is deliberately no UI lock to pair with this (unlike the Movement row's `payrollLocked` badge):
+ * whether a save is refused depends on the SPAN between the stored value and the one being typed, which
+ * does not exist until submit. A static "locked" badge would be false for every in-month correction.
+ */
+const EMPLOYMENT_INFO_DATE_FLOOR = '0001-01-01';
+
+/**
+ * The span of days on which a THRESHOLD date's answer changes when it moves from `before` to `after`,
+ * as a half-open [from, to) window `overlapsClosedPeriod` can consume (`to === null` = open-ended).
+ * Returns null when the answer does not move at all.
+ *
+ * The two null semantics are not interchangeable and both are load-bearing:
+ *   • 'floor'  — probation: `onProbation ⟺ asOf < confirmation`, and a NULL confirmation means "never on
+ *     probation", i.e. a threshold at the beginning of time. So setting a confirmation date where there
+ *     was none makes the employee retroactively on-probation for every day before it, and the window has
+ *     to reach back far enough to catch a closed month sitting in that stretch.
+ *   • 'open'   — lifecycle end: `ended ⟺ asOf >= date`, and a NULL end date means "has not ended", i.e. a
+ *     threshold at the end of time. So setting or clearing one changes every day from that date ONWARD,
+ *     and the window must be open-ended rather than bounded by the other (absent) value.
+ */
+function employmentThresholdWindow(
+  before: string | null,
+  after: string | null,
+  nullMeans: 'floor' | 'open',
+): { from: string; to: string | null } | null {
+  if (before === after) return null;
+  if (nullMeans === 'floor') {
+    const a = before ?? EMPLOYMENT_INFO_DATE_FLOOR;
+    const z = after ?? EMPLOYMENT_INFO_DATE_FLOOR;
+    if (a === z) return null;
+    return a < z ? { from: a, to: z } : { from: z, to: a };
+  }
+  if (before == null || after == null) return { from: (before ?? after) as string, to: null };
+  return before < after ? { from: before, to: after } : { from: after, to: before };
+}
+
+/** The earliest of the given dates, ignoring nulls — the TypeScript twin of the SQL `least(...)` that
+ *  core/employment-status-sql.ts:53 builds the lifecycle-end threshold from. */
+function earliestEmploymentDate(...dates: (string | null | undefined)[]): string | null {
+  const present = dates.filter((d): d is string => d != null);
+  return present.length === 0 ? null : present.reduce((a, b) => (a < b ? a : b));
+}
+
 export async function setEmploymentInfo(
   ctx: SessionContext,
   p: EmploymentInfoInput,
@@ -2843,6 +2938,59 @@ export async function setEmploymentInfo(
     const derivedFinal = (extendedConfirmation ?? confirmation) ?? null;
     if (derivedFinal !== (before.finalConfirmationDate ?? null)) {
       set.finalConfirmationDate = derivedFinal;
+    }
+
+    // r285 (a3a3acd6) — the closed-payroll gate. Scoped by FIELD, and only on an UNTAGGED save; the long
+    // comment above EMPLOYMENT_INFO_DATE_FLOOR carries the whole reasoning and the per-field evidence.
+    // Runs last, on the RESULTING values, so it asks the only question that matters: does the answer this
+    // employment gives for some day inside a closed payroll month change because of this save?
+    if (!p.movement) {
+      const windows: { from: string; to: string | null }[] = [];
+
+      // 1. The probation threshold, compared as the value its readers actually read
+      //    (`finalConfirmationDate ?? confirmationDate`). Comparing the effective value rather than the raw
+      //    column is what keeps a legacy row — final NULL, confirmation set — from tripping the gate on a
+      //    save that only back-fills the derived column without moving anybody's probation status.
+      if ('confirmationDate' in set || 'finalConfirmationDate' in set) {
+        const w = employmentThresholdWindow(
+          before.finalConfirmationDate ?? before.confirmationDate ?? null,
+          derivedFinal ?? confirmation ?? null,
+          'floor',
+        );
+        if (w) windows.push(w);
+      }
+
+      // 2. The lifecycle-end threshold. terminatedOn is read fresh rather than added to the `before`
+      //    projection above, because that projection IS the audit event's before/after diff and this column
+      //    has no business appearing in it. It is the third operand of the same `least(...)`, so leaving it
+      //    out would refuse saves that cannot move the threshold at all (an already-terminated employment
+      //    whose termination date precedes both dates being edited).
+      if ('resignationDate' in set || 'lastWorkingDate' in set) {
+        const [lifecycle] = await tx
+          .select({ terminatedOn: employment.terminatedOn })
+          .from(employment)
+          .where(eq(employment.id, p.employmentId))
+          .limit(1);
+        const terminatedOn = lifecycle?.terminatedOn ?? null;
+        const w = employmentThresholdWindow(
+          earliestEmploymentDate(before.resignationDate, before.lastWorkingDate, terminatedOn),
+          earliestEmploymentDate(resignation, lastWorking, terminatedOn),
+          'open',
+        );
+        if (w) windows.push(w);
+      }
+
+      if (windows.length > 0) {
+        const closed = await closedPeriodsTx(tx, p.employmentId);
+        if (closed.length > 0 && windows.some((w) => overlapsClosedPeriod(closed, w.from, w.to))) {
+          // Same sentence pattern, and the same reopen instruction, the Movement correction gives
+          // (core/movement.ts:2967) — one rule the user meets in one shape. Only the two nouns move: there
+          // is no movement and no event on this screen, and naming one would be a lie about what was saved.
+          throw new Error(
+            'A closed payroll run relied on this date. Reopen that payroll before correcting the employment information.',
+          );
+        }
+      }
     }
 
     await tx.update(employment).set(set).where(eq(employment.id, p.employmentId));
