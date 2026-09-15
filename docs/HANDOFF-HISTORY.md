@@ -1,3 +1,96 @@
+## r288 (2026-09-16) — the two items CLAUDE AI raised, and a 200 that was lying. `main@aabe4134`, **no migration**.
+
+`686dc512` (warn when an earned method can never accrue) and `8521e160` (the real picker on Leave
+Adjustments + Notice Board) — both raised by the operator loop during r287 and approved by the reporter
+within the hour. `3fb1a611` still not built.
+Gate: **866 files, 13,071 tests, 0 AssertionErrors** across 24 chunks at 2 workers, every chunk counted==asked, no chunk with a single failure. `next build` exit 0.
+
+### A GREEN 200 WITH A BROKEN SCREEN BEHIND IT, TWICE, IN DIFFERENT WAYS
+
+Both agents ran a dev server, and both found that **`200` plus a clean-looking payload is not a render**.
+
+**`8521e160`.** `/admin/notice-board/new` returned 200 while the log carried three
+`FORMATTING_ERROR: The intl string context variable "query" was not provided`, and the payload carried the
+raw key path `notices.fEmployeeNoMatch` where the empty-state sentence belongs. **The popover would have
+shown users a key path.** The three template labels are ICU strings the client substitutes; a bare `t()`
+formats them, finds no variable and falls back to the key.
+
+**tsc, eslint and all sixteen jsdom guards were green over it** — and structurally had to be: a jsdom guard
+builds those labels straight out of `messages/en.json` and never touches next-intl, so the entire failure
+class is invisible to it. Fixed with the `app/admin/personnel/[employmentId]/page.tsx` idiom,
+`t(key, { query: '{query}' })`, which keeps the keys inside i18n check C. **`t.raw()` would have worked and
+hidden them from that check** — worth knowing which of the two options is the trap.
+
+**`686dc512`.** `/admin/leave-config/types` returned 200 and the catalogue string WAS in the payload — with
+a literal unsubstituted `{swept}`. The agent refused to count it, correctly: the warning lives on tab 3, the
+workspace mounts only `panels[selected]`, and `activeTab` defaults to `identity`, so the form is **never in
+the SSR HTML at all**. That is CLAUDE.md §8's "a key is not a screen" trap in its purest form — the string
+being present proved only that the catalogue had been read.
+
+It proved the boundary from the RSC payload instead (`codeIsSwept:false` for the AL type and `true` for
+ANNUAL in the same payload), then used the repo's existing real-browser project for the paint:
+`oklch(0.666 0.179 58.318)` = amber-600 from compiled Tailwind, box 390x64, and the sentence naming
+**Cuti Tahunan Syarikat, MC, Ward Leave** — renamed tenant types, not the English defaults. That last
+assertion is the one that matters: this tenant has two types both called a variant of Annual Leave, and a
+hardcoded string would have produced a riddle on the exact account that raised the item.
+
+### I DESCRIBED THE NOTICE BOARD DEFECT WRONG, AND IT IS WORSE THAN I SAID
+
+My plan said the typed text is "carried all the way to Save and refused there". **It is not refused. It is
+SAVED.** `notice.criteria` is a **jsonb** column (`db/schema.ts:4664`) and `cleanNotice`
+(`core/notice.ts:143-146`) only checks the list is non-empty, so `"Irwin"` is stored verbatim. The draft page
+then computes reach as `(n.criteria.employmentIds ?? []).length` (`[id]/page.tsx:60`) and promises
+**"1 employee"**, and the publish confirmation repeats that number, before dying at `publishNotice`
+(`core/notice.ts:304`). Measured against a real database, not argued:
+
+```
+STORED criteria: {"employmentIds":["Irwin"]}
+PUBLISH ERROR:   invalid input syntax for type uuid: "Irwin"
+```
+
+**Checked production before reporting it: 1 notice total, 0 using individual targeting, 0 poisoned.** No
+live data affected, so nothing for the reporter to clean up — which is the only reason this did not become a
+third correction item.
+
+My second claim was also wrong and in the same direction: I said a failed preview on Adjustments leaves a
+**stale count**. It does not — `setPreview(null)` renders `adjustmentsMatchedPending` ("Working it out…"),
+i.e. *exactly* the defect r287 fixed on Generate. `test/leave-adjustment-step-flow.dom.test.tsx` was
+already pinning that behaviour and was **updated rather than deleted**; the new guard asserts the superset.
+
+### THE MESSAGE-KEY COUNT I KEPT QUOTING WAS THE WRONG METRIC
+
+Both agents flagged "11605 keys" as a wrong citation. It was not wrong, it was a different measure: **11605
+counted every `"key":` including object nodes; the leaf count was 11059.** Both moved together and both
+stayed identical across all six locales, which is the invariant that actually matters. Recorded so the next
+round quotes **leaf keys** and the two numbers stop looking like a contradiction. After r288: **11076 leaf
+keys, identical across six**, verified by key-path set equality per locale rather than by count alone.
+
+### `STANDING_LEAVE_CODES` IS NOW REFERENCED FROM `app/` FOR THE FIRST TIME
+
+That absence was the whole gap: the editor would accept an earned accrual method on a code the sweep can
+never reach, silently, which is how `*Annual Leave` came to look correctly configured. The warning reads the
+three swept names **from the tenant's own rows** (the `core/leave.ts:7391-7394` query, not `:7383-7390` as I
+cited — that range is the `standing` Set and the `notSwept` filter) and **does not block the save**: a
+tenant may legitimately keep such a type for a non-accruing purpose.
+
+### PROCESS NOTE THAT COST A SILENT FALSE GREEN
+
+`686dc512`'s agent hit this and caught it: `NODE_FILES=$(...)` followed by `$NODE_FILES` **does not
+word-split in zsh**. Its first affected-tests run silently executed **6 files instead of 52 and reported
+green**. It was caught by comparing the counted file total against the requested one — the same
+`counted == asked` assertion the gate script makes, applied by hand. Third time this session that check has
+caught something the exit code did not.
+
+### RESIDUAL GAP, FLAGGED RATHER THAN FIXED UNASKED
+
+The **paste door can still carry a typed name to failure on all three screens**, including the one that
+shipped in r287. Closing it would mean a second, weaker validator in front of `resolveOrgCriteriaTargets`,
+which `lib/employment-selection.ts`'s own header warns against. Left as a decision rather than taken.
+
+Also retired this round: `adjustmentsEmploymentIdsHelp`, `notices.fEmploymentIdsHelp` and their orphaned
+labels, across six locales, after verifying nothing references them **including computed `t(\`…${x}\`)`
+forms** — the search that a plain grep would have missed.
+
 ## r287 (2026-09-16) — four approved items, three worktrees, and six plan claims that did not survive contact. `main@69967dc2`, **no migration**.
 
 `f3e6c36e` + `e4471e3c` (attendance, sequential in one worktree because they rewrite the same nav arrays and
