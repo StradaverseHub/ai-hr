@@ -230,9 +230,11 @@ const REGISTRY: Record<string, RegistryTable> = {
         ],
       },
       {
-        // 870b79e2 (r277, migration 0464) — the Schedule Group.
+        // 870b79e2 (r277, migration 0464) — the Schedule Group. Reason UPDATED by f513ec02 (r281), which
+        // built the assignment screen and the reverse check the old wording said were missing; the
+        // EXCLUSION is unchanged and was not revisited in that item.
         reason:
-          'Schedule Group: the direct sibling of holidayGroupId and payrollPolicyId above and excluded for the same reason — operational configuration chosen per employee after hire. It carries a SECOND reason of its own: r277 shipped the column, the rule resolution and the allowed-shift refusal, but no screen that sets it. An import column would therefore be this field\'s first and only writer, and the refusal it would bypass lives on SHIFT assignment (core/roster.ts assertShiftsAllowedForEmploymentsTx), not on group assignment — so importing a group could seat somebody in a group that does not allow the shift they are already on. The column is decided together with the assignment screen, not ahead of it.',
+          'Schedule Group: the direct sibling of holidayGroupId and payrollPolicyId above and excluded for the same reason — operational configuration chosen per employee after hire, with its own screen (Personnel → Attendance → Schedule Group, f513ec02) rather than a column on the day-one load. r277\'s second reason — that an import column would be this field\'s first and only writer, bypassing a refusal that only ran on SHIFT assignment — no longer holds: core/roster.ts setEmploymentScheduleGroup now runs the same refusal from the GROUP side, against the shift the employee is already on. Adding the column is therefore a question that can be reopened on its merits; this file is where the answer is recorded, and today the answer is still no.',
         fields: ['attendanceRuleId'],
       },
       {

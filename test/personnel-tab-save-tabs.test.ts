@@ -763,7 +763,12 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // would truncate all three (see the note on `tabSaveCovers`).
       expect(page).toContain("profile: [t('personalDetails'), t('contactAddressTitle')]");
       expect(page).toContain("bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')]");
-      expect(page).toContain("attendance: [t('holidayCalendarCardTitle'), ...whenLive(tc('cardTitle'))]");
+      // f513ec02 (r281) — the Schedule Group card joined this scope, so the bar names it too. The entry is
+      // UPDATED rather than loosened: Holiday Calendar stays first (item 52a30630), and a bar that gained
+      // a card without gaining its name would be the same control-that-lies `covers` exists to prevent.
+      expect(page).toContain(
+        "attendance: [t('holidayCalendarCardTitle'), t('scheduleGroupCardTitle'), ...whenLive(tc('cardTitle'))]",
+      );
       expect(page).toContain("job: [t('employmentInfo.title')]");
       // r256 — Payroll's entry names a SUB-SECTION of a card, not the card. Payment Method is rendered
       // inside Basic Salary, whose own headline control records an effective-dated salary revision, so a
