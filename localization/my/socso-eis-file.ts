@@ -1,21 +1,41 @@
 /**
- * SOCSO + EIS COMBINED contribution textfile (PERKESO ASSIST) — v2.0, with the new SKBBK / Lindung-24-Jam
- * employee column. One fixed-width file carries BOTH Act-4 (SOCSO) and Act-800 (EIS) contributions.
+ * SOCSO + EIS COMBINED contribution textfile (PERKESO ASSIST) — the READ, and only the read.
  *
- * Source (verbatim, sourced 2026-06-20, HIGH confidence — verified against the spec's sample line):
- *   PERKESO "Combine SOCSO + EIS Contribution Text File Format" v2.0 (13 Feb 2026):
- *   https://www.perkeso.gov.my/images/borang/lindung24jam/formatteksfail.pdf
- *   v1.0 (pre-SKBBK): https://www.perkeso.gov.my/images/panduan/280722_-_TEXTFILE_STRUCTURE_FOR_COMBINE_CONTRIBUTION_V1.pdf
+ * ⚠️ r296 — THIS MODULE NO LONGER WRITES A BYTE OF THE FILE, AND THAT IS THE POINT OF THE ROUND. Until
+ * r296 it held its OWN fixed-width writer, at v2.0 of the format, while `lib/perkeso-socso-file.ts` held
+ * a second one at v1.0 behind the Borang 8A review screen. Both were reachable, both emitted 278-character
+ * records, and for the same employees in the same month they emitted DIFFERENT BYTES:
  *
- * Detail-only (no header/footer; the employer code is per-row). 278-char fixed-width records; all amounts
- * are CENTS, right-justified, zero-padded. v2.0 inserts SKBBK at 239–244 and shrinks Filler 1 from 20→14
- * (245–258); total width stays 278. SKBBK mandatory 1 Oct 2026 (legacy single-Act files allowed until
- * 30 Sep 2026). EIS columns are 0 (zero-padded) for EIS-exempt members (60+/foreign); SKBBK still applies.
+ *     positions 201-208   this module "00000000"   ·   lib/perkeso-socso-file "        "
+ *     positions 215-220   this module "010235"     ·   lib/perkeso-socso-file " 10235"
+ *     positions 239-244   this module "000000"     ·   lib/perkeso-socso-file "      "  (Filler 1)
+ *     end of file         this module CRLF         ·   lib/perkeso-socso-file none
  *
- * Detail (278): employerCode 12A | ssm/MyCoID 20A | IC/SOCSO-FW-no 12A | name 150A | month MMYYYY 6N |
- *   salary 14N | socsoEr 6N | socsoEe 6N | eisEr 6N | eisEe 6N | skbbk 6N | filler 14 | filler 20
+ * There is ONE combined SOCSO+EIS upload file at PERKESO ASSIST, so there is now one writer:
+ * `buildPerkesoSocsoFile`, which is golden-tested BYTE FOR BYTE against `test/fixtures/perkeso-brg8a.txt`,
+ * a BRG8A.txt the customer's previous system produced and PERKESO ACCEPTED. The difference between the
+ * two layouts — the SKBBK box — now lives behind `PERKESO_SKBBK_MANDATORY_FROM`, a DATE, and is applied
+ * in exactly one place for both screens.
  *
- * Line terminator CRLF + filename/encoding are NOT in the spec — confirm on first ASSIST upload.
+ * WHAT IS LEFT HERE IS THE READ: which payslips, which employer, which figures. That is genuinely this
+ * module's own job and is NOT shared with the Borang 8A screen, because the two screens answer to
+ * different report definitions (`my.socso-eis`, the combined listing; `my.borang-8a`, PERKESO's own
+ * contribution schedule). They are two documents. The upload file is one artefact, and both screens now
+ * hand over the same bytes for it.
+ *
+ * ⚠️ FIELD 6 IS THE SOCSO/EIS WAGE BASE, NOT GROSS PAY — CHANGED IN r296, AND IT CHANGES A FIGURE. This
+ * read used to write `payslip.gross_pay` into the salary box while the Borang 8A path wrote
+ * `statutory.bases.socsoEis`, so the two files disagreed about field 6 as well as about padding. One
+ * source was required and the repository had already decided which: see `lib/borang-8a.ts`, which
+ * refuses an employee whose base was never stamped rather than "falling back to gross pay, which is a
+ * different number". Gross pay includes money PERKESO does not charge on (the annual bonus is excluded —
+ * docs/architecture/STATUTORY-SOURCES.md §1), so it is the wrong number for a contribution return.
+ *
+ * Source of the layouts (both revisions), sourced 2026-06-20:
+ *   v2.0 (13 Feb 2026): https://www.perkeso.gov.my/images/borang/lindung24jam/formatteksfail.pdf
+ *   v1.0 (22 Jul 2022): https://www.perkeso.gov.my/images/panduan/280722_-_TEXTFILE_STRUCTURE_FOR_COMBINE_CONTRIBUTION_V1.pdf
+ *
+ * Filename and encoding are NOT in either specification — confirm on the first ASSIST upload.
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
@@ -27,39 +47,58 @@ import {
   payslip,
   person,
 } from '../../db/schema';
+import {
+  PerkesoFileError,
+  buildPerkesoSocsoFile,
+  perkesoFileEmployeesFrom,
+  perkesoFileTotals,
+  perkesoLayoutForPeriod,
+  perkesoSkbbkNotCarried,
+  perkesoUploadFilename,
+  type PerkesoFileLayout,
+} from '../../lib/perkeso-socso-file';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 
 const digits = (v: string) => v.replace(/\D/g, '');
 const round2 = (n: number) => Math.round(n * 100) / 100;
-/** Numeric field: right-justified, zero-padded. Throws on overflow (a truncated statutory amount is
- *  worse than a refusal). */
-const num = (v: string | number, len: number, label: string): string => {
-  const s = String(v);
-  if (!/^\d*$/.test(s)) throw new Error(`${label} must be numeric, got "${s}"`);
-  if (s.length > len) throw new Error(`${label} exceeds ${len} digits: "${s}"`);
-  return s.padStart(len, '0');
-};
-/** Alphanumeric field: left-justified, space-padded, hard-truncated to width. */
-const alpha = (v: string | null | undefined, len: number): string =>
-  (v ?? '').toUpperCase().slice(0, len).padEnd(len, ' ');
-const cents = (rm: number) => Math.round(rm * 100);
 
+/** One employee's month, in the shape `perkesoFileEmployeesFrom` maps from. */
 export type SocsoEisRow = {
   /** Member identifier — new IC (no dashes) for Malaysians, SOCSO foreign-worker no. for foreigners. */
   ic: string;
   name: string;
-  salary: number; // gross wages (RM)
+  /**
+   * The SOCSO/EIS WAGE the contributions were worked out from (`statutory.bases.socsoEis`), in RM.
+   * NULL when no run in the period stamped one — a REFUSAL, never a substitution. See the module header.
+   */
+  wage: number | null;
   socsoEmployer: number;
   socsoEmployee: number;
   eisEmployer: number;
   eisEmployee: number;
-  skbbk: number; // employee SKBBK leg (RM)
+  /** The SKBBK / Lindung-24-Jam employee leg (RM). Reaches the file only in v2.0. */
+  skbbk: number;
 };
 
 export type SocsoEisFile = {
   filename: string;
   content: string;
-  totals: { salaryCents: number; socsoCents: number; eisCents: number; skbbkCents: number; records: number };
+  /** Which revision of the format these bytes are — decided by the contribution month, not by a screen. */
+  layout: PerkesoFileLayout;
+  totals: {
+    salaryCents: number;
+    socsoCents: number;
+    eisCents: number;
+    records: number;
+    /**
+     * ⚠️ PRESENT ONLY WHEN THE FILE ACTUALLY HAS A SKBBK BOX. An absent key asserts nothing; a
+     * `skbbkCents: 0` beside a v1.0 file would assert that the money does not exist, and it does — it is
+     * reported as `skbbkNotCarriedCents` instead.
+     */
+    skbbkCents?: number;
+    /** SKBBK in sen that this revision has NO BOX for and that this upload therefore does not pay. */
+    skbbkNotCarriedCents?: number;
+  };
 };
 
 export class SocsoEisNotReadyError extends Error {
@@ -69,61 +108,12 @@ export class SocsoEisNotReadyError extends Error {
   }
 }
 
-/** Pure builder — golden-tested against the v2.0 spec sample. */
-export function buildSocsoEisFile(p: {
-  employerCode: string;
-  ssmNo?: string | null;
-  year: number;
-  month: number;
-  rows: SocsoEisRow[];
-}): SocsoEisFile {
-  const mmYYYY = String(p.month).padStart(2, '0') + String(p.year).padStart(4, '0');
-  const lines: string[] = [];
-  let salaryCents = 0;
-  let socsoCents = 0;
-  let eisCents = 0;
-  let skbbkCents = 0;
-
-  for (const r of p.rows) {
-    const ic = digits(r.ic);
-    if (!ic) throw new Error(`Member IC / SOCSO no. is mandatory — missing for "${r.name}"`);
-    const sal = cents(r.salary);
-    const sEr = cents(r.socsoEmployer);
-    const sEe = cents(r.socsoEmployee);
-    const iEr = cents(r.eisEmployer);
-    const iEe = cents(r.eisEmployee);
-    const sk = cents(r.skbbk);
-    salaryCents += sal;
-    socsoCents += sEr + sEe;
-    eisCents += iEr + iEe;
-    skbbkCents += sk;
-    const line =
-      alpha(p.employerCode, 12) +
-      alpha(p.ssmNo, 20) +
-      alpha(ic, 12) +
-      alpha(r.name, 150) +
-      num(mmYYYY, 6, 'month') +
-      num(sal, 14, `salary (${r.name})`) +
-      num(sEr, 6, `SOCSO employer (${r.name})`) +
-      num(sEe, 6, `SOCSO employee (${r.name})`) +
-      num(iEr, 6, `EIS employer (${r.name})`) +
-      num(iEe, 6, `EIS employee (${r.name})`) +
-      num(sk, 6, `SKBBK (${r.name})`) +
-      ' '.repeat(14) +
-      ' '.repeat(20);
-    if (line.length !== 278) throw new Error(`detail record is ${line.length} chars, expected 278`);
-    lines.push(line);
-  }
-
-  return {
-    filename: `PERKESO_${digits(p.employerCode) || 'EMP'}_${mmYYYY}.txt`,
-    content: lines.join('\r\n') + '\r\n',
-    totals: { salaryCents, socsoCents, eisCents, skbbkCents, records: lines.length },
-  };
-}
-
-/** Build the combined SOCSO+EIS file for a company's pay period from its generated payslips. Refuses to
- *  emit with a missing employer code or member IC (ADR-0010 readiness gate). */
+/**
+ * Build the combined SOCSO+EIS file for a company's pay period from its generated payslips. Refuses to
+ * emit with a missing employer code or member IC (ADR-0010 readiness gate); `buildPerkesoSocsoFile`
+ * then applies the file's own stricter refusals (a twelve-character identity, an amount that fits its
+ * box, a recorded SOCSO wage) and writes the bytes.
+ */
 export function socsoEisFileForBatch(
   ctx: SessionContext,
   p: { companyId: string; periodKey: string },
@@ -149,7 +139,6 @@ export function socsoEisFileForBatch(
         employmentId: payslip.employmentId,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
-        gross: payslip.grossPay,
         statutory: payslip.statutory,
       })
       .from(payslip)
@@ -159,24 +148,30 @@ export function socsoEisFileForBatch(
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
     // One row per employee per month: SOCSO/EIS/SKBBK are charged once for the month (an additional run
-    // adds 0, ADR-0024), so summing across the period's runs yields the monthly total; salary sums wages.
-    type Agg = SocsoEisRow;
-    const byEmp = new Map<string, Agg>();
+    // adds 0, ADR-0024), so summing across the period's runs yields the monthly total; the wage base sums
+    // the same way.
+    const byEmp = new Map<string, SocsoEisRow>();
     const versionSet = new Set<string>();
     for (const s of slips) {
-      const st = (s.statutory ?? {}) as Record<string, number> & { version?: string };
+      const st = (s.statutory ?? {}) as Record<string, number> & { version?: string; bases?: Record<string, number> };
       if (st.version) versionSet.add(st.version);
       let r = byEmp.get(s.employmentId);
       if (!r) {
-        r = { ic: s.ic ?? '', name: s.name, salary: 0, socsoEmployer: 0, socsoEmployee: 0, eisEmployer: 0, eisEmployee: 0, skbbk: 0 };
+        r = { ic: s.ic ?? '', name: s.name, wage: null, socsoEmployer: 0, socsoEmployee: 0, eisEmployer: 0, eisEmployee: 0, skbbk: 0 };
         byEmp.set(s.employmentId, r);
       }
-      r.salary = round2(r.salary + Number(s.gross ?? 0));
       r.socsoEmployer = round2(r.socsoEmployer + Number(st.socsoEmployer ?? 0));
       r.socsoEmployee = round2(r.socsoEmployee + Number(st.socsoEmployee ?? 0));
       r.eisEmployer = round2(r.eisEmployer + Number(st.eisEmployer ?? 0));
       r.eisEmployee = round2(r.eisEmployee + Number(st.eisEmployee ?? 0));
       r.skbbk = round2(r.skbbk + Number(st.socsoSkbbk ?? 0));
+      // `bases.socsoEis` (r187 onward). Absent on EVERY run of the period ⇒ stays null and the writer
+      // refuses this employee by name. Exactly the rule localization/my/borang-8a.ts applies, because
+      // both screens now fill the same box from the same fact.
+      const socsoBase = st.bases?.socsoEis;
+      if (socsoBase !== undefined && socsoBase !== null) {
+        r.wage = round2((r.wage ?? 0) + Number(socsoBase));
+      }
     }
     const empRows = [...byEmp.values()];
     const missing = empRows.filter((r) => !digits(r.ic)).map((r) => r.name);
@@ -184,8 +179,40 @@ export function socsoEisFileForBatch(
       throw new SocsoEisNotReadyError(`Member IC / SOCSO no. is mandatory — missing for: ${missing.join(', ')}`);
     }
     const [yy, mm] = p.periodKey.split('-').map(Number);
-    const file = buildSocsoEisFile({ employerCode: co.code, ssmNo: co.ssm, year: yy, month: mm, rows: empRows });
+    // THE ONE WRITER, AND THE ONE CUTOVER. Nothing about the layout is decided on this screen.
+    const layout = perkesoLayoutForPeriod(yy, mm);
+    const employees = perkesoFileEmployeesFrom(empRows);
+    let content: string;
+    try {
+      content = buildPerkesoSocsoFile({
+        employer: { employerCode: co.code, myCoId: co.ssm, periodMonth: mm, periodYear: yy },
+        employees,
+        layout,
+      });
+    } catch (e) {
+      // The writer's refusals are readiness failures on this screen too, and the route answers 422 for
+      // them — being told at the portal is a slower way to learn the same thing.
+      if (e instanceof PerkesoFileError) throw new SocsoEisNotReadyError(e.message);
+      throw e;
+    }
+    // Totals READ BACK OUT OF THE FILE, not added up from the rows — see perkesoFileTotals for why that
+    // is the only kind worth recording.
+    const t = perkesoFileTotals(content, layout);
+    const skbbkNotCarried = perkesoSkbbkNotCarried(layout, employees);
     const versions = [...versionSet].sort();
-    return { ...file, statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION };
+    return {
+      filename: perkesoUploadFilename(co.code, p.periodKey),
+      content,
+      layout,
+      totals: {
+        salaryCents: t.sen.wage,
+        socsoCents: t.sen.socsoEmployer + t.sen.socsoEmployee,
+        eisCents: t.sen.eisEmployer + t.sen.eisEmployee,
+        records: t.records,
+        ...(layout === 'v2.0' ? { skbbkCents: t.sen.skbbk } : {}),
+        ...(skbbkNotCarried > 0 ? { skbbkNotCarriedCents: Math.round(skbbkNotCarried * 100) } : {}),
+      },
+      statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION,
+    };
   });
 }

@@ -112,6 +112,8 @@ const row = (p: Partial<Borang8ARow> & { employmentId: string; contribution: num
   eisEmployer: 0,
   eisEmployee: 0,
   wage: null,
+  // r296 — the SKBBK leg joined them, for the same reason and with the same default.
+  skbbk: 0,
   ...p,
 });
 

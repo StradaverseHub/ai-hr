@@ -1,6 +1,19 @@
 /**
  * 18c1d92b — THE PERKESO ASSIST PORTAL UPLOAD FILE (combined SOCSO + EIS). PURE: no DB, no pack, no React.
  *
+ * ⚠️ r296 — THIS IS NOW THE ONLY WRITER OF THIS FILE, AND IT WRITES TWO REVISIONS OF ONE FORMAT.
+ * `localization/my/socso-eis-file.ts` used to hold a SECOND fixed-width writer at v2.0, reachable from
+ * Reports and from the statutory-forms shelf while this one was reachable from the Borang 8A review
+ * screen. The two emitted different bytes for the same employees in the same month and nothing on either
+ * screen said which was which; readiness item 3.1 is that defect. That module is now the READ only, both
+ * screens come here, and the difference between the two revisions — the SKBBK box — is decided by a
+ * DATE, `PERKESO_SKBBK_MANDATORY_FROM`, in the one function `perkesoLayoutForPeriod`.
+ *
+ * ⚠️ EVERYTHING BELOW THIS PARAGRAPH DESCRIBES v1.0 UNLESS IT SAYS OTHERWISE, and v1.0 is the revision
+ * with the evidence behind it: the customer's accepted BRG8A.txt. v2.0 is transcribed from a published
+ * specification and has never been uploaded from this system — see `PERKESO_LAYOUT_UNVERIFIED`. WHICH
+ * REVISION ASSIST ACCEPTS TODAY IS UNKNOWN and is not settled by anything in this file.
+ *
  * ⚠️ TWO SOURCES NOW AGREE, AND THAT IS WORTH MORE THAN EITHER ALONE. The layout was derived from a REAL
  * FILED FILE and has since been checked, field for field, against PERKESO's own "Spesifikasi Format Text
  * File Untuk SOCSO + EIS Contribution" v1.0 of 22 July 2022 (attached to item 5d3acdc2): all twelve rows
@@ -75,6 +88,18 @@ export const PERKESO_FILE_SPEC = {
   dated: '22 July 2022',
 } as const;
 
+/**
+ * The SAME document, one revision later — the one that adds the SKBBK column. Named separately and
+ * carried by `PERKESO_FILE_LAYOUTS['v2.0']`, so a report about a v2.0 file cannot claim v1.0's
+ * specification and a report about a v1.0 file cannot claim v2.0's. The same warning applies to these
+ * three strings as to the three above: they are a claim about a layout, not a label on one.
+ */
+export const PERKESO_FILE_SPEC_V2 = {
+  name: 'Combine SOCSO + EIS Contribution Text File Format',
+  version: 'v2.0',
+  dated: '13 February 2026',
+} as const;
+
 /** One row of the specification's own table, as this module holds it. */
 export type PerkesoFileField = {
   /** The agency's field NO., 1-12, exactly as its table numbers the rows. */
@@ -120,8 +145,43 @@ export const PERKESO_FILE_FIELDS = {
   filler2: { no: 12, label: 'Filler 2', offset: 258, width: 20 },
 } as const satisfies Record<string, PerkesoFileField>;
 
+/**
+ * r296 — THE SAME FORMAT, ONE REVISION LATER: v2.0 of 13 February 2026, which carves the SKBBK /
+ * Lindung-24-Jam employee leg out of Filler 1.
+ *
+ * ⚠️ NOTHING ABOVE MOVES. Fields 1-10 are at the SAME offsets and the SAME widths as v1.0 — the byte the
+ * customer's accepted file carries at position 215 is still SOCSO employer there. v2.0 changes exactly
+ * two things: positions 239-244 become a sixth money box, and Filler 1 shrinks from 20 to 14 (245-258).
+ * Field 12 Filler 2 is untouched at 259-278, and the record is still 278 characters.
+ *
+ * ⚠️ THIS TABLE HAS NEVER BEEN CHECKED AGAINST AN ACCEPTED FILE, and the one above has. There is no
+ * v2.0 BRG8A.txt in this repository and nobody here has uploaded one to ASSIST. It is transcribed from
+ * PERKESO's published v2.0 specification and its sample line, which is a weaker kind of evidence than a
+ * filed document — see `PERKESO_LAYOUT_UNVERIFIED` and the RISK recorded there.
+ *
+ * Source (sourced 2026-06-20, verified against the specification's own sample line): PERKESO "Combine
+ * SOCSO + EIS Contribution Text File Format" v2.0 (13 Feb 2026),
+ * <https://www.perkeso.gov.my/images/borang/lindung24jam/formatteksfail.pdf>. Recorded in
+ * docs/architecture/STATUTORY-SOURCES.md §3 as an open go-live gate.
+ */
+export const PERKESO_FILE_FIELDS_V2 = {
+  employerCode: { no: 1, label: 'Employer Code', offset: 0, width: 12 },
+  myCoId: { no: 2, label: 'MyCoID/SSM Number', offset: 12, width: 20 },
+  identityNo: { no: 3, label: 'Identification Number / SOCSO Foreign Worker Number', offset: 32, width: 12 },
+  name: { no: 4, label: 'Employee Name', offset: 44, width: 150 },
+  contributionMonth: { no: 5, label: 'Month Contribution', offset: 194, width: 6 },
+  wage: { no: 6, label: 'Employee Salary', offset: 200, width: 14 },
+  socsoEmployer: { no: 7, label: 'Contribution Amount SOCSO (Employer share)', offset: 214, width: 6 },
+  socsoEmployee: { no: 8, label: 'Contribution Amount SOCSO (Employee share)', offset: 220, width: 6 },
+  eisEmployer: { no: 9, label: 'Contribution Amount EIS (Employer share)', offset: 226, width: 6 },
+  eisEmployee: { no: 10, label: 'Contribution Amount EIS (Employee share)', offset: 232, width: 6 },
+  skbbk: { no: 11, label: 'Contribution Amount SKBBK (Employee share)', offset: 238, width: 6 },
+  filler1: { no: 12, label: 'Filler 1', offset: 244, width: 14 },
+  filler2: { no: 13, label: 'Filler 2', offset: 258, width: 20 },
+} as const satisfies Record<string, PerkesoFileField>;
+
 /** The field table's own keys — the internal names, which the report no longer prints. */
-export type PerkesoFieldKey = keyof typeof PERKESO_FILE_FIELDS;
+export type PerkesoFieldKey = keyof typeof PERKESO_FILE_FIELDS_V2;
 
 /**
  * How a field is named ANYWHERE a person reads it: the agency's number and the agency's words.
@@ -143,6 +203,113 @@ export const PERKESO_FILE_AMOUNT_FIELDS = [
   'eisEmployee',
 ] as const;
 
+/** v2.0's six: the five above plus the SKBBK leg carved out of Filler 1. Same order as the record. */
+export const PERKESO_FILE_AMOUNT_FIELDS_V2 = [...PERKESO_FILE_AMOUNT_FIELDS, 'skbbk'] as const;
+
+/* ─── r296 — THE TWO LAYOUTS, AND THE DATE THAT CHOOSES BETWEEN THEM ─────────────────────────────── */
+
+/**
+ * WHY THERE ARE TWO. Until r296 this repository held TWO WRITERS for this one artefact — this module, at
+ * v1.0, reachable from the Borang 8A review screen; and `localization/my/socso-eis-file.ts`, at v2.0,
+ * reachable from Reports and from the statutory-forms shelf. They emitted DIFFERENT BYTES for the same
+ * employees in the same month (space- versus zero-padded amounts, a SKBBK box versus a blank filler, and
+ * a trailing CRLF versus none), and an operator had no way to know which of the two files they were
+ * holding. There is one PERKESO ASSIST combined SOCSO+EIS upload file, so there is now one writer, and
+ * the revision it writes is a NAMED, DATED choice instead of a second code path.
+ *
+ * `v1.0` is the layout of the customer's own accepted BRG8A.txt (test/fixtures/perkeso-brg8a.txt).
+ * `v2.0` is PERKESO's published successor. Only `v1.0` has ever been accepted by the portal as far as
+ * anything in this repository can show.
+ */
+export type PerkesoFileLayout = 'v1.0' | 'v2.0';
+
+/**
+ * THE CUTOVER, AS A DATE RATHER THAN AS A CODE PATH.
+ *
+ * PERKESO's v2.0 specification states that the SKBBK column becomes MANDATORY on 1 October 2026 and that
+ * the legacy layout is accepted until 30 September 2026. This constant is that sentence, and it is the
+ * only thing that decides which table a file is written to. Recorded as the go-live gate
+ * "new combined SOCSO+EIS textfile (mandatory 1 Oct 2026)" in docs/architecture/STATUTORY-SOURCES.md §3.
+ *
+ * ⚠️ WHAT THIS DATE IS MEASURED AGAINST IS **UNKNOWN**, and the choice made here is written down rather
+ * than hidden. We compare it to the CONTRIBUTION MONTH the file is for, not to the day somebody presses
+ * download. The specification says when the format changes; it does not say whether a December-2026
+ * upload of an August-2026 return must use v2.0. The contribution month was chosen because it is the
+ * only period a file has (a re-download of an old month must not silently change shape), and because a
+ * PERKESO return is due on the LAST DAY OF ITS OWN CONTRIBUTION MONTH, so for a return filed on time the
+ * two readings coincide. A LATE or AMENDED return filed after 1 Oct 2026 for an earlier month is the one
+ * case where they differ, and that case needs the specification or a submission to settle.
+ */
+export const PERKESO_SKBBK_MANDATORY_FROM = { year: 2026, month: 10 } as const;
+
+/**
+ * ⚠️ NEITHER LAYOUT'S ACCEPTANCE BY ASSIST **TODAY** IS KNOWN, and this constant exists so that no reader
+ * has to infer it from the code's confidence. v1.0 is byte-for-byte a file PERKESO accepted (January
+ * 2026). v2.0 has NEVER been uploaded from this system, and its pad character, its SKBBK box and its
+ * shortened Filler 1 are transcribed from a published specification, not read off an accepted file.
+ *
+ * RISK: on 1 October 2026 this system starts writing a layout nobody here has ever seen accepted. The
+ * first v2.0 upload is the test, and it must be watched. There is no way to close this from inside the
+ * repository — see docs/CUSTOMER-DEPLOYMENT-READINESS.md §3.1.
+ */
+export const PERKESO_LAYOUT_UNVERIFIED = 'v2.0' as const satisfies PerkesoFileLayout;
+
+export type PerkesoFileLayoutDef = {
+  layout: PerkesoFileLayout;
+  spec: { readonly name: string; readonly version: string; readonly dated: string };
+  fields: Record<string, PerkesoFileField>;
+  /** The money boxes this revision has, in record order. */
+  amountFields: readonly string[];
+  /** The boxes this revision requires to be blank. */
+  fillerFields: readonly string[];
+  /**
+   * WHAT A RIGHT-JUSTIFIED AMOUNT IS PADDED WITH, per revision, and it is NOT the same character.
+   *
+   * v1.0's specification says "right justified" and never says with what; the customer's filed file pads
+   * with SPACES (`"        590000"`, `" 10235"`), so v1.0 pads with spaces — the file settles what the
+   * document left open. v2.0's specification publishes a sample line that is ZERO-padded
+   * (`"00000000345799"`), so v2.0 pads with zeroes. Two revisions, two sources, two answers; writing
+   * either one into the other's file produces a file of exactly the right length that is a different file.
+   */
+  amountPad: ' ' | '0';
+};
+
+export const PERKESO_FILE_LAYOUTS: Record<PerkesoFileLayout, PerkesoFileLayoutDef> = {
+  'v1.0': {
+    layout: 'v1.0',
+    spec: PERKESO_FILE_SPEC,
+    fields: PERKESO_FILE_FIELDS,
+    amountFields: PERKESO_FILE_AMOUNT_FIELDS,
+    fillerFields: ['filler1', 'filler2'],
+    amountPad: ' ',
+  },
+  'v2.0': {
+    layout: 'v2.0',
+    spec: PERKESO_FILE_SPEC_V2,
+    fields: PERKESO_FILE_FIELDS_V2,
+    amountFields: PERKESO_FILE_AMOUNT_FIELDS_V2,
+    fillerFields: ['filler1', 'filler2'],
+    amountPad: '0',
+  },
+};
+
+/** The layout definition for a revision. One lookup, so no caller indexes the record by hand. */
+export function perkesoLayoutDef(layout: PerkesoFileLayout = 'v1.0'): PerkesoFileLayoutDef {
+  return PERKESO_FILE_LAYOUTS[layout];
+}
+
+/**
+ * WHICH REVISION A CONTRIBUTION MONTH IS WRITTEN TO. The ONLY place the cutover date is applied, so the
+ * two screens cannot come to answer it differently, and so the answer can be read off a date rather than
+ * off which button was pressed. See `PERKESO_SKBBK_MANDATORY_FROM` for what the date is measured against
+ * and what about that is still unknown.
+ */
+export function perkesoLayoutForPeriod(year: number, month: number): PerkesoFileLayout {
+  const key = year * 100 + month;
+  const cutover = PERKESO_SKBBK_MANDATORY_FROM.year * 100 + PERKESO_SKBBK_MANDATORY_FROM.month;
+  return key >= cutover ? 'v2.0' : 'v1.0';
+}
+
 export type PerkesoFileEmployee = {
   /** No. Kad Pengenalan, or the PERKESO foreign-worker number. Exactly 12 characters once dashes go. */
   identityNo: string;
@@ -155,6 +322,17 @@ export type PerkesoFileEmployee = {
   socsoEmployee: number;
   eisEmployer: number;
   eisEmployee: number;
+  /**
+   * r296 — the SKBBK / Lindung-24-Jam EMPLOYEE leg, in RM. Always supplied; whether it reaches the file
+   * depends on the revision, which is what `PERKESO_SKBBK_MANDATORY_FROM` decides.
+   *
+   * ⚠️ v1.0 HAS NOWHERE TO PUT THIS, and that is a property of the accepted layout rather than of this
+   * code: its positions 239-258 are Filler 1 and the specification requires them blank. A v1.0 file
+   * therefore carries none of this money, and `perkesoSkbbkNotCarried` exists so that nobody has to
+   * discover that from a total that reads 0.00. Absent is treated as 0 — for a payslip written before
+   * SKBBK existed that is the truth, not a substitution.
+   */
+  skbbk?: number;
 };
 
 export type PerkesoFileInput = {
@@ -171,6 +349,12 @@ export type PerkesoFileInput = {
   employees: readonly PerkesoFileEmployee[];
   /** Defaults to now. Injectable ONLY so the future-month refusal can be tested without a clock. */
   today?: Date;
+  /**
+   * r296 — which revision of the format to write. Defaults to `perkesoLayoutForPeriod(year, month)`,
+   * which is the cutover date and nothing else. Passed explicitly only by tests and by a caller that has
+   * been told which revision the portal wants; a screen never chooses.
+   */
+  layout?: PerkesoFileLayout;
 };
 
 /** Thrown by every refusal here, so a route can answer 422 without matching on a message. */
@@ -193,13 +377,17 @@ function sen(amount: number, field: string, who: string): number {
   return Math.round(n * 100);
 }
 
-/** Right-justified digits, SPACE-padded to exactly `width`. Refuses an overflow — never truncates money. */
-function amountField(value: number, width: number, field: string, who: string): string {
+/**
+ * Right-justified digits, padded to exactly `width` with THE REVISION'S OWN PAD CHARACTER. Refuses an
+ * overflow — never truncates money. See `PerkesoFileLayoutDef.amountPad` for why the character is a
+ * property of the revision and not a constant.
+ */
+function amountField(value: number, width: number, field: string, who: string, pad: ' ' | '0'): string {
   const s = String(value);
   if (s.length > width) {
     fail(`${who}: ${field} needs ${s.length} characters and the box holds ${width}. The file cannot carry it.`);
   }
-  return s.padStart(width, ' ');
+  return s.padStart(width, pad);
 }
 
 /** Left-justified text, space-padded, TRUNCATED to width. Only the name may use this. */
@@ -240,6 +428,8 @@ export function perkesoFileEmployeesFrom(
     socsoEmployee: number;
     eisEmployer: number;
     eisEmployee: number;
+    /** r296 — the SKBBK employee leg. Optional so a row shape that predates it still maps. */
+    skbbk?: number;
   }[],
 ): PerkesoFileEmployee[] {
   return rows.map((r) => ({
@@ -250,7 +440,31 @@ export function perkesoFileEmployeesFrom(
     socsoEmployee: r.socsoEmployee,
     eisEmployer: r.eisEmployer,
     eisEmployee: r.eisEmployee,
+    skbbk: r.skbbk ?? 0,
   }));
+}
+
+/**
+ * THE MONEY THE CHOSEN REVISION CANNOT CARRY, IN RINGGIT — 0 when it can.
+ *
+ * Read off the INPUT rather than out of the file, unlike every total in this module, and deliberately:
+ * the whole point is money that is NOT in the file. There is nothing in the bytes to read.
+ *
+ * SKBBK has been mandatory since 1 June 2026 (Akta A1788) but the layout PERKESO accepted has no box for
+ * it until v2.0. So between 1 June and 30 September 2026 this system can write a file PERKESO is known
+ * to accept, or a file that carries the SKBBK, and not both. It writes the accepted one and says this
+ * out loud — in the validation report and in the artefact it records — because a SKBBK total of 0.00
+ * printed beside a file that simply has no such box is an assertion that the money does not exist.
+ */
+export function perkesoSkbbkNotCarried(
+  layout: PerkesoFileLayout,
+  // Structurally typed, like `perkesoFileEmployeesFrom` above, so a caller can hand over its own payroll
+  // rows without first mapping them into the file's shape just to ask this question.
+  rows: readonly { skbbk?: number | null }[],
+): number {
+  if (perkesoLayoutDef(layout).amountFields.includes('skbbk')) return 0;
+  const sen = rows.reduce((acc, e) => acc + Math.round((Number(e.skbbk) || 0) * 100), 0);
+  return sen / 100;
 }
 
 /**
@@ -258,13 +472,19 @@ export function perkesoFileEmployeesFrom(
  * last, exactly as the attached file is.
  */
 export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
-  const F = PERKESO_FILE_FIELDS;
   const { employer, employees } = input;
 
   const month = Number(employer.periodMonth);
   const year = Number(employer.periodYear);
   if (!Number.isInteger(month) || month < 1 || month > 12) fail(`Contribution month must be 1-12, got ${employer.periodMonth}`);
   if (!Number.isInteger(year) || year < 1900 || year > 9999) fail(`Contribution year must be four digits, got ${employer.periodYear}`);
+
+  // r296 — the revision, decided from the contribution month by the cutover date and by nothing else
+  // unless a caller names one. Chosen AFTER the month is validated, so a malformed period is still a
+  // period error rather than a mysterious layout.
+  const layout = input.layout ?? perkesoLayoutForPeriod(year, month);
+  const def = perkesoLayoutDef(layout);
+  const F = def.fields;
   // MMYYYY — the request is explicit that YYYYMM and MM/YY are both wrong, and the attached file agrees.
   const contributionMonth = `${String(month).padStart(2, '0')}${year}`;
 
@@ -302,17 +522,24 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
         `${who}: no SOCSO wage was recorded on their payslip for this month, so the salary box cannot be filled. Reprocess the run, or file this employee by hand.`,
       );
     }
+    const pad = def.amountPad;
     return (
       employerCode +
       myCoId +
       identity +
       textField(e.name, F.name.width) +
       contributionMonth +
-      amountField(sen(e.wage, 'wage', who), F.wage.width, 'wage', who) +
-      amountField(sen(e.socsoEmployer, 'SOCSO employer contribution', who), F.socsoEmployer.width, 'SOCSO employer contribution', who) +
-      amountField(sen(e.socsoEmployee, 'SOCSO employee contribution', who), F.socsoEmployee.width, 'SOCSO employee contribution', who) +
-      amountField(sen(e.eisEmployer, 'EIS employer contribution', who), F.eisEmployer.width, 'EIS employer contribution', who) +
-      amountField(sen(e.eisEmployee, 'EIS employee contribution', who), F.eisEmployee.width, 'EIS employee contribution', who) +
+      amountField(sen(e.wage, 'wage', who), F.wage.width, 'wage', who, pad) +
+      amountField(sen(e.socsoEmployer, 'SOCSO employer contribution', who), F.socsoEmployer.width, 'SOCSO employer contribution', who, pad) +
+      amountField(sen(e.socsoEmployee, 'SOCSO employee contribution', who), F.socsoEmployee.width, 'SOCSO employee contribution', who, pad) +
+      amountField(sen(e.eisEmployer, 'EIS employer contribution', who), F.eisEmployer.width, 'EIS employer contribution', who, pad) +
+      amountField(sen(e.eisEmployee, 'EIS employee contribution', who), F.eisEmployee.width, 'EIS employee contribution', who, pad) +
+      // r296 — the SKBBK box exists only in v2.0. In v1.0 the same twenty positions are Filler 1 and the
+      // specification requires them BLANK, so the money is not written and `perkesoSkbbkNotCarried` says
+      // so instead. Driven off the field table, never off the revision name.
+      (F.skbbk
+        ? amountField(sen(e.skbbk ?? 0, 'SKBBK contribution', who), F.skbbk.width, 'SKBBK contribution', who, pad)
+        : '') +
       spaces(F.filler1.width) +
       spaces(F.filler2.width)
     );
@@ -320,8 +547,24 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
 
   const text = records.join(PERKESO_FILE_EOL);
   // THE FILE CHECKS ITSELF, from the bytes rather than from the intent.
-  assertPerkesoFileShape(text);
+  assertPerkesoFileShape(text, layout);
   return text;
+}
+
+/**
+ * r296 — ONE NAME FOR ONE ARTEFACT.
+ *
+ * The two screens that hand over this file used to name it two different ways —
+ * `perkeso-socso-<code>-<YYYYMM>.txt` from the Borang 8A review screen and `PERKESO_<digits>_<MMYYYY>.txt`
+ * from Reports — so the same bytes arrived in an operator's Downloads folder twice under names that share
+ * nothing, with the two spellings of the period differing as well. Kept as the Borang 8A screen's name,
+ * which is the one beside the accepted file, and moved here so neither screen can drift from it.
+ *
+ * `periodKey` is `YYYY-MM`; the name carries `YYYYMM`, which sorts.
+ */
+export function perkesoUploadFilename(employerCode: string, periodKey: string): string {
+  const code = (employerCode || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
+  return `perkeso-socso-${code}-${periodKey.replace('-', '')}.txt`;
 }
 
 /** The records of an emitted file, without the line endings. */
@@ -335,11 +578,11 @@ export function perkesoFileRecords(text: string): string[] {
  * exactly 278 characters, every money box digits-or-spaces with no separator or sign, and both fillers
  * blank.
  */
-export function assertPerkesoFileShape(text: string): void {
+export function assertPerkesoFileShape(text: string, layout: PerkesoFileLayout = 'v1.0'): void {
   const records = perkesoFileRecords(text);
   if (records.length === 0) fail('the file has no records');
   for (const [i, r] of records.entries()) {
-    const problems = perkesoRecordProblems(r, `record ${i + 1}`);
+    const problems = perkesoRecordProblems(r, `record ${i + 1}`, layout);
     if (problems.length > 0) fail(problems[0]);
   }
 }
@@ -356,7 +599,8 @@ export function assertPerkesoFileShape(text: string): void {
  * `at` is the caller's name for the record ("record 3"), so the same sentence reads correctly in a thrown
  * message and in a list.
  */
-export function perkesoRecordProblems(record: string, at: string): string[] {
+export function perkesoRecordProblems(record: string, at: string, layout: PerkesoFileLayout = 'v1.0'): string[] {
+  const def = perkesoLayoutDef(layout);
   const problems: string[] = [];
   if (record.length !== PERKESO_FILE_LINE_LENGTH) {
     problems.push(`${at} is ${record.length} characters and every record must be ${PERKESO_FILE_LINE_LENGTH}`);
@@ -364,15 +608,18 @@ export function perkesoRecordProblems(record: string, at: string): string[] {
   // 64c09b0e — NAMED THE AGENCY'S WAY, not ours. These same sentences are what a refusal says and what
   // the report lists, and "socsoEmployer" sends a reader to our source where "Field 7 Contribution Amount
   // SOCSO (Employer share)" sends them to the row of the specification that settles it.
-  for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
-    const field = PERKESO_FILE_FIELDS[key];
+  //
+  // r296 — `^ *\d+$` accepts BOTH pad characters by construction: v1.0's spaces are the leading run, and
+  // v2.0's zeroes are digits. One rule, two revisions, and neither is loosened for the other.
+  for (const key of def.amountFields) {
+    const field = def.fields[key];
     const v = perkesoField(record, field);
     if (!/^ *\d+$/.test(v)) {
       problems.push(`${at}: ${perkesoFieldName(field)} reads "${v}", which is not a right-justified number`);
     }
   }
-  for (const key of ['filler1', 'filler2'] as const) {
-    const field = PERKESO_FILE_FIELDS[key];
+  for (const key of def.fillerFields) {
+    const field = def.fields[key];
     const v = perkesoField(record, field);
     if (v !== spaces(field.width)) problems.push(`${at}: ${perkesoFieldName(field)} must be blank, got "${v}"`);
   }
@@ -405,16 +652,17 @@ export type PerkesoRecordView = {
  * The validation report the request asks for: every record, field by field, with the 1-based character
  * positions a person can count against a PERKESO sample. Reads the SAME field table the writer used.
  */
-export function describePerkesoFile(text: string): PerkesoRecordView[] {
+export function describePerkesoFile(text: string, layout: PerkesoFileLayout = 'v1.0'): PerkesoRecordView[] {
+  const def = perkesoLayoutDef(layout);
   return perkesoFileRecords(text).map((r, i) => {
-    const problems = perkesoRecordProblems(r, `record ${i + 1}`);
+    const problems = perkesoRecordProblems(r, `record ${i + 1}`, layout);
     return {
       recordNo: i + 1,
       length: r.length,
       ok: problems.length === 0,
       problems,
-      fields: (Object.keys(PERKESO_FILE_FIELDS) as PerkesoFieldKey[]).map((name) => {
-        const field = PERKESO_FILE_FIELDS[name];
+      fields: Object.keys(def.fields).map((name) => {
+        const field = def.fields[name];
         return {
           name,
           no: field.no,
@@ -428,15 +676,22 @@ export function describePerkesoFile(text: string): PerkesoRecordView[] {
   });
 }
 
-export type PerkesoAmountField = (typeof PERKESO_FILE_AMOUNT_FIELDS)[number];
+/** Every money box either revision has — v2.0's set, which is v1.0's plus `skbbk`. */
+export type PerkesoAmountField = (typeof PERKESO_FILE_AMOUNT_FIELDS_V2)[number];
 
 export type PerkesoFileTotals = {
   /** How many records the figures below were added up over. */
   records: number;
   /** Records left OUT because they did not validate. Naming them is the point — see below. */
   excluded: number[];
-  /** Integer sen per money box, exactly as the file carries them: no decimal point, no separator. */
-  sen: Record<PerkesoAmountField, number>;
+  /**
+   * Integer sen per money box, exactly as the file carries them: no decimal point, no separator.
+   *
+   * ⚠️ A KEY IS PRESENT ONLY IF THE REVISION HAS THAT BOX. The five boxes both revisions share are always
+   * there; `skbbk` exists on a v2.0 total and is ABSENT — not zero — on a v1.0 one. A zero would be a
+   * figure, and a figure about a box that does not exist is an assertion nobody can stand behind.
+   */
+  sen: Record<(typeof PERKESO_FILE_AMOUNT_FIELDS)[number], number> & Partial<Record<PerkesoAmountField, number>>;
 };
 
 /**
@@ -454,19 +709,22 @@ export type PerkesoFileTotals = {
  * digits standing in a money box are not evidence of anything; adding them in would produce a confident
  * total from a file we have just said we could not read.
  */
-export function perkesoFileTotals(text: string): PerkesoFileTotals {
-  const sen = Object.fromEntries(PERKESO_FILE_AMOUNT_FIELDS.map((k) => [k, 0])) as Record<PerkesoAmountField, number>;
+export function perkesoFileTotals(text: string, layout: PerkesoFileLayout = 'v1.0'): PerkesoFileTotals {
+  const def = perkesoLayoutDef(layout);
+  // ONE KEY PER BOX THIS REVISION ACTUALLY HAS. A v1.0 total has no `skbbk` key — see the type.
+  const sen = Object.fromEntries(def.amountFields.map((k) => [k, 0])) as PerkesoFileTotals['sen'];
   const excluded: number[] = [];
   let records = 0;
-  for (const view of describePerkesoFile(text)) {
+  for (const view of describePerkesoFile(text, layout)) {
     if (!view.ok) {
       excluded.push(view.recordNo);
       continue;
     }
     records += 1;
-    for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
+    for (const key of def.amountFields) {
       const field = view.fields.find((f) => f.name === key);
-      sen[key] += Number((field?.value ?? '').trim());
+      const k = key as PerkesoAmountField;
+      sen[k] = (sen[k] ?? 0) + Number((field?.value ?? '').trim());
     }
   }
   return { records, excluded, sen };
@@ -484,21 +742,33 @@ function rm(cents: number): string {
  * dump line up as columns instead of ragging. Derived from the labels themselves rather than typed, so a
  * label can never outgrow its column silently. (Field 3's name is the long one, at 51 characters.)
  */
-const LABEL_COLUMN = Math.max(...Object.values(PERKESO_FILE_FIELDS).map((f) => perkesoFieldName(f).length));
+const labelColumn = (def: PerkesoFileLayoutDef) =>
+  Math.max(...Object.values(def.fields).map((f) => perkesoFieldName(f).length));
 
 /**
  * The report as plain ASCII, for reading beside a PERKESO sample. ASCII only, deliberately: it describes
  * a us-ascii file and a curly quote in a document about byte positions would be its own joke.
  *
- * ⚠️ THERE IS NO SKBBK / LINDUNG 24 JAM TOTAL HERE AND THERE MUST NOT BE ONE. The request asks for it;
- * the specification this file is written to has no such field, so this file carries no such contribution.
- * A line reading "SKBBK: RM 0.00" would be a statement about money on a return that does not mention it —
- * an assurance nobody can stand behind, which is worse than the gap it fills. If PERKESO publishes a
- * format that adds the column, the FIELD TABLE gains it first and this report follows.
+ * ⚠️ THERE IS NO SKBBK / LINDUNG 24 JAM TOTAL ON A v1.0 REPORT AND THERE MUST NOT BE ONE. The request
+ * asks for it; the v1.0 specification has no such field, so a v1.0 file carries no such contribution. A
+ * line reading "SKBBK: RM 0.00" would be a statement about money on a return that does not mention it —
+ * an assurance nobody can stand behind, which is worse than the gap it fills. r296 followed exactly the
+ * rule this paragraph set: the FIELD TABLE gained the column first (`PERKESO_FILE_FIELDS_V2`), and only a
+ * report about a v2.0 file totals it.
+ *
+ * `p.skbbkNotCarried` is the OTHER half of the same discipline, and it is a figure the file cannot
+ * supply: SKBBK money that exists on the payslips and that THIS revision has no box for. Absent or zero
+ * ⇒ the report says nothing about SKBBK at all, exactly as it always has.
  */
-export function perkesoFileReport(text: string): string {
-  const views = describePerkesoFile(text);
-  const totals = perkesoFileTotals(text);
+export function perkesoFileReport(
+  text: string,
+  p: { layout?: PerkesoFileLayout; skbbkNotCarried?: number } = {},
+): string {
+  const layout = p.layout ?? 'v1.0';
+  const def = perkesoLayoutDef(layout);
+  const LABEL_COLUMN = labelColumn(def);
+  const views = describePerkesoFile(text, layout);
+  const totals = perkesoFileTotals(text, layout);
   const out: string[] = [];
   out.push('PERKESO SOCSO + EIS UPLOAD FILE - RECORD BY RECORD CHECK');
   out.push('');
@@ -515,9 +785,9 @@ export function perkesoFileReport(text: string): string {
   out.push('That is the editor wrapping a long line, not a line break in the file: there is no line break');
   out.push('inside a record. Turn word wrap off and each employee sits on one line.');
   out.push('');
-  out.push(`Specification: PERKESO "${PERKESO_FILE_SPEC.name}",`);
+  out.push(`Specification: PERKESO "${def.spec.name}",`);
   out.push(
-    `${PERKESO_FILE_SPEC.version} of ${PERKESO_FILE_SPEC.dated}. One record per employee, ` +
+    `${def.spec.version} of ${def.spec.dated}. One record per employee, ` +
       `${PERKESO_FILE_LINE_LENGTH} characters per record, no header, no trailer.`,
   );
   out.push('');
@@ -568,13 +838,32 @@ export function perkesoFileReport(text: string): string {
   out.push('these totals exist to catch.');
   out.push('The file carries every amount as CENTS WITH NO DECIMAL POINT, so the digits it actually holds');
   out.push('are printed beside each RM figure. Check both.');
-  for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
+  for (const key of def.amountFields) {
     // 64c09b0e — the agency's number and the agency's words, the same ones the dump below prints, so the
     // five money lines can be checked off against the specification's rows 6 to 10 without translation.
-    const name = perkesoFieldName(PERKESO_FILE_FIELDS[key]);
-    out.push(`  ${name.padEnd(LABEL_COLUMN)}  RM ${rm(totals.sen[key]).padStart(11)}   in the file: ${totals.sen[key]}`);
+    const name = perkesoFieldName(def.fields[key]);
+    const v = totals.sen[key as PerkesoAmountField] ?? 0;
+    out.push(`  ${name.padEnd(LABEL_COLUMN)}  RM ${rm(v).padStart(11)}   in the file: ${v}`);
   }
   out.push(`Added up over ${totals.records} record(s) of ${views.length}.`);
+
+  // r296 — THE MONEY THAT IS NOT IN THIS FILE, named, and only when there is some. See
+  // `perkesoSkbbkNotCarried`: silence here means the question does not arise, which is what it has always
+  // meant on a v1.0 report and is why this block cannot print a reassuring zero.
+  if ((p.skbbkNotCarried ?? 0) > 0) {
+    const notCarried = Math.round((p.skbbkNotCarried ?? 0) * 100);
+    out.push('');
+    out.push(`SKBBK / LINDUNG 24 JAM IS NOT IN THIS FILE: RM ${rm(notCarried)}.`);
+    out.push(`This file is written to ${def.spec.version} of ${def.spec.dated}, which has no box for it -`);
+    out.push(`positions ${def.fields.filler1.offset + 1}-${def.fields.filler1.offset + def.fields.filler1.width} are Filler 1 and the specification requires them blank. The payroll`);
+    out.push('for this month DID deduct the amount above from the employees, so it is owed to PERKESO and');
+    out.push('this upload does not pay it. PERKESO adds the column in v2.0 of 13 February 2026, which this');
+    out.push(
+      `system writes for contribution months from ${String(PERKESO_SKBBK_MANDATORY_FROM.month).padStart(2, '0')}/${PERKESO_SKBBK_MANDATORY_FROM.year} onward.`,
+    );
+    out.push('Settle this month\'s SKBBK the way PERKESO tells you to for the transition period. Nothing');
+    out.push('here stops the file, and the file is correct for the format it is written to.');
+  }
 
   for (const v of views) {
     out.push('');

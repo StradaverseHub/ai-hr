@@ -16,16 +16,10 @@
  * ASCII, and the charset says so. Every character is inside 0x20-0x7E by construction, and a fixed-width
  * record read as anything else would shift every field after the first non-ASCII byte.
  */
-import { perkesoFileReport } from '@/lib/perkeso-socso-file';
+import { perkesoFileReport, perkesoUploadFilename } from '@/lib/perkeso-socso-file';
 import { loadBorang8AFile } from '../shared';
 
 export const runtime = 'nodejs';
-
-/** `perkeso-socso-<employer code>-<MMYYYY>.txt` — distinct from the readable export's name. */
-function uploadFilename(employerCode: string, contributionPeriodKey: string): string {
-  const code = (employerCode || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
-  return `perkeso-socso-${code}-${contributionPeriodKey.replace('-', '')}.txt`;
-}
 
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
@@ -43,15 +37,21 @@ export async function GET(req: Request) {
   // endpoint could drift from it and then reassure somebody about a file they did not get. Rendered
   // inline (no attachment header) so it opens in the browser rather than landing in Downloads.
   if (q.get('report') === '1') {
-    return new Response(perkesoFileReport(loaded.text), {
-      headers: { 'Content-Type': 'text/plain; charset=us-ascii', 'Cache-Control': 'private, no-store' },
-    });
+    // r296 — the report is told which REVISION these bytes are, and how much SKBBK that revision could
+    // not carry. Both come from the same load the file came from, so the report cannot describe a
+    // different layout from the one downloaded.
+    return new Response(
+      perkesoFileReport(loaded.text, { layout: loaded.layout, skbbkNotCarried: loaded.skbbkNotCarried }),
+      {
+        headers: { 'Content-Type': 'text/plain; charset=us-ascii', 'Cache-Control': 'private, no-store' },
+      },
+    );
   }
 
   return new Response(loaded.text, {
     headers: {
       'Content-Type': 'text/plain; charset=us-ascii',
-      'Content-Disposition': `attachment; filename="${uploadFilename(loaded.form.employerCode, loaded.form.contributionPeriodKey)}"`,
+      'Content-Disposition': `attachment; filename="${perkesoUploadFilename(loaded.form.employerCode, loaded.form.contributionPeriodKey)}"`,
       'Cache-Control': 'private, no-store',
     },
   });

@@ -67,6 +67,15 @@ export type Borang8ARow = {
   eisEmployer: number;
   eisEmployee: number;
   wage: number | null;
+  /**
+   * r296 — THE FIFTH LEG, carried for the upload file and printed nowhere.
+   *
+   * SKBBK / Lindung 24 Jam is an EMPLOYEE-only leg, mandatory since 1 June 2026, and the paper Borang 8A
+   * has no column for it — the read already says so in its reconciliation strip ("SKBBK — not on this
+   * form"). It rides here because PERKESO's v2.0 upload file DOES have a box for it from 1 October 2026,
+   * and the file is built from these rows. Adding it changes nothing about the printed form.
+   */
+  skbbk: number;
 };
 
 /** One printed sheet: its rows, its own "Jumlah muka surat ini", and its Lembaran n/N. */
@@ -277,6 +286,10 @@ export function borang8AFrom(p: {
     eisEmployer: round2(Number(r.eisEmployer) || 0),
     eisEmployee: round2(Number(r.eisEmployee) || 0),
     wage: r.wage == null ? null : round2(Number(r.wage) || 0),
+    // r296 — 0 rather than null for a row that predates SKBBK: a payslip written before 1 June 2026
+    // genuinely deducted none, which is not the same situation as `wage`, where an absent base means the
+    // figure was never recorded and the file must refuse rather than guess.
+    skbbk: round2(Number(r.skbbk) || 0),
   }));
   const pages = paginateBorang8A(rows, p.perPage);
   return {
