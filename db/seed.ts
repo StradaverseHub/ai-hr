@@ -24,11 +24,23 @@ import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createAdminChain, seedCompanyCatalogs, seedTenantCatalogs } from './provision';
 import { seedCatalogs } from '../scripts/seed-catalogs';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
+// r290 / readiness 1.1 — this seeder TRUNCATEs 24 tables. The refusal that keeps it off a customer's
+// database, and the reasoning for the exact signals it fires on, live in db/seed-guard.ts.
+import { DEMO_TENANT_ID, demoSeedRefusal, foreignTenantRefusal } from './seed-guard';
 
-const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
+const DEV_TENANT_ID = DEMO_TENANT_ID;
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
 /** The dedicated OPERATOR dev identity (0295) — separate login, separate tier, never the HR admin. */
 const DEV_OPERATOR_USER_ID = '33333333-3333-3333-3333-333333333333';
+
+// R1-R3, decided from the environment BEFORE a connection is opened, so a refusal costs nothing and
+// cannot half-run. process.exit(1) rather than a throw: the operator reading a deploy log needs the
+// reason, not a stack trace, and `deploy.sh` runs under `set -e` so a non-zero exit stops the deploy.
+const envRefusal = demoSeedRefusal(process.env);
+if (envRefusal) {
+  console.error(envRefusal);
+  process.exit(1);
+}
 
 const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 
@@ -42,6 +54,18 @@ const TABLES = [
 ];
 
 async function main() {
+  // R4 — the only signal that is about the DATABASE rather than about an env file somebody copied.
+  // Read through the owner client (no RLS, no tenant context) so it sees every tenant, and read it
+  // here rather than at module load because it is the last thing that happens before the TRUNCATE.
+  const tenants = await owner.client<{ id: string; name: string | null }[]>`
+    select id::text as id, name from tenant order by id
+  `;
+  const dataRefusal = foreignTenantRefusal(tenants, process.env);
+  if (dataRefusal) {
+    console.error(dataRefusal);
+    process.exit(1);
+  }
+
   console.log('Resetting dev database…');
   await owner.db.execute(sql.raw(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`));
 
