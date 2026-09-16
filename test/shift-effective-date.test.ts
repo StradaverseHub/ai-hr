@@ -49,6 +49,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -529,7 +530,7 @@ describe('the Shift history list under the card', () => {
       .from(schema.employment)
       .where(eq(schema.employment.id, empId));
     const userId = await createAppUser(b.tenantId, emp.personId, 'employee');
-    const selfCtx: SessionContext = { tenantId: b.tenantId, userId, personId: emp.personId, roles: ['employee'] };
+    const selfCtx: SessionContext = { tenantId: b.tenantId, userId, personId: emp.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
 
     expect((await shiftArrangementHistory(selfCtx, empId)).map((r) => r.effectiveFrom)).toEqual([HIRED]);
     await expect(

@@ -28,6 +28,7 @@ import {
   seedBase,
   setSetting,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
@@ -95,7 +96,10 @@ async function hire(name: string, basic = 5000) {
 /** An ESS session for a hired person — the context whose visibility this whole item is about. */
 async function employeeCtx(personId: string): Promise<SessionContext> {
   const userId = await createAppUser(base.tenantId, personId, 'employee');
-  return { tenantId: base.tenantId, userId, roles: ['employee'], personId };
+  // r292 — a REAL snapshot: the ESS payslip reads go through core/payroll.ts / core/payroll-view.ts,
+  // which are module-gated now (core/module-gate.ts). This file is about RELEASE visibility, not about
+  // entitlement, so the fixture states the tenant holds Payroll.
+  return { tenantId: base.tenantId, userId, roles: ['employee'], personId, entitlements: harnessSnapshot(base.tenantId) };
 }
 
 const batchRow = async (batchId: string) => {

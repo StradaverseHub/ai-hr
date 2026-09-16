@@ -26,7 +26,10 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 21 processed-payslip
+// read models refuse a tenant without the Payroll module. See core/module-gate.ts.
+import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
 // 9cbf5e0d — one Employee Status engine, shared with Personnel and the dashboard.

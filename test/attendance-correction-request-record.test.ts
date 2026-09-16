@@ -26,7 +26,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { hireEmployee } from '../core/org';
 import {
   addAttendanceCorrectionAttachment,
@@ -70,7 +70,9 @@ async function hire() {
 /** The employee themselves — cancellation is subject-only, so it cannot be exercised as the admin. */
 async function employeeCtx(personId: string): Promise<SessionContext> {
   const userId = await createAppUser(b.tenantId, personId, 'employee');
-  return { tenantId: b.tenantId, userId, personId, roles: ['employee'] } as SessionContext;
+  // r292 — a REAL snapshot: core/attendance.ts is module-gated now (core/module-gate.ts) and a context
+  // with neither entitlements nor an exemption marker is the EntitlementsUnresolvedError state.
+  return { tenantId: b.tenantId, userId, personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) } as SessionContext;
 }
 
 const png = () => Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');

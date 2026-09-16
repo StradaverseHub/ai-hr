@@ -45,6 +45,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -266,6 +267,7 @@ describe('day-by-day rows: guards', () => {
       userId: uPeer,
       personId: peer.personId,
       roles: ['employee'],
+      entitlements: harnessSnapshot(b.tenantId),
     };
     // resolveSchedule falls back to Mon-Fri when its employment join is RLS-empty, so without the explicit
     // employment guard this would have rendered a confident invented schedule for someone else's dates.

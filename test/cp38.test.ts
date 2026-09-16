@@ -36,6 +36,7 @@ import {
   seedBase,
   setModule,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
@@ -158,8 +159,8 @@ describe('1.2.3 CP38 Deduction', () => {
       validFrom: '2026-01-01',
     });
 
-    const selfCtx: SessionContext = { tenantId: base.tenantId, userId: uSelf, roles: ['employee'] };
-    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uMgr, roles: ['manager'] };
+    const selfCtx: SessionContext = { tenantId: base.tenantId, userId: uSelf, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
+    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uMgr, roles: ['manager'], entitlements: harnessSnapshot(base.tenantId) };
 
     // Self reads own CP38.
     const selfRows = await listCp38(selfCtx, { employmentId: me.employmentId });

@@ -28,6 +28,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let base: Base;
@@ -227,7 +228,7 @@ describe('My Payroll — Self TP1 (myTaxRelief)', () => {
   });
 
   it('empty when the principal has no person link', async () => {
-    const ctx: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'], personId: null };
+    const ctx: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'], personId: null, entitlements: harnessSnapshot(base.tenantId) };
     const ids = await myTaxReliefEmploymentIds(ctx);
     expect(ids).toEqual([]);
     const res = await myTaxRelief(ctx, ids, 2026);

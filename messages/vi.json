@@ -12198,5 +12198,9 @@
       "not_customer_visible": "Cài đặt đó do Stradaverse quản lý.",
       "wrong_type": "Đó không phải giá trị hợp lệ cho cài đặt này."
     }
+  },
+  "moduleUnavailable": {
+    "title": "Không nằm trong gói của bạn",
+    "body": "{module} không nằm trong gói đăng ký của bạn nên các màn hình liên quan không khả dụng. Quản trị viên của bạn có thể sắp xếp quyền truy cập."
   }
 }

@@ -20,6 +20,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 import {
   getCompanyLogo,
@@ -96,7 +97,7 @@ describe('company logo — storage, events, and RLS posture', () => {
       hiredOn: '2026-01-01',
     });
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     const asAdmin = await getCompanyLogo(adminCtx(base), base.companyId);
     const asMember = await getCompanyLogo(empCtx, base.companyId);
@@ -121,7 +122,7 @@ describe('company logo — storage, events, and RLS posture', () => {
       hiredOn: '2026-01-01',
     });
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     await expect(
       setCompanyLogo(empCtx, { companyId: base.companyId, content: PNG, fileName: 'x.png', mimeType: 'image/png', sizeBytes: PNG.byteLength }),

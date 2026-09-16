@@ -12198,5 +12198,9 @@
       "not_customer_visible": "That setting is managed by Stradaverse.",
       "wrong_type": "That is not a valid value for this setting."
     }
+  },
+  "moduleUnavailable": {
+    "title": "Not part of your plan",
+    "body": "{module} is not included in your subscription, so its screens are unavailable. Your administrator can arrange access."
   }
 }

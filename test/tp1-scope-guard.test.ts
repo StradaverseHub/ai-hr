@@ -22,7 +22,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { employmentSubject } from '../core/read';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 
 import { vi } from 'vitest';
@@ -75,6 +75,10 @@ const scopedToBase = (): SessionContext => ({
   userId: b.adminUserId,
   roles: ['hr_admin'],
   grants: [{ role: 'hr_admin', companyId: b.companyId }],
+  // r292 — a REAL snapshot: the TP1 page reads core/payroll-view.ts, which is module-gated now
+  // (core/module-gate.ts). This file is about COMPANY SCOPE, so the tenant must hold Payroll or the
+  // green below would be pinning an entitlement refusal instead of the scope guard it names.
+  entitlements: harnessSnapshot(b.tenantId),
 });
 
 describe('3e3d3fb2 — the TP1 screen’s employmentId, against the database', () => {
@@ -134,6 +138,7 @@ describe('3e3d3fb2 — the TP1 screen’s employmentId, against the database', (
       userId: mgrUser.id,
       roles: ['hr_admin'],
       grants: [{ role: 'hr_admin', companyId: b.companyId }],
+      entitlements: harnessSnapshot(b.tenantId), // r292 — see scopedToBase above.
     };
 
     // MEASURED, AND IT REFUSES. The plan predicted this branch would let a manager cross the company

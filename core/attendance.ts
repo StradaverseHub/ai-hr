@@ -9,7 +9,14 @@
  */
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withAttendanceTenant` — every exported entry
+// point refuses a tenant without the Attendance module. The pure day-math helpers this file exports to
+// the kernel (`isoWeekday`, `shiftSpan`, `netScheduledMinutes`, `shiftDayKindFor`, `isWorkingDayKind` —
+// read by core/leave.ts, core/roster.ts and core/absence-days.ts) open no transaction and stay ungated,
+// which is what keeps Leave and the roster working for a tenant without Attendance. See
+// core/module-gate.ts.
+import { withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';

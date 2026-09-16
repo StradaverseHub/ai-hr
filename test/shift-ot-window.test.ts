@@ -24,7 +24,7 @@ import { checkIn, checkOut } from '../core/attendance';
 import { createAttendanceRule } from '../core/attendance-rule';
 import { otMinutesFromWindows } from '../core/shift-ot-window';
 import { assignDefaultShift, createShift, listShiftOtWindows, replaceShiftOtWindows } from '../core/roster';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { withTenant, type SessionContext } from '../db/client';
 
 let b: Base;
@@ -317,7 +317,7 @@ describe('cf21e554 D — replaceShiftOtWindows', () => {
       .insert(schema.employment)
       .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' });
     const uE = await createAppUser(b.tenantId, p.id, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
 
     await expect(
       withTenant(empCtx, (tx) =>

@@ -41,6 +41,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let icSeq = 0;
@@ -346,7 +347,7 @@ describe('basic salary history (87c82b18 / 7c7c2f80)', () => {
 
     // The employee themselves (RLS self-read branch lets them SEE the row).
     const uE = await createAppUser(base.tenantId, emp.personId, 'employee');
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: emp.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: emp.personId, entitlements: harnessSnapshot(base.tenantId) };
     // A payroll partner for the company (reads comp to generate payslips; must not mutate it).
     const [uP] = await owner.db
       .insert(schema.appUser)

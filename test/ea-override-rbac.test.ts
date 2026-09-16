@@ -9,7 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -65,9 +65,9 @@ describe('1.2.6 EA Data Overwrite — RBAC / RLS', () => {
     const uA = await createAppUser(base.tenantId, A.personId, 'employee');
     const uB = await createAppUser(base.tenantId, B.personId, 'employee');
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
-    const subjectCtx: SessionContext = { tenantId: base.tenantId, userId: uA, personId: A.personId, roles: ['employee'] };
-    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uB, personId: B.personId, roles: ['employee'] };
-    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uM, personId: M.personId, roles: ['manager'] };
+    const subjectCtx: SessionContext = { tenantId: base.tenantId, userId: uA, personId: A.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
+    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uB, personId: B.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
+    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uM, personId: M.personId, roles: ['manager'], entitlements: harnessSnapshot(base.tenantId) };
 
     // Admin can amend.
     await setEaOverride(a, { employmentId: A.employmentId, year: '2026', field: 'allowances', amount: 1234.56, reason: 'admin amend' });

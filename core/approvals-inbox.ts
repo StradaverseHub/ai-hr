@@ -48,9 +48,32 @@ export type PendingTaskItem = {
   linkPath: string;
 };
 
+/**
+ * Which OPTIONAL-module queues the caller may include (r292).
+ *
+ * THE CALLER DECIDES, AND THAT IS THE POINT. `listAttendanceCorrections` and `listPendingClaims` are
+ * service-gated now (core/module-gate.ts) and throw `ModuleNotEnabledError` for a tenant that declined
+ * the pack — so this read model has to know, and the two honest ways to find out have OPPOSITE failure
+ * behaviour. `isModuleEnabled` is loud on an infrastructure fault, which is right for a service; the
+ * quiet `isModuleEnabledOrFalse` degrades, which is right for a page. This function is reached from
+ * `app/layout.tsx` — the ROOT layout, on every authenticated render — where a throw 500s every route in
+ * the application, and that file already says so about the notifications gate two lines above its call.
+ *
+ * So the decision is NOT taken here. `test/module-catalog-drift.test.ts` ratchets the quiet readers to
+ * `app/` for exactly this reason, and the correct answer is to honour that boundary rather than to widen
+ * its owners set: each caller resolves the two booleans with the form appropriate to where IT sits, and
+ * this file stays a plain read model with no entitlement read in it at all.
+ *
+ * REQUIRED, not optional with a default. A default would be a silent answer to a commercial question —
+ * `true` would throw for a declined tenant and `false` would hide real tasks from a paying one — and the
+ * next caller would inherit whichever was guessed. Making it a parameter puts the compiler on the hook.
+ */
+export type InboxModules = { attendance: boolean; claims: boolean };
+
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
+  modules: InboxModules,
 ): Promise<PendingTaskItem[]> {
   const admin = isAdmin(ctx);
   const manager = (ctx.roles ?? []).includes('manager');
@@ -68,13 +91,19 @@ export async function listPendingTasks(
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
     listPendingLeaveCancellations(ctx, scopeIds),
-    listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }),
+    // r292 — THE PENDING-TASK COUNT IS A CORE SURFACE (the dashboard tile and the header badge), so it
+    // must survive a tenant that declined the optional packs. `listAttendanceCorrections` and
+    // `listPendingClaims` are service-gated now (core/module-gate.ts) and would throw
+    // ModuleNotEnabledError here. Skipping the queue is also the honest answer: a customer without
+    // Attendance has no corrections awaiting anyone. The `...OrFalse` form is used for the reason its
+    // header gives — a resolver outage must cost one queue, not the whole inbox.
+    modules.attendance ? listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     // ADR-0069 Travel Request: same request→decide workflow, same inbox. An employee CAN self-file a travel
     // request (unlike a correction, which is blocked upstream), so it needs explicit self-exclusion below or
     // the requester's own item would leak into their own task list.
     listTravelRequests(ctx, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    listPendingClaims(ctx),
+    modules.claims ? listPendingClaims(ctx) : Promise.resolve([]),
     // Resignations are HR-decided (the service requires admin), so only admins carry them in the inbox.
     admin ? listResignationRequests(ctx, { status: 'pending' }) : Promise.resolve([]),
     // HR stage of reviews — admin-only decision.
@@ -166,6 +195,7 @@ export async function listPendingTasks(
 export async function pendingApprovalsCount(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
+  modules: InboxModules,
 ): Promise<number> {
-  return (await listPendingTasks(ctx, scopeIds)).length;
+  return (await listPendingTasks(ctx, scopeIds, modules)).length;
 }

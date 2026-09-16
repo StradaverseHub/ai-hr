@@ -574,7 +574,22 @@ export function clearHarnessEntitlementOverrides(): void {
  * ~247 files that models three of them answers a narrower question than the application does, silently.
  * `test/entitlement-resolver.test.ts` pins the mirror against the real resolver over all four.
  */
-function harnessSnapshot(tenantId: string): EntitlementSnapshot {
+/**
+ * EXPORTED at r292. The snapshot `adminCtx` carries, for any tenant id.
+ *
+ * WHY. r292 put the module gate at the SERVICE boundary (core/module-gate.ts), so a hand-built
+ * `SessionContext` literal that reaches a Claims, Attendance, Performance or Payroll service now has to
+ * answer a commercial question. A literal with neither `entitlements` nor an exemption marker is the
+ * `EntitlementsUnresolvedError` state — "nobody resolved this" — which is exactly right for the resolver
+ * to shout about and exactly wrong to leave in ~40 fixtures that model a real employee's session.
+ *
+ * `adminCtx(b).entitlements` covers the common case; this covers the rest — a foreign tenant in an RLS
+ * test, or a context built from a bare tenant id with no `Base` in hand. It is the SAME derivation
+ * `adminCtx` uses (LEGACY_ENABLED_MODULE_CODES plus whatever `setModule`/`setSetting` have mirrored), so
+ * a fixture cannot drift from what a freshly seeded tenant actually holds. For a test that needs the
+ * REAL rows rather than the mirror, `entitledCtx` is still the stricter choice.
+ */
+export function harnessSnapshot(tenantId: string): EntitlementSnapshot {
   return {
     // The snapshot names the tenant it belongs to — slice 2's attribution guard refuses a snapshot
     // resolved for one tenant being asked about another.

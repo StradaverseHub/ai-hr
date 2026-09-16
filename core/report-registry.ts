@@ -20,6 +20,7 @@ import { overtimeReport, attendanceDailyReport, performanceGoalReport, performan
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { payslipDisplayEarnings } from './pay-display-category';
 import { listClaimTypes } from './claims';
+import { assertModuleGate } from './module-gate';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 // ADR-0077 slice 6 (D-9) — the mixed-currency REFUSAL, not a formatter. See `runReportSpec`'s summary row.
@@ -602,6 +603,29 @@ export function reportVerbAllowed(
   );
 }
 
+/**
+ * Which MODULE each report category belongs to — `null` for the categories that are core (`master` is the
+ * employee master data, `leave` is a core module in packs/catalog.ts and can never be switched off).
+ *
+ * Deliberately a literal map rather than a string cast of the category: `claim` (the category) and
+ * `claims` (the module code) are not the same word, and a silent mismatch would make the gate vacuous.
+ * `test/module-gate.test.ts` pins every value against MODULE_CATALOG.
+ */
+export const REPORT_CATEGORY_MODULE: Record<ReportCategory, string | null> = {
+  master: null,
+  leave: null,
+  attendance: 'attendance',
+  payroll: 'payroll',
+  claim: 'claims',
+  performance: 'performance',
+};
+
+/** Refuse a report run for a module this tenant does not have. No-op for a core category. */
+export function assertReportCategoryEnabled(ctx: SessionContext, category: ReportCategory): void {
+  const code = REPORT_CATEGORY_MODULE[category];
+  if (code != null) assertModuleGate(ctx, code);
+}
+
 const contains = (v: string | number | null, needle: string): boolean =>
   v != null && String(v).toLowerCase().includes(needle.toLowerCase());
 
@@ -617,6 +641,13 @@ export async function runReportSpec(
 ): Promise<ReportData> {
   const ds = REPORT_DATASETS[spec.datasetId];
   if (!ds) throw new Error('unknown-dataset');
+  // r292 — THE REPORT AXIS IS ITS OWN DOOR INTO A PACK'S DATA, and it does not pass through the pack's
+  // screens: a saved spec is run from /reports, /reports/export and the AI designer. `ds.category` already
+  // names which module the dataset belongs to, so ONE gate here covers every present and future dataset in
+  // the four optional packs. Most dataset `run` bodies read schema tables directly rather than through the
+  // pack's service file, so the service binding alone would NOT have covered them — this is the second
+  // chokepoint, not a duplicate of the first.
+  assertReportCategoryEnabled(ctx, ds.category);
   const byId = new Map(ds.fields.map((f) => [f.id, f]));
   let rows = await ds.run(ctx, scopeIds, spec.filters ?? {});
 

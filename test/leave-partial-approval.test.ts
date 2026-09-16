@@ -57,6 +57,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -611,7 +612,7 @@ describe('Partial Leave Approval — RLS', () => {
 
     const other = await hire('Outsider');
     const uOther = await createAppUser(b.tenantId, other.personId, 'employee');
-    const otherCtx: SessionContext = { tenantId: b.tenantId, userId: uOther, personId: other.personId, roles: ['employee'] };
+    const otherCtx: SessionContext = { tenantId: b.tenantId, userId: uOther, personId: other.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     // A plain employee cannot see the subject's date rows…
     expect(await leaveRequestDateBreakdown(otherCtx, res.leaveRequestId)).toHaveLength(0);
     // …and cannot decide one (the request/date is not visible to them).

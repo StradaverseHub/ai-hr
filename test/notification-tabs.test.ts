@@ -10,7 +10,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave } from '../core/leave';
@@ -52,7 +52,11 @@ describe('listPendingTasks (Task tab)', () => {
       validFrom: '2024-01-01',
     });
     const uM = await createAppUser(b.tenantId, M.personId, 'manager');
-    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['manager'] };
+    // r292 — a REAL snapshot on this hand-built context. listPendingTasks fans out into the Claims and
+    // Attendance queues, both service-gated now (core/module-gate.ts), and a context with neither a
+    // snapshot nor an exemption marker is the state EntitlementsUnresolvedError exists to flag. Taken
+    // from adminCtx, so it says exactly what a freshly seeded tenant holds — not a hand-written guess.
+    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['manager'], entitlements: adminCtx(b).entitlements };
     await requestLeave(adminCtx(b), {
       employmentId: E.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
@@ -60,7 +64,7 @@ describe('listPendingTasks (Task tab)', () => {
       endDate: '2026-08-04',
     });
 
-    const tasks = await listPendingTasks(mgrCtx, undefined);
+    const tasks = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true });
     const leaveTasks = tasks.filter((t) => t.kind === 'leave');
     expect(leaveTasks).toHaveLength(1);
     expect(leaveTasks[0].subjectName).toBe('Task Emp');
@@ -68,13 +72,13 @@ describe('listPendingTasks (Task tab)', () => {
     expect(Number.isNaN(Date.parse(leaveTasks[0].createdAt))).toBe(false); // serializable ISO timestamp
 
     // Count parity — the legacy badge figure is exactly the task list's length.
-    expect(await pendingApprovalsCount(mgrCtx, undefined)).toBe(tasks.length);
+    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBe(tasks.length);
   });
 
   it('self-exclusion: your own pending travel request is a task for others, never for you', async () => {
     const M = await hire('Self Mgr');
     const uM = await createAppUser(b.tenantId, M.personId, 'manager');
-    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['manager'] };
+    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['manager'], entitlements: adminCtx(b).entitlements };
     const [travel] = await owner.db
       .insert(schema.travelRequest)
       .values({
@@ -88,10 +92,10 @@ describe('listPendingTasks (Task tab)', () => {
       .returning({ id: schema.travelRequest.id });
 
     // The requester never sees their own item in their Task tab…
-    const own = await listPendingTasks(mgrCtx, undefined);
+    const own = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true });
     expect(own.some((t) => t.kind === 'travel')).toBe(false);
     // …but an admin (a different person) does, linked to the approvals page.
-    const adminTasks = await listPendingTasks(adminCtx(b), undefined);
+    const adminTasks = await listPendingTasks(adminCtx(b), undefined, { attendance: true, claims: true });
     const travelTask = adminTasks.find((t) => t.kind === 'travel' && t.id === travel.id);
     expect(travelTask).toBeDefined();
     expect(travelTask!.linkPath).toBe('/approvals');
@@ -101,9 +105,9 @@ describe('listPendingTasks (Task tab)', () => {
   it('a plain employee (no roles, no assigned reviews) has an empty task list and a zero count', async () => {
     const E = await hire('Plain Emp');
     const uE = await createAppUser(b.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
-    expect(await listPendingTasks(empCtx, undefined)).toEqual([]);
-    expect(await pendingApprovalsCount(empCtx, undefined)).toBe(0);
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: adminCtx(b).entitlements };
+    expect(await listPendingTasks(empCtx, undefined, { attendance: true, claims: true })).toEqual([]);
+    expect(await pendingApprovalsCount(empCtx, undefined, { attendance: true, claims: true })).toBe(0);
   });
 });
 
@@ -111,7 +115,7 @@ describe('notification read filters (Notification / Task / History split)', () =
   async function recipient() {
     const E = await hire('Notif Recipient');
     const uE = await createAppUser(b.tenantId, E.personId, 'employee');
-    const ctx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const ctx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     return { employmentId: E.employmentId, ctx };
   }
   const notif = (recipientEmploymentId: string, severity: 'info' | 'action' | 'warning', title: string) => ({

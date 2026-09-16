@@ -16,7 +16,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPerformanceTenant` — all 49 exported entry
+// points refuse a tenant without the Performance module. `currentAdminManager` takes a `tx` and is
+// therefore NOT gated, deliberately: core/employment-review.ts (employment spine) calls it and must
+// keep working. See core/module-gate.ts.
+import { withPerformanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
