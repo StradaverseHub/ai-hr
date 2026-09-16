@@ -19,6 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
+import { resolveEntitlementsTx } from '../core/entitlements';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { decideLeave, decideLeaveDate, requestLeave } from '../core/leave';
@@ -51,7 +52,13 @@ async function delegate(delegatorEmp: string, delegateEmp: string, validFrom = '
 }
 async function userCtx(personId: string, role: 'employee' | 'manager'): Promise<SessionContext> {
   const uid = await createAppUser(b.tenantId, personId, role);
-  return { tenantId: b.tenantId, userId: uid, roles: [role], personId };
+  // r292: resolve a REAL entitlement snapshot. The pack services are now bound to withModuleTenant(),
+  // so a context with no snapshot throws EntitlementsUnresolvedError. Do NOT swap this for
+  // `entitlementsExempt`: every gated pack (attendance, payroll, claims, performance) is billable: true,
+  // and an exempt context asked about a billable module throws EntitlementsExemptForBillableError by
+  // design — an exemption asserts "entitlements do not apply to me", true only of a core module.
+  const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, b.tenantId));
+  return { tenantId: b.tenantId, userId: uid, roles: [role], personId, entitlements };
 }
 /** Seed an ANNUAL balance so terminal approval passes the approval-time balance guard. */
 async function grantAnnual(employmentId: string, days = '20') {

@@ -46,6 +46,7 @@ import {
   setModule,
   type Base,
 } from './harness';
+import { resolveEntitlementsTx } from '../core/entitlements';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { dispatchNotifications } from '../core/notifications';
 import { setCompensation } from '../core/comp';
@@ -113,7 +114,13 @@ async function hire(code?: string) {
  *  exercised through the admin fixture context. */
 async function employeeCtx(personId: string): Promise<SessionContext> {
   const userId = await createAppUser(b.tenantId, personId, 'employee');
-  return { tenantId: b.tenantId, userId, personId, roles: ['employee'] } as SessionContext;
+  // r292: resolve a REAL entitlement snapshot. The pack services are now bound to withModuleTenant(),
+  // so a context with no snapshot throws EntitlementsUnresolvedError. Do NOT swap this for
+  // `entitlementsExempt`: every gated pack (attendance, payroll, claims, performance) is billable: true,
+  // and an exempt context asked about a billable module throws EntitlementsExemptForBillableError by
+  // design — an exemption asserts "entitlements do not apply to me", true only of a core module.
+  const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, b.tenantId));
+  return { tenantId: b.tenantId, userId, personId, roles: ['employee'], entitlements } as SessionContext;
 }
 
 const attendanceRow = async (employmentId: string, date: string) =>
