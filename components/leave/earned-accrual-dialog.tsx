@@ -8,6 +8,7 @@ import { Button } from '../ui';
 import {
   EarnedAccrualCard,
   type EarnedScopeOption,
+  type EarnedLeaveTypeOption,
   type EarnedLeaveYearOption,
 } from '../earned-accrual-card';
 
@@ -32,12 +33,16 @@ export function EarnedAccrualDialog({
   companies,
   grades,
   leaveTypes,
+  sweptLeaveTypeNames,
   leaveYears,
   defaultYear,
 }: {
   companies: EarnedScopeOption[];
   grades: EarnedScopeOption[];
-  leaveTypes: EarnedScopeOption[];
+  /** r293 — each active type carries whether this sweep can reach it; forwarded untouched. */
+  leaveTypes: EarnedLeaveTypeOption[];
+  /** r293 — the tenant's own names for the ACTIVE swept types, A–Z; forwarded untouched. */
+  sweptLeaveTypeNames: string[];
   leaveYears: EarnedLeaveYearOption[];
   defaultYear: number;
 }) {
@@ -63,6 +68,7 @@ export function EarnedAccrualDialog({
               companies={companies}
               grades={grades}
               leaveTypes={leaveTypes}
+              sweptLeaveTypeNames={sweptLeaveTypeNames}
               leaveYears={leaveYears}
               defaultYear={defaultYear}
             />
