@@ -1,3 +1,106 @@
+## r290 (2026-09-16) — four customer-readiness items, and the merge defect neither branch could see. `main@f87b6c7b`, **migration 0465**.
+
+Readiness **1.1** (the deploy path seeds demo data into a customer's database), **1.4** (the password gate
+fails open), **1.7** (the last RLS hole), and the Part 4 **knowledge base** hole — plus a second authoring
+door the survey never found. Driven by the owner's goal, not the board.
+Gate: **871 files, 13,171 tests, 0 AssertionErrors**, every chunk counted==asked. `next build` exit 0.
+`pnpm gate:shadow` **PASS (381/381 against the live-shaped schema)**, 380 → 381.
+
+### THE ONE THAT WOULD HAVE HURT A CUSTOMER ON DAY ONE
+
+`deploy/deploy.sh` hard-required `DEV_TENANT_ID` and ran the demo seeder whenever that tenant row was
+**absent from the target database** — which on a fresh customer database is **always**. Following the
+documented runbook on a customer's box planted `Demo Group` in their production database on the first
+deploy, and `db/seed.ts` had no refusal of any kind.
+
+**The lesson is in the guard's shape, not the fix.** The survey proposed refusing on
+`NODE_ENV=production && ALLOW_DEMO_SESSION unset`. On its own that is worth very little, and the reason is
+worth keeping: **the gated demo box and a customer box that copied the demo template are, in the
+environment, the same deployment** — both `NODE_ENV=production`, both `ALLOW_DEMO_SESSION=true`. A guard
+built only out of environment variables is satisfiable by the single likeliest operator mistake there is.
+
+So `db/seed-guard.ts` layers four refusals of deliberately **different kinds**, and R4 is the one that
+carries the weight: **the target database already holds a tenant row this seeder did not create**, read
+live through the owner client immediately before the TRUNCATE. It is the only signal that is about the
+DATABASE rather than about a file somebody copied.
+
+**Residual gap, stated rather than hidden:** a customer who copies the DEMO template AND runs the DEMO path
+against an EMPTY database is by construction indistinguishable from the demo box. No env guard can close
+that. It is closed structurally — the customer path cannot reach the seeder at all.
+
+**Operational consequence on THIS box, verified:** `./deploy/deploy.sh --reseed` will now be **refused**,
+because `System (auth audit)` (`00000000-…`) is a second tenant and the seeder's TRUNCATE list includes
+`domain_event`, `app_user` and `role_assignment`. That is the guard working — a reseed genuinely would
+destroy the auth audit trail. `SEED_MAY_DESTROY_OTHER_TENANTS=1` is the documented escape. **Normal
+deploys are untouched**: the demo tenant exists, so the seeder is never invoked, proven by a byte-identical
+execution trace against main for no-args, `--reseed` and `--migrate-only`.
+
+### THE MERGE DEFECT: TWO GREEN BRANCHES, ONE RED TREE
+
+Chunk 23 came back **RED with 9 AssertionErrors** — *not* the `AE=0` environment signature, so it was real.
+Every failure read `expected 1 to be +0`.
+
+1.4 added a hard `: "${SHARE_PASSWORD:?…}"` preflight to `deploy/deploy.sh` **above everything 1.1's
+deploy-path tests exercise**. On the merged tree the script exited 1 before reaching any seeder decision,
+and nine assertions failed while saying nothing whatsoever about seeding. **Neither agent could have caught
+it: each branch was green alone.**
+
+**The product was correct** — both `deploy/.env.customer.example` and `deploy/.env.production.example` set
+`SHARE_PASSWORD`, so no operator is affected. Only the fixtures, written before the preflight existed, were
+out of step with the templates they model. Fixed there, with the refusal left pinned where it belongs in
+`test/share-gate.test.ts`.
+
+**This is the argument for an integration gate over per-branch greens**, and it is the first time this
+session that the merged tree failed where every branch passed.
+
+### 1.4 — A PER-REQUEST GUARD CANNOT BE A STARTUP REFUSAL, SO IT IS BOTH
+
+Middleware runs per request, so "refuse to start" is not achievable there. The **real** arm is a deploy
+preflight (`deploy/deploy.sh:113`), before install/build/migrate, so the box is never rebuilt and keeps
+serving the previous gated build. The **backstop** is a per-request **503** for any start that did not come
+through the deploy script — and auth routes refuse too, because a missing password is a broken deployment,
+not a gate decision.
+
+Deliberately **not** a `next.config.ts` throw: that would break `next build` for every developer and the
+repo's own gate. Proven on a real `next start` built WITHOUT the variable (503 on `/`, `/login`, `/people`)
+and the same build with it supplied at runtime (401), which also proves nothing is inlined at build time.
+
+### 1.7 — BOTH REMEDIES, BECAUSE ONE OF THEM SILENTLY UNDOES ITSELF
+
+`tenant_suspension_window` was the one table of 173 without RLS, with `ai_hr_app` holding full CRUD.
+Chose **revoke every privilege AND enable RLS with no policy** — not either/or. The reason: the grant exists
+only because `ALTER DEFAULT PRIVILEGES` hands it out, so **a re-bootstrap would silently restore it**;
+RLS-with-no-policy survives that. Not `FORCE`, because here the legitimate writers *are* the owner.
+All six cron jobs checked first — none references the table, all connect as `ai_hr_owner`, which `ENABLE`
+does not filter.
+
+**0453's own comment is wrong, and that is why this survived.** It lists this table among those `ai_hr_app`
+"CANNOT read … LEFT ALONE, BECAUSE THEY ARE CORRECT." True of a REBUILT cluster; false of every
+BOOTSTRAPPED one. Production measured `DELETE,INSERT,SELECT,UPDATE`.
+
+**Migration numbering, checked rather than assumed:** 0465 is also taken on `build/r279-credit`. That branch
+is permanently unmerged and this history's own r279 entry says the *resumed branch* must re-derive — so 0465
+was free on main and was used. Verified: not in main's tree, r279-credit not an ancestor of main.
+
+### THE KNOWLEDGE BASE HAD TWO DOORS, AND NO DATABASE BACKSTOP
+
+`createArticleAction` ran on a bare session with no admin gate. The survey missed **`uploadFileAction`** —
+identical exposure, any employee uploading 10 MB at any audience. Both now admin-only.
+
+**The detail that matters for anyone who later touches this:** `0039_kb_rls.sql`'s INSERT policy is
+`WITH CHECK (tenant_id = app.current_tenant_id())` and nothing more — ADR-0017 §3 deliberately chose open
+contribution. **There is no RLS backstop for a create.** Unlike every other admin write in this product,
+the application guard is the only one. A test pins that a raw INSERT is *still accepted by Postgres*, so a
+green refusal test can never be mistaken for RLS doing the work.
+
+### TWO FINDINGS BEYOND THIS ROUND'S SCOPE
+
+- **`ai_hr_platform` does not exist on production.** Migration 0351's `DO` block took its skip branch, so
+  ADR-0077 D5's plane isolation is **currently unrealised on the live box** — a defence one might believe is
+  in place and is not.
+- **`next build` warns the `middleware` file convention is deprecated** in Next 16.2.7 ("use `proxy`").
+  Untouched, but 1.4's enforcement now lives partly in that file.
+
 ## r289 (2026-09-16) — the paste box takes the Employee ID you can see. `main@b2f55cb8`, **no migration**.
 
 `0d2b17ce`, raised by the operator loop after r288 and approved by the reporter. `3fb1a611` still not built.
