@@ -47,6 +47,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 import type { SessionContext } from '../db/client';
 
@@ -587,7 +588,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
     const a = adminCtx(b);
     const { personId } = await hire(a, 'A1001');
     const uid = await createAppUser(b.tenantId, personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
 
     // The per-period write is isolated in its own transaction, so RLS denial surfaces as a failed
     // period (not a thrown call) — but the crucial guarantee is the same: NOTHING is written.

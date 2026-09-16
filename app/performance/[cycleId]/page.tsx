@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -49,7 +50,12 @@ export default async function CyclePage({
   const today = todayInKualaLumpur();
   const nextDay = new Date(Date.parse(`${cycle.periodEnd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
-  const batches = await listBatches(s);
+  // r292 — PERFORMANCE AND PAYROLL ARE SEPARATELY SOLD, and this screen reads payroll only for the comp
+  // seam (a merit/bonus recommendation is enacted onto a DRAFT batch). `listBatches` is service-gated
+  // (core/module-gate.ts), so a tenant with Performance but WITHOUT Payroll would have had this page throw.
+  // No Payroll ⇒ no draft batches ⇒ the enact control simply has nowhere to post, which is what the empty
+  // list already expresses; `enactCompAction` refuses at the payroll service if it is reached anyway.
+  const batches = isModuleEnabledOrFalse(s, 'payroll') ? await listBatches(s) : [];
   const draftBatches = batches.filter((b) => b.status === 'draft');
   const pendingComp = roster.filter((r) => r.compActionStatus === 'recommended');
   const maxDist = Math.max(1, ...distribution.map((d) => d.count));

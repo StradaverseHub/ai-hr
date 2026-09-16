@@ -6,7 +6,7 @@
  * route surfaces as 404. This is the load-bearing guard that an employee cannot pull a colleague's EA.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -54,8 +54,8 @@ describe('EA PDF route — authorization (RLS null → 404)', () => {
 
     const uA = await createAppUser(base.tenantId, A.personId, 'employee');
     const uB = await createAppUser(base.tenantId, B.personId, 'employee');
-    const ownerCtx: SessionContext = { tenantId: base.tenantId, userId: uA, personId: A.personId, roles: ['employee'] };
-    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uB, personId: B.personId, roles: ['employee'] };
+    const ownerCtx: SessionContext = { tenantId: base.tenantId, userId: uA, personId: A.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
+    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uB, personId: B.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     // Owner sees their own EA.
     const own = await employeeEaStatement(ownerCtx, { employmentId: A.employmentId, year: '2026' });

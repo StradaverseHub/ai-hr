@@ -43,6 +43,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -341,7 +342,7 @@ describe('2.1.3 Hourly — RLS regression (inherits the 0128 policy)', () => {
     // A non-admin employee in the tenant CAN read the hourly row (kernel resolves under the caller's session).
     const e = await hire('NonAdminHourly');
     const uE = await createAppUser(b.tenantId, e.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     const seen = await withTenant(empCtx, (tx) =>
       tx.select().from(schema.payrollPolicy).where(eq(schema.payrollPolicy.id, id)),
     );

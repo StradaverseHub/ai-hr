@@ -19,7 +19,7 @@ import {
   submitPeerFeedback,
 } from '../core/performance';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -58,10 +58,10 @@ describe('ADR-0022 — 360 peer feedback', () => {
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
     const uX = await createAppUser(base.tenantId, X.personId, 'employee');
     const uY = await createAppUser(base.tenantId, Y.personId, 'employee');
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId };
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
-    const xCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'], personId: X.personId };
-    const yCtx: SessionContext = { tenantId: base.tenantId, userId: uY, roles: ['employee'], personId: Y.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const xCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'], personId: X.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const yCtx: SessionContext = { tenantId: base.tenantId, userId: uY, roles: ['employee'], personId: Y.personId, entitlements: harnessSnapshot(base.tenantId) };
     const { cycleId } = await createCycle(a, { name: '2026 Annual', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });
     const [review] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.employmentId, E.employmentId));

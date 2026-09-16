@@ -14,7 +14,7 @@ import {
   scheduleCheckIn,
 } from '../core/performance';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -52,9 +52,9 @@ describe('ADR-0022 — 1:1 check-ins', () => {
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
     const uX = await createAppUser(base.tenantId, X.personId, 'employee');
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId };
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
-    const xCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'], personId: X.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const xCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'], personId: X.personId, entitlements: harnessSnapshot(base.tenantId) };
     return { a, E, M, X, eCtx, mCtx, xCtx };
   }
 

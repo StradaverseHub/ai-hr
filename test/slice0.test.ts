@@ -50,6 +50,7 @@ import {
   seedBase,
   seedEntitlement,
   type Base,
+  harnessSnapshot,
 } from './harness';
 import {
   getAssignmentAsOf,
@@ -283,8 +284,8 @@ describe('UC9 — ABAC visibility', () => {
       endDate: '2026-02-03',
     });
 
-    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'] };
-    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'] };
+    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], entitlements: harnessSnapshot(base.tenantId) };
+    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uX, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     const mgrSeesReport = await withTenant(mgrCtx, (tx) =>
       tx.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.employmentId, E.employmentId)),
@@ -384,7 +385,7 @@ describe('reporting lines — valid edge', () => {
 
 describe('hardening — role-gated writes', () => {
   it('a non-admin session cannot create a company (RLS denies)', async () => {
-    const employee: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'] };
+    const employee: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     await expect(createCompany(employee, { legalName: 'Sneaky Sdn Bhd' })).rejects.toThrow();
   });
 });
@@ -1761,6 +1762,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
       userId: uM,
       personId: M.personId,
       roles: ['manager'],
+      entitlements: harnessSnapshot(base.tenantId),
     };
     await expect(
       decideProfileChange(mgrCtx, { requestId, decision: 'approved' }),
@@ -1805,7 +1807,7 @@ describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
       .where(eq(schema.payslip.employmentId, E.employmentId));
 
     const uE = await createAppUser(b.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     const own = await payslipDetail(empCtx, slip.id);
     expect(own?.payPeriod).toBe('2026-05');
     expect(Number(own?.gross)).toBe(5000);
@@ -1814,7 +1816,7 @@ describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
     // A peer with no visibility gets nothing back (RLS USING can_see_employment).
     const X = await hire(a, b, 'Nosey');
     const uX = await createAppUser(b.tenantId, X.personId, 'employee');
-    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
+    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     expect(await payslipDetail(peerCtx, slip.id)).toBeNull();
   });
 });
@@ -2390,8 +2392,8 @@ describe('UC — performance: state machine, authz, pay seam', () => {
       lineType: 'administrative',
       validFrom: '2026-01-01',
     });
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId };
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId, entitlements: harnessSnapshot(base.tenantId) };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
     const { cycleId } = await createCycle(a, { name: '2026 Annual', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });
     const [review] = await owner.db
@@ -2680,7 +2682,7 @@ describe('UC — domain_event subject-scoped privacy (ADR-0015)', () => {
     const B = await hire(a, base, 'Bravo'); // an unrelated peer (no reporting line)
     await setCompensation(a, { employmentId: B.employmentId, basicSalary: 7000, effectiveFrom: '2026-01-01' });
     const uA = await createAppUser(base.tenantId, A.personId, 'employee');
-    const aCtx: SessionContext = { tenantId: base.tenantId, userId: uA, roles: ['employee'], personId: A.personId };
+    const aCtx: SessionContext = { tenantId: base.tenantId, userId: uA, roles: ['employee'], personId: A.personId, entitlements: harnessSnapshot(base.tenantId) };
 
     // Peer isolation: Alpha cannot see any of Bravo's events (hire, compensation).
     expect(await eventsFor(aCtx, B.employmentId)).toHaveLength(0);
@@ -2702,7 +2704,7 @@ describe('UC — domain_event subject-scoped privacy (ADR-0015)', () => {
       validFrom: '2026-01-01',
     });
     await seedEntitlement(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 14, validFrom: '2026-01-01' });
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
 
     // The manager sees their report's events…
     expect((await eventsFor(mCtx, E.employmentId)).length).toBeGreaterThan(0);

@@ -42,6 +42,7 @@ import {
   seedBase,
   setModule,
   type Base,
+  harnessSnapshot,
 } from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -206,7 +207,7 @@ describe('attendance-allowance policy CRUD + RLS', () => {
     });
     const [person] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, emp.employmentId));
     const empUserId = await createAppUser(b.tenantId, person.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: empUserId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: empUserId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     await expect(
       createAllowancePolicy(empCtx, { companyId: b.companyId, code: 'X', name: 'X', amount: 100, payComponentId: componentId, effectiveFrom: '2026-07-01' }),
     ).rejects.toThrow();

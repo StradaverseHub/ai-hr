@@ -18,7 +18,7 @@ import {
   submitClaimWithAttachment,
 } from '../core/claims';
 import { hireEmployee } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -95,7 +95,7 @@ describe('ADR-0021 — claim lifecycle', () => {
     const { a, E, typeId } = await setup();
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
     const { id } = await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 80, incurredOn: '2026-06-01' });
-    const ownCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const ownCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     await expect(decideClaim(ownCtx, { claimRequestId: id, decision: 'approve' })).rejects.toThrow();
   });
 
@@ -105,8 +105,8 @@ describe('ADR-0021 — claim lifecycle', () => {
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
     const uX = await createAppUser(base.tenantId, X.personId, 'employee');
     const { id } = await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 90, incurredOn: '2026-06-01' });
-    const ownCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
-    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
+    const ownCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
+    const peerCtx: SessionContext = { tenantId: base.tenantId, userId: uX, personId: X.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     await expect(cancelClaim(peerCtx, id)).rejects.toThrow(); // peer can't even see it (RLS) → not found
     await cancelClaim(ownCtx, id);
     expect((await listClaimsForEmployment(a, E.employmentId)).find((c) => c.id === id)?.status).toBe('cancelled');
@@ -137,7 +137,7 @@ describe('ADR-0021 — claim lifecycle', () => {
     const { a, E, typeId } = await setup();
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
     // A REAL employee session for E's own employment (personId set → RLS can_see_employment passes for self).
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     const { id } = await submitClaim(empCtx, { employmentId: E.employmentId, claimTypeId: typeId, amount: 130, incurredOn: '2026-06-01' });
     // The claim is CREATED and visible in the employee's own My Claims list.
     const mine = await listClaimsForEmployment(empCtx, E.employmentId);
@@ -149,7 +149,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   it('submitClaimWithAttachment: employee submit + receipt is atomic (claim + attachment in one tx)', async () => {
     const { a, E, typeId } = await setup();
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     const { id } = await submitClaimWithAttachment(
       empCtx,
       { employmentId: E.employmentId, claimTypeId: typeId, amount: 60, incurredOn: '2026-06-01', hasReceipt: true },
@@ -165,7 +165,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   it('submitClaimWithAttachment: a bad receipt ROLLS BACK the claim (no committed-claim-behind-an-error)', async () => {
     const { a, E, typeId } = await setup();
     const uE = await createAppUser(base.tenantId, E.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     // A disallowed MIME must throw AND leave nothing behind — the whole submit rolls back.
     await expect(
       submitClaimWithAttachment(

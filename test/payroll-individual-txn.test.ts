@@ -78,6 +78,7 @@ import {
   setModule,
   setSetting,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 describe('1.2.2 Individual Transaction', () => {
@@ -348,7 +349,7 @@ describe('1.2.2 Individual Transaction', () => {
       hiredOn: '2026-01-01',
     });
     const uE = await createAppUser(base.tenantId, emp.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     // The employee can NOT read the admin-only ledger (can_admin_payroll_for is false).
     const seen = await withTenant(empCtx, (tx) =>
@@ -950,7 +951,7 @@ describe('1.2.2 Individual Transaction', () => {
       hiredOn: '2026-01-01',
     });
     const uE = await createAppUser(base.tenantId, emp.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
     await expect(
       createIndividualTxnsBulk(empCtx, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
     ).rejects.toThrow();

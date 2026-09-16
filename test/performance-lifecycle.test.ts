@@ -40,7 +40,7 @@ import {
 import { dispatchNotifications } from '../core/notifications';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { adminCtx, closeAll, createAppUser, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string, deptId?: string) =>
   hireEmployee(ctx, {
@@ -73,9 +73,9 @@ describe('performance lifecycle', () => {
     const M = await hire(a, base, 'Manager');
     const E1 = await hire(a, base, 'Emp', opts.deptId);
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
     const uE = await createAppUser(base.tenantId, E1.personId, 'employee');
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E1.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E1.personId, entitlements: harnessSnapshot(base.tenantId) };
     await setReportingLine(a, { subordinateEmploymentId: E1.employmentId, managerEmploymentId: M.employmentId, lineType: 'administrative', validFrom: '2026-01-01' });
     const { cycleId } = await createCycle(a, { name: '2026 Annual', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });
@@ -134,7 +134,7 @@ describe('performance lifecycle', () => {
     const a = adminCtx(base);
     const S = await hire(a, base, 'Sadmin');
     const uS = await createAppUser(base.tenantId, S.personId, 'super_admin');
-    const sCtx: SessionContext = { tenantId: base.tenantId, userId: uS, roles: ['super_admin'], personId: S.personId };
+    const sCtx: SessionContext = { tenantId: base.tenantId, userId: uS, roles: ['super_admin'], personId: S.personId, entitlements: harnessSnapshot(base.tenantId) };
     const { cycleId } = await createCycle(a, { name: 'C', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });
     const [rev] = await owner.db
@@ -149,7 +149,7 @@ describe('performance lifecycle', () => {
     // A second employee (peer) who is not E1's manager.
     const P = await hire(a, base, 'Peer');
     const uP = await createAppUser(base.tenantId, P.personId, 'employee');
-    const pCtx: SessionContext = { tenantId: base.tenantId, userId: uP, roles: ['employee'], personId: P.personId };
+    const pCtx: SessionContext = { tenantId: base.tenantId, userId: uP, roles: ['employee'], personId: P.personId, entitlements: harnessSnapshot(base.tenantId) };
     const { id: goalId } = await createGoal(eCtx, { employmentId: E1.employmentId, cycleId, title: 'Ship it' });
     await proposeGoals(eCtx, { reviewId: r1 });
     await expect(approveGoal(pCtx, { goalId })).rejects.toThrow(); // assertCanDecide → plain Error
@@ -330,7 +330,7 @@ describe('performance lifecycle', () => {
     // A peer (no RLS access to the subject) cannot read the bytes → not found.
     const P = await hire(a, base, 'Stranger');
     const uP = await createAppUser(base.tenantId, P.personId, 'employee');
-    const pCtx: SessionContext = { tenantId: base.tenantId, userId: uP, roles: ['employee'], personId: P.personId };
+    const pCtx: SessionContext = { tenantId: base.tenantId, userId: uP, roles: ['employee'], personId: P.personId, entitlements: harnessSnapshot(base.tenantId) };
     expect(await getPerformanceAttachment(pCtx, attId)).toBeNull();
     // …but the subject can.
     expect(await getPerformanceAttachment(eCtx, attId)).not.toBeNull();

@@ -44,7 +44,7 @@ import {
   submitSelfReview,
 } from '../core/performance';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -85,9 +85,9 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
       validFrom: '2026-01-01',
     });
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
     const uE = await createAppUser(base.tenantId, E1.personId, 'employee');
-    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E1.personId };
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E1.personId, entitlements: harnessSnapshot(base.tenantId) };
 
     const { cycleId } = await createCycle(a, { name: '2026 Annual', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });

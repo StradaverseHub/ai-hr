@@ -56,6 +56,7 @@ import {
   setModule,
   setSetting,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let icSeq = 0;
@@ -393,6 +394,11 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
       tenantId: base.tenantId,
       userId: u.id,
       grants: [{ role: 'hr_admin', companyId: base.companyId }],
+      // r292 — a REAL snapshot: core/payroll.ts is module-gated now (core/module-gate.ts), and a context
+      // with neither entitlements nor an exemption marker throws EntitlementsUnresolvedError before RLS
+      // gets a word in. This assertion is about COMPANY SCOPE, so the tenant must hold Payroll or the
+      // green would be pinning the wrong refusal.
+      entitlements: harnessSnapshot(base.tenantId),
     };
 
     await expect(deleteDraftBatch(scoped, { batchId })).rejects.toThrow('batch not found');

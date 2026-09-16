@@ -117,7 +117,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
   //     bell; self-short-circuits to [] for plain employees) + unread severity-'action' notifications.
   //   • History tab: read notifications + recent approval decisions (canApprove only) — never counted.
-  const pendingTasks = await listPendingTasks(session, scopeIds);
+  // r292 — the two optional-module queues inside the inbox. Resolved HERE, with the quiet form, for the
+  // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
+  // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
+  // belongs to whichever surface calls it.
+  const pendingTasks = await listPendingTasks(session, scopeIds, {
+    attendance: isModuleEnabledOrFalse(session, 'attendance'),
+    claims: isModuleEnabledOrFalse(session, 'claims'),
+  });
   const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
   const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
   const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: false }) : [];

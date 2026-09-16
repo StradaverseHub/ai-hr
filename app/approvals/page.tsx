@@ -8,12 +8,12 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
 // allowlist and copies no new pattern.
-import { dayTypesForPairs, listAttendanceCorrections } from '@/core/attendance';
+import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
 import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
-import { getSettingOrFallback } from '@/core/entitlements';
+import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
 import { resolveRequestApprover } from '@/lib/profile-requestable-fields';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
@@ -211,6 +211,9 @@ export default async function ApprovalsPage({
     name_desc: t('sortNameDesc'),
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
+  const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
+  const claimsOn = isModuleEnabledOrFalse(s, 'claims');
+
   const [leave, leaveCancellations, replacementRequests, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
@@ -219,11 +222,18 @@ export default async function ApprovalsPage({
     listPendingLeaveCancellations(s, scopeIds),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
     listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
-    listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
+    // r292 — THE INBOX IS A CORE SCREEN AND MUST SURVIVE A TENANT THAT DECLINED THE OPTIONAL PACKS.
+    // `listAttendanceCorrections` and `listPendingClaims` are now service-gated (core/module-gate.ts), so
+    // calling them unconditionally would throw ModuleNotEnabledError here and take /approvals down for a
+    // tenant without Attendance or Claims. Omitting the queue is also the RIGHT answer on its own terms: a
+    // customer who did not buy Claims has no claims to decide. `isModuleEnabledOrFalse` (the PAGE form) is
+    // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
+    // one queue, not the whole inbox.
+    attendanceOn ? listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     // ADR-0069 Travel Request: same inbox, same decide flow.
     listTravelRequests(s, { companyIds: scopeIds, status: 'pending' }),
     profileChangeDecider ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    listPendingClaims(s),
+    claimsOn ? listPendingClaims(s) : Promise.resolve([]),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
@@ -231,12 +241,16 @@ export default async function ApprovalsPage({
   // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
   // what the day is worth. This is also the reason the item does NOT add escalation above four hours —
   // overtime has no second approval level, so the answer is to put the fact in front of the one approver.
-  const otDayTypes = await dayTypesForPairs(
-    s,
-    corrections
-      .filter(isOvertimeCorrection)
-      .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
-  );
+  // r292: guarded for the same reason as the queue above — `dayTypesForPairs` opens a tenant transaction
+  // even for an empty pair list, so an unconditional call would refuse on a tenant without Attendance.
+  const otDayTypes = attendanceOn
+    ? await dayTypesForPairs(
+        s,
+        corrections
+          .filter(isOvertimeCorrection)
+          .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
+      )
+    : new Map<string, PlanOtDayType>();
   // "Long plan": four hours or more. That is the threshold the rejected auto-escalation rule named, kept
   // as a MARKER rather than a gate — the plan's explicit decision.
   const LONG_PLAN_MINUTES = 4 * 60;

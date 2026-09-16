@@ -21,7 +21,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { attendanceMonthSummary, checkIn, checkOut } from '../core/attendance';
 import { hireEmployee } from '../core/org';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { attendancePack } from '../packs/attendance';
 
 const root = path.resolve(__dirname, '..');
@@ -390,7 +390,11 @@ describe('0bb0e303 — a plain employee cannot read a colleague’s attendance',
     expect(asAdmin.map((r) => r.employmentId).sort()).toEqual([mine.employmentId, theirs.employmentId].sort());
 
     const uid = await createAppUser(base.tenantId, mine.personId, 'employee');
-    const clerk = { tenantId: base.tenantId, userId: uid, personId: mine.personId, roles: ['employee'] };
+    // r292 — a REAL snapshot: attendanceMonthSummary is module-gated now (core/module-gate.ts), and a
+    // context with neither entitlements nor an exemption marker is the EntitlementsUnresolvedError
+    // state. The guard below is about RLS scope, not entitlement, so the fixture states the tenant
+    // holds Attendance and the assertion keeps testing what it names.
+    const clerk = { tenantId: base.tenantId, userId: uid, personId: mine.personId, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     // The same read, same month, no filter given — the clerk gets themselves and nobody else. This is
     // the property the menu cannot provide: it holds however the page is reached.

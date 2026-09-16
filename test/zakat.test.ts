@@ -36,6 +36,7 @@ import {
   seedBase,
   setModule,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string, departmentId?: string) =>
@@ -448,7 +449,7 @@ describe('1.2.4 Zakat Deduction', () => {
     await setStatutoryProfileMY(a, { personId: other.personId, icNumber: '900101010021', zakatActive: true, zakatMethod: 'fixed', zakatFixed: 40 });
 
     const uSelf = await createAppUser(base.tenantId, me.personId, 'employee');
-    const selfCtx: SessionContext = { tenantId: base.tenantId, userId: uSelf, roles: ['employee'] };
+    const selfCtx: SessionContext = { tenantId: base.tenantId, userId: uSelf, roles: ['employee'], entitlements: harnessSnapshot(base.tenantId) };
 
     // A bare employee cannot read another person's statutory row (RLS filters it out).
     expect(await getStatutoryProfileMY(selfCtx, other.personId)).toBeNull();

@@ -4,7 +4,13 @@
  * later slices of this file.
  */
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
+// 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
+// The pack's six screens carried ONE check (app/claims/page.tsx) before this line existed; the admin
+// catalog, limits, mileage and reimbursement screens and every server action behind them carried none.
+// See core/module-gate.ts for why the binding is the import and not a call in each function.
+import { withClaimsTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
   claimAttachment,

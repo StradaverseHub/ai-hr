@@ -20,7 +20,7 @@ import {
   submitSelfReview,
 } from '../core/performance';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -51,7 +51,7 @@ describe('ADR-0022 — calibration', () => {
     const E1 = await hire(a, base, 'Ann');
     const E2 = await hire(a, base, 'Bob');
     const uM = await createAppUser(base.tenantId, M.personId, 'manager');
-    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId, entitlements: harnessSnapshot(base.tenantId) };
     for (const e of [E1, E2]) {
       await setReportingLine(a, { subordinateEmploymentId: e.employmentId, managerEmploymentId: M.employmentId, lineType: 'administrative', validFrom: '2026-01-01' });
     }

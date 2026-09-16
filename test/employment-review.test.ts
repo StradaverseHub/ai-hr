@@ -39,6 +39,7 @@ import {
   seedBase,
   setModule,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -126,8 +127,8 @@ describe('authorization', () => {
     await setEnd(E.employmentId, 'probationEndDate', '2026-04-30');
     const uM = await createAppUser(b.tenantId, M.personId, 'employee'); // manager WITHOUT the platform role
     const uX = await createAppUser(b.tenantId, X.personId, 'employee');
-    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['employee'] };
-    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
+    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
+    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
 
     // peer cannot start
     await expect(startReview(peerCtx, { employmentId: E.employmentId })).rejects.toThrow();
@@ -147,7 +148,7 @@ describe('authorization', () => {
     const HR = await hire('HrPerson');
     await setEnd(HR.employmentId, 'probationEndDate', '2026-04-30');
     const uHr = await createAppUser(b.tenantId, HR.personId, 'hr_admin');
-    const hrCtx: SessionContext = { tenantId: b.tenantId, userId: uHr, personId: HR.personId, roles: ['hr_admin'] };
+    const hrCtx: SessionContext = { tenantId: b.tenantId, userId: uHr, personId: HR.personId, roles: ['hr_admin'], entitlements: harnessSnapshot(b.tenantId) };
     const { reviewId } = await startReview(a, { employmentId: HR.employmentId });
     // advance to pending_hr (admin submits stage 1 via admin fallback)
     await submitManagerEvaluation(a, { reviewId, recommendation: 'recommend_confirm' });
@@ -155,7 +156,7 @@ describe('authorization', () => {
     await expect(decideReview(hrCtx, { reviewId, decision: 'confirm' })).rejects.toThrow(/your own/i);
     // a super_admin can
     const uSuper = await createAppUser(b.tenantId, (await hire('Sup')).personId, 'super_admin');
-    const superCtx: SessionContext = { tenantId: b.tenantId, userId: uSuper, roles: ['super_admin'] };
+    const superCtx: SessionContext = { tenantId: b.tenantId, userId: uSuper, roles: ['super_admin'], entitlements: harnessSnapshot(b.tenantId) };
     await decideReview(superCtx, { reviewId, decision: 'confirm' });
   });
 });
@@ -335,9 +336,13 @@ describe('pendingApprovalsCount', () => {
     await startReview(a, { employmentId: E.employmentId });
 
     const uM = await createAppUser(b.tenantId, M.personId, 'employee'); // NO manager role
-    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['employee'] };
+    // r292 — a REAL snapshot: pendingApprovalsCount fans out into the Claims and Attendance queues, which
+    // are service-gated now (core/module-gate.ts), and a context with neither a snapshot nor an exemption
+    // marker is the state EntitlementsUnresolvedError exists to flag. Taken from adminCtx so it says what a
+    // freshly seeded tenant actually holds rather than a hand-written guess.
+    const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['employee'], entitlements: adminCtx(b).entitlements };
     expect(await pendingManagerReviewsFor(mgrCtx, M.employmentId)).toHaveLength(1);
-    expect(await pendingApprovalsCount(mgrCtx, undefined)).toBeGreaterThanOrEqual(1);
+    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -350,7 +355,7 @@ describe('RLS', () => {
     const { reviewId } = await startReview(a, { employmentId: E.employmentId });
 
     const uX = await createAppUser(b.tenantId, X.personId, 'employee');
-    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
+    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     const seen = await withTenant(peerCtx, (tx) => tx.select().from(schema.employmentReview).where(eq(schema.employmentReview.id, reviewId)));
     expect(seen).toHaveLength(0);
     // own + admin see it

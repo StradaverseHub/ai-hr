@@ -4,7 +4,14 @@
  */
 import { createHash } from 'node:crypto';
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
+// points, THE ENGINE included, refuse a tenant without the Payroll module. The `tx`-taking helpers
+// (`markBatchNeedsRecalc`, `batchesCoveringAttendanceDates`, `resolveBatchScopeFilter`,
+// `resolveBatchCutOffWindow`, `daysInMonth`) are NOT gated, deliberately: core/attendance-recompute.ts,
+// core/claims.ts, core/read.ts and core/reporting.ts call them and none of those is payroll-only.
+// See core/module-gate.ts.
+import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,

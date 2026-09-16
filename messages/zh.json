@@ -12169,5 +12169,9 @@
       "not_customer_visible": "该设置由 Stradaverse 管理。",
       "wrong_type": "这不是该设置的有效值。"
     }
+  },
+  "moduleUnavailable": {
+    "title": "不在您的套餐内",
+    "body": "{module} 未包含在您的订阅中，因此相关页面不可用。请联系您的管理员开通。"
   }
 }

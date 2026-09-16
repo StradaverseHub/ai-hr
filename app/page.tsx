@@ -18,6 +18,8 @@ import {
 import { pendingManagerReviewsFor } from '@/core/employment-review';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { myFeedbackRequests } from '@/packs/performance/service';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { MODULE_CATALOG } from '@/packs/catalog';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
@@ -121,8 +123,25 @@ function orderTree(rows: BreakdownRow[]) {
 
 // a00c4f64 — no `searchParams` any more. The four params this page read (?abs / ?view / ?cal / ?focus)
 // belonged to the Leave Calendar, which moved to /leave/tracker and still reads all four there.
-export default async function DashboardPage() {
+//
+// r292 REINSTATES `searchParams` for ONE param, and does not undo a00c4f64: the four calendar params are
+// still gone and still read at /leave/tracker. `?moduleUnavailable=<code>` is the destination half of
+// `lib/authz.ts requireModule`, which has redirected here since ADR-0077 slice 4 — carrying the module
+// code precisely "so the destination can explain WHICH module" — while this page read the param nowhere
+// and said nothing. r292 takes the count of routes that can perform that redirect from 7 to ~90, so a
+// silent bounce to the dashboard stops being a rare curiosity and becomes the normal experience of
+// declining a module. The code is resolved against MODULE_CATALOG and DISCARDED if unknown: nothing from
+// the query string is ever rendered, only a catalogue name that was compiled into the build.
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ moduleUnavailable?: string | string[] }>;
+}) {
   const t = await getTranslations('dashboard');
+  const tModule = await getTranslations('moduleUnavailable');
+  const rawUnavailable = (await searchParams)?.moduleUnavailable;
+  const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
+  const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
   // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
   // (deriveEmploymentStatus over lifecycle dates) with the shared localized labels — never the legacy
   // stored assignment.status.
@@ -198,7 +217,12 @@ export default async function DashboardPage() {
       // archived type must not sit on it either. `false` is the default; written out for the same reason
       // the /leave call site writes it out.
       leaveBalances(s, me.employmentId, locale, { includeArchived: false }),
-      myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
+      // r292 — THE DASHBOARD IS THE CORE SCREEN THIS CHANGE COULD MOST PLAUSIBLY BREAK. Performance is an
+      // optional pack and `myFeedbackRequests` is now service-gated (core/module-gate.ts), so an
+      // unconditional call would throw ModuleNotEnabledError and 500 the dashboard for every employee of a
+      // tenant that declined Performance. No module ⇒ no peer-feedback requests ⇒ an empty list is also the
+      // truthful answer, not merely the safe one.
+      isModuleEnabledOrFalse(s, 'performance') ? myFeedbackRequests(s) : Promise.resolve([]),
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
     empTaskCount = pendingTasksCount([feedbackRequests.length]);
@@ -217,7 +241,12 @@ export default async function DashboardPage() {
     // covering today (per-date-approval aware).
     const [awayCount, approvals, reviewDeadlines] = await Promise.all([
       awayTodayCount(s, scopeIds, todayIso, s.personId ?? null),
-      pendingApprovalsCount(s, scopeIds),
+      // r292 — see core/approvals-inbox.ts InboxModules. The dashboard is a page, so the quiet form is
+      // the right one: a resolver outage must cost the two module queues, not the whole tile.
+      pendingApprovalsCount(s, scopeIds, {
+        attendance: isModuleEnabledOrFalse(s, 'attendance'),
+        claims: isModuleEnabledOrFalse(s, 'claims'),
+      }),
       // Performance / probation review deadlines assigned to this manager (the reporter's "review
       // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
       me ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
@@ -558,6 +587,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {unavailableModule && (
+        <Card className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+          <h2 className="text-sm font-semibold">{tModule('title')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
+        </Card>
+      )}
       {pageHeader}
       <DashboardCustomizer
         cards={customizerCards}

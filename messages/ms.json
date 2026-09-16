@@ -12169,5 +12169,9 @@
       "not_customer_visible": "Tetapan itu diuruskan oleh Stradaverse.",
       "wrong_type": "Itu bukan nilai yang sah untuk tetapan ini."
     }
+  },
+  "moduleUnavailable": {
+    "title": "Bukan sebahagian daripada pelan anda",
+    "body": "{module} tidak termasuk dalam langganan anda, jadi skrinnya tidak tersedia. Pentadbir anda boleh mengaturkan akses."
   }
 }

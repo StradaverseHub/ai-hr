@@ -42,6 +42,7 @@ import {
   resetDb,
   seedBase,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -489,7 +490,7 @@ describe('2.1 Payroll Policy — RLS', () => {
     // session — that is why reads are tenant-wide).
     const e = await hire('NonAdmin');
     const uE = await createAppUser(b.tenantId, e.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     const seen = await withTenant(empCtx, (tx) =>
       tx.select().from(schema.payrollPolicy).where(eq(schema.payrollPolicy.id, id)),
     );

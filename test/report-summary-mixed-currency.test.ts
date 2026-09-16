@@ -22,7 +22,27 @@ import type { SessionContext } from '../db/client';
 import { REPORT_DATASETS, getDataset, runReportSpec, type ReportDataset, type ReportRow } from '../core/report-registry';
 
 const FAKE = 'test_mixed_currency';
-const ctx = {} as SessionContext;
+/**
+ * r292 — A RESOLVED SNAPSHOT, not `{}`. `runReportSpec` now gates the run on the dataset's category
+ * (core/report-registry.ts `assertReportCategoryEnabled`), so a report over a PAYROLL dataset asks
+ * whether this tenant holds Payroll. `{} as SessionContext` is the synthetic-context state
+ * `EntitlementsUnresolvedError` exists to flag — it is not "entitled", it is "nobody resolved this" —
+ * and the fixture must therefore state which modules the tenant has rather than leaving the question
+ * unanswerable. The dataset below is category 'payroll' and stays that way: the fixture is about the
+ * per-currency summary rows, and downgrading it to a core category to dodge the gate would quietly stop
+ * exercising the money-shaped dataset this file is named for.
+ */
+const TENANT = '11111111-1111-1111-1111-111111111111';
+const ctx = {
+  tenantId: TENANT,
+  entitlements: {
+    tenantId: TENANT,
+    enabledModules: ['payroll'],
+    scopedModules: {},
+    settings: {},
+    tenantStatus: 'active',
+  },
+} as unknown as SessionContext;
 
 /** Rows are supplied per test; the dataset itself never touches the database. */
 let supplied: ReportRow[] = [];

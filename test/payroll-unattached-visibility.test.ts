@@ -33,6 +33,7 @@ import {
   seedBase,
   setModule,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let base: Base;
@@ -175,8 +176,7 @@ describe('d0d2c9d1 — listUnattachedTxnSummary', () => {
       tenantId: base.tenantId,
       userId,
       roles: ['employee'],
-      personId: e1.personId,
-    };
+      personId: e1.personId, entitlements: harnessSnapshot(base.tenantId) };
     expect(await listUnattachedTxnSummary(outsider, { companyIds: [base.companyId] })).toEqual([]);
   });
 });

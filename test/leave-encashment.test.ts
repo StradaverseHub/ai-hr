@@ -35,6 +35,7 @@ import {
   seedBase,
   seedEntitlement,
   type Base,
+  harnessSnapshot,
 } from './harness';
 
 let b: Base;
@@ -69,7 +70,7 @@ async function resign(employmentId: string, lastWorkingDay: string) {
   // submitResignation requires ctx.personId + a real app_user id (RLS reads app.current_user_id()).
   const [emp] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, employmentId)).limit(1);
   const uE = await createAppUser(b.tenantId, emp!.personId, 'employee');
-  const asEmployee: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], personId: emp!.personId };
+  const asEmployee: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], personId: emp!.personId, entitlements: harnessSnapshot(b.tenantId) };
   const res = await submitResignation(asEmployee, { employmentId, lastWorkingDay, today: '2026-07-03' });
   return res.requestId;
 }
@@ -359,7 +360,7 @@ describe('ADR-0069 — overrides (unfreeze / adjust)', () => {
   it('non-admin ctx cannot write the policy (RLS)', async () => {
     const emp = await hire();
     const uE = await createAppUser(b.tenantId, (await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, emp)).limit(1))[0].personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'] };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     await expect(setEncashmentPolicy(empCtx, { companyId: b.companyId, enabled: true, autoFreeze: true })).rejects.toThrow();
   });
 });
@@ -424,7 +425,7 @@ describe('ADR-0069 — RLS smoke', () => {
 
     const [empRow] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, emp)).limit(1);
     const uE = await createAppUser(b.tenantId, empRow!.personId, 'employee');
-    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], personId: empRow!.personId };
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'], personId: empRow!.personId, entitlements: harnessSnapshot(b.tenantId) };
 
     const seen = await withTenant(empCtx, (tx) => tx.select().from(schema.leaveEncashmentSnapshot).where(eq(schema.leaveEncashmentSnapshot.id, snap!.id)));
     expect(seen.length).toBe(1);
