@@ -100,6 +100,34 @@ Switching the UI language now also translates the **content** of the seeded guid
 
 Search still matches the English title only (acceptable); localizing search is a later refinement.
 
+## Update (2026-09-16) — authoring is administrator-only; §3's open INSERT is now app-enforced
+
+§3 above chose **open contribution** ("any member may contribute") and `0039_kb_rls.sql` implements
+exactly that: the INSERT policy checks the tenant and nothing else. The first-customer readiness survey
+(`docs/CUSTOMER-DEPLOYMENT-READINESS.md`, Part 4, "Knowledge base authoring") records the consequence:
+**any employee could publish to the company knowledge base**, at any audience up to `hr_admin` — and the
+composer was mounted for everyone, so it was an offered affordance, not merely a reachable endpoint.
+
+For a customer deployment that is wrong. The library is where a new joiner goes for the official answer;
+an `hr_admin`-audience article is read by HR as guidance it can act on. A published channel is gated like
+the Notice Board (`requireAdmin` on every write) and like the roster (`assertRosterAdmin`), not like a
+wiki. **Decision: adding to the library requires `hr_admin` / `super_admin`.**
+
+- `core/knowledge-base.ts` gains `canAuthor` / `assertKbAuthor` / `KbAuthorAdminRequiredError`, called
+  first in `createArticle` and `uploadDocument`. That is the enforcement, and it has to be at the service
+  boundary: unlike UPDATE and DELETE, the INSERT has **no RLS backstop**, so the service is the only line.
+- `app/knowledge-base/actions.ts` refuses the same two actions fail-fast; `app/knowledge-base/page.tsx`
+  omits the composer from the tree for anyone who cannot use it.
+- **Audience is now clamped on every write**: nobody may file a document under an audience they are not
+  cleared to read (`KbAudienceAboveClearanceError`). Vacuous for an administrator by construction; it
+  exists for the member-authored documents that predate this change and for any later widening of
+  `canAuthor`.
+- **Reads, and §3's UPDATE/DELETE rule, are UNCHANGED.** Every tenant member still reads everything their
+  audience clearance allows, and a member who authored a non-system document before this change may still
+  edit and archive it — that is RLS, and changing it would need a migration. So the SQL in
+  `0039_kb_rls.sql` stays as written, and its header comment ("Contributions are open") now describes the
+  database, not the product: the app layer above it is narrower on purpose.
+
 ## Consequences
 
 - A new tenant has a full library of role-specific guides on day one; staff have a self-serve reference.
