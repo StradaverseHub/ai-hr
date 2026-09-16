@@ -292,7 +292,21 @@ describe('the Dashboard no longer carries the calendar', () => {
   it('drops the calendar-only search params and the core/leave import they needed', () => {
     // ?abs / ?view / ?cal / ?focus were the calendar's; the page takes no props at all now (asserted on
     // the signature, not on the word — the comment above it explains the removal and would match).
-    expect(dashboard).toContain('export default async function DashboardPage() {');
+    // r292 UPDATED THIS RATCHET RATHER THAN LOOSENING IT. a00c4f64's intent was "the four CALENDAR params
+    // are gone", and at the time that was expressible as "the page takes no props at all". r292's module
+    // gating reinstates searchParams for exactly ONE param — `?moduleUnavailable=<code>`, the destination
+    // half of requireModule()'s redirect — so the old spelling now fails while the decision it protects is
+    // untouched. Asserting the calendar four are absent AND that nothing else crept in is strictly
+    // STRONGER than the signature check it replaces: it names what must not come back, and bounds what may
+    // be there. Do not weaken this to "contains searchParams".
+    expect(dashboard).toContain('export default async function DashboardPage({');
+    const sigMatch = dashboard.match(/searchParams\?:\s*Promise<\{([^}]*)\}>/);
+    expect(sigMatch, 'DashboardPage still declares its searchParams shape inline').not.toBeNull();
+    const declaredParams = (sigMatch?.[1] ?? '')
+      .split(';')
+      .map((p) => p.split(':')[0].replace('?', '').trim())
+      .filter(Boolean);
+    expect(declaredParams).toEqual(['moduleUnavailable']);
     // …which also retires app/page.tsx from the leave pack's drift allowlist (the ratchet only shrinks).
     expect(dashboard).not.toContain("from '@/core/leave'");
     const allowlist = JSON.parse(read('test/pack-drift-allowlist.json')) as Record<string, string[]>;
