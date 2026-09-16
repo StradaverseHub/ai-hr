@@ -19,8 +19,9 @@ its feature list suggests.** Those are two different statements and both are tru
 
 **What is genuinely built and proven.** The payroll calculation engines (EPF, SOCSO/SKBBK, EIS, PCB with
 replayed accumulators, HRDF, zakat) are golden-tested against the agencies' own worked examples. Tenant
-isolation is real and enforced at the database: `ai_hr_app` is `NOBYPASSRLS`, 172 of 173 tables carry RLS,
-and a live probe returned zero rows without a tenant context and zero foreign-tenant rows with one.
+isolation is real and enforced at the database: `ai_hr_app` is `NOBYPASSRLS`, 173 of 173 tables carry RLS
+(172 at survey time — 0465 closed the last one, see 1.7), and a live probe returned zero rows without a
+tenant context and zero foreign-tenant rows with one.
 Migration safety is unusually good — a shadow-migrate gate against the live schema shape, plus an upgrade
 rehearsal against a populated baseline. The five nightly sweeps have run 119 times with zero failures.
 Employee import is real and has been used six times. Real authentication (WorkOS) is **fully written**:
@@ -44,7 +45,7 @@ migration safety) is done. Work Part 1 in order; the order matters and is explai
 These are ordered by dependency, not by severity. Two of them cannot be done later.
 
 ### 1.1 Fix the deploy path so it cannot seed demo data — DO THIS FIRST
-`deploy/deploy.sh:40` hard-requires `DEV_TENANT_ID`, and `:153-156` runs `db/seed.ts` (the demo seeder)
+`deploy/deploy.sh:40` hard-requires `DEV_TENANT_ID`, and `:174-177` runs `db/seed.ts` (the demo seeder)
 whenever that tenant row is absent from the target database. `deploy/DEPLOY.md:111` instructs the operator
 to leave `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` and `DEV_USER_ID` "as-is".
 **Following the documented runbook on a customer box plants Demo Group in their production database on the
@@ -97,13 +98,30 @@ All six steps of `docs/WORKOS-CUTOVER.md` are outstanding. Run the bootstrap inv
 - [ ] One full invite → activate → sign in → reset cycle exercised
 - [ ] `auth.login` events appear in `domain_event`
 
-### 1.4 Make the password gate fail closed
-`middleware.ts:42`: if `SHARE_PASSWORD` is unset the gate returns without checking anything and the whole
-app is open, with no error, no log and no startup refusal. Any username is accepted; only the password is
+### 1.4 Make the password gate fail closed — DONE (r290)
+`middleware.ts:42`: if `SHARE_PASSWORD` is unset the gate returned without checking anything and the whole
+app was open, with no error, no log and no startup refusal. Any username is accepted; only the password is
 compared. Once 1.3 is done the gate is redundant, but until then an unset variable must be a hard startup
 failure rather than a silent no-op.
 
-- [ ] Unset `SHARE_PASSWORD` in a production build refuses to start
+**What was built, and where it falls short of the survey's wording.** "Refuses to start" is not something
+middleware can do — it is invoked per REQUEST, in the edge runtime, after the server is already listening.
+So the refusal is in two places and only the first is a real start-time refusal:
+
+1. `deploy/deploy.sh:61` — `: "${SHARE_PASSWORD:?…}"` beside the `MIGRATION_DATABASE_URL` guard, before the
+   install, the build and the migrations. A box whose `.env.production` is missing the variable (or holds
+   it empty) is never rebuilt, never migrated and never restarted; it keeps serving the previous, gated
+   build. THIS is the arm that refuses.
+2. `middleware.ts` — 503 on every route, auth routes included, plus one `✗ SHARE GATE:` line to the
+   journal. It cannot refuse to start, so it refuses to serve. This is the backstop for every way the app
+   can be started that did not come through `deploy.sh`.
+
+The predicate is `NODE_ENV !== 'development'`, not `=== 'production'`: the open path is the one that has to
+be named, so test, and an environment that never set `NODE_ENV` at all, both refuse. `next dev` without a
+`SHARE_PASSWORD` is unchanged and is pinned from both sides in `test/share-gate.test.ts`.
+
+- [x] Unset `SHARE_PASSWORD` in a production build refuses to start — deploy refusal + per-request 503;
+      verified with a real `next build` + `next start` (503 on `/`, `/login` and with Basic credentials)
 
 ### 1.5 Backups, and a restore that has actually been tested
 `crontab -l`, `cron.d`, `cron.daily` and `systemctl list-timers` contain **no dump job**. `archive_mode=off`
@@ -133,13 +151,36 @@ group admin — but it is pull-only, with no run-now and no notification.
 - [ ] Log rotation configured
 - [ ] Somebody is nominated as on call
 
-### 1.7 Close the one RLS hole before a second tenant exists
-`tenant_suspension_window` is the only table of 173 with row-level security disabled, and `ai_hr_app` holds
+### 1.7 Close the one RLS hole before a second tenant exists — DONE (r290, migration 0465)
+`tenant_suspension_window` was the only table of 173 with row-level security disabled, and `ai_hr_app` held
 full CRUD on it. It is a control-plane table that should belong to `ai_hr_platform`
-(`db/migrations/0453_custom_report_app_grant.sql:22-24`). It has **0 rows**, so nothing leaks today — but it
-is a cross-tenant read/write hole with no database backstop the moment it is used.
+(`db/migrations/0453_custom_report_app_grant.sql:19-22`, not `:22-24` — the file is 23 lines). It has
+**0 rows**, so nothing had leaked — but it was a cross-tenant read/write hole with no database backstop the
+moment it was used.
 
-- [ ] RLS enabled with a tenant policy, or the grant revoked from `ai_hr_app`
+**Both, not either.** `0465_tenant_suspension_window_control_plane.sql` revokes every privilege from
+`ai_hr_app` AND enables RLS with no policy — the `platform_user` shape (0313 + 0351), which is what a
+control-plane table with no app-side reader looks like here. A tenant policy was rejected: nothing in
+`app/`, `core/`, `lib/` or `packs/` touches this table, so a policy would have to invent a reader that does
+not exist. The two real writers, `scripts/apply-dunning.ts` and `scripts/reactivate-tenant.ts`, both require
+`MIGRATION_DATABASE_URL` and run as `ai_hr_owner`.
+
+RLS is **ENABLED, not FORCED**, and that is deliberate: `platform_user` is forced because its reader is
+`ai_hr_platform` (BYPASSRLS), whereas here the legitimate writers *are* the owner. Forcing would deny them.
+None of the six cron jobs mentions this table (`crontab -l`, 2026-09-16) and all six connect as the owner.
+
+The revoke alone would not have been enough: the grant exists only because `deploy/bootstrap-db.sql:72-75`
+runs `ALTER DEFAULT PRIVILEGES`, so a re-bootstrap puts it back silently. RLS with no policy is the layer
+that survives that, and `test/tenant-suspension-window-rls.test.ts` proves it by handing the grant back
+inside a test and watching the app role still read zero rows.
+
+Verified on a scratch database built with the same bootstrap grant: **173 of 173 tables now carry RLS**,
+`relrowsecurity=t relforcerowsecurity=f`, no policy, and `has_table_privilege('ai_hr_app', …)` false for
+SELECT/INSERT/UPDATE/DELETE. `pnpm gate:shadow` → `SHADOW_RESULT=PASS (381/381 applied against live-shaped
+schema)`.
+
+- [x] RLS enabled with a tenant policy, or the grant revoked from `ai_hr_app` — both: grant revoked and
+      RLS enabled with no policy (migration 0465)
 
 ### 1.8 Stable, controlled exposure
 The app listens on `127.0.0.1:3000`. Public access is a Cloudflare **quick** tunnel started by hand on
@@ -308,7 +349,8 @@ status in one transaction) and ticks every 60 seconds writing 1.3 MB of "nothing
 
 - **Statutory calculation engines** — EPF, SOCSO with SKBBK, EIS, PCB with replayed accumulators, HRDF,
   zakat, all golden-tested against the agencies' own worked examples.
-- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; 172 of 173 tables carry RLS; `platform_user` is
+- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; 173 of 173 tables carry RLS (172 at survey time;
+  0465 closed `tenant_suspension_window`); `platform_user` is
   default-deny with no grant; `withTenant` uses transaction-scoped `SET LOCAL`. Verified live.
 - **Migration safety** — shadow-migrate against the live schema shape catches drizzle's silent-skip mode;
   the upgrade rehearsal runs against a populated baseline; the audit-chain gate runs before the build.
