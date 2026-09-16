@@ -381,7 +381,30 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 0 2 1 * * cd /opt/ai-hr && deploy/cron-alert.sh accrue-earned /home/ubuntu/aihr-cron-logs/accrue.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/accrue-earned.ts
 0 3 1 4 * cd /opt/ai-hr && deploy/cron-alert.sh expire-carry /home/ubuntu/aihr-cron-logs/expire-carry.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts
 * * * * * cd /opt/ai-hr && deploy/cron-alert.sh provision /home/ubuntu/aihr-cron-logs/provision.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts
+30 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh entitlement-alarm /home/ubuntu/aihr-cron-logs/entitlement-alarm.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/entitlement-alarm.ts
 ```
+
+The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
+every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is
+the only job here whose non-zero exit is a statement about the CUSTOMER'S DATA rather than about the job,
+so it carries three codes and the wrapper prints the number in its own summary:
+
+| exit | means | what to do |
+| --- | --- | --- |
+| `0` | every tenant checked, entitlement tables in force everywhere | nothing |
+| `3` | at least one tenant resolves nobody to any leave entitlement | read the alarm lines, restore the tables |
+| `2` | the check could not answer for at least one tenant | the answer is INCOMPLETE — fix the check first |
+
+It exists because one admin edit zeroed a live tenant's entitlement engine on 2026-09-12, it stayed down
+for a day, and nothing raised an alarm; nobody would have noticed until an employee was refused leave.
+A brand-new tenant, a tenant mid-setup and a deliberately retired rule all stay SILENT by design — see
+`core/entitlement-alarm.ts` for each predicate and what it deliberately does not cover.
+
+**Its alarm is STANDING**, which is why it is its own job and not folded into `review-sweep`: the
+condition is still true tomorrow night, so it pins its own exit code non-zero until a human fixes the
+configuration — and therefore its own heartbeat stale. On any other job that would break the staleness
+signal below; here it is the same incident reported twice, and the alarm itself is the louder half.
+Read `heartbeat/entitlement-alarm` as "last CHECKED AND CLEAN", not as "last ran".
 
 Read it back with `crontab -l` — never trust the install command; a sweep has gone missing from this
 crontab before. Then prove the alarm works by failing a job **on purpose**, which is the only way to know:
@@ -399,7 +422,14 @@ class. Schedule the check separately, against whatever interval each job should 
 
 ```cron
 7 * * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name provision -mmin +10 -exec sh -c 'echo "AI HR: provision runner has not succeeded in 10 minutes" | logger -t aihr-cron -p user.err' \;
+17 6 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name entitlement-alarm -mmin +2880 -exec sh -c 'echo "AI HR: the entitlement alarm has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 ```
+
+The entitlement-alarm window is **48 hours, not 25**, precisely because its heartbeat means "checked and
+clean": a single night's standing alarm must not also page somebody about staleness. Two consecutive
+nights without a clean run is either a real outage nobody has fixed or a job that has stopped running,
+and both deserve the line. `/admin/scheduled-actions` carries a card for it either way, so a job that was
+never installed reads "Never run" inside the application instead of only as a missing file on the box.
 
 ### `deploy/logrotate-aihr` — bound the log files
 

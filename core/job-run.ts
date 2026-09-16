@@ -33,6 +33,12 @@ export const JOB_KEYS = [
   // ADR-0076 slice 7 — the nightly provisional dry-run. A MISSED RUN IS HARMLESS, unlike usage.capture:
   // the evaluator is idempotent and recomputes from stored payslips, so the next run catches up fully.
   'anomaly.sweep',
+  // Readiness 2.1 (r296) — the entitlement-engine alarm. THE ODD ONE OUT: it is the only entry here
+  // that changes nothing at all, so a "missed run" costs no data. What a missed run costs is the
+  // DETECTION — the state it watches for went unnoticed for a day on a live tenant — which is exactly
+  // why it is registered here rather than left to a crontab line nobody can see from inside the app.
+  // A card reading "Never run" on /admin/scheduled-actions is the visible form of "not installed".
+  'entitlement.alarm',
 ] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
@@ -58,6 +64,7 @@ export const JOBS: readonly JobDescriptor[] = [
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
   { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
+  { key: 'entitlement.alarm', i18nKey: 'entitlement-alarm', schedule: 'Daily — 03:30' },
 ];
 
 /**

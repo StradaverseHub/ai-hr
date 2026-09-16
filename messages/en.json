@@ -11593,7 +11593,9 @@
       "opened": "Reviews opened",
       "reminders": "Reminders sent",
       "swept": "Records swept",
-      "forfeited": "Days forfeited"
+      "forfeited": "Days forfeited",
+      "alarms": "Alarms raised",
+      "tenantsAlarming": "Companies with an alarm"
     },
     "jobs": {
       "leave-accrue": {
@@ -11615,6 +11617,10 @@
       "anomaly-sweep": {
         "name": "Payroll exception check",
         "description": "Checks every open payroll run for anomalies overnight, so exceptions are already queued when someone looks."
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement cover check",
+        "description": "Checks every night that each company still has leave entitlement tables in force and that they reach somebody, so a configuration change cannot silently leave nobody entitled to anything."
       }
     }
   },

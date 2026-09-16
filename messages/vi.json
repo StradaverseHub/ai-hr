@@ -11593,7 +11593,9 @@
       "opened": "Đánh giá đã mở",
       "reminders": "Nhắc nhở đã gửi",
       "swept": "Bản ghi đã xử lý",
-      "forfeited": "Số ngày bị hủy"
+      "forfeited": "Số ngày bị hủy",
+      "alarms": "Cảnh báo đã phát",
+      "tenantsAlarming": "Công ty có cảnh báo"
     },
     "jobs": {
       "leave-accrue": {
@@ -11615,6 +11617,10 @@
       "anomaly-sweep": {
         "name": "Kiểm tra ngoại lệ bảng lương",
         "description": "Kiểm tra mọi kỳ lương đang mở để tìm bất thường vào ban đêm, để các ngoại lệ đã nằm sẵn trong hàng đợi khi có người xem."
+      },
+      "entitlement-alarm": {
+        "name": "Kiểm tra phạm vi định mức nghỉ phép",
+        "description": "Mỗi đêm kiểm tra xem mỗi công ty còn bảng định mức nghỉ phép đang có hiệu lực hay không và bảng đó có áp dụng cho ai không, để một thay đổi cấu hình không thể âm thầm khiến không ai còn định mức nào."
       }
     }
   },
