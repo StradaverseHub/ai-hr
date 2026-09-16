@@ -85,6 +85,9 @@ const LEVEL_LABEL_KEY: Record<LeaveLevelKind, string> = {
   hr_manager: 'hrManager',
   payroll: 'payroll',
   custom_role: 'customRole',
+  // r293 phase 3 — the read-out labels the KIND. Which person a fixed level names is a template-editor
+  // concern; this list exists to show an administrator that a rule has a chain of its own at all.
+  specific_employee: 'specificEmployee',
 };
 
 /** The ordered chain, drawn the way it resolves: step 1 first. Presentational only. */
@@ -219,7 +222,12 @@ export async function loadApprovalRuleScopes(
   // ACTIVE, because `loadApprovalRuleSet` reads active templates only, so a row pointing at a deactivated
   // one resolves to nothing and falls through to the org-wide default. Rendering the deactivated
   // template's steps here would tell an administrator a chain applies that does not.
-  const activeTemplateLevels = new Map(templates.filter((x) => x.active).map((x) => [x.id, x.levels]));
+  // r293 phase 3 — projected to KINDS. This read-out exists to show that a rule has a chain of its own
+  // and what shape it is; which PERSON a fixed level names is the template editor's business, and a rule
+  // row's own `levels` never carries one (only a template can).
+  const activeTemplateLevels = new Map(
+    templates.filter((x) => x.active).map((x) => [x.id, x.levels.map((l) => l.kind)]),
+  );
   const templateNameById = new Map(templates.map((x) => [x.id, x.name]));
 
   return rules

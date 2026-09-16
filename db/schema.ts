@@ -2339,6 +2339,14 @@ export const leaveApprovalStep = pgTable(
       .references(() => employment.id),
     stepIndex: integer('step_index').notNull(),
     approverKind: text('approver_kind').notNull(), // 'direct_manager' | 'hr_admin' (2B-2: named roles)
+    // r293 phase 3 (migration 0467) — the NAMED person a FIXED step belongs to. Non-null for exactly the
+    // fixed kinds (`specific_employee`), NULL for every kind that resolves a relationship at decision time
+    // from `approver_kind` alone. It has to live on the SNAPSHOT rather than be re-read from the template:
+    // the whole reason a template edit cannot disturb leave in flight is that this row is written once at
+    // submission and never re-resolved, and a step that went back to the template for its approver would
+    // undo exactly that. Enforced as a pair in generateApprovalSteps, not as a check constraint — see the
+    // migration's note on why a NOT VALID check on this table would fire on every decide.
+    approverEmploymentId: uuid('approver_employment_id').references(() => employment.id),
     status: leaveRequestStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),

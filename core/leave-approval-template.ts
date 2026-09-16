@@ -25,7 +25,13 @@ import {
   leaveApprovalPolicy,
   leaveApprovalTemplate,
 } from '../db/schema';
-import { sanitizeLevels, type LeaveLevelKind } from './leave-approval-policy';
+import {
+  sanitizeApprovalLevels,
+  sanitizeLevels,
+  serializeApprovalLevels,
+  type ApprovalLevel,
+  type LeaveLevelKind,
+} from './leave-approval-policy';
 import { narrowedOrgCriteriaAxes, type OrgCriteria } from './org-criteria';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
@@ -34,7 +40,9 @@ export type ApprovalTemplate = {
   id: string;
   name: string;
   description: string | null;
-  levels: LeaveLevelKind[];
+  /** r293 phase 3 — levels carry their named approver where they have one (`specific_employee`). Every
+   *  other kind resolves a relationship and stores nothing but its name, exactly as before. */
+  levels: ApprovalLevel[];
   isTenantDefault: boolean;
   active: boolean;
   /** How many active leave_approval_policy rows currently reference this template. */
@@ -44,7 +52,10 @@ export type ApprovalTemplate = {
 export type ApprovalTemplateInput = {
   name: string;
   description?: string | null;
-  levels: string[];
+  /** Either the legacy CSV-of-kinds shape (a plain string per level) or the r293 object shape. Typed
+   *  `unknown[]` because it arrives from a FORM: `sanitizeApprovalLevels` is the one place that decides
+   *  what a posted level means, and a narrower type here would only move that decision to the caller. */
+  levels: unknown[];
 };
 
 /** Postgres unique-violation (the partial unique index on active template names). Drizzle wraps the
@@ -61,10 +72,17 @@ function isUniqueViolation(e: unknown): boolean {
 function cleanTemplate(p: ApprovalTemplateInput) {
   const name = (p.name ?? '').replace(/\s+/g, ' ').trim();
   if (!name) throw new Error('Template name is required');
-  const levels = sanitizeLevels(p.levels);
+  const levels = sanitizeApprovalLevels(p.levels);
   if (levels.length === 0) throw new Error('A template needs at least one approval step');
+  // A fixed level with nobody named is DROPPED by sanitize rather than saved half-built, so a save that
+  // named no one would silently shorten the chain. Say so instead: the administrator chose that level.
+  if (levels.length !== (Array.isArray(p.levels) ? p.levels.length : 0)) {
+    throw new Error('Every approval level needs an approver — choose a person for any named-approver step');
+  }
   const description = p.description?.trim() ? p.description.trim() : null;
-  return { name, description, levels };
+  // Stored through `serializeApprovalLevels`: a dynamic level goes back as a bare string, so every row
+  // written before r293 round-trips byte-identically and the template needed no migration.
+  return { name, description, levels, stored: serializeApprovalLevels(levels) };
 }
 
 /** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the dims the
@@ -116,7 +134,7 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
       id: r.id,
       name: r.name,
       description: r.description,
-      levels: sanitizeLevels(r.levels),
+      levels: sanitizeApprovalLevels(r.levels),
       isTenantDefault: r.isTenantDefault,
       active: r.active,
       assignedCount: Number(r.assignedCount ?? 0),
@@ -257,7 +275,7 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
     try {
       [row] = await tx
         .insert(leaveApprovalTemplate)
-        .values({ tenantId: ctx.tenantId, name: c.name, description: c.description, levels: c.levels })
+        .values({ tenantId: ctx.tenantId, name: c.name, description: c.description, levels: c.stored })
         .returning({ id: leaveApprovalTemplate.id });
     } catch (e) {
       if (isUniqueViolation(e)) throw new Error('A template with that name already exists');
@@ -287,7 +305,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
     try {
       await tx
         .update(leaveApprovalTemplate)
-        .set({ name: c.name, description: c.description, levels: c.levels, updatedAt: sql`now()` })
+        .set({ name: c.name, description: c.description, levels: c.stored, updatedAt: sql`now()` })
         .where(eq(leaveApprovalTemplate.id, id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new Error('A template with that name already exists');
@@ -333,7 +351,9 @@ export async function duplicateApprovalTemplate(ctx: SessionContext, id: string)
         tenantId: ctx.tenantId,
         name,
         description: src.description,
-        levels: sanitizeLevels(src.levels),
+        // The duplicate copies the levels VERBATIM, named approvers included: a copy that silently
+        // dropped the person would look like the original in the list and route somewhere else.
+        levels: serializeApprovalLevels(sanitizeApprovalLevels(src.levels)),
         isTenantDefault: false,
       })
       .returning({ id: leaveApprovalTemplate.id });

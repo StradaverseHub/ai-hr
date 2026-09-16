@@ -10324,7 +10324,13 @@
     "previewSearchClear": "Xoá nhân viên",
     "managerManager": "Quản lý của quản lý",
     "hintManagerManager": "Xác định từ tuyến báo cáo của nhân viên, cao hơn cấp trên trực tiếp một bậc. Bỏ qua nếu thiếu một trong hai bậc.",
-    "previewSkippedNoManagerManager": "Bỏ qua — chưa ghi nhận quản lý của quản lý cho nhân viên này."
+    "previewSkippedNoManagerManager": "Bỏ qua — chưa ghi nhận quản lý của quản lý cho nhân viên này.",
+    "specificEmployee": "Một người được chỉ định",
+    "hintSpecificEmployee": "Luôn là người này, bất kể họ báo cáo cho ai. Cấp này không bao giờ bị bỏ qua — nếu họ nghỉ việc, đơn sẽ dừng tại đây cho đến khi mẫu được chỉnh sửa.",
+    "fixedApproverEnded": "Người này không còn là nhân viên đang làm việc. Đơn sẽ dừng ở cấp này cho đến khi bạn chọn người khác.",
+    "fixedApproverMissing": "Chọn người phê duyệt ở cấp này.",
+    "previewFixedApproverEnded": "Người duyệt này không còn là nhân viên đang làm việc — đơn sẽ dừng tại đây.",
+    "previewNotSkippable": "Không bao giờ bị bỏ qua"
   },
   "feedback": {
     "title": "Phản hồi",

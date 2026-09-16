@@ -57,6 +57,10 @@ export type ChainPreviewLabels = {
   singleApprover: string;
   /** Every level was dropped — the request is approved with no step at all. */
   allDropped: string;
+  /** r293 phase 3 — this level names somebody who is no longer an active employment. */
+  fixedApproverEnded: string;
+  /** r293 phase 3 — a fixed level cannot be dropped, whatever the org chart says. */
+  notSkippable: string;
   /** LEVEL_KINDS value → display label. */
   kindLabels: Record<string, string>;
 };
@@ -99,6 +103,10 @@ export function ApprovalChainPreview({
           : labels.skipped;
 
   const kept = result ? result.levels.filter((l) => l.kept) : [];
+  const employeeName = (id: string) => {
+    const hit = employees.find((e) => e.value === id);
+    return hit ? (hit.employeeCode ? `${hit.employeeCode} · ${hit.name}` : hit.name) : id;
+  };
 
   return (
     <Card>
@@ -170,7 +178,21 @@ export function ApprovalChainPreview({
                     <Badge variant={isFixedLevelKind(lv.kind) ? 'warning' : 'info'}>
                       {isFixedLevelKind(lv.kind) ? labels.badgeFixed : labels.badgeDynamic}
                     </Badge>
+                    {/* r293 phase 3 — WHICH person, not just "a named person": the whole point of a fixed
+                        level is the individual, and a preview that hid them would answer nothing. */}
+                    {lv.employmentId && (
+                      <span className="text-xs text-muted-foreground">{employeeName(lv.employmentId)}</span>
+                    )}
+                    {isFixedLevelKind(lv.kind) && (
+                      <span className="text-xs text-muted-foreground">{labels.notSkippable}</span>
+                    )}
                     {!lv.kept && <span className="text-xs text-amber-700 dark:text-amber-400">{dropReason(lv.droppedBecause)}</span>}
+                    {/* KEPT and broken at the same time — the state only a fixed level can be in. */}
+                    {lv.fixedApproverEnded && (
+                      <span className="w-full text-xs font-medium text-red-700 dark:text-red-400">
+                        {labels.fixedApproverEnded}
+                      </span>
+                    )}
                   </li>
                 );
               })}

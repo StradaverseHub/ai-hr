@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { StepListEditor, type StepListLabels } from './step-list-editor';
+import type { ApprovalLevel } from '@/lib/leave-approval-kinds';
 
 type Option = { id: string; label: string };
 export type RuleRow = {
@@ -277,7 +278,14 @@ function RuleForm({
         </label>
       </div>
 
-      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
+      {/* r293 phase 3 — this surface posts a CSV of KINDS and offers no fixed approver (no employee
+          population is passed, so `specific_employee` is not pickable). It adapts at the boundary rather
+          than learning the object shape: one conversion here, none in the shared editor. */}
+      <StepListEditor
+        levels={levels.map((kind) => ({ kind: kind as ApprovalLevel['kind'], employmentId: null }))}
+        setLevels={(next) => setLevels(next.map((l) => l.kind))}
+        labels={labels}
+      />
 
       {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
       <label className="block space-y-1 text-sm">

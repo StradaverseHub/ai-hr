@@ -2,7 +2,12 @@
 
 import { useState } from 'react';
 import { Badge, Button, inputCls } from '@/components/ui';
-import { LEVEL_KINDS, isFixedLevelKind } from '@/lib/leave-approval-kinds';
+import {
+  EmployeeSearchField,
+  type EmployeeSearchFieldLabels,
+  type EmployeeSearchOption,
+} from '@/components/employee-search-field';
+import { LEVEL_KINDS, isFixedLevelKind, type ApprovalLevel, type LeaveLevelKind } from '@/lib/leave-approval-kinds';
 
 /* 6fadb036 (R17 gap-close): the reporter's full 7-role approver vocabulary (list C), ordered as requested.
    r293 — READ FROM `LEVEL_KINDS` rather than re-listed here. The local copy this replaces had to be edited
@@ -23,6 +28,8 @@ export type StepListLabels = {
   customRole: string;
   /** r293 phase 2 — the second hop up the reporting line. */
   managerManager: string;
+  /** r293 phase 3 — the one FIXED kind: a named person. */
+  specificEmployee: string;
   add: string;
   moveUp: string;
   moveDown: string;
@@ -40,9 +47,48 @@ export type StepListLabels = {
   flowEnd: string;
   addLevel: string;
   fixedWarning: string;
+  /** Shown on a fixed level whose named approver is no longer an active employment (r293 phase 3). */
+  fixedApproverEnded: string;
+  /** Prompt on a fixed level before anybody has been chosen. */
+  fixedApproverMissing: string;
   /** Per-kind "how this level finds its approver" line, keyed by LEVEL_KINDS value. */
   hints: Record<string, string>;
+  /** Captions for the employee picker a FIXED level renders. */
+  employeeSearch: EmployeeSearchFieldLabels;
 };
+
+/**
+ * Kind → the field of the label bag that names it.
+ *
+ * ⚠️ A FULL `Record<LeaveLevelKind, …>`, AND THE ONE OWNER OF THIS MAPPING. What stood here was a `switch`
+ * with `default: return labels.manager`, and `app/admin/leave-approval/template-manager.tsx` carried a
+ * SECOND copy of the same switch. When r293 phase 2 added `manager_manager` only one of them learned it,
+ * so the template LIST printed "Direct manager" for a Manager's-Manager level — a wrong name, not a
+ * missing one, which is the kind a reader believes. tsc, eslint and every guard were green; it was found
+ * by rendering the page and reading the markup with <script> stripped (CLAUDE.md §8).
+ *
+ * Typed exhaustively, a kind added to the vocabulary without a label cannot compile, and `kindLabelOf`
+ * below falls back to the RAW KIND rather than to any particular label — a miss must look like a bug.
+ */
+const KIND_LABEL_FIELD: Record<LeaveLevelKind, keyof StepListLabels> = {
+  direct_manager: 'manager',
+  manager_manager: 'managerManager',
+  department_head: 'departmentHead',
+  business_unit_head: 'businessUnitHead',
+  hr_admin: 'hr',
+  hr_manager: 'hrManager',
+  payroll: 'payroll',
+  custom_role: 'customRole',
+  specific_employee: 'specificEmployee',
+};
+
+/** The display name for an approver kind, from the caller's own label bag. Exported so every surface that
+ *  prints a chain uses this one mapping — see KIND_LABEL_FIELD for what a second copy cost. */
+export function kindLabelOf(kind: string, labels: StepListLabels): string {
+  const field = KIND_LABEL_FIELD[kind as LeaveLevelKind];
+  const value = field ? labels[field] : undefined;
+  return typeof value === 'string' ? value : kind;
+}
 
 /** r293 — the Dynamic/Fixed badge. The classification has ONE owner in the kernel
  *  (core/leave-approval-policy.ts `isFixedLevelKind`); this is only how it is drawn. */
@@ -95,11 +141,19 @@ export function StepListEditor({
   labels,
   disabled,
   maxSteps,
+  employees = [],
+  endedEmploymentIds = [],
 }: {
-  levels: string[];
-  setLevels: (next: string[]) => void;
+  levels: ApprovalLevel[];
+  setLevels: (next: ApprovalLevel[]) => void;
   labels: StepListLabels;
   disabled?: boolean;
+  /** r293 phase 3 — the population a FIXED level may name, already scope-fenced by the page. Empty on
+   *  the surfaces that do not offer a fixed approver; the kind is then simply never pickable. */
+  employees?: EmployeeSearchOption[];
+  /** Of those, the ones that are no longer an ACTIVE employment. A level naming one of them is still
+   *  KEPT by the engine — it cannot be dropped — which is exactly why the card has to say so. */
+  endedEmploymentIds?: readonly string[];
   /** Cap on the chain length (feedback d4735493). Undefined = unlimited, today's behaviour. When the
    *  cap is reached the add control is hidden rather than disabled: a greyed-out "Add" invites the user
    *  to hunt for why it will not work, whereas its absence matches the single-step choice they made. */
@@ -108,26 +162,7 @@ export function StepListEditor({
   const atCap = maxSteps !== undefined && levels.length >= maxSteps;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  const kindLabel = (k: string): string => {
-    switch (k) {
-      case 'manager_manager':
-        return labels.managerManager;
-      case 'department_head':
-        return labels.departmentHead;
-      case 'business_unit_head':
-        return labels.businessUnitHead;
-      case 'hr_admin':
-        return labels.hr;
-      case 'hr_manager':
-        return labels.hrManager;
-      case 'payroll':
-        return labels.payroll;
-      case 'custom_role':
-        return labels.customRole;
-      default:
-        return labels.manager;
-    }
-  };
+  const kindLabel = (k: string) => kindLabelOf(k, labels);
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= levels.length) return;
@@ -142,7 +177,21 @@ export function StepListEditor({
     next.splice(to, 0, moved);
     setLevels(next);
   };
-  const setKind = (i: number, kind: string) => setLevels(levels.map((k, idx) => (idx === i ? kind : k)));
+  /** Changing the kind CLEARS the named approver: an employment id left on a dynamic level would be
+   *  unreachable (the engine never reads it) and a later reader might believe it. */
+  const setKind = (i: number, kind: string) =>
+    setLevels(
+      levels.map((l, idx) =>
+        idx === i
+          ? { kind: kind as ApprovalLevel['kind'], employmentId: isFixedLevelKind(kind) ? l.employmentId : null }
+          : l,
+      ),
+    );
+  const setApprover = (i: number, employmentId: string) =>
+    setLevels(levels.map((l, idx) => (idx === i ? { ...l, employmentId: employmentId || null } : l)));
+
+  /** A fixed kind is only offerable where the page supplied a population to pick from. */
+  const kindOptions = KIND_OPTIONS.filter((k) => !isFixedLevelKind(k) || employees.length > 0);
 
   return (
     <div className={disabled ? 'pointer-events-none space-y-2 opacity-50' : 'space-y-2'}>
@@ -160,8 +209,10 @@ export function StepListEditor({
           </div>
           <Connector />
           <ol className="space-y-0">
-            {levels.map((k, i) => {
+            {levels.map((level, i) => {
+              const k = level.kind;
               const fixed = isFixedLevelKind(k);
+              const ended = !!level.employmentId && endedEmploymentIds.includes(level.employmentId);
               return (
                 <li key={i}>
                   {i > 0 && <Connector />}
@@ -223,16 +274,47 @@ export function StepListEditor({
                       aria-label={labels.levelTemplate.replace('{n}', String(i + 1))}
                       className={inputCls}
                     >
-                      {KIND_OPTIONS.map((opt) => (
+                      {kindOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           {kindLabel(opt)}
                         </option>
                       ))}
                     </select>
 
+                    {/* r293 phase 3 — a FIXED level names a PERSON, so it needs a person picker. Ranked
+                        and capped by the rule the rest of the product searches employees by
+                        (lib/employee-search matchEmployees), through the shared control rather than a
+                        fourth employee box. It posts nothing: this editor owns the whole chain and
+                        submits it as one field. */}
+                    {fixed && (
+                      <EmployeeSearchField
+                        employees={employees}
+                        value={level.employmentId}
+                        labels={labels.employeeSearch}
+                        onValueChange={(v) => setApprover(i, v)}
+                        className="w-full"
+                      />
+                    )}
+
                     {/* How this level finds its approver, and whether it can be skipped. The skip half is
                         the r285 lesson made visible. */}
                     {labels.hints[k] && <p className="text-xs text-muted-foreground">{labels.hints[k]}</p>}
+
+                    {fixed && !level.employmentId && (
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                        {labels.fixedApproverMissing}
+                      </p>
+                    )}
+
+                    {/* The promise the plan makes the reporter by name: WARN when a fixed approver is no
+                        longer an active employment. It is a warning and not a skip — the engine cannot
+                        drop a fixed level, and dropping one would silently remove an approval the
+                        administrator put there deliberately. */}
+                    {ended && (
+                      <p className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                        {labels.fixedApproverEnded}
+                      </p>
+                    )}
 
                     {fixed && (
                       <p className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -257,7 +339,7 @@ export function StepListEditor({
           variant="outline"
           size="sm"
           className="w-full border-dashed"
-          onClick={() => setLevels([...levels, 'hr_admin'])}
+          onClick={() => setLevels([...levels, { kind: 'hr_admin', employmentId: null }])}
         >
           {levels.length === 0 ? labels.add : labels.addLevel}
         </Button>

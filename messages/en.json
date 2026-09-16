@@ -10324,7 +10324,13 @@
     "previewSearchClear": "Clear employee",
     "managerManager": "Manager's Manager",
     "hintManagerManager": "Resolved from the employee's reporting line, one level above their direct manager. Skipped if either level is missing.",
-    "previewSkippedNoManagerManager": "Skipped — no manager's manager is recorded for this employee."
+    "previewSkippedNoManagerManager": "Skipped — no manager's manager is recorded for this employee.",
+    "specificEmployee": "A named person",
+    "hintSpecificEmployee": "Always this person, whoever they report to. This level is never skipped — if they leave, requests stop here until the template is edited.",
+    "fixedApproverEnded": "This person is no longer an active employee. Requests will stop at this level until you choose someone else.",
+    "fixedApproverMissing": "Choose the person who approves at this level.",
+    "previewFixedApproverEnded": "This approver is no longer an active employee — requests stop here.",
+    "previewNotSkippable": "Never skipped"
   },
   "feedback": {
     "title": "Feedback",

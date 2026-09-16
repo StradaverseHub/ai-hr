@@ -67,6 +67,8 @@ import {
   decideApproval,
   loadApprovalRuleSet,
   sanitizeLevels,
+  sanitizeApprovalLevels,
+  levelKey,
   type ApprovalDecisionSource,
   type ApprovalMatchAttrs,
   type ApprovalRuleSet,
@@ -1024,7 +1026,14 @@ export async function convertLegacyApprovalRules(
 }
 
 /** Find the ACTIVE template whose chain already equals `levels`, else mint one. Compared in JS on the
- *  sanitized array so an unknown level kind stored on an old row cannot make two chains look different. */
+ *  sanitized array so an unknown level kind stored on an old row cannot make two chains look different.
+ *
+ *  r293 phase 3 — compared on `levelKey`, the level's FULL identity, not on kinds alone. A template whose
+ *  level 3 names Sarah and one whose level 3 names Ahmad have the same kinds and are NOT the same chain;
+ *  `sanitizeLevels`' kinds-only view cannot see the difference, so this would have reused one for the
+ *  other and silently re-pointed a converted rule at the wrong approver. A legacy rule's own levels can
+ *  never carry a named approver (only a template can), so any template holding one simply never matches
+ *  a converted chain — which is the correct outcome. */
 async function ensureTemplateFor(
   tx: Tx,
   ctx: SessionContext,
@@ -1037,7 +1046,7 @@ async function ensureTemplateFor(
     .where(eq(leaveApprovalTemplate.active, true))
     .orderBy(leaveApprovalTemplate.createdAt);
   const want = levels.join('|');
-  const hit = existing.find((t) => sanitizeLevels(t.levels).join('|') === want);
+  const hit = existing.find((t) => sanitizeApprovalLevels(t.levels).map(levelKey).join('|') === want);
   if (hit) {
     if (!actions.some((a) => a.kind === 'template-reused' && a.templateId === hit.id)) {
       actions.push({ kind: 'template-reused', templateId: hit.id, name: hit.name, levels });

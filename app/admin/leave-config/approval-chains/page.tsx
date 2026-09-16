@@ -1,7 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listEmployeePickOptions, listJobGrades, listLeaveTypes } from '@/core/read';
+import { listCompanies, listEmployeePickOptions, listEmployees, listJobGrades, listLeaveTypes } from '@/core/read';
+import { deriveEmploymentStatus } from '@/core/employment-status';
+import type { LeaveLevelKind } from '@/lib/leave-approval-kinds';
 import { previewApprovalChain } from '@/core/leave';
 import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
@@ -118,10 +120,26 @@ export default async function LeaveConfigApprovalChainsPage({
     companies.map(async (c) => ({ company: c, esc: await getLeaveEscalationPolicy(s, c.id) })),
   );
 
-  const [templates, allAssignments] = await Promise.all([
+  const [templates, allAssignments, employeePickOptions] = await Promise.all([
     listApprovalTemplates(s),
     listTemplateAssignments(s),
+    /* r293 — the population BOTH the preview's employee box and the builder's named-approver cards draw
+       from. The same scoped read the three "pick individually" write paths resolve against (core/read.ts),
+       so neither control can name somebody this admin cannot reach. */
+    listEmployeePickOptions(s),
   ]);
+  /* r293 phase 3 — which of them are no longer an ACTIVE employment. The builder warns on a level naming
+     one; the engine does NOT drop such a level, which is precisely why the warning has to exist. Derived
+     through the same `deriveEmploymentStatus` every status badge uses rather than a second rule. */
+  const employeeStatusRows = await listEmployees(s, companyIds);
+  const endedEmploymentIds = employeeStatusRows
+    .filter((e) => deriveEmploymentStatus(e) === 'resigned' || deriveEmploymentStatus(e) === 'blacklisted')
+    .map((e) => e.employmentId);
+  const employeeSearchOptions = employeePickOptions.map((e) => ({
+    value: e.id,
+    name: e.name,
+    employeeCode: e.employeeCode,
+  }));
   const assignments = allAssignments.filter((a) => companyIds.includes(a.companyId));
 
   /* IA §4.1 — the rows whose scope or chain no screen has shown since 706d34e8. Scoped to the companies
@@ -137,7 +155,7 @@ export default async function LeaveConfigApprovalChainsPage({
 
   /* Keyed by LEVEL_KINDS value, so a kind added to the vocabulary without a hint renders no hint rather
      than the wrong one. `test/r293-approval-builder.test.ts` pins that every kind has one. */
-  const kindHints: Record<string, string> = {
+  const kindHints: Record<LeaveLevelKind, string> = {
     direct_manager: t('hintDirectManager'),
     manager_manager: t('hintManagerManager'),
     department_head: t('hintDepartmentHead'),
@@ -146,8 +164,14 @@ export default async function LeaveConfigApprovalChainsPage({
     hr_manager: t('hintHrManager'),
     payroll: t('hintPayroll'),
     custom_role: t('hintCustomRole'),
+    specific_employee: t('hintSpecificEmployee'),
   };
-  const kindLabels: Record<string, string> = {
+  /* ⚠️ A FULL `Record<LeaveLevelKind, …>`, NOT `Record<string, …>`. It was the loose form until the
+     r293 phase 3 verify pass, and the screen rendered a raw `specific_employee` where the label belongs —
+     tsc, eslint and every guard green, because a missing key in a loose Record is just `undefined`. Found
+     by rendering the page and reading the markup with <script> stripped (CLAUDE.md §8). Typed this way, a
+     kind added to the vocabulary without a label cannot compile. */
+  const kindLabels: Record<LeaveLevelKind, string> = {
     direct_manager: t('manager'),
     manager_manager: t('managerManager'),
     department_head: t('departmentHead'),
@@ -156,6 +180,7 @@ export default async function LeaveConfigApprovalChainsPage({
     hr_manager: t('hrManager'),
     payroll: t('payroll'),
     custom_role: t('customRole'),
+    specific_employee: t('specificEmployee'),
   };
 
   const escalationLabels: EscalationLabels = {
@@ -176,6 +201,16 @@ export default async function LeaveConfigApprovalChainsPage({
     // three places for a new kind to be missed.
     roleLabels: kindLabels,
   };
+  /* The five captions the shared employee picker shows. Read once: the builder's named-approver cards and
+     the preview's employee box are the same control and must not caption it differently. */
+  const employeeSearchLabels = {
+    placeholder: t('previewSearchPlaceholder'),
+    ariaLabel: t('previewSearchAria'),
+    resultsLabel: t('previewSearchResults'),
+    noMatches: t('previewSearchNoMatches'),
+    clear: t('previewSearchClear'),
+  };
+
   const templateLabels: TemplateManagerLabels = {
     requireMultiStep: t('requireMultiStep'),
     templatesTitle: t('templatesTitle'),
@@ -241,6 +276,7 @@ export default async function LeaveConfigApprovalChainsPage({
     payroll: t('payroll'),
     customRole: t('customRole'),
     managerManager: t('managerManager'),
+    specificEmployee: t('specificEmployee'),
     add: t('add'),
     moveUp: t('moveUp'),
     moveDown: t('moveDown'),
@@ -256,7 +292,10 @@ export default async function LeaveConfigApprovalChainsPage({
     flowEnd: t('flowEnd'),
     addLevel: t('addLevel'),
     fixedWarning: t('fixedWarning'),
+    fixedApproverEnded: t('fixedApproverEnded'),
+    fixedApproverMissing: t('fixedApproverMissing'),
     hints: kindHints,
+    employeeSearch: employeeSearchLabels,
   };
 
   /* ══ r293 — the PREVIEW's inputs and its result, resolved server-side from the query string. ══
@@ -264,7 +303,7 @@ export default async function LeaveConfigApprovalChainsPage({
      resolve against (core/read.ts), so the preview can never name somebody this admin cannot reach. The
      leave type defaults to the first in the list rather than to null: a preview needs a type to resolve a
      type-scoped rule, and silently previewing "no leave type" would answer a question nobody asked. */
-  const employeeOptions = await listEmployeePickOptions(s);
+  const employeeOptions = employeePickOptions;
   const previewLeaveTypeId = previewLeaveType ?? leaveTypesAll[0]?.id ?? null;
   const previewEmploymentId =
     previewEmployment && employeeOptions.some((e) => e.id === previewEmployment) ? previewEmployment : null;
@@ -295,6 +334,8 @@ export default async function LeaveConfigApprovalChainsPage({
     sourceFallback: t('previewSourceFallback'),
     singleApprover: t('previewSingleApprover'),
     allDropped: t('previewAllDropped'),
+    fixedApproverEnded: t('previewFixedApproverEnded'),
+    notSkippable: t('previewNotSkippable'),
     kindLabels,
   };
 
@@ -327,6 +368,8 @@ export default async function LeaveConfigApprovalChainsPage({
             </div>
             <ApprovalTemplateManager
               templates={templates}
+              employees={employeeSearchOptions}
+              endedEmploymentIds={endedEmploymentIds}
               actions={{
                 saveTemplate: saveApprovalTemplateAction,
                 duplicateTemplate: duplicateApprovalTemplateAction,
@@ -343,23 +386,13 @@ export default async function LeaveConfigApprovalChainsPage({
                 It resolves against real org data through the same matcher and the same drop rule the
                 submission path uses — see chain-preview.tsx's header for why that is not optional. */}
             <ApprovalChainPreview
-              employees={employeeOptions.map((e) => ({
-                value: e.id,
-                name: e.name,
-                employeeCode: e.employeeCode,
-              }))}
+              employees={employeeSearchOptions}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
               employmentId={previewEmploymentId}
               leaveTypeId={previewLeaveTypeId}
               result={previewResult}
               labels={previewLabels}
-              searchLabels={{
-                placeholder: t('previewSearchPlaceholder'),
-                ariaLabel: t('previewSearchAria'),
-                resultsLabel: t('previewSearchResults'),
-                noMatches: t('previewSearchNoMatches'),
-                clear: t('previewSearchClear'),
-              }}
+              searchLabels={employeeSearchLabels}
             />
           </section>
 

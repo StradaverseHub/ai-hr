@@ -2,6 +2,7 @@
  * r293 — Redesign Custom Leave Approval Workflow.
  *   PHASE 1: the visual builder over the structure that was already there, plus the chain PREVIEW.
  *   PHASE 2: `manager_manager` — a SECOND hop up the reporting line, the first genuinely new kind.
+ *   PHASE 3: `specific_employee` — the FIRST FIXED approver, and the whole item's risk.
  *
  * ⚠️ THE REPORTER'S PREMISE WAS WRONG IN THEIR FAVOUR, and the first two cases pin the correction so a
  * future round cannot "add" what already exists. They believed approval steps were only Direct Manager and
@@ -20,7 +21,12 @@
  *   7. the PREVIEW resolves against real org data and reports exactly the steps generation writes;
  *   8. (phase 2) the second hop is dropped when it is missing and generated when it is there, is NOT
  *      clearable by the direct manager, IS clearable by the manager's manager, and is dropped rather
- *      than routed to the requester when the reporting line is a two-person cycle.
+ *      than routed to the requester when the reporting line is a two-person cycle;
+ *   9. (phase 3) THE ASYMMETRY. A dynamic level resolving to nobody is DROPPED; a fixed one is NOT,
+ *      even when the person it names has left — it warns instead, because dropping would silently
+ *      remove an approval an administrator deliberately configured. Plus: the id is snapshotted onto the
+ *      step (never re-read from the template), the named person decides and a bystander does not, and a
+ *      chain that names a different person is a DIFFERENT chain.
  */
 import { eq } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
@@ -39,6 +45,8 @@ import {
   LEVEL_KINDS,
   isDroppableLevelKind,
   isFixedLevelKind,
+  levelKey,
+  type ApprovalLevel,
 } from '../lib/leave-approval-kinds';
 import {
   assignApprovalTemplate,
@@ -49,6 +57,20 @@ import {
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** A FIXED level is invalid without a named approver, so the pure drop-rule cases give one. Any id will
+ *  do: `applyChainDropRules` is pure and never reads the person — that is the whole point of a fixed level. */
+const fixedId = (kind: string) => (isFixedLevelKind(kind) ? '00000000-0000-0000-0000-0000000000ff' : null);
+
+/** A resolved DYNAMIC level, spelled in full so the phase-3 fields are asserted rather than ignored:
+ *  a relationship-resolved level never names a person and never carries the departed-approver warning. */
+const dyn = (kind: string, kept: boolean, droppedBecause: string | null) => ({
+  kind,
+  employmentId: null,
+  fixedApproverEnded: false,
+  kept,
+  droppedBecause,
+});
 
 let b: Base;
 let subject: { personId: string; employmentId: string };
@@ -149,6 +171,9 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
       'hr_manager',
       'payroll',
       'custom_role',
+      // r293 phase 3 — the first FIXED kind. It is LAST because the order is the picker's order and a
+      // named person belongs after the relationships, not among them.
+      'specific_employee',
     ]);
     expect(LEVEL_KINDS.length).toBeGreaterThan(2);
   });
@@ -161,6 +186,52 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
     expect(src).not.toMatch(/'department_head',\s*\n\s*'business_unit_head'/);
   });
 
+  it('every kind the builder offers has a LABEL and a hint in all six locales', () => {
+    /* ⚠️ THE LABEL HALF WAS ADDED AFTER THE SCREEN RENDERED A RAW `specific_employee`. The page's kind →
+       label map was a loose `Record<string, string>`, so the missing entry was `undefined` and everything
+       stayed green; it was found by rendering the page and reading the markup with <script> stripped. The
+       map is now a full `Record<LeaveLevelKind, string>` (a tsc failure) and this is the i18n half of the
+       same pin — the type cannot tell whether the KEY it names actually exists in the catalogues. */
+    const labelKey: Record<string, string> = {
+      direct_manager: 'manager',
+      manager_manager: 'managerManager',
+      department_head: 'departmentHead',
+      business_unit_head: 'businessUnitHead',
+      hr_admin: 'hr',
+      hr_manager: 'hrManager',
+      payroll: 'payroll',
+      custom_role: 'customRole',
+      specific_employee: 'specificEmployee',
+    };
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const m = JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'));
+      for (const kind of LEVEL_KINDS) {
+        expect(m.leaveApproval[labelKey[kind]], `${loc}.leaveApproval.${labelKey[kind]}`).toBeTruthy();
+      }
+    }
+    // And the page must actually USE them: a catalogue entry nothing reads is not a label on a screen.
+    const page = readFileSync(join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx'), 'utf8');
+    expect(page).toContain('const kindLabels: Record<LeaveLevelKind, string>');
+    for (const kind of LEVEL_KINDS) expect(page, `kindLabels is missing ${kind}`).toContain(`${kind}: t(`);
+  });
+
+  it('there is ONE kind → label mapping, and a miss shows the raw kind rather than the wrong name', () => {
+    /* ⚠️ THE SECOND DEFECT THE VERIFY PASS FOUND, and the worse of the two. `step-list-editor.tsx` and
+       `template-manager.tsx` each carried their own kind → label `switch` with `default: labels.manager`.
+       Phase 2 taught only one of them about `manager_manager`, so the TEMPLATE LIST printed "Direct
+       manager" for a Manager's-Manager level — a wrong name, which a reader believes, not a blank. Found
+       by rendering the page and reading the markup; nothing in tsc, eslint or the suite saw it. */
+    const editor = readFileSync(join(ROOT, 'app/admin/leave-approval/step-list-editor.tsx'), 'utf8');
+    const manager = readFileSync(join(ROOT, 'app/admin/leave-approval/template-manager.tsx'), 'utf8');
+    expect(editor).toContain('const KIND_LABEL_FIELD: Record<LeaveLevelKind, keyof StepListLabels>');
+    for (const kind of LEVEL_KINDS) expect(editor, `KIND_LABEL_FIELD is missing ${kind}`).toContain(`${kind}: '`);
+    // The other file must USE it, not re-derive it. A second `case 'hr_admin':` here is the whole defect.
+    expect(manager).toContain('kindLabelOf(');
+    expect(manager).not.toContain("case 'hr_admin':");
+    // And the fallback must be the raw kind: a default that returns a real label makes a miss invisible.
+    expect(editor).toContain("return typeof value === 'string' ? value : kind;");
+  });
+
   it('every kind the builder offers has a resolution hint in all six locales', () => {
     const hintKey: Record<string, string> = {
       direct_manager: 'hintDirectManager',
@@ -171,6 +242,7 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
       hr_manager: 'hintHrManager',
       payroll: 'hintPayroll',
       custom_role: 'hintCustomRole',
+      specific_employee: 'hintSpecificEmployee',
     };
     for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
       const m = JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'));
@@ -192,8 +264,12 @@ describe('r293 — DYNAMIC vs FIXED, both arms', () => {
     );
   });
 
-  it('every approver kind that exists today is DYNAMIC — a relationship, not a person', () => {
-    for (const kind of LEVEL_KINDS) expect(isFixedLevelKind(kind), kind).toBe(false);
+  it('exactly one kind is FIXED and every other is DYNAMIC', () => {
+    // Both arms spelled out rather than a filter, so the two halves cannot slide past each other.
+    expect(isFixedLevelKind('specific_employee')).toBe(true);
+    for (const kind of LEVEL_KINDS.filter((k) => k !== 'specific_employee')) {
+      expect(isFixedLevelKind(kind), kind).toBe(false);
+    }
   });
 });
 
@@ -202,15 +278,30 @@ describe('r293 — the drop rule the builder describes is the drop rule the engi
     // THE CROSS-FILE PIN. `DROPPABLE_LEVEL_KINDS` lives in lib/leave-approval-kinds.ts and drives what the
     // builder tells the administrator; `applyChainDropRules` lives in core/leave.ts and decides what is
     // actually written. A defect in the contract between two files has to be pinned across both.
-    const nobody = { hasManager: false, managerManager: null, deptHead: null, buHead: null };
+    const nobody = {
+      hasManager: false,
+      managerManager: null,
+      deptHead: null,
+      buHead: null,
+      endedFixedApprovers: [],
+    };
     for (const kind of LEVEL_KINDS) {
-      const [resolved] = applyChainDropRules([kind], nobody);
+      const [resolved] = applyChainDropRules([{ kind, employmentId: fixedId(kind) }], nobody);
       expect(resolved.kept, `${kind} with nobody in the relationship`).toBe(!isDroppableLevelKind(kind));
     }
     // ...and the other arm: with everybody present, nothing is dropped at all.
-    const everybody = { hasManager: true, managerManager: 'm', deptHead: 'x', buHead: 'y' };
+    const everybody = {
+      hasManager: true,
+      managerManager: 'm',
+      deptHead: 'x',
+      buHead: 'y',
+      endedFixedApprovers: [],
+    };
     for (const kind of LEVEL_KINDS) {
-      expect(applyChainDropRules([kind], everybody)[0].kept, `${kind} with the relationship filled`).toBe(true);
+      expect(
+        applyChainDropRules([{ kind, employmentId: fixedId(kind) }], everybody)[0].kept,
+        `${kind} with the relationship filled`,
+      ).toBe(true);
     }
     expect([...DROPPABLE_LEVEL_KINDS]).toEqual([
       'direct_manager',
@@ -271,7 +362,7 @@ describe('r293 — reordering levels', () => {
 
     // And the list the screen renders agrees with both.
     const [listed] = await listApprovalTemplates(ctx());
-    expect(listed.levels).toEqual(['hr_admin', 'direct_manager', 'department_head']);
+    expect(listed.levels.map((l) => l.kind)).toEqual(['hr_admin', 'direct_manager', 'department_head']);
   });
 
   it('a reordered template routes a NEW request in the new order', async () => {
@@ -354,9 +445,9 @@ describe('r293 — the preview resolves against real org data', () => {
     });
     expect(preview).not.toBeNull();
     expect(preview!.levels).toEqual([
-      { kind: 'direct_manager', kept: false, droppedBecause: 'no_manager' },
-      { kind: 'department_head', kept: false, droppedBecause: 'no_department_head' },
-      { kind: 'hr_admin', kept: true, droppedBecause: null },
+      dyn('direct_manager', false, 'no_manager'),
+      dyn('department_head', false, 'no_department_head'),
+      dyn('hr_admin', true, null),
     ]);
 
     // THE POINT OF THE PREVIEW: submit for real and the generated rows are exactly the kept levels. A
@@ -376,11 +467,7 @@ describe('r293 — the preview resolves against real org data', () => {
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
     });
-    expect(before!.levels[0]).toEqual({
-      kind: 'department_head',
-      kept: false,
-      droppedBecause: 'no_department_head',
-    });
+    expect(before!.levels[0]).toEqual(dyn('department_head', false, 'no_department_head'));
 
     await owner.db
       .update(schema.department)
@@ -391,7 +478,7 @@ describe('r293 — the preview resolves against real org data', () => {
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
     });
-    expect(after!.levels[0]).toEqual({ kind: 'department_head', kept: true, droppedBecause: null });
+    expect(after!.levels[0]).toEqual(dyn('department_head', true, null));
     expect(after!.facts.deptHead).toBe(manager.employmentId);
   });
 
@@ -526,11 +613,7 @@ describe('r293 phase 2 — manager_manager, the second hop up the reporting line
       leaveTypeId: b.annualLeaveTypeId,
     });
     expect(preview!.facts.managerManager).toBeNull();
-    expect(preview!.levels[0]).toEqual({
-      kind: 'manager_manager',
-      kept: false,
-      droppedBecause: 'no_manager_manager',
-    });
+    expect(preview!.levels[0]).toEqual(dyn('manager_manager', false, 'no_manager_manager'));
 
     const { leaveRequestId } = await request('2026-07-14');
     expect(await stepsFor(leaveRequestId)).toEqual([{ kind: 'hr_admin', status: 'pending' }]);
@@ -544,18 +627,256 @@ describe('r293 phase 2 — manager_manager, the second hop up the reporting line
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
     });
-    expect(before!.levels[0]).toEqual({
-      kind: 'manager_manager',
-      kept: false,
-      droppedBecause: 'no_manager_manager',
-    });
+    expect(before!.levels[0]).toEqual(dyn('manager_manager', false, 'no_manager_manager'));
 
     const { grand } = await giveManagerAManager();
     const after = await previewApprovalChain(ctx(), {
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
     });
-    expect(after!.levels[0]).toEqual({ kind: 'manager_manager', kept: true, droppedBecause: null });
+    expect(after!.levels[0]).toEqual(dyn('manager_manager', true, null));
     expect(after!.facts.managerManager).toBe(grand.employmentId);
+  });
+});
+
+describe('r293 phase 3 — specific_employee, the first FIXED approver', () => {
+  /** A named approver who is NOT in the subject's reporting line at all — the point of a fixed level. */
+  let namedApprover: { personId: string; employmentId: string };
+  let namedCtx: SessionContext;
+
+  const ctxFor = async (emp: { personId: string }, role: 'employee' | 'manager' | 'hr_admin' | 'super_admin') => {
+    await createAppUser(b.tenantId, emp.personId, role);
+    const [u] = await owner.db
+      .select({ id: schema.appUser.id })
+      .from(schema.appUser)
+      .where(eq(schema.appUser.personId, emp.personId));
+    return { tenantId: b.tenantId, userId: u.id, personId: emp.personId, roles: [role] } as SessionContext;
+  };
+
+  /** Save a template through the SERVICE (not straight into the table) and assign it, so the whole
+   *  save → sanitize → serialize → resolve → generate path is what is under test. */
+  const useTemplate = async (levels: unknown[]) => {
+    const { id } = await createApprovalTemplate(ctx(), { name: `T ${randomUUID().slice(0, 6)}`, description: null, levels });
+    await assignApprovalTemplate(ctx(), {
+      templateId: id,
+      companyIds: [b.companyId],
+      leaveTypeIds: [b.annualLeaveTypeId],
+    });
+    return id;
+  };
+
+  /** End an employment the way the product does — a last working day in the past. */
+  const endEmployment = (employmentId: string) =>
+    owner.db
+      .update(schema.employment)
+      .set({ lastWorkingDate: '2025-01-31', resignationDate: '2025-01-01' })
+      .where(eq(schema.employment.id, employmentId));
+
+  beforeEach(async () => {
+    namedApprover = await hire('Named Approver');
+    namedCtx = await ctxFor(namedApprover, 'employee');
+  });
+
+  it('is the ONE fixed kind, and it is not droppable', () => {
+    expect([...FIXED_LEVEL_KINDS]).toEqual(['specific_employee']);
+    expect(isFixedLevelKind('specific_employee')).toBe(true);
+    expect(isDroppableLevelKind('specific_employee')).toBe(false);
+  });
+
+  it('refuses to save a named-approver level with nobody named', async () => {
+    // The level cannot be stored half-built: a fixed step with no person can neither be decided nor
+    // dropped, so it would be a permanent stall written by a save that looked like it worked.
+    await expect(
+      createApprovalTemplate(ctx(), {
+        name: 'Nobody named',
+        description: null,
+        levels: ['direct_manager', { kind: 'specific_employee' }],
+      }),
+    ).rejects.toThrow(/approver/i);
+
+    // The other arm: the same chain WITH somebody named saves, and stores the id.
+    const id = await useTemplate([
+      { kind: 'direct_manager' },
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
+    expect(await storedLevels(id)).toEqual([
+      // A dynamic level is still written back as a bare STRING, so every row saved before r293
+      // round-trips byte-identically and the template needed no migration.
+      'direct_manager',
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
+  });
+
+  it('THE ASYMMETRY: a dynamic level resolving to nobody is dropped, a fixed one naming a LEAVER is not', async () => {
+    // The subject has no manager and their department has no head — two dynamic levels that resolve to
+    // nobody. The named approver has LEFT. Same chain, three levels, and they must not behave the same.
+    await endEmployment(namedApprover.employmentId);
+    await useTemplate([
+      'direct_manager',
+      'department_head',
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
+
+    const preview = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(preview!.levels).toEqual([
+      { kind: 'direct_manager', employmentId: null, fixedApproverEnded: false, kept: false, droppedBecause: 'no_manager' },
+      { kind: 'department_head', employmentId: null, fixedApproverEnded: false, kept: false, droppedBecause: 'no_department_head' },
+      // KEPT, and broken at the same time — the state only a fixed level can be in. That pair of facts
+      // IS the asymmetry: the warning exists precisely because the drop does not happen.
+      {
+        kind: 'specific_employee',
+        employmentId: namedApprover.employmentId,
+        fixedApproverEnded: true,
+        kept: true,
+        droppedBecause: null,
+      },
+    ]);
+    expect(preview!.facts.endedFixedApprovers).toEqual([namedApprover.employmentId]);
+
+    // And the engine agrees: the step is written, so the request really does stop there.
+    const { leaveRequestId } = await request('2026-07-20');
+    const steps = await owner.db
+      .select({
+        kind: schema.leaveApprovalStep.approverKind,
+        approver: schema.leaveApprovalStep.approverEmploymentId,
+      })
+      .from(schema.leaveApprovalStep)
+      .where(eq(schema.leaveApprovalStep.leaveRequestId, leaveRequestId))
+      .orderBy(schema.leaveApprovalStep.stepIndex);
+    expect(steps).toEqual([{ kind: 'specific_employee', approver: namedApprover.employmentId }]);
+  });
+
+  it('does NOT warn about a fixed approver who is still active — the other arm', async () => {
+    await useTemplate([
+      'hr_admin',
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
+    const preview = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(preview!.facts.endedFixedApprovers).toEqual([]);
+    expect(preview!.levels[1]).toMatchObject({ kind: 'specific_employee', fixedApproverEnded: false, kept: true });
+
+    // Now end them, and the SAME template starts warning without anything else changing.
+    await endEmployment(namedApprover.employmentId);
+    const after = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(after!.levels[1]).toMatchObject({ fixedApproverEnded: true, kept: true });
+  });
+
+  it('routes on the NAME, not on the relationship: the direct manager is refused, the named person is not', async () => {
+    // ⚠️ RLS IS THE REASON THIS CASE IS SHAPED THIS WAY, and the shape is the point.
+    // `leave_request` is visible to the subject, their manager chain and admins — nobody else. A named
+    // approver with no reporting relationship to the subject cannot SEE the request at all and so cannot
+    // reach the decide path; that is a PRE-EXISTING property of the whole approver vocabulary (the
+    // decision-time note in core/leave.ts says the same of payroll partners and dept/BU heads, which is
+    // why an HR admin can clear any step) and `specific_employee` inherits it rather than introducing it.
+    // See the next case, which pins that limitation by itself.
+    //
+    // So both arms use people who CAN see the request, which is what makes the pair meaningful: the only
+    // difference between them is whether the step NAMES them.
+    await giveSubjectAManager();
+    await useTemplate([{ kind: 'specific_employee', employmentId: manager.employmentId }, 'hr_admin']);
+    const { leaveRequestId } = await request('2026-07-21');
+
+    // ARM A — the subject's direct manager, who is NOT the named approver, is refused. They have full
+    // visibility and would clear a `direct_manager` step instantly, so this can only fail if the branch
+    // checks the relationship instead of the name.
+    const second = await hire('Second Approver');
+    const secondNamed = await useTemplate([{ kind: 'specific_employee', employmentId: second.employmentId }, 'hr_admin']);
+    void secondNamed;
+    const r2 = await request('2026-07-24');
+    await expect(decideLeave(mgrCtx, { leaveRequestId: r2.leaveRequestId, decision: 'approved' })).rejects.toThrow(
+      /named approver/i,
+    );
+
+    // ARM B — the same person, on a step that DOES name them, clears it and the chain advances.
+    const advanced = await decideLeave(mgrCtx, { leaveRequestId, decision: 'approved' });
+    expect(advanced).toMatchObject({ status: 'pending', advancedTo: 'hr_admin' });
+  });
+
+  it('KNOWN LIMIT: a named approver outside the reporting line cannot see the request, so HR clears it', async () => {
+    // Pinned deliberately, not hidden. RLS on leave_request is can_see_employment — subject, manager
+    // chain, admins — and NOTHING about r293 widens it. A fixed approver who is a stranger to the subject
+    // is therefore in exactly the position a payroll partner or an unrelated department head has always
+    // been in: the authority check would pass, but the row is invisible, so the request stops until an
+    // HR admin clears it. Widening RLS so that being named on a pending step confers visibility is a
+    // real and separate piece of work; it was NOT done here and this case is what will fail when it is.
+    await useTemplate([{ kind: 'specific_employee', employmentId: namedApprover.employmentId }, 'hr_admin']);
+    const { leaveRequestId } = await request('2026-07-25');
+
+    await expect(decideLeave(namedCtx, { leaveRequestId, decision: 'approved' })).rejects.toThrow(/not found|not visible/i);
+
+    // The chain still completes, because an HR admin can clear any step — which is the whole reason that
+    // override exists, and the reason a departed fixed approver is a stall rather than a deadlock.
+    const advanced = await decideLeave(ctx(), { leaveRequestId, decision: 'approved' });
+    expect(advanced).toMatchObject({ status: 'pending', advancedTo: 'hr_admin' });
+  });
+
+  it('SNAPSHOTS the named approver onto the step — re-pointing the template leaves it alone', async () => {
+    // This is what migration 0467 is for. If the step went back to the template for its approver, an edit
+    // would silently re-route a request that is already in flight — the one promise the plan makes about
+    // template edits, and the reason the column exists at all.
+    const other = await hire('Other Approver');
+    const id = await useTemplate([
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+      'hr_admin',
+    ]);
+    const { leaveRequestId } = await request('2026-07-22');
+    const approverOf = async (reqId: string) =>
+      (
+        await owner.db
+          .select({ a: schema.leaveApprovalStep.approverEmploymentId })
+          .from(schema.leaveApprovalStep)
+          .where(eq(schema.leaveApprovalStep.leaveRequestId, reqId))
+          .orderBy(schema.leaveApprovalStep.stepIndex)
+      ).map((r) => r.a);
+    expect(await approverOf(leaveRequestId)).toEqual([namedApprover.employmentId, null]);
+
+    await updateApprovalTemplate(ctx(), id, {
+      name: (await listApprovalTemplates(ctx())).find((t) => t.id === id)!.name,
+      description: null,
+      levels: [{ kind: 'specific_employee', employmentId: other.employmentId }, 'hr_admin'],
+    });
+
+    // ARM A — the in-flight request still names the ORIGINAL person, and is still decidable (by HR here,
+    // for the RLS reason the case above pins — the point is the id on the row, not who pressed approve).
+    expect(await approverOf(leaveRequestId)).toEqual([namedApprover.employmentId, null]);
+    await decideLeave(ctx(), { leaveRequestId, decision: 'approved' });
+
+    // ARM B — the edit is not inert: the next request names the new person.
+    const r2 = await request('2026-07-23');
+    expect(await approverOf(r2.leaveRequestId)).toEqual([other.employmentId, null]);
+  });
+
+  it('two chains naming DIFFERENT people are different chains', async () => {
+    // core/leave-approval-consolidation.ts reuses an existing template when two chains "look equal", and
+    // a kinds-only comparison cannot tell these apart — it would have re-pointed a converted rule at the
+    // wrong approver.
+    const other = await hire('Other Approver');
+    const a: ApprovalLevel = { kind: 'specific_employee', employmentId: namedApprover.employmentId };
+    const c: ApprovalLevel = { kind: 'specific_employee', employmentId: other.employmentId };
+    expect(levelKey(a)).not.toBe(levelKey(c));
+    // And the arm that keeps it honest: a dynamic level's key is still just its kind, so nothing about
+    // the pre-r293 comparison changed for the chains that have always existed.
+    expect(levelKey({ kind: 'direct_manager', employmentId: null })).toBe('direct_manager');
+  });
+
+  it('a dynamic level never keeps a stray employment id', async () => {
+    // An id on a level the engine never reads is a lie a later reader could believe.
+    const id = await useTemplate([
+      { kind: 'hr_admin', employmentId: namedApprover.employmentId },
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
+    expect(await storedLevels(id)).toEqual([
+      'hr_admin',
+      { kind: 'specific_employee', employmentId: namedApprover.employmentId },
+    ]);
   });
 });

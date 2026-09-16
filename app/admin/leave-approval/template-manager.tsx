@@ -5,14 +5,17 @@ import { useTranslations } from 'next-intl';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { groupTemplateAssignments } from './assignment-groups';
-import { StepListEditor, type StepListLabels } from './step-list-editor';
+import { StepListEditor, kindLabelOf, type StepListLabels } from './step-list-editor';
+import { isFixedLevelKind, type ApprovalLevel } from '@/lib/leave-approval-kinds';
+import type { EmployeeSearchOption } from '@/components/employee-search-field';
 
 type Option = { id: string; label: string };
 export type TemplateRow = {
   id: string;
   name: string;
   description: string | null;
-  levels: string[];
+  /** r293 phase 3 — a level is a kind plus, for a named-approver level, the employment it points at. */
+  levels: ApprovalLevel[];
   isTenantDefault: boolean;
   active: boolean;
   assignedCount: number;
@@ -150,34 +153,33 @@ export function ApprovalTemplateManager({
   templates,
   actions,
   labels,
+  employees = [],
+  endedEmploymentIds = [],
 }: {
   templates: TemplateRow[];
   actions: TemplateActions;
   labels: TemplateManagerLabels;
+  /** r293 phase 3 — the population a named-approver level may point at, already scope-fenced. */
+  employees?: EmployeeSearchOption[];
+  /** Of those, the ones no longer in an active employment — what the departed-approver warning reads. */
+  endedEmploymentIds?: readonly string[];
 }) {
   const [editing, setEditing] = useState<TemplateRow | 'new' | null>(null);
 
   const stepLabels = stepLabelBag(labels);
-  // 6fadb036 (gap-close): full 7-role vocabulary preview labels.
-  const kindLabel = (k: string): string => {
-    switch (k) {
-      case 'department_head':
-        return labels.departmentHead;
-      case 'business_unit_head':
-        return labels.businessUnitHead;
-      case 'hr_admin':
-        return labels.hr;
-      case 'hr_manager':
-        return labels.hrManager;
-      case 'payroll':
-        return labels.payroll;
-      case 'custom_role':
-        return labels.customRole;
-      default:
-        return labels.manager;
-    }
+  const employeeName = (id: string) => {
+    const hit = employees.find((e) => e.value === id);
+    return hit ? (hit.employeeCode ? `${hit.employeeCode} · ${hit.name}` : hit.name) : null;
   };
-  const stepsPreview = (levels: string[]) => levels.map(kindLabel).join(' → ');
+  // r293 — ONE mapping, in step-list-editor.tsx. This file carried its own copy of the switch, and it
+  // is why the template list printed "Direct manager" for a Manager's-Manager level.
+  const kindLabel = (k: string) => kindLabelOf(k, stepLabels);
+  /** The one-line chain under a template's name. A fixed level prints the PERSON, not the kind: two
+   *  templates that both read "… → Named approver" would be indistinguishable in the list. */
+  const stepsPreview = (levels: ApprovalLevel[]) =>
+    levels
+      .map((l) => (l.employmentId ? (employeeName(l.employmentId) ?? kindLabel(l.kind)) : kindLabel(l.kind)))
+      .join(' → ');
 
   return (
     <div className="space-y-6">
@@ -264,6 +266,8 @@ export function ApprovalTemplateManager({
               action={actions.saveTemplate}
               stepLabels={stepLabels}
               labels={labels}
+              employees={employees}
+              endedEmploymentIds={endedEmploymentIds}
               onCancel={() => setEditing(null)}
             />
           )}
@@ -461,15 +465,24 @@ function TemplateForm({
   action,
   stepLabels,
   labels,
+  employees,
+  endedEmploymentIds,
   onCancel,
 }: {
   template: TemplateRow | null;
   action: (fd: FormData) => void | Promise<void>;
   stepLabels: React.ComponentProps<typeof StepListEditor>['labels'];
   labels: TemplateManagerLabels;
+  employees: EmployeeSearchOption[];
+  endedEmploymentIds: readonly string[];
   onCancel: () => void;
 }) {
-  const [levels, setLevels] = useState<string[]>(template?.levels ?? ['direct_manager', 'hr_admin']);
+  const [levels, setLevels] = useState<ApprovalLevel[]>(
+    template?.levels ?? [
+      { kind: 'direct_manager', employmentId: null },
+      { kind: 'hr_admin', employmentId: null },
+    ],
+  );
   /**
    * "Require multi-step approval" (feedback d4735493).
    *
@@ -490,7 +503,7 @@ function TemplateForm({
   function toggleMultiStep(next: boolean) {
     setMultiStep(next);
     setLevels((prev) => {
-      if (next) return prev.length > 1 ? prev : [...prev, 'hr_admin'];
+      if (next) return prev.length > 1 ? prev : [...prev, { kind: 'hr_admin' as const, employmentId: null }];
       // Keep the FIRST step rather than resetting to a default: unticking the box means "one approver",
       // not "start again", and silently replacing a chosen first approver would be a data change the
       // administrator did not ask for.
@@ -504,7 +517,10 @@ function TemplateForm({
       className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20"
     >
       {template && <input type="hidden" name="templateId" value={template.id} />}
-      <input type="hidden" name="levels" value={levels.join(',')} />
+      {/* r293 phase 3 — JSON, not the old CSV of kinds: a level can now carry a named approver and a
+          comma-separated list of kinds has nowhere to put one. The server action still accepts the CSV
+          shape (parseLevels), so the two unmounted CSV surfaces are unaffected. */}
+      <input type="hidden" name="levels" value={JSON.stringify(levels)} />
 
       <div className="text-sm font-semibold">{template ? labels.editTemplate : labels.addTemplate}</div>
 
@@ -530,10 +546,27 @@ function TemplateForm({
 
       {/* Single-step still renders the SAME editor, capped at one row, rather than a separate control:
           two ways to pick an approver would be two places for the value to diverge. */}
-      <StepListEditor levels={levels} setLevels={setLevels} labels={stepLabels} maxSteps={multiStep ? undefined : 1} />
+      <StepListEditor
+        levels={levels}
+        setLevels={setLevels}
+        labels={stepLabels}
+        maxSteps={multiStep ? undefined : 1}
+        employees={employees}
+        endedEmploymentIds={endedEmploymentIds}
+      />
 
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={levels.length === 0 || (multiStep && levels.length < 2)}>
+        {/* A named-approver level with nobody named is refused by the service (it would be a step that can
+            never be decided and can never be dropped), so the button says so BEFORE the round trip. */}
+        <Button
+          type="submit"
+          size="sm"
+          disabled={
+            levels.length === 0 ||
+            (multiStep && levels.length < 2) ||
+            levels.some((l) => isFixedLevelKind(l.kind) && !l.employmentId)
+          }
+        >
           {labels.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

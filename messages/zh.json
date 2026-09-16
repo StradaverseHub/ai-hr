@@ -10324,7 +10324,13 @@
     "previewSearchClear": "清除员工",
     "managerManager": "上级经理的经理",
     "hintManagerManager": "根据员工的汇报关系确定，位于其直属上级之上一级。若其中任一级缺失，则跳过。",
-    "previewSkippedNoManagerManager": "已跳过 —— 未为此员工记录上级经理的经理。"
+    "previewSkippedNoManagerManager": "已跳过 —— 未为此员工记录上级经理的经理。",
+    "specificEmployee": "指定人员",
+    "hintSpecificEmployee": "始终由此人审批，与汇报关系无关。此级别永不跳过——若其离职，申请将停在此处，直到模板被修改。",
+    "fixedApproverEnded": "此人已不是在职员工。申请将停在此级别，直到您改选他人。",
+    "fixedApproverMissing": "请选择在此级别审批的人员。",
+    "previewFixedApproverEnded": "该审批人已不是在职员工——申请将停在此处。",
+    "previewNotSkippable": "永不跳过"
   },
   "feedback": {
     "title": "反馈",

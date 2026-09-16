@@ -176,8 +176,31 @@ export async function unassignApprovalTemplateAction(formData: FormData) {
 // r79 0322 — setLeaveMultiApprovalAction is GONE. It posted a hard-coded value="1" from the Assign Template
 // screen, so it could only ever turn the flag ON; the flag itself no longer gates anything.
 
-function parseLevels(formData: FormData): string[] {
-  return String(formData.get('levels') ?? '')
+/**
+ * The posted chain, in either of the two shapes a screen can send.
+ *
+ * r293 phase 3 — the TEMPLATE builder now posts JSON, because a level can carry a named approver and a
+ * comma-separated list of kinds has nowhere to put one. The CSV shape is still accepted, unchanged, for
+ * the two surfaces that still send it.
+ *
+ * ⚠️ NOTHING IS VALIDATED HERE, DELIBERATELY. `sanitizeApprovalLevels` (lib/leave-approval-kinds.ts) is
+ * the one place that decides what a posted level MEANS — it drops unknown kinds, drops a named-approver
+ * level with nobody named, and strips a stray employment id off a dynamic one. A second opinion in the
+ * action is how the form and the service come to disagree about what was saved. A malformed JSON body is
+ * returned as an empty chain, which the service refuses by name ("a template needs at least one step")
+ * rather than saving a silently shortened one.
+ */
+function parseLevels(formData: FormData): unknown[] {
+  const raw = String(formData.get('levels') ?? '').trim();
+  if (raw.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return raw
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);

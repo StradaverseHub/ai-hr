@@ -10324,7 +10324,13 @@
     "previewSearchClear": "Kosongkan pekerja",
     "managerManager": "Pengurus kepada Pengurus",
     "hintManagerManager": "Ditentukan daripada garis pelaporan pekerja, satu tahap di atas penyelia langsung mereka. Dilangkau jika mana-mana tahap itu tiada.",
-    "previewSkippedNoManagerManager": "Dilangkau — tiada pengurus kepada pengurus direkodkan untuk pekerja ini."
+    "previewSkippedNoManagerManager": "Dilangkau — tiada pengurus kepada pengurus direkodkan untuk pekerja ini.",
+    "specificEmployee": "Orang yang dinamakan",
+    "hintSpecificEmployee": "Sentiasa orang ini, tidak kira kepada siapa mereka melapor. Tahap ini tidak pernah dilangkau — jika mereka berhenti, permohonan akan terhenti di sini sehingga templat dikemas kini.",
+    "fixedApproverEnded": "Orang ini bukan lagi pekerja aktif. Permohonan akan terhenti di tahap ini sehingga anda memilih orang lain.",
+    "fixedApproverMissing": "Pilih orang yang meluluskan pada tahap ini.",
+    "previewFixedApproverEnded": "Pelulus ini bukan lagi pekerja aktif — permohonan akan terhenti di sini.",
+    "previewNotSkippable": "Tidak pernah dilangkau"
   },
   "feedback": {
     "title": "Maklum Balas",

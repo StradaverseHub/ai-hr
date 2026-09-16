@@ -31,6 +31,10 @@
 //   payroll             → payroll_partner (subject's company) / super_admin    (never dropped)
 //   custom_role         → an admin gate (hr_admin / super_admin); binding a specific named role per
 //                         step is a documented follow-up (ADR-0071 §i custom_position guard)         (never dropped)
+//   specific_employee   → a NAMED PERSON, stored as an employment id ON THE LEVEL. r293 phase 3, and the
+//                         only FIXED kind: it resolves nothing, follows nothing, and can never be
+//                         dropped. See FIXED_LEVEL_KINDS for why that asymmetry is the whole item's risk.
+//                                                                                                    (never dropped)
 export const LEVEL_KINDS = [
   'direct_manager',
   'manager_manager',
@@ -40,6 +44,7 @@ export const LEVEL_KINDS = [
   'hr_manager',
   'payroll',
   'custom_role',
+  'specific_employee',
 ] as const;
 export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
 
@@ -60,11 +65,11 @@ export const HEAD_LEVEL_KINDS: readonly LeaveLevelKind[] = ['department_head', '
  * level has nothing to resolve and so can never be dropped — if the named person leaves, every request at
  * that level stalls until a human edits the template.
  *
- * Empty until r293 phase 3 introduces `specific_employee`; `test/r293-approval-builder.test.ts` pins BOTH
- * arms (every current kind is dynamic; a fixed kind is flagged) so adding a fixed kind without wiring the
- * badge, the drop rule and the departed-approver warning fails rather than passing silently.
+ * `specific_employee` (r293 phase 3) is the only member and every other kind is dynamic;
+ * `test/r293-approval-builder.test.ts` pins BOTH arms of that, so a kind added without wiring the badge,
+ * the drop rule and the departed-approver warning fails rather than passing silently.
  */
-export const FIXED_LEVEL_KINDS: readonly LeaveLevelKind[] = [];
+export const FIXED_LEVEL_KINDS: readonly LeaveLevelKind[] = ['specific_employee'];
 
 /** True when the kind names a specific PERSON rather than a relationship. The single owner of the
  *  Dynamic/Fixed classification — the builder badge, the preview and the drop rule all read this. */
@@ -98,8 +103,76 @@ export function isDroppableLevelKind(kind: string): boolean {
   return (DROPPABLE_LEVEL_KINDS as readonly string[]).includes(kind);
 }
 
-/** Keep only values the engine knows. Unknown entries in stored jsonb are dropped rather than trusted. */
-export function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
+
+/**
+ * r293 phase 3 — ONE LEVEL OF A CHAIN, and the shape the jsonb column has always been able to hold.
+ *
+ * Every kind before `specific_employee` resolves a RELATIONSHIP at step-generation time and needs nothing
+ * stored beyond its name, which is why a level was a bare string for three years. A fixed approver has no
+ * relationship to resolve, so the person has to be written down: `employmentId` is that, and it is
+ * non-null for exactly the fixed kinds.
+ *
+ * ⚠️ THE STORED SHAPE OF AN EXISTING TEMPLATE IS UNCHANGED. `serializeApprovalLevels` writes a dynamic
+ * level back as a plain string and only a fixed level as an object, so every row written before r293 round
+ * -trips byte-identically, every reader that only wants kinds keeps working through `sanitizeLevels`, and
+ * NO MIGRATION IS NEEDED FOR THE TEMPLATE. (A migration IS needed for the generated STEP, which had
+ * nowhere to record which person a fixed step belongs to — see 0467.)
+ */
+export type ApprovalLevel = {
+  kind: LeaveLevelKind;
+  /** The named approver's employment id — non-null exactly when `kind` is a FIXED kind. */
+  employmentId: string | null;
+};
+
+/**
+ * Read a stored `levels` jsonb (or a posted form value) into levels the engine can route on.
+ *
+ * Tolerant in one direction only. An unknown kind is dropped, as it always was. A FIXED level with no
+ * employment id is ALSO dropped rather than kept as a half-level: a named-person step with nobody named
+ * cannot be resolved, cannot be decided and cannot be dropped at generation time, so it would be a
+ * permanent stall written by a save that looked like it worked. A dynamic level carrying a stray
+ * employment id has it cleared — the id would be unreachable and a later reader might believe it.
+ */
+export function sanitizeApprovalLevels(raw: unknown): ApprovalLevel[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((x): x is LeaveLevelKind => (LEVEL_KINDS as readonly string[]).includes(x as string));
+  const out: ApprovalLevel[] = [];
+  for (const entry of raw) {
+    if (typeof entry === 'string') {
+      if ((LEVEL_KINDS as readonly string[]).includes(entry) && !isFixedLevelKind(entry)) {
+        out.push({ kind: entry as LeaveLevelKind, employmentId: null });
+      }
+      continue;
+    }
+    if (entry && typeof entry === 'object') {
+      const kind = (entry as { kind?: unknown }).kind;
+      const employmentId = (entry as { employmentId?: unknown }).employmentId;
+      if (typeof kind !== 'string' || !(LEVEL_KINDS as readonly string[]).includes(kind)) continue;
+      if (isFixedLevelKind(kind)) {
+        if (typeof employmentId !== 'string' || employmentId.trim() === '') continue;
+        out.push({ kind: kind as LeaveLevelKind, employmentId: employmentId.trim() });
+      } else {
+        out.push({ kind: kind as LeaveLevelKind, employmentId: null });
+      }
+    }
+  }
+  return out;
+}
+
+/** The value to store in the jsonb column. Dynamic levels stay bare strings so pre-r293 rows round-trip
+ *  byte-identically and no migration is needed for the template itself. */
+export function serializeApprovalLevels(levels: readonly ApprovalLevel[]): unknown[] {
+  return levels.map((l) => (l.employmentId ? { kind: l.kind, employmentId: l.employmentId } : l.kind));
+}
+
+/** A level's full IDENTITY, for comparing two chains. Two `specific_employee` levels naming different
+ *  people are DIFFERENT chains, which `sanitizeLevels`'s kinds-only view cannot see — and
+ *  core/leave-approval-consolidation.ts reuses an existing template when two chains look equal. */
+export function levelKey(level: ApprovalLevel): string {
+  return level.employmentId ? `${level.kind}:${level.employmentId}` : level.kind;
+}
+
+/** The kind sequence alone — every reader that routes on WHO APPROVES rather than on WHICH PERSON.
+ *  Deliberately a projection of `sanitizeApprovalLevels` and not a second parse of the same jsonb. */
+export function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
+  return sanitizeApprovalLevels(raw).map((l) => l.kind);
 }

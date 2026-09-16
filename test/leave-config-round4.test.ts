@@ -441,7 +441,12 @@ describe('a6fe37fc R4 · tab 5 answers its own title, read-only (IA §2.2)', () 
       "wonByRule ? tr('otherRules', { n: others }) : tr('candidateRules', { n: others })",
     );
     expect(readoutCode).toContain('const wonByRule = decision.ruleId !== null;');
-    expect(policySrc).toContain("return { levels: set.tenantDefaultLevels, ruleId: null, source: 'tenant-default' };");
+    // r293 phase 3 — the SAME decision, through the one constructor that now builds every ApprovalDecision
+    // (`decision(levels, ruleId, source)`), because a level can carry a named approver and `levels` became
+    // a projection of `resolvedLevels`. What this pins is unchanged and is the point: BOTH fallback paths
+    // report `ruleId: null`, so tab 5 never calls a candidate an "other rule" when no rule won.
+    expect(policySrc).toContain("return decision(set.tenantDefaultLevels, null, 'tenant-default');");
+    expect(policySrc).toContain("return decision(FALLBACK_CHAIN, null, 'fallback');");
   });
 
   it('links to Approval chains through the MAP, so the link and the menu cannot disagree', () => {

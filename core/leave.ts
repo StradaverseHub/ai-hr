@@ -16,7 +16,14 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
-import { resolveApprovalDecision, type ApprovalDecisionSource } from './leave-approval-policy';
+import {
+  resolveApprovalDecision,
+  type ApprovalDecisionSource,
+  type ApprovalLevel,
+} from './leave-approval-policy';
+// r293 phase 3 — "no longer an active employment" is the SAME predicate every screen's status badge
+// derives from; a fixed-approver warning that used its own rule would disagree with the profile it points at.
+import { isEmploymentEnded } from './employment-status';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
@@ -4069,12 +4076,25 @@ export type ChainResolutionFacts = {
   deptHead: string | null;
   /** The subject's business unit's head employment id, or null when the BU has no head set. */
   buHead: string | null;
+  /**
+   * r293 phase 3 — the FIXED approvers named by this chain that are no longer an ACTIVE employment,
+   * by employment id. It is NOT a drop rule: a fixed level is never dropped (see applyChainDropRules),
+   * and the plan promises the reporter a WARNING rather than a silent skip — dropping would quietly
+   * weaken the chain an administrator deliberately configured. This is what the builder and the preview
+   * warn from, and `isEmploymentEnded` (core/employment-status.ts) is the predicate, not a new rule.
+   */
+  endedFixedApprovers: readonly string[];
 };
 
 /** r293 — one level of a resolved chain and whether it survives generation. `kept: false` is the DROP:
  *  the step is never written, and the request carries on to the next level rather than stalling. */
 export type ResolvedChainLevel = {
   kind: string;
+  /** r293 phase 3 — the NAMED approver for a fixed level; null for every relationship-resolved kind. */
+  employmentId: string | null;
+  /** r293 phase 3 — true when this level names a person who is no longer an active employment. The level
+   *  is still KEPT: a fixed approver cannot be dropped, which is exactly why this has to be said out loud. */
+  fixedApproverEnded: boolean;
   kept: boolean;
   /** Why it was dropped: the relationship that resolved to nobody. Null when kept. */
   droppedBecause: 'no_manager' | 'no_manager_manager' | 'no_department_head' | 'no_business_unit_head' | null;
@@ -4085,6 +4105,8 @@ async function resolveChainFacts(
   tx: Tx,
   employmentId: string,
   attr: { departmentId?: string | null; businessUnitId?: string | null } | null,
+  /** The chain being resolved — needed only to check the FIXED approvers it names. */
+  levels: readonly ApprovalLevel[] = [],
 ): Promise<ChainResolutionFacts> {
   // Include a manager step only when the employee has a current administrative reporting line;
   // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
@@ -4144,7 +4166,31 @@ async function resolveChainFacts(
       .limit(1);
     buHead = b?.head ?? null;
   }
-  return { hasManager: !!mgr, managerManager, deptHead, buHead };
+  // r293 phase 3 — which of the chain's NAMED approvers have left. Read once for the whole chain, and
+  // through `isEmploymentEnded` so the warning agrees with the status every screen shows rather than
+  // inventing a second definition of "gone".
+  const named = [...new Set(levels.filter((l) => l.employmentId).map((l) => l.employmentId as string))];
+  let endedFixedApprovers: string[] = [];
+  if (named.length) {
+    const rows = await tx
+      .select({
+        id: employment.id,
+        terminatedOn: employment.terminatedOn,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
+      })
+      .from(employment)
+      .where(inArray(employment.id, named));
+    const seen = new Set(rows.map((r) => r.id));
+    endedFixedApprovers = [
+      // An id this transaction cannot see AT ALL is treated as ended: the approver either no longer
+      // exists or is outside the reader's tenant, and in both cases the chain is pointing at nobody.
+      ...named.filter((id) => !seen.has(id)),
+      ...rows.filter((r) => isEmploymentEnded(r)).map((r) => r.id),
+    ];
+  }
+  return { hasManager: !!mgr, managerManager, deptHead, buHead, endedFixedApprovers };
 }
 
 /**
@@ -4160,23 +4206,30 @@ async function resolveChainFacts(
  * `test/r293-approval-builder.test.ts` pins the two in step across the files.
  */
 export function applyChainDropRules(
-  chain: readonly string[],
+  chain: readonly ApprovalLevel[],
   facts: ChainResolutionFacts,
 ): ResolvedChainLevel[] {
-  return chain.map((kind) => {
+  return chain.map(({ kind, employmentId }) => {
+    // r293 phase 3 — THE ASYMMETRY, stated once and in the only place that can act on it. A FIXED level
+    // is returned KEPT unconditionally, even when the person it names has left: there is no relationship
+    // to resolve to nobody, so there is nothing to drop. The flag below is what the builder and the
+    // preview warn from. Dropping instead would silently remove an approval an administrator deliberately
+    // put in the chain, and the plan promises the reporter a warning, not a skip.
+    const fixedApproverEnded = !!employmentId && facts.endedFixedApprovers.includes(employmentId);
+    const base = { kind, employmentId: employmentId ?? null, fixedApproverEnded };
     if (kind === 'direct_manager' && !facts.hasManager) {
-      return { kind, kept: false, droppedBecause: 'no_manager' as const };
+      return { ...base, kept: false, droppedBecause: 'no_manager' as const };
     }
     if (kind === 'manager_manager' && !facts.managerManager) {
-      return { kind, kept: false, droppedBecause: 'no_manager_manager' as const };
+      return { ...base, kept: false, droppedBecause: 'no_manager_manager' as const };
     }
     if (kind === 'department_head' && !facts.deptHead) {
-      return { kind, kept: false, droppedBecause: 'no_department_head' as const };
+      return { ...base, kept: false, droppedBecause: 'no_department_head' as const };
     }
     if (kind === 'business_unit_head' && !facts.buHead) {
-      return { kind, kept: false, droppedBecause: 'no_business_unit_head' as const };
+      return { ...base, kept: false, droppedBecause: 'no_business_unit_head' as const };
     }
-    return { kind, kept: true, droppedBecause: null };
+    return { ...base, kept: true, droppedBecause: null };
   });
 }
 
@@ -4214,8 +4267,8 @@ export async function previewApprovalChain(
     const days = p.days ?? 1;
     const resolved = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
     if (!resolved) return null;
-    const facts = await resolveChainFacts(tx, p.employmentId, resolved.attr);
-    const levels = applyChainDropRules(resolved.chain, facts);
+    const facts = await resolveChainFacts(tx, p.employmentId, resolved.attr, resolved.decision.resolvedLevels);
+    const levels = applyChainDropRules(resolved.decision.resolvedLevels, facts);
     return {
       levels,
       source: resolved.decision.source,
@@ -4253,18 +4306,20 @@ async function generateApprovalSteps(
   // chain that is one level BY CONFIGURATION collapses to the single-approver path.
   if (!isMultiStepChain(chain)) return;
 
-  const facts = await resolveChainFacts(tx, employmentId, attr);
-  const kinds = applyChainDropRules(chain, facts)
-    .filter((l) => l.kept)
-    .map((l) => l.kind);
-  if (kinds.length === 0) return;
+  const facts = await resolveChainFacts(tx, employmentId, attr, resolved.decision.resolvedLevels);
+  const kept = applyChainDropRules(resolved.decision.resolvedLevels, facts).filter((l) => l.kept);
+  if (kept.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
-    kinds.map((approverKind, stepIndex) => ({
+    // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
+    // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
+    // this is the single writer it is enforced in.
+    kept.map((level, stepIndex) => ({
       tenantId,
       leaveRequestId,
       subjectEmploymentId: employmentId,
       stepIndex,
-      approverKind,
+      approverKind: level.kind,
+      approverEmploymentId: level.employmentId,
     })),
   );
 }
@@ -4368,6 +4423,10 @@ async function assertCanDecideLeaveStep(
   subjectEmploymentId: string,
   kind: string,
   label: string,
+  /** r293 phase 3 — the step's OWN named approver, for FIXED kinds. Read off the snapshot row, never
+   *  re-resolved from the template: the snapshot is what makes a template edit safe for leave in flight,
+   *  and a decider check that went back to the template would undo exactly that. */
+  approverEmploymentId?: string | null,
 ) {
   const roles = ctx.roles ?? [];
   const isSuper = roles.includes('super_admin');
@@ -4445,6 +4504,31 @@ async function assertCanDecideLeaveStep(
       );
       if (!ok) throw new Error(`Only Payroll or HR can decide this ${label}`);
       return;
+    }
+    case 'specific_employee': {
+      // r293 phase 3 — THE ONLY KIND THAT ROUTES TO A PERSON. No relationship is consulted: the step
+      // carries the employment id it was generated with, and the person holding that employment decides.
+      await banSelf();
+      if (!approverEmploymentId) {
+        // A fixed step with nobody named cannot exist (sanitizeApprovalLevels drops such a level, and
+        // generation writes the pair together) — so reaching here means a hand-written row. Refuse
+        // rather than fall through to an admin-only gate that would read as if the step were role-based.
+        throw new Error(`This ${label} step names no approver — an admin must correct the template`);
+      }
+      if (ctx.personId != null) {
+        const [named] = await tx
+          .select({ personId: employment.personId })
+          .from(employment)
+          .where(eq(employment.id, approverEmploymentId))
+          .limit(1);
+        if (named?.personId === ctx.personId) return;
+      }
+      // HR/super clears it LAST, not first: unlike every other kind, this step has a specific human whose
+      // decision is the point, so the named person is offered the step before the admin override applies.
+      // The override still exists — it is what stops a fixed approver who has left stalling the chain
+      // forever, which is the risk the builder warns about.
+      if (isAdminRole) return;
+      throw new Error(`Only the named approver or HR can decide this ${label}`);
     }
     case 'department_head':
     case 'business_unit_head': {
@@ -4787,10 +4871,18 @@ export async function decideLeave(
 
     // Multi-step chain: decide the current step.
     if (steps.length > 0 && current) {
-      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind (the full
-      // 7-role vocabulary). direct_manager / department_head / business_unit_head / hr_admin / hr_manager /
-      // payroll / custom_role each have their own resolver in assertCanDecideLeaveStep.
-      await assertCanDecideLeaveStep(tx, ctx, req.employmentId, current.approverKind, 'leave request');
+      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind. r293 added
+      // manager_manager (a second hop up the reporting line) and specific_employee (the one FIXED kind);
+      // each kind's resolver lives in assertCanDecideLeaveStep, and the step's OWN `approverEmploymentId`
+      // — the snapshot, not the template — is what a fixed step routes on.
+      await assertCanDecideLeaveStep(
+        tx,
+        ctx,
+        req.employmentId,
+        current.approverKind,
+        'leave request',
+        current.approverEmploymentId,
+      );
       await tx
         .update(leaveApprovalStep)
         .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })

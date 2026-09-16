@@ -208,7 +208,13 @@ export async function sweepLeaveApprovalEscalations(
       // WHO to notify is snapshotted here (targetKind); WHETHER to notify is re-decided fresh at
       // dispatch time by the registry resolver (the step may have been decided since).
       const [next] = await tx
-        .select({ kind: leaveApprovalStep.approverKind })
+        .select({
+          kind: leaveApprovalStep.approverKind,
+          // r293 phase 3 — snapshotted WITH the kind, for the same reason the kind is snapshotted: a
+          // fixed next level routes to a person, and the chase must reach whoever the REQUEST was
+          // routed to, not whoever the template names by the time the notification is dispatched.
+          employmentId: leaveApprovalStep.approverEmploymentId,
+        })
         .from(leaveApprovalStep)
         .where(and(eq(leaveApprovalStep.leaveRequestId, r.requestId), gt(leaveApprovalStep.stepIndex, r.stepIndex)))
         .orderBy(asc(leaveApprovalStep.stepIndex))
@@ -216,6 +222,8 @@ export async function sweepLeaveApprovalEscalations(
       const nextKind = next?.kind ?? null;
       const targetKind =
         r.escalationTarget === 'specific_role' ? (r.escalationTargetRole ?? null) : nextKind;
+      // Only a NEXT-LEVEL target can carry a person; a configured role never does.
+      const targetEmploymentId = r.escalationTarget === 'specific_role' ? null : (next?.employmentId ?? null);
 
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -231,6 +239,7 @@ export async function sweepLeaveApprovalEscalations(
           currentKind: r.stepKind,
           nextKind, // null ⇒ the stuck step is the LAST one; the resolver falls back to HR admins
           targetKind,
+          targetEmploymentId,
           daysWaiting: elapsed,
           leaveTypeName: r.leaveTypeName,
           startDate: r.startDate,
