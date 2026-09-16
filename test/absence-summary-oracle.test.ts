@@ -31,6 +31,7 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { attendance, attendancePolicy, employment, person } from '../db/schema';
 import { attendanceForDate, attendanceForEmploymentRange, attendanceMonthSummary } from '../core/attendance';
+import { resolveEntitlementsTx } from '../core/entitlements';
 import { statusOf } from '../core/attendance-derive';
 import { holidayDatesFor } from '../core/holidays';
 import { approvedLeaveDates } from '../core/leave';
@@ -591,7 +592,26 @@ describe('e2632276 — the switch resolves exactly as the payroll kernel resolve
       isRestDay: true,
     });
     const uid = await createAppUser(b.tenantId, p.id, 'employee');
-    const self = { tenantId: b.tenantId, userId: uid, personId: p.id, roles: ['employee'] } as unknown as SessionContext;
+    // r292 INTEGRATION FIX. core/attendance.ts is now bound to withModuleTenant('attendance'), so every
+    // read through it asks the context whether the module is on. This synthetic context carried no
+    // entitlement snapshot and tripped EntitlementsUnresolvedError.
+    //
+    // RESOLVE A REAL SNAPSHOT — do NOT "simplify" this to `entitlementsExempt`. `attendance` is
+    // billable: true (packs/catalog.ts), and an exempt context asked about a BILLABLE module throws
+    // EntitlementsExemptForBillableError by design: an exemption asserts "entitlements do not apply to
+    // me", which is only ever true of a core module. The marker is the majority idiom in test/ precisely
+    // because most of those contexts are asked about core modules; it is the wrong one here.
+    //
+    // entitledCtx() is not usable either: it returns b.adminUserId, and this case is specifically about
+    // what a PLAIN EMPLOYEE resolves under RLS, so the employee's own userId and personId must survive.
+    const selfEntitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, b.tenantId));
+    const self = {
+      tenantId: b.tenantId,
+      userId: uid,
+      personId: p.id,
+      roles: ['employee'],
+      entitlements: selfEntitlements,
+    } as unknown as SessionContext;
     const contextFor = async (ctx: SessionContext) =>
       (await attendanceForEmploymentRange(ctx, emp.id, '2026-05-04', '2026-05-04'))[0].context;
 
