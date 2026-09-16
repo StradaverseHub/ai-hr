@@ -32,6 +32,7 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  harnessSnapshot,
   migrateTestDb,
   owner,
   resetDb,
@@ -63,9 +64,30 @@ describe('Standardize TP1 — HR admin-on-behalf', () => {
       hiredOn: '2026-01-01',
     });
 
+  /**
+   * r294 — THIS CONTEXT NEEDS A SNAPSHOT, AND SPECIFICALLY NOT AN EXEMPTION.
+   *
+   * `core/tax-relief.ts` now takes `withTenant` from `core/module-gate.ts` bound to `payroll`, so every
+   * TP1 entry point asks the entitlement resolver. A hand-rolled `SessionContext` with no `entitlements`
+   * is a mis-wired caller and throws `EntitlementsUnresolvedError` — which is the resolver's correct
+   * answer, not a test bug.
+   *
+   * `entitlementsExempt` is the WRONG fix here and would be a silent one: `payroll` is `billable: true`,
+   * and an exempt context asked about a billable module throws `EntitlementsExemptForBillableError` by
+   * design (slice 3). The exemption marker is the majority idiom in `test/` only because most of those
+   * contexts are asked about CORE modules. `harnessSnapshot` is what `adminCtx` carries — the honest
+   * point-in-time snapshot of what `seedBase` actually gave this tenant — so the gate can still CLOSE
+   * through it, which an exempt context structurally never could.
+   */
   async function employeeCtx(personId: string): Promise<SessionContext> {
     const uid = await createAppUser(base.tenantId, personId, 'employee');
-    return { tenantId: base.tenantId, userId: uid, personId, roles: ['employee'] };
+    return {
+      tenantId: base.tenantId,
+      userId: uid,
+      personId,
+      roles: ['employee'],
+      entitlements: harnessSnapshot(base.tenantId),
+    };
   }
 
   async function inputRow(batchId: string, employmentId: string) {

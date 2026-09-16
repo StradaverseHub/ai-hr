@@ -35,6 +35,32 @@
  *     core/attendance.ts    → attendance    (the pack's primary service)
  *     core/payroll.ts       → payroll       (packs/payroll/index.ts: "THE ENGINE")
  *     core/payroll-view.ts  → payroll       (the processed-payslip read models)
+ *     core/tax-relief.ts    → payroll       (r294 — the TP1 declare/submit/approve path)
+ *     core/back-pay.ts      → payroll       (r294 — arrears detect/calculate/verify/approve-and-post)
+ *
+ * THE OTHER FOUR PAYROLL SERVICE FILES ARE UNBOUND ON PURPOSE (r292 stated the gap; r294 did the
+ * importer audit and closed two of the six). The audit parsed every import, export-from, dynamic import
+ * and require in the repo rather than grepping, because a grep is wrong in both directions here: it
+ * reports doc comments that quote a specifier as real edges, and it misses the edge that actually
+ * decides this — core/admin.ts reaches core/payroll-cycle.ts through the pack facade, not by name.
+ *
+ *     core/pay-components.ts  LEFT — app/admin/personnel/[employmentId] (PERSONNEL, a core screen)
+ *                                    calls listEmploymentPayComponents + listPayComponents
+ *                                    unconditionally for any admin, and core/attendance-allowance.ts
+ *                                    — the ATTENDANCE pack — writes through setPayrollBatchComponent.
+ *                                    Binding it refuses a tenant that bought Attendance and not Payroll.
+ *     core/cp38.ts            LEFT — the same Personnel page calls listCp38 unconditionally.
+ *     core/loans.ts           LEFT — app/me/page.tsx (ESS, core) calls listLoansForEmployment.
+ *     core/payroll-cycle.ts   LEFT — app/admin/organization/[companyId] (core) calls listPayrollCycles,
+ *                                    and core/admin.ts seeds the cycle catalogue when a company is
+ *                                    created. The seeder passes its own `tx`, so the rebinding would
+ *                                    not catch THAT call — but the Organization read has no handle and
+ *                                    would break outright.
+ *
+ * Each of those needs a NARROWER seam than the file (a per-function assertion at the write entry
+ * points, or making the core screen ask before it reads), not this one. test/module-gate.test.ts pins
+ * both halves: the two bindings refuse and work, and the four non-bindings still answer for a tenant
+ * with every optional module off — so binding one of them turns that test red rather than a customer.
  *
  * NOT core/read.ts, and that is the whole reason this file reasons about placement rather than
  * spraying calls. `read.ts` is the SHARED kernel read module: `dashboardStats` reads `payroll_batch`
