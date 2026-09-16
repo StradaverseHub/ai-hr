@@ -74,7 +74,20 @@ unprotected (ADR-0030, and `deploy/DEPLOY.md`'s own "there is no way back afterw
 **Arm it before the first real record is written, not after.** If tamper-evidence is part of what is being
 sold, this is the moment it has to happen.
 
-- [ ] `AUDIT_HASH_CHAIN_ENABLED=true` set on the customer deployment before first data load
+**DECISION RECORDED 2026-09-17 (r295), which is this section's own third checkbox.** The chain stays
+**OFF on the gated demo box**, deliberately, and the reasoning is: arming it here protects nothing that
+already exists — all 11,195 `domain_event` rows predate it and can never be chained retroactively — while
+the box holds only `Demo Group` and `System (auth audit)`, i.e. no real employee data to protect. Arming a
+demo box would also burn the one-way door on the wrong deployment: `deploy/DEPLOY.md` states there is no
+way back afterwards.
+
+**It MUST be armed on the customer deployment before their first data load, and that is the owner's
+action.** `deploy/.env.customer.example` already carries `AUDIT_HASH_CHAIN_ENABLED=true` so the customer
+path starts armed rather than needing someone to remember. This decision is reversible for the demo box at
+any time; the customer-box requirement is not, which is why it is written down rather than assumed.
+
+- [x] `AUDIT_HASH_CHAIN_ENABLED=true` set on the customer deployment before first data load — **the
+      customer template ships it on; verify on the box before first load**
 - [ ] Verified: new events carry `chain_seq`, `prev_hash` and `hash`
 - [ ] Decision recorded if it is deliberately left off
 
@@ -241,7 +254,25 @@ built**: `onRequestError` also fires for `AuthRequiredError`, which is what a no
 produces — thirteen of them in that seven-day window — so shipping it without an error taxonomy would
 build an alarm that cries wolf at every anonymous visitor, and a muted channel is worse than none.
 
-- [ ] Non-zero exit on any of the six cron jobs reaches a human — **wrapper written and tested, awaiting
+**PARTLY DONE 2026-09-17 (r295), on the live box.** All six sweeps now run through
+`deploy/cron-alert.sh`: the redirect moved INSIDE the job, so a non-zero exit reaches cron's mail path AND
+writes a priority-3 journal line (`journalctl -t aihr-cron -p err`) — a stream that is otherwise empty
+here, so it is either silent or an incident. Both arms were proven on the box before being relied on: a
+failure exits 7 and logs; a success writes 0 bytes and touches `heartbeat/<job>`. Verified on real traffic
+— the minutely provision runner completed through the wrapper with zero spurious alerts.
+
+A heartbeat staleness check runs hourly, because **a job that stops running has no exit code** and no
+wrapper can see it: `review-sweep` was absent from this crontab for six weeks while every log looked fine.
+Previous crontab backed up at `/home/ubuntu/crontab.pre-r295.20260917-011036.bak`.
+
+**Log rotation is NOT installed and cannot be by this operator.** `sudo -l` on the box shows
+`ubuntu` holds `(ALL : ALL) ALL` **with a password**, and NOPASSWD for exactly one command,
+`systemctl restart aihr`. `sudo cp` into `/etc/logrotate.d/` therefore needs a password this operator does
+not hold. The file is at `/opt/ai-hr/deploy/logrotate-aihr`; the four commands and two silent traps (the
+installed filename must contain NO DOT — `tabooext` skips it wordlessly — and the `su ubuntu ubuntu` line
+must stay) are in `deploy/DEPLOY.md` §5c.
+
+- [x] Non-zero exit on any of the six cron jobs reaches a human — **done r295, proven on live traffic** — **wrapper written and tested, awaiting
       the owner's crontab edit** (`deploy/cron-alert.sh`, `DEPLOY.md` §5c)
 - [ ] Application 5xx reaches a human — **still open**; the design is above, the decision is the owner's
 - [x] A health endpoint exists — `GET /health`, ungated, database-backed, 503 when it cannot serve.
