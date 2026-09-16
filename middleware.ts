@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isAuthRoute } from '@/lib/auth-routes';
+import { isHealthRoute } from '@/lib/health-route';
 
 /**
  * Demo access gate (see HOSTING.md). When SHARE_PASSWORD is set, the whole app sits behind HTTP Basic
@@ -110,6 +111,14 @@ export function middleware(req: NextRequest) {
     // `next dev`, no gate configured: the one and only ungated path.
     return withPathname(req);
   }
+
+  // READINESS 1.6 — the health endpoint bypasses the CHALLENGE but not the refusal above it.
+  //
+  // It sits BELOW the unconfigured check on purpose and the order is the whole design: a deployment
+  // with no SHARE_PASSWORD is not serving, so /health must answer 503 there too and the monitor must
+  // alarm. A health endpoint hoisted above that refusal would report a broken deployment as healthy,
+  // which is the failure mode 1.6 exists to remove. See lib/health-route.ts.
+  if (isHealthRoute(req.nextUrl.pathname)) return withPathname(req);
 
   // Auth routes bypass the Basic-auth challenge but STILL run through here, so x-pathname is set.
   // They used to be excluded in the matcher instead, which skipped this function entirely and left

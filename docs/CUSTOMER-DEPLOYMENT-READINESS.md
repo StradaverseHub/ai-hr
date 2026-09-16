@@ -28,7 +28,7 @@ Employee import is real and has been used six times. Real authentication (WorkOS
 login, callback, invitation, password reset, an auth audit writer, and a six-step cutover runbook.
 
 **What stands between here and a customer.** Authentication has never been switched on. The documented
-deploy path seeds demo data into the target database. There are no backups. Nothing alerts. Nothing has
+deploy path seeds demo data into the target database. There are no backups. Nothing alerts (r291 added `GET /health` and wrote the cron-alert and logrotate configs, but nothing is monitoring the endpoint and neither config is installed — see 1.6). Nothing has
 ever been filed with any agency, and there is no state in the data model that means "filed". And there is
 no customer: production holds two tenants, `System (auth audit)` and `Demo Group`, so every reassuring row
 count in this system describes seeded demo data. **No feature in this product has ever been exercised
@@ -137,18 +137,75 @@ objective is unknown. **An untested backup is not a backup.**
 - [ ] A restore rehearsed into a scratch database, timed, and the result written down
 - [ ] Rollback defined: previous release tagged, previous build kept, automatic pre-deploy dump
 
-### 1.6 Alerting, so a failure is not silent
-Every cron line redirects stdout and stderr into a file, which means cron's own mail path can never fire.
-There is no Sentry, OpenTelemetry, pino or winston in `package.json`, no `/health` route, and no
-`logrotate` entry (the provisioning log grows about 1,440 lines a day, unbounded). 77 error lines in the
-service journal over seven days went nowhere. A Zabbix agent runs on the host; its rule set is UNKNOWN
-from here. The one real thing that exists is `/admin/scheduled-actions`, which shows job history to a
-group admin — but it is pull-only, with no run-now and no notification.
+### 1.6 Alerting, so a failure is not silent — PARTLY DONE (r291)
+**The state this item found, all of it re-verified on the box on 2026-09-16.** Every one of the six cron
+lines redirects stdout and stderr into a file, so cron's own mail path can never fire. There is no Sentry,
+OpenTelemetry, pino or winston in `package.json` — the grep is zero — and there was no `/health` route
+(`app/admin/leave-config/balance-health` is an unrelated admin screen) and no `logrotate` entry for
+ai-hr. A Zabbix agent runs on the host; it reports to `103.13.121.90`, a server this project does not
+control, so its rule set is still UNKNOWN from here. The one real thing that already existed is
+`/admin/scheduled-actions`, which shows job history to a group admin — pull-only, no run-now, no
+notification.
 
-- [ ] Non-zero exit on any of the six cron jobs reaches a human
-- [ ] Application 5xx reaches a human
-- [ ] A health endpoint exists and is monitored
-- [ ] Log rotation configured
+**Two corrections to the survey's own numbers, both found by re-running the commands.**
+
+1. **"77 error lines in the service journal over seven days" is not reproducible, and the truth is
+   worse.** `journalctl -u aihr -p err --since '7 days ago'` returns **zero entries**. The breakdown over
+   2,076 journal lines is p4 warning 28, p6 info 2,020, p0–p3 **nil**. The string `error` appears on 253
+   lines, most of them stack-trace continuations of one `ChunkLoadError` storm. The reason priority 3 is
+   empty is the finding: **Next writes its errors to stdout, and systemd files plain stdout at priority
+   info**, so no priority-based alert — including a Zabbix `systemd` item — can ever see an application
+   error. Real failures went past in that window: eight `Failed query: select "id" from "employment" …`,
+   four `Failed to load static file for page: /500 ENOENT`, four `InvariantError: client reference
+   manifest … does not exist`, thirteen `AuthRequiredError`.
+2. **The provisioning log is unbounded AND undateable.** 81,847 lines / 1,395,146 bytes on 2026-09-16,
+   about 17 bytes each, and every one of them is the string `· nothing to do` with **no timestamp**. The
+   survey's "about 1,440 lines a day" is the right order (one line per minute), but the sharper problem is
+   that after any rotation there is nothing in the file to date a line by.
+
+**What was built (r291), and the one decision inside it.** `/health` is reachable **without** the
+`SHARE_PASSWORD` gate and is the only unauthenticated path in the application — a health check behind a
+password is not a health check, and most monitors cannot distinguish a 401 from an outage. The opposite
+risk, a health check that leaks internals to the internet, is answered by making the endpoint worth
+nothing to read rather than by putting it back behind the gate: it returns exactly `{"status":"ok"}` or
+`{"status":"unhealthy"}` and nothing else — no version, no host, no counts, no driver error text. The
+reason a probe failed goes to the journal, which is already behind ssh.
+
+It does a real `select 1` on the application pool, so **process alive** and **can serve requests** are
+different answers: no reply at all means the process is down, `503` means it is up and cannot serve, `200`
+means both. There is deliberately no liveness-only URL beside it, because a permanently-200 endpoint is
+what someone eventually points the monitor at. The 1.4 fail-closed refusal sits **above** the bypass on
+purpose: with `SHARE_PASSWORD` unset, `/health` returns 503 too, because a deployment that refuses to
+serve is not healthy. Polling is bounded — 2 s timeout, single-flighted, 1 s cache — so the one
+unauthenticated endpoint cannot be used to exhaust the connection pool.
+
+Verified by running, not by reasoning: a real `next build` + `next start` with the gate on answers 200 on
+`/health`, 401 on `/people` and 401 on `/health/db`, anonymously; a dev server pointed at a dead database
+port answers `503 {"status":"unhealthy"}` and logs `✗ HEALTH: … Reason: connect ECONNREFUSED
+127.0.0.1:5999`, with the host and port in the journal and absent from the body.
+
+`deploy/cron-alert.sh` and `deploy/logrotate-aihr` are **written but NOT installed** — both change the
+crontab or `/etc`, which is the owner's to do. Install steps are in `deploy/DEPLOY.md` §5c. The wrapper
+moves the redirect inside the job (restoring cron's mail path), alerts through `logger -p user.err`,
+stdout and an optional `AIHR_ALERT_COMMAND`, preserves the exit status through all three, timestamps each
+run, and touches a heartbeat on success — because a job that **stops running** has no exit code to alert
+on, and `scripts/review-sweep.ts` records that it was missing from this crontab for six weeks.
+
+**No observability dependency was added, and that is a recommendation, not an omission.** Sentry or
+OpenTelemetry is a vendor, a cost and a data-residency decision about a payroll system; it belongs to the
+owner. The dependency-free alternative for application 5xx is `instrumentation.ts`'s `onRequestError` with
+a `<3>` syslog prefix (`SyslogLevelPrefix` defaults to true, verified in `man systemd.exec` on the box),
+which would put real application errors at priority 3 next to the cron alerts. It was **designed and not
+built**: `onRequestError` also fires for `AuthRequiredError`, which is what a normal logged-out visit
+produces — thirteen of them in that seven-day window — so shipping it without an error taxonomy would
+build an alarm that cries wolf at every anonymous visitor, and a muted channel is worse than none.
+
+- [ ] Non-zero exit on any of the six cron jobs reaches a human — **wrapper written and tested, awaiting
+      the owner's crontab edit** (`deploy/cron-alert.sh`, `DEPLOY.md` §5c)
+- [ ] Application 5xx reaches a human — **still open**; the design is above, the decision is the owner's
+- [x] A health endpoint exists — `GET /health`, ungated, database-backed, 503 when it cannot serve.
+      **"and is monitored" is still the owner's step**: nothing here points a monitor at it
+- [ ] Log rotation configured — **config written and tested, awaiting `cp` to `/etc/logrotate.d/aihr`**
 - [ ] Somebody is nominated as on call
 
 ### 1.7 Close the one RLS hole before a second tenant exists — DONE (r290, migration 0465)
