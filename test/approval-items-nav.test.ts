@@ -145,8 +145,16 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout passes listPendingTasks(...).length — no second query', () => {
     expect(layout).toContain('approvalCount={pendingTasks.length}');
     // The value it reuses is still the same single call already made for the bell.
-    expect(layout).toContain('const pendingTasks = await listPendingTasks(session, scopeIds)');
-    expect(layout.split('listPendingTasks(session, scopeIds)').length - 1).toBe(1);
+    //
+    // r292 UPDATED, NOT LOOSENED. Module gating gave listPendingTasks a third argument (the resolved
+    // InboxModules — the root layout must not throw, since a throw here 500s every authenticated route),
+    // so the old exact-spelling assertions broke while the decision they protect did not. The intent was
+    // always "exactly ONE call, and the count reuses it". That is now asserted directly by counting CALL
+    // sites rather than matching one argument list, which is both stronger and immune to the next
+    // argument change. Do not weaken this to "contains listPendingTasks".
+    expect(layout).toContain('const pendingTasks = await listPendingTasks(session, scopeIds,');
+    const callSites = layout.split('await listPendingTasks(').length - 1;
+    expect(callSites, 'exactly one listPendingTasks call in the root layout').toBe(1);
   });
 
   it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
