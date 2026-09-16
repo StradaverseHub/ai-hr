@@ -70,6 +70,27 @@ export const PAYROLL_PERMISSION_KEYS = [
   // the (still correct, currently uncalled) read that answers it. That is a deliberate ticket with its own
   // UI, not a line to add here.
   'leave.apply_on_behalf',
+  // r292 / readiness 3.2 — RECORD THAT A STATUTORY RETURN HAS BEEN FILED WITH THE AGENCY, and reverse a
+  // mark made in error. ONE key covers both directions on purpose: an operator who can enter a state but
+  // not leave it is a trap, and the two powers are not separable in kind (both write the system's claim
+  // about what was lodged with LHDN / KWSP / PERKESO). That is the opposite of the payroll.remove.employee
+  // reasoning above, where the two powers genuinely differ in blast radius.
+  //
+  // WHY A GRANULAR KEY RATHER THAN isAdmin / canManagePayroll. Filing is a statutory act and this repo
+  // cannot know whose act it is: in one customer HR files, in the next an outsourced payroll bureau
+  // (`payroll_partner`) does, and in a third only the finance director signs. That is a genuine UNKNOWN,
+  // and the two-layer mechanism is exactly how this codebase answers an UNKNOWN about authority — the
+  // default below is narrow and the customer widens it per company without a deploy. Every sibling
+  // high-risk payroll state transition (rollback, unlock, close, remove) is already gated this way; a
+  // hand-rolled isAdmin check here would be the odd one out.
+  //
+  // ⚠️ THE SHIPPED LIMIT, STATED PLAINLY (same honesty leave.apply_on_behalf documents above): the key is
+  // enforced in the SERVICE, so it refuses whatever screen or script calls markReportFiled. But the only
+  // screen that OFFERS the control today is app/payroll/reports/page.tsx, which is `requireAdmin()`.
+  // Granting this key to payroll_partner therefore authorises the action without yet giving that role a
+  // way to reach it. Widening that page is a separate decision about who may read every statutory report
+  // for a company, and it was deliberately not smuggled into this one.
+  'payroll.statutory_file',
 ] as const;
 
 export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
@@ -96,6 +117,10 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   // after reading the two shipped limits recorded against the key above, which bite ONLY once a non-admin
   // role holds it.
   'leave.apply_on_behalf': ['hr_admin', 'super_admin'],
+  // r292 — the same narrow default every other key here starts from: nothing widens on the day it ships.
+  // A customer whose returns are lodged by an outsourced bureau grants the key to `payroll_partner` for
+  // that company (after reading the shipped limit recorded against the key above).
+  'payroll.statutory_file': ['hr_admin', 'super_admin'],
 } as const;
 
 export function isPayrollPermissionKey(v: string): v is PayrollPermissionKey {

@@ -6185,9 +6185,30 @@ export const payrollIndividualTxn = pgTable(
   ],
 );
 
+/**
+ * r292 — the statuses that mean "this return has been LODGED WITH THE AGENCY".
+ *
+ * It lives HERE, beside the column, rather than in either service, because BOTH core/reporting.ts (which
+ * writes the transition) and core/payroll.ts (which derives the "already filed" warning from it) must
+ * resolve against the same list, and reporting.ts already imports payroll.ts — putting it in either one
+ * would make that dependency circular. Two hand-kept copies of "which statuses count as filed" is how a
+ * further status ships that only half the codebase believes in.
+ *
+ * `LABEL_KINDS` above is the same pattern: a value vocabulary the schema owns.
+ */
+export const STATUTORY_FILED_STATUSES = ['submitted', 'amended'] as const;
+export type StatutoryFiledStatus = (typeof STATUTORY_FILED_STATUSES)[number];
+
 // Statutory / compliance report artefact (ADR-0010). Append-only record of a generated filing —
 // derived from payslips but persisted for audit/idempotency (who generated what, against which
 // statutory-table version). Filed per legal entity (company_id); never mutated after submission.
+//
+// r292 / readiness 3.2 — THE ROW IS NO LONGER WRITE-ONCE, AND THE ONE THING THAT MAY CHANGE IS WHETHER
+// IT HAS BEEN FILED. The figures (`totals`, `row_count`, `statutory_version`, `generated_*`) are still
+// immutable: `markReportFiled` / `reverseReportFiling` (core/reporting.ts) touch only `status` and the
+// four `filed_*` / `ack_ref` columns below, and every transition appends a domain event in the same tx.
+// Nothing else in the codebase updates this table — that is the invariant, and test/statutory-filing-
+// r292.test.ts pins it.
 export const statutoryReport = pgTable(
   'statutory_report',
   {
@@ -6200,17 +6221,57 @@ export const statutoryReport = pgTable(
     reportType: text('report_type').notNull(), // e.g. 'my.contributions'
     periodKind: text('period_kind').notNull(), // 'month' | 'year' | 'event'
     periodKey: text('period_key').notNull(), // e.g. '2026-07'
-    status: text('status').notNull().default('draft'), // draft | final | submitted | amended
+    /**
+     * REACHABLE VOCABULARY: `draft` → `submitted` → (`amended` for a later return over the same
+     * company + report + period) — and back to `draft`, which is what reversing a mis-keyed mark does.
+     *
+     * `final` IS DELIBERATELY NOT IMPLEMENTED, and this comment is the record of that decision rather
+     * than a silent omission. It would mean "figures locked, not yet sent" — an internal approval
+     * checkpoint with no external evidence behind it, which nothing on a first customer's monthly
+     * CP39 / Borang A / PERKESO cycle asks for. Worse, it is a state in which `statutoryFiled` has no
+     * honest answer: the return is neither a draft somebody previewed nor something an agency has
+     * acknowledged. Implementing a state because the enum once listed it is how 3.2 happened.
+     * `STATUTORY_FILED_STATUSES` (core/reporting.ts) is the single list every reader resolves against.
+     */
+    status: text('status').notNull().default('draft'),
     statutoryVersion: text('statutory_version'), // MY_STATUTORY_VERSION at generation time
     rowCount: integer('row_count').notNull().default(0),
     totals: jsonb('totals'), // { epfEmployee, epfEmployer, socsoEmployee, ..., pcb }
     generatedBy: uuid('generated_by'), // app_user id (actor also on the domain event)
     generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * r292 — the evidence that a filing actually happened. NULL on every row that has not been filed,
+     * and cleared again when a mark is reversed (the retracted values survive on the
+     * `statutory-report.filing-reversed` domain event, so nothing is destroyed).
+     *
+     * ⚠️ `filedOn` AND `filedAt` ARE NOT THE SAME DATE AND MUST NOT BE COLLAPSED. `filedOn` is the day
+     * the return was lodged with the agency, declared by the operator — the date a statutory deadline is
+     * measured against. `filedAt` is the instant this system was told. A CP39 lodged on the 15th and
+     * keyed here on the 20th has both, five days apart, and only one of them is on time.
+     */
+    filedAt: timestamp('filed_at', { withTimezone: true }),
+    filedOn: date('filed_on'),
+    filedBy: uuid('filed_by'), // app_user id (actor also on the domain event)
+    /**
+     * The agency's acknowledgement / receipt reference. MANDATORY for a filed row — enforced in
+     * `markReportFiled`, not by a DB check (CLAUDE.md §6: a check on an existing table fires for every
+     * writer, including erasure). Free text, trimmed, capped at 120 chars: LHDN, KWSP and PERKESO each
+     * issue a different shape and this repo cannot verify any of their formats, so pattern-policing one
+     * would be inventing third-party behaviour. Non-empty is the honest floor — without it "filed" is
+     * once again an unevidenced click, which is the whole defect 3.2 names.
+     */
+    ackRef: text('ack_ref'),
     createdAt: createdAt(),
   },
   (t) => [
     index('statutory_report_tenant_idx').on(t.tenantId),
     index('statutory_report_company_period_idx').on(t.companyId, t.reportType, t.periodKey),
+    // 0466 — PARTIAL (WHERE status in ('submitted','amended')), so it is empty the day it lands and only
+    // ever holds returns that have really been filed. It serves `batchDownstreamWarnings`, which asks
+    // "are there FILED returns for this company + month" before every unlock, reset and processed-run edit.
+    index('statutory_report_filed_idx')
+      .on(t.companyId, t.periodKey)
+      .where(sql`status in ('submitted','amended')`),
   ],
 );
 

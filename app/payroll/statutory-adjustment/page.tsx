@@ -157,7 +157,7 @@ export default async function StatutoryAdjustmentPage({
             without knowing the month has already been filed or paid out. */}
         {(detail.statutoryFiled || detail.paymentDisbursed) && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-            {detail.statutoryFiled && <p>{t('warnFiled', { count: detail.statutoryReportCount })}</p>}
+            {detail.statutoryFiled && <p>{t('warnFiled', { count: detail.statutoryFiledCount })}</p>}
             {detail.paymentDisbursed && <p>{t('warnDisbursed')}</p>}
           </div>
         )}

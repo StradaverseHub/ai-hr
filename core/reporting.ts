@@ -9,7 +9,10 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
+  appUser,
   assignment,
+  STATUTORY_FILED_STATUSES,
+  type StatutoryFiledStatus,
   attendance,
   attendanceAllowancePolicy,
   attendanceCorrection,
@@ -48,7 +51,10 @@ import type { ReportData } from '../lib/report-export';
 // TYPE-ONLY, and that matters: lib/cp22-pdf.ts imports pdf-lib, and `import type` is erased at compile
 // time so this read pulls no PDF machinery into every caller of core/reporting.
 import type { Cp22Address, Cp22PdfData } from '../lib/cp22-pdf';
-import { daysInMonth } from './payroll';
+// r292 — `resolvePayrollPermission` is REUSED, not re-implemented: `markReportFiled` is gated on the same
+// two-layer granular mechanism payroll.unlock / payroll.close use, so a customer configures who may file
+// from the screen they already configure every other high-risk payroll authority from.
+import { daysInMonth, resolvePayrollPermission } from './payroll';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -387,6 +393,276 @@ export async function recordFileReport(
       },
     });
     return row;
+  });
+}
+
+// ══════════════════════════ Marking a return FILED (r292 / readiness 3.2) ══════════════════════════
+//
+// WHAT WAS BROKEN. Every `statutory_report` row was born 'draft' and NOTHING updated the column, so
+// 'final' | 'submitted' | 'amended' were unreachable and all 20 rows on production were 'draft'. The
+// damage was downstream: `batchDownstreamWarnings.statutoryFiled` (core/payroll.ts) is
+// `rows.length > 0`, so the amber banner shown before an unlock, a reset or an edit to a processed run
+// said "statutory returns have already been filed for this month" whenever somebody had merely pressed
+// Record generation on a PREVIEW — and could never say it when a return really had been lodged. It
+// misled in both directions, which is worse than saying nothing: an operator who learns the banner
+// cries wolf will ignore it on the day it is telling the truth.
+//
+// WHAT "FILED" NOW MEANS. A row is filed when an operator with the `payroll.statutory_file` permission
+// has recorded the agency's ACKNOWLEDGEMENT for it. That is a fact about the outside world, keyed by a
+// named human, not an inference the system draws from its own activity.
+//
+// THREE STATES, NOT FOUR — see the `status` comment in db/schema.ts for why `final` is not implemented.
+
+/** `STATUTORY_FILED_STATUSES` is owned by db/schema.ts, beside the column — see the comment there for
+ *  why it cannot live in this file or in core/payroll.ts. Re-exported so callers of this seam do not
+ *  have to know that. */
+export { STATUTORY_FILED_STATUSES, type StatutoryFiledStatus } from '../db/schema';
+const isFiledStatus = (v: string): v is StatutoryFiledStatus =>
+  (STATUTORY_FILED_STATUSES as readonly string[]).includes(v);
+
+/** Named refusal, mirroring EaOverrideError (core/ea-override.ts): a server action maps the CODE to
+ *  translated copy instead of pushing a raw English core string into a URL, and a test can assert the
+ *  code rather than a message string that would also match the wrong throw. */
+export class StatutoryFilingError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | 'forbidden'
+      | 'notFound'
+      | 'ackRefRequired'
+      | 'ackRefTooLong'
+      | 'reasonRequired'
+      | 'invalidFiledOn'
+      | 'filedOnInFuture'
+      | 'alreadyFiled'
+      | 'notFiled',
+  ) {
+    super(message);
+    this.name = 'StatutoryFilingError';
+  }
+}
+
+const ACK_REF_MAX = 120;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Record that a generated statutory return has been FILED with its agency.
+ *
+ * ── WHO MAY DO THIS ─────────────────────────────────────────────────────────────────────────────────
+ * The granular `payroll.statutory_file` permission (lib/payroll-permissions.ts), resolved exactly the
+ * way payroll.unlock / payroll.close are: code default of hr_admin + super_admin, overridable per
+ * company or tenant-wide from app/admin/payroll-permissions. Filing is a statutory act and WHOSE act it
+ * is differs per customer (HR, an outsourced bureau, a finance director) — that is a real UNKNOWN, and
+ * a configurable key is how this codebase answers one, rather than my guessing on the customer's behalf.
+ * The service is the primary gate; the 0026 RLS policy (`app.is_admin_for(company_id)`) is the SQL
+ * backstop, and it is NOT redundant — it is what fences a cross-company write.
+ *
+ * ── SUBMITTED vs AMENDED IS DERIVED, NOT ASKED ──────────────────────────────────────────────────────
+ * Filing a return for a (company, report type, period) that ALREADY has a live filed return is, by the
+ * agencies' own vocabulary, an amended return. The system knows this and the operator would have to be
+ * told it, so it is derived. It is derived from a CURRENTLY filed sibling: if the earlier mark was
+ * reversed, the next one is a plain 'submitted' again, because a retracted claim was never a filing.
+ *
+ * ── WHAT THIS DOES *NOT* DO, AND WHY (readiness 3.4) ────────────────────────────────────────────────
+ * It does not gate unlock, reset or a processed-run edit. 3.4 records that the only correction path
+ * today is unlock → reset (which DELETES payslips) → regenerate → re-close. Turning a true "this month
+ * is filed" into a BLOCK would mean a customer who filed a wrong figure could no longer correct it at
+ * all — strictly worse than today. `batchDownstreamWarnings` has always been "READ AND RECORDED, never
+ * a gate" (core/payroll.ts) and stays that way; the change here is that it is now telling the truth.
+ *
+ * ── AND WHAT IT DOES NOT CARVE OUT ──────────────────────────────────────────────────────────────────
+ * No `statutoryOverride`. `statutoryCtx` above exists because a SUSPENDED tenant must still be able to
+ * GENERATE a return and meet a legal deadline. Recording an acknowledgement is bookkeeping ABOUT an act
+ * already performed outside this system; it meets no deadline and can wait until the invoice is
+ * settled. Widening r104's one carve-out to cover it would be widening it on no evidence.
+ */
+export async function markReportFiled(
+  ctx: SessionContext,
+  p: {
+    /** The `statutory_report` row being marked. */
+    reportId: string;
+    /** The agency's acknowledgement / receipt reference. MANDATORY — see below. */
+    ackRef: string;
+    /** 'YYYY-MM-DD', the day it was lodged WITH THE AGENCY. Defaults to today in Kuala Lumpur. */
+    filedOn?: string;
+  },
+) {
+  // ⚠️ VALIDATE BEFORE THE PERMISSION READ NEEDS A TX, BUT REFUSE ON AUTHORITY BEFORE TOUCHING A ROW.
+  // The ack reference is MANDATORY and non-empty after trimming. Without it, `filed` is once again an
+  // unevidenced click — the exact defect 3.2 names, moved one column across. There is deliberately NO
+  // format check: LHDN, KWSP and PERKESO each issue a different shape, this repo can verify none of
+  // them, and inventing a pattern would block a customer from recording a filing that really happened.
+  const ackRef = p.ackRef?.trim() ?? '';
+  if (!ackRef) {
+    throw new StatutoryFilingError('An acknowledgement reference is required to mark a return filed', 'ackRefRequired');
+  }
+  if (ackRef.length > ACK_REF_MAX) {
+    throw new StatutoryFilingError(`An acknowledgement reference may not exceed ${ACK_REF_MAX} characters`, 'ackRefTooLong');
+  }
+  // No hardcoded dates anywhere: today is derived from the clock through the one KL helper (CLAUDE.md §8).
+  const today = todayInKualaLumpur();
+  const filedOn = (p.filedOn ?? '').trim() || today;
+  if (!ISO_DATE.test(filedOn)) throw new StatutoryFilingError('Filing date must be a YYYY-MM-DD date', 'invalidFiledOn');
+  // A future filing date asserts something that has not happened yet. This is checkable and unarguable,
+  // unlike "not before it was generated" — a return can legitimately be re-generated after being filed.
+  if (filedOn > today) throw new StatutoryFilingError('A return cannot be filed in the future', 'filedOnInFuture');
+
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: statutoryReport.id,
+        companyId: statutoryReport.companyId,
+        reportType: statutoryReport.reportType,
+        periodKey: statutoryReport.periodKey,
+        status: statutoryReport.status,
+      })
+      .from(statutoryReport)
+      .where(eq(statutoryReport.id, p.reportId))
+      .limit(1);
+    // RLS already fenced the tenant and the company subtree, so "not visible" and "does not exist" are
+    // the same answer here on purpose — an out-of-scope id must not be distinguishable from a bad one.
+    if (!row) throw new StatutoryFilingError('Statutory report not found', 'notFound');
+
+    if (!(await resolvePayrollPermission(tx, ctx, 'payroll.statutory_file', row.companyId))) {
+      throw new StatutoryFilingError('Not authorized to mark a statutory return filed', 'forbidden');
+    }
+    // Re-filing the SAME row is not an amendment, it is a double-entry: the row already carries an
+    // acknowledgement, and overwriting it would erase the first one. Reverse it first, or file the
+    // regenerated return (a different row), which is what produces 'amended' below.
+    if (isFiledStatus(row.status)) {
+      throw new StatutoryFilingError('This return is already marked filed', 'alreadyFiled');
+    }
+
+    // Is there a LIVE filed return for the same company + report + period? Then this one is an amendment.
+    const [prior] = await tx
+      .select({ id: statutoryReport.id })
+      .from(statutoryReport)
+      .where(
+        and(
+          eq(statutoryReport.companyId, row.companyId),
+          eq(statutoryReport.reportType, row.reportType),
+          eq(statutoryReport.periodKey, row.periodKey),
+          inArray(statutoryReport.status, [...STATUTORY_FILED_STATUSES]),
+        ),
+      )
+      .orderBy(desc(statutoryReport.filedOn), desc(statutoryReport.filedAt))
+      .limit(1);
+    const status: StatutoryFiledStatus = prior ? 'amended' : 'submitted';
+
+    const [updated] = await tx
+      .update(statutoryReport)
+      .set({ status, ackRef, filedOn, filedAt: new Date(), filedBy: ctx.userId ?? null })
+      .where(eq(statutoryReport.id, row.id))
+      .returning({
+        id: statutoryReport.id,
+        status: statutoryReport.status,
+        ackRef: statutoryReport.ackRef,
+        filedOn: statutoryReport.filedOn,
+        filedAt: statutoryReport.filedAt,
+        filedBy: statutoryReport.filedBy,
+      });
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'statutory-report',
+      aggregateId: row.id,
+      eventType: 'statutory-report.filed',
+      actor: actorOf(ctx),
+      payload: {
+        reportType: row.reportType,
+        companyId: row.companyId,
+        periodKey: row.periodKey,
+        status,
+        ackRef,
+        filedOn,
+        amendsReportId: prior?.id ?? null,
+      },
+    });
+    return updated;
+  });
+}
+
+/**
+ * Reverse a mark made in error — the return goes back to `draft` and stops counting as filed.
+ *
+ * ── WHY IT IS REVERSIBLE AT ALL ─────────────────────────────────────────────────────────────────────
+ * A mis-keyed acknowledgement, or the right reference on the wrong row, is an ordinary mistake, and an
+ * irreversible mark would leave a customer with a permanent false record and an amber banner that
+ * cannot be silenced. Locking the state would also re-create 3.2 in mirror image: a warning that says
+ * "filed" when nothing was.
+ *
+ * ── AND WHY THIS DESTROYS NOTHING ───────────────────────────────────────────────────────────────────
+ * The `filed_*` columns are the row's CURRENT claim, and a retracted claim must not keep asserting
+ * itself — so they are cleared. The HISTORY lives where this codebase always puts it: the
+ * `statutory-report.filing-reversed` event carries the retracted acknowledgement, the declared filing
+ * date, who had filed it, who reversed it and why, in the same transaction as the clear.
+ *
+ * A reason is MANDATORY, for the reason `UnlockReasonRequiredError` exists on the unlock path: undoing
+ * a statutory record is exactly the kind of act whose audit row has to explain itself.
+ *
+ * NOT its own permission key: an operator who can enter this state but not leave it is a trap. See the
+ * `payroll.statutory_file` comment in lib/payroll-permissions.ts.
+ */
+export async function reverseReportFiling(ctx: SessionContext, p: { reportId: string; reason: string }) {
+  const reason = p.reason?.trim() ?? '';
+  if (!reason) throw new StatutoryFilingError('A reason is required to reverse a filing mark', 'reasonRequired');
+
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: statutoryReport.id,
+        companyId: statutoryReport.companyId,
+        reportType: statutoryReport.reportType,
+        periodKey: statutoryReport.periodKey,
+        status: statutoryReport.status,
+        ackRef: statutoryReport.ackRef,
+        filedOn: statutoryReport.filedOn,
+        filedBy: statutoryReport.filedBy,
+      })
+      .from(statutoryReport)
+      .where(eq(statutoryReport.id, p.reportId))
+      .limit(1);
+    if (!row) throw new StatutoryFilingError('Statutory report not found', 'notFound');
+
+    if (!(await resolvePayrollPermission(tx, ctx, 'payroll.statutory_file', row.companyId))) {
+      throw new StatutoryFilingError('Not authorized to reverse a statutory filing mark', 'forbidden');
+    }
+    if (!isFiledStatus(row.status)) {
+      throw new StatutoryFilingError('This return is not marked filed', 'notFiled');
+    }
+
+    const [updated] = await tx
+      .update(statutoryReport)
+      .set({ status: 'draft', ackRef: null, filedOn: null, filedAt: null, filedBy: null })
+      .where(eq(statutoryReport.id, row.id))
+      .returning({
+        id: statutoryReport.id,
+        status: statutoryReport.status,
+        ackRef: statutoryReport.ackRef,
+        filedOn: statutoryReport.filedOn,
+        filedAt: statutoryReport.filedAt,
+        filedBy: statutoryReport.filedBy,
+      });
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'statutory-report',
+      aggregateId: row.id,
+      eventType: 'statutory-report.filing-reversed',
+      actor: actorOf(ctx),
+      payload: {
+        reportType: row.reportType,
+        companyId: row.companyId,
+        periodKey: row.periodKey,
+        reason,
+        // The retracted claim, preserved here because the columns above are now null.
+        retractedStatus: row.status,
+        retractedAckRef: row.ackRef,
+        retractedFiledOn: row.filedOn,
+        retractedFiledBy: row.filedBy,
+      },
+    });
+    return updated;
   });
 }
 
@@ -1066,6 +1342,12 @@ export function cp22Particulars(
 
 /** Recently recorded report artefacts for a company (audit trail). */
 export function recentReports(ctx: SessionContext, companyId: string) {
+  // `filed_by` holds an APP_USER id (like `generated_by` beside it), so the filer's name is two hops
+  // away: app_user → person. Both joins are aliased, because this module joins `person` for other
+  // reasons, and both are LEFT joins — an unfiled row has a null `filed_by`, and an INNER join would
+  // silently drop every draft from the audit list this table exists to be.
+  const filedByUser = alias(appUser, 'statutory_report_filed_by_user');
+  const filedByPerson = alias(person, 'statutory_report_filed_by_person');
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -1077,8 +1359,17 @@ export function recentReports(ctx: SessionContext, companyId: string) {
         totals: statutoryReport.totals,
         statutoryVersion: statutoryReport.statutoryVersion,
         generatedAt: statutoryReport.generatedAt,
+        // r292 — the filing evidence travels WITH the row. A screen that shows a status chip reading
+        // "Submitted" without the acknowledgement beside it is asking the reader to take the chip on
+        // trust, which is what "filed" used to mean here.
+        filedOn: statutoryReport.filedOn,
+        filedAt: statutoryReport.filedAt,
+        ackRef: statutoryReport.ackRef,
+        filedByName: filedByPerson.fullName,
       })
       .from(statutoryReport)
+      .leftJoin(filedByUser, eq(filedByUser.id, statutoryReport.filedBy))
+      .leftJoin(filedByPerson, eq(filedByPerson.id, filedByUser.personId))
       .where(eq(statutoryReport.companyId, companyId))
       .orderBy(desc(statutoryReport.generatedAt))
       .limit(20),

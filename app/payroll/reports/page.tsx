@@ -6,7 +6,8 @@ import { listReports, recentReports, reportPreview } from '@/core/reporting';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { DownloadCsv } from '@/components/download-csv';
 import { StatutoryReportPanel } from '@/components/statutory-report-panel';
-import { recordReportAction } from './actions';
+import { markFiledAction, recordReportAction, reverseFilingAction } from './actions';
+import { STATUTORY_FILED_STATUSES } from '@/db/schema';
 
 /**
  * 6babf4f6 — THE CP22 / CP22A WORKLIST MOVED OFF THIS PAGE, to Payroll → Statutory Forms.
@@ -39,6 +40,16 @@ export default async function ReportsPage({
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
   const periodKind = reports.find((r) => r.id === reportId)?.periodKind ?? 'month';
   const annual = periodKind === 'year';
+  /* Translated status labels resolved through an explicit MAP rather than a computed `t(`status.${x}`)`.
+     `status` is a free-text column, so a computed key would render MISSING_MESSAGE (and a raw key on the
+     screen) the first time anything wrote a value this catalogue does not know. An unknown status falls
+     back to its own text, which is honest. */
+  const statusLabels: Record<string, string> = {
+    draft: t('statusDraft'),
+    submitted: t('statusSubmitted'),
+    amended: t('statusAmended'),
+  };
+  const statusLabel = (v: string) => statusLabels[v] ?? v;
 
   return (
     <div className={pageWideCls}>
@@ -177,21 +188,80 @@ export default async function ReportsPage({
               <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
               <th className="px-4 py-2 text-right font-medium">{t('colRows')}</th>
               <th className="px-4 py-2 font-medium">{t('colTablesVer')}</th>
+              {/* r292 / readiness 3.2 — the column that makes "filed" a fact rather than an inference. */}
+              <th className="px-4 py-2 font-medium">{t('colFiling')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {recent.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-2.5">{r.reportType}</td>
-                <td className="px-4 py-2.5 font-mono text-xs">{r.periodKey}</td>
-                <td className="px-4 py-2.5 capitalize text-muted-foreground">{r.status}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.rowCount}</td>
-                <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{r.statutoryVersion ?? '—'}</td>
-              </tr>
-            ))}
+            {recent.map((r) => {
+              const filed = (STATUTORY_FILED_STATUSES as readonly string[]).includes(r.status);
+              return (
+                <tr key={r.id}>
+                  <td className="px-4 py-2.5">{r.reportType}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs">{r.periodKey}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{statusLabel(r.status)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{r.rowCount}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{r.statutoryVersion ?? '—'}</td>
+                  <td className="px-4 py-2.5">
+                    {filed ? (
+                      /* THE EVIDENCE, NOT A TICK. A chip reading "Submitted" on its own asks the reader
+                         to take the claim on trust, which is precisely what "filed" used to mean here.
+                         The acknowledgement the agency issued is shown beside it, every time. */
+                      <div className="space-y-1.5">
+                        <div className="font-mono text-xs">{r.ackRef}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {r.filedOn}
+                          {r.filedByName ? ` · ${r.filedByName}` : ''}
+                        </div>
+                        <form action={reverseFilingAction} className="flex flex-wrap items-center gap-1.5">
+                          <input type="hidden" name="companyId" value={companyId} />
+                          <input type="hidden" name="reportId" value={r.id} />
+                          <input
+                            name="reason"
+                            required
+                            maxLength={200}
+                            placeholder={t('reverseReasonPlaceholder')}
+                            className={`${inputCls} h-7 w-40 text-xs`}
+                          />
+                          <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
+                            {t('reverseFiling')}
+                          </button>
+                        </form>
+                      </div>
+                    ) : (
+                      <form action={markFiledAction} className="flex flex-wrap items-center gap-1.5">
+                        <input type="hidden" name="companyId" value={companyId} />
+                        <input type="hidden" name="reportId" value={r.id} />
+                        {/* MANDATORY, and `required` here is only the courtesy half: markReportFiled
+                            refuses a blank or whitespace-only reference whatever posts it. */}
+                        <input
+                          name="ackRef"
+                          required
+                          maxLength={120}
+                          placeholder={t('ackRefPlaceholder')}
+                          title={t('ackRefHint')}
+                          className={`${inputCls} h-7 w-40 text-xs`}
+                        />
+                        {/* The day it was lodged WITH THE AGENCY — not today by assumption. Blank means
+                            today; a past date is what an operator keying last week's filing needs. */}
+                        <input
+                          type="date"
+                          name="filedOn"
+                          title={t('filedOnHint')}
+                          className={`${inputCls} h-7 w-36 text-xs`}
+                        />
+                        <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
+                          {t('markFiled')}
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {recent.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                   {t('recentEmpty')}
                 </td>
               </tr>
