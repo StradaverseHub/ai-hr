@@ -93,9 +93,18 @@ export function EmployeeSearchField({
   id,
   className,
   dataTour,
+  onValueChange,
 }: {
-  /** The form field name the committed selection posts under. */
-  name: string;
+  /**
+   * The form field name the committed selection posts under.
+   *
+   * r293 — OPTIONAL. Omit it and no hidden input is rendered at all, exactly as `components/ui/combobox.tsx`
+   * does for its own controlled mode (and for the same reason): the r293 approval builder owns its levels
+   * in React state and posts ONE json field for the whole chain, so a per-card hidden input would put a
+   * stray, always-present field in the template form. Every pre-existing caller passes a name and is
+   * unaffected.
+   */
+  name?: string;
   /** Already scope-fenced by the caller. This control only ever narrows it. */
   employees: EmployeeSearchOption[];
   /**
@@ -112,6 +121,14 @@ export function EmployeeSearchField({
   /** Width lives on the WRAPPER: `inputCls` already carries `w-full`, so `${inputCls} w-64` is a no-op. */
   className?: string;
   dataTour?: string;
+  /**
+   * r293 — fires when the committed selection changes (including a clear, which reports ''). Added for
+   * the same reason and on the same precedent as Combobox's `onValueChange` (item e3ce0d4d): a CLIENT
+   * parent needs the choice live rather than at submit. The header's "every prop is plain data" rule is
+   * about SERVER parents, which must never hand a function across the boundary — and still must not:
+   * this prop is undefined for all three of them, so nothing about their contract changed.
+   */
+  onValueChange?: (value: string) => void;
 }) {
   const listId = useId();
   const optionIdBase = useId();
@@ -140,6 +157,7 @@ export function EmployeeSearchField({
     setSelected(o.value);
     setQuery(labelOf(o));
     setOpen(false);
+    onValueChange?.(o.value);
   };
 
   /** Back to "no employee filter" — and keep the caret in the box so the reader can type another name. */
@@ -149,6 +167,7 @@ export function EmployeeSearchField({
     setOpen(false);
     setActive(0);
     inputRef.current?.focus();
+    onValueChange?.('');
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -199,8 +218,9 @@ export function EmployeeSearchField({
         setQuery(still ? labelOf(still) : '');
       }}
     >
-      {/* The value the surrounding <form> submits — the same field a native <select> would have posted. */}
-      <input type="hidden" name={name} value={selected} />
+      {/* The value the surrounding <form> submits — the same field a native <select> would have posted.
+          Rendered only when the caller asked for one: a controlled parent posts the value itself. */}
+      {name ? <input type="hidden" name={name} value={selected} /> : null}
 
       <input
         ref={inputRef}

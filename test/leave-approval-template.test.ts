@@ -57,13 +57,20 @@ describe('approval templates — CRUD', () => {
     });
     let list = await listApprovalTemplates(ctx());
     expect(list).toHaveLength(1);
-    expect(list[0].levels).toEqual(['direct_manager', 'hr_admin']);
+    // r293 phase 3 — a level is now a KIND plus, for a named-approver level, the employment it points at.
+    // A chain of relationship-resolved kinds names nobody, which is what the null half asserts.
+    expect(list[0].levels).toEqual([
+      { kind: 'direct_manager', employmentId: null, alternates: [] },
+      { kind: 'hr_admin', employmentId: null, alternates: [] },
+    ]);
     expect(list[0].assignedCount).toBe(0);
 
     await updateApprovalTemplate(ctx(), id, { name: 'Standard', levels: ['hr_admin'] });
     list = await listApprovalTemplates(ctx());
     expect(list[0].name).toBe('Standard');
-    expect(list[0].levels).toEqual(['hr_admin']);
+    // r293 phase 4 — `alternates` is the any-one list; empty is the sequential behaviour this test has
+    // always asserted, spelled out rather than ignored.
+    expect(list[0].levels).toEqual([{ kind: 'hr_admin', employmentId: null, alternates: [] }]);
 
     await duplicateApprovalTemplate(ctx(), id);
     list = await listApprovalTemplates(ctx());

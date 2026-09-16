@@ -2675,6 +2675,20 @@
       "when": 1781862566000,
       "tag": "0466_statutory_report_filing",
       "breakpoints": true
+    },
+    {
+      "idx": 467,
+      "version": "7",
+      "when": 1781862567000,
+      "tag": "0467_leave_approval_step_fixed_approver",
+      "breakpoints": true
+    },
+    {
+      "idx": 468,
+      "version": "7",
+      "when": 1781862568000,
+      "tag": "0468_leave_approval_step_alternates",
+      "breakpoints": true
     }
   ]
 }

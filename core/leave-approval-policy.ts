@@ -9,41 +9,50 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
+import {
+  LEVEL_KINDS,
+  sanitizeApprovalLevels,
+  sanitizeLevels,
+  type ApprovalLevel,
+  type LeaveLevelKind,
+} from '../lib/leave-approval-kinds';
 
-// 6fadb036 (R17 gap-close) — the reporter's full approver-step vocabulary (list C). Ordered as the
-// request lists them; `hr_admin` is the internal id for the "HR" label. Each kind has a concrete
-// decision-time resolver in core/leave.ts (assertCanDecideLeaveStep) and a generation-time drop rule:
-//   direct_manager      → the subject's active administrative manager         (dropped when none)
-//   department_head     → department.head_employment_id of the subject's dept (dropped when unset)
-//   business_unit_head  → business_unit.head_employment_id of the subject's BU (dropped when unset)
-//   hr_admin ("HR")     → hr_admin / super_admin role                          (never dropped)
-//   hr_manager          → HR-tier authority (hr_admin / super_admin) — a distinct gate; a ranked
-//                         hr_manager sub-role is a documented follow-up (ADR-0071 §i)                (never dropped)
-//   payroll             → payroll_partner (subject's company) / super_admin    (never dropped)
-//   custom_role         → an admin gate (hr_admin / super_admin); binding a specific named role per
-//                         step is a documented follow-up (ADR-0071 §i custom_position guard)         (never dropped)
-export const LEVEL_KINDS = [
-  'direct_manager',
-  'department_head',
-  'business_unit_head',
-  'hr_admin',
-  'hr_manager',
-  'payroll',
-  'custom_role',
-] as const;
-export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
-
-/** Kinds that route to an org-chart HEAD (department / business unit). A step of these kinds is generated
- *  only when the subject's dept/BU actually has a head set — otherwise dropped (no dead step). */
-export const HEAD_LEVEL_KINDS: readonly LeaveLevelKind[] = ['department_head', 'business_unit_head'];
+/**
+ * r293 — THE APPROVER VOCABULARY NOW LIVES IN `lib/leave-approval-kinds.ts`, a client-safe leaf, and is
+ * re-exported here so this module stays its public server-side door and no existing import changed.
+ *
+ * It moved because the Approval Workflow builder is a 'use client' component that must offer exactly the
+ * kinds the engine routes on, and this module imports `db/client`, `db/events` and `db/schema` — importing
+ * it from the browser would drag the database kernel into the bundle. The editor's own hand-kept copy of
+ * the list is deleted with the move: nothing failed when the two disagreed.
+ *
+ * `sanitizeLevels` moved with them: it is the same membership test over the same const, and splitting the
+ * test from the list is how the two drift.
+ */
+export {
+  LEVEL_KINDS,
+  HEAD_LEVEL_KINDS,
+  FIXED_LEVEL_KINDS,
+  DROPPABLE_LEVEL_KINDS,
+  isFixedLevelKind,
+  isDroppableLevelKind,
+  sanitizeLevels,
+  sanitizeApprovalLevels,
+  serializeApprovalLevels,
+  levelKey,
+  approverKey,
+  approversOf,
+  isAnyOneLevel,
+  type LeaveLevelKind,
+  type ApprovalLevel,
+  type ApprovalApprover,
+} from '../lib/leave-approval-kinds';
 
 /** The chain an opted-in company gets when no rule matches — identical to 2B-1. */
-const FALLBACK_CHAIN: LeaveLevelKind[] = ['direct_manager', 'hr_admin'];
-
-export function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x): x is LeaveLevelKind => (LEVEL_KINDS as readonly string[]).includes(x as string));
-}
+const FALLBACK_CHAIN: ApprovalLevel[] = [
+  { kind: 'direct_manager', employmentId: null, alternates: [] },
+  { kind: 'hr_admin', employmentId: null, alternates: [] },
+];
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
 
@@ -157,7 +166,13 @@ export type ApprovalDecisionSource = 'rule' | 'tenant-default' | 'fallback';
  *  chain came from when none did. The extra two fields are what lets the approval replay report coverage —
  *  which of a tenant's rules ever actually win — without a second ranking of the same rows. */
 export type ApprovalDecision = {
+  /** The kind sequence — every caller that routes on WHO APPROVES rather than on WHICH PERSON. A
+   *  PROJECTION of `resolvedLevels`, built in the one place below that builds the decision, never parsed
+   *  a second time from the jsonb. */
   levels: LeaveLevelKind[];
+  /** r293 phase 3 — the same chain with each level's named approver, where it has one. Step generation
+   *  needs this; nothing else does, which is why `levels` keeps its shape. */
+  resolvedLevels: ApprovalLevel[];
   /** The winning rule's id when `source === 'rule'`; null for the tenant default and the built-in chain. */
   ruleId: string | null;
   source: ApprovalDecisionSource;
@@ -178,10 +193,10 @@ export type ApprovalDecision = {
 export type ApprovalRuleSet = {
   /** Active rules grouped by company — a decision only ever considers the requester's own company. */
   rulesByCompany: Map<string, RuleRow[]>;
-  /** Active template id -> its sanitised ordered levels. */
-  templateLevels: Map<string, LeaveLevelKind[]>;
+  /** Active template id -> its sanitised ordered levels (r293 phase 3: with named approvers). */
+  templateLevels: Map<string, ApprovalLevel[]>;
   /** The tenant-default template's levels; empty when the tenant has none. */
-  tenantDefaultLevels: LeaveLevelKind[];
+  tenantDefaultLevels: ApprovalLevel[];
 };
 
 /**
@@ -240,10 +255,10 @@ export async function loadApprovalRuleSet(tx: Tx, companyId?: string): Promise<A
     if (bucket) bucket.push(r);
     else rulesByCompany.set(r.companyId, [r]);
   }
-  const templateLevels = new Map<string, LeaveLevelKind[]>();
-  let tenantDefaultLevels: LeaveLevelKind[] = [];
+  const templateLevels = new Map<string, ApprovalLevel[]>();
+  let tenantDefaultLevels: ApprovalLevel[] = [];
   for (const t of templates) {
-    const lv = sanitizeLevels(t.levels);
+    const lv = sanitizeApprovalLevels(t.levels);
     templateLevels.set(t.id, lv);
     if (t.isTenantDefault) tenantDefaultLevels = lv;
   }
@@ -271,8 +286,8 @@ export function decideApproval(
 ): ApprovalDecision {
   // The effective ordered chain of a rule: the template's levels when template-driven (and the template is
   // active), else the row's own levels.
-  const effectiveLevels = (r: RuleRow): LeaveLevelKind[] =>
-    r.templateId ? (set.templateLevels.get(r.templateId) ?? []) : sanitizeLevels(r.levels);
+  const effectiveLevels = (r: RuleRow): ApprovalLevel[] =>
+    r.templateId ? (set.templateLevels.get(r.templateId) ?? []) : sanitizeApprovalLevels(r.levels);
 
   const matching = (set.rulesByCompany.get(companyId) ?? []).filter((r) => ruleMatches(r, leaveTypeId, attrs));
   if (matching.length) {
@@ -286,15 +301,24 @@ export function decideApproval(
       }
     }
     const lv = effectiveLevels(best);
-    if (lv.length) return { levels: lv, ruleId: best.id, source: 'rule' };
+    if (lv.length) return decision(lv, best.id, 'rule');
   }
   // No matching rule (or its effective chain resolved empty): fall back to the org-wide default template,
   // then the built-in chain. Neither names a rule, so `ruleId` is null — a coverage report must not credit
   // a win to a rule that did not win.
   if (set.tenantDefaultLevels.length) {
-    return { levels: set.tenantDefaultLevels, ruleId: null, source: 'tenant-default' };
+    return decision(set.tenantDefaultLevels, null, 'tenant-default');
   }
-  return { levels: FALLBACK_CHAIN, ruleId: null, source: 'fallback' };
+  return decision(FALLBACK_CHAIN, null, 'fallback');
+}
+
+/** The ONE place an ApprovalDecision is built, so `levels` can only ever be `resolvedLevels`' kinds. */
+function decision(
+  resolvedLevels: ApprovalLevel[],
+  ruleId: string | null,
+  source: ApprovalDecisionSource,
+): ApprovalDecision {
+  return { levels: resolvedLevels.map((l) => l.kind), resolvedLevels, ruleId, source };
 }
 
 /** Resolve the approver decision for a request: the most-specific matching active rule wins, then the
@@ -339,7 +363,7 @@ export async function getLeaveApprovalPolicy(
       .where(and(eq(leaveApprovalPolicy.companyId, companyId), isNull(leaveApprovalPolicy.leaveTypeId), defaultRuleFilter()))
       .limit(1);
     const levels = sanitizeLevels(pol?.levels);
-    return { levels: levels.length ? levels : FALLBACK_CHAIN };
+    return { levels: levels.length ? levels : FALLBACK_CHAIN.map((l) => l.kind) };
   });
 }
 

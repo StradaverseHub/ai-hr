@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { isFixedLevelKind } from '@/lib/leave-approval-kinds';
 import { Button } from '@/components/ui';
 
 export type EscalationLabels = {
@@ -46,7 +47,11 @@ export function LeaveEscalationEditor({
 }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [target, setTarget] = useState<'next_level' | 'specific_role'>(initial.target);
-  const roleKinds = Object.keys(labels.roleLabels);
+  /* r293 phase 3 — FIXED kinds are excluded. This picker chooses a ROLE to escalate to; a named person
+     is not a role, and this form has nowhere to name one — offering it would be a setting that resolves
+     to nobody and silently falls back to HR admins. The filter reads the kernel's own classification
+     rather than a second list of "roles". */
+  const roleKinds = Object.keys(labels.roleLabels).filter((k) => !isFixedLevelKind(k));
 
   return (
     <form action={action} className="space-y-4 border-t border-border p-4">

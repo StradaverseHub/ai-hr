@@ -2,23 +2,11 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui';
-import { StepListEditor } from './step-list-editor';
+import { StepListEditor, type StepListLabels } from './step-list-editor';
+import type { ApprovalLevel } from '@/lib/leave-approval-kinds';
 
-type Labels = {
-  chain: string;
-  empty: string;
-  manager: string;
-  departmentHead: string;
-  businessUnitHead: string;
-  hr: string;
-  hrManager: string;
-  payroll: string;
-  customRole: string;
-  add: string;
-  moveUp: string;
-  moveDown: string;
-  remove: string;
-  dragToReorder: string;
+/** r293 — intersect the shared step-editor bag rather than re-listing its fields (see RuleBuilderLabels). */
+type Labels = StepListLabels & {
   save: string;
   // 4ec5a940 — optional "why the change was made" note surfaced in the audit trail.
   reason: string;
@@ -50,7 +38,14 @@ export function LeaveApprovalEditor({
       <input type="hidden" name="companyId" value={companyId} />
       <input type="hidden" name="levels" value={levels.join(',')} />
 
-      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
+      {/* r293 phase 3 — this surface posts a CSV of KINDS and offers no fixed approver (no employee
+          population is passed, so `specific_employee` is not pickable). It adapts at the boundary rather
+          than learning the object shape: one conversion here, none in the shared editor. */}
+      <StepListEditor
+        levels={levels.map((kind) => ({ kind: kind as ApprovalLevel['kind'], employmentId: null, alternates: [] }))}
+        setLevels={(next) => setLevels(next.map((l) => l.kind))}
+        labels={labels}
+      />
 
       {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
       <label className="block text-xs">

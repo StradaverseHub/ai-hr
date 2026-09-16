@@ -16,7 +16,17 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
-import { resolveApprovalChain } from './leave-approval-policy';
+import {
+  approversOf,
+  resolveApprovalDecision,
+  sanitizeApprovalLevels,
+  type ApprovalApprover,
+  type ApprovalDecisionSource,
+  type ApprovalLevel,
+} from './leave-approval-policy';
+// r293 phase 3 — "no longer an active employment" is the SAME predicate every screen's status badge
+// derives from; a fixed-approver warning that used its own rule would disagree with the profile it points at.
+import { isEmploymentEnded } from './employment-status';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
@@ -4030,7 +4040,12 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
   }
 
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
-  const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId, {
+  //
+  // r293 — `resolveApprovalDecision` rather than its `resolveApprovalChain` wrapper, because the admin
+  // PREVIEW has to name WHERE the chain came from (a scoped rule, the org-wide default, or the built-in
+  // fallback) and re-resolving to find that out would be a second ranking of the same rows over a
+  // different attribute set. The chain below is that decision's own `levels` — the wrapper's whole body.
+  const decision = await resolveApprovalDecision(tx, co.companyId, leaveTypeId, {
     gradeId: attr?.gradeId ?? null,
     gradeGroupId,
     departmentId: attr?.departmentId ?? null,
@@ -4039,7 +4054,7 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
     businessUnitId: attr?.businessUnitId ?? null,
     days,
   });
-  return { companyId: co.companyId, chain, attr: attr ?? null };
+  return { companyId: co.companyId, chain: decision.levels, decision, attr: attr ?? null };
 }
 
 /** r79 0322 — a request is MULTI-STEP when its resolved chain has two or more levels. One level is a
@@ -4048,6 +4063,250 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
  *  chain. Assigning a one-step template is therefore how a company keeps plain single-step approval. */
 export function isMultiStepChain(chain: readonly string[]): boolean {
   return chain.length > 1;
+}
+
+/** r293 — the org facts the chain's DROP RULES consult, read once per request. Nothing else decides
+ *  whether a level survives: `applyChainDropRules` is pure over this. */
+export type ChainResolutionFacts = {
+  /** The subject has a current ADMINISTRATIVE reporting line (direct_manager resolves to somebody). */
+  hasManager: boolean;
+  /** r293 phase 2 — the SECOND hop up the same administrative line (the direct manager's own manager),
+   *  or null when either hop is missing. Null too when the second hop resolves back to the SUBJECT: a
+   *  two-person reporting cycle would otherwise route the request to the person who raised it, and a
+   *  level whose only approver is the requester is worse than a level that is skipped. */
+  managerManager: string | null;
+  /** The subject's department's head employment id, or null when the department has no head set. */
+  deptHead: string | null;
+  /** The subject's business unit's head employment id, or null when the BU has no head set. */
+  buHead: string | null;
+  /**
+   * r293 phase 3 — the FIXED approvers named by this chain that are no longer an ACTIVE employment,
+   * by employment id. It is NOT a drop rule: a fixed level is never dropped (see applyChainDropRules),
+   * and the plan promises the reporter a WARNING rather than a silent skip — dropping would quietly
+   * weaken the chain an administrator deliberately configured. This is what the builder and the preview
+   * warn from, and `isEmploymentEnded` (core/employment-status.ts) is the predicate, not a new rule.
+   */
+  endedFixedApprovers: readonly string[];
+};
+
+/** Why a level was dropped: the relationship that resolved to nobody. */
+export type DropReason = 'no_manager' | 'no_manager_manager' | 'no_department_head' | 'no_business_unit_head';
+
+/** r293 — one level of a resolved chain and whether it survives generation. `kept: false` is the DROP:
+ *  the step is never written, and the request carries on to the next level rather than stalling. */
+export type ResolvedChainLevel = {
+  kind: string;
+  /** r293 phase 3 — the NAMED approver for a fixed level; null for every relationship-resolved kind. */
+  employmentId: string | null;
+  /** r293 phase 3 — true when this level names a person who is no longer an active employment. The level
+   *  is still KEPT: a fixed approver cannot be dropped, which is exactly why this has to be said out loud. */
+  fixedApproverEnded: boolean;
+  /** r293 phase 4 — the OTHER approvers who may clear this level, any ONE of whom is enough. Empty on a
+   *  single-approver level, which is every level that existed before phase 4. */
+  alternates: ApprovalApprover[];
+  kept: boolean;
+  /** Why it was dropped: the relationship that resolved to nobody. Null when kept. */
+  droppedBecause: DropReason | null;
+};
+
+/** Read the subject's org facts. Runs in the caller's transaction, under the caller's RLS. */
+async function resolveChainFacts(
+  tx: Tx,
+  employmentId: string,
+  attr: { departmentId?: string | null; businessUnitId?: string | null } | null,
+  /** The chain being resolved — needed only to check the FIXED approvers it names. */
+  levels: readonly ApprovalLevel[] = [],
+): Promise<ChainResolutionFacts> {
+  // Include a manager step only when the employee has a current administrative reporting line;
+  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
+  const [mgr] = await tx
+    .select({ id: reportingLine.id, managerEmploymentId: reportingLine.managerEmploymentId })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        lte(reportingLine.validFrom, sql`current_date`),
+        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+      ),
+    )
+    .limit(1);
+
+  // r293 phase 2 — the SECOND hop, resolved with the SAME predicate as the first so the two levels cannot
+  // disagree about what "current administrative line" means. Null when the first hop is missing, when the
+  // manager has no manager of their own, or when the second hop points back at the subject.
+  let managerManager: string | null = null;
+  if (mgr?.managerEmploymentId) {
+    const [grand] = await tx
+      .select({ managerEmploymentId: reportingLine.managerEmploymentId })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, mgr.managerEmploymentId),
+          eq(reportingLine.lineType, 'administrative'),
+          lte(reportingLine.validFrom, sql`current_date`),
+          or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+        ),
+      )
+      .limit(1);
+    const candidate = grand?.managerEmploymentId ?? null;
+    managerManager = candidate && candidate !== employmentId ? candidate : null;
+  }
+
+  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
+  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
+  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
+  // are never dropped here — they resolve to role authority at decision time.
+  let deptHead: string | null = null;
+  if (attr?.departmentId) {
+    const [d] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(department)
+      .where(eq(department.id, attr.departmentId))
+      .limit(1);
+    deptHead = d?.head ?? null;
+  }
+  let buHead: string | null = null;
+  if (attr?.businessUnitId) {
+    const [b] = await tx
+      .select({ head: businessUnit.headEmploymentId })
+      .from(businessUnit)
+      .where(eq(businessUnit.id, attr.businessUnitId))
+      .limit(1);
+    buHead = b?.head ?? null;
+  }
+  // r293 phase 3 — which of the chain's NAMED approvers have left. Read once for the whole chain, and
+  // through `isEmploymentEnded` so the warning agrees with the status every screen shows rather than
+  // inventing a second definition of "gone".
+  const named = [
+    ...new Set(
+      levels
+        .flatMap((l) => approversOf(l))
+        .filter((a) => a.employmentId)
+        .map((a) => a.employmentId as string),
+    ),
+  ];
+  let endedFixedApprovers: string[] = [];
+  if (named.length) {
+    const rows = await tx
+      .select({
+        id: employment.id,
+        terminatedOn: employment.terminatedOn,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
+      })
+      .from(employment)
+      .where(inArray(employment.id, named));
+    const seen = new Set(rows.map((r) => r.id));
+    endedFixedApprovers = [
+      // An id this transaction cannot see AT ALL is treated as ended: the approver either no longer
+      // exists or is outside the reader's tenant, and in both cases the chain is pointing at nobody.
+      ...named.filter((id) => !seen.has(id)),
+      ...rows.filter((r) => isEmploymentEnded(r)).map((r) => r.id),
+    ];
+  }
+  return { hasManager: !!mgr, managerManager, deptHead, buHead, endedFixedApprovers };
+}
+
+/**
+ * r293 — THE DROP RULE, extracted so generation and the admin PREVIEW cannot disagree.
+ *
+ * This filter used to live inline in `generateApprovalSteps`, which is why nothing could show an
+ * administrator that a level would be skipped. r285 is what that costs: `department_head` and
+ * `business_unit_head` silently skipped for every request on the customer's tenant because no department
+ * or BU had a head set, and no screen said so. The preview on the Approval Workflow screen runs THIS
+ * function over THESE facts — not a sketch of them.
+ *
+ * Pure. The kinds it can drop are `DROPPABLE_LEVEL_KINDS` (core/leave-approval-policy.ts) and
+ * `test/r293-approval-builder.test.ts` pins the two in step across the files.
+ */
+/** Does this ONE approver resolve to somebody? The kind-by-kind drop rule, over a single approver. */
+function approverResolves(a: ApprovalApprover, facts: ChainResolutionFacts): DropReason | null {
+  if (a.kind === 'direct_manager' && !facts.hasManager) return 'no_manager';
+  if (a.kind === 'manager_manager' && !facts.managerManager) return 'no_manager_manager';
+  if (a.kind === 'department_head' && !facts.deptHead) return 'no_department_head';
+  if (a.kind === 'business_unit_head' && !facts.buHead) return 'no_business_unit_head';
+  return null;
+}
+
+export function applyChainDropRules(
+  chain: readonly ApprovalLevel[],
+  facts: ChainResolutionFacts,
+): ResolvedChainLevel[] {
+  return chain.map((level) => {
+    const { kind, employmentId } = level;
+    // r293 phase 3 — THE ASYMMETRY, stated once and in the only place that can act on it. A FIXED level
+    // is returned KEPT unconditionally, even when the person it names has left: there is no relationship
+    // to resolve to nobody, so there is nothing to drop. The flag below is what the builder and the
+    // preview warn from. Dropping instead would silently remove an approval an administrator deliberately
+    // put in the chain, and the plan promises the reporter a warning, not a skip.
+    const fixedApproverEnded = !!employmentId && facts.endedFixedApprovers.includes(employmentId);
+    const base = {
+      kind,
+      employmentId: employmentId ?? null,
+      alternates: level.alternates,
+      fixedApproverEnded,
+    };
+    // r293 phase 4 — an ANY-ONE level is dropped only when EVERY one of its approvers resolves to
+    // nobody. One surviving approver is the whole point: "Direct manager OR Sarah" must still run for an
+    // employee with no manager, because Sarah is there. The drop reason reported is the PRIMARY
+    // approver's, which is the one the level is named after on every screen.
+    const reasons = approversOf(level).map((a) => approverResolves(a, facts));
+    if (reasons.every((r) => r !== null)) {
+      return { ...base, kept: false, droppedBecause: reasons[0] };
+    }
+    return { ...base, kept: true, droppedBecause: null };
+  });
+}
+
+/** r293 — what the Approval Workflow builder's PREVIEW shows: the chain a real employee's request would
+ *  actually run, resolved against today's org chart, with the dropped levels named rather than hidden. */
+export type ApprovalChainPreview = {
+  /** Every level of the RESOLVED template chain, in order, kept or dropped. */
+  levels: ResolvedChainLevel[];
+  /** Where the chain came from: a scoped rule, the org-wide default template, or the built-in fallback. */
+  source: ApprovalDecisionSource;
+  /** The winning rule's id when `source === 'rule'`. */
+  ruleId: string | null;
+  /** True when the surviving chain is multi-step and so writes leave_approval_step rows. A one-level
+   *  survivor is the single-approver path (no step rows) — see isMultiStepChain. */
+  multiStep: boolean;
+  facts: ChainResolutionFacts;
+};
+
+/**
+ * r293 — resolve, for a REAL employee and leave type, the approval chain their request would take today.
+ *
+ * Deliberately built from the same two pieces the submission path uses — `resolveRequestApprovalChain`
+ * (the one matcher) and `applyChainDropRules` (the one drop rule) — so the preview cannot drift from what
+ * `generateApprovalSteps` will actually write. A preview with a ranking or a drop rule of its own would be
+ * a second source of truth about who approves, which is the exact defect this screen exists to expose.
+ *
+ * Read-only: no rows are written, nothing is snapshotted. `days` defaults to 1 so a day-range-scoped rule
+ * participates the way a one-day request would; callers that care pass the span they mean.
+ */
+export async function previewApprovalChain(
+  ctx: SessionContext,
+  p: { employmentId: string; leaveTypeId: string; days?: number },
+): Promise<ApprovalChainPreview | null> {
+  return withTenant(ctx, async (tx) => {
+    const days = p.days ?? 1;
+    const resolved = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
+    if (!resolved) return null;
+    const facts = await resolveChainFacts(tx, p.employmentId, resolved.attr, resolved.decision.resolvedLevels);
+    const levels = applyChainDropRules(resolved.decision.resolvedLevels, facts);
+    return {
+      levels,
+      source: resolved.decision.source,
+      ruleId: resolved.decision.ruleId,
+      // The gate generateApprovalSteps applies: it branches on the RESOLVED chain BEFORE the drop rules,
+      // so a two-level template whose manager level is dropped still takes the multi-step path (one step
+      // row) rather than collapsing to the single-approver path.
+      multiStep: isMultiStepChain(resolved.chain),
+      facts,
+    };
+  });
 }
 
 /** Generate the approval chain for a new request whose resolved chain is multi-step (r79 0322 — the
@@ -4074,58 +4333,26 @@ async function generateApprovalSteps(
   // chain that is one level BY CONFIGURATION collapses to the single-approver path.
   if (!isMultiStepChain(chain)) return;
 
-  // Include a manager step only when the employee has a current administrative reporting line;
-  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
-  const [mgr] = await tx
-    .select({ id: reportingLine.id })
-    .from(reportingLine)
-    .where(
-      and(
-        eq(reportingLine.subordinateEmploymentId, employmentId),
-        eq(reportingLine.lineType, 'administrative'),
-        lte(reportingLine.validFrom, sql`current_date`),
-        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
-      ),
-    )
-    .limit(1);
-  const hasManager = !!mgr;
-
-  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
-  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
-  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
-  // are never dropped here — they resolve to role authority at decision time.
-  let deptHead: string | null = null;
-  if (attr?.departmentId) {
-    const [d] = await tx
-      .select({ head: department.headEmploymentId })
-      .from(department)
-      .where(eq(department.id, attr.departmentId))
-      .limit(1);
-    deptHead = d?.head ?? null;
-  }
-  let buHead: string | null = null;
-  if (attr?.businessUnitId) {
-    const [b] = await tx
-      .select({ head: businessUnit.headEmploymentId })
-      .from(businessUnit)
-      .where(eq(businessUnit.id, attr.businessUnitId))
-      .limit(1);
-    buHead = b?.head ?? null;
-  }
-  const kinds = chain.filter((k) => {
-    if (k === 'direct_manager') return hasManager;
-    if (k === 'department_head') return !!deptHead;
-    if (k === 'business_unit_head') return !!buHead;
-    return true;
-  });
-  if (kinds.length === 0) return;
+  const facts = await resolveChainFacts(tx, employmentId, attr, resolved.decision.resolvedLevels);
+  const kept = applyChainDropRules(resolved.decision.resolvedLevels, facts).filter((l) => l.kept);
+  if (kept.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
-    kinds.map((approverKind, stepIndex) => ({
+    // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
+    // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
+    // this is the single writer it is enforced in.
+    kept.map((level, stepIndex) => ({
       tenantId,
       leaveRequestId,
       subjectEmploymentId: employmentId,
       stepIndex,
-      approverKind,
+      approverKind: level.kind,
+      approverEmploymentId: level.employmentId,
+      // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
+      // of alternates" must not be two different values in the column, and NULL is what every row written
+      // before this migration holds.
+      approverAlternates: level.alternates.length
+        ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
+        : null,
     })),
   );
 }
@@ -4223,12 +4450,64 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
 /** 6fadb036 (gap-close) — dispatch a leave approval step to the right decider-authority check for its kind.
  *  Each kind's semantics are documented on LEVEL_KINDS (core/leave-approval-policy.ts). The self-approval
  *  ban applies to every kind (super_admin keeps the sole-admin escape hatch), matching assertCanDecide. */
+/**
+ * r293 phase 4 — THE ONE ENGINE CHANGE OF THE WHOLE ITEM: when does a step count as satisfied?
+ *
+ * A step is satisfied when the caller passes the gate for ANY ONE of its approvers. On a level with a
+ * single approver — every level that existed before phase 4 — that is byte-for-byte the old behaviour,
+ * because the loop runs once.
+ *
+ * ⚠️ WHAT THE LOOP MUST NOT DO, and the reason it is written this way. Each per-approver gate REFUSES BY
+ * THROWING, so "try the next one" means catching. Catching indiscriminately would swallow a database
+ * error and then quietly accept the request under a different approver, so the refusals are collected and
+ * the FIRST one is re-thrown when every approver refuses — the caller sees a real reason, not a generic
+ * one, and nothing is ever approved because an error was mistaken for a refusal.
+ *
+ * ⚠️ THE SELF-APPROVAL BAN SURVIVES INTACT, and that is the property most worth stating. Every gate
+ * carries its own ban against the SUBJECT, so a requester who is one of the alternates is refused on that
+ * alternate — and any OTHER alternate may still clear the step, which is exactly right: "Sarah or Ahmad"
+ * with Sarah requesting means Ahmad approves, not that the level is skipped and not that Sarah approves
+ * her own leave.
+ */
 async function assertCanDecideLeaveStep(
   tx: Tx,
   ctx: SessionContext,
   subjectEmploymentId: string,
   kind: string,
   label: string,
+  /** r293 phase 3 — the step's OWN named approver, for FIXED kinds. Read off the snapshot row, never
+   *  re-resolved from the template: the snapshot is what makes a template edit safe for leave in flight,
+   *  and a decider check that went back to the template would undo exactly that. */
+  approverEmploymentId?: string | null,
+  /** r293 phase 4 — the step's OWN alternates snapshot (the raw jsonb column). */
+  approverAlternates?: unknown,
+) {
+  const alternates = sanitizeApprovalLevels(Array.isArray(approverAlternates) ? approverAlternates : []);
+  const approvers: ApprovalApprover[] = [
+    { kind: kind as ApprovalApprover['kind'], employmentId: approverEmploymentId ?? null },
+    ...alternates.map((l) => ({ kind: l.kind, employmentId: l.employmentId })),
+  ];
+  const refusals: unknown[] = [];
+  for (const approver of approvers) {
+    try {
+      await assertCanDecideAsApprover(tx, ctx, subjectEmploymentId, approver.kind, label, approver.employmentId);
+      return;
+    } catch (e) {
+      refusals.push(e);
+    }
+  }
+  throw refusals[0];
+}
+
+/** The gate for ONE approver of a step — the per-kind decider authority. Unchanged by phase 4 except
+ *  that it is now called once per approver instead of once per step. */
+async function assertCanDecideAsApprover(
+  tx: Tx,
+  ctx: SessionContext,
+  subjectEmploymentId: string,
+  kind: string,
+  label: string,
+  approverEmploymentId?: string | null,
 ) {
   const roles = ctx.roles ?? [];
   const isSuper = roles.includes('super_admin');
@@ -4253,6 +4532,52 @@ async function assertCanDecideLeaveStep(
     case 'direct_manager':
       // The direct-manager chain step is a leave APPLICATION decision — a scoped delegation must cover it.
       return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf('leave.application'));
+    case 'manager_manager': {
+      // r293 phase 2 — THE SECOND HOP, and it mirrors direct_manager by RE-ASKING THE SAME QUESTION ONE
+      // LEVEL UP rather than by re-implementing the reporting-line walk. `assertCanDecide` answers "may
+      // this caller decide FOR that employment" — so asking it about the subject's MANAGER is exactly
+      // "is this caller the manager's manager", and the delegation branch, the effective-window predicate
+      // and the org-scope gate inside it all come along unchanged. A copy of that walk here would be a
+      // second authorization rule to keep in step with the first.
+      //
+      // TWO SELF-BANS, NOT ONE, because the shifted subject shifts the ban with it:
+      //   · assertCanDecide's own ban stops the DIRECT MANAGER clearing this step — which is the whole
+      //     point of a second hop, and would be a silent single-approval if it were allowed;
+      //   · banSelf() below stops the SUBJECT clearing it, which assertCanDecide can no longer see
+      //     because it is now looking at the manager. A two-person reporting cycle is dropped at
+      //     generation time (resolveChainFacts), so this is the belt to that braces — an org change
+      //     BETWEEN submission and decision can create the cycle the generated step predates.
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears any step (guaranteed visibility), as everywhere here.
+      const [mgr] = await tx
+        .select({ managerEmploymentId: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
+            eq(reportingLine.lineType, 'administrative'),
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          ),
+        )
+        .limit(1);
+      if (!mgr?.managerEmploymentId) {
+        throw new Error(`No manager's manager is recorded for this employee — an admin must decide`);
+      }
+      // ⚠️ SAY WHAT IS ACTUALLY WRONG. Delegating to assertCanDecide about the MANAGER means its own
+      // self-ban fires when the caller IS that manager — the correct refusal (a second hop the first hop
+      // can clear is not a second hop), but its message reads "You cannot decide your own leave request",
+      // which is not true and which a reader would believe. Found by driving the refusal on a dev server.
+      const [mgrPerson] = await tx
+        .select({ personId: employment.personId })
+        .from(employment)
+        .where(eq(employment.id, mgr.managerEmploymentId))
+        .limit(1);
+      if (ctx.personId != null && mgrPerson?.personId === ctx.personId) {
+        throw new Error(`Only the manager's manager or HR can decide this ${label}`);
+      }
+      return assertCanDecide(tx, ctx, mgr.managerEmploymentId, label, scopeOf('leave.application'));
+    }
     // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
     // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
     case 'hr_admin':
@@ -4272,6 +4597,31 @@ async function assertCanDecideLeaveStep(
       );
       if (!ok) throw new Error(`Only Payroll or HR can decide this ${label}`);
       return;
+    }
+    case 'specific_employee': {
+      // r293 phase 3 — THE ONLY KIND THAT ROUTES TO A PERSON. No relationship is consulted: the step
+      // carries the employment id it was generated with, and the person holding that employment decides.
+      await banSelf();
+      if (!approverEmploymentId) {
+        // A fixed step with nobody named cannot exist (sanitizeApprovalLevels drops such a level, and
+        // generation writes the pair together) — so reaching here means a hand-written row. Refuse
+        // rather than fall through to an admin-only gate that would read as if the step were role-based.
+        throw new Error(`This ${label} step names no approver — an admin must correct the template`);
+      }
+      if (ctx.personId != null) {
+        const [named] = await tx
+          .select({ personId: employment.personId })
+          .from(employment)
+          .where(eq(employment.id, approverEmploymentId))
+          .limit(1);
+        if (named?.personId === ctx.personId) return;
+      }
+      // HR/super clears it LAST, not first: unlike every other kind, this step has a specific human whose
+      // decision is the point, so the named person is offered the step before the admin override applies.
+      // The override still exists — it is what stops a fixed approver who has left stalling the chain
+      // forever, which is the risk the builder warns about.
+      if (isAdminRole) return;
+      throw new Error(`Only the named approver or HR can decide this ${label}`);
     }
     case 'department_head':
     case 'business_unit_head': {
@@ -4614,10 +4964,19 @@ export async function decideLeave(
 
     // Multi-step chain: decide the current step.
     if (steps.length > 0 && current) {
-      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind (the full
-      // 7-role vocabulary). direct_manager / department_head / business_unit_head / hr_admin / hr_manager /
-      // payroll / custom_role each have their own resolver in assertCanDecideLeaveStep.
-      await assertCanDecideLeaveStep(tx, ctx, req.employmentId, current.approverKind, 'leave request');
+      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind. r293 added
+      // manager_manager (a second hop up the reporting line) and specific_employee (the one FIXED kind);
+      // each kind's resolver lives in assertCanDecideLeaveStep, and the step's OWN `approverEmploymentId`
+      // — the snapshot, not the template — is what a fixed step routes on.
+      await assertCanDecideLeaveStep(
+        tx,
+        ctx,
+        req.employmentId,
+        current.approverKind,
+        'leave request',
+        current.approverEmploymentId,
+        current.approverAlternates,
+      );
       await tx
         .update(leaveApprovalStep)
         .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })

@@ -67,7 +67,8 @@ import { leaveConfigScreenHref } from '@/components/leave-config-map';
  */
 
 /**
- * The seven approver kinds and the `leaveApproval` key each one's label lives under. The SAME vocabulary
+ * The approver kinds (seven until r293 phase 2 added Manager's Manager) and the `leaveApproval` key each
+ * one's label lives under. The SAME vocabulary
  * `app/admin/leave-approval/step-list-editor.tsx` renders — but that file is `'use client'`, so a server
  * component may not call its `kindLabel` helper (test/rsc-boundary-guard.test.ts pins exactly that
  * class of import). Declared here as data rather than borrowed as code, and zero new i18n keys: every
@@ -75,12 +76,18 @@ import { leaveConfigScreenHref } from '@/components/leave-config-map';
  */
 const LEVEL_LABEL_KEY: Record<LeaveLevelKind, string> = {
   direct_manager: 'manager',
+  // r293 phase 2. This map is a FULL Record on purpose: adding a kind to LEVEL_KINDS without labelling it
+  // here is a tsc failure, not a rule listed with a raw `manager_manager` in it.
+  manager_manager: 'managerManager',
   department_head: 'departmentHead',
   business_unit_head: 'businessUnitHead',
   hr_admin: 'hr',
   hr_manager: 'hrManager',
   payroll: 'payroll',
   custom_role: 'customRole',
+  // r293 phase 3 — the read-out labels the KIND. Which person a fixed level names is a template-editor
+  // concern; this list exists to show an administrator that a rule has a chain of its own at all.
+  specific_employee: 'specificEmployee',
 };
 
 /** The ordered chain, drawn the way it resolves: step 1 first. Presentational only. */
@@ -215,7 +222,12 @@ export async function loadApprovalRuleScopes(
   // ACTIVE, because `loadApprovalRuleSet` reads active templates only, so a row pointing at a deactivated
   // one resolves to nothing and falls through to the org-wide default. Rendering the deactivated
   // template's steps here would tell an administrator a chain applies that does not.
-  const activeTemplateLevels = new Map(templates.filter((x) => x.active).map((x) => [x.id, x.levels]));
+  // r293 phase 3 — projected to KINDS. This read-out exists to show that a rule has a chain of its own
+  // and what shape it is; which PERSON a fixed level names is the template editor's business, and a rule
+  // row's own `levels` never carries one (only a template can).
+  const activeTemplateLevels = new Map(
+    templates.filter((x) => x.active).map((x) => [x.id, x.levels.map((l) => l.kind)]),
+  );
   const templateNameById = new Map(templates.map((x) => [x.id, x.name]));
 
   return rules

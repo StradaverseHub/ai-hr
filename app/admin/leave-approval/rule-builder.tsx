@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { StepListEditor } from './step-list-editor';
+import { StepListEditor, type StepListLabels } from './step-list-editor';
+import type { ApprovalLevel } from '@/lib/leave-approval-kinds';
 
 type Option = { id: string; label: string };
 export type RuleRow = {
@@ -20,7 +21,11 @@ export type RuleRow = {
   levels: string[];
 };
 
-export type RuleBuilderLabels = {
+/** r293 — the shared step-editor bag is INTERSECTED rather than re-listed. The fourteen fields it used to
+ *  spell out by hand are the same fourteen `StepListLabels` declares, and the builder's five new ones
+ *  (level number template, the two badges, the flow end caps, the per-kind hints) would have had to be
+ *  added here a second time to stay compilable — which is how a label bag and its consumer drift. */
+export type RuleBuilderLabels = StepListLabels & {
   rulesTitle: string;
   addRule: string;
   editRule: string;
@@ -38,20 +43,6 @@ export type RuleBuilderLabels = {
   minDays: string;
   maxDays: string;
   anyScope: string;
-  chain: string;
-  empty: string;
-  manager: string;
-  departmentHead: string;
-  businessUnitHead: string;
-  hr: string;
-  hrManager: string;
-  payroll: string;
-  customRole: string;
-  add: string;
-  moveUp: string;
-  moveDown: string;
-  remove: string;
-  dragToReorder: string;
   save: string;
   cancel: string;
   noRules: string;
@@ -287,7 +278,14 @@ function RuleForm({
         </label>
       </div>
 
-      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
+      {/* r293 phase 3 — this surface posts a CSV of KINDS and offers no fixed approver (no employee
+          population is passed, so `specific_employee` is not pickable). It adapts at the boundary rather
+          than learning the object shape: one conversion here, none in the shared editor. */}
+      <StepListEditor
+        levels={levels.map((kind) => ({ kind: kind as ApprovalLevel['kind'], employmentId: null, alternates: [] }))}
+        setLevels={(next) => setLevels(next.map((l) => l.kind))}
+        labels={labels}
+      />
 
       {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
       <label className="block space-y-1 text-sm">

@@ -49,6 +49,7 @@ import {
   type NotificationSeverity,
 } from '../db/schema';
 import { resolveSubjectHead } from './leave';
+import { sanitizeApprovalLevels } from './leave-approval-policy';
 import { isModuleEnabled } from './entitlements';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
@@ -125,8 +126,45 @@ export async function approverEmploymentsForKind(
   tx: Tx,
   subjectEmploymentId: string,
   kind: string,
+  /** r293 phase 3 — the step's own named approver, for FIXED kinds. Read off the SNAPSHOT row by the
+   *  caller, never from the template: an escalation must chase whoever the request was actually routed
+   *  to, not whoever the template names today. */
+  approverEmploymentId?: string | null,
 ): Promise<string[]> {
   switch (kind) {
+    // r293 phase 3 — a named approver IS the recipient; there is nothing to resolve.
+    case 'specific_employee':
+      return approverEmploymentId ? [approverEmploymentId] : [];
+    case 'manager_manager': {
+      // r293 phase 2 — the second hop, resolved with THE CHAIN'S predicate (the same one the
+      // direct_manager branch below uses), so escalation agrees with whoever the chain says approves.
+      const [mgr] = await tx
+        .select({ id: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
+            eq(reportingLine.lineType, 'administrative'),
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          ),
+        )
+        .limit(1);
+      if (!mgr?.id) return [];
+      const rows = await tx
+        .select({ id: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, mgr.id),
+            eq(reportingLine.lineType, 'administrative'),
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          ),
+        );
+      // Never chase the requester: a two-person cycle would otherwise notify the person who raised it.
+      return [...new Set(rows.map((r) => r.id))].filter((id) => id !== subjectEmploymentId);
+    }
     case 'direct_manager': {
       const rows = await tx
         .select({ id: reportingLine.managerEmploymentId })
@@ -630,7 +668,18 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       // (the stuck step was the LAST one) — or a branch that resolves to nobody (e.g. a department head
       // is unset) — falls back to the company's HR admins, so an escalation never silently disappears.
       const targetKind = typeof p.targetKind === 'string' ? p.targetKind : null;
-      let out = targetKind ? await approverEmploymentsForKind(tx, ev.subjectEmploymentId, targetKind) : [];
+      // r293 phase 3 — `targetEmploymentId` is the SNAPSHOT taken beside `targetKind` at sweep time, so a
+      // fixed target chases the person the request was actually routed to. Null for every other kind.
+      const targetEmploymentId = typeof p.targetEmploymentId === 'string' ? p.targetEmploymentId : null;
+      let out = targetKind
+        ? await approverEmploymentsForKind(tx, ev.subjectEmploymentId, targetKind, targetEmploymentId)
+        : [];
+      // r293 phase 4 — an ANY-ONE level is chased to every approver who could clear it, not only the one
+      // the level is named after. Resolved through the SAME per-kind resolver, so an alternate's
+      // recipients are found by the rule its kind is found by everywhere else.
+      for (const alt of sanitizeApprovalLevels(Array.isArray(p.targetAlternates) ? p.targetAlternates : [])) {
+        out = out.concat(await approverEmploymentsForKind(tx, ev.subjectEmploymentId, alt.kind, alt.employmentId));
+      }
       out = out.filter((id) => id !== ev.subjectEmploymentId); // never chase the requester
       if (out.length === 0) {
         out = (await hrAdminsForCompany(tx, ev.subjectEmploymentId)).filter((id) => id !== ev.subjectEmploymentId);
