@@ -10,6 +10,7 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
+import { isAdmin } from '../lib/authz';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
 
@@ -186,6 +187,67 @@ export function canManage(
 
 // ─────────────────────────────── Writes ───────────────────────────────
 
+/**
+ * WHO MAY PUT SOMETHING INTO THE COMPANY LIBRARY — answered in the SERVER, before any SQL runs.
+ *
+ * THE DATABASE DOES NOT ANSWER IT. Every other write on this table is fenced by RLS
+ * (`db/migrations/0039_kb_rls.sql`: UPDATE and DELETE require `app.is_admin()` or own-and-not-system),
+ * but the INSERT policy is `WITH CHECK (tenant_id = app.current_tenant_id())` and nothing more — ADR-0017
+ * §3 chose open contribution. So a create had no second line of defence, and
+ * `app/knowledge-base/actions.ts` handed it a bare `getSession()`. Any employee could publish to the whole
+ * company, and could aim the article at the `hr_admin` shelf, where HR reads what it takes to be official
+ * guidance. That is the Part 4 "Knowledge base authoring" row of `docs/CUSTOMER-DEPLOYMENT-READINESS.md`,
+ * and the customer decision reverses ADR-0017 §3 for AUTHORSHIP (see that ADR's 2026-09-16 update): the
+ * library is a published channel, gated like the Notice Board's writes and the roster's, not a wiki.
+ *
+ * READING IS UNTOUCHED, deliberately. Every tenant member still reads everything their audience clearance
+ * allows, and an existing member-authored document is still theirs to edit — RLS says so and no migration
+ * changes that here. Only the act of ADDING to the library narrows.
+ *
+ * HIDING THE COMPOSER IS NOT A GUARD, and could never be. `createArticleAction` / `uploadFileAction` are
+ * Server Actions: their ids ship inside every authenticated user's bundle and they are POST endpoints
+ * whether or not a button points at them. So the refusal lives HERE, at the boundary every caller crosses,
+ * and `app/knowledge-base/page.tsx` merely declines to offer what it knows will be refused.
+ */
+export class KbAuthorAdminRequiredError extends Error {
+  constructor() {
+    super('Only an HR administrator can add to the knowledge base. Ask an administrator to publish this.');
+    this.name = 'KbAuthorAdminRequiredError';
+  }
+}
+
+/** Whether this session may add a document to the library. The UI gate for the composer, and the
+ *  predicate `assertKbAuthor` refuses on — one answer, so the screen and the server cannot disagree. */
+export const canAuthor = (ctx: SessionContext): boolean => isAdmin(ctx);
+
+/** Throws unless this session may add to the library. Called FIRST in every create/upload path. */
+export function assertKbAuthor(ctx: SessionContext): void {
+  if (!canAuthor(ctx)) throw new KbAuthorAdminRequiredError();
+}
+
+export class KbAudienceAboveClearanceError extends Error {
+  constructor(audience: KbAudience) {
+    super(`You cannot file a document under an audience you are not cleared to read (${audience}).`);
+    this.name = 'KbAudienceAboveClearanceError';
+  }
+}
+
+/**
+ * NOBODY FILES A DOCUMENT ON A SHELF THEY CANNOT SEE. `audience` is a clearance ladder for READS (R34,
+ * above), and it would be an odd hole if the write side let a rank-1 employee post onto the rank-3 HR
+ * shelf — content planted where the people who read it cannot see who is writing at their level, and
+ * invisible to its own author afterwards.
+ *
+ * With `assertKbAuthor` in place the create/upload paths satisfy this by construction (an administrator
+ * is cleared for every audience, so this can never fire there). It is applied anyway, on all three write
+ * paths, because the property should hold for whoever may write — including the member-authored documents
+ * that predate the author gate, whose owners RLS still lets edit, and including any later widening of
+ * `canAuthor`. An invariant that depends on today's role set is not an invariant.
+ */
+function assertAudienceWithinClearance(ctx: SessionContext, audience: KbAudience): void {
+  if (!canSeeAudience(ctx, audience)) throw new KbAudienceAboveClearanceError(audience);
+}
+
 async function logEvent(
   tx: Parameters<Parameters<typeof withTenant>[1]>[0],
   ctx: SessionContext,
@@ -210,11 +272,13 @@ export async function createArticle(
   ctx: SessionContext,
   p: { title: string; body: string; category?: string; audience?: KbAudience },
 ) {
+  assertKbAuthor(ctx);
   const title = cleanTitle(p.title);
   const body = String(p.body ?? '');
   if (!body.trim()) throw new Error('The article body is empty.');
   const category = cleanCategory(p.category);
   const audience = cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx, audience);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(kbDocument)
@@ -243,7 +307,11 @@ export async function updateDocument(
     const set: Record<string, unknown> = { updatedAt: sql`now()`, updatedByUserId: ctx.userId ?? null };
     if (p.title !== undefined) set.title = cleanTitle(p.title);
     if (p.category !== undefined) set.category = cleanCategory(p.category);
-    if (p.audience !== undefined) set.audience = cleanAudience(p.audience);
+    if (p.audience !== undefined) {
+      const audience = cleanAudience(p.audience);
+      assertAudienceWithinClearance(ctx, audience);
+      set.audience = audience;
+    }
     if (p.body !== undefined) {
       if (!String(p.body).trim()) throw new Error('The article body is empty.');
       set.body = String(p.body);
@@ -271,6 +339,7 @@ export async function uploadDocument(
     audience?: KbAudience;
   },
 ) {
+  assertKbAuthor(ctx);
   const fileName = String(p.fileName ?? '').trim();
   if (!fileName) throw new Error('A file is required.');
   if (!p.content || p.content.length === 0) throw new Error('The uploaded file is empty.');
@@ -280,6 +349,7 @@ export async function uploadDocument(
   const title = cleanTitle(p.title || fileName);
   const category = cleanCategory(p.category);
   const audience = cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx, audience);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(kbDocument)

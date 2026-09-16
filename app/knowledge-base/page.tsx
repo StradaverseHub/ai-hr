@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listDocuments, visibleAudiencesFor, type KbAudience } from '@/core/knowledge-base';
+import { canAuthor, listDocuments, visibleAudiencesFor, type KbAudience } from '@/core/knowledge-base';
 import { Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { KbComposer } from '@/components/kb-composer';
 import { BookOpen, FileText, Paperclip, Search } from 'lucide-react';
@@ -53,7 +53,10 @@ export default async function KnowledgeBasePage({
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
 
-      <KbComposer />
+      {/* Adding to the library is administrator-only (core/knowledge-base.ts), so the composer is not
+          offered to anyone else — omitted from the tree, not hidden, since a collapsed button is still a
+          rendered affordance. This is the courtesy half: the two actions behind it refuse on their own. */}
+      {canAuthor(s) && <KbComposer />}
 
       {/* Search + audience filters */}
       <div className="flex flex-wrap items-center gap-3">
