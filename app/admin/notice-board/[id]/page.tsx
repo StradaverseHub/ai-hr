@@ -6,6 +6,7 @@ import { countNoticeAudience, getNotice } from '@/core/notice';
 import { Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, btnGhost } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { NoticeForm } from '@/components/notice/notice-form';
+import { visibleEmploymentIds } from '@/lib/employment-selection';
 import { criteriaVocabulary } from '../criteria-options';
 import {
   archiveNoticeAction,
@@ -54,10 +55,24 @@ export default async function NoticeDetailPage({
   const projected = published
     ? null
     : await countNoticeAudience(s, { criteria: n.targetMode === 'individual' ? {} : n.criteria });
+  /**
+   * r289 — AN INDIVIDUAL DRAFT'S REACH IS A COUNT OF PEOPLE, NOT A COUNT OF STRINGS.
+   *
+   * It used to be the LENGTH of the stored list. `notice.criteria` is a jsonb column and `cleanNotice`
+   * only checks the list is non-empty, so a reference nothing resolves SAVES — and then a paste of ten good
+   * Employee IDs and two typos read as "reaches 12 employees", the publish confirmation repeated 12, and
+   * `publishNotice` was where it finally went wrong. `vocab.employees` is the list this page has ALREADY
+   * read for the picker below, so this costs no query.
+   *
+   * IT DROPS NOTHING. The stored list is untouched: the unresolved tokens are still on the notice, still in
+   * the paste box when it is reopened, and still named there as unrecognised. Only the SENTENCE stops
+   * over-claiming. `publishNotice` remains the authority — it re-reads these ids under RLS and drops
+   * whatever this session could not have produced, which is the same narrowing, one step later.
+   */
   const reach = published
     ? n.recipientCount
     : n.targetMode === 'individual'
-      ? (n.criteria.employmentIds ?? []).length
+      ? visibleEmploymentIds(n.criteria.employmentIds ?? [], vocab.employees).length
       : (projected?.count ?? 0);
 
   return (
@@ -210,6 +225,10 @@ export default async function NoticeDetailPage({
               employeeRemoveTemplate: t('fEmployeeRemove', { name: '{name}' }),
               pasteAlternative: t('fPasteAlternative'),
               pasteAlternativeHelp: t('fPasteAlternativeHelp'),
+              /* r289 — a FOURTH template, and it passes its own placeholder back in for exactly the
+                 reason the three above do: a bare `t('fPasteUnmatched')` would find no `list`, throw
+                 FORMATTING_ERROR and render the key path behind a green 200. */
+              pasteUnmatchedTemplate: t('fPasteUnmatched', { list: '{list}' }),
               everyoneWarning: t('everyoneWarning'),
               targetingFrozen: t('targetingFrozen'),
               fNotify: t('fNotify'),

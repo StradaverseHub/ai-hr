@@ -41,17 +41,24 @@ describe('r287 §A · the merge rule itself', () => {
     expect(parsePastedEmploymentIds(null)).toEqual([]);
   });
 
+  /**
+   * r289 ADDED THE THIRD ARGUMENT: the population a pasted Employee ID resolves against. `[]` here is not a
+   * placeholder — it is the statement these cases are making. With NO employments in hand nothing can
+   * resolve by code, so every token is handed over exactly as typed, which is r287's behaviour unchanged
+   * and is also the arm that keeps a pasted internal id working. What resolution ADDS on top of it is
+   * pinned in test/r289-paste-employee-code.test.ts.
+   */
   it('DE-DUPLICATES ACROSS THE TWO DOORS: picked AND pasted is one person, not two', () => {
     // The case a picker-only or paste-only test cannot see. Without this the matched count double-counts
     // and the log row records a selection that never existed.
-    expect(mergeEmploymentSelection(['a', 'b'], 'b c')).toEqual(['a', 'b', 'c']);
-    expect(mergeEmploymentSelection(['a', 'a'], 'a')).toEqual(['a']);
+    expect(mergeEmploymentSelection(['a', 'b'], 'b c', [])).toEqual(['a', 'b', 'c']);
+    expect(mergeEmploymentSelection(['a', 'a'], 'a', [])).toEqual(['a']);
   });
 
   it('either door alone is exactly that door', () => {
-    expect(mergeEmploymentSelection(['a', 'b'], '')).toEqual(['a', 'b']);
-    expect(mergeEmploymentSelection([], 'a b')).toEqual(['a', 'b']);
-    expect(mergeEmploymentSelection([], '')).toEqual([]);
+    expect(mergeEmploymentSelection(['a', 'b'], '', [])).toEqual(['a', 'b']);
+    expect(mergeEmploymentSelection([], 'a b', [])).toEqual(['a', 'b']);
+    expect(mergeEmploymentSelection([], '', [])).toEqual([]);
   });
 });
 
@@ -94,9 +101,19 @@ describe('r287 §B · the picker and the paste box resolve to the SAME people', 
     await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 12, validFrom: '2020-01-01' });
   });
 
-  /** Exactly what `openLeaveYearAction` builds, from a FormData shaped like the real post. */
+  /**
+   * Exactly what `openLeaveYearAction` builds, from a FormData shaped like the real post.
+   *
+   * r289 — THE POPULATION IS EMPTY ON PURPOSE. Every id in this section is an internal employment uuid, and
+   * an empty population is the strongest way to say so: nothing here can have been reached by a code
+   * lookup, so §B goes on comparing the two DOORS rather than accidentally comparing two spellings.
+   */
   const idsFromForm = (fd: FormData) =>
-    mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''));
+    mergeEmploymentSelection(
+      fd.getAll('employmentIds').map(String),
+      String(fd.get('employmentIdsRaw') ?? ''),
+      [],
+    );
 
   const runFor = (employmentIds: string[]) =>
     previewLeaveGeneration(adminCtx(b), {
@@ -196,9 +213,18 @@ describe('r287 §C · both callers go through the one rule', () => {
     expect(action).not.toContain(".split(/[\\s,]+/)\n              .filter(Boolean)");
   });
 
+  /**
+   * r289 REFLOWED THIS CALL and added a third argument — the population a pasted Employee ID resolves
+   * against. The assertion is therefore a whitespace-tolerant regex rather than a one-line substring, and
+   * it is STRICTER than what it replaces: it pins the two field reads AND that a population is passed. A
+   * preview that quietly went back to two arguments would stop resolving Employee IDs while
+   * `openLeaveYearAction` went on resolving them — the exact disagreement this section exists to prevent.
+   */
   it('the live preview merges the SAME two fields through the SAME function', () => {
-    expect(form).toContain("import { mergeEmploymentSelection } from '@/lib/employment-selection'");
-    expect(form).toContain("mergeEmploymentSelection(fd.getAll('employmentIds').map(String)");
+    expect(form).toMatch(/import \{ mergeEmploymentSelection, resolveEmploymentSelection \} from '@\/lib\/employment-selection'/);
+    expect(form).toMatch(
+      /mergeEmploymentSelection\(\s*fd\.getAll\('employmentIds'\)\.map\(String\),\s*String\(fd\.get\('employmentIdsRaw'\) \?\? ''\),\s*(?:await )?[\w.]+(?:\(\w*\))?,?\s*\)/,
+    );
   });
 
   it('the picker posts under the field the action reads', () => {

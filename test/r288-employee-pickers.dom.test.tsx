@@ -112,6 +112,7 @@ const noticeLabels: NoticeFormLabels = {
   employeeRemoveTemplate: N.fEmployeeRemove,
   pasteAlternative: N.fPasteAlternative,
   pasteAlternativeHelp: N.fPasteAlternativeHelp,
+  pasteUnmatchedTemplate: N.fPasteUnmatched,
   everyoneWarning: N.everyoneWarning,
   targetingFrozen: N.targetingFrozen,
   fNotify: N.fNotify,
@@ -185,7 +186,14 @@ const pasteBox = (root: HTMLElement) =>
 const postedIds = (root: HTMLElement): string[] => {
   const form = root.querySelector('form') ?? (root.closest('form') as HTMLFormElement);
   const fd = new FormData(form as HTMLFormElement);
-  return mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''));
+  // r289 — an empty population: every reference this file pastes is an internal employment uuid, which is
+  // the arm that must keep working untouched. Resolution by Employee ID is pinned in
+  // test/r289-paste-employee-code.dom.test.tsx, which mounts these same three forms.
+  return mergeEmploymentSelection(
+    fd.getAll('employmentIds').map(String),
+    String(fd.get('employmentIdsRaw') ?? ''),
+    [],
+  );
 };
 
 beforeEach(() => {

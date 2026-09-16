@@ -107,6 +107,10 @@ export default async function NewNoticePage({
               employeeRemoveTemplate: t('fEmployeeRemove', { name: '{name}' }),
               pasteAlternative: t('fPasteAlternative'),
               pasteAlternativeHelp: t('fPasteAlternativeHelp'),
+              /* r289 — a FOURTH template, and it passes its own placeholder back in for exactly the
+                 reason the three above do: a bare `t('fPasteUnmatched')` would find no `list`, throw
+                 FORMATTING_ERROR and render the key path behind a green 200. */
+              pasteUnmatchedTemplate: t('fPasteUnmatched', { list: '{list}' }),
               everyoneWarning: t('everyoneWarning'),
               targetingFrozen: t('targetingFrozen'),
               fNotify: t('fNotify'),

@@ -1,6 +1,7 @@
 'use server';
 
 import { requireAdmin } from '@/lib/authz';
+import type { SessionContext } from '@/db/client';
 import {
   applyLeaveAdjustmentBatch,
   previewLeaveAdjustmentBatch,
@@ -8,6 +9,7 @@ import {
   type AdjustmentCriteria,
 } from '@/core/leave-adjustment';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
+import { listEmployeePickOptions } from '@/core/read';
 import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import { ADJUSTMENTS, fail, okToast } from '@/app/admin/_redirects';
 
@@ -48,9 +50,20 @@ function criteriaFrom(fd: FormData): AdjustmentCriteria {
  * fields, so the population confirmed on screen cannot differ from the one this batch adjusts. Do not
  * inline either half — that seam is the dangerous part, because two fields parsed two ways leaves both
  * halves' tests green while the screen and the write disagree about who is affected.
+ *
+ * r289 — THE THIRD ARGUMENT IS THE POPULATION, and it is why this is now async. A pasted `EMP-0008` only
+ * becomes an employment id against a list of employments, and it must be the SAME list step ②'s picker was
+ * filled from or the screen and the write would read one reference as two different people. The read is
+ * `listEmployeePickOptions` — `listCompanies` → `listEmployees`, exactly what the page does. An unresolved
+ * token is NOT dropped: it reaches `resolveAdjustmentTargets` as typed and covers nobody, because a typo
+ * that silently shrank a bulk adjustment would look exactly like one that worked.
  */
-const idsFrom = (fd: FormData): string[] =>
-  mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''));
+const idsFrom = async (s: SessionContext, fd: FormData): Promise<string[]> =>
+  mergeEmploymentSelection(
+    fd.getAll('employmentIds').map(String),
+    String(fd.get('employmentIdsRaw') ?? ''),
+    await listEmployeePickOptions(s),
+  );
 
 /**
  * 18103ba4 — the amount and its DIRECTION arrive as two fields and are recomposed into the ONE signed
@@ -95,7 +108,7 @@ export async function applyLeaveAdjustmentAction(formData: FormData) {
       reason: String(formData.get('reason') ?? ''),
       targetMode,
       criteria: targetMode === 'criteria' ? criteriaFrom(formData) : undefined,
-      employmentIds: targetMode === 'individual' ? idsFrom(formData) : undefined,
+      employmentIds: targetMode === 'individual' ? await idsFrom(s, formData) : undefined,
     });
   } catch (e) {
     fail(ADJUSTMENTS, e);

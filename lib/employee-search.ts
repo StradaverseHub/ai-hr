@@ -23,10 +23,24 @@ export type EmployeeSearchRow = { name: string; employeeCode: string | null };
 /** How many matches a search control offers at once. A search box is for jumping, not for browsing. */
 export const EMPLOYEE_SEARCH_RESULT_CAP = 8;
 
-/** Lowercase + strip the separators an Employee ID carries, so "emp0008" finds "EMP-0008". */
-function fold(v: string): string {
+/**
+ * Lowercase + strip the separators an Employee ID carries, so "emp0008" finds "EMP-0008".
+ *
+ * r289 EXPORTED IT rather than copying it. `lib/employment-selection.ts` resolves a PASTED Employee ID to
+ * an employment id and has to fold the token exactly as this file's search box folds a typed one — if the
+ * two rules ever diverge, typing `emp0008` into the search finds Irwin while pasting it into the box
+ * beside it finds nobody, and both halves' tests pass. One rule, one place. Both modules are
+ * dependency-free, so the import adds nothing to any bundle.
+ *
+ * ⚠️ FOLDING IS LOSSY AND CALLERS MUST KNOW IT: `EMP-0008` and `EMP0008` are two DIFFERENT codes under
+ * `employment_employee_code_uq` and fold to the same key. Ranking here can afford that (it offers both
+ * rows and a human picks); a resolver cannot, which is why `resolveEmploymentSelection` refuses a folded
+ * collision instead of choosing one.
+ */
+export function foldEmployeeCode(v: string): string {
   return v.toLowerCase().replace(/[\s._-]/g, '');
 }
+const fold = foldEmployeeCode;
 
 /**
  * Match on PARTIAL Employee ID or PARTIAL name, best match first.

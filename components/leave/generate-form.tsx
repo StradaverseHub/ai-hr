@@ -9,7 +9,7 @@ import { SubStepBar } from '@/components/leave-sub-step-bar';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
-import { mergeEmploymentSelection } from '@/lib/employment-selection';
+import { mergeEmploymentSelection, resolveEmploymentSelection } from '@/lib/employment-selection';
 import type { EmployeePickOption } from '@/lib/employment-selection';
 import type { CriteriaSection } from '@/core/org-criteria-form';
 import type { LeaveGenerationResult } from '@/core/leave-generation';
@@ -215,9 +215,18 @@ export function GenerateForm({
       // read off the LIVE form so the preview describes exactly what a submit would post. If these two
       // ever parse differently the screen confirms one population and the sweep grants to another, and
       // both halves' tests still pass — which is why the rule is one shared function, not two.
+      //
+      // r289 — …and over the SAME population. `employees` is the third argument because an Employee ID
+      // only becomes an employment id against a list of employments; `openLeaveYearAction` reads the
+      // identical list server-side before merging, so a pasted `EMP-0008` means the same person here as
+      // it does on submit.
       employmentIds:
         mode === 'individual'
-          ? mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''))
+          ? mergeEmploymentSelection(
+              fd.getAll('employmentIds').map(String),
+              String(fd.get('employmentIdsRaw') ?? ''),
+              employees,
+            )
           : [],
     };
     startPreview(async () => {
@@ -277,7 +286,16 @@ export function GenerateForm({
   // for a reason the operator cannot see. A `Set` is also why the same person cannot be added twice.
   const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
   // THE ONE LIST OUT. Identical rule to the one the posted form goes through — see lib/employment-selection.ts.
-  const individualIds = useMemo(() => mergeEmploymentSelection([...picked], pastedRaw), [picked, pastedRaw]);
+  //
+  // r289 — AND WHAT IT COULD NOT READ. `unmatched` is what lets the box stop failing silently: paste twelve
+  // references, get two wrong, and the screen names the two. It is a MESSAGE, not a gate — both tokens are
+  // still inside `ids`, still posted, and still answer to `resolveOrgCriteriaTargets`. Dropping them here
+  // would turn a twelve-person run into a ten-person run that looked like it worked.
+  const selection = useMemo(
+    () => resolveEmploymentSelection([...picked], pastedRaw, employees),
+    [picked, pastedRaw, employees],
+  );
+  const individualIds = selection.ids;
   /**
    * THE ONE WRITER for the picked set (the ChipMultiSelect `apply` idiom). The popover and the chips' ×
    * are two views of ONE selection, so removing a chip and unticking the row are the same operation and
@@ -555,6 +573,14 @@ export function GenerateForm({
                 className={cn(inputCls, 'w-full font-mono text-xs')}
               />
               <p className="pt-1 text-[11px] text-muted-foreground">{t('generatePasteAlternativeHelp')}</p>
+              {/* r289 — WHAT WE COULD NOT READ, NAMED. Rendered only when there is something to say, so a
+                  clean paste stays quiet. It is a sentence, never a block: the run still covers everything
+                  it can resolve, and these tokens go downstream as typed to resolve to nobody. */}
+              {selection.unmatched.length > 0 && (
+                <p className="pt-1 text-[11px] font-medium text-destructive">
+                  {t('generatePasteUnmatched', { list: selection.unmatched.join(', ') })}
+                </p>
+              )}
             </Field>
           </div>
         )}

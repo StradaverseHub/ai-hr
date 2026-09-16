@@ -1,6 +1,7 @@
 'use server';
 
 import { requireAdmin } from '@/lib/authz';
+import type { SessionContext } from '@/db/client';
 import {
   archiveNotice,
   createNotice,
@@ -12,6 +13,7 @@ import {
   type NoticeInput,
 } from '@/core/notice';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
+import { listEmployeePickOptions } from '@/core/read';
 import { mergeEmploymentSelection } from '@/lib/employment-selection';
 import { fail, okToast } from '@/app/admin/_redirects';
 
@@ -33,10 +35,17 @@ const detail = (id: string) => `${BOARD}/${id}`;
  * The criteria come from the SHARED reader (`orgCriteriaFromFields`), which is the same field vocabulary
  * the Leave Adjustments screen posts. That is the point of generalising the resolver: one set of names,
  * one meaning, so "Finance + Executive" selects the same people on both screens.
+ *
+ * r289 — ASYNC NOW, and only for the individual-target branch. A pasted `EMP-0008` becomes an employment
+ * id only against a list of employments, so the audience population is read here (`listEmployeePickOptions`
+ * — `listCompanies` → `listEmployees`, exactly what ../criteria-options.ts fills the picker from) and the
+ * ONE merge rule resolves the pasted block against it. Read only when `targetMode` is individual: a
+ * criteria notice names nobody by reference and must not pay for a list it will not look at.
  */
-function inputFrom(fd: FormData): NoticeInput {
+async function inputFrom(s: SessionContext, fd: FormData): Promise<NoticeInput> {
   const list = (name: string) => fd.getAll(name).map(String).filter(Boolean);
   const targetMode = fd.get('targetMode') === 'individual' ? 'individual' : 'criteria';
+  const audience = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
   return {
     title: String(fd.get('title') ?? ''),
     body: String(fd.get('body') ?? ''),
@@ -51,9 +60,19 @@ function inputFrom(fd: FormData): NoticeInput {
     // screen shows its chosen-count from and the SAME rule the two leave screens use, so a Save cannot
     // store a different audience from the one the form displayed. Parsed HERE rather than mirrored into
     // hidden inputs by the browser, so the ids the action sees are the ids the user chose or typed.
+    //
+    // r289 — …and over the SAME POPULATION the screen resolved against, so a pasted Employee ID names one
+    // person on both sides of the Save. An unresolved token is NOT dropped — dropping it would silently
+    // shrink a notice's audience, which is the worst option on a screen whose jsonb column accepts
+    // anything. It is stored as typed, named as unrecognised in the box when the notice is reopened, and
+    // excluded from the stated reach, and `publishNotice` remains the authority on who it reaches.
     employmentIds:
       targetMode === 'individual'
-        ? mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''))
+        ? mergeEmploymentSelection(
+            fd.getAll('employmentIds').map(String),
+            String(fd.get('employmentIdsRaw') ?? ''),
+            audience,
+          )
         : undefined,
     notifyOnPublish: fd.get('notifyOnPublish') === 'on',
     popupEnabled: fd.get('popupEnabled') === 'on',
@@ -65,7 +84,7 @@ export async function createNoticeAction(formData: FormData) {
   const s = await requireAdmin();
   let id: string;
   try {
-    ({ id } = await createNotice(s, inputFrom(formData)));
+    ({ id } = await createNotice(s, await inputFrom(s, formData)));
   } catch (e) {
     return fail(`${BOARD}/new`, e);
   }
@@ -78,7 +97,7 @@ export async function updateNoticeAction(formData: FormData) {
   const s = await requireAdmin();
   const id = String(formData.get('id') ?? '');
   try {
-    await updateNotice(s, id, inputFrom(formData));
+    await updateNotice(s, id, await inputFrom(s, formData));
   } catch (e) {
     return fail(detail(id), e);
   }
