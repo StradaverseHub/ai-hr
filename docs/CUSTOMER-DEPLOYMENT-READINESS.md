@@ -629,11 +629,127 @@ silent, but the box still has no margin.
 - [x] Detach the remote deploy so a local failure cannot kill it — r291
 - [x] A deploy that fails partway is detected and reported, rather than left mixed — r291
 
-### 7.2 Pagination fetches every row
+### 7.2 Pagination fetches every row — measured 2026-09-17 (r297)
 
-`lib/pagination.ts:124` fetches every row then slices, across 61 call sites. It has never bitten because
-production holds 83 employments and 93 payslips. **UNKNOWN:** the row count at which it becomes a problem;
-nobody has load-tested it. A customer an order of magnitude larger should be assumed to expose it.
+`lib/pagination.ts:124` (`paginateRows`) slices an already-loaded array, across **31 call sites** — not the
+61 recorded here before, which counted import lines and the definition as well as calls. Production holds 84
+employments, 93 payslips and 29 payroll runs, with **at most 19 payslips in any single run**, so the table
+this item names has never drawn more than 19 rows.
+
+**The UNKNOWN is answered, and the premise was too narrow.** `rows.slice()` is never the cost, and there is
+no single row count: three different costs sit around the slice, their thresholds an order of magnitude
+apart, and the worst screen fails for a reason that is not pagination at all.
+
+**Budget, fixed before measuring.** Server render **≤ 1,000 ms** (Nielsen's 1 s limit on uninterrupted flow
+of thought; equally, 1,000 ms of a 2,500 ms "good" LCP leaves 1,500 ms for transfer and paint), AMBER to
+3,000 ms, RED beyond. Row-dependent document growth **≤ 1.0 MB**, judged on the bytes that scale with row
+count, above the dev server's fixed ~0.8–0.95 MB framework floor.
+
+**Method, repeatable.** Scratch database `ai_hr_r297page` cloned from `ai_hr_dev` and seeded **additively**
+(nothing truncated) with tenants of 100 / 1,000 / 10,000 employments and payroll runs of 25 / 100 / 1,000 /
+10,000 payslips, each payslip carrying a `statutory` jsonb sized to production's measured 1,027-byte average.
+Driven against `next dev` on port 3297, tenant switched with the `dev_user` cookie, each route warmed twice
+then the median of three `curl` timings; the read timed separately by calling `core/payroll.batchDetail`
+through the real drizzle path as the app role with RLS on. Database dropped afterwards. **These numbers are
+optimistic:** local Postgres runs on a RAM disk with `fsync=off` on an 11-core workstation, while production
+is 2 vCPU with 3.9 GB (7.1). Expect the box to be slower, not faster.
+
+**The read scales exactly linearly** — ~0.139 ms and ~1,195 bytes of JSON per payslip row:
+
+| payslips in the run | read | full array as JSON | rendered page as JSON |
+|---|---|---|---|
+| 25 | 7 ms | 29 KB | 29 KB |
+| 100 | 19 ms | 119 KB | 29 KB |
+| 1,000 | 141 ms | 1.19 MB | 29 KB |
+| 10,000 | 1,395 ms | 11.96 MB | 29 KB |
+
+**End to end** (median of three, warmed; document bytes include the dev framework floor):
+
+| screen | 100 | 1,000 | 10,000 |
+|---|---|---|---|
+| `/payroll/<batchId>` | 0.21 s / 905 KB | 0.27 s / 906 KB | 1.57 s / 906 KB |
+| `/admin/loans` | 0.25 s / 824 KB | 0.17 s / 1.13 MB | 0.97 s / 4.16 MB |
+| `/admin/personnel` | 0.22 s / 973 KB | 0.32 s / 1.15 MB | 1.78 s / 2.87 MB |
+| `/attendance/daily` | 0.70 s / 960 KB | ~10 s / 1.17 MB | **did not finish in 14 min** |
+
+**1. A server-side slice is cheap, and the over-fetch never reaches the browser.** On `/payroll/<batchId>`
+the document is FLAT at ~906 KB from 25 rows to 10,000 — only the 25 visible rows are rendered. The whole
+cost is the read, so the page crosses 1,000 ms at **≈ 5,800 payslips in one run** (fit: 190 ms + 0.139 ms × n)
+and 3,000 ms at ≈ 20,000. Production's largest run is 19. This is the least urgent of the three.
+
+**2. A client-side slice ships every row to the browser, and `ALL_ROW_CEILING` does not stop it.** Twelve of
+the 31 call sites sit inside `'use client'` components, so the full array is serialised into the RSC payload
+before `paginateRows` ever runs. `/admin/loans` grows **+337 bytes per employee** and `/admin/personnel`
+**+192**, reaching 1 MB of row payload at roughly 3,000 and 5,200 employees. Note that `/admin/personnel`
+**already server-pages its list** (`listEmployeesPage`) and still ships every employee, because
+`listEmployees` separately feeds the client-side `EmployeeSwitcher`: server-paging a list does not by itself
+stop a screen shipping the whole population. The user-reachable worst case is one click — `?size=all` on a
+10,000-payslip run renders the 2,000-row ceiling as a **9.59 MB document in 7.3 s**. The ceiling behaved
+correctly (it said "showing the first 2,000 of 10,000"); it is simply set for a smaller world.
+
+**3. The worst screen is not a pagination problem.** `/attendance/daily` took 0.70 s at 100 employees, ~10 s
+at 1,000, and **had not returned after 14 minutes at 10,000** — superlinear, with the database idle and Node
+pinned at 100% CPU and 1.7 GB resident. The cause is `core/attendance.ts:2245`: a **sequential `await` per
+employee** (`holidayDatesFor`, a seven-join query each) for every employee with no attendance row that day.
+Proof rather than inference — on the 1,000-employee tenant, inserting one attendance row per employee for the
+measured date, which makes the loop body `continue`, took the page from **10.0 s to 0.31 s, a 32× collapse**,
+with no code change. A 5-second CPU sample of the stalled 10,000 render put ~65% of main-thread samples in
+`Builtin_ErrorConstructor` → `CaptureAndSetErrorStack` → `CaptureSimpleStackTrace`, i.e. async stack capture,
+which is why it degrades worse than linearly rather than merely N times.
+
+**It bites hardest when the screen is most used.** The loop runs only for employees with no attendance row,
+so it is cheap on a busy afternoon and at its worst first thing in the morning before anyone has clocked in —
+and on any historical date, weekend, holiday, or tenant not using clock-in it is *always* the full N+1. At 100
+employees with no rows it is already 0.70 s, so the 1,000 ms budget falls at roughly **120 employees**.
+**Production has 84.** RISK: this one is at the edge today, not an order of magnitude away.
+
+**4. An abandoned request keeps burning the server.** When the 10,000 measurement was cancelled client-side,
+Node stayed at 100% CPU for minutes and queued later requests behind it — two subsequent requests timed out
+at 300 s and the server had to be restarted. On a 2-vCPU box (7.1), one impatient reload of a slow screen
+degrades the app for every other user.
+
+**Which of the 31 call sites can actually grow.** Separating these is most of the value: eighteen of them can
+never reach a problematic row count.
+
+*Class A — grows with headcount, or headcount × time (13 sites; **client** = every row crosses the wire).*
+`app/payroll/[batchId]/page.tsx:101` payslips in one run · `app/payroll/adjustments-panel.tsx:71` draft inputs ·
+`app/attendance/daily/page.tsx:71` one row per employee per day · `app/attendance/page.tsx:73,74` corrections and
+per-employee summary · `app/attendance/request-status/page.tsx:90` · **client:** `components/roster-grid.tsx:233`
+employees × every date of the month · `components/loan-list.tsx:100` every loan in scope ·
+`components/applied-in-payroll-list.tsx:116` · `app/payroll/transaction-view/individual-table.tsx:90` ·
+`app/payroll/transactions/zakat/elections-list.tsx:110` · `components/tp1-declarations-list.tsx:120` ·
+`app/feedback/bulk-table.tsx:76`.
+
+*Class B — grows with time only, or already bounded (7 sites).* `app/payroll/page.tsx:185` payroll runs (~12–24
+per company per year; 29 today) · `app/performance/page.tsx:47` review cycles · `app/attendance/my-records/page.tsx:134`
+and `app/attendance/individual/page.tsx:69` one employee over a chosen range (≤ 366 rows by construction) ·
+`components/salary-history-table.tsx:115` one employment's salary history · `app/claims/page.tsx:82` the signed-in
+person's OWN claims · `app/payroll/transaction-view/history-table.tsx:107`, already bounded at the QUERY by
+`HISTORY_ROW_CAP = 200` (862ed0ad) — the precedent for the right fix, and its own comment names this item as the
+carried debt.
+
+*Class C — bounded by configuration, fine forever (11 sites).* `app/admin/organization/page.tsx:133` companies (12) ·
+`app/admin/settings/employee-id/page.tsx:44` · `app/admin/settings/hiring-defaults/page.tsx:117` ·
+`app/admin/settings/dashboard/page.tsx:75` a fixed catalogue of cards · `app/admin/settings/movement/page.tsx:175` ·
+`app/admin/pay-components/page.tsx:64` · `app/admin/holidays/page.tsx:73` (~20 a year per calendar) ·
+`app/admin/holidays/groups/page.tsx:50` · `components/grade-labels-grid.tsx:363` ·
+`components/profile-options-grid.tsx:290` · `components/system-labels-grid.tsx:584` org structure. None of these can
+plausibly pass the 2,000-row ceiling, let alone a budget.
+
+**What this round deliberately did NOT do.** No call site was rewritten and nothing was converted to
+server-side paging: the measurement was the deliverable, and the numbers say a blanket rewrite would be aimed
+at the cheapest of the three costs. 100,000 rows was not seeded — the answer was unambiguous at 10,000, and
+the local cluster lives on a RAM disk. No timing assertion was added anywhere: a timing test is a flaky test,
+so the numbers are recorded here instead. `/attendance/daily` was not fixed — it is a different defect from
+this item, it sits in attendance/leave code that deserves its own round, and it must not ride along inside a
+measurement round.
+
+- [ ] `core/attendance.ts:2245` — batch the per-employee holiday resolution. Every other loader in the same
+      function already batches; this is the one that did not. Highest value of anything on this list.
+- [ ] Bound the twelve client-slice call sites at the QUERY, the way `HISTORY_ROW_CAP` already does
+- [ ] Decide whether `ALL_ROW_CEILING = 2000` is still right now that 2,000 rows is a 9.6 MB document. It
+      truncates honestly, which is the important half; the number is the open question.
+- [ ] `/payroll/<batchId>` server-side paging — only past ~5,000 employees in one run. Not urgent.
 
 ---
 
@@ -646,7 +762,8 @@ nobody has load-tested it. A customer an order of magnitude larger should be ass
   which answer is right. v2.0 has never been uploaded from this system, and the system starts writing it
   on 1 October 2026.
 - The seven PCB relief figures, against a primary source: the LHDN specification URL 404s.
-- Load behaviour at customer scale (Part 7).
+- Load behaviour at customer scale ON THE BOX. 7.2 measured four screens on a workstation, but nothing
+  has ever been load-tested on production itself, whose 2 vCPU / 3.9 GB is the binding constraint.
 - Whether a restore of the current dumps actually succeeds — the one rehearsal on the box failed for an
   unrelated permission reason and was never retried.
 - Anything at all about real customer data, because there has never been any.
