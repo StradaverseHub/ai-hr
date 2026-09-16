@@ -2136,7 +2136,7 @@ export function TxnWorkspace({
                     <ul className="mt-1 list-disc space-y-0.5 pl-4">
                       {impact?.paymentDisbursed && <li>{t('processedEditPaymentExported')}</li>}
                       {impact?.statutoryFiled && (
-                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryReportCount })}</li>
+                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryFiledCount })}</li>
                       )}
                       <li>{t('processedEditMarksRecalc')}</li>
                     </ul>
@@ -2451,7 +2451,7 @@ export function TxnWorkspace({
                     <ul className="mt-1 list-disc space-y-0.5 pl-4">
                       {impact?.paymentDisbursed && <li>{t('processedEditPaymentExported')}</li>}
                       {impact?.statutoryFiled && (
-                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryReportCount })}</li>
+                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryFiledCount })}</li>
                       )}
                       <li>{t('processedEditMarksRecalc')}</li>
                     </ul>

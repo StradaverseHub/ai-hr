@@ -81,6 +81,7 @@ import {
   rosterAssignment,
   shift,
   statutoryReport,
+  STATUTORY_FILED_STATUSES,
   tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
@@ -850,18 +851,42 @@ async function releaseIndividualTxnsConsumed(
 export async function batchDownstreamWarnings(
   tx: Tx,
   p: { batchId: string; companyId: string; payPeriod: string },
-): Promise<{ paymentDisbursed: boolean; statutoryFiled: boolean; statutoryReportCount: number }> {
+): Promise<{
+  paymentDisbursed: boolean;
+  statutoryFiled: boolean;
+  statutoryFiledCount: number;
+  statutoryReportCount: number;
+}> {
   const [{ n: paymentExports } = { n: 0 }] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(domainEvent)
     .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.payment-summary.exported')));
   const statReports = await tx
-    .select({ id: statutoryReport.id })
+    .select({ id: statutoryReport.id, status: statutoryReport.status })
     .from(statutoryReport)
     .where(and(eq(statutoryReport.companyId, p.companyId), eq(statutoryReport.periodKey, p.payPeriod)));
+  // r292 / readiness 3.2 — `statutoryFiled` NOW MEANS FILED.
+  //
+  // It used to be `statReports.length > 0` — the existence of ANY artefact — and until r292 every row
+  // this table has ever held was 'draft' (all 20 on production), because nothing could set anything
+  // else. So the amber "statutory returns have already been filed for this month" banner on Unlock,
+  // Reset, Remove-employee and the Individual Transaction screen fired when somebody had pressed
+  // "Record generation" on a PREVIEW, and could never fire when a return had really been lodged. It
+  // misled in BOTH directions, and the false-positive half is the more expensive one: an operator who
+  // learns the banner cries wolf ignores it on the day it is right.
+  //
+  // `STATUTORY_FILED_STATUSES` is IMPORTED rather than re-listed here. Two copies of "which statuses
+  // count as filed" is how a fifth status ships that only half the codebase believes in.
+  //
+  // ⚠️ `statutoryReportCount` KEEPS ITS OLD MEANING — every artefact recorded for the month — because
+  // that is what the `statutoryReportsForPeriod` audit payloads have always recorded and silently
+  // re-pointing a historical audit field at a narrower set would make old and new events incomparable.
+  // The screens that say the word "filed" read `statutoryFiledCount` instead.
+  const filed = statReports.filter((r) => (STATUTORY_FILED_STATUSES as readonly string[]).includes(r.status));
   return {
     paymentDisbursed: Number(paymentExports) > 0,
-    statutoryFiled: statReports.length > 0,
+    statutoryFiled: filed.length > 0,
+    statutoryFiledCount: filed.length,
     statutoryReportCount: statReports.length,
   };
 }
@@ -883,7 +908,9 @@ export function batchEditImpact(
       status: 'draft' | 'processed' | 'closed';
       payPeriod: string;
       paymentDisbursed: boolean;
+      /** r292 — TRUE means a return for this month has really been LODGED, not merely generated. */
       statutoryFiled: boolean;
+      statutoryFiledCount: number;
       statutoryReportCount: number;
     })
 > {
@@ -7866,6 +7893,7 @@ export async function removeEmployeePayroll(
         anomalyVerdictsSuperseded,
         paymentDisbursed: downstream.paymentDisbursed,
         statutoryFiled: downstream.statutoryFiled,
+        statutoryReturnsFiled: downstream.statutoryFiledCount,
         laterProcessedPeriods,
       },
     });
@@ -7893,6 +7921,10 @@ export async function removeEmployeePayroll(
         headcountAfter: Number(payslipCount),
         paymentDisbursed: downstream.paymentDisbursed,
         statutoryFiled: downstream.statutoryFiled,
+        // r292 — ADDED beside `statutoryReportsForPeriod`, not instead of it. That field has always meant
+        // "artefacts recorded for the month" and re-pointing it at the narrower filed set would make
+        // events written before and after this round incomparable.
+        statutoryReturnsFiled: downstream.statutoryFiledCount,
         statutoryReportsForPeriod: downstream.statutoryReportCount,
         laterProcessedPeriods,
       },
@@ -7909,6 +7941,7 @@ export async function removeEmployeePayroll(
       headcountAfter: Number(payslipCount),
       paymentDisbursed: downstream.paymentDisbursed,
       statutoryFiled: downstream.statutoryFiled,
+      statutoryFiledCount: downstream.statutoryFiledCount,
       laterProcessedPeriods,
     };
   });

@@ -243,6 +243,10 @@ export async function fetchBatchImpactAction(input: { batchId: string }): Promis
     recalcCount: impact.employmentIds.length,
     paymentDisbursed: impact.paymentDisbursed,
     statutoryFiled: impact.statutoryFiled,
+    // r292 — the count the warning copy quotes is the FILED count, not every artefact recorded for the
+    // month. The banner says "N statutory returns have already been filed"; quoting the wider number
+    // beside a now-truthful flag would just relocate the lie one noun to the right.
+    statutoryFiledCount: impact.statutoryFiledCount,
     statutoryReportCount: impact.statutoryReportCount,
   };
 }
@@ -256,6 +260,7 @@ export type TxnBatchImpact = {
   recalcCount: number;
   paymentDisbursed: boolean;
   statutoryFiled: boolean;
+  statutoryFiledCount: number;
   statutoryReportCount: number;
 };
 
