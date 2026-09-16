@@ -10223,7 +10223,7 @@
     "noAssignments": "Chưa có phân công mẫu nào.",
     "unassign": "Gỡ",
     "unassignConfirm": "Gỡ phân công này? Loại nghỉ phép sẽ quay lại chuỗi mặc định.",
-    "rolesGatedNote": "Các bước được chuyển như sau: Quản lý trực tiếp chuyển đến người quản lý trực tiếp đã ghi nhận của nhân viên; Trưởng phòng / Trưởng đơn vị kinh doanh chuyển đến người đứng đầu được đặt cho đơn vị đó tại cột Người đứng đầu (người duyệt nghỉ) trong Cài đặt → Nhãn hệ thống; HR và Quản lý HR chuyển đến quản trị viên HR; Payroll chuyển đến đối tác payroll; Vai trò tùy chỉnh chuyển đến quản trị viên HR. Một bước sẽ bị bỏ qua khi không có ai đảm nhận vai trò đó — chưa ghi nhận quản lý trực tiếp, hoặc chưa đặt người đứng đầu cho đơn vị đó. Quản trị viên HR cũng có thể duyệt bất kỳ bước nào, vì vậy chuỗi luôn hoàn tất.",
+    "rolesGatedNote": "Các bước được chuyển như sau: Quản lý trực tiếp chuyển đến người quản lý trực tiếp đã ghi nhận của nhân viên; Quản lý của quản lý chuyển lên trên cấp trên trực tiếp đó một bậc; Trưởng phòng / Trưởng đơn vị kinh doanh chuyển đến người đứng đầu được đặt cho đơn vị đó tại cột Người đứng đầu (người duyệt nghỉ) trong Cài đặt → Nhãn hệ thống; HR và Quản lý HR chuyển đến quản trị viên HR; Payroll chuyển đến đối tác payroll; Vai trò tùy chỉnh chuyển đến quản trị viên HR. Một bước sẽ bị bỏ qua khi không có ai đảm nhận vai trò đó — chưa ghi nhận quản lý trực tiếp, hoặc chưa đặt người đứng đầu cho đơn vị đó. Quản trị viên HR cũng có thể duyệt bất kỳ bước nào, vì vậy chuỗi luôn hoàn tất.",
     "reason": "Lý do thay đổi (tùy chọn)",
     "reasonPlaceholder": "Vì sao thực hiện thay đổi này?",
     "workflowsTitle": "Quy trình phê duyệt",
@@ -10321,7 +10321,10 @@
     "previewSearchAria": "Tìm nhân viên",
     "previewSearchResults": "Kết quả tìm nhân viên",
     "previewSearchNoMatches": "Không có nhân viên khớp",
-    "previewSearchClear": "Xoá nhân viên"
+    "previewSearchClear": "Xoá nhân viên",
+    "managerManager": "Quản lý của quản lý",
+    "hintManagerManager": "Xác định từ tuyến báo cáo của nhân viên, cao hơn cấp trên trực tiếp một bậc. Bỏ qua nếu thiếu một trong hai bậc.",
+    "previewSkippedNoManagerManager": "Bỏ qua — chưa ghi nhận quản lý của quản lý cho nhân viên này."
   },
   "feedback": {
     "title": "Phản hồi",

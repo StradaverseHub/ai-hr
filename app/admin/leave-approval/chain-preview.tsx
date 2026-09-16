@@ -47,6 +47,7 @@ export type ChainPreviewLabels = {
   flowEnd: string;
   skipped: string;
   skippedNoManager: string;
+  skippedNoManagerManager: string;
   skippedNoDepartmentHead: string;
   skippedNoBusinessUnitHead: string;
   sourceRule: string;
@@ -89,7 +90,9 @@ export function ApprovalChainPreview({
   const dropReason = (r: string | null) =>
     r === 'no_manager'
       ? labels.skippedNoManager
-      : r === 'no_department_head'
+      : r === 'no_manager_manager'
+        ? labels.skippedNoManagerManager
+        : r === 'no_department_head'
         ? labels.skippedNoDepartmentHead
         : r === 'no_business_unit_head'
           ? labels.skippedNoBusinessUnitHead

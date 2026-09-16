@@ -4060,6 +4060,11 @@ export function isMultiStepChain(chain: readonly string[]): boolean {
 export type ChainResolutionFacts = {
   /** The subject has a current ADMINISTRATIVE reporting line (direct_manager resolves to somebody). */
   hasManager: boolean;
+  /** r293 phase 2 — the SECOND hop up the same administrative line (the direct manager's own manager),
+   *  or null when either hop is missing. Null too when the second hop resolves back to the SUBJECT: a
+   *  two-person reporting cycle would otherwise route the request to the person who raised it, and a
+   *  level whose only approver is the requester is worse than a level that is skipped. */
+  managerManager: string | null;
   /** The subject's department's head employment id, or null when the department has no head set. */
   deptHead: string | null;
   /** The subject's business unit's head employment id, or null when the BU has no head set. */
@@ -4072,7 +4077,7 @@ export type ResolvedChainLevel = {
   kind: string;
   kept: boolean;
   /** Why it was dropped: the relationship that resolved to nobody. Null when kept. */
-  droppedBecause: 'no_manager' | 'no_department_head' | 'no_business_unit_head' | null;
+  droppedBecause: 'no_manager' | 'no_manager_manager' | 'no_department_head' | 'no_business_unit_head' | null;
 };
 
 /** Read the subject's org facts. Runs in the caller's transaction, under the caller's RLS. */
@@ -4084,7 +4089,7 @@ async function resolveChainFacts(
   // Include a manager step only when the employee has a current administrative reporting line;
   // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
   const [mgr] = await tx
-    .select({ id: reportingLine.id })
+    .select({ id: reportingLine.id, managerEmploymentId: reportingLine.managerEmploymentId })
     .from(reportingLine)
     .where(
       and(
@@ -4095,6 +4100,27 @@ async function resolveChainFacts(
       ),
     )
     .limit(1);
+
+  // r293 phase 2 — the SECOND hop, resolved with the SAME predicate as the first so the two levels cannot
+  // disagree about what "current administrative line" means. Null when the first hop is missing, when the
+  // manager has no manager of their own, or when the second hop points back at the subject.
+  let managerManager: string | null = null;
+  if (mgr?.managerEmploymentId) {
+    const [grand] = await tx
+      .select({ managerEmploymentId: reportingLine.managerEmploymentId })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, mgr.managerEmploymentId),
+          eq(reportingLine.lineType, 'administrative'),
+          lte(reportingLine.validFrom, sql`current_date`),
+          or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+        ),
+      )
+      .limit(1);
+    const candidate = grand?.managerEmploymentId ?? null;
+    managerManager = candidate && candidate !== employmentId ? candidate : null;
+  }
 
   // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
   // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
@@ -4118,7 +4144,7 @@ async function resolveChainFacts(
       .limit(1);
     buHead = b?.head ?? null;
   }
-  return { hasManager: !!mgr, deptHead, buHead };
+  return { hasManager: !!mgr, managerManager, deptHead, buHead };
 }
 
 /**
@@ -4140,6 +4166,9 @@ export function applyChainDropRules(
   return chain.map((kind) => {
     if (kind === 'direct_manager' && !facts.hasManager) {
       return { kind, kept: false, droppedBecause: 'no_manager' as const };
+    }
+    if (kind === 'manager_manager' && !facts.managerManager) {
+      return { kind, kept: false, droppedBecause: 'no_manager_manager' as const };
     }
     if (kind === 'department_head' && !facts.deptHead) {
       return { kind, kept: false, droppedBecause: 'no_department_head' as const };
@@ -4363,6 +4392,40 @@ async function assertCanDecideLeaveStep(
     case 'direct_manager':
       // The direct-manager chain step is a leave APPLICATION decision — a scoped delegation must cover it.
       return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf('leave.application'));
+    case 'manager_manager': {
+      // r293 phase 2 — THE SECOND HOP, and it mirrors direct_manager by RE-ASKING THE SAME QUESTION ONE
+      // LEVEL UP rather than by re-implementing the reporting-line walk. `assertCanDecide` answers "may
+      // this caller decide FOR that employment" — so asking it about the subject's MANAGER is exactly
+      // "is this caller the manager's manager", and the delegation branch, the effective-window predicate
+      // and the org-scope gate inside it all come along unchanged. A copy of that walk here would be a
+      // second authorization rule to keep in step with the first.
+      //
+      // TWO SELF-BANS, NOT ONE, because the shifted subject shifts the ban with it:
+      //   · assertCanDecide's own ban stops the DIRECT MANAGER clearing this step — which is the whole
+      //     point of a second hop, and would be a silent single-approval if it were allowed;
+      //   · banSelf() below stops the SUBJECT clearing it, which assertCanDecide can no longer see
+      //     because it is now looking at the manager. A two-person reporting cycle is dropped at
+      //     generation time (resolveChainFacts), so this is the belt to that braces — an org change
+      //     BETWEEN submission and decision can create the cycle the generated step predates.
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears any step (guaranteed visibility), as everywhere here.
+      const [mgr] = await tx
+        .select({ managerEmploymentId: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
+            eq(reportingLine.lineType, 'administrative'),
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          ),
+        )
+        .limit(1);
+      if (!mgr?.managerEmploymentId) {
+        throw new Error(`No manager's manager is recorded for this employee — an admin must decide`);
+      }
+      return assertCanDecide(tx, ctx, mgr.managerEmploymentId, label, scopeOf('leave.application'));
+    }
     // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
     // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
     case 'hr_admin':

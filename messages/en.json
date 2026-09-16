@@ -10223,7 +10223,7 @@
     "noAssignments": "No template assignments yet.",
     "unassign": "Remove",
     "unassignConfirm": "Remove this assignment? The leave type falls back to the default chain.",
-    "rolesGatedNote": "Steps route as follows: Direct manager goes to the employee's recorded direct superior; Department Head / Business Unit Head go to the head set for that unit in the Head (leave approver) column under Settings → System Labels; HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. A step is skipped when nobody fills its role — no direct superior recorded, or no head set for that unit. An HR admin can also clear any step, so a chain always completes.",
+    "rolesGatedNote": "Steps route as follows: Direct manager goes to the employee's recorded direct superior; Manager's Manager goes one level above that; Department Head / Business Unit Head go to the head set for that unit in the Head (leave approver) column under Settings → System Labels; HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. A step is skipped when nobody fills its role — no direct superior recorded, or no head set for that unit. An HR admin can also clear any step, so a chain always completes.",
     "reason": "Reason for change (optional)",
     "reasonPlaceholder": "Why is this being changed?",
     "workflowsTitle": "Approval workflows",
@@ -10321,7 +10321,10 @@
     "previewSearchAria": "Search employee",
     "previewSearchResults": "Employee search results",
     "previewSearchNoMatches": "No matching employee",
-    "previewSearchClear": "Clear employee"
+    "previewSearchClear": "Clear employee",
+    "managerManager": "Manager's Manager",
+    "hintManagerManager": "Resolved from the employee's reporting line, one level above their direct manager. Skipped if either level is missing.",
+    "previewSkippedNoManagerManager": "Skipped — no manager's manager is recorded for this employee."
   },
   "feedback": {
     "title": "Feedback",

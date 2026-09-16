@@ -19,6 +19,10 @@
 // request lists them; `hr_admin` is the internal id for the "HR" label. Each kind has a concrete
 // decision-time resolver in core/leave.ts (assertCanDecideLeaveStep) and a generation-time drop rule:
 //   direct_manager      → the subject's active administrative manager         (dropped when none)
+//   manager_manager     → a SECOND hop up the same administrative line: the direct manager's own
+//                         manager. r293 phase 2. Dropped when either hop is missing, and also when the
+//                         second hop resolves back to the subject (a two-person reporting cycle would
+//                         otherwise route a request to the person who raised it)                   (dropped when none)
 //   department_head     → department.head_employment_id of the subject's dept (dropped when unset)
 //   business_unit_head  → business_unit.head_employment_id of the subject's BU (dropped when unset)
 //   hr_admin ("HR")     → hr_admin / super_admin role                          (never dropped)
@@ -29,6 +33,7 @@
 //                         step is a documented follow-up (ADR-0071 §i custom_position guard)         (never dropped)
 export const LEVEL_KINDS = [
   'direct_manager',
+  'manager_manager',
   'department_head',
   'business_unit_head',
   'hr_admin',
@@ -80,7 +85,13 @@ export function isFixedLevelKind(kind: string): boolean {
  * Role-based kinds (hr_admin / hr_manager / payroll / custom_role) are NEVER dropped: they resolve to role
  * authority at decision time, and an HR admin can clear any step, so they always have a decider.
  */
-export const DROPPABLE_LEVEL_KINDS: readonly LeaveLevelKind[] = ['direct_manager', ...HEAD_LEVEL_KINDS];
+export const DROPPABLE_LEVEL_KINDS: readonly LeaveLevelKind[] = [
+  'direct_manager',
+  // r293 phase 2 — a second hop that does not exist is dropped for the same reason the first one is:
+  // a step nobody can clear stalls the request forever.
+  'manager_manager',
+  ...HEAD_LEVEL_KINDS,
+];
 
 /** True when a level of this kind is skipped (rather than stalling) when it resolves to nobody. */
 export function isDroppableLevelKind(kind: string): boolean {

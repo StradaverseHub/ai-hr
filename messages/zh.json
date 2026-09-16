@@ -10223,7 +10223,7 @@
     "noAssignments": "尚无模板分配。",
     "unassign": "移除",
     "unassignConfirm": "移除此分配？该假期类型将回退到默认审批链。",
-    "rolesGatedNote": "步骤的审批人如下：直属经理由该员工记录的直属上司审批；部门主管／业务单元主管由该单元在 设置 → 系统标签 的“负责人（请假审批人）”列中设置的负责人审批；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。当某个步骤没有对应人选时，该步骤会被跳过——未记录直属上司，或该单元未设置负责人。HR 管理员也可审批任何步骤，因此审批链始终能完成。",
+    "rolesGatedNote": "步骤的审批人如下：直属经理由该员工记录的直属上司审批；上级经理的经理由该直属上司的上级审批；部门主管／业务单元主管由该单元在 设置 → 系统标签 的“负责人（请假审批人）”列中设置的负责人审批；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。当某个步骤没有对应人选时，该步骤会被跳过——未记录直属上司，或该单元未设置负责人。HR 管理员也可审批任何步骤，因此审批链始终能完成。",
     "reason": "变更原因（可选）",
     "reasonPlaceholder": "为何要进行此变更？",
     "workflowsTitle": "审批工作流",
@@ -10321,7 +10321,10 @@
     "previewSearchAria": "搜索员工",
     "previewSearchResults": "员工搜索结果",
     "previewSearchNoMatches": "没有匹配的员工",
-    "previewSearchClear": "清除员工"
+    "previewSearchClear": "清除员工",
+    "managerManager": "上级经理的经理",
+    "hintManagerManager": "根据员工的汇报关系确定，位于其直属上级之上一级。若其中任一级缺失，则跳过。",
+    "previewSkippedNoManagerManager": "已跳过 —— 未为此员工记录上级经理的经理。"
   },
   "feedback": {
     "title": "反馈",

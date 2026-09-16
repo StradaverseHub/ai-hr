@@ -1,6 +1,7 @@
 /**
- * r293 — Redesign Custom Leave Approval Workflow, PHASE 1: the visual builder over the structure that was
- * already there, plus the chain PREVIEW.
+ * r293 — Redesign Custom Leave Approval Workflow.
+ *   PHASE 1: the visual builder over the structure that was already there, plus the chain PREVIEW.
+ *   PHASE 2: `manager_manager` — a SECOND hop up the reporting line, the first genuinely new kind.
  *
  * ⚠️ THE REPORTER'S PREMISE WAS WRONG IN THEIR FAVOUR, and the first two cases pin the correction so a
  * future round cannot "add" what already exists. They believed approval steps were only Direct Manager and
@@ -16,7 +17,10 @@
  *   4. a reorder persists in the saved order AND the resolved chain follows it;
  *   5. a dynamic level that resolves to nobody is DROPPED and the chain carries on;
  *   6. editing a template does NOT disturb leave already in flight — asserted, not assumed;
- *   7. the PREVIEW resolves against real org data and reports exactly the steps generation writes.
+ *   7. the PREVIEW resolves against real org data and reports exactly the steps generation writes;
+ *   8. (phase 2) the second hop is dropped when it is missing and generated when it is there, is NOT
+ *      clearable by the direct manager, IS clearable by the manager's manager, and is dropped rather
+ *      than routed to the requester when the reporting line is a two-person cycle.
  */
 import { eq } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
@@ -137,6 +141,8 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
     // list is exactly these seven (a kind added without wiring the picker, hints and resolver fails here).
     expect([...LEVEL_KINDS]).toEqual([
       'direct_manager',
+      // r293 phase 2 — the second hop up the reporting line, which the system genuinely did not have.
+      'manager_manager',
       'department_head',
       'business_unit_head',
       'hr_admin',
@@ -158,6 +164,7 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
   it('every kind the builder offers has a resolution hint in all six locales', () => {
     const hintKey: Record<string, string> = {
       direct_manager: 'hintDirectManager',
+      manager_manager: 'hintManagerManager',
       department_head: 'hintDepartmentHead',
       business_unit_head: 'hintBusinessUnitHead',
       hr_admin: 'hintHr',
@@ -195,17 +202,22 @@ describe('r293 — the drop rule the builder describes is the drop rule the engi
     // THE CROSS-FILE PIN. `DROPPABLE_LEVEL_KINDS` lives in lib/leave-approval-kinds.ts and drives what the
     // builder tells the administrator; `applyChainDropRules` lives in core/leave.ts and decides what is
     // actually written. A defect in the contract between two files has to be pinned across both.
-    const nobody = { hasManager: false, deptHead: null, buHead: null };
+    const nobody = { hasManager: false, managerManager: null, deptHead: null, buHead: null };
     for (const kind of LEVEL_KINDS) {
       const [resolved] = applyChainDropRules([kind], nobody);
       expect(resolved.kept, `${kind} with nobody in the relationship`).toBe(!isDroppableLevelKind(kind));
     }
     // ...and the other arm: with everybody present, nothing is dropped at all.
-    const everybody = { hasManager: true, deptHead: 'x', buHead: 'y' };
+    const everybody = { hasManager: true, managerManager: 'm', deptHead: 'x', buHead: 'y' };
     for (const kind of LEVEL_KINDS) {
       expect(applyChainDropRules([kind], everybody)[0].kept, `${kind} with the relationship filled`).toBe(true);
     }
-    expect([...DROPPABLE_LEVEL_KINDS]).toEqual(['direct_manager', 'department_head', 'business_unit_head']);
+    expect([...DROPPABLE_LEVEL_KINDS]).toEqual([
+      'direct_manager',
+      'manager_manager',
+      'department_head',
+      'business_unit_head',
+    ]);
   });
 
   it('a dynamic level that resolves to nobody is DROPPED and the chain carries on; a filled one is not', async () => {
@@ -410,5 +422,140 @@ describe('r293 — the preview resolves against real org data', () => {
     expect(viaRule!.source).toBe('rule');
     expect(viaRule!.ruleId).not.toBeNull();
     expect(viaRule!.levels.map((l) => l.kind)).toEqual(['hr_manager', 'hr_admin']);
+  });
+});
+
+describe('r293 phase 2 — manager_manager, the second hop up the reporting line', () => {
+  /** The subject's manager's manager. Returns the grand-manager's context so a case can decide as them. */
+  const giveManagerAManager = async (name = 'Grand Manager') => {
+    const grand = await hire(name);
+    await createAppUser(b.tenantId, grand.personId, 'manager');
+    const [u] = await owner.db
+      .select({ id: schema.appUser.id })
+      .from(schema.appUser)
+      .where(eq(schema.appUser.personId, grand.personId));
+    await setReportingLine(ctx(), {
+      subordinateEmploymentId: manager.employmentId,
+      managerEmploymentId: grand.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    const grandCtx: SessionContext = {
+      tenantId: b.tenantId,
+      userId: u.id,
+      personId: grand.personId,
+      roles: ['manager'],
+    };
+    return { grand, grandCtx };
+  };
+
+  it('is a DYNAMIC, DROPPABLE kind — it resolves a relationship, like every kind before it', () => {
+    expect(LEVEL_KINDS).toContain('manager_manager');
+    expect(isFixedLevelKind('manager_manager')).toBe(false);
+    expect(isDroppableLevelKind('manager_manager')).toBe(true);
+  });
+
+  it('is DROPPED with only one hop recorded, and KEPT once the second hop exists', async () => {
+    await setChain(['manager_manager', 'hr_admin']);
+
+    // ARM A — the subject has no manager at all: there is no first hop, so there is no second one.
+    const r1 = await request('2026-07-10');
+    expect(await stepsFor(r1.leaveRequestId)).toEqual([{ kind: 'hr_admin', status: 'pending' }]);
+
+    // ARM B — one hop only. The direct manager exists but reports to nobody, so the level is still
+    // dropped. This is the arm that separates "second hop" from "any manager": a resolver that fell back
+    // to the direct manager would pass ARM C and fail here.
+    await giveSubjectAManager();
+    const r2 = await request('2026-07-11');
+    expect(await stepsFor(r2.leaveRequestId)).toEqual([{ kind: 'hr_admin', status: 'pending' }]);
+
+    // ARM C — both hops recorded: the step is generated.
+    await giveManagerAManager();
+    const r3 = await request('2026-07-12');
+    expect(await stepsFor(r3.leaveRequestId)).toEqual([
+      { kind: 'manager_manager', status: 'pending' },
+      { kind: 'hr_admin', status: 'pending' },
+    ]);
+  });
+
+  it('routes to the manager’s manager — the DIRECT manager cannot clear it, the grand-manager can', async () => {
+    await giveSubjectAManager();
+    const { grandCtx } = await giveManagerAManager();
+    await setChain(['manager_manager', 'hr_admin']);
+    const { leaveRequestId } = await request('2026-07-13');
+
+    // ARM A — the direct manager is refused. Without this arm the kind would be an expensive alias for
+    // direct_manager and every test below would still pass.
+    await expect(decideLeave(mgrCtx, { leaveRequestId, decision: 'approved' })).rejects.toThrow();
+
+    // ARM B — the manager's manager clears it and the chain advances to HR.
+    const advanced = await decideLeave(grandCtx, { leaveRequestId, decision: 'approved' });
+    expect(advanced).toMatchObject({ status: 'pending', advancedTo: 'hr_admin' });
+  });
+
+  it('is dropped rather than routed to the requester when the reporting line is a two-person cycle', async () => {
+    await giveSubjectAManager();
+
+    // ARM A — THE PRODUCT ALREADY REFUSES TO CREATE THE CYCLE. `setReportingLine` rejects it outright,
+    // and that is the first line of defence; asserting it here is what stops a later round from quietly
+    // removing that check on the grounds that "the approval engine handles it".
+    await expect(
+      setReportingLine(ctx(), {
+        subordinateEmploymentId: manager.employmentId,
+        managerEmploymentId: subject.employmentId,
+        lineType: 'administrative',
+        validFrom: '2024-01-01',
+      }),
+    ).rejects.toThrow(/cycle/i);
+
+    // ARM B — the engine does not RELY on that check. Written straight to the table as the migration role
+    // (the only way to get the row in), because a cycle can also arrive from a restore, an import or a
+    // row that predates the check — and a second hop that resolves to the requester would hand a person
+    // their own approval, which is the one outcome this level must never produce.
+    await owner.db.insert(schema.reportingLine).values({
+      tenantId: b.tenantId,
+      subordinateEmploymentId: manager.employmentId,
+      managerEmploymentId: subject.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    await setChain(['manager_manager', 'hr_admin']);
+
+    const preview = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(preview!.facts.managerManager).toBeNull();
+    expect(preview!.levels[0]).toEqual({
+      kind: 'manager_manager',
+      kept: false,
+      droppedBecause: 'no_manager_manager',
+    });
+
+    const { leaveRequestId } = await request('2026-07-14');
+    expect(await stepsFor(leaveRequestId)).toEqual([{ kind: 'hr_admin', status: 'pending' }]);
+  });
+
+  it('the preview names the second hop and reports the drop reason that belongs to it', async () => {
+    await giveSubjectAManager();
+    await setChain(['manager_manager', 'hr_admin']);
+
+    const before = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(before!.levels[0]).toEqual({
+      kind: 'manager_manager',
+      kept: false,
+      droppedBecause: 'no_manager_manager',
+    });
+
+    const { grand } = await giveManagerAManager();
+    const after = await previewApprovalChain(ctx(), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+    });
+    expect(after!.levels[0]).toEqual({ kind: 'manager_manager', kept: true, droppedBecause: null });
+    expect(after!.facts.managerManager).toBe(grand.employmentId);
   });
 });

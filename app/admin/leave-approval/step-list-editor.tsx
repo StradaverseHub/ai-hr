@@ -21,6 +21,8 @@ export type StepListLabels = {
   hrManager: string;
   payroll: string;
   customRole: string;
+  /** r293 phase 2 — the second hop up the reporting line. */
+  managerManager: string;
   add: string;
   moveUp: string;
   moveDown: string;
@@ -108,6 +110,8 @@ export function StepListEditor({
 
   const kindLabel = (k: string): string => {
     switch (k) {
+      case 'manager_manager':
+        return labels.managerManager;
       case 'department_head':
         return labels.departmentHead;
       case 'business_unit_head':

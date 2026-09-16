@@ -139,6 +139,7 @@ export default async function LeaveConfigApprovalChainsPage({
      than the wrong one. `test/r293-approval-builder.test.ts` pins that every kind has one. */
   const kindHints: Record<string, string> = {
     direct_manager: t('hintDirectManager'),
+    manager_manager: t('hintManagerManager'),
     department_head: t('hintDepartmentHead'),
     business_unit_head: t('hintBusinessUnitHead'),
     hr_admin: t('hintHr'),
@@ -148,6 +149,7 @@ export default async function LeaveConfigApprovalChainsPage({
   };
   const kindLabels: Record<string, string> = {
     direct_manager: t('manager'),
+    manager_manager: t('managerManager'),
     department_head: t('departmentHead'),
     business_unit_head: t('businessUnitHead'),
     hr_admin: t('hr'),
@@ -238,6 +240,7 @@ export default async function LeaveConfigApprovalChainsPage({
     hrManager: t('hrManager'),
     payroll: t('payroll'),
     customRole: t('customRole'),
+    managerManager: t('managerManager'),
     add: t('add'),
     moveUp: t('moveUp'),
     moveDown: t('moveDown'),
@@ -284,6 +287,7 @@ export default async function LeaveConfigApprovalChainsPage({
     flowEnd: t('flowEnd'),
     skipped: t('previewSkipped'),
     skippedNoManager: t('previewSkippedNoManager'),
+    skippedNoManagerManager: t('previewSkippedNoManagerManager'),
     skippedNoDepartmentHead: t('previewSkippedNoDepartmentHead'),
     skippedNoBusinessUnitHead: t('previewSkippedNoBusinessUnitHead'),
     sourceRule: t('previewSourceRule'),
