@@ -1,3 +1,105 @@
+## r296 (2026-09-17) — an alarm for the outage that had none, one PERKESO writer, and the runbook that is the control. `main@5727b28b`, **no migration**.
+
+Readiness **2.1** (alarm the entitlement engine going dark), **3.1** (two PERKESO builders disagreed),
+**2.3** (monthly payroll runbook). Gate: **884 files — equal to the suite file count — 13,428 tests,
+0 AssertionErrors, 0 deadlocks**, first pass, no red chunk. `next build` exit 0.
+
+### THE BEST ARGUMENT OF THE SESSION: A STANDING ALARM CANNOT RIDE A LIVENESS SIGNAL
+
+2.1 asks for an alarm. The obvious build is to fold it into `review-sweep` — no seventh cron line, nothing
+new to forget, and this repo's own standing advice says prefer an existing sweep.
+
+**It is wrong here, mechanically.** `cron-alert.sh` touches `heartbeat/<job>` **only on exit 0**, and
+staleness of that file is the sole signal for the "job stopped running" class — the class r295 added it for.
+This alarm's condition is **standing**: once a tenant's tables go out of force it is still true tomorrow
+night, until a human fixes it. Fold it in and the first zeroed tenant pins `review-sweep`'s exit non-zero
+**forever**, its heartbeat is never touched again, and the hourly staleness check starts paging
+*"review-sweep has not succeeded"* — an alert about the wrong thing, on the channel that exists to catch a
+dead job. **One misconfigured tenant would silently disable liveness detection for a real sweep.**
+
+Hence a seventh line, with the risk mitigated rather than accepted: registered in `JOB_KEYS`/`JOBS` so
+`/admin/scheduled-actions` shows **"Never run"** until the crontab line exists, and `test/job-run.test.ts`
+pins that registry ABSOLUTELY so the job could not be added without its wiring in the same commit.
+
+Same reasoning sets the staleness window at **48 hours, not 25**: this job's heartbeat means "checked AND
+clean", so one night's standing alarm must not also page about staleness.
+
+### THE PREDICATE, AND THE TERM THAT MAKES IT USABLE
+
+`engineIsDark = templatesInForce === 0 && templatesStarted > 0 && activeEmployments > 0`
+
+`templatesStarted` (`valid_from <= today`, retired or not) is the whole distinction between
+**never-configured** and **went-to-zero** — a brand-new tenant has no rows, a tenant mid-setup has only
+future-dated ones, a tenant that was configured and is now zero alarms. **Deliberately retired falls out of
+the predicate rather than being special-cased**: retiring one rule while anything else is in force leaves
+`templatesInForce > 0`, so the reporter's own 17:30 retirement of `e1aa6e06` is silent.
+
+**Two alarms were DECLINED and the reasons are better than the alarms would have been.** No alarm on
+rules-in-force reaching zero: one table with no rule resolves for EVERYBODY (r193 fault 3), so it would fire
+on a correct configuration. No per-type "went dark": a type with no table in force was never meant to grant
+days, and on the reporting tenant that would have raised eight findings on night one.
+
+**Checked against production, which the agent was blocked from reading:** 9 templates in force, 11 ever
+started, 75 active employments. `engineIsDark` needs `inForce === 0`, so **production would not alarm
+tonight**. (The readiness doc recorded 1 in force on 2026-09-13; the reporter has been configuring since.)
+
+### TWO PERKESO WRITERS PRODUCED DIFFERENT BYTES, AND ONE REPORTED THE WRONG WAGE
+
+Not a documentation bug. `my.socso-eis` and `my.borang-8a` are two different PAPER documents, but PERKESO
+ASSIST takes **ONE** combined upload file and both screens claimed to make it. Decisive evidence: the two
+modules cite **the same specification at two revisions** — v1.0 of 22 Jul 2022 and v2.0 of 13 Feb 2026 —
+with fields 1-10 at identical offsets.
+
+The measured diff, same input, before consolidation: six field ranges per record, **plus a trailing CRLF on
+one side only**, **plus the salary box drawn from two different facts** — Reports wrote
+`payslip.gross_pay`, Borang 8A wrote `statutory.bases.socsoEis`. **Gross pay includes money PERKESO does
+not charge on**, so one of those files was reporting the wrong wage to a statutory authority. Consolidated
+onto the basis, which is the repo's already-documented decision. After: the diff is empty.
+
+**The golden test and its fixture were not touched** (`git diff main...HEAD` on both: empty). That fixture
+is the customer's own filed `BRG8A.txt`, 14 records, 3,918 bytes — the only bytes PERKESO is known to have
+accepted. It passing unmodified is the primary safety property of this change.
+
+**WHAT IS STILL UNSETTLED, AND IT IS DATED.** v1.0 is a layout PERKESO accepted in January.
+**v2.0 has NEVER been uploaded from this system**, and `PERKESO_SKBBK_MANDATORY_FROM = {2026, 10}` starts
+writing it in two weeks. Watch the first upload. Also unknown, recorded in code rather than guessed:
+whether the cutover is measured against the CONTRIBUTION MONTH or the UPLOAD DATE — they differ only for a
+late or amended return.
+
+### A SECURITY FINDING THAT TURNED OUT NOT TO BE ONE — CHECKED, NOT ASSUMED
+
+The agent flagged `app/payroll/reports/socso-eis-file/route.ts` gating on bare `isAdmin(s)` where its
+sibling uses `scopedAdmin()`, with `borang-8a/shared.ts` warning that this "would let a guessed companyId
+export another company's employee names, ICs and contributions" — and honestly said it had NOT verified
+whether RLS blocks it.
+
+**Verified: RLS blocks it.** `socsoEisFileForBatch` runs inside `withTenant` on the app pool
+(`ai_hr_app`, NOBYPASSRLS); `can_see_employment` needs `is_admin_for(company)`, which a company-scoped
+grant does not satisfy for another company — the export returns **zero rows, not another company's data**.
+And today it is moot regardless: all 5 production `hr_admin` grants are **group-wide**, so `isAdmin` and
+`scopedAdmin` have identical reach.
+
+**It remains worth fixing** — the route relies on RLS alone where its sibling uses belt-and-braces, the same
+shape as r290's knowledge base. Separate item, not an emergency. **I would have been wrong to escalate it
+as a leak, and wrong to dismiss it without checking.**
+
+### THE RUNBOOK IS THE CONTROL, AND SAYS SO
+
+`docs/MONTHLY-PAYROLL-RUNBOOK.md`, written from the code: every step names its action and every "only
+caller is a button" claim was checked by finding the callers. Three steps feed money into a run and **all
+three are silent when skipped** — no warning, no zero-line. A run that forgot the overtime prefill completes
+and looks normal; the overtime is simply absent from the payslip. The attendance recompute page has **no
+navigation row at all** and nothing in the codebase recomputes after a shift, roster or rule change.
+
+Until steps 3 and 4 are automated (`packs/attendance/index.ts` already names `PayrollInputContributor` as
+the intended home), the runbook IS the control — stated in the document rather than left implied.
+
+### CITATIONS OF MINE THAT WERE WRONG, AGAIN
+
+"Four `app/` files reference the builders" — one contains an `href`, not an import, and the file that DOES
+import it I failed to list. "Two different screens" — it is **three screens reaching two routes**. "Both emit
+278 characters" — true per record, but the FILES were never the same length because of that trailing CRLF.
+
 ## r294 (2026-09-17) — two more services bound, four left with reasons, and an audit that says why. `main@909b7470`, **no migration**.
 
 Closes the gap r292 declared. Gate: **882 files — equal to the suite file count — 13,399 tests,
