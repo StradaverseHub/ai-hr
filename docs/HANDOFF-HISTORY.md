@@ -1,3 +1,110 @@
+## r292 (2026-09-16) — module gating goes service-deep, two lies in the code, and a filing state. `main@61bb400f`, **migration 0466**.
+
+Commercial module gating (Part 4), the false email claim + anomaly thresholds (Part 4 / 2.4), and readiness
+**3.2** (no filed state). Owner's goal, not the board.
+Gate: **879 files — equal to the expected file count — 13,324 tests, 0 AssertionErrors, 0 deadlocks**,
+no red chunk. `next build` exit 0. `gate:shadow` **PASS 382/382**, 381 → 382.
+
+### GATING: BIND THE GATE TO `withTenant`, NOT TO 86 MORE PAGES
+
+Only **7 of 198** `page.tsx` carried a module check, and in three of four optional packs it was just the
+index page: **attendance 3/23, payroll 1/57, claims 1/6, performance 1/4**. A customer who declined Payroll
+could reach **56 of its 57 screens** by typing the URL. The readiness doc named the shape exactly —
+gating was **navigation-deep, not service-deep**.
+
+The fix binds a module code to `withTenant` itself (`core/module-gate.ts`), so five one-line import changes
+cover **165 entry points**, reads and writes, and every function added to those files later inherits it.
+A mechanism, not a discipline — the same argument `db/client.ts` already makes for the suspension overlay.
+Plus 25 `layout.tsx` route-level guards (there were none) for a clean redirect.
+
+**Two safety properties, both verified:** `withModuleTenant('leave')` **throws at module load** for any
+`isCore: true` code, so a core module cannot be gated by accident — and `leave` is exactly the trap, being
+`isCore: true` AND `packBacked: true`. And `requireModule`'s fail-open on an unresolved snapshot was left
+alone: `lib/authz.ts` argues it properly — redirecting there "would tell a paying customer their module had
+been removed during an infrastructure incident."
+
+**STATED GAP, NOT CLOSED: 6 of ~20 payroll service files are unbound** — `pay-components`, `loans`,
+`payroll-cycle`, `tax-relief`, `cp38`, `back-pay`. Their SCREENS are covered by the layouts; their
+**server actions are not**, because a POST passes through no layout. Stopping there was right:
+`core/payroll-cycle.ts` is called by `core/admin.ts` and `app/admin/organization`, both **core** surfaces,
+so binding it blind breaks a tenant that declined nothing. Each remaining file needs the same importer audit.
+
+### THE FEATURE I WOULD HAVE ORDERED BUILT, AND WHY NOT BUILDING IT WAS RIGHT
+
+`payroll_anomaly_config` is empty with no admin screen, so 2,359 findings were classified by thresholds
+`core/payroll-anomaly.ts` itself calls numbers "nobody should mistake for empirical". The obvious answer is
+a settings screen. **It would have caused real harm**, and the argument is verifiable:
+`core/control-tower.ts:155` computes `thresholdsTuned = count(payroll_anomaly_config) > 0`, pushes
+`'thresholds_untuned'` into `blockedBy` at :213, and `impliedOperators` nulls on any blocker at :239 — it
+**refuses to print a staffing headcount**. Ship a form and the first admin who saves anything at all flips
+that flag, and the tower starts projecting headcount from a number with no more evidence than the
+placeholder. That file's own header names the stake: **"a confident wrong one gets somebody's job cut."**
+Disclosure shipped instead, derived through the same resolver the evaluator uses so the two cannot diverge.
+
+### THE CODE SAID IT SENT EMAIL. THERE IS NO EMAIL. FIVE PLACES, ONE CUSTOMER-VISIBLE.
+
+No transport in the repo (grep for nodemailer/sendgrid/postmark/mailgun/ses/resend = 0), and
+`notification_pref` / `notification_delivery` have **zero code references** outside `db/schema.ts` —
+migrated in 0078, never built. The one a customer could read was `notices.fNotifyHelp`, in all six locales:
+*"Sent through the existing notification settings, so each person's preferences still apply."* There are no
+preferences. Now: recipients see it in the in-app bell, no email is sent.
+
+The 0279 recipient exclusion was **re-justified, not deleted**: a notification row **outlives the block and
+is not re-authorized when read**, its RLS is person-scoped and role-blind, and its body is frozen text about
+another employee — so a lapsed admin would silently accrue a readable backlog. Correct for in-app, for a
+reason email had nothing to do with.
+
+### 3.2: A FILING STATE THAT REFUSED TO IMPLEMENT AN ENUM MEMBER
+
+`submitted` and `amended` only. **`final` deliberately not built** — it means "figures locked, not yet
+sent", a state in which `statutoryFiled` has no honest answer. *"Implementing a state because the enum
+listed it is how 3.2 happened."* `amended` is **derived, not asked**: filing for a
+`(company, reportType, periodKey)` that already has a live filed sibling is an amendment by the agencies'
+own vocabulary.
+
+**`filed_on` is split from `filed_at`** — the agency date a deadline is judged against, versus the instant
+it was keyed. A CP39 lodged on the 15th and entered on the 20th has both; collapsing them makes an on-time
+filing read as late.
+
+**3.4 was not made worse:** filing does NOT gate unlock or reset. `batchDownstreamWarnings` has always been
+"read and recorded, never a gate", and blocking there would leave a customer who filed a wrong figure unable
+to correct it at all.
+
+### EVERY GATE FAILURE WAS A GUARD, NOT A DEFECT — IN EXACTLY TWO KINDS
+
+Five red chunks (2, 4, 10, 12, 13), one file each:
+
+- **Synthetic context, no entitlement snapshot** (2, 10, 12) — the pack services are now gated, so a
+  hand-rolled `SessionContext` throws. **The obvious fix is wrong**: every gated pack is `billable: true`,
+  and an exempt context asked about a billable module throws `EntitlementsExemptForBillableError` by design.
+  `entitlementsExempt` is the majority idiom in `test/` (21 files vs 3) precisely because most of those are
+  asked about CORE modules. Resolved a real snapshot instead, reasoning written into each file.
+- **Ratchets pinning an exact call spelling** (4, 13) — the decision held, the signature gained an argument.
+  **Updated, never loosened**: assert the declared param set is exactly `['moduleUnavailable']`, and count
+  CALL SITES rather than matching an argument list. Both stricter than what they replaced and immune to the
+  next signature change.
+
+Binding a gate into `withTenant` changes the PRECONDITIONS of 165 entry points, so anything that built a
+context by hand or matched a call's exact text gets caught. The agent ran thousands of tests but not all 879
+files; this is what the integration gate is for.
+
+### TWO OPERATOR ERRORS OF MINE, BOTH SELF-INFLICTED AND BOTH CONCURRENCY
+
+1. **Ran vitest beside a running gate** → `ECONNREFUSED 127.0.0.1:5433` when it rebuilt the cluster.
+2. **Started the five-chunk re-run while run B still had chunks 23 and 24 to go.** I read
+   `grep -c "exit=" run-b.log` → **10**, and treated 10 as 12. Two gates on one cluster produced **7
+   deadlocks and 148 failures** in chunk 24, with zero AssertionErrors. Re-run idle: 36/36, 542 tests.
+
+**THE READING RULE, CORRECTED.** "Red chunk with AE=0 is environmental" is INCOMPLETE and nearly cost a real
+defect. The discriminator is `counted == asked`:
+- AE=0 **and** `counted < asked` → files failed to spawn → environment.
+- AE=0 **and** `counted == asked` → every file ran and something **THREW** rather than asserted → real code.
+Chunk 2's first failure was the second case (`EntitlementsUnresolvedError`) and the old rule would have
+dismissed it. A `deadlock detected` count is the cleaner environmental tell.
+
+Also worth carrying: the final total's `files == expected file count` (879) is `counted == asked` applied to
+the whole suite — it is what proves no chunk quietly ran a short list.
+
 ## r291 (2026-09-16) — deploy detachment, a health endpoint, and backups. `main@ad5287b8`, **no migration**.
 
 Readiness **7.1** (detach the remote deploy; detect a partway failure), **1.6** (health endpoint + the
