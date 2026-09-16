@@ -441,6 +441,87 @@ curl -s -o /dev/null -w '%{http_code}\n' http://YOUR_SERVER_IP:3000/
 username + that password at the browser prompt, then use the top-bar **"act as"** switcher to try
 HR Admin / Manager / Employee, the 文A button for language, and the **?** tour.
 
+## Backups, restore and rollback
+
+**Read this before the first real employee record exists.** This document ran to 28 KB without the
+words backup, restore or rollback appearing once, and the box matched: as of 2026-09-16 `crontab -l`,
+`/etc/cron.d`, `/etc/cron.daily` and `systemctl list-timers` contain **no dump job**; `archive_mode` is
+`off` and `wal_level` is `replica`, so there is **no point-in-time recovery**; and the eight dumps in
+`/home/ubuntu` are ad-hoc pre-migration artefacts sitting on the same disk as the database — the one
+failure a backup exists for is the one that takes them with it. The only restore anyone has rehearsed
+failed (`/home/ubuntu/rehearsal-restore.log`: `database "ai_hr_rehearsal" does not exist`).
+
+Two scripts exist for this. **Neither is installed.** Installing them is the two decisions below.
+
+### What the owner has to decide first
+
+1. **Where the backups live.** `BACKUP_DEST` has no default and `scripts/backup-db.sh` refuses to run
+   without it — a local path is refused too, unless you pass `BACKUP_ALLOW_LOCAL_DEST=1` to say the
+   path is somewhere other than this disk. Cheapest workable answer: another machine you can ssh to,
+   `BACKUP_DEST=user@host:/srv/ai-hr-backups`, which needs no software beyond rsync and a key. Object
+   storage is supported through `BACKUP_SHIP_CMD` (your uploader, your credentials); nothing in this
+   repo picks a provider or holds a key.
+2. **When it runs and who hears about a failure.** Nothing here schedules anything, and readiness 1.6
+   owns the alerting. Until somebody is nominated, a failed backup is a line in a log nobody reads.
+
+Two more, if the customer's tolerance requires them: **point-in-time recovery** (`archive_mode=on` plus
+somewhere to put the WAL, or a streaming replica — a dump-only arrangement loses everything written
+since the last dump), and **how long backups are kept**, which is a retention default here and may be a
+contractual number for them.
+
+### Taking a backup
+
+```bash
+cd /opt/ai-hr && set -a && . ./.env.production && set +a &&   BACKUP_DATABASE_URL="$MIGRATION_DATABASE_URL"   BACKUP_APP_DATABASE_URL="$DATABASE_URL"   BACKUP_DEST=user@host:/srv/ai-hr-backups   scripts/backup-db.sh
+```
+
+It picks a `pg_dump` at least as new as the server (the box has 16.15; a dump taken with an older
+client is a restore failure deferred to the worst possible day), takes the dump and MEASURES the
+database in the same snapshot, writes a `.manifest` beside the `.dump`, ships both, reads the size back
+to prove they arrived, and prunes old backups **at the destination** — never below
+`BACKUP_RETAIN_MIN` (default 7) however old they are. It exits non-zero on every failure with a
+stage-specific code, writes a status file, and ends every run on one
+`BACKUP_RESULT=PASS|FAIL stage=… exit=…` line. For cron, alert on the exit code AND on the status
+file's `at` field going stale — a non-zero exit cannot tell you the job never ran.
+
+Run it away from a deploy window: `pg_dump` holds `ACCESS SHARE`, so a migration's `ALTER TABLE` will
+wait behind it. Safe to run twice (it takes a lock and refuses rather than overwriting).
+
+### Rehearsing the restore — the half that matters
+
+**An untested backup is not a backup.** `scripts/restore-rehearsal.sh` restores a backup into a scratch
+database and then decides whether the result is USABLE, which is not the same as present:
+
+```bash
+REHEARSAL_DATABASE_URL="$MIGRATION_DATABASE_URL" REHEARSAL_APP_DATABASE_URL="$DATABASE_URL"   scripts/restore-rehearsal.sh --dump /path/to/ai_hr-ai_hr-20260916T010000Z.dump
+```
+
+It checks the archive against the manifest's checksum, refuses a `pg_restore` too old for it, CREATES
+the scratch database and proves it can connect to it *before* invoking `pg_restore` (the 2026-09-11
+failure), restores with `--exit-on-error`, then diffs the restored database against the manifest —
+tables, exact row counts, RLS flags, policy counts, the drizzle watermark — and finally connects **as
+the application role** to check that it can read what it could read before, and that with no tenant
+context it reads nothing. That last check is the one a superuser's inspection can never make: a restore
+that loses the `GRANT`s is a database `psql` reads perfectly and the product cannot read at all.
+
+It times the restore and appends one line per run to `$REHEARSAL_LOG`. That line is the recovery-time
+objective; the manifest's `taken_at` is the recovery point. Both are numbers you can quote to a
+customer only after this has actually run.
+
+Rehearse on the server or on a machine you would call production. A production dump is real salaries
+and identity numbers; restoring one onto a laptop is a PDPA problem, not a testing convenience.
+
+### Rollback
+
+- **Code.** `improve:release` rsyncs; the previous release is the previous commit on `main`. Roll back
+  by re-syncing that commit and re-running `./deploy/deploy.sh` (or `deploy-customer.sh`).
+- **Schema.** There are no down-migrations in this repo, by design. A schema rollback IS a restore:
+  take a backup with the script above BEFORE a risky migration, and if it goes wrong restore that
+  backup into a new database and repoint `DATABASE_URL` / `MIGRATION_DATABASE_URL` at it.
+- **Before a risky deploy**, run the backup manually and rehearse it. `deploy.sh` does **not** take one
+  automatically and deliberately: a pre-deploy dump whose destination was unreachable would either
+  block every deploy or fail quietly, and neither is a decision this repo should make for you.
+
 ## Updating later
 
 On a customer deployment, re-sync the code (step 1) and re-run `./deploy/deploy-customer.sh`. The rest
