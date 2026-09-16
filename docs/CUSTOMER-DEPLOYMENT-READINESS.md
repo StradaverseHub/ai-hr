@@ -132,10 +132,51 @@ restore and rollback exactly zero times. The only restore rehearsal on the box *
 Today the recovery-point objective is "whenever someone last dumped by hand" and the recovery-time
 objective is unknown. **An untested backup is not a backup.**
 
-- [ ] Scheduled `pg_dump` with retention, to an **off-box** destination
-- [ ] WAL archiving or a replica, if the customer's tolerance requires point-in-time recovery
-- [ ] A restore rehearsed into a scratch database, timed, and the result written down
-- [ ] Rollback defined: previous release tagged, previous build kept, automatic pre-deploy dump
+**What r291 built, and exactly where it stops.** Two scripts, both runnable, **neither installed** —
+`scripts/backup-db.sh` and `scripts/restore-rehearsal.sh`, shared plumbing in `scripts/backup-lib.sh`,
+documented in `deploy/DEPLOY.md` under "Backups, restore and rollback", and exercised end to end
+against a real cluster by `test/r291-backup-and-restore-rehearsal.test.ts`. The survey's findings above
+were all re-verified against the live box on 2026-09-16 before anything was written; every one held.
+
+The backup script refuses to run without an off-box `BACKUP_DEST` (a local path needs an explicit
+opt-in), takes the dump and MEASURES the database in one exported snapshot so the two describe the same
+instant, writes a manifest beside the dump, reads the shipped size back to prove arrival, prunes at the
+destination by the timestamp in the filename and never below a floor, and exits non-zero with a
+stage-specific code on every failure. It chooses a `pg_dump` at least as new as the server rather than
+inheriting whatever is on `PATH`.
+
+**The rehearsal is the half that has never worked here, and the thing that makes it a rehearsal is that
+it can FAIL.** "Usable" is defined as: the archive is the one the manifest describes; the target exists
+and is reachable *before* `pg_restore` runs; `pg_restore --exit-on-error` completes; the schema, exact
+row counts, RLS flags, policy counts and drizzle watermark all match the manifest by diff; and **the
+application role** — `ai_hr_app`, `NOBYPASSRLS` — reads exactly what it read at backup time with a
+tenant context and nothing at all without one. That last clause is the difference between *present* and
+*usable*, and it is not decorative: a dump taken with `--no-privileges` restores with no errors, every
+table and every row correct, and the product cannot read one row of it. The test suite builds exactly
+that dump, plus a truncated one, a byte-corrupted one, one missing rows and one that lost row-level
+security, and requires the rehearsal to reject all five.
+
+**What it deliberately does not do.** It does not choose a destination or hold a credential; it does not
+schedule anything; and it is **not wired into `deploy.sh`** — a pre-deploy dump whose destination was
+unreachable would either block every deploy or fail quietly, and which of those the owner wants is not
+this repo's call. `deploy/DEPLOY.md` states the manual sequence instead.
+
+- [x] A backup script that cannot silently write beside the database, verifies arrival, and prunes
+      correctly (floor included) — r291, `scripts/backup-db.sh`
+- [x] A restore rehearsal that defines and checks "usable", times itself, writes the outcome down, and
+      is proven to FAIL on five kinds of damaged backup — r291, `scripts/restore-rehearsal.sh`
+- [x] Backup, restore and rollback documented — r291, `deploy/DEPLOY.md` mentioned none of the three
+- [ ] Scheduled `pg_dump` with retention, to an **off-box** destination — DECISION REQUIRED: the
+      destination (another host over ssh, or object storage through `BACKUP_SHIP_CMD`) and the
+      schedule. Until both are chosen, nothing runs and this item is not closed.
+- [ ] WAL archiving or a replica, if the customer's tolerance requires point-in-time recovery —
+      still `archive_mode=off`, `wal_level=replica` (2026-09-16). The recovery point is the last dump.
+- [ ] The rehearsal RUN against a real production dump, and the restore time written down. It has been
+      run only against a fixture: production is SELECT-only from here and `pg_dump` against it is
+      blocked, so the first real timing has to be taken on the box.
+- [ ] Rollback: automatic pre-deploy dump. Documented and deliberately not wired — see above.
+- [ ] Somebody nominated to hear about a failed backup (1.6 owns this; without it the status file and
+      the non-zero exit go nowhere)
 
 ### 1.6 Alerting, so a failure is not silent
 Every cron line redirects stdout and stderr into a file, which means cron's own mail path can never fire.
