@@ -63,7 +63,13 @@ const LOCALES = [
 const CARD_PROPS = {
   companies: [{ id: 'c1', name: 'Acme Sdn Bhd' }],
   grades: [{ id: 'g1', name: 'Executive' }],
-  leaveTypes: [{ id: 'lt1', name: '*Annual Leave' }],
+  // r293 — the leave-type option gained `swept` (required) and the card gained `sweptLeaveTypeNames`.
+  // `*Annual Leave` is the production row this file was written around: an ACTIVE `AL`, outside
+  // STANDING_LEAVE_CODES, so `swept: false` is its real value and the picker now marks it. Nothing this
+  // file asserts lives in the picker — every assertion below reads the preview's own paragraphs — so the
+  // two props only keep it type-correct. test/r293-earned-accrual-picker.dom.test.tsx owns the marking.
+  leaveTypes: [{ id: 'lt1', name: '*Annual Leave', swept: false }],
+  sweptLeaveTypeNames: [] as string[],
   leaveYears: [{ year: 2026, status: 'draft' }],
   defaultYear: 2026,
 };

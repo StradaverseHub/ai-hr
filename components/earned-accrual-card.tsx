@@ -15,6 +15,18 @@ import { previewEarnedAccrualWithReasonAction } from '@/app/admin/leave-config/e
 import type { ArchivedLeaveTypeHint, EarnedAccrualEmptyReason, EarnedAccrualGroup } from '@/core/leave';
 
 export type EarnedScopeOption = { id: string; name: string };
+/**
+ * r293 — THE LEAVE-TYPE AXIS CARRIES ONE FACT THE OTHER TWO DO NOT, and it is REQUIRED rather than
+ * optional on purpose: a picker that cannot answer "would a run ever look at this type" is the state
+ * this round exists to remove, and an optional flag defaulting to `true` would quietly restore it on
+ * the next call site.
+ *
+ * `swept` is decided on the SERVER against the engine's own `STANDING_LEAVE_CODES`
+ * (app/admin/leave-config/earned-accrual/page.tsx) and crosses as a plain boolean. This card may not
+ * import `core/leave` — it is a client island and that module opens the database connection — so it
+ * neither knows nor re-derives which codes are swept; it only marks what it is handed.
+ */
+export type EarnedLeaveTypeOption = EarnedScopeOption & { swept: boolean };
 export type EarnedLeaveYearOption = { year: number; status: string };
 
 /**
@@ -35,13 +47,25 @@ export function EarnedAccrualCard({
   companies,
   grades,
   leaveTypes,
+  sweptLeaveTypeNames,
   leaveYears,
   defaultYear,
 }: {
   /** Already narrowed by the page to the companies this admin administers (RLS re-enforces server-side). */
   companies: EarnedScopeOption[];
   grades: EarnedScopeOption[];
-  leaveTypes: EarnedScopeOption[];
+  /** r293 — every ACTIVE leave type, each carrying whether this sweep can reach it. See the type. */
+  leaveTypes: EarnedLeaveTypeOption[];
+  /**
+   * r293 — ⚠️ THE TENANT'S OWN NAMES for the swept types that are ACTIVE, A–Z: the same rows, the same
+   * filter and the same order the engine's `type_not_swept` empty state reads, and the same list the
+   * leave type editor's r288 warning is built from. NEVER the English defaults — the three standing
+   * codes carry whatever name the tenant gave them, and the account that raised this holds two leave
+   * types both called some variant of Annual Leave, so a hardcoded name would print a riddle on the
+   * very account it was written for. EMPTY when the tenant has archived all three, which is that
+   * account's actual state and why the empty case has a sentence of its own.
+   */
+  sweptLeaveTypeNames: string[];
   /** The entitlement-year list, oldest first — the shared computed range (see the header). */
   leaveYears: EarnedLeaveYearOption[];
   defaultYear: number;
@@ -161,6 +185,28 @@ export function EarnedAccrualCard({
   );
 
   /**
+   * r293 — THE TYPES THIS SCREEN IS OFFERING BUT CAN NEVER ACCRUE.
+   *
+   * The page hands over every ACTIVE leave type, swept or not (`listLeaveTypes(s, { includeArchived:
+   * false })`), because the scope filter is legitimately over all of them. `accrueEarnedLeave` then
+   * filters `code IN STANDING_LEAVE_CODES` BEFORE it reads a single employment, so picking one of the
+   * others has always produced an empty preview — the r285 `type_not_swept` sentence — only AFTER the
+   * operator spent a run finding out. This is that same fact, moved to where the choice is made.
+   *
+   * NOTHING IS RE-DERIVED HERE: `swept` was decided on the server against the engine's own constant, and
+   * this is a partition of the list it arrived in, in the order it arrived in. A client-side rule about
+   * which codes accrue would be a second answer to a question the engine already owns.
+   */
+  const notSweptNames = useMemo(
+    () => leaveTypes.filter((o) => !o.swept).map((o) => o.name),
+    [leaveTypes],
+  );
+  const notSweptIds = useMemo(
+    () => new Set(leaveTypes.filter((o) => !o.swept).map((o) => o.id)),
+    [leaveTypes],
+  );
+
+  /**
    * feedback cf9dcb98 — names, joined the way the reader's language joins a list ("A, B and C"), not with
    * a hardcoded comma. Every reason below names leave types, grades, companies or countries, and a list of
    * names is the whole point of the change: a count would leave the administrator exactly where the old
@@ -254,6 +300,12 @@ export function EarnedAccrualCard({
           selectAllLabel={t('multiSelectSelectAll')}
           clearAllLabel={t('multiSelectClearAll')}
           selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
+          /* r293 — ⚠️ MARK, DO NOT REMOVE AND DO NOT DISABLE. The row stays selectable and the scope it
+             posts is byte-identical, so the engine's typed empty reason remains the authority on why a
+             run found nothing; dropping the row would replace one silence with another and would also
+             hide the very type the reporter came looking for. This is the LEAVE-TYPE picker only — the
+             company and grade pickers above and below pass no note. */
+          optionNote={(o) => (notSweptIds.has(o.id) ? t('earnedTypeNotCoveredTag') : null)}
         />
         <MultiSelectPopover
           label={t('earnedScopeGrade')}
@@ -270,6 +322,22 @@ export function EarnedAccrualCard({
           {pending && rows === null ? t('earnedPreviewingButton') : t('earnedPreviewButton')}
         </Button>
       </div>
+
+      {/* r293 — the marker in the closed picker is two words; this is what those two words mean, and it is
+          deliberately the SAME SENTENCE the leave type editor shows while the administrator is setting the
+          earning method (r288, admin.leave.subStep.earningNotSwept). Two screens describing one boundary
+          in two different sets of words is how the reporter came to be told the wrong reason twice.
+          Rendered only when there is something to name — a permanent banner is furniture. */}
+      {notSweptNames.length > 0 && (
+        <p data-testid="earned-types-not-swept" className="max-w-2xl text-xs text-amber-600 dark:text-amber-400">
+          {sweptLeaveTypeNames.length
+            ? t('earnedTypesNotSwept', {
+                types: nameList(notSweptNames),
+                swept: nameList(sweptLeaveTypeNames),
+              })
+            : t('earnedTypesNotSweptNoneActive', { types: nameList(notSweptNames) })}
+        </p>
+      )}
 
       {/* Step 2 — Preview table. */}
       {rows !== null && (

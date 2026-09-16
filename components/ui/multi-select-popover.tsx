@@ -49,6 +49,15 @@
  * no constraint that was not already there: every call site is a client component. A SERVER page cannot
  * mount this control at all (see components/attendance/location-assignment.tsx, which crosses the
  * boundary with plain strings and builds the functions on the client side of it).
+ *
+ * ── r293 — A THIRD OPT-IN PROP, SAME CONTRACT: `optionNote` ───────────────────────────────────────────
+ * Omit it and this component behaves EXACTLY as it did for every earlier call site. Run Earned Accrual
+ * offers every ACTIVE leave type, but `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` before
+ * it reads a single employment — so the list has always contained rows that can never produce a day, and
+ * the only signal was an empty preview AFTER the operator picked one and pressed Preview. The note marks
+ * them where the choice is made. It is a MARKER, not a filter: the option stays selectable, because the
+ * engine's typed empty reason is still the authority on why a run came back with nothing, and hiding the
+ * row would replace one silence with another.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
@@ -71,6 +80,7 @@ export function MultiSelectPopover({
   disabled,
   matchOption,
   emptyLabelFor,
+  optionNote,
 }: {
   /** Translated caption shown above the trigger (owned by the component — no <Field> at the call site). */
   label: string;
@@ -97,6 +107,13 @@ export function MultiSelectPopover({
    * non-blank search matches no option. Omitted ⇒ an empty panel, the pre-r287 behaviour.
    */
   emptyLabelFor?: (query: string) => string;
+  /**
+   * r293 — opt-in: a short translated marker rendered beside an option's name. Return `null`/`undefined`
+   * for the options that carry no marker; omit the prop entirely and no option carries one, which is what
+   * every pre-r293 call site has. Presentation only — a marked option is still selectable and still posts
+   * exactly as it did (this component owns no filter on it).
+   */
+  optionNote?: (option: MultiSelectPopoverOption) => string | null | undefined;
 }) {
   const captionId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -194,23 +211,37 @@ export function MultiSelectPopover({
               <p className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor(search.trim())}</p>
             )}
             <div className="max-h-56 overflow-y-auto">
-              {options.map((o) => (
-                <label
-                  key={o.id}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
-                    !visibleIds.has(o.id) && 'hidden',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(o.id)}
-                    onChange={() => toggle(o.id)}
-                    className="size-4 accent-[var(--color-primary)]"
-                  />
-                  <span className="truncate">{o.name}</span>
-                </label>
-              ))}
+              {options.map((o) => {
+                // r293 — computed per row and rendered ONLY when the caller returns one: a marker on every
+                // row is furniture, and furniture stops being read. It sits INSIDE the <label>, so it is
+                // part of the option's accessible name too — a screen reader hears "…, not covered".
+                const note = optionNote?.(o);
+                return (
+                  <label
+                    key={o.id}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+                      !visibleIds.has(o.id) && 'hidden',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(o.id)}
+                      onChange={() => toggle(o.id)}
+                      className="size-4 accent-[var(--color-primary)]"
+                    />
+                    <span className="truncate">{o.name}</span>
+                    {note ? (
+                      <span
+                        data-testid="multi-select-option-note"
+                        className="ml-auto shrink-0 text-[11px] text-amber-600 dark:text-amber-400"
+                      >
+                        {note}
+                      </span>
+                    ) : null}
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}
