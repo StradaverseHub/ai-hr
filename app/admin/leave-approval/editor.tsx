@@ -2,23 +2,10 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui';
-import { StepListEditor } from './step-list-editor';
+import { StepListEditor, type StepListLabels } from './step-list-editor';
 
-type Labels = {
-  chain: string;
-  empty: string;
-  manager: string;
-  departmentHead: string;
-  businessUnitHead: string;
-  hr: string;
-  hrManager: string;
-  payroll: string;
-  customRole: string;
-  add: string;
-  moveUp: string;
-  moveDown: string;
-  remove: string;
-  dragToReorder: string;
+/** r293 — intersect the shared step-editor bag rather than re-listing its fields (see RuleBuilderLabels). */
+type Labels = StepListLabels & {
   save: string;
   // 4ec5a940 — optional "why the change was made" note surfaced in the audit trail.
   reason: string;

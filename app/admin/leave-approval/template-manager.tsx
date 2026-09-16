@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { groupTemplateAssignments } from './assignment-groups';
-import { StepListEditor } from './step-list-editor';
+import { StepListEditor, type StepListLabels } from './step-list-editor';
 
 type Option = { id: string; label: string };
 export type TemplateRow = {
@@ -50,7 +50,9 @@ export type EligibilityRuleOption = {
   assignable: boolean;
 };
 
-export type TemplateManagerLabels = {
+/** r293 — intersects the shared step-editor bag (`StepListLabels`) instead of re-listing its fields, so a
+ *  label the builder needs cannot be forgotten here and default to undefined on the screen. */
+export type TemplateManagerLabels = StepListLabels & {
   /** "Require multi-step approval" (d4735493) — the explicit single-vs-chain choice. */
   requireMultiStep: string;
   templatesTitle: string;
@@ -111,21 +113,6 @@ export type TemplateManagerLabels = {
   rolesGatedNote: string;
   save: string;
   cancel: string;
-  // StepListEditor bag
-  chain: string;
-  empty: string;
-  manager: string;
-  departmentHead: string;
-  businessUnitHead: string;
-  hr: string;
-  hrManager: string;
-  payroll: string;
-  customRole: string;
-  add: string;
-  moveUp: string;
-  moveDown: string;
-  remove: string;
-  dragToReorder: string;
 };
 
 /** Approval Template Creation actions (9b0d99f3 — section 1 of the Approval Workflow tab). */
@@ -144,22 +131,10 @@ export type AssignmentActions = {
   unassign: (fd: FormData) => void | Promise<void>;
 };
 
-const stepLabelBag = (labels: TemplateManagerLabels) => ({
-  chain: labels.chain,
-  empty: labels.empty,
-  manager: labels.manager,
-  departmentHead: labels.departmentHead,
-  businessUnitHead: labels.businessUnitHead,
-  hr: labels.hr,
-  hrManager: labels.hrManager,
-  payroll: labels.payroll,
-  customRole: labels.customRole,
-  add: labels.add,
-  moveUp: labels.moveUp,
-  moveDown: labels.moveDown,
-  remove: labels.remove,
-  dragToReorder: labels.dragToReorder,
-});
+/** r293 — the bag IS the labels now that TemplateManagerLabels intersects StepListLabels. Kept as a named
+ *  projection (rather than passing `labels` straight through) so the editor keeps receiving exactly the
+ *  fields it declares and nothing else, and so the call sites did not have to change. */
+const stepLabelBag = (labels: TemplateManagerLabels): StepListLabels => labels;
 
 const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.id === id)?.label ?? id) : '—');
 

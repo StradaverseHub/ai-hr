@@ -16,7 +16,7 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
-import { resolveApprovalChain } from './leave-approval-policy';
+import { resolveApprovalDecision, type ApprovalDecisionSource } from './leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
@@ -4030,7 +4030,12 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
   }
 
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
-  const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId, {
+  //
+  // r293 — `resolveApprovalDecision` rather than its `resolveApprovalChain` wrapper, because the admin
+  // PREVIEW has to name WHERE the chain came from (a scoped rule, the org-wide default, or the built-in
+  // fallback) and re-resolving to find that out would be a second ranking of the same rows over a
+  // different attribute set. The chain below is that decision's own `levels` — the wrapper's whole body.
+  const decision = await resolveApprovalDecision(tx, co.companyId, leaveTypeId, {
     gradeId: attr?.gradeId ?? null,
     gradeGroupId,
     departmentId: attr?.departmentId ?? null,
@@ -4039,7 +4044,7 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
     businessUnitId: attr?.businessUnitId ?? null,
     days,
   });
-  return { companyId: co.companyId, chain, attr: attr ?? null };
+  return { companyId: co.companyId, chain: decision.levels, decision, attr: attr ?? null };
 }
 
 /** r79 0322 — a request is MULTI-STEP when its resolved chain has two or more levels. One level is a
@@ -4048,6 +4053,151 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
  *  chain. Assigning a one-step template is therefore how a company keeps plain single-step approval. */
 export function isMultiStepChain(chain: readonly string[]): boolean {
   return chain.length > 1;
+}
+
+/** r293 — the org facts the chain's DROP RULES consult, read once per request. Nothing else decides
+ *  whether a level survives: `applyChainDropRules` is pure over this. */
+export type ChainResolutionFacts = {
+  /** The subject has a current ADMINISTRATIVE reporting line (direct_manager resolves to somebody). */
+  hasManager: boolean;
+  /** The subject's department's head employment id, or null when the department has no head set. */
+  deptHead: string | null;
+  /** The subject's business unit's head employment id, or null when the BU has no head set. */
+  buHead: string | null;
+};
+
+/** r293 — one level of a resolved chain and whether it survives generation. `kept: false` is the DROP:
+ *  the step is never written, and the request carries on to the next level rather than stalling. */
+export type ResolvedChainLevel = {
+  kind: string;
+  kept: boolean;
+  /** Why it was dropped: the relationship that resolved to nobody. Null when kept. */
+  droppedBecause: 'no_manager' | 'no_department_head' | 'no_business_unit_head' | null;
+};
+
+/** Read the subject's org facts. Runs in the caller's transaction, under the caller's RLS. */
+async function resolveChainFacts(
+  tx: Tx,
+  employmentId: string,
+  attr: { departmentId?: string | null; businessUnitId?: string | null } | null,
+): Promise<ChainResolutionFacts> {
+  // Include a manager step only when the employee has a current administrative reporting line;
+  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
+  const [mgr] = await tx
+    .select({ id: reportingLine.id })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        lte(reportingLine.validFrom, sql`current_date`),
+        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+      ),
+    )
+    .limit(1);
+
+  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
+  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
+  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
+  // are never dropped here — they resolve to role authority at decision time.
+  let deptHead: string | null = null;
+  if (attr?.departmentId) {
+    const [d] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(department)
+      .where(eq(department.id, attr.departmentId))
+      .limit(1);
+    deptHead = d?.head ?? null;
+  }
+  let buHead: string | null = null;
+  if (attr?.businessUnitId) {
+    const [b] = await tx
+      .select({ head: businessUnit.headEmploymentId })
+      .from(businessUnit)
+      .where(eq(businessUnit.id, attr.businessUnitId))
+      .limit(1);
+    buHead = b?.head ?? null;
+  }
+  return { hasManager: !!mgr, deptHead, buHead };
+}
+
+/**
+ * r293 — THE DROP RULE, extracted so generation and the admin PREVIEW cannot disagree.
+ *
+ * This filter used to live inline in `generateApprovalSteps`, which is why nothing could show an
+ * administrator that a level would be skipped. r285 is what that costs: `department_head` and
+ * `business_unit_head` silently skipped for every request on the customer's tenant because no department
+ * or BU had a head set, and no screen said so. The preview on the Approval Workflow screen runs THIS
+ * function over THESE facts — not a sketch of them.
+ *
+ * Pure. The kinds it can drop are `DROPPABLE_LEVEL_KINDS` (core/leave-approval-policy.ts) and
+ * `test/r293-approval-builder.test.ts` pins the two in step across the files.
+ */
+export function applyChainDropRules(
+  chain: readonly string[],
+  facts: ChainResolutionFacts,
+): ResolvedChainLevel[] {
+  return chain.map((kind) => {
+    if (kind === 'direct_manager' && !facts.hasManager) {
+      return { kind, kept: false, droppedBecause: 'no_manager' as const };
+    }
+    if (kind === 'department_head' && !facts.deptHead) {
+      return { kind, kept: false, droppedBecause: 'no_department_head' as const };
+    }
+    if (kind === 'business_unit_head' && !facts.buHead) {
+      return { kind, kept: false, droppedBecause: 'no_business_unit_head' as const };
+    }
+    return { kind, kept: true, droppedBecause: null };
+  });
+}
+
+/** r293 — what the Approval Workflow builder's PREVIEW shows: the chain a real employee's request would
+ *  actually run, resolved against today's org chart, with the dropped levels named rather than hidden. */
+export type ApprovalChainPreview = {
+  /** Every level of the RESOLVED template chain, in order, kept or dropped. */
+  levels: ResolvedChainLevel[];
+  /** Where the chain came from: a scoped rule, the org-wide default template, or the built-in fallback. */
+  source: ApprovalDecisionSource;
+  /** The winning rule's id when `source === 'rule'`. */
+  ruleId: string | null;
+  /** True when the surviving chain is multi-step and so writes leave_approval_step rows. A one-level
+   *  survivor is the single-approver path (no step rows) — see isMultiStepChain. */
+  multiStep: boolean;
+  facts: ChainResolutionFacts;
+};
+
+/**
+ * r293 — resolve, for a REAL employee and leave type, the approval chain their request would take today.
+ *
+ * Deliberately built from the same two pieces the submission path uses — `resolveRequestApprovalChain`
+ * (the one matcher) and `applyChainDropRules` (the one drop rule) — so the preview cannot drift from what
+ * `generateApprovalSteps` will actually write. A preview with a ranking or a drop rule of its own would be
+ * a second source of truth about who approves, which is the exact defect this screen exists to expose.
+ *
+ * Read-only: no rows are written, nothing is snapshotted. `days` defaults to 1 so a day-range-scoped rule
+ * participates the way a one-day request would; callers that care pass the span they mean.
+ */
+export async function previewApprovalChain(
+  ctx: SessionContext,
+  p: { employmentId: string; leaveTypeId: string; days?: number },
+): Promise<ApprovalChainPreview | null> {
+  return withTenant(ctx, async (tx) => {
+    const days = p.days ?? 1;
+    const resolved = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
+    if (!resolved) return null;
+    const facts = await resolveChainFacts(tx, p.employmentId, resolved.attr);
+    const levels = applyChainDropRules(resolved.chain, facts);
+    return {
+      levels,
+      source: resolved.decision.source,
+      ruleId: resolved.decision.ruleId,
+      // The gate generateApprovalSteps applies: it branches on the RESOLVED chain BEFORE the drop rules,
+      // so a two-level template whose manager level is dropped still takes the multi-step path (one step
+      // row) rather than collapsing to the single-approver path.
+      multiStep: isMultiStepChain(resolved.chain),
+      facts,
+    };
+  });
 }
 
 /** Generate the approval chain for a new request whose resolved chain is multi-step (r79 0322 — the
@@ -4074,50 +4224,10 @@ async function generateApprovalSteps(
   // chain that is one level BY CONFIGURATION collapses to the single-approver path.
   if (!isMultiStepChain(chain)) return;
 
-  // Include a manager step only when the employee has a current administrative reporting line;
-  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
-  const [mgr] = await tx
-    .select({ id: reportingLine.id })
-    .from(reportingLine)
-    .where(
-      and(
-        eq(reportingLine.subordinateEmploymentId, employmentId),
-        eq(reportingLine.lineType, 'administrative'),
-        lte(reportingLine.validFrom, sql`current_date`),
-        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
-      ),
-    )
-    .limit(1);
-  const hasManager = !!mgr;
-
-  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
-  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
-  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
-  // are never dropped here — they resolve to role authority at decision time.
-  let deptHead: string | null = null;
-  if (attr?.departmentId) {
-    const [d] = await tx
-      .select({ head: department.headEmploymentId })
-      .from(department)
-      .where(eq(department.id, attr.departmentId))
-      .limit(1);
-    deptHead = d?.head ?? null;
-  }
-  let buHead: string | null = null;
-  if (attr?.businessUnitId) {
-    const [b] = await tx
-      .select({ head: businessUnit.headEmploymentId })
-      .from(businessUnit)
-      .where(eq(businessUnit.id, attr.businessUnitId))
-      .limit(1);
-    buHead = b?.head ?? null;
-  }
-  const kinds = chain.filter((k) => {
-    if (k === 'direct_manager') return hasManager;
-    if (k === 'department_head') return !!deptHead;
-    if (k === 'business_unit_head') return !!buHead;
-    return true;
-  });
+  const facts = await resolveChainFacts(tx, employmentId, attr);
+  const kinds = applyChainDropRules(chain, facts)
+    .filter((l) => l.kept)
+    .map((l) => l.kind);
   if (kinds.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
     kinds.map((approverKind, stepIndex) => ({

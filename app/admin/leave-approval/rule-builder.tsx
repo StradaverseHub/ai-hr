@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { StepListEditor } from './step-list-editor';
+import { StepListEditor, type StepListLabels } from './step-list-editor';
 
 type Option = { id: string; label: string };
 export type RuleRow = {
@@ -20,7 +20,11 @@ export type RuleRow = {
   levels: string[];
 };
 
-export type RuleBuilderLabels = {
+/** r293 — the shared step-editor bag is INTERSECTED rather than re-listed. The fourteen fields it used to
+ *  spell out by hand are the same fourteen `StepListLabels` declares, and the builder's five new ones
+ *  (level number template, the two badges, the flow end caps, the per-kind hints) would have had to be
+ *  added here a second time to stay compilable — which is how a label bag and its consumer drift. */
+export type RuleBuilderLabels = StepListLabels & {
   rulesTitle: string;
   addRule: string;
   editRule: string;
@@ -38,20 +42,6 @@ export type RuleBuilderLabels = {
   minDays: string;
   maxDays: string;
   anyScope: string;
-  chain: string;
-  empty: string;
-  manager: string;
-  departmentHead: string;
-  businessUnitHead: string;
-  hr: string;
-  hrManager: string;
-  payroll: string;
-  customRole: string;
-  add: string;
-  moveUp: string;
-  moveDown: string;
-  remove: string;
-  dragToReorder: string;
   save: string;
   cancel: string;
   noRules: string;

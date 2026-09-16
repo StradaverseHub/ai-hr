@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listJobGrades, listLeaveTypes } from '@/core/read';
+import { listCompanies, listEmployeePickOptions, listJobGrades, listLeaveTypes } from '@/core/read';
+import { previewApprovalChain } from '@/core/leave';
 import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
   listApprovalTemplates,
@@ -27,6 +28,7 @@ import {
   unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
 import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout';
+import { ApprovalChainPreview, type ChainPreviewLabels } from '../../leave-approval/chain-preview';
 
 /**
  * a6fe37fc — APPROVAL CHAINS (`/admin/leave-config/approval-chains`).
@@ -91,12 +93,12 @@ import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout'
 export default async function LeaveConfigApprovalChainsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; previewEmployment?: string; previewLeaveType?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('leaveApproval');
   const tr = await getTranslations('admin.leaveConfigApprovalChains');
-  const { error } = await searchParams;
+  const { error, previewEmployment, previewLeaveType } = await searchParams;
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
@@ -133,6 +135,27 @@ export default async function LeaveConfigApprovalChainsPage({
      for rows sitting in memory two lines up. */
   const ruleScopes = await loadApprovalRuleScopes(s, companies, templates, tr('scopeUnknown'));
 
+  /* Keyed by LEVEL_KINDS value, so a kind added to the vocabulary without a hint renders no hint rather
+     than the wrong one. `test/r293-approval-builder.test.ts` pins that every kind has one. */
+  const kindHints: Record<string, string> = {
+    direct_manager: t('hintDirectManager'),
+    department_head: t('hintDepartmentHead'),
+    business_unit_head: t('hintBusinessUnitHead'),
+    hr_admin: t('hintHr'),
+    hr_manager: t('hintHrManager'),
+    payroll: t('hintPayroll'),
+    custom_role: t('hintCustomRole'),
+  };
+  const kindLabels: Record<string, string> = {
+    direct_manager: t('manager'),
+    department_head: t('departmentHead'),
+    business_unit_head: t('businessUnitHead'),
+    hr_admin: t('hr'),
+    hr_manager: t('hrManager'),
+    payroll: t('payroll'),
+    custom_role: t('customRole'),
+  };
+
   const escalationLabels: EscalationLabels = {
     title: t('escalationTitle'),
     hint: t('escalationHint'),
@@ -147,15 +170,9 @@ export default async function LeaveConfigApprovalChainsPage({
     save: t('save'),
     reason: t('reason'),
     reasonPlaceholder: t('reasonPlaceholder'),
-    roleLabels: {
-      direct_manager: t('manager'),
-      department_head: t('departmentHead'),
-      business_unit_head: t('businessUnitHead'),
-      hr_admin: t('hr'),
-      hr_manager: t('hrManager'),
-      payroll: t('payroll'),
-      custom_role: t('customRole'),
-    },
+    // r293 — the SAME map the builder and the preview label kinds with. Three copies of one lookup is
+    // three places for a new kind to be missed.
+    roleLabels: kindLabels,
   };
   const templateLabels: TemplateManagerLabels = {
     requireMultiStep: t('requireMultiStep'),
@@ -226,6 +243,55 @@ export default async function LeaveConfigApprovalChainsPage({
     moveDown: t('moveDown'),
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
+    /* r293 builder. `levelN` carries an ICU `{n}`, so it is passed its OWN placeholder back in and the
+       client component substitutes it — the app/admin/notice-board/new/page.tsx:102 idiom. A bare
+       `t('levelN')` finds no `n`, throws FORMATTING_ERROR and renders the key path behind a green 200. */
+    levelTemplate: t('levelN', { n: '{n}' }),
+    badgeDynamic: t('badgeDynamic'),
+    badgeFixed: t('badgeFixed'),
+    flowStart: t('flowStart'),
+    flowEnd: t('flowEnd'),
+    addLevel: t('addLevel'),
+    fixedWarning: t('fixedWarning'),
+    hints: kindHints,
+  };
+
+  /* ══ r293 — the PREVIEW's inputs and its result, resolved server-side from the query string. ══
+     `listEmployeePickOptions` is the same scoped population the three "pick individually" write paths
+     resolve against (core/read.ts), so the preview can never name somebody this admin cannot reach. The
+     leave type defaults to the first in the list rather than to null: a preview needs a type to resolve a
+     type-scoped rule, and silently previewing "no leave type" would answer a question nobody asked. */
+  const employeeOptions = await listEmployeePickOptions(s);
+  const previewLeaveTypeId = previewLeaveType ?? leaveTypesAll[0]?.id ?? null;
+  const previewEmploymentId =
+    previewEmployment && employeeOptions.some((e) => e.id === previewEmployment) ? previewEmployment : null;
+  const previewResult =
+    previewEmploymentId && previewLeaveTypeId
+      ? await previewApprovalChain(s, { employmentId: previewEmploymentId, leaveTypeId: previewLeaveTypeId })
+      : null;
+  const previewLabels: ChainPreviewLabels = {
+    title: t('previewTitle'),
+    hint: t('previewHint'),
+    employee: t('previewEmployee'),
+    leaveType: t('leaveType'),
+    run: t('previewRun'),
+    idle: t('previewIdle'),
+    noResult: t('previewNoResult'),
+    levelTemplate: t('levelN', { n: '{n}' }),
+    badgeDynamic: t('badgeDynamic'),
+    badgeFixed: t('badgeFixed'),
+    flowStart: t('flowStart'),
+    flowEnd: t('flowEnd'),
+    skipped: t('previewSkipped'),
+    skippedNoManager: t('previewSkippedNoManager'),
+    skippedNoDepartmentHead: t('previewSkippedNoDepartmentHead'),
+    skippedNoBusinessUnitHead: t('previewSkippedNoBusinessUnitHead'),
+    sourceRule: t('previewSourceRule'),
+    sourceTenantDefault: t('previewSourceTenantDefault'),
+    sourceFallback: t('previewSourceFallback'),
+    singleApprover: t('previewSingleApprover'),
+    allDropped: t('previewAllDropped'),
+    kindLabels,
   };
 
   return (
@@ -267,6 +333,30 @@ export default async function LeaveConfigApprovalChainsPage({
               labels={templateLabels}
             />
             <p className="text-xs text-muted-foreground">{t('multiStepNote')}</p>
+
+            {/* r293 — the preview sits UNDER the builder, in the same section, because it answers the
+                question the builder raises: "and what will that actually do to a real person's request?"
+                It resolves against real org data through the same matcher and the same drop rule the
+                submission path uses — see chain-preview.tsx's header for why that is not optional. */}
+            <ApprovalChainPreview
+              employees={employeeOptions.map((e) => ({
+                value: e.id,
+                name: e.name,
+                employeeCode: e.employeeCode,
+              }))}
+              leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+              employmentId={previewEmploymentId}
+              leaveTypeId={previewLeaveTypeId}
+              result={previewResult}
+              labels={previewLabels}
+              searchLabels={{
+                placeholder: t('previewSearchPlaceholder'),
+                ariaLabel: t('previewSearchAria'),
+                resultsLabel: t('previewSearchResults'),
+                noMatches: t('previewSearchNoMatches'),
+                clear: t('previewSearchClear'),
+              }}
+            />
           </section>
 
           {/* ══ Section 2 — Assignment Template: who each flow applies to, and the escalation that
