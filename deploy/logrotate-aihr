@@ -1,0 +1,48 @@
+# Log rotation for the AI HR scheduled jobs — readiness 1.6, "log rotation configured".
+#
+# INSTALL (the owner does this; nothing here installs itself):
+#
+#   sudo cp /opt/ai-hr/deploy/logrotate-aihr /etc/logrotate.d/aihr
+#   sudo chown root:root /etc/logrotate.d/aihr && sudo chmod 0644 /etc/logrotate.d/aihr
+#   sudo logrotate --debug /etc/logrotate.d/aihr     # dry run: prints what it WOULD do, changes nothing
+#   sudo logrotate --force /etc/logrotate.d/aihr     # do it once now, then read the directory back
+#
+# The filename in /etc/logrotate.d MUST NOT contain a dot: logrotate's own `tabooext` skips files that
+# look like package leftovers (.dpkg-dist, .bak) and it does so SILENTLY. That is why the file in this
+# repo is `logrotate-aihr` and the installed name is `aihr`.
+#
+# WHAT IT IS FOR. Nothing rotates these today — /etc/logrotate.d on the box holds entries for nginx,
+# postgresql-common, rsyslog, ufw, zabbix-agent and the rest, and none for ai-hr (verified 2026-09-16).
+# The provisioning runner alone had written 81,847 lines / 1.4 MB with no bound and no way to date a
+# line. That grows faster once deploy/cron-alert.sh is installed, because each run then gets a dated
+# header and footer — which is the trade this file exists to make affordable.
+#
+# THE TRAP, AND IT FAILS SILENTLY. /home/ubuntu/aihr-cron-logs is owned by ubuntu:ubuntu and is group
+# writable. logrotate refuses to touch a directory a non-root user can write to unless it is told whose
+# privileges to drop to, and it skips with "parent directory has insecure permissions" — a message
+# nobody reads, on a job that is itself a cron job, i.e. exactly the silent failure readiness 1.6 is
+# about. `su ubuntu ubuntu` below is what makes it act. Do not delete it; if the logs move to a
+# root-owned directory, delete it THEN.
+#
+# The cron jobs open their log with `>>` once per run and hold no descriptor between runs, so plain
+# rename-and-create is correct and `copytruncate` (which can lose whatever is written during the copy)
+# is not needed.
+
+/home/ubuntu/aihr-cron-logs/*.log {
+    su ubuntu ubuntu
+    daily
+    rotate 30
+    # A month of history. These are small; the reason to keep them is that the questions asked of them
+    # ("when did provisioning last succeed", "what did the sweep say on the 1st") are asked weeks late.
+    compress
+    delaycompress
+    # delaycompress keeps yesterday's file readable as plain text — the one an operator greps first.
+    missingok
+    # A log that does not exist yet is not an error: expire-carry.log appears once a year, on 1 April.
+    notifempty
+    create 0664 ubuntu ubuntu
+    dateext
+    dateformat -%Y-%m-%d
+    # Dated names rather than .1 .2 .3, because these logs have no per-line timestamps of their own
+    # unless deploy/cron-alert.sh is in use, and a filename is then the only date available.
+}

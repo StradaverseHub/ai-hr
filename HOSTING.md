@@ -84,6 +84,10 @@ If you want a clean slate first: `pnpm db:seed` resets the demo data.
   client or employee PII into a hosted instance.
 - **The password is the only thing protecting it.** Use a strong one, share it privately, and rotate it
   (change `SHARE_PASSWORD` and restart) after the test. Don't post the URL publicly.
+- **`/health` is the one path the password does NOT cover**, on purpose (readiness 1.6): an uptime monitor
+  cannot hold the shared password, and most monitors read a 401 as "fine, just anonymous". Anyone who has
+  the URL can poll it. It answers `{"status":"ok"}` or `{"status":"unhealthy"}` and discloses nothing else
+  — no version, no host, no counts, no database error text — and `/health/anything` is still gated.
 - **Your laptop is the server.** It must stay awake and online while they test (disable sleep, keep the
   terminals running). Closing the lid or losing Wi-Fi ends the session.
 - The tunnel URL changes each run (with the free `cloudflared`/`ngrok` tiers). Re-share the new URL when

@@ -322,6 +322,110 @@ VALUES ('<tenant-uuid>', '<app-user-uuid>', NULL, 'operator');
 
 Note: **suspending or deleting a customer is not implemented** (ADR-0079, deferred).
 
+## 5c. Alerting and log rotation (readiness 1.6 — NOT installed by deploy.sh)
+
+Three pieces, and only the first is already live after a deploy. The other two are text files in this
+repo that **you install by hand**, because both change the crontab or `/etc`, which no automated release
+here is allowed to touch.
+
+### `GET /health` — the endpoint to monitor (live after any deploy)
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/health     # 200
+```
+
+It is reachable **without** `SHARE_PASSWORD` — an uptime monitor holding the shared demo password would
+be a second place that password lives, and most monitors cannot tell a 401 from an outage. It is the
+**only** unauthenticated path in the application, and it is an exact match: `/health/anything` is still
+gated. Point whatever you monitor with at it, over the same URL the customer uses, and alert on anything
+that is not 200.
+
+| It answers | Meaning |
+| --- | --- |
+| `200 {"status":"ok"}` | Alive, and a real `select 1` on the application pool came back |
+| `503 {"status":"unhealthy"}` | Alive and **cannot serve requests** — the database round trip failed |
+| `503` + a `SHARE_PASSWORD` text body | The deployment is unconfigured (readiness 1.4). Also an alarm |
+| No answer at all | The process is down, or nothing routes to it |
+
+It discloses **nothing else** — no version, no host, no counts, no database error text. The reason a
+probe failed goes to the journal instead, where it is already behind ssh:
+
+```bash
+journalctl -u aihr | grep 'HEALTH:'
+# ✗ HEALTH: the database probe FAILED, ... Reason: connect ECONNREFUSED 127.0.0.1:5999
+# ✓ HEALTH: the database probe recovered; /health is answering 200 again.
+```
+
+One line per **transition**, not per request, so the line that says when an outage began is not buried.
+The probe is bounded to 2 s, single-flighted and cached for 1 s, so polling it hard cannot exhaust the
+connection pool.
+
+### `deploy/cron-alert.sh` — make a failing sweep reach a human
+
+Today every crontab line ends `>> …log 2>&1`, which takes stdout and stderr away from cron and therefore
+disables cron's only built-in alerting. A sweep that dies at 03:00 writes a stack trace to a file and
+nothing else happens. The wrapper moves the redirect inside the job and alerts on a non-zero exit through
+three channels: `logger -p user.err` (a priority-3 journal line — a stream that is otherwise **empty** on
+this box, so it is either silent or an incident), stdout (so cron mails it if `MAILTO` and an MTA exist),
+and `AIHR_ALERT_COMMAND` (optional, your own webhook / `mail` / push — it gets the summary on stdin).
+
+The file ships executable. Rewrite each crontab line so the wrapper owns the log — **there is no `>>` and
+no `2>&1` any more, that is the point**:
+
+```cron
+MAILTO=ops@example.com
+AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
+0 1 * * * cd /opt/ai-hr && deploy/cron-alert.sh capture-usage /home/ubuntu/aihr-cron-logs/usage-capture.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/capture-usage.ts
+30 2 * * * cd /opt/ai-hr && deploy/cron-alert.sh anomaly-sweep /home/ubuntu/aihr-cron-logs/anomaly-sweep.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/anomaly-sweep.ts
+0 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh review-sweep /home/ubuntu/aihr-cron-logs/review-sweep.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/review-sweep.ts
+0 2 1 * * cd /opt/ai-hr && deploy/cron-alert.sh accrue-earned /home/ubuntu/aihr-cron-logs/accrue.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/accrue-earned.ts
+0 3 1 4 * cd /opt/ai-hr && deploy/cron-alert.sh expire-carry /home/ubuntu/aihr-cron-logs/expire-carry.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts
+* * * * * cd /opt/ai-hr && deploy/cron-alert.sh provision /home/ubuntu/aihr-cron-logs/provision.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts
+```
+
+Read it back with `crontab -l` — never trust the install command; a sweep has gone missing from this
+crontab before. Then prove the alarm works by failing a job **on purpose**, which is the only way to know:
+
+```bash
+cd /opt/ai-hr && deploy/cron-alert.sh selftest /home/ubuntu/aihr-cron-logs/selftest.log sh -c 'exit 7'
+echo "exit=$?"                                        # 7 — the status survives
+journalctl -t aihr-cron -p err -n 5 --no-pager        # the alert line
+```
+
+**A job that stops running has no exit code**, so no wrapper can see it — and `scripts/review-sweep.ts`
+records that it was absent from this crontab for six weeks while every log looked fine. Each successful
+run therefore touches `/home/ubuntu/aihr-cron-logs/heartbeat/<job>`, and staleness is the signal for that
+class. Schedule the check separately, against whatever interval each job should meet:
+
+```cron
+7 * * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name provision -mmin +10 -exec sh -c 'echo "AI HR: provision runner has not succeeded in 10 minutes" | logger -t aihr-cron -p user.err' \;
+```
+
+### `deploy/logrotate-aihr` — bound the log files
+
+Nothing rotates them today; `/etc/logrotate.d` on the box has entries for nginx, postgresql, rsyslog, ufw
+and zabbix-agent and **none for ai-hr**. `provision.log` had reached 81,847 lines on its own.
+
+```bash
+sudo cp /opt/ai-hr/deploy/logrotate-aihr /etc/logrotate.d/aihr
+sudo chown root:root /etc/logrotate.d/aihr && sudo chmod 0644 /etc/logrotate.d/aihr
+sudo logrotate --debug /etc/logrotate.d/aihr     # dry run — prints what it would do, changes nothing
+sudo logrotate --force /etc/logrotate.d/aihr     # once, now; then read the directory back
+ls -la /home/ubuntu/aihr-cron-logs/
+```
+
+Two traps, both silent. The installed filename **must not contain a dot** (logrotate's `tabooext` skips
+such files without a word), and the `su ubuntu ubuntu` line inside must stay — without it logrotate
+refuses a group-writable directory it does not own and simply does nothing. The config keeps the journal
+itself out of scope: that is journald's own `SystemMaxUse`, not this file's.
+
+### What is still NOT covered
+
+**Application 5xx does not reach anybody.** Next writes its errors to stdout, which systemd files at
+priority **info**, so `journalctl -u aihr -p err` is empty even during an incident — over seven days it
+returned zero entries while the log held a `ChunkLoadError` storm, eight `Failed query` lines and four
+`ENOENT .next/server/pages/500.html`. Nothing in this repo changes that yet; see readiness 1.6.
+
 ## 6. Open the firewall + share
 
 ```bash
