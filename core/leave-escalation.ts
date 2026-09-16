@@ -214,6 +214,9 @@ export async function sweepLeaveApprovalEscalations(
           // fixed next level routes to a person, and the chase must reach whoever the REQUEST was
           // routed to, not whoever the template names by the time the notification is dispatched.
           employmentId: leaveApprovalStep.approverEmploymentId,
+          // r293 phase 4 — and its alternates, so an any-one level is chased to everyone who can clear
+          // it. Chasing only the primary would leave the person who CAN act unaware the step is stuck.
+          alternates: leaveApprovalStep.approverAlternates,
         })
         .from(leaveApprovalStep)
         .where(and(eq(leaveApprovalStep.leaveRequestId, r.requestId), gt(leaveApprovalStep.stepIndex, r.stepIndex)))
@@ -224,6 +227,7 @@ export async function sweepLeaveApprovalEscalations(
         r.escalationTarget === 'specific_role' ? (r.escalationTargetRole ?? null) : nextKind;
       // Only a NEXT-LEVEL target can carry a person; a configured role never does.
       const targetEmploymentId = r.escalationTarget === 'specific_role' ? null : (next?.employmentId ?? null);
+      const targetAlternates = r.escalationTarget === 'specific_role' ? null : (next?.alternates ?? null);
 
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -240,6 +244,7 @@ export async function sweepLeaveApprovalEscalations(
           nextKind, // null ⇒ the stuck step is the LAST one; the resolver falls back to HR admins
           targetKind,
           targetEmploymentId,
+          targetAlternates,
           daysWaiting: elapsed,
           leaveTypeName: r.leaveTypeName,
           startDate: r.startDate,

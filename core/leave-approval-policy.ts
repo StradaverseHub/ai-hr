@@ -40,14 +40,18 @@ export {
   sanitizeApprovalLevels,
   serializeApprovalLevels,
   levelKey,
+  approverKey,
+  approversOf,
+  isAnyOneLevel,
   type LeaveLevelKind,
   type ApprovalLevel,
+  type ApprovalApprover,
 } from '../lib/leave-approval-kinds';
 
 /** The chain an opted-in company gets when no rule matches — identical to 2B-1. */
 const FALLBACK_CHAIN: ApprovalLevel[] = [
-  { kind: 'direct_manager', employmentId: null },
-  { kind: 'hr_admin', employmentId: null },
+  { kind: 'direct_manager', employmentId: null, alternates: [] },
+  { kind: 'hr_admin', employmentId: null, alternates: [] },
 ];
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];

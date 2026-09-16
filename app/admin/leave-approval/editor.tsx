@@ -42,7 +42,7 @@ export function LeaveApprovalEditor({
           population is passed, so `specific_employee` is not pickable). It adapts at the boundary rather
           than learning the object shape: one conversion here, none in the shared editor. */}
       <StepListEditor
-        levels={levels.map((kind) => ({ kind: kind as ApprovalLevel['kind'], employmentId: null }))}
+        levels={levels.map((kind) => ({ kind: kind as ApprovalLevel['kind'], employmentId: null, alternates: [] }))}
         setLevels={(next) => setLevels(next.map((l) => l.kind))}
         labels={labels}
       />

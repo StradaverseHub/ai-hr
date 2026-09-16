@@ -10330,7 +10330,16 @@
     "fixedApproverEnded": "Người này không còn là nhân viên đang làm việc. Đơn sẽ dừng ở cấp này cho đến khi bạn chọn người khác.",
     "fixedApproverMissing": "Chọn người phê duyệt ở cấp này.",
     "previewFixedApproverEnded": "Người duyệt này không còn là nhân viên đang làm việc — đơn sẽ dừng tại đây.",
-    "previewNotSkippable": "Không bao giờ bị bỏ qua"
+    "previewNotSkippable": "Không bao giờ bị bỏ qua",
+    "modeTitle": "Chế độ phê duyệt",
+    "modeSequential": "Phê duyệt tuần tự",
+    "modeSequentialHint": "Mỗi cấp có một người duyệt, và phải duyệt xong thì cấp tiếp theo mới hoạt động.",
+    "modeAnyOne": "Bất kỳ một người duyệt",
+    "modeAnyOneHint": "Một cấp có thể liệt kê nhiều người duyệt, và bất kỳ ai trong số đó đều có thể duyệt cho cấp ấy.",
+    "addAlternate": "Thêm một người duyệt khác cho cấp này",
+    "orLabel": "hoặc",
+    "badgeAnyOne": "Bất kỳ một",
+    "previewAnyOne": "Bất kỳ ai trong số này đều có thể duyệt"
   },
   "feedback": {
     "title": "Phản hồi",

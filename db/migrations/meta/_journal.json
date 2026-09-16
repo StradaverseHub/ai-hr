@@ -2682,6 +2682,13 @@
       "when": 1781862567000,
       "tag": "0467_leave_approval_step_fixed_approver",
       "breakpoints": true
+    },
+    {
+      "idx": 468,
+      "version": "7",
+      "when": 1781862568000,
+      "tag": "0468_leave_approval_step_alternates",
+      "breakpoints": true
     }
   ]
 }

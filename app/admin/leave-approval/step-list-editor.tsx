@@ -55,6 +55,19 @@ export type StepListLabels = {
   hints: Record<string, string>;
   /** Captions for the employee picker a FIXED level renders. */
   employeeSearch: EmployeeSearchFieldLabels;
+  /* ── r293 phase 4: any-one approval ───────────────────────────────────────────────────────────── */
+  /** The approval-mode legend. */
+  modeTitle: string;
+  modeSequential: string;
+  modeSequentialHint: string;
+  modeAnyOne: string;
+  modeAnyOneHint: string;
+  /** "Add another approver for this level". */
+  addAlternate: string;
+  /** Sits between a level's approvers: "or". */
+  orLabel: string;
+  /** Badge on a level that any one of several approvers can clear. */
+  badgeAnyOne: string;
 };
 
 /**
@@ -183,18 +196,88 @@ export function StepListEditor({
     setLevels(
       levels.map((l, idx) =>
         idx === i
-          ? { kind: kind as ApprovalLevel['kind'], employmentId: isFixedLevelKind(kind) ? l.employmentId : null }
+          ? {
+              ...l,
+              kind: kind as ApprovalLevel['kind'],
+              employmentId: isFixedLevelKind(kind) ? l.employmentId : null,
+            }
           : l,
       ),
     );
   const setApprover = (i: number, employmentId: string) =>
     setLevels(levels.map((l, idx) => (idx === i ? { ...l, employmentId: employmentId || null } : l)));
 
+  /* ── r293 phase 4 — any-one approval ───────────────────────────────────────────────────────────────
+     THE MODE IS DERIVED, NOT STORED. r79 0322 deleted the "Require multi-step approval" switch because
+     the chain's own LENGTH already answered it and a flag that could disagree with the chain beside it
+     was the whole defect. A stored `mode` would be the same mistake one level down: it could read
+     "any one" over levels that hold a single approver. A level WITH alternates is an any-one level; the
+     radio below is how the administrator turns that on, and it reads back out of the levels. */
+  const anyOne = levels.some((l) => l.alternates.length > 0);
+  const setAlternate = (i: number, j: number, patch: Partial<ApprovalLevel>) =>
+    setLevels(
+      levels.map((l, idx) =>
+        idx === i ? { ...l, alternates: l.alternates.map((a, aj) => (aj === j ? { ...a, ...patch } : a)) } : l,
+      ),
+    );
+  const addAlternate = (i: number) =>
+    setLevels(
+      levels.map((l, idx) =>
+        idx === i ? { ...l, alternates: [...l.alternates, { kind: 'hr_admin' as const, employmentId: null }] } : l,
+      ),
+    );
+  const removeAlternate = (i: number, j: number) =>
+    setLevels(
+      levels.map((l, idx) => (idx === i ? { ...l, alternates: l.alternates.filter((_, aj) => aj !== j) } : l)),
+    );
+  /** Switching back to sequential DISCARDS the alternates, because that is what sequential means — and it
+   *  is the only honest reading: leaving them stored while the radio says "sequential" would be a level
+   *  that routes to three people and a screen that says one. */
+  const setMode = (next: boolean) =>
+    next ? addAlternate(0) : setLevels(levels.map((l) => ({ ...l, alternates: [] })));
+
   /** A fixed kind is only offerable where the page supplied a population to pick from. */
   const kindOptions = KIND_OPTIONS.filter((k) => !isFixedLevelKind(k) || employees.length > 0);
 
   return (
     <div className={disabled ? 'pointer-events-none space-y-2 opacity-50' : 'space-y-2'}>
+      {/* r293 phase 4 — APPROVAL MODE. Two radios, and neither is stored: `anyOne` is read back out of
+          the levels (a level with alternates IS an any-one level), so the control and the chain beneath
+          it cannot disagree. Hidden when the chain is empty: there is nothing to be any-one about yet. */}
+      {levels.length > 0 && (
+        <fieldset className="space-y-2 rounded-xl border border-border p-3">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {labels.modeTitle}
+          </legend>
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="approvalMode"
+              className="mt-0.5"
+              checked={!anyOne}
+              onChange={() => setMode(false)}
+            />
+            <span>
+              <span className="font-medium">{labels.modeSequential}</span>
+              <span className="block text-xs text-muted-foreground">{labels.modeSequentialHint}</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="approvalMode"
+              className="mt-0.5"
+              checked={anyOne}
+              onChange={() => setMode(true)}
+            />
+            <span>
+              <span className="font-medium">{labels.modeAnyOne}</span>
+              <span className="block text-xs text-muted-foreground">{labels.modeAnyOneHint}</span>
+            </span>
+          </label>
+        </fieldset>
+      )}
+
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{labels.chain}</div>
         {levels.length > 1 && <span className="text-[11px] text-muted-foreground">{labels.dragToReorder}</span>}
@@ -240,6 +323,7 @@ export function StepListEditor({
                         {labels.levelTemplate.replace('{n}', String(i + 1))}
                       </span>
                       <LevelBadge kind={k} labels={labels} />
+                      {level.alternates.length > 0 && <Badge variant="accent">{labels.badgeAnyOne}</Badge>}
                       <span className="flex-1" />
                       <button
                         type="button"
@@ -321,6 +405,74 @@ export function StepListEditor({
                         {labels.fixedWarning}
                       </p>
                     )}
+
+                    {/* r293 phase 4 — the OTHER approvers for this level. Each renders the same picker the
+                        primary does, because an alternate is an approver by the same rules — the reporter's
+                        "Sarah OR Ahmad" is two approvers on one level, not two levels. */}
+                    {level.alternates.map((alt, j) => {
+                      const altFixed = isFixedLevelKind(alt.kind);
+                      const altEnded = !!alt.employmentId && endedEmploymentIds.includes(alt.employmentId);
+                      return (
+                        <div key={j} className="space-y-2 rounded-lg border border-dashed border-border p-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {labels.orLabel}
+                            </span>
+                            <LevelBadge kind={alt.kind} labels={labels} />
+                            <span className="flex-1" />
+                            <button
+                              type="button"
+                              onClick={() => removeAlternate(i, j)}
+                              className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              {labels.remove}
+                            </button>
+                          </div>
+                          <select
+                            value={alt.kind}
+                            onChange={(e) =>
+                              setAlternate(i, j, {
+                                kind: e.target.value as ApprovalLevel['kind'],
+                                employmentId: isFixedLevelKind(e.target.value) ? alt.employmentId : null,
+                              })
+                            }
+                            aria-label={labels.addAlternate}
+                            className={inputCls}
+                          >
+                            {kindOptions.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {kindLabel(opt)}
+                              </option>
+                            ))}
+                          </select>
+                          {altFixed && (
+                            <EmployeeSearchField
+                              employees={employees}
+                              value={alt.employmentId}
+                              labels={labels.employeeSearch}
+                              onValueChange={(v) => setAlternate(i, j, { employmentId: v || null })}
+                              className="w-full"
+                            />
+                          )}
+                          {altFixed && !alt.employmentId && (
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                              {labels.fixedApproverMissing}
+                            </p>
+                          )}
+                          {altEnded && (
+                            <p className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                              {labels.fixedApproverEnded}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {anyOne && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => addAlternate(i)}>
+                        {labels.addAlternate}
+                      </Button>
+                    )}
                   </div>
                 </li>
               );
@@ -339,7 +491,7 @@ export function StepListEditor({
           variant="outline"
           size="sm"
           className="w-full border-dashed"
-          onClick={() => setLevels([...levels, { kind: 'hr_admin', employmentId: null }])}
+          onClick={() => setLevels([...levels, { kind: 'hr_admin', employmentId: null, alternates: [] }])}
         >
           {levels.length === 0 ? labels.add : labels.addLevel}
         </Button>

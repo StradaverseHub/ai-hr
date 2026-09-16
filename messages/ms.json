@@ -10330,7 +10330,16 @@
     "fixedApproverEnded": "Orang ini bukan lagi pekerja aktif. Permohonan akan terhenti di tahap ini sehingga anda memilih orang lain.",
     "fixedApproverMissing": "Pilih orang yang meluluskan pada tahap ini.",
     "previewFixedApproverEnded": "Pelulus ini bukan lagi pekerja aktif — permohonan akan terhenti di sini.",
-    "previewNotSkippable": "Tidak pernah dilangkau"
+    "previewNotSkippable": "Tidak pernah dilangkau",
+    "modeTitle": "Mod kelulusan",
+    "modeSequential": "Kelulusan berturutan",
+    "modeSequentialHint": "Setiap tahap mempunyai satu pelulus, dan mesti meluluskan sebelum tahap seterusnya aktif.",
+    "modeAnyOne": "Mana-mana satu pelulus",
+    "modeAnyOneHint": "Satu tahap boleh menyenaraikan beberapa pelulus, dan mana-mana seorang daripada mereka boleh meluluskan bagi tahap itu.",
+    "addAlternate": "Tambah pelulus lain untuk tahap ini",
+    "orLabel": "atau",
+    "badgeAnyOne": "Mana-mana satu",
+    "previewAnyOne": "Mana-mana seorang daripada ini boleh meluluskan"
   },
   "feedback": {
     "title": "Maklum Balas",

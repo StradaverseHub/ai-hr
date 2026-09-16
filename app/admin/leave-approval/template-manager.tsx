@@ -6,7 +6,7 @@ import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { groupTemplateAssignments } from './assignment-groups';
 import { StepListEditor, kindLabelOf, type StepListLabels } from './step-list-editor';
-import { isFixedLevelKind, type ApprovalLevel } from '@/lib/leave-approval-kinds';
+import { approversOf, isFixedLevelKind, type ApprovalLevel } from '@/lib/leave-approval-kinds';
 import type { EmployeeSearchOption } from '@/components/employee-search-field';
 
 type Option = { id: string; label: string };
@@ -176,10 +176,13 @@ export function ApprovalTemplateManager({
   const kindLabel = (k: string) => kindLabelOf(k, stepLabels);
   /** The one-line chain under a template's name. A fixed level prints the PERSON, not the kind: two
    *  templates that both read "… → Named approver" would be indistinguishable in the list. */
+  const approverText = (a: { kind: string; employmentId: string | null }) =>
+    a.employmentId ? (employeeName(a.employmentId) ?? kindLabel(a.kind)) : kindLabel(a.kind);
+  /* r293 phase 4 — an ANY-ONE level prints all of its approvers joined by "or". The list one-liner is how
+     an administrator tells two templates apart at a glance, and a level that routes to either of two
+     people while the line names only one is the same lie the Dynamic/Fixed badge exists to prevent. */
   const stepsPreview = (levels: ApprovalLevel[]) =>
-    levels
-      .map((l) => (l.employmentId ? (employeeName(l.employmentId) ?? kindLabel(l.kind)) : kindLabel(l.kind)))
-      .join(' → ');
+    levels.map((l) => approversOf(l).map(approverText).join(` ${labels.orLabel} `)).join(' → ');
 
   return (
     <div className="space-y-6">
@@ -479,8 +482,8 @@ function TemplateForm({
 }) {
   const [levels, setLevels] = useState<ApprovalLevel[]>(
     template?.levels ?? [
-      { kind: 'direct_manager', employmentId: null },
-      { kind: 'hr_admin', employmentId: null },
+      { kind: 'direct_manager', employmentId: null, alternates: [] },
+      { kind: 'hr_admin', employmentId: null, alternates: [] },
     ],
   );
   /**
@@ -503,7 +506,7 @@ function TemplateForm({
   function toggleMultiStep(next: boolean) {
     setMultiStep(next);
     setLevels((prev) => {
-      if (next) return prev.length > 1 ? prev : [...prev, { kind: 'hr_admin' as const, employmentId: null }];
+      if (next) return prev.length > 1 ? prev : [...prev, { kind: 'hr_admin' as const, employmentId: null, alternates: [] }];
       // Keep the FIRST step rather than resetting to a default: unticking the box means "one approver",
       // not "start again", and silently replacing a chosen first approver would be a data change the
       // administrator did not ask for.

@@ -10330,7 +10330,16 @@
     "fixedApproverEnded": "This person is no longer an active employee. Requests will stop at this level until you choose someone else.",
     "fixedApproverMissing": "Choose the person who approves at this level.",
     "previewFixedApproverEnded": "This approver is no longer an active employee — requests stop here.",
-    "previewNotSkippable": "Never skipped"
+    "previewNotSkippable": "Never skipped",
+    "modeTitle": "Approval mode",
+    "modeSequential": "Sequential approval",
+    "modeSequentialHint": "Each level has one approver, and must approve before the next level becomes active.",
+    "modeAnyOne": "Any one approver",
+    "modeAnyOneHint": "A level can list several approvers, and any one of them can approve for that level.",
+    "addAlternate": "Add another approver for this level",
+    "orLabel": "or",
+    "badgeAnyOne": "Any one",
+    "previewAnyOne": "Any one of these can approve"
   },
   "feedback": {
     "title": "Feedback",

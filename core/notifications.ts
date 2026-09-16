@@ -49,6 +49,7 @@ import {
   type NotificationSeverity,
 } from '../db/schema';
 import { resolveSubjectHead } from './leave';
+import { sanitizeApprovalLevels } from './leave-approval-policy';
 import { isModuleEnabled } from './entitlements';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
@@ -673,6 +674,12 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       let out = targetKind
         ? await approverEmploymentsForKind(tx, ev.subjectEmploymentId, targetKind, targetEmploymentId)
         : [];
+      // r293 phase 4 — an ANY-ONE level is chased to every approver who could clear it, not only the one
+      // the level is named after. Resolved through the SAME per-kind resolver, so an alternate's
+      // recipients are found by the rule its kind is found by everywhere else.
+      for (const alt of sanitizeApprovalLevels(Array.isArray(p.targetAlternates) ? p.targetAlternates : [])) {
+        out = out.concat(await approverEmploymentsForKind(tx, ev.subjectEmploymentId, alt.kind, alt.employmentId));
+      }
       out = out.filter((id) => id !== ev.subjectEmploymentId); // never chase the requester
       if (out.length === 0) {
         out = (await hrAdminsForCompany(tx, ev.subjectEmploymentId)).filter((id) => id !== ev.subjectEmploymentId);

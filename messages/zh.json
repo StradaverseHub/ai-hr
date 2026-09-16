@@ -10330,7 +10330,16 @@
     "fixedApproverEnded": "此人已不是在职员工。申请将停在此级别，直到您改选他人。",
     "fixedApproverMissing": "请选择在此级别审批的人员。",
     "previewFixedApproverEnded": "该审批人已不是在职员工——申请将停在此处。",
-    "previewNotSkippable": "永不跳过"
+    "previewNotSkippable": "永不跳过",
+    "modeTitle": "审批模式",
+    "modeSequential": "顺序审批",
+    "modeSequentialHint": "每个级别只有一位审批人，且必须审批后下一级别才会激活。",
+    "modeAnyOne": "任一审批人",
+    "modeAnyOneHint": "一个级别可以列出多位审批人，其中任意一位即可为该级别完成审批。",
+    "addAlternate": "为此级别添加另一位审批人",
+    "orLabel": "或",
+    "badgeAnyOne": "任一",
+    "previewAnyOne": "其中任意一位均可审批"
   },
   "feedback": {
     "title": "反馈",

@@ -296,6 +296,16 @@ export default async function LeaveConfigApprovalChainsPage({
     fixedApproverMissing: t('fixedApproverMissing'),
     hints: kindHints,
     employeeSearch: employeeSearchLabels,
+    // r293 phase 4 — any-one approval. There is no `mode` label here because there is no stored mode:
+    // the radio reads back out of the levels (see StepListEditor's `anyOne`).
+    modeTitle: t('modeTitle'),
+    modeSequential: t('modeSequential'),
+    modeSequentialHint: t('modeSequentialHint'),
+    modeAnyOne: t('modeAnyOne'),
+    modeAnyOneHint: t('modeAnyOneHint'),
+    addAlternate: t('addAlternate'),
+    orLabel: t('orLabel'),
+    badgeAnyOne: t('badgeAnyOne'),
   };
 
   /* ══ r293 — the PREVIEW's inputs and its result, resolved server-side from the query string. ══
@@ -336,6 +346,8 @@ export default async function LeaveConfigApprovalChainsPage({
     allDropped: t('previewAllDropped'),
     fixedApproverEnded: t('previewFixedApproverEnded'),
     notSkippable: t('previewNotSkippable'),
+    anyOne: t('previewAnyOne'),
+    orLabel: t('orLabel'),
     kindLabels,
   };
 

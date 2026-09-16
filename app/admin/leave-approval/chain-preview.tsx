@@ -61,6 +61,10 @@ export type ChainPreviewLabels = {
   fixedApproverEnded: string;
   /** r293 phase 3 — a fixed level cannot be dropped, whatever the org chart says. */
   notSkippable: string;
+  /** r293 phase 4 — several approvers on this level, any ONE of whom is enough. */
+  anyOne: string;
+  /** Sits between a level's approvers: "or". */
+  orLabel: string;
   /** LEVEL_KINDS value → display label. */
   kindLabels: Record<string, string>;
 };
@@ -183,6 +187,16 @@ export function ApprovalChainPreview({
                     {lv.employmentId && (
                       <span className="text-xs text-muted-foreground">{employeeName(lv.employmentId)}</span>
                     )}
+                    {/* r293 phase 4 — the OTHER approvers who could clear this level. Named in full: the
+                        question this panel answers is "who will actually decide", and for an any-one level
+                        the answer is a set, not a person. */}
+                    {lv.alternates.map((a, ai) => (
+                      <span key={ai} className="text-xs text-muted-foreground">
+                        {labels.orLabel} {labels.kindLabels[a.kind] ?? a.kind}
+                        {a.employmentId ? ` · ${employeeName(a.employmentId)}` : ''}
+                      </span>
+                    ))}
+                    {lv.alternates.length > 0 && <Badge variant="accent">{labels.anyOne}</Badge>}
                     {isFixedLevelKind(lv.kind) && (
                       <span className="text-xs text-muted-foreground">{labels.notSkippable}</span>
                     )}

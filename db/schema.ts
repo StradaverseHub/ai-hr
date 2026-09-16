@@ -2347,6 +2347,16 @@ export const leaveApprovalStep = pgTable(
     // undo exactly that. Enforced as a pair in generateApprovalSteps, not as a check constraint — see the
     // migration's note on why a NOT VALID check on this table would fire on every decide.
     approverEmploymentId: uuid('approver_employment_id').references(() => employment.id),
+    // r293 phase 4 (migration 0468) — ANY-ONE APPROVAL. The OTHER approvers who may clear this step, as a
+    // jsonb array in the same vocabulary the template stores (a bare kind string, or {kind, employmentId}
+    // for a named person). NULL when the level has one approver, which is every level that exists today —
+    // and NULL means "only the approver named on this row", i.e. today's behaviour exactly.
+    //
+    // ONE ROW PER LEVEL, not one per approver: an any-one level is one decision. See 0468's note for what
+    // a row per approver would have done to decideLeave's advance, to `stepCount` in every leave list, and
+    // to the escalation sweep's per-step dedup. Snapshotted here rather than re-read from the template for
+    // the same reason approverEmploymentId is.
+    approverAlternates: jsonb('approver_alternates'),
     status: leaveRequestStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),

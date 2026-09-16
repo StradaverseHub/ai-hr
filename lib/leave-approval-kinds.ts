@@ -118,11 +118,39 @@ export function isDroppableLevelKind(kind: string): boolean {
  * NO MIGRATION IS NEEDED FOR THE TEMPLATE. (A migration IS needed for the generated STEP, which had
  * nowhere to record which person a fixed step belongs to — see 0467.)
  */
-export type ApprovalLevel = {
+export type ApprovalApprover = {
   kind: LeaveLevelKind;
   /** The named approver's employment id — non-null exactly when `kind` is a FIXED kind. */
   employmentId: string | null;
 };
+
+export type ApprovalLevel = ApprovalApprover & {
+  /**
+   * r293 phase 4 — ANY-ONE APPROVAL. Additional approvers for THIS level, any ONE of whom may clear it
+   * (the reporter's "Sarah OR Ahmad at level 2"). Empty on every level that has ever existed, and empty
+   * is the sequential behaviour byte-for-byte: one approver, who must approve.
+   *
+   * ⚠️ THERE IS NO STORED "MODE", AND THAT IS DELIBERATE — r79 0322's lesson, in this same file's
+   * neighbourhood. The per-company "Require multi-step approval" switch was deleted because the chain's
+   * own LENGTH already answered it and a flag that could disagree with the chain beside it was the whole
+   * defect. A template-level `mode: sequential | any_one` is the same shape of mistake: it could say
+   * "any one" over levels that hold a single approver, or "sequential" over levels that hold three. The
+   * ALTERNATES ARE THE ANSWER — a level with alternates is an any-one level, and a level without one is
+   * not. The screen still shows the reporter the two-way choice they asked for; it derives it from the
+   * levels, exactly as the multi-step checkbox now derives from the chain's length.
+   */
+  alternates: ApprovalApprover[];
+};
+
+/** Every approver who may clear a level, primary first. One entry unless the level is any-one. */
+export function approversOf(level: ApprovalLevel): ApprovalApprover[] {
+  return [{ kind: level.kind, employmentId: level.employmentId }, ...level.alternates];
+}
+
+/** True when any ONE of several approvers is enough for this level. */
+export function isAnyOneLevel(level: ApprovalLevel): boolean {
+  return level.alternates.length > 0;
+}
 
 /**
  * Read a stored `levels` jsonb (or a posted form value) into levels the engine can route on.
@@ -138,37 +166,82 @@ export function sanitizeApprovalLevels(raw: unknown): ApprovalLevel[] {
   const out: ApprovalLevel[] = [];
   for (const entry of raw) {
     if (typeof entry === 'string') {
-      if ((LEVEL_KINDS as readonly string[]).includes(entry) && !isFixedLevelKind(entry)) {
-        out.push({ kind: entry as LeaveLevelKind, employmentId: null });
-      }
+      const a = sanitizeApprover(entry);
+      if (a) out.push({ ...a, alternates: [] });
       continue;
     }
     if (entry && typeof entry === 'object') {
-      const kind = (entry as { kind?: unknown }).kind;
-      const employmentId = (entry as { employmentId?: unknown }).employmentId;
-      if (typeof kind !== 'string' || !(LEVEL_KINDS as readonly string[]).includes(kind)) continue;
-      if (isFixedLevelKind(kind)) {
-        if (typeof employmentId !== 'string' || employmentId.trim() === '') continue;
-        out.push({ kind: kind as LeaveLevelKind, employmentId: employmentId.trim() });
-      } else {
-        out.push({ kind: kind as LeaveLevelKind, employmentId: null });
+      const primary = sanitizeApprover(entry);
+      if (!primary) continue;
+      const rawAlt = (entry as { alternates?: unknown }).alternates;
+      // r293 phase 4 — an alternate is an approver by the SAME rules as the primary (unknown kinds and
+      // named-nobody levels are dropped), and DE-DUPLICATED against the primary and each other: the same
+      // person twice is not a choice, and "any one of [Sarah, Sarah]" would read as a two-approver level
+      // on every screen that counts them.
+      const alternates: ApprovalApprover[] = [];
+      if (Array.isArray(rawAlt)) {
+        const seen = new Set([approverKey(primary)]);
+        for (const raw of rawAlt) {
+          const a = sanitizeApprover(raw);
+          if (!a) continue;
+          const key = approverKey(a);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          alternates.push(a);
+        }
       }
+      out.push({ ...primary, alternates });
     }
   }
   return out;
 }
 
+/** One approver, from a bare kind string or a `{ kind, employmentId }` object. Null when unusable. */
+function sanitizeApprover(entry: unknown): ApprovalApprover | null {
+  if (typeof entry === 'string') {
+    if (!(LEVEL_KINDS as readonly string[]).includes(entry) || isFixedLevelKind(entry)) return null;
+    return { kind: entry as LeaveLevelKind, employmentId: null };
+  }
+  if (!entry || typeof entry !== 'object') return null;
+  const kind = (entry as { kind?: unknown }).kind;
+  const employmentId = (entry as { employmentId?: unknown }).employmentId;
+  if (typeof kind !== 'string' || !(LEVEL_KINDS as readonly string[]).includes(kind)) return null;
+  if (isFixedLevelKind(kind)) {
+    if (typeof employmentId !== 'string' || employmentId.trim() === '') return null;
+    return { kind: kind as LeaveLevelKind, employmentId: employmentId.trim() };
+  }
+  return { kind: kind as LeaveLevelKind, employmentId: null };
+}
+
+/** An approver's identity — the key both de-duplication and chain comparison are built on. */
+export function approverKey(a: ApprovalApprover): string {
+  return a.employmentId ? `${a.kind}:${a.employmentId}` : a.kind;
+}
+
 /** The value to store in the jsonb column. Dynamic levels stay bare strings so pre-r293 rows round-trip
  *  byte-identically and no migration is needed for the template itself. */
 export function serializeApprovalLevels(levels: readonly ApprovalLevel[]): unknown[] {
-  return levels.map((l) => (l.employmentId ? { kind: l.kind, employmentId: l.employmentId } : l.kind));
+  return levels.map((l) => {
+    // Still a bare STRING for the plain, single, relationship-resolved level — which is every level in
+    // every template written before r293 — so those rows round-trip byte-identically and neither phase
+    // needed a migration on the template.
+    if (!l.employmentId && l.alternates.length === 0) return l.kind;
+    const base: Record<string, unknown> = { kind: l.kind, employmentId: l.employmentId };
+    if (l.alternates.length) {
+      base.alternates = l.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind));
+    }
+    return base;
+  });
 }
 
 /** A level's full IDENTITY, for comparing two chains. Two `specific_employee` levels naming different
  *  people are DIFFERENT chains, which `sanitizeLevels`'s kinds-only view cannot see — and
  *  core/leave-approval-consolidation.ts reuses an existing template when two chains look equal. */
 export function levelKey(level: ApprovalLevel): string {
-  return level.employmentId ? `${level.kind}:${level.employmentId}` : level.kind;
+  // r293 phase 4 — the alternates are part of the identity: "Direct manager" and "Direct manager OR
+  // Sarah" are different levels, and a comparison that could not tell them apart would let
+  // core/leave-approval-consolidation.ts reuse one template for the other.
+  return approversOf(level).map(approverKey).join('|');
 }
 
 /** The kind sequence alone — every reader that routes on WHO APPROVES rather than on WHICH PERSON.

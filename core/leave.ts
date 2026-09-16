@@ -17,7 +17,10 @@ import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/
 // leave request path for fifteen lines of SELECT.
 import { decidePayrollPermission } from '../lib/payroll-permissions';
 import {
+  approversOf,
   resolveApprovalDecision,
+  sanitizeApprovalLevels,
+  type ApprovalApprover,
   type ApprovalDecisionSource,
   type ApprovalLevel,
 } from './leave-approval-policy';
@@ -4086,6 +4089,9 @@ export type ChainResolutionFacts = {
   endedFixedApprovers: readonly string[];
 };
 
+/** Why a level was dropped: the relationship that resolved to nobody. */
+export type DropReason = 'no_manager' | 'no_manager_manager' | 'no_department_head' | 'no_business_unit_head';
+
 /** r293 — one level of a resolved chain and whether it survives generation. `kept: false` is the DROP:
  *  the step is never written, and the request carries on to the next level rather than stalling. */
 export type ResolvedChainLevel = {
@@ -4095,9 +4101,12 @@ export type ResolvedChainLevel = {
   /** r293 phase 3 — true when this level names a person who is no longer an active employment. The level
    *  is still KEPT: a fixed approver cannot be dropped, which is exactly why this has to be said out loud. */
   fixedApproverEnded: boolean;
+  /** r293 phase 4 — the OTHER approvers who may clear this level, any ONE of whom is enough. Empty on a
+   *  single-approver level, which is every level that existed before phase 4. */
+  alternates: ApprovalApprover[];
   kept: boolean;
   /** Why it was dropped: the relationship that resolved to nobody. Null when kept. */
-  droppedBecause: 'no_manager' | 'no_manager_manager' | 'no_department_head' | 'no_business_unit_head' | null;
+  droppedBecause: DropReason | null;
 };
 
 /** Read the subject's org facts. Runs in the caller's transaction, under the caller's RLS. */
@@ -4169,7 +4178,14 @@ async function resolveChainFacts(
   // r293 phase 3 — which of the chain's NAMED approvers have left. Read once for the whole chain, and
   // through `isEmploymentEnded` so the warning agrees with the status every screen shows rather than
   // inventing a second definition of "gone".
-  const named = [...new Set(levels.filter((l) => l.employmentId).map((l) => l.employmentId as string))];
+  const named = [
+    ...new Set(
+      levels
+        .flatMap((l) => approversOf(l))
+        .filter((a) => a.employmentId)
+        .map((a) => a.employmentId as string),
+    ),
+  ];
   let endedFixedApprovers: string[] = [];
   if (named.length) {
     const rows = await tx
@@ -4205,29 +4221,40 @@ async function resolveChainFacts(
  * Pure. The kinds it can drop are `DROPPABLE_LEVEL_KINDS` (core/leave-approval-policy.ts) and
  * `test/r293-approval-builder.test.ts` pins the two in step across the files.
  */
+/** Does this ONE approver resolve to somebody? The kind-by-kind drop rule, over a single approver. */
+function approverResolves(a: ApprovalApprover, facts: ChainResolutionFacts): DropReason | null {
+  if (a.kind === 'direct_manager' && !facts.hasManager) return 'no_manager';
+  if (a.kind === 'manager_manager' && !facts.managerManager) return 'no_manager_manager';
+  if (a.kind === 'department_head' && !facts.deptHead) return 'no_department_head';
+  if (a.kind === 'business_unit_head' && !facts.buHead) return 'no_business_unit_head';
+  return null;
+}
+
 export function applyChainDropRules(
   chain: readonly ApprovalLevel[],
   facts: ChainResolutionFacts,
 ): ResolvedChainLevel[] {
-  return chain.map(({ kind, employmentId }) => {
+  return chain.map((level) => {
+    const { kind, employmentId } = level;
     // r293 phase 3 — THE ASYMMETRY, stated once and in the only place that can act on it. A FIXED level
     // is returned KEPT unconditionally, even when the person it names has left: there is no relationship
     // to resolve to nobody, so there is nothing to drop. The flag below is what the builder and the
     // preview warn from. Dropping instead would silently remove an approval an administrator deliberately
     // put in the chain, and the plan promises the reporter a warning, not a skip.
     const fixedApproverEnded = !!employmentId && facts.endedFixedApprovers.includes(employmentId);
-    const base = { kind, employmentId: employmentId ?? null, fixedApproverEnded };
-    if (kind === 'direct_manager' && !facts.hasManager) {
-      return { ...base, kept: false, droppedBecause: 'no_manager' as const };
-    }
-    if (kind === 'manager_manager' && !facts.managerManager) {
-      return { ...base, kept: false, droppedBecause: 'no_manager_manager' as const };
-    }
-    if (kind === 'department_head' && !facts.deptHead) {
-      return { ...base, kept: false, droppedBecause: 'no_department_head' as const };
-    }
-    if (kind === 'business_unit_head' && !facts.buHead) {
-      return { ...base, kept: false, droppedBecause: 'no_business_unit_head' as const };
+    const base = {
+      kind,
+      employmentId: employmentId ?? null,
+      alternates: level.alternates,
+      fixedApproverEnded,
+    };
+    // r293 phase 4 — an ANY-ONE level is dropped only when EVERY one of its approvers resolves to
+    // nobody. One surviving approver is the whole point: "Direct manager OR Sarah" must still run for an
+    // employee with no manager, because Sarah is there. The drop reason reported is the PRIMARY
+    // approver's, which is the one the level is named after on every screen.
+    const reasons = approversOf(level).map((a) => approverResolves(a, facts));
+    if (reasons.every((r) => r !== null)) {
+      return { ...base, kept: false, droppedBecause: reasons[0] };
     }
     return { ...base, kept: true, droppedBecause: null };
   });
@@ -4320,6 +4347,12 @@ async function generateApprovalSteps(
       stepIndex,
       approverKind: level.kind,
       approverEmploymentId: level.employmentId,
+      // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
+      // of alternates" must not be two different values in the column, and NULL is what every row written
+      // before this migration holds.
+      approverAlternates: level.alternates.length
+        ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
+        : null,
     })),
   );
 }
@@ -4417,6 +4450,25 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
 /** 6fadb036 (gap-close) — dispatch a leave approval step to the right decider-authority check for its kind.
  *  Each kind's semantics are documented on LEVEL_KINDS (core/leave-approval-policy.ts). The self-approval
  *  ban applies to every kind (super_admin keeps the sole-admin escape hatch), matching assertCanDecide. */
+/**
+ * r293 phase 4 — THE ONE ENGINE CHANGE OF THE WHOLE ITEM: when does a step count as satisfied?
+ *
+ * A step is satisfied when the caller passes the gate for ANY ONE of its approvers. On a level with a
+ * single approver — every level that existed before phase 4 — that is byte-for-byte the old behaviour,
+ * because the loop runs once.
+ *
+ * ⚠️ WHAT THE LOOP MUST NOT DO, and the reason it is written this way. Each per-approver gate REFUSES BY
+ * THROWING, so "try the next one" means catching. Catching indiscriminately would swallow a database
+ * error and then quietly accept the request under a different approver, so the refusals are collected and
+ * the FIRST one is re-thrown when every approver refuses — the caller sees a real reason, not a generic
+ * one, and nothing is ever approved because an error was mistaken for a refusal.
+ *
+ * ⚠️ THE SELF-APPROVAL BAN SURVIVES INTACT, and that is the property most worth stating. Every gate
+ * carries its own ban against the SUBJECT, so a requester who is one of the alternates is refused on that
+ * alternate — and any OTHER alternate may still clear the step, which is exactly right: "Sarah or Ahmad"
+ * with Sarah requesting means Ahmad approves, not that the level is skipped and not that Sarah approves
+ * her own leave.
+ */
 async function assertCanDecideLeaveStep(
   tx: Tx,
   ctx: SessionContext,
@@ -4426,6 +4478,35 @@ async function assertCanDecideLeaveStep(
   /** r293 phase 3 — the step's OWN named approver, for FIXED kinds. Read off the snapshot row, never
    *  re-resolved from the template: the snapshot is what makes a template edit safe for leave in flight,
    *  and a decider check that went back to the template would undo exactly that. */
+  approverEmploymentId?: string | null,
+  /** r293 phase 4 — the step's OWN alternates snapshot (the raw jsonb column). */
+  approverAlternates?: unknown,
+) {
+  const alternates = sanitizeApprovalLevels(Array.isArray(approverAlternates) ? approverAlternates : []);
+  const approvers: ApprovalApprover[] = [
+    { kind: kind as ApprovalApprover['kind'], employmentId: approverEmploymentId ?? null },
+    ...alternates.map((l) => ({ kind: l.kind, employmentId: l.employmentId })),
+  ];
+  const refusals: unknown[] = [];
+  for (const approver of approvers) {
+    try {
+      await assertCanDecideAsApprover(tx, ctx, subjectEmploymentId, approver.kind, label, approver.employmentId);
+      return;
+    } catch (e) {
+      refusals.push(e);
+    }
+  }
+  throw refusals[0];
+}
+
+/** The gate for ONE approver of a step — the per-kind decider authority. Unchanged by phase 4 except
+ *  that it is now called once per approver instead of once per step. */
+async function assertCanDecideAsApprover(
+  tx: Tx,
+  ctx: SessionContext,
+  subjectEmploymentId: string,
+  kind: string,
+  label: string,
   approverEmploymentId?: string | null,
 ) {
   const roles = ctx.roles ?? [];
@@ -4482,6 +4563,18 @@ async function assertCanDecideLeaveStep(
         .limit(1);
       if (!mgr?.managerEmploymentId) {
         throw new Error(`No manager's manager is recorded for this employee — an admin must decide`);
+      }
+      // ⚠️ SAY WHAT IS ACTUALLY WRONG. Delegating to assertCanDecide about the MANAGER means its own
+      // self-ban fires when the caller IS that manager — the correct refusal (a second hop the first hop
+      // can clear is not a second hop), but its message reads "You cannot decide your own leave request",
+      // which is not true and which a reader would believe. Found by driving the refusal on a dev server.
+      const [mgrPerson] = await tx
+        .select({ personId: employment.personId })
+        .from(employment)
+        .where(eq(employment.id, mgr.managerEmploymentId))
+        .limit(1);
+      if (ctx.personId != null && mgrPerson?.personId === ctx.personId) {
+        throw new Error(`Only the manager's manager or HR can decide this ${label}`);
       }
       return assertCanDecide(tx, ctx, mgr.managerEmploymentId, label, scopeOf('leave.application'));
     }
@@ -4882,6 +4975,7 @@ export async function decideLeave(
         current.approverKind,
         'leave request',
         current.approverEmploymentId,
+        current.approverAlternates,
       );
       await tx
         .update(leaveApprovalStep)
