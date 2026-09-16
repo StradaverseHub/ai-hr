@@ -265,12 +265,25 @@ A heartbeat staleness check runs hourly, because **a job that stops running has 
 wrapper can see it: `review-sweep` was absent from this crontab for six weeks while every log looked fine.
 Previous crontab backed up at `/home/ubuntu/crontab.pre-r295.20260917-011036.bak`.
 
-**Log rotation is NOT installed and cannot be by this operator.** `sudo -l` on the box shows
-`ubuntu` holds `(ALL : ALL) ALL` **with a password**, and NOPASSWD for exactly one command,
-`systemctl restart aihr`. `sudo cp` into `/etc/logrotate.d/` therefore needs a password this operator does
-not hold. The file is at `/opt/ai-hr/deploy/logrotate-aihr`; the four commands and two silent traps (the
-installed filename must contain NO DOT — `tabooext` skips it wordlessly — and the `su ubuntu ubuntu` line
-must stay) are in `deploy/DEPLOY.md` §5c.
+**Log rotation IS now bounding the files, by a user-level route — r295.** The ROOT install
+(`/etc/logrotate.d/aihr` from `deploy/logrotate-aihr`) is still the right answer and still needs a sudo
+password this operator does not hold: `sudo -l` shows `ubuntu` holds `(ALL : ALL) ALL` **with a password**
+and NOPASSWD for exactly one command, `systemctl restart aihr`.
+
+But rotation never needed root here. The directory is `drwxrwxr-x ubuntu ubuntu` and every log is
+`ubuntu:ubuntu`, so `logrotate` run AS ubuntu has every privilege it needs.
+`/home/ubuntu/logrotate-aihr-user` + a user state file now runs daily from the crontab at 04:10.
+**Forced once on install: `provision.log` went from 1,404,005 bytes to 0**, archived as
+`provision.log-2026-09-17`. Nothing bounded these files before.
+
+The one difference from the root config, and the reason it is a separate file: **`su ubuntu ubuntu` is
+deliberately absent.** That directive exists so a ROOT-run logrotate drops privileges; run as ubuntu there
+is nothing to drop and logrotate refuses it outright. Adding it back breaks rotation silently.
+
+**IF THE ROOT INSTALL IS EVER DONE, delete the crontab line that drives this** — two rotations racing over
+one set of files is worse than either alone. Noted in both the config header and the crontab comment.
+
+- [x] Log rotation configured — **user-level, r295; root install still preferred and still available**
 
 - [x] Non-zero exit on any of the six cron jobs reaches a human — **done r295, proven on live traffic** — **wrapper written and tested, awaiting
       the owner's crontab edit** (`deploy/cron-alert.sh`, `DEPLOY.md` §5c)
