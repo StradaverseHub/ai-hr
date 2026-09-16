@@ -19,8 +19,9 @@ its feature list suggests.** Those are two different statements and both are tru
 
 **What is genuinely built and proven.** The payroll calculation engines (EPF, SOCSO/SKBBK, EIS, PCB with
 replayed accumulators, HRDF, zakat) are golden-tested against the agencies' own worked examples. Tenant
-isolation is real and enforced at the database: `ai_hr_app` is `NOBYPASSRLS`, 172 of 173 tables carry RLS,
-and a live probe returned zero rows without a tenant context and zero foreign-tenant rows with one.
+isolation is real and enforced at the database: `ai_hr_app` is `NOBYPASSRLS`, 173 of 173 tables carry RLS
+(172 at survey time — 0465 closed the last one, see 1.7), and a live probe returned zero rows without a
+tenant context and zero foreign-tenant rows with one.
 Migration safety is unusually good — a shadow-migrate gate against the live schema shape, plus an upgrade
 rehearsal against a populated baseline. The five nightly sweeps have run 119 times with zero failures.
 Employee import is real and has been used six times. Real authentication (WorkOS) is **fully written**:
@@ -139,13 +140,36 @@ group admin — but it is pull-only, with no run-now and no notification.
 - [ ] Log rotation configured
 - [ ] Somebody is nominated as on call
 
-### 1.7 Close the one RLS hole before a second tenant exists
-`tenant_suspension_window` is the only table of 173 with row-level security disabled, and `ai_hr_app` holds
+### 1.7 Close the one RLS hole before a second tenant exists — DONE (r290, migration 0465)
+`tenant_suspension_window` was the only table of 173 with row-level security disabled, and `ai_hr_app` held
 full CRUD on it. It is a control-plane table that should belong to `ai_hr_platform`
-(`db/migrations/0453_custom_report_app_grant.sql:22-24`). It has **0 rows**, so nothing leaks today — but it
-is a cross-tenant read/write hole with no database backstop the moment it is used.
+(`db/migrations/0453_custom_report_app_grant.sql:19-22`, not `:22-24` — the file is 23 lines). It has
+**0 rows**, so nothing had leaked — but it was a cross-tenant read/write hole with no database backstop the
+moment it was used.
 
-- [ ] RLS enabled with a tenant policy, or the grant revoked from `ai_hr_app`
+**Both, not either.** `0465_tenant_suspension_window_control_plane.sql` revokes every privilege from
+`ai_hr_app` AND enables RLS with no policy — the `platform_user` shape (0313 + 0351), which is what a
+control-plane table with no app-side reader looks like here. A tenant policy was rejected: nothing in
+`app/`, `core/`, `lib/` or `packs/` touches this table, so a policy would have to invent a reader that does
+not exist. The two real writers, `scripts/apply-dunning.ts` and `scripts/reactivate-tenant.ts`, both require
+`MIGRATION_DATABASE_URL` and run as `ai_hr_owner`.
+
+RLS is **ENABLED, not FORCED**, and that is deliberate: `platform_user` is forced because its reader is
+`ai_hr_platform` (BYPASSRLS), whereas here the legitimate writers *are* the owner. Forcing would deny them.
+None of the six cron jobs mentions this table (`crontab -l`, 2026-09-16) and all six connect as the owner.
+
+The revoke alone would not have been enough: the grant exists only because `deploy/bootstrap-db.sql:72-75`
+runs `ALTER DEFAULT PRIVILEGES`, so a re-bootstrap puts it back silently. RLS with no policy is the layer
+that survives that, and `test/tenant-suspension-window-rls.test.ts` proves it by handing the grant back
+inside a test and watching the app role still read zero rows.
+
+Verified on a scratch database built with the same bootstrap grant: **173 of 173 tables now carry RLS**,
+`relrowsecurity=t relforcerowsecurity=f`, no policy, and `has_table_privilege('ai_hr_app', …)` false for
+SELECT/INSERT/UPDATE/DELETE. `pnpm gate:shadow` → `SHADOW_RESULT=PASS (381/381 applied against live-shaped
+schema)`.
+
+- [x] RLS enabled with a tenant policy, or the grant revoked from `ai_hr_app` — both: grant revoked and
+      RLS enabled with no policy (migration 0465)
 
 ### 1.8 Stable, controlled exposure
 The app listens on `127.0.0.1:3000`. Public access is a Cloudflare **quick** tunnel started by hand on
@@ -314,7 +338,8 @@ status in one transaction) and ticks every 60 seconds writing 1.3 MB of "nothing
 
 - **Statutory calculation engines** — EPF, SOCSO with SKBBK, EIS, PCB with replayed accumulators, HRDF,
   zakat, all golden-tested against the agencies' own worked examples.
-- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; 172 of 173 tables carry RLS; `platform_user` is
+- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; 173 of 173 tables carry RLS (172 at survey time;
+  0465 closed `tenant_suspension_window`); `platform_user` is
   default-deny with no grant; `withTenant` uses transaction-scoped `SET LOCAL`. Verified live.
 - **Migration safety** — shadow-migrate against the live schema shape catches drizzle's silent-skip mode;
   the upgrade rehearsal runs against a populated baseline; the audit-chain gate runs before the build.

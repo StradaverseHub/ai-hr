@@ -1,0 +1,84 @@
+-- 0465 — READINESS 1.7: THE ONE TABLE OF 173 WITH ROW-LEVEL SECURITY OFF.
+--
+-- Measured on production 2026-09-16 (read-only, as ai_hr_owner):
+--
+--   relname                  | relrowsecurity | relforcerowsecurity
+--   tenant_suspension_window | f              | f
+--   platform_user            | t              | t
+--   tenant_provision_request | t              | f
+--
+--   table_name               | grantee    | privileges
+--   tenant_suspension_window | ai_hr_app  | DELETE,INSERT,SELECT,UPDATE
+--   platform_user            | ai_hr_app  | (none)
+--   tenant_provision_request | ai_hr_app  | INSERT
+--
+-- So `ai_hr_app` — the NOBYPASSRLS role every tenant session runs as — holds full CRUD on a table with
+-- no policy and no RLS. There is no database backstop at all: one routing bug, one missing `WHERE
+-- tenant_id`, and a tenant reads or edits every other tenant's suspension history. It holds 0 rows today
+-- (verified on production), which is the only reason nothing has leaked, and is exactly the wrong reason
+-- to leave it: the hole is already there and the first row is what turns it into a breach.
+--
+-- 0350 CREATEd the table and, correctly for a control-plane table, wrote no GRANT. The grant is not
+-- something anyone chose — `deploy/bootstrap-db.sql:72-75` runs ALTER DEFAULT PRIVILEGES handing
+-- ai_hr_app full CRUD on every table ai_hr_owner creates, so the table was born wide open. (0453's own
+-- comment names this table among the four ai_hr_app "cannot read on a REBUILT cluster" and leaves it
+-- alone as correct. That is true of a rebuilt cluster and false of every bootstrapped one, which is what
+-- production is. `test/global-setup.ts:187` runs the same ALTER DEFAULT PRIVILEGES, so the test databases
+-- reproduce the production grant faithfully and the guard added with this migration can see it.)
+--
+-- ── THE CHOICE: REVOKE THE GRANT **AND** ENABLE RLS. NOT A TENANT POLICY. ────────────────────────────
+--
+-- The readiness item offers "RLS enabled with a tenant policy, OR the grant revoked". Both are done, and
+-- deliberately no policy, because that is the shape the neighbouring control-plane tables already have:
+--
+--   platform_user (0313 + 0351)          RLS ENABLED, FORCEd, NO policy, NO grant to ai_hr_app.
+--                                        Read by the platform plane (ai_hr_platform, BYPASSRLS) only.
+--   tenant_provision_request (0295)      RLS ENABLED, narrow INSERT + column-SELECT grant, policies
+--                                        gated on app.is_operator() — because the operator console is a
+--                                        real screen in the app and genuinely writes it.
+--
+-- `tenant_suspension_window` is the first shape, not the second. Nothing in `app/`, `core/`, `lib/` or
+-- `packs/` reads or writes it: the only callers are `scripts/apply-dunning.ts` (INSERT) and
+-- `scripts/reactivate-tenant.ts` (SELECT + UPDATE), both of which require MIGRATION_DATABASE_URL and
+-- refuse to start without it, plus `core/tenant-lifecycle.ts`, which is pure functions over windows
+-- handed to it. A tenant policy would have to invent an app-side reader that does not exist, and inventing
+-- one is how "a tenant can see its own suspension history" becomes a requirement nobody asked for.
+--
+-- WHY BOTH AND NOT JUST THE REVOKE. The grant is not durable by construction. It exists only because
+-- ALTER DEFAULT PRIVILEGES hands it out, so a re-bootstrap, a `GRANT … ON ALL TABLES`, or a well-meant
+-- copy of 0453's "write the GRANT out every time" habit puts it straight back — silently, because a
+-- restored grant looks like every other grant. RLS with no policy is the backstop that survives that: with
+-- the grant back, ai_hr_app still selects zero rows and can write none. Two independent mistakes required,
+-- which is the same argument ADR-0077 D5 makes for ai_hr_platform being a separate role at all.
+--
+-- WHY **ENABLE** AND NOT **FORCE**. platform_user is FORCEd and that is right for it: its intended reader
+-- is ai_hr_platform (BYPASSRLS), so forcing costs nothing and closes the owner's exemption. Here the
+-- intended writers ARE the owner — apply-dunning and reactivate-tenant run as ai_hr_owner, and so do
+-- test/tenant-closure-runner.test.ts's fixtures. FORCE with no policy would deny the table owner too and
+-- break the two scripts this table exists to serve. ENABLE closes ai_hr_app; FORCE would close the only
+-- role that legitimately uses it.
+--
+-- THE SIX CRON JOBS ARE UNAFFECTED, checked rather than assumed. `crontab -l` on the box (2026-09-16):
+-- accrue-earned, review-sweep, expire-carry, provision-runner, capture-usage, anomaly-sweep. None of the
+-- six mentions tenant_suspension_window (grep: 0 hits each) and all six run
+-- `node --env-file=.env.production … ` against MIGRATION_DATABASE_URL, i.e. as ai_hr_owner — which ENABLE
+-- (without FORCE) does not filter. apply-dunning and reactivate-tenant are not in cron at all; they are
+-- run by hand, also as owner.
+--
+-- NOT DONE, ON PURPOSE: this table is NOT added to 0351's `ai_hr_platform` grant list. That list is
+-- enumerated because "the grant list IS the policy", and no platform-plane code reads suspension windows
+-- today. When a /platform screen needs them, widen the list there, in a migration that says why — not
+-- here, pre-emptively, for a reader that does not exist.
+--
+-- PRODUCTION IMPACT: none visible. 0 rows, no application code path, and the only two writers are owner
+-- scripts that ENABLE does not filter. What changes is that the hole closes before the first row exists.
+
+-- The REVOKE first, so that for no instant does the table sit readable-and-unprotected. ALL PRIVILEGES
+-- rather than the four verbs measured above: a future ALTER DEFAULT PRIVILEGES could hand out more than
+-- CRUD, and naming only what is there today would leave whatever is added tomorrow.
+REVOKE ALL PRIVILEGES ON TABLE tenant_suspension_window FROM ai_hr_app;--> statement-breakpoint
+
+-- No policy follows, and that is the point: RLS enabled with zero policies denies every row to every
+-- non-owner, non-BYPASSRLS role. See platform_user (0313), which has looked exactly like this since
+-- slice 1.
+ALTER TABLE tenant_suspension_window ENABLE ROW LEVEL SECURITY;

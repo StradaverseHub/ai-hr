@@ -2661,6 +2661,13 @@
       "when": 1781862564000,
       "tag": "0464_employment_attendance_rule_id",
       "breakpoints": true
+    },
+    {
+      "idx": 465,
+      "version": "7",
+      "when": 1781862565000,
+      "tag": "0465_tenant_suspension_window_control_plane",
+      "breakpoints": true
     }
   ]
 }
