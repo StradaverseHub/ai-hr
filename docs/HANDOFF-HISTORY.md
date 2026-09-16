@@ -1,3 +1,87 @@
+## r289 (2026-09-16) — the paste box takes the Employee ID you can see. `main@b2f55cb8`, **no migration**.
+
+`0d2b17ce`, raised by the operator loop after r288 and approved by the reporter. `3fb1a611` still not built.
+Gate: **868 files, 13,106 tests, 0 AssertionErrors** across 24 chunks at 2 workers, every chunk counted==asked,
+no chunk with a single failure. `next build` exit 0.
+
+### I CALLED THIS GAP THE WRONG SHAPE FOR A WHOLE ROUND
+
+At the end of r288 I told the owner that closing the paste-door gap "means a second, weaker validator in
+front of `resolveOrgCriteriaTargets`, which the module header warns against", and left it as a decision.
+**That framing was mine, not the code's, and it was wrong.**
+
+The actual defect is smaller and worse: the paste box accepts ONLY the internal employment uuid, which is
+**never displayed anywhere in the product**. It does not accept `EMP-0008` — the Employee ID a person can
+see, copy and paste out of a spreadsheet. The box was unusable for the one job it exists to do, and its help
+text said "paste employee references" while every reference a human can obtain was the wrong kind.
+
+The fix is a **RESOLVER, not a validator**, and that distinction is what makes the header irrelevant rather
+than violated: it translates code to id BEFORE the restriction is handed over. `resolveOrgCriteriaTargets`
+still decides who qualifies, unchanged. The unmatched-token report is a MESSAGE, not a gate — and an
+unmatched token is **still passed through** so it resolves to nobody, because dropping a typo would make a
+smaller run look like one that succeeded.
+
+Proven off the real write path rather than from a helper: a mixed paste reached Postgres as
+`employment.id in ($3, $4)` with `params: …,89d13468-…,NOPE-1`. The code became a uuid; the typo survived
+verbatim.
+
+### THE AGENT BROKE MY BRIEF ON PURPOSE AND WAS RIGHT
+
+I wrote "no new query — the picker has already loaded the list". **The client's list cannot reach the write
+path.** A resolution performed only in the browser puts the population the screen CONFIRMS out of step with
+the one the write COVERS — precisely the class `lib/employment-selection.ts` exists to prevent, as its own
+header says. So `core/read.ts` gained `listEmployeePickOptions` and the three server actions resolve for
+themselves. "No new endpoint, no round trip" still holds on the browser side.
+
+**And my "three consumers" undercounted by half.** `mergeEmploymentSelection` has SIX call sites — three
+forms and three server actions — and the write paths were the load-bearing half.
+
+### THREE THINGS THE CODE KNEW THAT THE PLAN DID NOT
+
+1. **`fold()` was module-private.** "Reuse it" was impossible as written; it is now exported as
+   `foldEmployeeCode` with `const fold = foldEmployeeCode` so existing call sites read unchanged.
+2. **`employee_code` IS NULLABLE** (`db/schema.ts:844`, no `.notNull()`). I had asserted uniqueness and
+   stopped there. Decision taken and pinned: **a NULL or blank code names nobody.** Postgres treats NULLs as
+   distinct in that unique index, so a tenant that has not adopted Employee IDs has many such rows, and
+   indexing the empty string would let a stray token match whichever was read first. Those people stay
+   reachable by picker and by internal id.
+3. **`EMP-0008` and `EMP0008` are both legal codes that FOLD TO ONE KEY.** A folded collision is refused,
+   not guessed (`core/payroll-txn-import.ts`'s precedent); the exact spelling still wins.
+
+### THE SEPARATOR ATE THE SPELLING THE MOCKUP PROMISED
+
+The plan's mockup showed `EMP 0008` working. Whitespace is the box's OWN separator, so it arrives as two
+tokens (`EMP`, `0008`) and no amount of folding fixes that. `repairRuns` rejoins runs of up to four tokens —
+but **only tokens that resolved to nothing on their own**, and **only when the join resolves to exactly one
+employment**. So it can move a token out of "matched nobody" into "matched exactly one real person" and out
+of no other state. It never re-reads a token that already named someone, and never picks between candidates.
+
+Worth keeping as a general lesson: **a mockup can promise an input format the parser cannot deliver**, and
+the separator is the first thing to check when it does.
+
+### THE DOM GUARDS GO THROUGH REAL next-intl NOW
+
+r288's lesson applied rather than restated: the leave screens' `t(key, { list })` is exercised through
+`NextIntlClientProvider` with the real message catalogue, which is what makes these assertions blind to
+nothing — unlike the sixteen jsdom guards that were green over r288's `FORMATTING_ERROR`s because they read
+`messages/en.json` directly. Dev log across all three routes: `FORMATTING_ERROR|MISSING_MESSAGE|IntlError`
+count **0**.
+
+Locale parity is now checked by **key-path SET equality per locale**, not by count: 11,079 leaf keys,
+identical paths in all six. A count alone cannot see a swapped key.
+
+### ENVIRONMENT
+
+The wedged-cluster backlog came down from 69 to the high 30s, partly from the gate's own draining and partly
+by hand, after establishing what the earlier note got wrong: **one of those directories was a SYMLINK to the
+LIVE RAM-disk data**, left by a `mv` that moved the link instead of the directory — exactly what
+`scripts/dev-db-rebuild.sh:96-99` warns about. A guard comparing `readlink -f` output does NOT catch it
+(BSD `readlink -f` returns empty for the live link), and nothing was lost only because `rm -rf` does not
+dereference a symlink given as its argument. **Test `-L` directly.** The remainder are all real directories.
+
+The cleanup was killed mid-run for low memory while the gate was running — free pages were down to ~3,769.
+That is the correct thing to sacrifice, and the reason not to run the two together.
+
 ## r288 (2026-09-16) — the two items CLAUDE AI raised, and a 200 that was lying. `main@aabe4134`, **no migration**.
 
 `686dc512` (warn when an earned method can never accrue) and `8521e160` (the real picker on Leave
