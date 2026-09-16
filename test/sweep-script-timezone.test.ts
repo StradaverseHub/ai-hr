@@ -18,7 +18,16 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { todayInKualaLumpur } from '../core/leave';
 
-const SCRIPTS = ['scripts/accrue-earned.ts', 'scripts/review-sweep.ts', 'scripts/expire-carry.ts'];
+const SCRIPTS = [
+  'scripts/accrue-earned.ts',
+  'scripts/review-sweep.ts',
+  'scripts/expire-carry.ts',
+  // r296 / readiness 2.1 — the entitlement alarm, scheduled 03:30 MYT. It is on this list for exactly the
+  // reason the list exists: "in force on this date" is a comparison against `valid_from` / `valid_to`, and
+  // at 03:30 MYT the UTC date is still yesterday — so a UTC "today" would answer for the previous day and,
+  // on the 1st, for the previous month. A version retired yesterday would read as still in force.
+  'scripts/entitlement-alarm.ts',
+];
 
 describe('sweep scripts resolve "today" in MYT, not UTC', () => {
   it.each(SCRIPTS)('%s uses todayInKualaLumpur and no raw toISOString date', (path) => {

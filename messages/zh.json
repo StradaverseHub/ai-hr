@@ -11593,7 +11593,9 @@
       "opened": "已开启考核",
       "reminders": "已发送提醒",
       "swept": "已处理记录",
-      "forfeited": "作废天数"
+      "forfeited": "作废天数",
+      "alarms": "触发的警报",
+      "tenantsAlarming": "存在警报的公司"
     },
     "jobs": {
       "leave-accrue": {
@@ -11615,6 +11617,10 @@
       "anomaly-sweep": {
         "name": "薪资异常检查",
         "description": "每晚检查所有进行中的薪资运行是否存在异常，让相关事项在有人查看前就已排入队列。"
+      },
+      "entitlement-alarm": {
+        "name": "假期额度覆盖检查",
+        "description": "每晚检查各公司是否仍有生效的假期额度表，并确认这些额度表确实适用于某些员工，避免配置改动在无人察觉的情况下让所有人都没有额度。"
       }
     }
   },

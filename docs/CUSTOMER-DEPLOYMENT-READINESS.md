@@ -357,8 +357,39 @@ The outage is closed. **The finding that survives is the shape of the risk:** on
 zeroed the entitlement engine for a whole tenant, it stayed down for a day, and nothing anywhere raised
 an alarm. Nobody would have noticed until an employee was refused leave.
 
-- [ ] An alarm for "a leave type resolves for nobody" at tenant scale
-- [ ] An alarm for "a tenant's entitlement templates in force dropped to zero"
+**BOTH ALARMS BUILT (r296), AND THE CRONTAB LINE IS THE OWNER'S STEP.** `scripts/entitlement-alarm.ts`
++ `core/entitlement-alarm.ts` check every tenant in good standing, nightly, through
+`deploy/cron-alert.sh` — exit 3 on an alarm, exit 2 when the check could not answer for a tenant, and
+both reach the priority-3 journal r295 opened. It is a DETECTOR: every transaction it opens is
+`SET TRANSACTION READ ONLY`, so the server refuses a write from it, and the test proves the refusal from
+inside the module's own transaction rather than asserting it in a comment.
+
+The predicates, and what each deliberately stays silent on:
+
+- **Templates in force dropped to zero** = `templatesInForce == 0 AND templatesStarted > 0 AND
+  activeEmployments > 0`, where `templatesStarted` counts versions whose `valid_from <= today` — versions
+  that HAVE already been in force. That term is what separates "was configured and is now zero" from
+  "never configured": a brand-new tenant has no rows, a tenant mid-setup has only future-dated ones, and
+  neither alarms. Retiring one table or rule while anything else is in force leaves the count above zero,
+  so the retirement the reporter made on purpose that evening stays silent.
+- **A leave type resolves for nobody** = a leave type with at least one table IN FORCE today that not one
+  active employee is reached by, asked of `buildTemplateEntitlementResolver.winnerFor` — the engine's own
+  answer, including the sole-table (r193) and default-table (76ffdcf2) branches — so it cannot disagree
+  with what the engine actually grants. A type with NO table is deliberately excluded: that is the
+  position `core/entitlement-scheme-view.ts` already ships to the screen, and on this tenant (1 table
+  across nine active leave types) the opposite position would have raised eight findings on night one.
+- **Eligibility rules are counted and reported, never alarmed on.** One table in force with no rule
+  resolves for EVERYBODY (r193 fault 3), so "rules dropped to zero" would fire on a correct configuration.
+
+Residual, stated rather than glossed: a tenant whose templates were HARD DELETED rather than retired reads
+as never-configured and stays silent. `deleteEntitlementTemplate` already refuses a lineage that granted
+days, but that guard is an approximation — the ledger records no template reference at all — so closing
+this needs the deciding lineage recorded on the grant, which is a schema change and a separate item.
+
+- [x] An alarm for "a leave type resolves for nobody" at tenant scale — **built r296**, awaiting the
+      crontab line (`deploy/DEPLOY.md` §5c, one line beside the six)
+- [x] An alarm for "a tenant's entitlement templates in force dropped to zero" — **built r296**, same line
+- [ ] The crontab line and its 48-hour heartbeat staleness check installed on the box — **owner's step**
 
 ### 2.2 Master data must be complete before month one
 Of 73 rows in `employee_statutory_my`: **30 have no tax number, 31 no EPF number, 47 no SOCSO number,

@@ -113,7 +113,16 @@ describe('0280 — job_run recorder', () => {
     // job_run wiring are done too. r113 added usage.capture and this is what made that visible; ADR-0076
     // added anomaly.sweep and this caught that one too, on the first full gate after it was written.
     expect(JOBS.map((j) => j.key).sort()).toEqual(
-      ['anomaly.sweep', 'leave.accrue', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
+      [
+        'anomaly.sweep',
+        // r296 / readiness 2.1 — the entitlement-engine alarm. Added here in the same commit as the
+        // script, its i18n and its crontab documentation, which is exactly what this assertion is for.
+        'entitlement.alarm',
+        'leave.accrue',
+        'leave.expire-carry',
+        'review.sweep',
+        'usage.capture',
+      ].sort(),
     );
     // c459bff9 removed 'leave.expire-aged' — the sweep, its script and the columns it read are gone, so
     // the Scheduled Actions screen must not offer a job that can never run again. Asserted by NAME as well

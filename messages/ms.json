@@ -11593,7 +11593,9 @@
       "opened": "Penilaian dibuka",
       "reminders": "Peringatan dihantar",
       "swept": "Rekod disapu",
-      "forfeited": "Hari dilucutkan"
+      "forfeited": "Hari dilucutkan",
+      "alarms": "Amaran dibangkitkan",
+      "tenantsAlarming": "Syarikat dengan amaran"
     },
     "jobs": {
       "leave-accrue": {
@@ -11615,6 +11617,10 @@
       "anomaly-sweep": {
         "name": "Semakan pengecualian gaji",
         "description": "Menyemak setiap pusingan gaji terbuka untuk anomali pada waktu malam, supaya pengecualian sudah dalam baris gilir apabila seseorang melihatnya."
+      },
+      "entitlement-alarm": {
+        "name": "Semakan liputan kelayakan cuti",
+        "description": "Menyemak setiap malam bahawa setiap syarikat masih mempunyai jadual kelayakan cuti yang berkuat kuasa dan bahawa ia mencapai seseorang, supaya perubahan tetapan tidak boleh menyebabkan tiada sesiapa layak menerima apa-apa tanpa disedari."
       }
     }
   },
