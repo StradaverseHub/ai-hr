@@ -1,3 +1,123 @@
+## r291 (2026-09-16) — deploy detachment, a health endpoint, and backups. `main@ad5287b8`, **no migration**.
+
+Readiness **7.1** (detach the remote deploy; detect a partway failure), **1.6** (health endpoint + the
+alerting configs, written not installed), **1.5** (backup + a restore rehearsal that can fail).
+Owner's goal, not the board. Gate: **875 files, 13,274 tests, 0 AssertionErrors**, first pass, every chunk
+counted==asked. `next build` exit 0.
+
+### THE CATCH OF THE SESSION: AN EXIT TRAP TURNS A REFUSAL INTO A SUCCESS
+
+Detaching the deploy means an EXIT trap in `deploy/deploy.sh`. **Merely installing one changes what bash
+returns after a parameter-expansion error.** Measured here, bash 3.2.57:
+
+```
+bash -c 'set -euo pipefail; : "${X:?nope}"'                    → 1
+bash -c 'set -euo pipefail; trap "true" EXIT; : "${X:?nope}"'  → 0
+```
+
+**Every preflight in `deploy.sh` is that construct** — including r290's `SHARE_PASSWORD` guard, whose entire
+job is refusing to publish an open, ungated HRIS. The obvious implementation
+(`trap 'rc=$?; finish "$rc"; exit $rc' EXIT`) **silently converts all three refusals into successful
+deploys**, undoing a security fix shipped four hours earlier, with nothing red anywhere.
+
+Fixed with an `AIHR_DEPLOY_COMPLETED` flag set at the script's two real end points: the trap believes the
+flag, not `$?`. Pinned by seven tests, and the naive version is kept as a revert probe that fails exactly
+the three refusal tests.
+
+**The general lesson: a change to a shell script's control flow can disable a guard in a DIFFERENT feature
+without touching it.** r290 found the same shape across two branches; this is the same shape across two
+rounds.
+
+### AND THE INTEGRATION CHECK THAT r290 TAUGHT US TO RUN
+
+Before the full gate, the cross-branch surface was run on its own — the two r290 deploy files plus the three
+new ones, **8 files / 194 tests / 0 AssertionErrors**. That is the check that would have caught r290's merge
+defect an hour earlier instead of at chunk 23. **Run the interaction surface before the gate, not after it.**
+
+### A HEALTH CHECK MUST NOT ESCAPE THE FAIL-CLOSED ARM
+
+`/health` bypasses the **401 challenge** but sits BELOW 1.4's unconfigured **503**, verified in the merged
+tree's middleware ordering. A deployment with no `SHARE_PASSWORD` is not serving, so `/health` must 503 there
+too and the monitor must alarm. **Hoisting that bypass one block higher would report a broken deployment as
+healthy** — precisely the failure 1.6 exists to remove.
+
+The disclosure question is answered by making the endpoint **worth nothing to read**: exactly
+`{"status":"ok"}` or `{"status":"unhealthy"}`, no version, build id, host, driver text or counts. The reason
+is **redirected, not withheld** — it goes to the journal, already behind ssh. Exact path match, so
+`/health/anything` stays gated and the unauthenticated surface is one enumerable URL.
+
+**My citation was wrong and the truth is worse.** "77 error lines in the journal went nowhere" is not
+reproducible — `journalctl -u aihr -p err --since '7 days ago'` returns **zero**. The real finding:
+**Next writes errors to stdout, and systemd files plain stdout at priority `info`, so a priority-based alert
+can never see an application error at all.** Anyone wiring `journalctl -p err` would build something
+permanently blind. Real failures in that window existed (8 failed employment queries, 4 missing static
+files, 4 invariant errors) and were invisible to priority.
+
+Second correction: the provisioning log is **81,847 lines**, every one `· nothing to do`, and **none carries
+a timestamp** — after rotation there is nothing to date a line by.
+
+### "DOES IT PARSE" IS NOT AN INTEGRITY CHECK
+
+`pg_restore --list` **reads only the header**. It succeeded unchanged on a dump truncated to half its length
+AND on one with its middle overwritten. The obvious verify-the-backup implementation would have been this
+session's seventh vacuous guard. Only the checksum and an actual restore catch damage.
+
+**A superuser cannot tell you a restore is usable**, and the proof is the round's best test: a
+`--no-privileges` dump restores with **identical schema and identical row counts**, `pg_restore` clean — and
+is correctly REJECTED, because the application role can read nothing. A superuser holds every privilege by
+construction, and RLS here is ENABLED not FORCED so the owner bypasses every policy. Two real failure modes
+live entirely outside its view: lost GRANTs (a database `psql` reads perfectly and the product cannot) and
+lost policies (rows back without the isolation — after r290, a cross-tenant leak with the customer's data
+already in it).
+
+### THREE DEFECTS THAT ONLY EXECUTION FOUND
+
+1. **`psql -d ""` does not error.** A `sed` substitution delimited by `#` returned an empty database name for
+   any name containing `#`; `psql` handed an empty `-d` falls back to the local socket and the invoking
+   user's own database. **The restore rehearsal would have inspected a different server and reported
+   success.**
+2. **The health probe announced a recovery that never happened** — the first healthy probe of a fresh
+   process logged `✓ HEALTH: … recovered`.
+3. **A status read landing mid-write reported `died` over a deploy that had just started.** Fixed with one
+   atomic rename; same class in `finish`, where `last-ok` must be published before `current` is marked ok or
+   a clean deploy momentarily reads as `stale-build`.
+
+### THE DETACHMENT TEST HAS A CONTROL, AND NEEDED ONE
+
+It runs the **pre-r291 attached form** through the identical harness and asserts the group SIGKILL *does*
+kill it. Without that, "detached survives the kill" would pass against a deploy that was never in danger.
+The first `setsid` check compared `ps -o sess=`, **which prints 0 for everything on macOS** and would have
+passed vacuously; replaced with a real pgid comparison.
+
+### WHAT IS STILL THE OWNER'S
+
+`BACKUP_DEST` has **no default anywhere** (asserted by a test) and the script refuses without it — writing
+beside the database is the current state and is what makes today's dumps worthless. Still to decide: where
+backups live, when they run, who hears a failure, whether PITR is needed (`archive_mode` is still `off`),
+retention, and whether `deploy.sh` should take a pre-deploy dump — deliberately not wired, because it would
+either block every deploy when the destination is unreachable or fail quietly, and which of those is wanted
+is not the agent's call.
+
+**The RTO is not yet a real number**: 0.05s against a fixture, because nothing ran `pg_dump` against
+production. The first real one has to be taken on the box.
+
+**No observability dependency was added.** The dependency-free path for "application 5xx reaches a human" is
+`instrumentation.ts`'s `onRequestError` emitting a `<3>`-prefixed line — designed and deliberately NOT built,
+because it also fires for `AuthRequiredError`, one per anonymous visitor, 13 in seven days. Without an error
+taxonomy that is an alarm that cries wolf at every logged-out visit, **and a muted channel is worse than
+none.**
+
+### TWO SMALL TRUTHS FOR WHOEVER INSTALLS THIS
+
+The logrotate file's installed name **must contain no dot** (`tabooext` skips it wordlessly), and
+`su ubuntu ubuntu` must stay or logrotate refuses the group-writable directory and does nothing. Also:
+`review-sweep` was **missing from the crontab for six weeks**, which is why the runbook now carries a
+staleness check — a job that stops running has no exit code to alert on.
+
+A dangling `# Aged-leave forfeiture — 03:30 daily.` comment sits in the crontab with no command under it.
+**Checked: benign** — no such script exists in the repo or on the box, so it is a stale heading from a job
+removed with its script, not a sweep silently not running.
+
 ## r290 (2026-09-16) — four customer-readiness items, and the merge defect neither branch could see. `main@f87b6c7b`, **migration 0465**.
 
 Readiness **1.1** (the deploy path seeds demo data into a customer's database), **1.4** (the password gate
