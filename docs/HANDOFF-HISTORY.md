@@ -1,3 +1,81 @@
+## r294 (2026-09-17) — two more services bound, four left with reasons, and an audit that says why. `main@909b7470`, **no migration**.
+
+Closes the gap r292 declared. Gate: **882 files — equal to the suite file count — 13,399 tests,
+0 AssertionErrors, 0 deadlocks**, first pass, no red chunk. `next build` exit 0.
+
+### THE AUDIT IS THE DELIVERABLE, AND GREP CANNOT DO IT
+
+An AST sweep of every `import` / `export … from` / `import()` / `require()` corrected **five of six rows**
+in the importer table I handed the agent. Two failure modes, opposite directions, both worth carrying:
+
+**Grep OVER-reports.** `core/loans-compute.ts:8` contains `from '@/core/loans'` **inside a doc comment**.
+My table listed it and `core/loans.ts` as core-side importers of `loans`; neither imports it that way.
+`test/helpers/import-ratchet.ts` documents this exact trap — "COMMENTS ARE NOT STRIPPED".
+
+**Grep UNDER-reports, and this decided the round.** `core/admin.ts:119` is
+`import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from '../packs/payroll/service'` — the pack
+**FACADE**. A specifier grep for `payroll-cycle` cannot see it. My grep found "none"; **r292 was right and
+I was wrong**, which is why r292's caution was correct and my table would have led to binding a file three
+core surfaces depend on.
+
+### BOUND: 2. LEFT: 4. THAT IS THE HONEST OUTCOME.
+
+**`core/tax-relief.ts`** (~20 entry points) — every consumer outside the payroll route trees takes only
+PURE exports (a const and a function over rows); none opens a transaction, so rebinding does not touch them.
+This closes a real hole: **`app/me/actions.ts` posts `saveTp1Draft`/`submitTp1` from a CORE segment with no
+payroll layout above it**, so that write path had no gate at all.
+
+**`core/back-pay.ts`** (7 entry points) — zero consumers outside `app/payroll/back-pay/**`.
+`approveAndPostBackPay` writes money into a draft batch.
+
+**LEFT, each with its blocking consumer named in `core/module-gate.ts`'s header:**
+- `pay-components` — Personnel page calls `listEmploymentPayComponents`/`listPayComponents`
+  unconditionally, AND `core/attendance-allowance.ts` writes through `setPayrollBatchComponent`, so binding
+  would refuse **a customer who bought Attendance and declined Payroll**.
+- `cp38` — same Personnel page, `listCp38` unconditional.
+- `loans` — `app/me/page.tsx:185` calls `listLoansForEmployment`; ESS, core.
+- `payroll-cycle` — `app/admin/organization/[companyId]/page.tsx:82` calls `listPayrollCycles`.
+  (`core/admin.ts:405` would NOT have broken: it passes its own `tx`, the documented tx-helper exemption.)
+
+**All four are one shape: A CORE SCREEN DOES AN UNCONDITIONAL PAYROLL READ.**
+
+### THE REAL FIX IS NOT MORE GATING
+
+Two ways out, and the second is better:
+1. Per-function `assertModuleGate` on the write entry points only — closes the action hole, leaves the
+   reads. Mechanical, but it is **discipline**, the thing `core/module-gate.ts` exists to replace.
+2. **Make the core screens ask before they read.** Personnel, `/me` and Organization should not be
+   rendering payroll sections to a tenant that declined Payroll — that is arguably a defect in its own
+   right, independent of gating. Fix it and all four files become bindable at the SERVICE, which is the
+   mechanism. Needs a UI decision (does the CP38 card vanish, or say "not on your plan?") so it is a
+   reporter-facing question, not an engineering one.
+
+### THE 500 IS A REFUSAL, BUT IT IS THE WRONG SHAPE
+
+Two route handlers now return **500 `ModuleNotEnabledError`** where they returned 404:
+`/payroll/back-pay/export` and `/payroll/transactions/tp1/…/pdf`. Those are exactly where **no layout
+runs**, same as a server action, so this is the hole actually closing and no data leaks. But an
+authorisation decision should be a **403**, not a crash-shaped 500 — and r291 added a health endpoint with
+(deferred) error alerting that would otherwise cry wolf on every un-entitled probe. **Follow-up, not a
+blocker.**
+
+### GUARDS THAT DISCRIMINATE, NOT GUARDS THAT MERELY PASS
+
+Against r293's vacuity shape: with Payroll ON, `calculateBackPay` gets **past** the gate and fails inside
+the engine with `BackPayNothingToCalculateError` — an error a gate refusing everyone could not produce. The
+TP1 arm asserts the write landed (`toHaveLength(1)`), not merely that it resolved.
+
+The core-surface arm was proven by **binding each of the four left-unbound files in turn** and watching
+Personnel, `/me` and Organization fail with `ModuleNotEnabledError` — so "leaving them unbound" is a pinned
+decision, not an omission.
+
+### TEST FALLOUT: r292'S FIRST KIND, EXACTLY
+
+21 failures in `tp1-self-relief` and `tp1-admin-on-behalf`, both a hand-rolled `employeeCtx` with no
+snapshot. Fixed with a real snapshot, **not `entitlementsExempt`** — payroll is billable, and an exempt
+context asked about a billable module throws `EntitlementsExemptForBillableError` by design. The `bound`
+ratchet went 5 → 7; nothing was loosened.
+
 ## r293 (2026-09-16) — the approval builder over a structure that was already there, and a picker that stops lying by omission. `main@6d47077f`, **migrations 0467 + 0468**.
 
 Board items `3c8037be` (approval workflow, four phases) and `04d163da` (mark non-accruing types).
