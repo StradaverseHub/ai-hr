@@ -23,6 +23,60 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# ── r291 / readiness 7.1 — THIS DEPLOY REPORTS ON ITSELF ─────────────────────
+#
+# Everything below this block is unchanged. What is added is a record, in /var/tmp/aihr-deploy, of
+# which deploy is running, how far it got, and how it ended — see deploy/deploy-state.sh for the
+# state machine and why it lives outside the rsynced tree.
+#
+# THE TRAP IS INSTALLED HERE, ABOVE THE ARGUMENT PARSING AND EVERY PREFLIGHT, ON PURPOSE. By the time
+# this script runs, `improve:release` has already rsynced new source over /opt/ai-hr. So a refusal at
+# the `--reseed` check, at the missing-SHARE_PASSWORD line, or at `MIGRATION_DATABASE_URL` is not a
+# no-op: it leaves new source on disk beside a `.next` built from the OLD source, which is exactly the
+# mixed state readiness 7.1's third bullet is about. A trap installed after those checks would record
+# nothing for any of them.
+#
+# THE VERDICT COMES FROM A FLAG, NOT FROM `$?`, AND THAT IS NOT A STYLE CHOICE.
+#
+# Installing an EXIT trap at all changes what this script returns after a `${VAR:?message}` expansion
+# error. Measured on bash 3.2.57:
+#
+#     bash -c 'set -euo pipefail; : "${X:?nope}"'                        → 1
+#     bash -c 'set -euo pipefail; trap "true" EXIT; : "${X:?nope}"'      → 0        ← !
+#
+# Every preflight in this script is that construct: SHARE_PASSWORD (readiness 1.4 — the line that stops
+# an open, ungated HRIS from being published), MIGRATION_DATABASE_URL, DEV_TENANT_ID. A naive
+# `trap 'rc=$?; …; exit $rc' EXIT` therefore turns all three refusals into a SUCCESSFUL deploy, which is
+# a far worse defect than the one r291 set out to fix. Ordinary command failures (the Next build below
+# running out of memory) do report correctly — it is only the expansion-error class that lies. Do not
+# write the build's command line in a comment here: test/module-catalog-drift.test.ts locates it with
+# a plain indexOf over this file to check the chain preflight runs first, and a prose mention above
+# that line moves the match and breaks the ordering guard.
+#
+# So: AIHR_DEPLOY_COMPLETED is set to 1 at the script's two real end points and nowhere else, the trap
+# believes the flag rather than `$?`, and a status of 0 with the flag unset is repaired to 1.
+# test/r291-detached-deploy.test.ts pins all three refusals, by execution.
+#
+# `dstate` swallows every error. This is instrumentation on the deploy path and must never be the
+# reason a deploy fails — a box with a read-only /var/tmp should still deploy, just unobservably.
+AIHR_DEPLOY_REF="${AIHR_DEPLOY_REF:-unknown}"   # the source ref improve:release shipped, when known
+AIHR_DEPLOY_LOG="${AIHR_DEPLOY_LOG:-}"          # where the detached launcher redirected this output
+AIHR_DEPLOY_COMPLETED=0
+dstate() { ./deploy/deploy-state.sh "$@" >/dev/null 2>&1 || true; }
+dstate begin "$AIHR_DEPLOY_REF" "$$" "$AIHR_DEPLOY_LOG"
+aihr_on_exit() {
+  rc=$?
+  if [ "$AIHR_DEPLOY_COMPLETED" = "1" ]; then
+    dstate finish 0
+    exit 0
+  fi
+  # Reached an end this script does not consider an end: a refusal, a `set -e` abort, an OOM.
+  if [ "$rc" = "0" ]; then rc=1; fi
+  dstate finish "$rc"
+  exit "$rc"
+}
+trap aihr_on_exit EXIT
+
 # ARGUMENTS, parsed rather than positional. `--migrate-only` exists because DEPLOY.md has always told
 # the operator to run the ADR-0077 slice-3 parity reconciliation "after migrate, before restarting the
 # service, in the same window" — and until this flag there was no way to do that (review r3). This is a
@@ -123,6 +177,7 @@ if [ -d node_modules ] && [ "$(cat "$LOCK_MARKER" 2>/dev/null)" = "$LOCK_HASH" ]
   echo "▸ Dependencies unchanged (lockfile hash matches) — skipping install."
 else
   echo "▸ Installing dependencies…"
+  dstate phase install
   pnpm install --frozen-lockfile --prod=false
   echo "$LOCK_HASH" > "$LOCK_MARKER"
 fi
@@ -140,9 +195,11 @@ fi
 # else, so running it here makes a refusal free: nothing has been touched yet. It sits after the install
 # only because `node --import tsx` needs node_modules.
 echo "▸ Checking the audit hash-chain gate against the database…"
+dstate phase audit-chain
 node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts
 
 echo "▸ Building production server…"
+dstate phase build
 # Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was
 # hit on 2026-07-21 deploying R52: compilation succeeded, then the build died with "Ineffective
 # mark-compacts near heap limit" partway through "Running TypeScript" at ~1.95 GB. Nothing was wrong with
@@ -159,14 +216,20 @@ echo "▸ Building production server…"
 # tail of the type pass; that is slower but it completes. If it OOMs a third time, check `free -m` first:
 # past ~4096 this stops being a headroom problem and becomes a "needs a bigger box" one.
 NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=4096" pnpm build
+# The build id this source produced, recorded the instant the build succeeded and nowhere else.
+# `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
+# later deploy that died before finishing its own build is distinguishable from a clean one.
+dstate built
 
 echo "▸ Applying database migrations (as ai_hr_owner)…"
+dstate phase migrate
 pnpm db:migrate
 
 # ADR-0077 C11 — UNCONDITIONAL, and deliberately above the demo-seed `if` below: that branch is skipped
 # on every normal update, so seeding the catalogs inside it would leave an updated deployment with an
 # empty module catalog and every entitlement lookup failing closed. Idempotent (ON CONFLICT DO UPDATE).
 echo "▸ Seeding module + setting catalogs…"
+dstate phase catalogs
 node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
 
 # 0318 — seed feedback_plan_revision from what survived. Idempotent (ON CONFLICT DO NOTHING), so it
@@ -214,11 +277,14 @@ node --env-file=.env.production --import tsx scripts/backfill-country-modules.ts
 # deploy/DEPLOY.md rather than echoed: it takes a --created-before date only the operator knows, and
 # reproducing it here would make this script look like it runs the reconciliation, which it must not.
 if [ "$MIGRATE_ONLY" = "1" ]; then
+  dstate phase migrate-only
   echo ""
   echo "⏸  --migrate-only: stopped after migrate + catalog seed. The service is NOT restarted and is"
   echo "    still serving the previous build."
   echo "    Run the ADR-0077 slice-3 entitlement-parity reconciliation now — deploy/DEPLOY.md,"
   echo "    'ONE-SHOT: entitlement parity' — then finish with:  ./deploy/deploy.sh"
+  # One of the two places this script legitimately ends. See the trap at the top.
+  AIHR_DEPLOY_COMPLETED=1
   exit 0
 fi
 
@@ -226,6 +292,7 @@ fi
 # script that can reach db/seed.ts. In customer mode `$DEMO` is 0, so neither the psql probe nor the
 # seeder is ever evaluated; `$DEV_TENANT_ID` is not even expanded, which is why customer mode does not
 # need it under `set -u`. db/seed-guard.ts refuses independently if this is ever reached wrongly.
+dstate phase seed
 if [ "$DEMO" = "1" ]; then
   # Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
   if [ "$RESEED" = "1" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
@@ -239,6 +306,7 @@ else
 fi
 
 echo "▸ Restarting service…"
+dstate phase restart
 # Detect the unit directly. The old `list-unit-files | grep -q` form was fragile (under set -o
 # pipefail a SIGPIPE from the producer can flip the result); `systemctl cat` is a clean exit-code check.
 if systemctl cat aihr.service >/dev/null 2>&1; then
@@ -255,3 +323,7 @@ else
   echo "ℹ️  No 'aihr' systemd service yet — install deploy/aihr.service (see DEPLOY.md), or run manually:"
   echo "     pnpm exec next start -H 0.0.0.0 -p \${PORT:-3000}"
 fi
+
+# The other place this script legitimately ends, and the LAST line on purpose. See the trap at the top:
+# this, not `$?`, is what decides whether the deploy is recorded as ok.
+AIHR_DEPLOY_COMPLETED=1

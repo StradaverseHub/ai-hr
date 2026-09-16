@@ -348,6 +348,40 @@ the migrations and the catalog seed, without seeding demo data or restarting, fo
 manual step in between (see the entitlement-parity one-shot below); run it again with no arguments to
 finish.
 
+### Asking the box what happened to its last deploy (r291 / readiness 7.1)
+
+A deploy takes minutes, and from outside the box a deploy that is RUNNING, one that FINISHED, and one
+that DIED PARTWAY all look the same: no output, a URL that still answers, a service that is still up.
+`deploy.sh` now records itself, and the box will tell you which it was:
+
+    ssh -p 8288 ubuntu@<host> 'cd /opt/ai-hr && deploy/deploy-state.sh status'
+
+    state=ok | running | failed | died | incomplete | unknown
+    phase=preflight|install|audit-chain|build|migrate|catalogs|seed|restart|migrate-only
+    ref=<the source ref improve:release shipped>     built_ref=<what .next was built from>
+    build_id=<.next/BUILD_ID on disk>                built_build_id=<what the last clean deploy built>
+    stale_build=0|1                                  log=<the full output of that deploy>
+
+- `failed` — deploy.sh exited non-zero; `exit_code` and `phase` say where (an OOM in `next build` is
+  `phase=build`). `died` — nothing finalized the record and the recorded pid is gone: SIGKILL, the OOM
+  killer, or a reboot. `incomplete` — a release announced itself and deploy.sh never started, so the
+  rsync was interrupted. `unknown` is never read as success.
+- **`stale_build=1` means the source on disk is not what `.next` was built from.** The service keeps
+  serving the OLD build until it is restarted, so this is recoverable: fix the cause and re-run the
+  deploy. Do **not** `systemctl restart aihr` first.
+- State lives in `/var/tmp/aihr-deploy` (`AIHR_DEPLOY_STATE_DIR` to move it), outside `/opt/ai-hr`
+  because `improve:release` rsyncs that tree with `--delete`.
+
+`pnpm improve:release` launches the deploy detached (`setsid nohup … &`) and follows it by polling, so
+a Ctrl-C or a dropped connection stops the watching, not the deploy — and a remote failure still makes
+the local command exit non-zero. Running `deploy.sh` by hand over SSH, do the same and keep the state
+readable:
+
+    cd /opt/ai-hr && LOG=/var/tmp/aihr-deploy/deploy-$(date -u +%Y%m%dT%H%M%SZ).log && mkdir -p /var/tmp/aihr-deploy \
+      && AIHR_DEPLOY_LOG="$LOG" setsid nohup ./deploy/deploy.sh > "$LOG" 2>&1 < /dev/null & \
+      echo "$LOG"
+    # then: tail -f "$LOG"   and   deploy/deploy-state.sh status
+
 ### ONE-SHOT: entitlement parity, at the ADR-0077 slice-3 deploy only
 
 Slice 3 turns eight `*_ENABLED` env flags into per-tenant entitlement rows. Migration 0313 already

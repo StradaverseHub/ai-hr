@@ -180,7 +180,11 @@ deployed) → `sudo systemctl restart aihr` on the box (you may) → run any scr
 - Server: `ssh -p 8288 ubuntu@203.142.6.241`, app `/opt/ai-hr`, no git checkout there. Default `node`
   is v18 and lacks `--env-file`; run scripts as
   `cd /opt/ai-hr && set -a && . ./.env.production && set +a && /opt/node20/bin/node --import tsx scripts/<x>.ts`.
-  Run `deploy.sh` under `nohup … &` and poll its log; it outlives an ssh session.
+  Run `deploy.sh` under `setsid nohup … &` and poll its log; it outlives an ssh session. `improve:release`
+  does that itself now (r291) and follows by polling, so a Ctrl-C stops the watching, not the deploy.
+  `cd /opt/ai-hr && deploy/deploy-state.sh status` is the box's own answer to "running, finished, or died
+  partway?" — `stale_build=1` means new source sits beside a `.next` built from something else, and the
+  service is still serving the OLD build, so fix and re-deploy rather than restarting.
 - Cron on the box (`crontab -l` is the truth, not `deploy/DEPLOY.md`): provision-runner every minute,
   capture-usage 01:00, anomaly-sweep 02:30, review-sweep 03:00, accrue-earned monthly, expire-carry
   1 April. A script existing in `scripts/` does not mean it runs.

@@ -373,15 +373,36 @@ margin: the next dependency that grows the build tips a deploy into an out-of-me
 survivable today only because `deploy.sh` builds before it migrates, so a failed build leaves the database
 untouched and the old service running.
 
-Two related facts from the same deploy. `pnpm improve:release` does **not** detach the remote
-`deploy.sh` (`scripts/improve/release.ts:83`), so anything that kills the local release process kills the
-server build with it, and the board is left saying the work did not ship when it did. And a build
-interrupted that way leaves new source on disk beside a stale `.next` build id, which nothing on the
-server detects or reports.
+Two related facts from the same deploy — **both closed in r291**, and recorded here as they stood.
+`pnpm improve:release` did **not** detach the remote `deploy.sh` (`scripts/improve/release.ts:83`), so
+anything that killed the local release process killed the server build with it, and the board was left
+saying the work did not ship when it did. On 2026-09-16 a dropped SSH connection did the inverse twice in
+one session: the local release hung on a dead socket long after the box had built, restarted and gone
+healthy, and the board had to be transitioned by hand. And a build interrupted either way left new source
+on disk beside a stale `.next` build id, which nothing on the server detected or reported.
+
+What r291 changed:
+
+- The remote deploy is launched `setsid nohup ./deploy/deploy.sh > <log> 2>&1 < /dev/null &` and followed
+  by **polling** — one independent SSH round trip every few seconds asking for the log bytes not yet seen
+  plus a state block. A killed local process, a Ctrl-C or a dropped connection now stops the *watching*,
+  not the deploy; the follower reconnects rather than giving up, and gives up loudly (non-zero) rather
+  than reporting a success it did not observe.
+- **The box reports on itself.** `deploy/deploy-state.sh` records each deploy in `/var/tmp/aihr-deploy`
+  (outside the rsynced tree), and `deploy/deploy-state.sh status` distinguishes: `running` · `ok` ·
+  `failed` (deploy.sh's EXIT trap caught a non-zero exit, with the code and the phase) · `died` (no
+  result and the recorded pid is gone — SIGKILL, the OOM killer, a reboot) · `incomplete` (a release was
+  announced and deploy.sh never began: an interrupted rsync) · `unknown` (no record, never read as ok).
+  `stale_build=1` is the mixed-tree signal on its own: the source ref on disk differs from the ref
+  `.next` was built from, or the `.next/BUILD_ID` on disk is not the one the last clean deploy recorded.
+- A remote failure makes the local `improve:release` exit **non-zero** and marks nothing deployed.
+
+The memory headroom itself is unchanged — an OOM during `next build` is now *reported* rather than
+silent, but the box still has no margin.
 
 - [ ] Raise the server's memory, or build elsewhere and ship the artifact
-- [ ] Detach the remote deploy so a local failure cannot kill it
-- [ ] A deploy that fails partway is detected and reported, rather than left mixed
+- [x] Detach the remote deploy so a local failure cannot kill it — r291
+- [x] A deploy that fails partway is detected and reported, rather than left mixed — r291
 
 ### 7.2 Pagination fetches every row
 
