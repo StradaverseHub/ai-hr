@@ -1,3 +1,99 @@
+## r293 (2026-09-16) — the approval builder over a structure that was already there, and a picker that stops lying by omission. `main@6d47077f`, **migrations 0467 + 0468**.
+
+Board items `3c8037be` (approval workflow, four phases) and `04d163da` (mark non-accruing types).
+`3fb1a611` still not built.
+Gate: **882 files — equal to the suite file count — 13,392 tests, 0 AssertionErrors, 0 deadlocks**, first
+pass, no red chunk. `next build` exit 0. `gate:shadow` **PASS 384/384**, 382 → 384.
+
+### BOTH REPORTERS WERE WRONG ABOUT THEIR OWN SYSTEM, IN OPPOSITE DIRECTIONS
+
+`3c8037be` said approval steps are "only predefined options such as Direct Manager and HR" and levels are
+capped at two. **Neither was true.** `leave_approval_template.levels` is jsonb of arbitrary length, and
+`LEVEL_KINDS` already carried SEVEN kinds. The flexible multi-level structure they assumed was the hard part
+was already built and already running — phase 1's commit title says it: *the visual builder over the
+structure that was already there*.
+
+`04d163da` said Earned Accrual "only recognizes Hospitalization Leave and Medical Leave". **`ANNUAL` IS in
+`STANDING_LEAVE_CODES`.** Their tenant had three independent causes stacked: `AL` active with a non-standing
+code, `ANNUAL` archived, `SICK` archived.
+
+**And MY brief was wrong too**: I told the workflow agent phase 1 must deliver "drag to reorder, add/remove,
+automatic renumbering". `StepListEditor` **already had all of them** (6fadb036). So the drag-and-drop
+dependency question I braced for never arose and nothing was added. What was actually missing was the card
+presentation, the Dynamic/Fixed badge, the per-level skip sentence, and the preview.
+
+### THE MIGRATIONS ARE ON THE STEP, NOT THE TEMPLATE, AND THAT IS THE WHOLE ITEM
+
+`leave_approval_step` is the per-request snapshot, written once at submission and never re-resolved — which
+is **precisely what makes a template edit safe for in-flight leave**. A step that went back to the template
+for its approver or its alternates would silently undo that guarantee. So 0467 `approver_employment_id` and
+0468 `approver_alternates`, both nullable, no backfill, **no CHECK** (a NOT VALID check fires on every
+`decideLeave` status write), no GRANT.
+
+Template needed none: `serializeApprovalLevels` writes a plain relationship level back as a **bare string**,
+so every pre-r293 row round-trips byte-identically.
+
+Numbering from `max(idx)`: 466 → 0467 → 0468. **`entries.length` was 382/383 — a 0383 would have been a
+silent skip.**
+
+### THE FIXED APPROVER STALLS, AND THAT IS THE CORRECT ANSWER
+
+A dynamic level resolving to nobody is DROPPED and the chain continues (`core/leave-approval-policy.ts:36-38`).
+A fixed level has no relationship to resolve, so `applyChainDropRules` keeps it unconditionally. **Dropping
+it instead would silently remove an approval an administrator deliberately configured.** So it stalls, with
+`facts.endedFixedApprovers` driving a red banner on the builder card and in the preview, and the HR-admin
+override as the escape hatch — which is why it is a stall and not a deadlock.
+
+### A REAL FUNCTIONAL LIMIT, PINNED RATHER THAN HIDDEN
+
+RLS on `leave_request` is `can_see_employment` — subject, manager chain, admins. **A fixed approver who is
+a stranger to the subject cannot SEE the request.** Authority passes, the row is invisible, HR clears the
+step. That is where a payroll partner or unrelated department head has always been; r293 inherits it and does
+not widen it. `test/r293-approval-builder.test.ts` carries a case named `KNOWN LIMIT: …` that fails the day
+someone widens it. **Do not promise a customer an arbitrary named person at level 3 without reading it.**
+
+### A DELIBERATE DEPARTURE FROM THE APPROVED PLAN, DECLARED
+
+The plan told the reporter "the template holds a mode". The build **derived** the mode from the levels
+instead, on r79 0322's precedent — *a flag that can disagree with the chain beside it IS the defect*. The
+reporter still sees the radio, so the promise holds on screen; the stored shape differs from the plan's
+wording. Declared rather than discovered, which is the only reason it is acceptable.
+
+### THREE DEFECTS THAT ONLY RENDERING FOUND, ALL BEHIND GREEN tsc + eslint + SUITE
+
+1. A kind→label map typed `Record<string, string>` printed a raw `specific_employee` on screen.
+2. `step-list-editor` and `template-manager` each had their own kind→label `switch` with
+   `default: labels.manager`. Phase 2 taught only one, so the template LIST printed **"Direct manager" for a
+   Manager's-Manager level** — a WRONG name, not a blank, which no blank-check would have caught.
+3. A direct manager refused at a `manager_manager` step was told *"You cannot decide your own leave
+   request"* — `assertCanDecide`'s self-ban firing about the manager. Correct refusal, untrue message.
+
+### THE PICKER MARKS ON THE CODE, NOT THE METHOD
+
+`accrueEarnedLeave` returns on the code filter **before it reads a method**, so keying the marking on
+`earned_daily` would have marked only half of what the engine declines. Keyed on the code, a festive type
+granted in full is marked too — which is correct, because the engine refuses it just the same. Non-swept rows
+stay **listed and selectable**, so the engine's typed empty reason remains the authority and the reporter can
+still find the type they went looking for.
+
+Names come from the tenant's own rows, never English defaults — verified in real Chromium on the account
+with two types called Annual Leave: the one it can pick is marked, the one it cannot is plain.
+
+### AGENTS CAUGHT THEIR OWN VACUOUS PROOFS, TWICE
+
+Phase 4's first non-vacuity probe used a decider who **also passed the primary gate**, so truncating the
+approver loop stayed green. Fixed with `payroll` as primary and a plain manager as alternate — the one case
+that actually fails. And the picker agent listed exactly which arms stayed green under revert and **why**
+(negative arms, vacuously true when nothing renders) rather than claiming a cleaner proof than it had.
+
+### TWO CROSS-AGENT HAZARDS ON SHARED LOCAL STATE
+
+`pkill -f "next dev"` run by one agent was **not scoped to its worktree** and could have killed another
+agent's server mid-session (it survived). And `pnpm db:seed` truncated the shared dev database while a second
+agent had a server on it. Both are documented procedure; neither is safe when agents run concurrently.
+`git checkout <file>` during a revert proof reverts to **HEAD, not to the working state** — CLAUDE.md §10's
+exact warning, hit once and recovered from a scratchpad copy.
+
 ## r292 (2026-09-16) — module gating goes service-deep, two lies in the code, and a filing state. `main@61bb400f`, **migration 0466**.
 
 Commercial module gating (Part 4), the false email claim + anomaly thresholds (Part 4 / 2.4), and readiness
