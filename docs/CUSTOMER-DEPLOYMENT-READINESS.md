@@ -44,7 +44,7 @@ migration safety) is done. Work Part 1 in order; the order matters and is explai
 These are ordered by dependency, not by severity. Two of them cannot be done later.
 
 ### 1.1 Fix the deploy path so it cannot seed demo data — DO THIS FIRST
-`deploy/deploy.sh:40` hard-requires `DEV_TENANT_ID`, and `:153-156` runs `db/seed.ts` (the demo seeder)
+`deploy/deploy.sh:40` hard-requires `DEV_TENANT_ID`, and `:174-177` runs `db/seed.ts` (the demo seeder)
 whenever that tenant row is absent from the target database. `deploy/DEPLOY.md:111` instructs the operator
 to leave `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` and `DEV_USER_ID` "as-is".
 **Following the documented runbook on a customer box plants Demo Group in their production database on the
@@ -86,13 +86,30 @@ All six steps of `docs/WORKOS-CUTOVER.md` are outstanding. Run the bootstrap inv
 - [ ] One full invite → activate → sign in → reset cycle exercised
 - [ ] `auth.login` events appear in `domain_event`
 
-### 1.4 Make the password gate fail closed
-`middleware.ts:42`: if `SHARE_PASSWORD` is unset the gate returns without checking anything and the whole
-app is open, with no error, no log and no startup refusal. Any username is accepted; only the password is
+### 1.4 Make the password gate fail closed — DONE (r290)
+`middleware.ts:42`: if `SHARE_PASSWORD` is unset the gate returned without checking anything and the whole
+app was open, with no error, no log and no startup refusal. Any username is accepted; only the password is
 compared. Once 1.3 is done the gate is redundant, but until then an unset variable must be a hard startup
 failure rather than a silent no-op.
 
-- [ ] Unset `SHARE_PASSWORD` in a production build refuses to start
+**What was built, and where it falls short of the survey's wording.** "Refuses to start" is not something
+middleware can do — it is invoked per REQUEST, in the edge runtime, after the server is already listening.
+So the refusal is in two places and only the first is a real start-time refusal:
+
+1. `deploy/deploy.sh:61` — `: "${SHARE_PASSWORD:?…}"` beside the `MIGRATION_DATABASE_URL` guard, before the
+   install, the build and the migrations. A box whose `.env.production` is missing the variable (or holds
+   it empty) is never rebuilt, never migrated and never restarted; it keeps serving the previous, gated
+   build. THIS is the arm that refuses.
+2. `middleware.ts` — 503 on every route, auth routes included, plus one `✗ SHARE GATE:` line to the
+   journal. It cannot refuse to start, so it refuses to serve. This is the backstop for every way the app
+   can be started that did not come through `deploy.sh`.
+
+The predicate is `NODE_ENV !== 'development'`, not `=== 'production'`: the open path is the one that has to
+be named, so test, and an environment that never set `NODE_ENV` at all, both refuse. `next dev` without a
+`SHARE_PASSWORD` is unchanged and is pinned from both sides in `test/share-gate.test.ts`.
+
+- [x] Unset `SHARE_PASSWORD` in a production build refuses to start — deploy refusal + per-request 503;
+      verified with a real `next build` + `next start` (503 on `/`, `/login` and with Basic credentials)
 
 ### 1.5 Backups, and a restore that has actually been tested
 `crontab -l`, `cron.d`, `cron.daily` and `systemctl list-timers` contain **no dump job**. `archive_mode=off`

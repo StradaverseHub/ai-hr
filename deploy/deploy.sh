@@ -39,6 +39,27 @@ done
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"; : "${DEV_TENANT_ID:?set in .env.production}"
 
+# READINESS 1.4 — THE DEPLOY IS WHERE AN UNSET SHARE_PASSWORD HAS TO DIE.
+#
+# middleware.ts used to read `if (!password) return next()`, so a .env.production that lost its
+# SHARE_PASSWORD line produced a deployment serving the WHOLE HRIS to anyone with the URL: no error, no
+# log, HTTP 200 on every route. Nothing about that is visible from the outside — the box looks healthy
+# because it IS healthy, it is just open.
+#
+# middleware.ts now refuses to serve (503) in that state, but middleware runs PER REQUEST: it can only
+# turn "silently open" into "loudly broken, after the deploy succeeded and the service restarted". THIS
+# line is the one that refuses to START. `${VAR:?}` under `set -u` (line 5) exits non-zero on unset OR
+# empty, and `set -e` stops the script — so the box keeps serving the previous, gated build.
+#
+# ORDER IS THE SAME ARGUMENT THE AUDIT-CHAIN GATE MAKES ~40 LINES BELOW: here, nothing has been
+# installed, built, migrated or restarted yet, so a refusal costs nothing and leaves nothing half-done.
+# It is a `:` test rather than a script because it needs no database and no node_modules, which is what
+# lets it sit this early.
+#
+# WHEN THE GATE IS RETIRED (readiness 1.3, the WorkOS cutover), delete this line AND the gate in
+# middleware.ts together, in a commit someone reviews. Removing the variable is not how you turn it off.
+: "${SHARE_PASSWORD:?missing or empty in .env.production — the middleware.ts access gate cannot be enforced without it and this deploy refuses rather than publish an open app. Set it (deploy/.env.production.example) and re-run.}"
+
 # Skip the install when the lockfile hasn't moved since the last successful install. node_modules is
 # rsync-excluded (it persists across deploys), so on a code-only update — the common case — reinstalling
 # is pure overhead. We hash pnpm-lock.yaml and stash it INSIDE node_modules (also rsync-excluded, so the
