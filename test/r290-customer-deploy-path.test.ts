@@ -124,10 +124,20 @@ function runDeploy(script: 'deploy.sh' | 'deploy-customer.sh', args: string[], e
   };
 }
 
+// r290 INTEGRATION FIX. Both fixtures carry SHARE_PASSWORD because readiness 1.4 — landed in the same
+// round, on a different branch — made it a hard `: "${SHARE_PASSWORD:?…}"` preflight in deploy/deploy.sh,
+// ABOVE everything these tests exercise. Without it the script exits 1 before it reaches any seeder
+// decision, and every assertion below fails as `expected 1 to be +0` while saying nothing about seeding.
+//
+// These fixtures stand in for deploy/.env.customer.example and deploy/.env.production.example, and BOTH
+// of those templates set SHARE_PASSWORD — so including it here makes the fixture match the thing it is
+// modelling rather than weakening the test. The refusal itself is pinned separately, in
+// test/share-gate.test.ts; do not re-pin it here by deleting this line.
 const CUSTOMER_ENV = [
   'NODE_ENV=production',
   `MIGRATION_DATABASE_URL=${DEAD_DB}`,
   `DATABASE_URL=${DEAD_DB}`,
+  'SHARE_PASSWORD=fixture-not-a-real-secret',
   '',
 ].join('\n');
 
@@ -135,6 +145,7 @@ const DEMO_ENV = [
   'NODE_ENV=production',
   `MIGRATION_DATABASE_URL=${DEAD_DB}`,
   `DATABASE_URL=${DEAD_DB}`,
+  'SHARE_PASSWORD=fixture-not-a-real-secret',
   'ALLOW_DEMO_SESSION=true',
   `DEV_TENANT_ID=${DEMO_TENANT_ID}`,
   '',
