@@ -67,6 +67,95 @@ export const UNTUNED_DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
 /** The run-level circuit breaker's id. Not in DETECTORS — it is not a per-employee detector. */
 export const CIRCUIT_BREAKER_ID = 'batch-swing';
 
+// ── THRESHOLD PROVENANCE, and why the honest fix here was disclosure rather than a settings screen ───────
+//
+// r292. `payroll_anomaly_config` is empty on production and no screen writes it, so all 2,359 findings were
+// classified by the placeholders above. docs/CUSTOMER-DEPLOYMENT-READINESS.md §2.4 allows two outcomes —
+// "made editable or disclosed as arbitrary" — and this is the disclosure arm, deliberately:
+//
+//   • THE THRESHOLDS ARE ALREADY EDITABLE. The precedence below (company row → tenant row → code default)
+//     works, is tested, and takes effect without a deploy. What is missing is a form, not a mechanism.
+//   • A FORM WOULD NOT MAKE THE NUMBERS EMPIRICAL. ADR-0076 §6 is blunt that only real client history or a
+//     shadow run produces a defensible threshold. An admin typing 25 instead of 30 has exactly the evidence
+//     they had before; the screen would only add the impression that somebody had tuned it.
+//   • AND IT WOULD DESTROY A SIGNAL THE PRODUCT ALREADY RELIES ON. core/control-tower.ts computes
+//     `thresholdsTuned` as `count(payroll_anomaly_config) > 0` and REFUSES to print `impliedOperators` — a
+//     staffing headcount — while it is false. Ship a form and the first admin who saves anything at all
+//     flips that flag, and the tower starts printing a headcount projection backed by a number with no more
+//     evidence behind it than the placeholder. That is precisely the harm control-tower.ts's own header
+//     names ("a confident wrong one gets somebody's job cut").
+//
+// So: say the true thing where the findings are read. `thresholdsInForce` below is a DERIVED disclosure —
+// it resolves the same rows through the same precedence as `evaluateBatchAnomalies`, so the sentence on
+// /payroll/<batch>/anomalies can only ever describe the numbers the engine really used, and it stops
+// calling them placeholders by itself the moment somebody configures one. A hand-written banner would
+// drift, and a stale "these are placeholders" is exactly as false as a stale "these are tuned".
+
+/** One `payroll_anomaly_config` row as every reader here needs it. */
+type AnomalyConfigRow = { detectorId: string; companyId: string | null; enabled: boolean; params: unknown };
+
+/** Live (unarchived) threshold rows for a tenant. ONE query shape for the evaluator and the disclosure. */
+async function readAnomalyConfig(tx: Tx, tenantId: string): Promise<AnomalyConfigRow[]> {
+  return tx
+    .select({
+      detectorId: schema.payrollAnomalyConfig.detectorId,
+      companyId: schema.payrollAnomalyConfig.companyId,
+      enabled: schema.payrollAnomalyConfig.enabled,
+      params: schema.payrollAnomalyConfig.params,
+    })
+    .from(schema.payrollAnomalyConfig)
+    .where(and(eq(schema.payrollAnomalyConfig.tenantId, tenantId), isNull(schema.payrollAnomalyConfig.archivedAt)));
+}
+
+/** Thresholds as data: a company row beats a tenant-wide row, and both beat the untuned code default.
+ *  ONE definition of that precedence — the evaluator and the disclosure must never be able to disagree
+ *  about which number was in force, because the whole point of the disclosure is that it is true. */
+function thresholdResolver(cfgRows: AnomalyConfigRow[], companyId: string | null) {
+  const cfgFor = (detectorId: string): AnomalyConfigRow | null =>
+    cfgRows.find((r) => r.detectorId === detectorId && companyId !== null && r.companyId === companyId) ??
+    cfgRows.find((r) => r.detectorId === detectorId && r.companyId === null) ??
+    null;
+  return {
+    cfgFor,
+    isEnabled: (detectorId: string) => cfgFor(detectorId)?.enabled ?? true,
+    paramsFor: (detectorId: string): Record<string, unknown> => ({
+      ...(UNTUNED_DEFAULT_PARAMS[detectorId] ?? {}),
+      ...((cfgFor(detectorId)?.params as Record<string, unknown> | undefined) ?? {}),
+    }),
+  };
+}
+
+/** 'configured' only when a row actually SUPPLIES a number. A row that merely disables a detector has
+ *  tuned nothing, and calling that "configured" would be the same class of untruth this change removes. */
+export type ThresholdSource = 'configured' | 'untuned_default';
+export type ThresholdInForce = { detectorId: string; params: Record<string, unknown>; source: ThresholdSource };
+export type ThresholdProvenance = {
+  thresholds: ThresholdInForce[];
+  /** True while ANY parameterised detector is still classifying on a shipped placeholder. */
+  anyUntuned: boolean;
+};
+
+/** The numbers that classified this batch, and where each came from. Read-only; touches nothing. */
+export async function thresholdsInForce(ctx: SessionContext, p: { batchId: string }): Promise<ThresholdProvenance> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: schema.payrollBatch.companyId })
+      .from(schema.payrollBatch)
+      .where(eq(schema.payrollBatch.id, p.batchId))
+      .limit(1);
+    const { cfgFor, paramsFor } = thresholdResolver(await readAnomalyConfig(tx, ctx.tenantId), batch?.companyId ?? null);
+    const thresholds: ThresholdInForce[] = Object.keys(UNTUNED_DEFAULT_PARAMS).map((detectorId) => {
+      const supplied = cfgFor(detectorId)?.params as Record<string, unknown> | undefined;
+      return {
+        detectorId,
+        params: paramsFor(detectorId),
+        source: supplied && Object.keys(supplied).length > 0 ? 'configured' : 'untuned_default',
+      };
+    });
+    return { thresholds, anyUntuned: thresholds.some((t) => t.source === 'untuned_default') };
+  });
+}
+
 export type SkippedDetector = { id: string; reason: string };
 
 export type EmployeeVerdict = {
@@ -439,26 +528,9 @@ export async function evaluateBatchAnomalies(
     const bc = await gatherContext(tx, ctx.tenantId, p.batchId);
     if (!bc) throw new Error('batch not found');
 
-    // Thresholds as data: a company row beats a tenant-wide row, and both beat the untuned code default.
-    const cfgRows = await tx
-      .select({
-        detectorId: schema.payrollAnomalyConfig.detectorId,
-        companyId: schema.payrollAnomalyConfig.companyId,
-        enabled: schema.payrollAnomalyConfig.enabled,
-        params: schema.payrollAnomalyConfig.params,
-      })
-      .from(schema.payrollAnomalyConfig)
-      .where(and(eq(schema.payrollAnomalyConfig.tenantId, ctx.tenantId), isNull(schema.payrollAnomalyConfig.archivedAt)));
-    const cfgFor = (detectorId: string) => {
-      const forCompany = cfgRows.find((r) => r.detectorId === detectorId && r.companyId === bc.companyId);
-      const forTenant = cfgRows.find((r) => r.detectorId === detectorId && r.companyId === null);
-      return forCompany ?? forTenant ?? null;
-    };
-    const isEnabled = (detectorId: string) => cfgFor(detectorId)?.enabled ?? true;
-    const paramsFor = (detectorId: string): Record<string, unknown> => ({
-      ...(UNTUNED_DEFAULT_PARAMS[detectorId] ?? {}),
-      ...((cfgFor(detectorId)?.params as Record<string, unknown> | undefined) ?? {}),
-    });
+    // Thresholds as data, through the ONE shared resolver — the same precedence `thresholdsInForce`
+    // discloses on screen, so the disclosure cannot describe numbers other than the ones used here.
+    const { isEnabled, paramsFor } = thresholdResolver(await readAnomalyConfig(tx, ctx.tenantId), bc.companyId);
 
     // ── classify (pure) ───────────────────────────────────────────────────────────────────────────
     const verdicts: EmployeeVerdict[] = bc.contexts.map((dctx) => {
@@ -797,7 +869,12 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
     );
   const cfg =
     cfgRows.find((r) => batch && r.companyId === batch.companyId) ?? cfgRows.find((r) => r.companyId === null) ?? null;
-  const thresholdPct = num((cfg?.params as Record<string, unknown>)?.batchSwingPct) || 15;
+  // r292 — the fallback reads UNTUNED_DEFAULT_PARAMS rather than repeating the literal 15. The screen now
+  // DISCLOSES the numbers in force beside this card's own threshold; a second copy of the figure here is a
+  // second thing that can drift out of step with what is disclosed.
+  const thresholdPct =
+    num((cfg?.params as Record<string, unknown>)?.batchSwingPct) ||
+    num(UNTUNED_DEFAULT_PARAMS[CIRCUIT_BREAKER_ID]?.batchSwingPct);
 
   const blank: CircuitBreakerVerdict = {
     tripped: false,

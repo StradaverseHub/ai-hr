@@ -8,7 +8,9 @@ import {
   anomalyMetrics,
   anomalyQueue,
   evaluateCircuitBreaker,
+  thresholdsInForce,
   type QueueRow,
+  type ThresholdInForce,
 } from '@/core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 // d75b0c11 — this screen's Back goes to the RUN, not to the list, so what it carries is the run screen's
@@ -94,11 +96,36 @@ export default async function AnomaliesPage({
   const batch = await batchDetail(s, batchId).catch(() => null);
   if (!batch) notFound();
 
-  const [rows, metrics, swing] = await Promise.all([
+  const [rows, metrics, swing, provenance] = await Promise.all([
     anomalyQueue(s, { batchId }),
     anomalyMetrics(s, { batchId }),
     withTenant(s, (tx) => evaluateCircuitBreaker(tx, s.tenantId, batchId)),
+    thresholdsInForce(s, { batchId }),
   ]);
+
+  /**
+   * r292 — THE THRESHOLD DISCLOSURE, and why it is on THIS screen rather than in a document.
+   *
+   * `payroll_anomaly_config` is empty on production and no screen writes it, so every verdict below was
+   * classified by the placeholders `core/payroll-anomaly.ts` itself labels as numbers "nobody should
+   * mistake for empirical". docs/CUSTOMER-DEPLOYMENT-READINESS.md §2.4 allows either making them editable
+   * or disclosing them as arbitrary; the argument for disclosure is in that file's header. The part that
+   * belongs here is WHERE: a caveat an operator has to go and read somewhere else is not a caveat. It sits
+   * in the measurement strip, directly under `coverageHelp`, because this strip is already the place this
+   * screen tells you not to over-read a number — and it sits ABOVE the queue, so nobody works the list
+   * without having passed it.
+   *
+   * Every figure is resolved server-side through the SAME precedence the evaluator used (company row →
+   * tenant row → code default), so the line cannot claim a threshold the engine did not apply, and the
+   * "shipped default" tag disappears on its own the moment a config row supplies that number.
+   */
+  const thresholdLabel = (th: ThresholdInForce): string | null => {
+    if (th.detectorId === 'net-swing') return t('thresholdNetSwing', { pct: Number(th.params.netSwingPct ?? 0) });
+    if (th.detectorId === 'batch-swing') return t('thresholdBatchSwing', { pct: Number(th.params.batchSwingPct ?? 0) });
+    // A detector added to UNTUNED_DEFAULT_PARAMS without a label here renders NOTHING rather than a raw id
+    // or a key — the same rule the hypothesis claim map above follows.
+    return null;
+  };
 
   /**
    * ADR-0084 §2.6 — the strings a hypothesis finding needs, resolved HERE for the same reason
@@ -182,6 +209,33 @@ export default async function AnomaliesPage({
             {metrics.block > 0 ? (
               <p className="mt-2 text-[11px] font-medium text-rose-700 dark:text-rose-300">{t('blockedHelp')}</p>
             ) : null}
+
+            {/* THE THRESHOLD DISCLOSURE (r292) — see the note above `thresholdLabel`. */}
+            <div className="mt-4 border-t border-border pt-3">
+              <p className="text-[11px] font-medium text-foreground">{t('thresholdsHeading')}</p>
+              <ul className="mt-1.5 space-y-1">
+                {provenance.thresholds.map((th) => {
+                  const label = thresholdLabel(th);
+                  return label === null ? null : (
+                    <li key={th.detectorId} className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="tabular-nums">{label}</span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] ${
+                          th.source === 'untuned_default'
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        }`}
+                      >
+                        {th.source === 'untuned_default' ? t('thresholdSourceDefault') : t('thresholdSourceConfigured')}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {provenance.anyUntuned ? (
+                <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{t('thresholdsUntuned')}</p>
+              ) : null}
+            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <form action={evaluateAnomaliesAction}>
                 <input type="hidden" name="batchId" value={batchId} />

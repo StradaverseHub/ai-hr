@@ -331,11 +331,25 @@ is a button. Nothing recomputes attendance after a shift or rule change except a
 `company_payroll_config` has **0 rows**, so every cut-off window resolves to the plain calendar month and
 pay day to month-end, behind a warning on a page you only reach with `?readiness=full`.
 `payroll_anomaly_config` is also empty **and there is no admin screen to write it**, so all 2,359 anomaly
-findings were classified by thresholds that `core/payroll-anomaly.ts:54-65` itself describes as numbers
+findings were classified by thresholds that `core/payroll-anomaly.ts` itself describes as numbers
 "nobody should mistake for empirical".
 
+**r292 took the DISCLOSURE arm, deliberately, and did not build a settings screen.** The thresholds are
+already editable — company row → tenant row → code default, resolved without a deploy; what is missing is a
+form, not a mechanism. A form would not make the numbers empirical (ADR-0076 §6: only real client history or
+a shadow run produces a defensible threshold), and it would destroy a signal the product already depends on:
+`core/control-tower.ts` derives `thresholdsTuned` from `count(payroll_anomaly_config) > 0` and **refuses to
+print a staffing headcount (`impliedOperators`) while it is false**. Ship a form and the first admin who saves
+anything at all flips that flag, and the tower starts printing a headcount projection backed by a number with
+no more evidence than the placeholder — the exact harm that file's own header names. So the numbers in force
+are now stated on `/payroll/<batch>/anomalies`, in the measurement strip above the queue, each tagged
+"shipped default" or "set for this company", with a plain statement that a shipped default has no empirical
+basis. It is DERIVED from the same resolver the evaluator uses, so it can never name a threshold the engine
+did not apply, and the placeholder warning disappears by itself the moment a row supplies that number.
+
 - [ ] Cut-off and pay day configured explicitly per company
-- [ ] Anomaly thresholds either made editable or disclosed as arbitrary
+- [x] Anomaly thresholds either made editable or disclosed as arbitrary — **disclosed (r292)**, argued above;
+      still worth tuning them from this customer's own pay history before relying on the auto-clear rate
 
 ### 2.5 A parallel run
 Nothing here substitutes for running one real month alongside the customer's existing process and
@@ -409,7 +423,7 @@ Each of these presents as a working feature. Fix it or disclose it, but do not s
 
 | Feature | Reality |
 |---|---|
-| **Email notification** | There is **no email transport anywhere in the repo** — no nodemailer, SMTP, SendGrid, Postmark, Mailgun, SES or Resend, and none in `package.json`. The comment at `core/notifications.ts:33` claiming the path sends email is false. Notifications are in-app only, and only **9 of 83** employments have a login at all. The one real mail is WorkOS's invitation. |
+| **Email notification** | **Still inert; the FALSE CLAIMS about it are fixed, r292.** There is **no email transport anywhere in the repo** — no nodemailer, SMTP, SendGrid, Postmark, Mailgun, SES or Resend, and none in `package.json`. Notifications are in-app only (dispatch inserts a `notification` row; the topbar bell is the only reader), and only **9 of 83** employments have a login at all, so an in-app notice reaches nobody for the other 74. The one real mail is WorkOS's invitation. The survey found one false comment; there were **five** claims in total, all now corrected: `core/notifications.ts:33` ("this path SENDS EMAIL"), the same sentence copied into `test/user-lifecycle.test.ts`, the `notice.published` registry entry crediting a "preference/channel machinery" that does not exist (`notification_pref` and `notification_delivery` have **zero** code references outside `db/schema.ts`), the same entry misquoting the publisher's checkbox as "Send Email Notification" (it reads "Notify recipients when it is published"), `scripts/review-sweep.ts` warning that a green run "does NOT prove mail was sent", and — the only one a customer could see — the on-screen help under that checkbox, which told an HR admin the notice was "Sent through the existing notification settings, so each person's preferences still apply." No transport was added: that is a vendor and cost decision for the owner. `test/r292-notification-channel-truth.test.ts` is a source-shape guard pinning the absence of a transport and the absence of the claim **together**, so whoever adds one is handed the list of comments and copy to revisit in the same commit. |
 | **Every AI surface** | No provider is configured: `grep -c API_KEY .env.production` → 0, `ai_provider_config` → 0 rows. All eleven callers resolve null. All three agents default off with no override, and `agent_proposal` is empty across all eight writer sites. The anomaly engine that does work (2,359 findings) is deterministic rules, not a model. |
 | **Attendance geofencing** | `geofencing_enabled` is false for **all 83** employments; both its tables are empty. The logic is correct and well tested; it has simply never been switched on, and the enable switch is on the personnel card, not where the navigation points. |
 | **Field-level PII encryption** | `pii_key` is empty and `sealForSubject`/`unsealForSubject` have **zero callers**. No field in the product is sealed. Do not represent the product as encrypting personal data at rest beyond what the database itself provides. |

@@ -446,8 +446,10 @@ describe('0279 — login archive + live leaver block', () => {
 
     expect(await recipients()).toEqual(expect.arrayContaining([a.employmentId, b.employmentId]));
 
-    // Archived → dropped. With NOTIFICATIONS_ENABLED this path SENDS EMAIL, so an admin who has lost
-    // access to the product must stop receiving HR notifications about it.
+    // Archived → dropped. NOT because anything is emailed — nothing in this product is (core/notifications.ts
+    // file header; there is no email transport in the repo). Because a notification row outlives the block:
+    // `notification_recipient_rls` is person-scoped and role-blind and the body is frozen text about another
+    // employee, so a backlog accrued while the login was off would be readable in full on restore or rehire.
     await setAppUserArchived(adminCtx, { appUserId: a.appUserId, archived: true });
     expect(await recipients()).not.toContain(a.employmentId);
     expect(await recipients()).toContain(b.employmentId);

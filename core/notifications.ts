@@ -1,10 +1,35 @@
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
- * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by
- * NOTIFICATIONS_ENABLED (off ⇒ dispatch is a no-op). v1 producers notify the event's SUBJECT (the affected
- * employee); approver-facing events (e.g. leave-request.submitted → the manager) need a reporting-graph
- * resolver and are deferred. A notification is a derived projection with its own table acting as its audit,
- * so dispatch does NOT append a DomainEvent (per CLAUDE.md — that would be an event storm + a derivation loop).
+ * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
+ * billable `notifications` MODULE (`enabled()` below ⇒ `isModuleEnabled(ctx, 'notifications')`, ADR-0077
+ * slice 3; off ⇒ dispatch is a no-op). It is NOT gated by `process.env.NOTIFICATIONS_ENABLED` — that was the
+ * pre-slice-3 gate and no application code reads it any more. v1 producers notify the event's SUBJECT (the
+ * affected employee); approver-facing events (e.g. leave-request.submitted → the manager) need a
+ * reporting-graph resolver and are deferred. A notification is a derived projection with its own table acting
+ * as its audit, so dispatch does NOT append a DomainEvent (per CLAUDE.md — an event storm + a derivation loop).
+ *
+ * ── DELIVERY IS IN-APP ONLY. NOTHING IN THIS FILE SENDS EMAIL. ───────────────────────────────────────────
+ *
+ * `dispatchNotifications` inserts one `notification` row per recipient and stops. The only consumers of those
+ * rows are the topbar bell (app/layout.tsx → components/notification-center.tsx) and the mark-read server
+ * actions (app/notification-actions.ts). Nothing else reads them.
+ *
+ * THERE IS NO EMAIL TRANSPORT IN THIS REPOSITORY — no nodemailer, SMTP, SendGrid, Postmark, Mailgun, SES or
+ * Resend, in package.json or anywhere else. The one mail the product really sends is WorkOS's invitation,
+ * from the auth path, and it is not this engine's.
+ *
+ * The schema LOOKS like more than that and is not: `notification_channel` has an 'email' member, and
+ * `notification_pref` (per recipient/category/channel) and `notification_delivery` (out-of-app attempts)
+ * are real tables. NO CODE READS OR WRITES EITHER ONE — zero references outside db/schema.ts. So no
+ * preference is consulted, no channel is chosen, and no delivery row is ever written. They are a design
+ * that was migrated and never built. Do not describe them as behaviour.
+ *
+ * This matters beyond tidiness: a comment claiming a delivery channel is how somebody ends up telling a
+ * customer that leave approvals are emailed. Only 9 of 83 production employments even have a login, so an
+ * in-app notification to the other 74 reaches nobody at all. `test/r292-notification-channel-truth.test.ts`
+ * is a SOURCE-SHAPE guard pinning the absence of a transport and the absence of the claim TOGETHER, so the
+ * two can never drift apart again. Adding a transport is a vendor and cost decision for the owner; if that
+ * day comes, that test is the checklist of what has to change with it.
  */
 import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -30,9 +55,19 @@ import { isModuleEnabled } from './entitlements';
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
  *  super_admin grants are group-wide; an hr_admin grant may be group-wide (company_id null) or scoped.
  *
- *  Switched-off logins are excluded (0279): with NOTIFICATIONS_ENABLED this path SENDS EMAIL, so an
- *  archived admin or one who has left the company would keep receiving HR notifications after losing
- *  access to the product. app.login_blocked() is the same predicate the auth path enforces.
+ *  Switched-off logins are excluded (0279). THE REASON IS NOT EMAIL — nothing here sends any; see the file
+ *  header, which used to be contradicted from this very line. The reason is that a notification row
+ *  OUTLIVES the block and is not re-authorized when it is read:
+ *    • `notification_recipient_rls` (0078) is PERSON-scoped and ROLE-BLIND — it matches on
+ *      app.is_self_person(employment.person_id) and asks nothing about hr_admin;
+ *    • the title/body are FROZEN TEXT about ANOTHER employee, rendered once at dispatch and stored, so the
+ *      HR record's own RLS never gets a second say at read time;
+ *    • app.login_blocked() is reversible in BOTH directions — an archived user can be restored, and a
+ *      person whose employments all ended is unblocked again by a rehire into a new open employment.
+ *  Without this filter, an admin who had lost access would silently accrue a backlog of HR notices about
+ *  other people that becomes readable in full the moment the login comes back — and readable then whether
+ *  or not the person still holds the grant that justified them. Filtering at RECIPIENT RESOLUTION is what
+ *  stops the backlog existing. app.login_blocked() is the same predicate the auth path enforces.
  *
  *  PER-SITE DECISION, do not generalise: the actor-attribution and creator-filter reads (core/read.ts
  *  ~2496/2558/2611/2657, core/payroll-view.ts ~262/325) are deliberately NOT filtered. Showing an
@@ -603,11 +638,12 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(out)];
     },
   },
-  // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why there is no
-  // mail code anywhere in core/notice.ts. Publishing appends notice.published; this entry fans it out to
-  // the audience SNAPSHOT (notice_recipient), and the engine's existing preference/channel machinery
-  // decides how each recipient actually receives it. A second mail path would be a second set of
-  // preferences to honour, a second bounce story, and a second thing to switch off.
+  // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why core/notice.ts
+  // carries no delivery code of its own. Publishing appends notice.published; this entry fans it out to the
+  // audience SNAPSHOT (notice_recipient) as ordinary in-app notifications, shown by the same bell as
+  // everything else. There is NO preference or channel step to describe — see the file header: dispatch
+  // inserts a row and stops, and `notification_pref` is dead schema nothing reads. Routing notices through
+  // this engine is still right, because the day a second channel exists it gets built ONCE, here.
   'notice.published': {
     kind: 'notice.published',
     category: 'notice',
@@ -620,9 +656,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       linkPath: `/notices/${ev.aggregateId}`,
     }),
     recipients: async (tx, ev, payload) => {
-      // The publisher's "Send Email Notification" choice, snapshotted into the event. Read from the
-      // PAYLOAD rather than re-queried: switching the flag off after publication must not retroactively
-      // un-send, and re-reading the row would make it look as though it had.
+      // The publisher's `notifyOnPublish` choice, snapshotted into the event. That checkbox reads "Notify
+      // recipients when it is published" (`notices.fNotify`, components/notice/notice-form.tsx) — it is NOT
+      // an email switch, and there is no email switch, because there is no email. Read from the PAYLOAD
+      // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
+      // and re-reading the row would make it look as though it had.
       if (payload?.notify !== true) return [];
       const rows = await tx
         .select({ e: noticeRecipient.employmentId })

@@ -4,7 +4,8 @@
 // authorizes the writes and lets app.is_admin() see every tenant employment). Then dispatches
 // notifications IN THE SAME SCRIPT — otherwise the "notify manager + HR ~1 month prior" headline is dead
 // in a no-admin-traffic window (dispatchNotifications is otherwise only invoked opportunistically when an
-// admin renders a page). Notifications are gated behind NOTIFICATIONS_ENABLED (off ⇒ dispatch no-ops).
+// admin renders a page). Notifications are gated behind the per-tenant `notifications` MODULE (off ⇒
+// dispatch no-ops) and are delivered IN-APP ONLY — nothing here is emailed (core/notifications.ts header).
 // r83b 941c9dac: the same pass also APPLIES FUTURE-DATED MOVEMENTS (sweepDueMovements) — a promotion or
 // transfer keyed with a future effective date is held Pending and takes effect on the morning of that
 // date. Same job for the same reason: a second cron line is a second thing to forget to install.
@@ -161,8 +162,12 @@ async function main() {
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
-  // 'success' here does NOT prove mail was sent. dispatchNotifications is gated by NOTIFICATIONS_ENABLED
-  // and no-ops when it is off, while the run still records success.
+  // 'success' here does NOT prove a single person was notified. NOTHING IS EMAILED — there is no email
+  // transport in this repo (core/notifications.ts file header); a notification is an in-app bell row and
+  // nothing more, and it reaches only the minority of employments that have a login at all.
+  // `dispatchNotifications` is gated on the per-tenant `notifications` MODULE (not, as this note used to
+  // say, on NOTIFICATIONS_ENABLED, which no application code reads) and no-ops for a tenant without it,
+  // while the run still records success.
   try {
     await recordJobRun(owner.db, {
       jobKey: 'review.sweep',
