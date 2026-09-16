@@ -53,7 +53,19 @@
  * amounts. That holds for the three new decision events (tp1.approved / rejected / cancelled) too.
  */
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
+// `withPayrollTenant`: every TP1 entry point in this file — the whole declare → submit → approve write
+// path included — refuses a tenant without the Payroll module. A `layout.tsx` covers /me/tax-relief and
+// /payroll/transactions/tp1 for a RENDER; it covers no server action, and `app/me/actions.ts`
+// (saveTp1Draft / submitTp1) posts from a CORE segment that has no payroll layout above it.
+//
+// Safe to bind because every consumer outside the payroll route trees takes only the PURE exports, which
+// never open a transaction and are therefore untouched: `TP1_COUNTABLE_COLUMNS` + `tp1CountForYear`
+// (core/payroll.ts — itself payroll-bound — and localization/my/reports.ts's EA dataset, which
+// dynamic-imports them and runs its own query), and `TP1_FORM_CODE` / `TP1_ITEMS` / `TP1_REBATES`
+// (components/tp1-declaration-form.tsx, lib/tp1-form-input.ts). See core/module-gate.ts.
+import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz';
 import {

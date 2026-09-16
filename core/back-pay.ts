@@ -88,7 +88,17 @@
  * test that assumes arrears are owed to the employee is wrong about this data.
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+// ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
+// `withPayrollTenant`: detect / calculate / verify / approve-and-post / cancel all refuse a tenant
+// without the Payroll module. `approveAndPostBackPay` WRITES MONEY into a draft batch, and a POST to it
+// passes through no layout.
+//
+// Safe to bind because this file has NO consumer outside `app/payroll/back-pay/**` and the pack facade:
+// an AST sweep of every import, export-from, dynamic import and require in the repo found its exported
+// symbols used nowhere else — no core screen, no kernel service, no sweep script, no report dataset.
+// See core/module-gate.ts.
+import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
   appUser,
