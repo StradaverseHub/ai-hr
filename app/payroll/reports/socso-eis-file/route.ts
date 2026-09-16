@@ -1,6 +1,11 @@
 /**
  * SOCSO + EIS combined contribution textfile download (PERKESO ASSIST, v2.0 with SKBBK). Byte layout:
- * PERKESO "Combine SOCSO + EIS Contribution Text File Format" v2.0 (localization/my/socso-eis-file.ts).
+ * ⚠️ r296 — THE BYTES COME FROM `lib/perkeso-socso-file.ts`, THE SAME WRITER THE BORANG 8A REVIEW SCREEN
+ * DOWNLOADS FROM, and the two screens now hand over identical files for the same month. Which revision
+ * of PERKESO's format is written (v1.0 of 22 Jul 2022, or v2.0 of 13 Feb 2026 with the SKBBK column) is
+ * decided by `perkesoLayoutForPeriod` from the CONTRIBUTION MONTH against the 1 October 2026 cutover, and
+ * by nothing on this route. `localization/my/socso-eis-file.ts` is now the READ only.
+ *
  * Each download records an append-only statutory_report artefact + domain event.
  */
 import { getSession } from '@/lib/session';
@@ -25,11 +30,18 @@ export async function GET(req: Request) {
       reportType: 'my.socso-eis-file',
       periodKey,
       rowCount: file.totals.records,
+      // r296 — SPREAD, NOT SPELLED OUT, and `skbbkCents` is absent unless the file actually has a SKBBK
+      // box. A `skbbkCents: 0` recorded against a v1.0 file would be a durable assertion that no SKBBK
+      // was owed for that month, when in fact the layout PERKESO accepts has nowhere to put it; that
+      // money is recorded as `skbbkNotCarriedCents` instead. See SocsoEisFile['totals'].
       totals: {
         socsoCents: file.totals.socsoCents,
         eisCents: file.totals.eisCents,
-        skbbkCents: file.totals.skbbkCents,
         salaryCents: file.totals.salaryCents,
+        ...(file.totals.skbbkCents === undefined ? {} : { skbbkCents: file.totals.skbbkCents }),
+        ...(file.totals.skbbkNotCarriedCents === undefined
+          ? {}
+          : { skbbkNotCarriedCents: file.totals.skbbkNotCarriedCents }),
       },
       statutoryVersion: file.statutoryVersion,
       // ADR-0077 slice 9 — a filing deadline does not pause for a billing dispute. Without this the

@@ -304,6 +304,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         eisEmployer: a.eisEmployer,
         eisEmployee: a.eisEmployee,
         wage: a.wage,
+        // r296 — the same `a.skbbk` the reconciliation strip below totals, now also carried to the upload
+        // file. Summed once, in the loop above, so the strip and the file can never describe two months.
+        skbbk: a.skbbk,
       };
       return { ...row };
     });

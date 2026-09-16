@@ -442,15 +442,47 @@ reconciling to the cent, before anyone relies on it.
 
 ## PART 3 — BEFORE THE FIRST STATUTORY FILING
 
-### 3.1 Two PERKESO file builders disagree, and both are reachable
-`localization/my/socso-eis-file.ts` zero-pads numerics and writes a SKBBK box at offset 238;
-`lib/perkeso-socso-file.ts` space-pads and has a 20-character filler there instead. Both emit 278
-characters and both download, from two different screens. **The one golden-tested byte-for-byte against a
+### 3.1 Two PERKESO file builders disagreed, and both were reachable — **consolidated (r296)**
+`localization/my/socso-eis-file.ts` zero-padded numerics and wrote a SKBBK box at offset 238;
+`lib/perkeso-socso-file.ts` space-padded and had a 20-character filler there instead. Both emitted 278
+characters and both downloaded, from two different screens. **The one golden-tested byte-for-byte against a
 genuinely accepted PERKESO file is the one with no SKBBK box** — the field that becomes mandatory on
 1 October 2026.
 
-- [ ] Establish which layout PERKESO ASSIST accepts; delete or gate the other
-- [ ] One builder behind both screens, golden-tested, carrying SKBBK
+**Confirmed and worse than reported.** Generated from both screens against one real July-2026 payroll, the
+two files differed in **six character ranges per record** (201-208, 215, 221-222, 227-228, 233-234,
+239-244) and again at the end of the file — one wrote a trailing CRLF, the other did not. They also
+differed in **which fact filled the salary box**: Reports wrote `payslip.gross_pay`, the Borang 8A screen
+wrote `statutory.bases.socsoEis`. And they arrived under two unrelated filenames
+(`PERKESO_<digits>_MMYYYY.txt` vs `perkeso-socso-<code>-YYYYMM.txt`). An operator had no way to tell which
+of the two they were holding. These are **not two different PERKESO products**: `my.socso-eis` and
+`my.borang-8a` are genuinely two different *paper* documents, but ASSIST has **one** combined SOCSO+EIS
+upload file, and both screens claimed to produce it.
+
+**What r296 did.** One writer (`lib/perkeso-socso-file.ts`) behind both screens;
+`localization/my/socso-eis-file.ts` keeps its query and writes nothing. The difference between the two
+layouts is now a **date**, `PERKESO_SKBBK_MANDATORY_FROM = 10/2026`, applied in one function
+(`perkesoLayoutForPeriod`): a contribution month before 10/2026 is written to the **accepted** v1.0 layout,
+10/2026 onward to v2.0 with the SKBBK box at 239-244. The golden test against the customer's own accepted
+file passes **unmodified**. Both screens now produce identical bytes and one filename
+(`test/perkeso-one-writer.test.ts`, against a real database).
+
+- [x] One builder behind both screens, golden-tested, carrying SKBBK — **done (r296)**
+- [ ] **Establish which layout PERKESO ASSIST accepts.** Still UNKNOWN and still not answerable from this
+      repository: v1.0 is a file PERKESO accepted in January 2026; **v2.0 has never been uploaded from this
+      system**. On 1 Oct 2026 this system starts writing a layout nobody here has seen accepted — watch the
+      first v2.0 upload.
+- [ ] **Decide what the 1 Oct 2026 date is measured against.** We compare it to the contribution month and
+      say so in code; the specification does not say whether a late or amended return for an earlier month
+      filed after the cutover must use v2.0.
+- [ ] **Settle Jun–Sep 2026 SKBBK.** SKBBK has been deducted since 1 Jun 2026 and the accepted layout has
+      no box for it, so an upload for those months does not pay it. The amount is named in the file's
+      validation report and recorded on the artefact as `skbbkNotCarriedCents`; how PERKESO wants it
+      settled during the transition is UNKNOWN. (Nothing has been filed yet — see 3.2 — so this is a
+      backfiling question, not an outstanding liability created by this system.)
+- [ ] **Surface the SKBBK gap on the screen, not only in the validation report.** The report is behind a
+      button on the Borang 8A review screen; the Reports download shows nothing. Needs a message key in all
+      six locales; not done in r296.
 
 ### 3.2 There is no "filed" state to reach
 All 20 `statutory_report` rows on production are `draft`. Both insert sites hardcode `status: 'draft'` and
@@ -609,7 +641,10 @@ nobody has load-tested it. A customer an order of magnitude larger should be ass
 
 - Whether the host's Zabbix agent alerts on anything relevant — its rule set is not visible from the box.
 - Which PERKESO ASSIST file layout is actually accepted today (3.1) — this needs a submission or the
-  current specification.
+  current specification. r296 removed the second builder and made the choice a date, so there is now ONE
+  answer to be wrong about instead of two silently different ones; it did not and could not establish
+  which answer is right. v2.0 has never been uploaded from this system, and the system starts writing it
+  on 1 October 2026.
 - The seven PCB relief figures, against a primary source: the LHDN specification URL 404s.
 - Load behaviour at customer scale (Part 7).
 - Whether a restore of the current dumps actually succeeds — the one rehearsal on the box failed for an

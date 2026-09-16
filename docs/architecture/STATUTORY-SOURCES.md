@@ -185,6 +185,25 @@ to these tables is traceable to the exact runs it affects.
   by *current* age ≥60 + non-citizen (approximation; confirm against Chin Hin's records); (3) payslip
   shows the SKBBK line (circular 5.8) — **display line still TODO**; (4) new combined SOCSO+EIS textfile
   (mandatory 1 Oct 2026) — Phase P (#73).
+  - **(4) as built (r296).** The cutover is encoded ONCE, as `PERKESO_SKBBK_MANDATORY_FROM` in
+    `lib/perkeso-socso-file.ts`, and `perkesoLayoutForPeriod()` is the only thing that applies it: a
+    contribution month before 10/2026 is written to the layout of the customer's own **accepted**
+    BRG8A.txt (`test/fixtures/perkeso-brg8a.txt`, v1.0 of 22 Jul 2022, space-padded, **no SKBBK box**);
+    10/2026 onward to v2.0 of 13 Feb 2026 (zero-padded, SKBBK at positions 239-244, Filler 1 shortened to
+    245-258). Both download screens now go through that one writer — before r296 they went through two
+    that disagreed. Source for the v2.0 table, sourced 2026-06-20 and unchanged by r296:
+    <https://www.perkeso.gov.my/images/borang/lindung24jam/formatteksfail.pdf>.
+  - **🔴 STILL OPEN, and it cannot be closed from inside this repository:** (a) **which layout ASSIST
+    accepts today is UNKNOWN** — v1.0 is byte-for-byte a file PERKESO accepted in January 2026, v2.0 has
+    never been uploaded from this system and its pad character, SKBBK box and shortened Filler 1 are
+    transcribed from a specification, not read off an accepted file; (b) whether the 1 Oct 2026 cutover is
+    measured against the **contribution month** (what we assume, and say so in code) or against the
+    **upload date** — they differ only for a late or amended return; (c) SKBBK has been deducted since
+    1 Jun 2026 and the accepted layout has **no box for it**, so a Jun–Sep 2026 upload does not pay it —
+    the amount is named in the file's validation report and recorded on the artefact as
+    `skbbkNotCarriedCents`, and how PERKESO wants it settled during the transition is **UNKNOWN**.
+    Each needs a real submission or the current specification. See
+    `docs/CUSTOMER-DEPLOYMENT-READINESS.md` §3.1.
 - **Source (base table):** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
   the post-Oct-2024-ceiling PDF (file dated 15 Nov 2024), retrieved **2026-06-11**:
   <https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%204.pdf>

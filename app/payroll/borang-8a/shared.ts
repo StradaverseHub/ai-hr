@@ -20,7 +20,14 @@ import {
   statusOverridesFrom,
   type Borang8AForm,
 } from '@/lib/borang-8a';
-import { PerkesoFileError, buildPerkesoSocsoFile, perkesoFileEmployeesFrom } from '@/lib/perkeso-socso-file';
+import {
+  PerkesoFileError,
+  buildPerkesoSocsoFile,
+  perkesoFileEmployeesFrom,
+  perkesoLayoutForPeriod,
+  perkesoSkbbkNotCarried,
+  type PerkesoFileLayout,
+} from '@/lib/perkeso-socso-file';
 
 /**
  * 18c1d92b — THE PERKESO ASSIST UPLOAD FILE, gated by the paper form's own readiness and then by the
@@ -34,7 +41,15 @@ import { PerkesoFileError, buildPerkesoSocsoFile, perkesoFileEmployeesFrom } fro
  */
 export type Borang8AFileLoad =
   | { ok: false; status: number; message: string }
-  | { ok: true; form: Borang8AForm; text: string };
+  | {
+      ok: true;
+      form: Borang8AForm;
+      text: string;
+      /** r296 — which revision of the format these bytes are, decided by the contribution month. */
+      layout: PerkesoFileLayout;
+      /** r296 — SKBBK in RM that this revision has no box for. 0 once the v2.0 column exists. */
+      skbbkNotCarried: number;
+    };
 
 export async function loadBorang8AFile(p: {
   companyId: string;
@@ -58,20 +73,28 @@ export async function loadBorang8AFile(p: {
 
   const form = loaded.form;
   const period = form.contributionPeriodKey;
+  const periodMonth = Number(period.slice(5, 7));
+  const periodYear = Number(period.slice(0, 4));
+  // r296 — THE REVISION IS A PROPERTY OF THE CONTRIBUTION MONTH, not of this screen. Resolved here only
+  // so the same answer can be handed to the writer, to the validation report and to the artefact record;
+  // `perkesoLayoutForPeriod` is the one place the 1 Oct 2026 cutover lives.
+  const layout = perkesoLayoutForPeriod(periodYear, periodMonth);
+  const rows = form.pages.flatMap((pg) => pg.rows);
   try {
     const text = buildPerkesoSocsoFile({
       employer: {
         employerCode: form.employerCode,
         myCoId: form.mycoid,
-        periodMonth: Number(period.slice(5, 7)),
-        periodYear: Number(period.slice(0, 4)),
+        periodMonth,
+        periodYear,
       },
       // The mapping itself lives in perkesoFileEmployeesFrom and is NOT restated here: four of the six
       // numeric boxes are six wide and adjacent, so a transposition would produce a file of exactly the
       // right length carrying the wrong money. One copy, driven by the golden test.
-      employees: perkesoFileEmployeesFrom(form.pages.flatMap((pg) => pg.rows)),
+      employees: perkesoFileEmployeesFrom(rows),
+      layout,
     });
-    return { ok: true, form, text };
+    return { ok: true, form, text, layout, skbbkNotCarried: perkesoSkbbkNotCarried(layout, rows) };
   } catch (e) {
     if (e instanceof PerkesoFileError) {
       return { ok: false, status: 422, message: `Cannot produce a PERKESO upload file: ${e.message}` };
