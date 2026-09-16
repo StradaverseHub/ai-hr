@@ -68,6 +68,7 @@ import {
 // r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
 // name the shape without importing a module that drags in db/client.
 import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
+import type { EmployeePickOption } from '../lib/employment-selection';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
 // predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
 // drifted into the bug both items describe.
@@ -195,6 +196,39 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
+}
+
+/**
+ * r289 — THE POPULATION THE "PICK INDIVIDUALLY" CONTROLS RESOLVE AGAINST, for the three WRITE PATHS.
+ *
+ * The three server pages read this list to fill their picker (`listCompanies` → `listEmployees` → three
+ * plain fields). Their three server actions now need the SAME list for a different job: turning a pasted
+ * `EMP-0008` into an employment id before handing the restriction to `resolveOrgCriteriaTargets`.
+ *
+ * ⚠️ WHY THE ACTION READS IT AGAIN INSTEAD OF TRUSTING THE POST. The browser already holds this list and
+ * already resolves against it for the live preview — but a resolution the client performs is a resolution
+ * the server cannot check, and the whole point of `lib/employment-selection.ts` is that the population the
+ * screen CONFIRMS and the population the write COVERS are computed by one rule from one input. Two
+ * different inputs would put them back out of step while both halves' tests stayed green. So the rule is
+ * shared and the input is read on each side from the same query.
+ *
+ * ⚠️ IT IS NOT AN AUTHORITY AND MUST NOT BECOME ONE. Nothing here decides who qualifies; it decides only
+ * what a typed reference NAMES. An unresolved token is still handed over, and `resolveOrgCriteriaTargets`
+ * still adjudicates every id under the session's own scope and the run's as-at date.
+ *
+ * SCOPED EXACTLY AS THE PAGES SCOPE IT, INCLUDING THE EMPTY CASE. `listEmployees` treats an empty
+ * `companyIds` as "no filter" (see `core/payroll-txn-import.ts` on why that is dangerous where it writes
+ * money). It is deliberately NOT guarded here: the three pages pass the same possibly-empty array to the
+ * same call, and a resolver that recognised fewer codes than the picker beside it offers is the drift this
+ * function exists to prevent. Recognising a code is not reaching a person.
+ */
+export async function listEmployeePickOptions(ctx: SessionContext): Promise<EmployeePickOption[]> {
+  const companies = await listCompanies(ctx);
+  const employments = await listEmployees(
+    ctx,
+    companies.map((c) => c.id),
+  );
+  return employments.map((e) => ({ id: e.employmentId, name: e.name, employeeCode: e.employeeCode }));
 }
 
 export type EmployeeListRow = {

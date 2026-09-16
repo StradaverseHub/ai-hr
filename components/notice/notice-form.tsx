@@ -8,7 +8,7 @@ import { Markdown } from '@/components/markdown';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
-import { mergeEmploymentSelection, type EmployeePickOption } from '@/lib/employment-selection';
+import { resolveEmploymentSelection, type EmployeePickOption } from '@/lib/employment-selection';
 
 type Opt = { value: string; label: string };
 type Action = (fd: FormData) => void | Promise<void>;
@@ -68,6 +68,9 @@ export type NoticeFormLabels = {
   employeeRemoveTemplate: string;
   pasteAlternative: string;
   pasteAlternativeHelp: string;
+  /** r289 — the FOURTH template: `{list}`, the pasted references nothing recognised, named rather than
+   *  silently ignored. Substituted on THIS side of the boundary like the other three. */
+  pasteUnmatchedTemplate: string;
   everyoneWarning: string;
   targetingFrozen: string;
   fNotify: string;
@@ -181,7 +184,17 @@ export function NoticeForm({
   const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
   // THE ONE LIST OUT — the same rule `createNoticeAction` / `updateNoticeAction` run over the same two
   // posted fields (lib/employment-selection.ts). This copy exists only to decide what the screen SAYS.
-  const individualIds = useMemo(() => mergeEmploymentSelection([...picked], pastedRaw), [picked, pastedRaw]);
+  //
+  // r289 — AND WHAT IT COULD NOT READ. `unmatched` is what lets the box stop failing silently, and this
+  // screen is the one that needed it most: `notice.criteria` is a jsonb column, so an unresolvable token
+  // SAVES and only dies at Publish. It is a MESSAGE, not a gate — every one of those tokens is still
+  // inside `ids` and is still stored, because dropping them on Save would silently shrink the audience of
+  // a notice (the same call the known/unknown split above makes, for the same reason).
+  const selection = useMemo(
+    () => resolveEmploymentSelection([...picked], pastedRaw, employees),
+    [picked, pastedRaw, employees],
+  );
+  const individualIds = selection.ids;
   const unpick = (id: string) => {
     const next = new Set(picked);
     next.delete(id);
@@ -436,6 +449,14 @@ export function NoticeForm({
                     className={cn(inputCls, 'w-full font-mono text-xs')}
                   />
                   <p className="pt-1 text-[11px] text-muted-foreground">{labels.pasteAlternativeHelp}</p>
+                  {/* r289 — WHAT WE COULD NOT READ, NAMED. Rendered only when there is something to say, so
+                      a clean paste stays quiet. It is a sentence, never a block: the notice still saves and
+                      these tokens are still stored, they simply no longer count towards the stated reach. */}
+                  {selection.unmatched.length > 0 && (
+                    <p className="pt-1 text-[11px] font-medium text-destructive">
+                      {labels.pasteUnmatchedTemplate.replace('{list}', selection.unmatched.join(', '))}
+                    </p>
+                  )}
                 </Field>
               </div>
             )}

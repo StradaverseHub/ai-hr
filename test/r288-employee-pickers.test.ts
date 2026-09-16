@@ -53,9 +53,15 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
  * and `app/admin/notice-board/actions.ts` `inputFrom`. Modelled here so the two doors can be driven from a
  * real FormData; that the ACTIONS actually contain this expression rather than a re-inlined split is §C's
  * job, and without §C this helper would only be testing itself.
+ *
+ * r289 — THE POPULATION IS EMPTY ON PURPOSE. Every reference in this file is an internal employment uuid,
+ * and an empty population says exactly that: nothing here can have been reached by an Employee ID lookup,
+ * so these cases go on comparing the two DOORS. What resolution adds is pinned in
+ * test/r289-paste-employee-code.test.ts, including that this passthrough is what keeps an internal id
+ * working untouched.
  */
 const idsFromForm = (fd: FormData): string[] =>
-  mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''));
+  mergeEmploymentSelection(fd.getAll('employmentIds').map(String), String(fd.get('employmentIdsRaw') ?? ''), []);
 
 let b: Base;
 let alice: string;
@@ -159,9 +165,13 @@ describe('r288 §A · the premise, on both screens, against a real database', ()
 
     const stored = await getNotice(adminCtx(b), created.id);
     expect(stored?.criteria.employmentIds).toEqual(['Irwin']);
-    // The draft page's reach for individual targeting is `(n.criteria.employmentIds ?? []).length`
-    // (app/admin/notice-board/[id]/page.tsx), and the publish confirmation repeats that number. So the
-    // screen promises ONE EMPLOYEE for a string that is not an employee at all.
+    // WHAT THE STORED LIST IS, which is the fact this case is about: one string, stored verbatim.
+    //
+    // ⚠️ r289 CHANGED WHAT THE SCREEN DOES WITH IT, so read the next line as the STORAGE claim and not as a
+    // claim about the reach box. When this was written the draft page reported the stored list's LENGTH,
+    // so it promised ONE EMPLOYEE for a string that is not an employee at all; r289 routes that count
+    // through `visibleEmploymentIds` and it now reads zero. Nothing is dropped from the notice either way
+    // — the publish still fails on the uuid cast below, which is what the rest of this case pins.
     expect((stored?.criteria.employmentIds ?? []).length).toBe(1);
 
     const err = await publishNotice(adminCtx(b), created.id).then(
@@ -250,9 +260,9 @@ describe('r288 §B · two ways in, ONE population — through the services that 
 
     expect(idsFromForm(both), 'the merge must not hand a service a duplicate').toEqual([alice, bob]);
     // Pure-rule cases the database cannot express: the same id twice in one door, and either door alone.
-    expect(mergeEmploymentSelection([alice, alice], alice)).toEqual([alice]);
-    expect(mergeEmploymentSelection([alice, bob], '')).toEqual([alice, bob]);
-    expect(mergeEmploymentSelection([], `${alice},${bob}`)).toEqual([alice, bob]);
+    expect(mergeEmploymentSelection([alice, alice], alice, [])).toEqual([alice]);
+    expect(mergeEmploymentSelection([alice, bob], '', [])).toEqual([alice, bob]);
+    expect(mergeEmploymentSelection([], `${alice},${bob}`, [])).toEqual([alice, bob]);
 
     // And the population is the same as either door alone — the half that would still pass without the
     // line above, kept because it proves the merged list is not merely duplicate-free but CORRECT.
@@ -297,23 +307,34 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
   const noticeAction = read('app/admin/notice-board/actions.ts');
   const noticeForm = read('components/notice/notice-form.tsx');
 
+  /**
+   * r289 REFLOWED THESE THREE CALLS ONTO SEVERAL LINES, because each now takes a THIRD argument — the
+   * population a pasted Employee ID resolves against. So the assertion is a whitespace-tolerant regex
+   * rather than a one-line substring, and it is STRICTER than what it replaces: it pins the two field
+   * reads AND that a population is passed at all. A call site that quietly went back to two arguments
+   * would stop resolving Employee IDs on one side of the submit while the other went on resolving them —
+   * which is this describe block's whole subject.
+   */
+  const MERGES_BOTH_FIELDS =
+    /mergeEmploymentSelection\(\s*(?:fd|formData)\.getAll\('employmentIds'\)\.map\(String\),\s*String\((?:fd|formData)\.get\('employmentIdsRaw'\) \?\? ''\),\s*(?:await )?[\w.]+(?:\(\w*\))?,?\s*\)/;
+
   it('the Adjustments write path merges both fields through mergeEmploymentSelection', () => {
     expect(adjAction).toContain("import { mergeEmploymentSelection } from '@/lib/employment-selection'");
-    expect(adjAction).toContain("mergeEmploymentSelection(fd.getAll('employmentIds').map(String)");
+    expect(adjAction).toMatch(MERGES_BOTH_FIELDS);
     // The hand-rolled split that used to live here must be GONE, or the picker's ids would simply be
     // dropped on submit while the matched count kept counting them.
     expect(adjAction).not.toContain('.split(/[\\s,]+/)');
   });
 
   it("the Adjustments live count merges the SAME two fields through the SAME function", () => {
-    expect(adjForm).toContain("import { mergeEmploymentSelection } from '@/lib/employment-selection'");
-    expect(adjForm).toContain("mergeEmploymentSelection(fd.getAll('employmentIds').map(String)");
+    expect(adjForm).toContain("import { mergeEmploymentSelection, resolveEmploymentSelection } from '@/lib/employment-selection'");
+    expect(adjForm).toMatch(MERGES_BOTH_FIELDS);
     expect(adjForm).not.toContain('.split(/[\\s,]+/)');
   });
 
   it('the Notice Board write path merges both fields through mergeEmploymentSelection', () => {
     expect(noticeAction).toContain("import { mergeEmploymentSelection } from '@/lib/employment-selection'");
-    expect(noticeAction).toContain("mergeEmploymentSelection(fd.getAll('employmentIds').map(String)");
+    expect(noticeAction).toMatch(MERGES_BOTH_FIELDS);
     expect(noticeAction).not.toContain('.split(/[\\s,]+/)');
   });
 
@@ -466,6 +487,7 @@ describe('r288 §D · the help strings that were lying are gone, in all six loca
         'adjustmentsEmployeeNonePicked',
         'adjustmentsPasteAlternative',
         'adjustmentsPasteAlternativeHelp',
+        'adjustmentsPasteUnmatched',
         'adjustmentsMatchedUnknown',
       ]) {
         expect(leave[k], `${loc}.admin.leave.${k}`).toBeTruthy();
@@ -482,6 +504,7 @@ describe('r288 §D · the help strings that were lying are gone, in all six loca
         'fEmployeeRemove',
         'fPasteAlternative',
         'fPasteAlternativeHelp',
+        'fPasteUnmatched',
       ]) {
         expect(notices[k], `${loc}.notices.${k}`).toBeTruthy();
       }

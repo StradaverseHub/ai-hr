@@ -102,7 +102,7 @@ import {
   typedKey,
   type ClockingFormValues,
 } from './locations/clocking/form-fields';
-import { countEmployeesInScope } from '@/core/read';
+import { countEmployeesInScope, listEmployeePickOptions } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
@@ -1146,6 +1146,11 @@ export async function openLeaveYearAction(formData: FormData) {
   let res: Awaited<ReturnType<typeof runLeaveGeneration>>;
   try {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
+    // r289 — THE POPULATION A PASTED EMPLOYEE ID RESOLVES AGAINST, read here rather than trusted from the
+    // post: the same list step ③'s picker was filled from, so `EMP-0008` names the same person on submit
+    // as it did in the live preview. Read ONLY in individual mode — the criteria path resolves nobody by
+    // reference and must not pay for a list it will not look at.
+    const pickPopulation = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
     res = await runLeaveGeneration(s, {
       year,
       // Empty ⇒ every type this sweep grants, exactly as the bare button did.
@@ -1169,11 +1174,17 @@ export async function openLeaveYearAction(formData: FormData) {
       // bulk run is set up today. `mergeEmploymentSelection` is the SAME function the screen's live
       // preview calls on the SAME two fields, so the population confirmed on screen cannot differ from
       // the one this run grants to. Do not inline either half.
+      //
+      // r289 — …and over the SAME POPULATION the screen resolved against, which is what makes a pasted
+      // Employee ID mean one person rather than two different things on the two sides of the submit. An
+      // unresolved token is NOT dropped: it goes on to `resolveOrgCriteriaTargets` exactly as typed, so a
+      // typo covers nobody instead of quietly making a twelve-person run into a ten-person one.
       employmentIds:
         targetMode === 'individual'
           ? mergeEmploymentSelection(
               formData.getAll('employmentIds').map(String),
               String(formData.get('employmentIdsRaw') ?? ''),
+              pickPopulation,
             )
           : undefined,
     });
