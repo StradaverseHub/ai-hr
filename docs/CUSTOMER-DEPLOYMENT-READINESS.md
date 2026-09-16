@@ -97,8 +97,14 @@ takes the dev-switcher branch and **the deployed system authenticates nobody**. 
 carry placeholder subjects; `app_invitation` is empty; no `auth%` domain event has ever been written.
 
 Two live consequences, both measured on the box:
-- `/login` sits outside the password gate by design (`lib/auth-routes.ts:15`) and returns 200 with every
-  principal's real name and role. With real employees loaded that publishes the staff directory.
+- `/login` sits outside the password gate by design (`lib/auth-routes.ts:14` — `AUTH_ROUTE_PREFIXES`, not
+  :15) and returns 200 to anyone. **RE-CHECKED 2026-09-17 (r295): the "publishes every principal's name
+  and role" half does NOT reproduce in the served markup** — `curl` of `/login` on the live box returns
+  717 KB with **zero** employee codes, zero role strings and zero person-like names. Either it was fixed
+  since the survey, or the switcher's identity list is fetched client-side and so is invisible to `curl`.
+  **UNRESOLVED, and it needs a browser to settle** — do not treat the original claim as fact, and do not
+  treat this re-check as an all-clear either. The route being unauthenticated is not in doubt; what it
+  discloses is.
 - A single POST to `/login/as` sets the `dev_user` cookie and makes the caller the group admin.
 
 All six steps of `docs/WORKOS-CUTOVER.md` are outstanding. Run the bootstrap invite **before** unsetting
