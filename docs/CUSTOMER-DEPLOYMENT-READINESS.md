@@ -51,9 +51,20 @@ to leave `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` and `DEV_USER_ID` "as-is".
 first deploy.** Write a customer deploy path that neither requires `DEV_TENANT_ID` nor can invoke the
 seeder, and make the seeder refuse to run when `NODE_ENV=production` and the demo flag is unset.
 
-- [ ] Customer deploy path exists and is documented separately from the demo one
-- [ ] `db/seed.ts` refuses to run against a production deployment
-- [ ] `DEPLOY.md` no longer tells an operator to keep the demo variables
+- [x] Customer deploy path exists and is documented separately from the demo one — r290:
+      `deploy/deploy-customer.sh` (== `deploy.sh --customer`) plus `deploy/.env.customer.example` and
+      DEPLOY.md's "Deploying for a customer". It requires no `DEV_TENANT_ID` and cannot reach the seeder.
+- [x] `db/seed.ts` refuses to run against a production deployment — r290, `db/seed-guard.ts`: it exits
+      non-zero on real WorkOS config, on `NODE_ENV=production` without `ALLOW_DEMO_SESSION=true`, on a
+      `DEV_TENANT_ID` that disagrees with the tenant it writes, or on a database already holding a
+      tenant it did not create.
+- [x] `DEPLOY.md` no longer tells an operator to keep the demo variables — r290.
+
+> **Residual, stated rather than hidden.** `deploy.sh`'s demo branch is gated on
+> `ALLOW_DEMO_SESSION=true`, so an operator who copies the DEMO env template onto an EMPTY customer
+> database is — in the environment — identical to the demo box, and can still seed. Nothing readable
+> distinguishes the two; only the documentation split and the demo template's new header stand in the
+> way. It closes properly by deleting the demo deploy path once the consultant demo is retired.
 
 ### 1.2 Arm the audit hash chain — THIS ONE IS NOT RETROACTIVE
 Production holds 11,195 `domain_event` rows and **zero** are chained. `AUDIT_HASH_CHAIN_ENABLED` is absent

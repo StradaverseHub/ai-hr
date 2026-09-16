@@ -1,7 +1,25 @@
 #!/usr/bin/env bash
-# AI HR — build, migrate, (first-time) seed, and restart the gated demo. Re-run any time to deploy an
-# update. Pass --reseed to wipe + reseed the demo data (destroys tester changes), or --migrate-only to
-# stop after the migrations + catalog seed without seeding demo data or restarting. See deploy/DEPLOY.md.
+# AI HR — build, migrate, (first-time) seed, and restart. Re-run any time to deploy an update.
+#
+# TWO DEPLOYMENTS, ONE SPINE (r290 / readiness 1.1). install → chain check → build → migrate →
+# catalog-seed → restart is identical for the gated consultant demo and for a customer, and keeping it
+# in ONE script is the only way it stays identical: a forked customer copy would drift silently and the
+# drift would be discovered by the customer. Exactly one thing differs — whether the DEMO SEEDER
+# (db/seed.ts, which TRUNCATEs 24 tables and plants a fictional "Demo Group" tenant) may run.
+#
+#   customer:  ./deploy/deploy-customer.sh   (== ./deploy/deploy.sh --customer)
+#              does not require DEV_TENANT_ID, never reaches db/seed.ts, refuses --reseed.
+#   demo:      ./deploy/deploy.sh            (unchanged — this box's every-round command)
+#              seeds only when .env.production says ALLOW_DEMO_SESSION=true.
+#
+# Before r290 there was no customer path at all: DEV_TENANT_ID was hard-required at the top and the
+# seeder ran whenever that tenant row was ABSENT from the target database — which on a fresh customer
+# database is always. Following DEPLOY.md on a customer box planted Demo Group in their production
+# database on the first deploy.
+#
+# Flags: --reseed wipes + reseeds the demo data (destroys tester changes); --migrate-only stops after
+# the migrations + catalog seed without seeding demo data or restarting; --customer / --demo select the
+# mode explicitly. See deploy/DEPLOY.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,13 +33,21 @@ cd "$(dirname "$0")/.."
 # which is the exact harm the reconciliation exists to prevent.
 RESEED=0
 MIGRATE_ONLY=0
+CUSTOMER=0
+DEMO_FORCED=0
 for arg in "$@"; do
   case "$arg" in
     --reseed) RESEED=1 ;;
     --migrate-only) MIGRATE_ONLY=1 ;;
-    *) echo "✗ Unknown argument: $arg (expected --reseed and/or --migrate-only)"; exit 1 ;;
+    --customer) CUSTOMER=1 ;;
+    --demo) DEMO_FORCED=1 ;;
+    *) echo "✗ Unknown argument: $arg (expected --reseed, --migrate-only, --customer and/or --demo)"; exit 1 ;;
   esac
 done
+if [ "$CUSTOMER" = "1" ] && [ "$DEMO_FORCED" = "1" ]; then
+  echo "✗ --customer and --demo are opposites; pass one or neither."
+  exit 1
+fi
 
 # Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
@@ -37,7 +63,33 @@ done
 [ -f .env.production ] || { echo "✗ Missing .env.production — copy deploy/.env.production.example, fill it in, and re-run."; exit 1; }
 # Load the production env so db:migrate (MIGRATION_DATABASE_URL) and the seed pick it up.
 set -a; . ./.env.production; set +a
-: "${MIGRATION_DATABASE_URL:?set in .env.production}"; : "${DEV_TENANT_ID:?set in .env.production}"
+: "${MIGRATION_DATABASE_URL:?set in .env.production}"
+
+# DEMO MODE IS AN OPT-IN (r290). `--customer` forces it off; otherwise the deployment has to SAY it is
+# the gated demo by setting ALLOW_DEMO_SESSION=true — the same variable lib/session.ts reads to enable
+# the "act as" switcher, so a deployment that has it on authenticates nobody and cannot be a real one.
+# Absence means customer. That is what makes a plain `./deploy/deploy.sh` safe for an operator who
+# copied deploy/.env.customer.example: no ALLOW_DEMO_SESSION, therefore no seed and no DEV_TENANT_ID
+# requirement. On the gated box, which sets ALLOW_DEMO_SESSION=true, every branch below resolves
+# exactly as it did before r290.
+#
+# `${ALLOW_DEMO_SESSION:-}`, not `$ALLOW_DEMO_SESSION`: this script runs under `set -u`, where an unset
+# variable is a fatal error, and "unset" is the normal customer case.
+DEMO=0
+if [ "$CUSTOMER" != "1" ] && { [ "$DEMO_FORCED" = "1" ] || [ "${ALLOW_DEMO_SESSION:-}" = "true" ]; }; then
+  DEMO=1
+fi
+
+if [ "$DEMO" = "1" ]; then
+  # Required by, and read by, the demo seed branch alone. A customer deployment has no such tenant.
+  : "${DEV_TENANT_ID:?set in .env.production}"
+elif [ "$RESEED" = "1" ]; then
+  # Never silently ignore a destructive flag.
+  echo "✗ --reseed wipes and re-creates the DEMO data (db/seed.ts TRUNCATEs 24 tables), and this"
+  echo "    deploy is not in demo mode — either --customer was passed, or .env.production does not"
+  echo "    set ALLOW_DEMO_SESSION=true."
+  exit 1
+fi
 
 # Skip the install when the lockfile hasn't moved since the last successful install. node_modules is
 # rsync-excluded (it persists across deploys), so on a code-only update — the common case — reinstalling
@@ -149,12 +201,20 @@ if [ "$MIGRATE_ONLY" = "1" ]; then
   exit 0
 fi
 
-# Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
-if [ "$RESEED" = "1" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
-  echo "▸ Seeding demo data…"
-  node --env-file=.env.production --import tsx db/seed.ts
+# THE DEMO SEEDER — the one branch that differs between the two deployments, and the only place in this
+# script that can reach db/seed.ts. In customer mode `$DEMO` is 0, so neither the psql probe nor the
+# seeder is ever evaluated; `$DEV_TENANT_ID` is not even expanded, which is why customer mode does not
+# need it under `set -u`. db/seed-guard.ts refuses independently if this is ever reached wrongly.
+if [ "$DEMO" = "1" ]; then
+  # Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
+  if [ "$RESEED" = "1" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
+    echo "▸ Seeding demo data…"
+    node --env-file=.env.production --import tsx db/seed.ts
+  else
+    echo "▸ Demo data already present — skipping seed (use './deploy/deploy.sh --reseed' to reset)."
+  fi
 else
-  echo "▸ Demo data already present — skipping seed (use './deploy/deploy.sh --reseed' to reset)."
+  echo "▸ Customer deployment — the demo seeder was not run and is not reachable from this mode."
 fi
 
 echo "▸ Restarting service…"

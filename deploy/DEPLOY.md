@@ -8,6 +8,31 @@ A native (no-Docker) deployment for **demo/testing on a public-IP server**. The 
 > with a public IP and **no TLS**, the Basic-auth password travels over plain HTTP — use a throwaway
 > password, rotate it after the test, and consider the HTTPS upgrade note at the bottom.
 
+## Which deployment is this? — read before step 3 (r290 / readiness 1.1)
+
+This document is the **gated consultant demo** runbook. Steps 0–2, 5, 5b and 6 are shared with a
+customer deployment; **steps 3 and 4 are not**, and following them on a customer's box is how a
+fictional `Demo Group` tenant ends up in their production database.
+
+| | gated consultant demo | customer |
+|---|---|---|
+| env template | `deploy/.env.production.example` | `deploy/.env.customer.example` |
+| deploy command | `./deploy/deploy.sh` | `./deploy/deploy-customer.sh` |
+| `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID`, `DEV_USER_ID` | set | **absent** |
+| `db/seed.ts` (the demo fixture) | seeded on the first deploy | **never runs; not reachable** |
+| `--reseed` | wipes and re-seeds the demo | refused |
+
+`db/seed.ts` is not a "sample data" script. It opens with
+`TRUNCATE tenant, company, person, employment, … CASCADE` over 24 tables and then writes a fixed
+fictional tenant. Before r290 `deploy.sh` ran it whenever the `DEV_TENANT_ID` row was **absent** from
+the target database — which on a fresh customer database is always — and hard-required `DEV_TENANT_ID`
+before it would start at all. Both are fixed: demo seeding is now an opt-in that requires
+`ALLOW_DEMO_SESSION=true` in `.env.production`, `--customer` forces it off, and `db/seed.ts` refuses on
+its own account (`db/seed-guard.ts`) if it is ever invoked against a deployment that has not declared
+itself a demo, that has WorkOS configured, or whose database already holds a tenant it did not create.
+
+**If you are deploying for a customer, skip steps 3 and 4 and use "Deploying for a customer" below.**
+
 ## Co-locating safely on a shared / production host
 
 If this box already runs something important (e.g. another app behind nginx), keep AI HR fully
@@ -96,7 +121,7 @@ migrating).
 > builtin never enters the process table). Converting `bootstrap-db.sql` to psql 16's `\getenv` is the
 > clean follow-up; it is not done here because that file is pinned by `test/platform-plane.test.ts`.
 
-## 3. Configure the environment
+## 3. Configure the environment (gated demo)
 
 ```bash
 cp deploy/.env.production.example .env.production
@@ -108,12 +133,17 @@ Fill in:
 - `MIGRATION_DATABASE_URL` → `postgresql://ai_hr_owner:<OWNER_PW>@localhost:5432/ai_hr`
 - `AI_CONFIG_SECRET` → `openssl rand -base64 32` (keep it stable — changing it breaks stored AI keys)
 - `SHARE_PASSWORD` → a strong throwaway password (you'll give this to the consultant)
-- leave `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID`, `DEV_USER_ID`, `PORT` as-is
+- `PORT` → leave as-is
+- `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID`, `DEV_USER_ID` → leave as-is **on the gated demo box only.**
+  These three are what let `deploy.sh` run the demo seeder. **A customer deployment must not have
+  them** — see "Deploying for a customer" below and use `deploy/.env.customer.example`, which does not
+  contain them. (This bullet used to read "leave … as-is" with no such qualification, and following it
+  on a customer box planted `Demo Group` in their production database on the first deploy.)
 
 > Postgres auth: if `ai_hr_app`/`ai_hr_owner` can't log in with a password, set `scram-sha-256` for
 > `127.0.0.1/32` in `pg_hba.conf` and `sudo systemctl reload postgresql`.
 
-## 4. Build, migrate, seed
+## 4. Build, migrate, seed (gated demo)
 
 ```bash
 ./deploy/deploy.sh
@@ -121,6 +151,52 @@ Fill in:
 
 This installs deps, builds, runs migrations (as the owner), and seeds the demo data the first time
 (it skips the seed on later runs so tester data survives; `./deploy/deploy.sh --reseed` forces a reset).
+
+## Deploying for a customer (replaces steps 3 and 4)
+
+Steps 0, 1 and 2 above are unchanged — same prerequisites, same code sync, same database bootstrap.
+Then, instead of steps 3 and 4:
+
+```bash
+cp deploy/.env.customer.example .env.production
+nano .env.production
+```
+
+Fill in:
+- `DATABASE_URL` → `postgresql://ai_hr_app:<APP_PW>@localhost:5432/ai_hr`
+- `MIGRATION_DATABASE_URL` → `postgresql://ai_hr_owner:<OWNER_PW>@localhost:5432/ai_hr`
+- `AI_CONFIG_SECRET` → `openssl rand -base64 32` (keep it stable — changing it breaks stored AI keys)
+- `SHARE_PASSWORD` → a strong password, until the WorkOS cutover replaces it
+- `AUDIT_HASH_CHAIN_ENABLED=true` → **leave it on, and do not deploy without it.** There is no
+  backfill; every event written before it is armed is permanently unchained (readiness 1.2).
+- `NODE_ENV=production`, `PORT` → leave as-is
+- `WORKOS_*` → uncomment and fill during the cutover (`docs/WORKOS-CUTOVER.md`, readiness 1.3)
+
+There is **no** `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` or `DEV_USER_ID` in this file. Do not add them,
+and do not build this file by copying `deploy/.env.production.example` and editing it — their absence
+is load-bearing, not cosmetic.
+
+```bash
+./deploy/deploy-customer.sh
+```
+
+Same spine as `deploy.sh` — install, audit-chain preflight, build, migrate as the owner, seed the
+module/setting catalogs, restart — with the demo seeder unreachable and `DEV_TENANT_ID` not required.
+`--migrate-only` works the same way; `--reseed` is refused.
+
+Then continue with step 5 (systemd) and step 5b (the scheduled sweeps, which are **required**).
+
+The first tenant is created through the operator console / provisioning runner (step 5b), **not** by a
+seed script. A customer deployment starts with an empty `tenant` table and that is correct.
+
+### If you get a refusal from the seeder
+
+`db/seed.ts` exits non-zero with `✗ REFUSING TO SEED` rather than truncating. It fires on any of:
+real authentication configured (a non-empty `WORKOS_*`); `NODE_ENV=production` without
+`ALLOW_DEMO_SESSION=true`; a `DEV_TENANT_ID` that disagrees with the id the seeder writes; or a
+`tenant` table that already holds a row the seeder did not create. On a customer deployment the right
+response is never to satisfy the condition — it is that the seeder was invoked at all. Deploy with
+`./deploy/deploy-customer.sh`.
 
 ## 5. Run it as a service (survives reboots)
 
@@ -262,6 +338,9 @@ username + that password at the browser prompt, then use the top-bar **"act as"*
 HR Admin / Manager / Employee, the 文A button for language, and the **?** tour.
 
 ## Updating later
+
+On a customer deployment, re-sync the code (step 1) and re-run `./deploy/deploy-customer.sh`. The rest
+of this section is the gated demo's.
 
 Re-sync the code (step 1) and re-run `./deploy/deploy.sh` — it rebuilds, applies any new migrations,
 keeps the data, and restarts the service. Reset the demo with `--reseed`. `--migrate-only` stops after
