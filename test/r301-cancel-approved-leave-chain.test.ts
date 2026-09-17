@@ -254,6 +254,26 @@ describe('RE-APPROVAL WALKS THE ORIGINAL 2-LEVEL CHAIN, IN ORDER', () => {
   });
 });
 
+describe('AN APPROVER WHO HAS SINCE LEFT — the fallback leave approvals use', () => {
+  it('the manager has left: HR clears the manager’s level, and the chain carries on to its own level', async () => {
+    const id = await approvedWeekTwoLevels();
+    const { cancellationRequestId: crId } = await requestLeaveCancellation(subjectCtx, { leaveRequestId: id, cancelDates: [TUE], today: TODAY });
+    // The manager leaves after the leave was approved and before the cancellation is decided.
+    await owner.db
+      .update(schema.employment)
+      .set({ lastWorkingDate: addDays(TODAY, -1), resignationDate: addDays(TODAY, -30) })
+      .where(eq(schema.employment.id, manager.employmentId));
+    // HR clears level 1 (a direct_manager level) — the same override that keeps a leave approval from stalling.
+    expect(await decideLeaveCancellation(hrCtx, { cancellationRequestId: crId, decision: 'approved' })).toEqual({
+      status: 'pending',
+      advancedTo: 'hr_admin',
+    });
+    const d = await decideLeaveCancellation(hrCtx, { cancellationRequestId: crId, decision: 'approved' });
+    expect(d.status).toBe('approved');
+    expect((await stepsOf(crId)).map((st) => st.status)).toEqual(['approved', 'approved']);
+  });
+});
+
 describe('A SPLIT SURVIVOR COPIES THE ORIGINAL REQUEST’S STEPS', () => {
   it('a new row cut by an earlier cancellation has no steps of its own; its cancellation copies the original’s, named approver included', async () => {
     // The original chain names a PERSON at level 2, so "the same people" is observable on the copy. The named
