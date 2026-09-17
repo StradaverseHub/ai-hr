@@ -217,12 +217,12 @@ function isPlainRecord(v: unknown): v is Record<string, unknown> {
 
 const toMarkup = async (tree: unknown) =>
   renderToStaticMarkup(
-    createElement(NextIntlClientProvider, {
-      locale: 'en',
-      timeZone: 'Asia/Kuala_Lumpur',
-      messages: en,
-      children: (await settle(tree)) as never,
-    }),
+    createElement(
+      NextIntlClientProvider,
+      // children go as the third argument (react/no-children-prop); the props type insists on them, hence the cast.
+      { locale: 'en', timeZone: 'Asia/Kuala_Lumpur', messages: en } as never,
+      (await settle(tree)) as never,
+    ),
   ).replace(/<script[\s\S]*?<\/script>/g, '');
 
 type SP = { tab?: string; group?: string; error?: string; editGroup?: string; policy?: string; viewPolicy?: string };
