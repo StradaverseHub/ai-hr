@@ -10565,6 +10565,7 @@
     "drawerEditTitle": "Edit: {name}",
     "templateUpdatedToast": "{name} dikemas kini",
     "templateCreatedToast": "{name} dicipta",
+    "templateSaveFailed": "Templat ini tidak dapat disimpan. Cuba lagi, atau hubungi pentadbir anda.",
     "discardTitle": "Buang perubahan anda?",
     "discardBody": "Anda telah mengubah templat ini tetapi belum menyimpannya.",
     "discardKeep": "Teruskan mengedit",

@@ -10565,6 +10565,7 @@
     "drawerEditTitle": "Sửa: {name}",
     "templateUpdatedToast": "Đã cập nhật {name}",
     "templateCreatedToast": "Đã tạo {name}",
+    "templateSaveFailed": "Không thể lưu mẫu này. Hãy thử lại hoặc hỏi quản trị viên của bạn.",
     "discardTitle": "Bỏ các thay đổi của bạn?",
     "discardBody": "Bạn đã thay đổi mẫu này nhưng chưa lưu.",
     "discardKeep": "Tiếp tục sửa",

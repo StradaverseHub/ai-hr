@@ -10565,6 +10565,7 @@
     "drawerEditTitle": "แก้ไข: {name}",
     "templateUpdatedToast": "อัปเดต {name} แล้ว",
     "templateCreatedToast": "สร้าง {name} แล้ว",
+    "templateSaveFailed": "ไม่สามารถบันทึกเทมเพลตนี้ได้ ลองอีกครั้ง หรือสอบถามผู้ดูแลระบบของคุณ",
     "discardTitle": "ละทิ้งการเปลี่ยนแปลงหรือไม่?",
     "discardBody": "คุณได้เปลี่ยนแปลงเทมเพลตนี้แต่ยังไม่ได้บันทึก",
     "discardKeep": "แก้ไขต่อ",

@@ -58,6 +58,26 @@ export type ApprovalTemplateInput = {
   levels: unknown[];
 };
 
+/**
+ * r304 (board 85875e4b) — A REFUSAL THIS SERVICE RAISES ON PURPOSE, worded for the administrator.
+ *
+ * The template drawer (app/admin/leave-approval/template-manager.tsx, via saveApprovalTemplateAction) shows
+ * the message of THIS class verbatim and nothing else's. Everything else a save can throw — a database
+ * refusal (RLS, a constraint drizzle wraps as "Failed query: … params: <tenant id>,…"), a lost connection,
+ * a missing session — is not a sentence for a screen; the action replaces it with one localized line and
+ * logs it. A whitelist by class rather than a regex over the text, so a failure nobody anticipated cannot
+ * walk through (the app/admin/attendance/schedule-assignment/actions.ts reasoning).
+ *
+ * Raised on the create / update path only, which is the only path whose caller reads it. The other writers
+ * in this file still throw plain Errors to actions that redirect with them.
+ */
+export class ApprovalTemplateRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApprovalTemplateRefusedError';
+  }
+}
+
 /** Postgres unique-violation (the partial unique index on active template names). Drizzle wraps the
  *  PostgresError, so walk the cause chain for code 23505. */
 function isUniqueViolation(e: unknown): boolean {
@@ -71,13 +91,13 @@ function isUniqueViolation(e: unknown): boolean {
 
 function cleanTemplate(p: ApprovalTemplateInput) {
   const name = (p.name ?? '').replace(/\s+/g, ' ').trim();
-  if (!name) throw new Error('Template name is required');
+  if (!name) throw new ApprovalTemplateRefusedError('Template name is required');
   const levels = sanitizeApprovalLevels(p.levels);
-  if (levels.length === 0) throw new Error('A template needs at least one approval step');
+  if (levels.length === 0) throw new ApprovalTemplateRefusedError('A template needs at least one approval step');
   // A fixed level with nobody named is DROPPED by sanitize rather than saved half-built, so a save that
   // named no one would silently shorten the chain. Say so instead: the administrator chose that level.
   if (levels.length !== (Array.isArray(p.levels) ? p.levels.length : 0)) {
-    throw new Error('Every approval level needs an approver — choose a person for any named-approver step');
+    throw new ApprovalTemplateRefusedError('Every approval level needs an approver — choose a person for any named-approver step');
   }
   const description = p.description?.trim() ? p.description.trim() : null;
   // Stored through `serializeApprovalLevels`: a dynamic level goes back as a bare string, so every row
@@ -278,7 +298,7 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
         .values({ tenantId: ctx.tenantId, name: c.name, description: c.description, levels: c.stored })
         .returning({ id: leaveApprovalTemplate.id });
     } catch (e) {
-      if (isUniqueViolation(e)) throw new Error('A template with that name already exists');
+      if (isUniqueViolation(e)) throw new ApprovalTemplateRefusedError('A template with that name already exists');
       throw e;
     }
     await appendEvent(tx, {
@@ -303,14 +323,14 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
       .from(leaveApprovalTemplate)
       .where(eq(leaveApprovalTemplate.id, id))
       .limit(1);
-    if (!before) throw new Error('Template not found');
+    if (!before) throw new ApprovalTemplateRefusedError('Template not found');
     try {
       await tx
         .update(leaveApprovalTemplate)
         .set({ name: c.name, description: c.description, levels: c.stored, updatedAt: sql`now()` })
         .where(eq(leaveApprovalTemplate.id, id));
     } catch (e) {
-      if (isUniqueViolation(e)) throw new Error('A template with that name already exists');
+      if (isUniqueViolation(e)) throw new ApprovalTemplateRefusedError('A template with that name already exists');
       throw e;
     }
     // Editing levels intentionally changes every assignment's FUTURE resolutions; pending requests keep

@@ -10565,6 +10565,7 @@
     "drawerEditTitle": "编辑：{name}",
     "templateUpdatedToast": "已更新 {name}",
     "templateCreatedToast": "已创建 {name}",
+    "templateSaveFailed": "无法保存此模板。请重试，或联系您的管理员。",
     "discardTitle": "放弃您的更改？",
     "discardBody": "您已更改此模板，但尚未保存。",
     "discardKeep": "继续编辑",

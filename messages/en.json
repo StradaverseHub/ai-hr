@@ -10565,6 +10565,7 @@
     "drawerEditTitle": "Edit: {name}",
     "templateUpdatedToast": "{name} updated",
     "templateCreatedToast": "{name} created",
+    "templateSaveFailed": "This template could not be saved. Try again, or ask your administrator.",
     "discardTitle": "Discard your changes?",
     "discardBody": "You changed this template and have not saved it.",
     "discardKeep": "Keep editing",

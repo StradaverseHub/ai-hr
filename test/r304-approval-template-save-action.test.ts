@@ -2,22 +2,27 @@
  * r304 (board 85875e4b) · `saveApprovalTemplateAction` RETURNS ITS OUTCOME — against a real database.
  *
  * The template form moved into a side drawer, and the action behind it stopped redirecting so a refused save
- * can stay in the drawer with the edits intact. Three things are pinned here, all through the ACTION (not the
- * service), because the contract that changed is the action's:
+ * can stay in the drawer with the edits intact. Pinned here through the ACTION (not the service), because the
+ * contract that changed is the action's:
  *
- *   1. A REFUSAL COMES BACK AS THE SERVICE'S OWN MESSAGE and nothing is written. Not a generic string, not
- *      `undefined` — r303 found `fail(ENTITLEMENTS, <string>)` turning every refusal on a screen into
- *      "undefined", and a drawer that shows "undefined" is worse than the page reload it replaced.
- *   2. A SUCCESS carries the id (a created row has no id on the client yet) and the name AS STORED.
- *   3. AUTHORIZATION DID NOT MOVE. The action calls the same `getSession()` and the same two services with the
+ *   1. A DELIBERATE DOMAIN REFUSAL COMES BACK AS THE SERVICE'S OWN MESSAGE and nothing is written — the
+ *      service raises those as `ApprovalTemplateRefusedError`. Not a generic string, not `undefined` (r303
+ *      found `fail(ENTITLEMENTS, <string>)` turning every refusal on a screen into "undefined").
+ *   2. ANYTHING ELSE NEVER REACHES THE SCREEN AS ITS OWN TEXT. A database refusal is drizzle's wrapper —
+ *      "Failed query: insert into "leave_approval_template" … params: <tenant id>,<name>,…" — and before the
+ *      coordinator's fix pass that was exactly what a non-admin's drawer (and, before r304, the page banner)
+ *      printed. It now gets ONE localized sentence (`leaveApproval.templateSaveFailed`, six locales), and the
+ *      raw error is logged server-side with console.error.
+ *   3. A SUCCESS carries the id (a created row has no id on the client yet) and the name AS STORED.
+ *   4. AUTHORIZATION DID NOT MOVE. The action calls the same `getSession()` and the same two services with the
  *      same session. Neither service checks for an administrator in code; the table's RLS policy does
  *      (`leave_approval_template_rls … WITH CHECK (tenant_id = app.current_tenant_id() AND app.is_admin())`,
- *      db/migrations/0170). A non-admin session is driven through the action AND straight through the
- *      services the old redirecting action called: both are refused, and nothing is written either way.
+ *      db/migrations/0170). A non-admin session is driven through the services the old redirecting action
+ *      called AND through the action: both are refused, and nothing is written either way.
  *
  * It never redirects: `redirect` is stubbed to throw, so a leftover redirect would fail every case here.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
@@ -37,10 +42,50 @@ vi.mock('next/navigation', () => ({
   },
 }));
 
+/** The request locale the action translates its generic sentence into. Swapped per case. */
+const INTL = vi.hoisted(() => ({ locale: 'en' as 'en' | 'ms' | 'ta' | 'th' | 'vi' | 'zh' }));
+vi.mock('next-intl/server', async () => {
+  const catalogues = {
+    en: (await import('../messages/en.json')).default,
+    ms: (await import('../messages/ms.json')).default,
+    ta: (await import('../messages/ta.json')).default,
+    th: (await import('../messages/th.json')).default,
+    vi: (await import('../messages/vi.json')).default,
+    zh: (await import('../messages/zh.json')).default,
+  } as Record<string, unknown>;
+  const lookup = (obj: unknown, dotted: string): unknown =>
+    dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);
+  return {
+    getLocale: async () => INTL.locale,
+    getTranslations: async (ns: string) => (key: string) => {
+      const hit = lookup(catalogues[INTL.locale], `${ns}.${key}`);
+      if (typeof hit !== 'string') throw new Error(`MISSING_MESSAGE ${INTL.locale}:${ns}.${key}`);
+      return hit;
+    },
+  };
+});
+
+import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import vi_ from '../messages/vi.json';
+import zh from '../messages/zh.json';
+const GENERIC = {
+  en: en.leaveApproval.templateSaveFailed,
+  ms: ms.leaveApproval.templateSaveFailed,
+  ta: ta.leaveApproval.templateSaveFailed,
+  th: th.leaveApproval.templateSaveFailed,
+  vi: vi_.leaveApproval.templateSaveFailed,
+  zh: zh.leaveApproval.templateSaveFailed,
+} as const;
+const LOCALES = Object.keys(GENERIC) as (keyof typeof GENERIC)[];
+
 import { saveApprovalTemplateAction } from '../app/admin/leave-approval/actions';
 
 let b: Base;
 let admin: SessionContext;
+let errorLog: ReturnType<typeof vi.spyOn>;
 
 const form = (fields: Record<string, string>) => {
   const fd = new FormData();
@@ -81,6 +126,11 @@ beforeEach(async () => {
   admin = adminCtx(b);
   SESSION = admin;
   REDIRECTS = [];
+  INTL.locale = 'en';
+  errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterEach(() => {
+  errorLog.mockRestore();
 });
 afterAll(async () => {
   await closeAll();
@@ -117,6 +167,8 @@ describe('r304 · saveApprovalTemplateAction returns instead of redirecting', ()
     expect(result).toEqual({ ok: false, error: 'A template with that name already exists' });
     expect(await rows()).toEqual(before);
     expect(REDIRECTS).toEqual([]);
+    // A refusal the service raised on purpose is an answer, not a fault: nothing is logged as an error.
+    expect(errorLog).not.toHaveBeenCalled();
   });
 
   it('a create that collides is refused by name and inserts nothing', async () => {
@@ -163,19 +215,26 @@ function causeChain(e: unknown): string {
   return parts.join(' <- ');
 }
 
+/** What must never be in a payload a screen renders: the driver's wrapper, SQL, bound parameters, the tenant. */
+function expectNoDatabaseText(result: unknown) {
+  const payload = JSON.stringify(result);
+  expect(payload).not.toMatch(/failed query/i);
+  expect(payload).not.toMatch(/params:|insert into|update\s+\\?"|leave_approval_template|row-level security/i);
+  expect(payload).not.toContain(b.tenantId);
+}
+
+/** The raw failure went to the server log — nothing is lost by not showing it. */
+function expectLoggedDatabaseRefusal() {
+  const logged: unknown[] = errorLog.mock.calls.flat();
+  expect(logged.some((arg: unknown) => arg instanceof Error && /row-level security/i.test(causeChain(arg))), 'the RLS refusal was not logged').toBe(true);
+}
+
 describe('r304 · authorization is exactly what it was: RLS refuses a non-admin, before and after', () => {
-  /*
-   * FINDING (reported, NOT changed this round — the brief forbids silently adding or removing a check): the
-   * refusal a non-admin gets is drizzle's wrapper, "Failed query: insert into "leave_approval_template" …
-   * params: <tenant id>,<name>,…" — raw SQL and bound parameters. The Postgres cause underneath is the RLS
-   * policy's "new row violates row-level security policy". That text reached the page's ?error= banner
-   * before r304 and reaches the drawer now; what is pinned below is that the action returns EXACTLY what
-   * the service throws, so the before and after are the same string.
-   */
-  it.each(['employee', 'manager'] as const)('a %s session cannot create a template — refused, nothing written', async (role) => {
+  it.each(['employee', 'manager'] as const)('a %s session cannot create a template — refused with the generic sentence, nothing written, raw error logged', async (role) => {
     const member = await sessionWithRole(role);
 
-    // BEFORE — the service the redirecting action called, with the same session and the same input.
+    // BEFORE — the service the redirecting action called, with the same session and the same input. It
+    // throws the database's refusal, and its message is raw SQL with the tenant id in it: what used to leak.
     const thrown = await createApprovalTemplate(member, {
       name: 'Sneaky',
       description: null,
@@ -186,17 +245,21 @@ describe('r304 · authorization is exactly what it was: RLS refuses a non-admin,
     );
     expect(thrown, 'a non-admin create went through the service').toBeInstanceOf(Error);
     expect(causeChain(thrown)).toMatch(/row-level security/i);
+    expect((thrown as Error).message).toMatch(/^Failed query:/);
+    expect((thrown as Error).message).toContain(b.tenantId);
     expect(await rows()).toEqual([]);
 
-    // AFTER — the returning action, same session: refused with that same message, nothing written.
+    // AFTER — the returning action, same session: refused, in words, with none of that text.
     SESSION = member;
     const result = await saveApprovalTemplateAction(form({ name: 'Sneaky', description: '', levels: TWO_STEP }));
-    expect(result).toEqual({ ok: false, error: (thrown as Error).message });
+    expect(result).toEqual({ ok: false, error: GENERIC.en });
+    expectNoDatabaseText(result);
+    expectLoggedDatabaseRefusal();
     expect(await rows()).toEqual([]);
     expect(REDIRECTS).toEqual([]);
   });
 
-  it.each(['employee', 'manager'] as const)('a %s session cannot rename an existing template — refused, row unchanged', async (role) => {
+  it.each(['employee', 'manager'] as const)('a %s session cannot rename an existing template — generic sentence, row unchanged', async (role) => {
     const { id } = await createApprovalTemplate(admin, { name: 'Standard Leave Approval', levels: ['hr_admin'] });
     const before = await rows();
     const member = await sessionWithRole(role);
@@ -217,7 +280,30 @@ describe('r304 · authorization is exactly what it was: RLS refuses a non-admin,
     const result = await saveApprovalTemplateAction(
       form({ templateId: id, name: 'Hijacked', description: '', levels: TWO_STEP }),
     );
-    expect(result).toEqual({ ok: false, error: (thrown as Error).message });
+    expect(result).toEqual({ ok: false, error: GENERIC.en });
+    expectNoDatabaseText(result);
+    expect(JSON.stringify(result)).not.toContain(id);
+    expectLoggedDatabaseRefusal();
     expect(await rows()).toEqual(before);
+  });
+
+  it('the generic sentence is in the viewer\'s language, in all six locales', async () => {
+    SESSION = await sessionWithRole('employee');
+    for (const loc of LOCALES) {
+      INTL.locale = loc;
+      const result = await saveApprovalTemplateAction(form({ name: 'Sneaky', description: '', levels: TWO_STEP }));
+      expect(result, loc).toEqual({ ok: false, error: GENERIC[loc] });
+      expectNoDatabaseText(result);
+    }
+    expect(new Set(Object.values(GENERIC)).size, 'a locale still carries the English sentence').toBe(LOCALES.length);
+    expect(await rows()).toEqual([]);
+  });
+
+  it('a failure that is not the database and not a refusal (no tenant on the session) is not shown as its own text either', async () => {
+    SESSION = { ...admin, tenantId: '' };
+    const result = await saveApprovalTemplateAction(form({ name: 'Night Shift', description: '', levels: TWO_STEP }));
+    expect(result).toEqual({ ok: false, error: GENERIC.en });
+    expect(JSON.stringify(result)).not.toMatch(/withTenant|session context/i);
+    expect(errorLog).toHaveBeenCalled();
   });
 });

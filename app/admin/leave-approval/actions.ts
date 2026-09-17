@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import type { SaveTemplateResult } from './template-manager';
 // e4238594 — the _redirects imports (ENTITLEMENTS / fail / okEntitlements) and getTranslations went with
@@ -10,6 +11,7 @@ import type { SaveTemplateResult } from './template-manager';
 // The core functions still exist and are still exercised; this FILE simply no longer reaches for them.
 import { setLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
+  ApprovalTemplateRefusedError,
   assignApprovalTemplate,
   createApprovalTemplate,
   deleteApprovalTemplate,
@@ -89,8 +91,14 @@ export async function saveLeaveEscalationPolicyAction(formData: FormData) {
  * (`WITH CHECK (… AND app.is_admin())`, db/migrations/0170), and test/r304-approval-template-save-action
  * .test.ts drives a non-admin session through this action to show it is still refused and writes nothing.
  *
- * THE REFUSAL IS THE SERVICE'S OWN MESSAGE — never a generic string and never `undefined` (the r303
- * `fail(ENTITLEMENTS, <string>)` class). A thrown non-Error is stringified rather than dropped.
+ * WHAT A REFUSAL MAY SAY. A refusal the service raised ON PURPOSE (`ApprovalTemplateRefusedError`: a
+ * missing name, an empty chain, an unnamed approver, a duplicate name, a template that is gone) is shown as
+ * the service's own message — never a generic string and never `undefined` (the r303
+ * `fail(ENTITLEMENTS, <string>)` class). ANYTHING ELSE is never shown as its own text: an RLS refusal comes
+ * back from drizzle as "Failed query: insert into "leave_approval_template" … params: <tenant id>,<name>,…",
+ * and before this was fixed that is exactly what a non-admin's drawer printed. It gets one localized
+ * sentence instead, and the error itself goes to the server log (the app/admin/actions.ts 464b58e6 shape),
+ * so the failure is still reported and nothing about it is lost.
  */
 export async function saveApprovalTemplateAction(formData: FormData): Promise<SaveTemplateResult> {
   const s = await getSession();
@@ -106,7 +114,10 @@ export async function saveApprovalTemplateAction(formData: FormData): Promise<Sa
       : await createApprovalTemplate(s, input);
     return { ok: true, id: saved.id, name: saved.name, created: !templateId };
   } catch (e) {
-    return { ok: false, error: e instanceof Error && e.message ? e.message : String(e) };
+    if (e instanceof ApprovalTemplateRefusedError) return { ok: false, error: e.message };
+    console.error('saveApprovalTemplateAction — unexpected failure while saving an approval template:', e);
+    const t = await getTranslations('leaveApproval');
+    return { ok: false, error: t('templateSaveFailed') };
   }
 }
 
