@@ -80,6 +80,39 @@ describe('TOIL activation seeds a disabled-but-present policy', () => {
   });
 });
 
+// r299 (3fb1a611) — the plan told the reporter "Leave Credit starts switched off … nothing uses it until you do".
+describe('a policy saved BEFORE the module was ever installed', () => {
+  it('is kept on FIRST install, but its three live switches are turned off for review', async () => {
+    await owner.db.insert(schema.toilPolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      enabled: true,
+      employeeRequestEnabled: true,
+      autoAccrueOnApproval: true,
+      expiryDays: 45,
+    });
+    const out = await activate();
+    const [policy] = await policiesFor(b.companyId);
+    expect(policy.enabled).toBe(false);
+    expect(policy.employeeRequestEnabled).toBe(false);
+    expect(policy.autoAccrueOnApproval).toBe(false);
+    expect(policy.expiryDays, 'every other saved setting is kept').toBe(45);
+    expect(out.detail.join(' ')).toMatch(/switched off for review/);
+  });
+
+  it('a REACTIVATION still touches nothing (D4)', async () => {
+    await activate();
+    await owner.db
+      .update(schema.toilPolicy)
+      .set({ enabled: true, employeeRequestEnabled: true })
+      .where(eq(schema.toilPolicy.companyId, b.companyId));
+    await activate();
+    const [policy] = await policiesFor(b.companyId);
+    expect(policy.enabled).toBe(true);
+    expect(policy.employeeRequestEnabled).toBe(true);
+  });
+});
+
 describe('a company created LATER is born configured', () => {
   it('gives a new company the defaults of every already-active module', async () => {
     await activate();

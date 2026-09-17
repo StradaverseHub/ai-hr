@@ -38,6 +38,13 @@ export type ActivationContext = {
   tenantId: string;
   /** The company being installed into, or null for a tenant-wide module. */
   companyId: string | null;
+  /**
+   * r299 (3fb1a611) — TRUE only when the runner found NO tenant_module row for this module: the module has never
+   * been installed for the tenant. Reactivation (D4) is false, and so is a company created later
+   * (companyInstallersFor). An activator may treat configuration that pre-dates a first install differently from
+   * configuration a customer edited while they owned the module — see seedToilPolicy.
+   */
+  firstInstall?: boolean;
 };
 
 export type ModuleActivator = (ctx: ActivationContext) => Promise<ActivationOutcome>;
@@ -107,6 +114,14 @@ export const seedModuleSettingDefaults: ModuleActivator = async ({ tx, tenantId 
  * `toil_policy_company_uq` is the natural key that makes reactivation safe: a company that already has a
  * policy keeps it untouched, including every default the customer has since changed.
  *
+ * r299 (3fb1a611) — ONE EXCEPTION, AND IT IS NOT A REACTIVATION. A policy can exist BEFORE the module was ever
+ * installed: the Replacement Leave settings screen once rendered without the module, and the reporting tenant
+ * saved a full policy in August that could never run. On a FIRST install (no tenant_module row existed) such a
+ * row is kept — every setting, eligibility and expiry — but its three LIVE switches (enabled, employee requests,
+ * auto-accrual on attendance approval) are turned off, so buying the add-on never makes an unreviewed policy
+ * start crediting days and suppressing overtime pay the same minute. HR reviews it on Leave Credit's Rules tab
+ * and switches it on. A reactivation keeps D4 exactly: nothing is touched.
+ *
  * NOT DONE HERE, and named rather than skipped quietly: the plan also wants an admin setup notification.
  * `notification` has NO natural key, so it cannot be written ON CONFLICT DO NOTHING, and a
  * SELECT-then-INSERT dedup is the unlocked race this repo has been bitten by before (see createBatch in
@@ -114,7 +129,7 @@ export const seedModuleSettingDefaults: ModuleActivator = async ({ tx, tenantId 
  * and getting it wrong means a customer collects a duplicate notification every time an operator
  * re-runs an activation.
  */
-const seedToilPolicy: ModuleActivator = async ({ tx, tenantId, companyId }) => {
+const seedToilPolicy: ModuleActivator = async ({ tx, tenantId, companyId, firstInstall }) => {
   if (!companyId) return emptyOutcome();
   const inserted = await tx
     .insert(toilPolicy)
@@ -122,6 +137,28 @@ const seedToilPolicy: ModuleActivator = async ({ tx, tenantId, companyId }) => {
     .onConflictDoNothing()
     .returning({ id: toilPolicy.id });
   const seeded = inserted.length;
+  if (seeded === 0 && firstInstall) {
+    const switchedOff = await tx
+      .update(toilPolicy)
+      .set({ enabled: false, employeeRequestEnabled: false, autoAccrueOnApproval: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(toilPolicy.tenantId, tenantId),
+          eq(toilPolicy.companyId, companyId),
+          sql`(${toilPolicy.enabled} or ${toilPolicy.employeeRequestEnabled} or ${toilPolicy.autoAccrueOnApproval})`,
+        ),
+      )
+      .returning({ id: toilPolicy.id });
+    return {
+      seeded: 0,
+      skipped: 1,
+      detail: [
+        switchedOff.length === 1
+          ? 'toil_policy: saved before the module was installed — kept, switched off for review'
+          : 'toil_policy: saved before the module was installed — kept, already off',
+      ],
+    };
+  }
   return {
     seeded,
     skipped: seeded === 0 ? 1 : 0,
