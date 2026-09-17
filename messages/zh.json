@@ -8731,6 +8731,7 @@
       "healthNoRuleInForce": "有 {tables} 张额度表，没有生效的福利方案，也未指定默认表，因此没有员工能对应到其中任何一张。",
       "healthConfiguredVsActual": "已配置：{tables} 张生效的额度表中共 {configured} 天。其中没有任何一张能触及任何员工，因为没有生效的福利方案指定它们，也没有设定默认表 — 因此权益运行不会依据此配置发放任何天数。员工记录上已有的天数来自更早的配置或由人工录入。",
       "healthTableWithoutRule": "没有福利方案指定：{tables}。在有方案指定它们、或其中一张成为此假期类型的默认表之前，没有人会获得它们。",
+      "healthReplacementLeaveHasEntitlementTable": "假期额度已开通，此假期类型的每一天都应来自假期额度。一张生效中的额度表仍在添加无人挣得的天数：{tables}。请删除该表。",
       "healthRuleExpired": "福利方案已过期，因此不涵盖任何人：{rules}",
       "healthRuleExpiring": "福利方案即将到期：{rules}",
       "healthGradesWithoutTable": "不属于任何额度表的职级：{grades}",

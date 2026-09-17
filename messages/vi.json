@@ -8731,6 +8731,7 @@
       "healthNoRuleInForce": "Có {tables} bảng định mức, không có chế độ phúc lợi nào đang hiệu lực và cũng chưa chỉ định bảng mặc định, nên không nhân viên nào được trỏ tới bảng nào.",
       "healthConfiguredVsActual": "Đã cấu hình: {configured} ngày trên {tables} bảng định mức đang có hiệu lực. Không bảng nào đến được với ai, vì không có chế độ phúc lợi nào đang hiệu lực chỉ định chúng và cũng chưa đặt bảng mặc định - nên đợt tính quyền lợi không cấp gì từ cấu hình này. Số ngày đã có trên hồ sơ nhân viên đến từ cấu hình trước đó hoặc được nhập thủ công.",
       "healthTableWithoutRule": "Không có chế độ phúc lợi nào chỉ định: {tables}. Không ai nhận được chúng cho tới khi có chế độ chỉ định, hoặc một trong số đó trở thành bảng mặc định của loại nghỉ phép này.",
+      "healthReplacementLeaveHasEntitlementTable": "Tín dụng nghỉ phép đã được bật, nên mọi ngày của loại nghỉ phép này phải đến từ Tín dụng nghỉ phép. Một bảng định mức đang có hiệu lực vẫn cộng thêm những ngày không ai tích lũy được: {tables}. Hãy xóa bảng đó.",
       "healthRuleExpired": "Chế độ phúc lợi đã hết hạn nên không áp dụng cho ai: {rules}",
       "healthRuleExpiring": "Chế độ phúc lợi sắp hết hạn: {rules}",
       "healthGradesWithoutTable": "Các bậc chức danh không thuộc bảng định mức nào: {grades}",

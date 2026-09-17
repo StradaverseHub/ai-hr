@@ -696,6 +696,7 @@ describe('§C r210 · a deleted table is not still reported as a table without a
     name: 'Annual Leave',
     accrualMethod: 'grant_on_hire_prorated',
     accrualUnconfigured: false,
+    daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — required on HealthLeaveType
     defaultEntitlementTemplateLineageId: null,
     archived: false,
   });

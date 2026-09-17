@@ -421,6 +421,7 @@ describe('§B2 · the profile card and the config health read the engine’s own
       name: 'Annual Leave',
       accrualMethod: 'full_upfront',
       accrualUnconfigured: false,
+      daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — required on HealthLeaveType
       archived: false,
       defaultEntitlementTemplateLineageId: null,
     };
@@ -455,6 +456,7 @@ describe('§B2 · the profile card and the config health read the engine’s own
         name: 'Annual Leave',
         accrualMethod: 'full_upfront',
         accrualUnconfigured: false,
+        daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — required on HealthLeaveType
         archived: false,
         defaultEntitlementTemplateLineageId: 'l-d',
       },

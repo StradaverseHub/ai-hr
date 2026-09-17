@@ -13,6 +13,7 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import Link from 'next/link';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { isReplacementLeaveType } from '@/core/ess-view';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import {
   LEAVE_CONFIG_RECORDS_HREF,
   LeaveConfigMap,
@@ -119,7 +120,13 @@ export default async function LeaveConfigAdjustmentsPage({
     listEmployees(s, companyIds),
   ]);
 
-  const hasReplacementType = types.some((x) => isReplacementLeaveType(x));
+  // 3fb1a611 fix pass (D3) — Replacement Leave leaves this screen ONLY while the tenant's Leave Credit register
+  // is live (the paid `toil` module). Without it the Leave Credit screen offers nothing but "not switched on",
+  // and the service adjusts the type exactly as on main (core/leave-adjustment.ts), so the picker keeps it and
+  // the pointer is not drawn. The page's quiet form: an entitlement incident offers the type rather than 500ing.
+  const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');
+  const leftToLeaveCredit = (x: (typeof types)[number]) => leaveCreditLive && isReplacementLeaveType(x);
+  const hasReplacementType = types.some(leftToLeaveCredit);
 
   const criteriaSections = buildOrgCriteriaSections(
     { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
@@ -142,7 +149,8 @@ export default async function LeaveConfigAdjustmentsPage({
         <SectionHeader title={t('adjustmentsTitle')} />
         <div className="space-y-2 px-4 pt-3">
           <p className="text-xs text-muted-foreground">{t('adjustmentsHelp')}</p>
-          {/* 3fb1a611 (r299) — Replacement Leave is not adjusted here. The service refuses it (an adjustment
+          {/* 3fb1a611 (r299) — with Leave Credit live, Replacement Leave is not adjusted here (without the module
+              nothing below changes from main). The service refuses it (an adjustment
               makes a balance with no credit behind it: no date worked, no expiry, no history), and the picker
               below leaves it out, so this sentence is the only place it is named — pointing to where it IS
               changed. Existing replacement adjustment rows are history and are untouched. */}
@@ -164,8 +172,9 @@ export default async function LeaveConfigAdjustmentsPage({
             action={applyLeaveAdjustmentAction}
             previewAction={previewLeaveAdjustmentAction}
             today={todayInKualaLumpur()}
-            // 3fb1a611 (r299): every type EXCEPT Replacement Leave — see the note above the form.
-            leaveTypes={types.filter((x) => !isReplacementLeaveType(x)).map((x) => ({ value: x.id, label: x.name }))}
+            // 3fb1a611 (r299): with Leave Credit live, every type EXCEPT Replacement Leave — see the note above the
+            // form. Without the module, every type, Replacement Leave included, as on main.
+            leaveTypes={types.filter((x) => !leftToLeaveCredit(x)).map((x) => ({ value: x.id, label: x.name }))}
             criteriaSections={criteriaSections}
             /* r288 — THREE PLAIN FIELDS, NO FUNCTIONS AND NO PRE-JOINED SENTENCES. r123/r124 took tabs
                down in production by handing a client component a server closure, and

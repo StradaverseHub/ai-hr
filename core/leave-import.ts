@@ -33,6 +33,7 @@ import { employment, person, employeeStatutoryMy, leaveType, leaveLedger } from 
 import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { listLeaveTypes } from './read';
 import { isReplacementLeaveType } from './ess-view';
+import { leaveCreditRegisterLive } from './leave-credit-live';
 import {
   LEAVE_IMPORT_COLUMNS,
   LEAVE_IMPORT_ENTRY_TYPES,
@@ -101,6 +102,12 @@ async function analyze(
   // it (no date worked, no expiry, no place in the expiring-first order), the same ghost Leave Adjustments now
   // refuses. Replacement Leave balances change on Leave Config › Leave Credit.
   const replacementTypeIds = new Set(types.filter((t) => isReplacementLeaveType(t)).map((t) => t.id));
+  // …ONLY WHILE THE TENANT'S LEAVE CREDIT REGISTER IS LIVE (fix pass, D3) — the same condition, for the same
+  // reason, as Leave Adjustments (core/leave-adjustment.ts): without the paid `toil` module there is no Leave
+  // Credit screen to go to, and the import is main@60a40452's. Asked lazily, once, and only when a row actually
+  // names a Replacement Leave type, so a file of other types never reaches an entitlement question.
+  let registerLive: boolean | undefined;
+  const leaveCreditLive = () => (registerLive ??= leaveCreditRegisterLive(ctx));
 
   // Every employment the caller may see (RLS-scoped), matched on employeeCode / primaryEmail / IC.
   // NOT active-only: leave history migration routinely includes people who have since left (their final
@@ -198,7 +205,7 @@ async function analyze(
     // ── Leave type resolution (non-archived, case-insensitive) ──
     const leaveTypeId = leaveTypeRaw ? typeByCode.get(leaveTypeRaw.toLowerCase()) : undefined;
     if (leaveTypeRaw && !leaveTypeId) errors.push(`Leave type not found: ${leaveTypeRaw}`);
-    if (leaveTypeId && replacementTypeIds.has(leaveTypeId)) {
+    if (leaveTypeId && replacementTypeIds.has(leaveTypeId) && leaveCreditLive()) {
       errors.push('Replacement Leave balances are changed on Leave Config › Leave Credit, not by import');
     }
 

@@ -75,6 +75,9 @@ function findingText(t: T, h: LeaveConfigHealth, f: LeaveConfigFinding): string 
       return t('healthNoRuleInForce', { tables: h.templateCount });
     case 'table_without_rule':
       return t('healthTableWithoutRule', { tables: list(h.tablesWithoutRule) });
+    // 3fb1a611 (r299 fix pass) — Leave Credit is on, and an entitlement table still adds days to this type.
+    case 'replacement_leave_has_entitlement_table':
+      return t('healthReplacementLeaveHasEntitlementTable', { tables: list(h.leaveCreditTables) });
     case 'rule_expired':
       return t('healthRuleExpired', {
         rules: list(h.expiredRules.map((r) => `${r.name} (${r.endedOn})`)),
