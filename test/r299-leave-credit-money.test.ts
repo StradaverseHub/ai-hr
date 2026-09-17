@@ -484,6 +484,88 @@ describe('An OFF-day credit is recorded as an off day and converts on the ORP fa
   });
 });
 
+describe('HR credit actions are for an administrator OF THE EMPLOYEE’S COMPANY', () => {
+  it('an hr_admin scoped to company C who manages someone in company B cannot add, preview or reverse credits for them', async () => {
+    // Migration 0469 lets a non-self line manager WRITE the register (approvals need it), so the company scope
+    // of an HR action is enforced in the service. This fixture is the case the widened policy alone would let
+    // through: an admin somewhere (isAdminCtx passes) who can SEE the subject as their line manager (RLS reads
+    // and writes pass) but administers a DIFFERENT company. Manager visibility needs the subordinate's company
+    // to descend from the manager's own (app.is_admin_report_of), hence B is a subsidiary of A.
+    const [companyB] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Acme East Sdn Bhd', parentCompanyId: b.companyId })
+      .returning({ id: schema.company.id });
+    const [companyC] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Other Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const hireInto = async (companyId: string, name: string) => {
+      const [dept] = await owner.db
+        .insert(schema.department)
+        .values({ tenantId: b.tenantId, companyId, name: `${name} dept` })
+        .returning({ id: schema.department.id });
+      const e = await hireEmployee(adminCtx(b), {
+        person: { fullName: name, primaryEmail: uniqEmail() },
+        companyId,
+        departmentId: dept.id,
+        employmentType: 'full_time',
+        hiredOn: '2024-01-01',
+      });
+      await setCompensation(adminCtx(b), { employmentId: e.employmentId, basicSalary: 8000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+      return e;
+    };
+    const scoped = await hire(8000, 'Scoped HR Manager'); // employed in company A
+    const inB = await hireInto(companyB.id, 'Company B employee');
+    const inC = await hireInto(companyC.id, 'Company C employee');
+    await setReportingLine(adminCtx(b), {
+      subordinateEmploymentId: inB.employmentId,
+      managerEmploymentId: scoped.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    await setToilPolicy(ctx, policy({ companyId: companyB.id }));
+    await setToilPolicy(ctx, policy({ companyId: companyC.id }));
+    const sat = firstWeekdayOf(6);
+    await setRestDay(adminCtx(b), { employmentId: inB.employmentId, shiftDate: sat });
+    await setRestDay(adminCtx(b), { employmentId: inC.employmentId, shiftDate: sat });
+    const creditB = await grantLeaveCredit(ctx, { employmentId: inB.employmentId, workedDate: sat, days: 1, reason: 'by group HR', today: TODAY });
+
+    const uid = await createAppUser(b.tenantId, scoped.personId, 'manager');
+    const scopedCtx: SessionContext = {
+      tenantId: b.tenantId,
+      userId: uid,
+      personId: scoped.personId,
+      grants: [
+        { role: 'hr_admin', companyId: companyC.id },
+        { role: 'manager', companyId: null },
+      ],
+      entitlements: ctx.entitlements,
+    };
+    // Non-vacuity of the fixture: the line manager really can SEE the company-B credit, so a refusal below is
+    // the service's company check and not RLS hiding the row.
+    const visible = await withTenant(scopedCtx, (tx) =>
+      tx.select({ id: schema.toilAccrual.id }).from(schema.toilAccrual).where(eq(schema.toilAccrual.id, creditB.accrualId)),
+    );
+    expect(visible, 'the manager chain must make the B credit visible, or this case proves nothing').toHaveLength(1);
+
+    await expect(
+      grantLeaveCredit(scopedCtx, { employmentId: inB.employmentId, workedDate: firstWeekdayOf(7), days: 1, reason: 'x', today: TODAY }),
+    ).rejects.toThrow(/HR administrator for this employee's company/);
+    await expect(reverseLeaveCredit(scopedCtx, { accrualId: creditB.accrualId, reason: 'x', today: TODAY })).rejects.toThrow(
+      /HR administrator for this employee's company/,
+    );
+    await expect(previewLeaveCredit(scopedCtx, { employmentId: inB.employmentId, workedDate: sat })).rejects.toThrow(
+      /HR administrator for this employee's company/,
+    );
+    const [stillActive] = await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.id, creditB.accrualId));
+    expect(stillActive.status).toBe('active');
+    // …while the company they DO administer is theirs to credit.
+    await expect(
+      grantLeaveCredit(scopedCtx, { employmentId: inC.employmentId, workedDate: sat, days: 1, reason: 'own company', today: TODAY }),
+    ).resolves.toMatchObject({ daysCredited: 1 });
+  });
+});
+
 describe('Row security on the register (migration 0469)', () => {
   it('a non-admin line manager can approve a Leave Credit request; an employee cannot write their own register row', async () => {
     const sub = await hire(8000, 'Subject');

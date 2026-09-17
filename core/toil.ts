@@ -1454,6 +1454,23 @@ async function firstScheduleEligibleTx(
   return wages != null && wages <= ceiling;
 }
 
+/**
+ * Is the caller an administrator FOR THIS EMPLOYEE'S COMPANY? (`app.can_admin_employment`, migration 0016.)
+ *
+ * Asked explicitly by the three HR actions below because migration 0469 WIDENED the register's write policy to
+ * admit a non-self line manager (so approvals can write it). `isAdminCtx` only says "an admin somewhere": an
+ * hr_admin scoped to company A who also manages someone in company B would otherwise pass it AND the widened
+ * RLS for that B employee. Adding, previewing and reversing a credit are HR powers for the employee's own
+ * company, so they are refused here in the service rather than left to a policy that now answers a different
+ * question.
+ */
+async function assertAdminForEmploymentTx(tx: Tx, employmentId: string, action: string): Promise<void> {
+  const res = await tx.execute(sql`SELECT app.can_admin_employment(${employmentId}::uuid) AS ok`);
+  if (!(res as unknown as { ok: boolean }[])[0]?.ok) {
+    throw new ToilSweepForbiddenError(`Only an HR administrator for this employee's company may ${action}.`);
+  }
+}
+
 /** Recorded overtime on one attendance day (0 when there is no row). */
 async function overtimeMinutesOnTx(tx: Tx, employmentId: string, date: string): Promise<number> {
   const [att] = await tx
@@ -1492,6 +1509,7 @@ export async function previewLeaveCredit(
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
   if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
   return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const [emp] = await tx
       .select({ companyId: employment.companyId, country: company.country })
       .from(employment)
@@ -1587,6 +1605,7 @@ export async function grantLeaveCredit(
   }
 
   return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const [emp] = await tx
       .select({ companyId: employment.companyId, country: company.country })
       .from(employment)
@@ -1665,6 +1684,7 @@ export async function reverseLeaveCredit(
   return withTenant(ctx, async (tx) => {
     const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
     if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
+    await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
     if (acc.status === 'reversed') throw new LeaveCreditError('That Leave Credit has already been reversed.');
     if (acc.status === 'taken' || (acc.status === 'active' && Number(acc.daysTaken) > 0)) {
       throw new LeaveCreditError(
