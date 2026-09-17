@@ -495,6 +495,19 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(false), { timeout: 4000 });
   }, 10_000);
 
+  it('a drawer that is already sliding out after a save does not ask "discard?" when Escape reaches it', async () => {
+    const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: 'Senior Staff v2', created: false }));
+    mount('en', save);
+    await userEvent.click(editButtonOf('en', SENIOR.name));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
+    await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
+    await waitFor(() => expect(dialog.getAttribute('data-state')).toBe('closed'));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await closeFully();
+  });
+
   it('only one drawer: while it is open the list behind it is hidden from assistive tech and nothing else opens', async () => {
     mount('en');
     await userEvent.click(editButtonOf('en', SENIOR.name));

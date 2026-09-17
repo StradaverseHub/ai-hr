@@ -243,7 +243,8 @@ export function ApprovalTemplateManager({
 
   /** X, Cancel, Escape and a click on the dimmed list all come here. Unsaved changes ask first. */
   function requestClose() {
-    if (saving) return;
+    // Already closing (the panel is sliding out and still hears Escape), or mid-save: nothing to ask.
+    if (editing === null || saving) return;
     if (!formStatus.dirty) {
       closeDrawer();
       return;
