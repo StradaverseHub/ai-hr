@@ -489,6 +489,8 @@ describe('D9 · Leave Balance Health — the pure derivation, both arms', () => 
     daysFromLeaveCreditOnly: false,
     defaultEntitlementTemplateLineageId: null,
     archived: false,
+    // r300 integration — Earned Accrual's flag (r299, main) is required too; false leaves this derivation unchanged.
+    earnedMethodNotAnnualLeave: false,
     ...over,
   });
   const table: HealthTemplate = {
