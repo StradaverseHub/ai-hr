@@ -1,33 +1,27 @@
 /**
- * feedback 686dc512 (r288) — THE SERVER HALF of the leave type editor's "this can never accrue" warning.
+ * feedback 686dc512 (r288) — THE SERVER HALF of the leave type editor's earned-sweep facts.
+ * r299 (3de1453a) — UPDATED, NOT DELETED. r288 WARNED and deliberately did not refuse ("a tenant may
+ * legitimately keep such a type for a non-accruing purpose"). The reporter's rule — "Only Annual Leave
+ * (*Annual Leave) is subject to the Earned Accrual concept. All other leave types are managed based on
+ * entitlement and should not be included in the Earned Accrual process." — REVERSES that: the writer now
+ * refuses a change to an earned method on anything that is not Annual Leave, and the editor carries the
+ * "This is our Annual Leave" switch. Each section below pins the new decision in the place the old one sat.
  *
- * The RENDERED half is test/r288-earned-sweep-warning.dom.test.tsx: both arms of the warning, the six
- * catalogues, and that the save is untouched. This file holds the three things a jsdom render cannot
- * reach —
+ * The RENDERED half is test/r288-earned-sweep-warning.dom.test.tsx. This file holds what jsdom cannot reach —
  *
- *   §1  the engine's constants, and the pin that the dom file's unavoidable COPY of them still matches;
- *   §2  that the screen DERIVES the facts from the tenant's own rows and the engine's own constant,
- *       rather than from a second list written on the screen;
- *   §3  that nothing about the save changed — a real round trip through the real writer, on a leave type
- *       whose code the sweep can never reach.
- *
- * ⚠️ §2 IS A SOURCE-SHAPE TEST, AND THE REASON IS WORTH WRITING DOWN. The derivation lives inline in a
- * `page.tsx` default export that begins with `requireAdmin()` and ends in JSX; importing it from a node
- * test would drag Next's request context in and prove nothing about what the screen shows. What CAN be
- * pinned without that machinery is the shape: that the list is filtered from the page's existing
- * `types` read, against `STANDING_LEAVE_CODES`, excluding archived rows, taking `name`, sorted — and
- * that no leave-type name is written anywhere in the file. The dom file then proves the component
- * prints whatever names it is handed. Between them there is no gap where a hardcoded "Annual Leave"
- * could survive.
+ *   §1  the engine's earned-method family, and the pin that the dom file's COPY of it still matches;
+ *   §2  that the screen DERIVES the facts from the tenant's own rows and the engine's own predicate;
+ *   §3  REFUSE, AND NEVER REWRITE — a real round trip through the real writer, both arms;
+ *   §4  the catalogue keys (r288's two warning keys retired; the switch and note keys added).
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { createLeaveType, setLeaveTypeRules } from '../core/admin';
-import { EARNED_METHODS, STANDING_LEAVE_CODES, isEarnedMethod } from '../core/leave';
+import { createLeaveType, LeaveTypeRuleError, setLeaveTypeRules } from '../core/admin';
+import { EARNED_METHODS, STANDING_LEAVE_CODES, isEarnedAccrualType, isEarnedMethod } from '../core/leave';
 
 const here = __dirname;
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
@@ -41,132 +35,110 @@ let b: Base;
 beforeAll(async () => {
   await migrateTestDb();
 });
-beforeAll(async () => {
+beforeEach(async () => {
   await resetDb();
   b = await seedBase();
 });
 afterAll(closeAll);
 
-describe('§1 the engine constants this warning is decided on', () => {
-  it('the sweep covers exactly the three standing codes', () => {
-    // If this ever grows a fourth code the warning is not wrong, but the sentence shown to the reporter
-    // says "these leave types", so the change must be a deliberate one that comes past this line.
+describe('§1 the engine facts the editor is decided on', () => {
+  it('Earned Accrual covers Annual Leave only (the predicate), and the constant is left alone', () => {
+    expect(isEarnedAccrualType({ role: null, code: 'ANNUAL' })).toBe(true);
+    expect(isEarnedAccrualType({ role: 'annual', code: 'AL' })).toBe(true);
+    expect(isEarnedAccrualType({ role: null, code: 'SICK' })).toBe(false);
     expect([...STANDING_LEAVE_CODES]).toEqual(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
   });
 
   it('the earned family is three methods, and the legacy one is still in it', () => {
     expect([...EARNED_METHODS]).toEqual(['earned_monthly', 'earned_quarterly', 'earned_daily']);
-    // The dropdown no longer offers quarterly; a row that still stores it renders on the read-only
-    // branch and is just as unreachable on a non-standing code. The dom file pins that it warns.
+    // The dropdown no longer offers quarterly; a row that still stores it renders on the read-only branch,
+    // and on a type that is not Annual Leave it is just as stranded. The dom file pins that it says so.
     expect(isEarnedMethod('earned_quarterly')).toBe(true);
     expect(isEarnedMethod('grant_on_hire_prorated')).toBe(false);
   });
 
-  it('the dom file’s copy of both constants still matches the engine', () => {
-    // WHY A COPY EXISTS AT ALL: core/leave.ts opens the database connection at module load, so the
-    // `dom` vitest project — which deliberately has no env bootstrap — cannot import its values. The
-    // copy is therefore unavoidable; leaving it unpinned is not. This reads the two literals back out
-    // of that file's source, so the engine and the render fixture cannot drift apart in silence.
-    const src = read(DOM_TEST);
-    const listOf = (name: string) => {
-      const m = src.match(new RegExp(`const ${name} = \\[([^\\]]*)\\]`));
-      expect(m, `${name} not found in ${DOM_TEST} — did its shape change?`).not.toBeNull();
-      return m![1]
-        .split(',')
-        .map((s) => s.trim().replace(/^'|'$/g, ''))
-        .filter(Boolean);
-    };
-    expect(listOf('ENGINE_EARNED_METHODS_COPY')).toEqual([...EARNED_METHODS]);
-    expect(listOf('ENGINE_STANDING_CODES_COPY')).toEqual([...STANDING_LEAVE_CODES]);
+  it('the dom file’s copy of the earned family still matches the engine', () => {
+    // core/leave.ts opens the database connection at module load, so the `dom` project cannot import its
+    // values. The copy is unavoidable; leaving it unpinned is not.
+    const m = read(DOM_TEST).match(/const ENGINE_EARNED_METHODS_COPY = \[([^\]]*)\]/);
+    expect(m, `ENGINE_EARNED_METHODS_COPY not found in ${DOM_TEST} — did its shape change?`).not.toBeNull();
+    const copy = m![1]
+      .split(',')
+      .map((s) => s.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean);
+    expect(copy).toEqual([...EARNED_METHODS]);
   });
 });
 
 describe('§2 the screen derives the facts — it does not restate them', () => {
   const page = read(PAGE);
 
-  it('reads the engine’s constants instead of spelling the codes out again', () => {
-    // THE GAP THIS ITEM CLOSES. Before this round nothing under app/ referenced STANDING_LEAVE_CODES at
-    // all, which is why the editor accepted an earned method on a code the sweep can never reach and
-    // said nothing. The import IS the fix; a local re-listing of the three codes would be the same bug
-    // with a longer fuse.
-    expect(page).toContain("import { EARNED_METHODS, STANDING_LEAVE_CODES } from '@/core/leave';");
-    expect(page).toContain('new Set<string>([...STANDING_LEAVE_CODES])');
+  it('reads the engine’s predicate and family instead of spelling either out again', () => {
+    expect(page).toContain("import { EARNED_METHODS, annualLeaveSwitchState, isEarnedAccrualType } from '@/core/leave';");
     expect(page).toContain('const earnedMethods = [...EARNED_METHODS];');
-    // No second spelling of either constant anywhere on the screen.
-    for (const code of STANDING_LEAVE_CODES) {
-      expect(page, `${PAGE} re-spells the code ${code}`).not.toContain(`'${code}'`);
-      expect(read(TABS), `${TABS} re-spells the code ${code}`).not.toContain(`'${code}'`);
-      expect(read(FORMS), `${FORMS} re-spells the code ${code}`).not.toContain(`'${code}'`);
+    // No second spelling of the rule anywhere on the screen: no code literal, no role literal.
+    for (const rel of [PAGE, TABS, FORMS]) {
+      for (const code of STANDING_LEAVE_CODES) {
+        expect(read(rel), `${rel} re-spells the code ${code}`).not.toContain(`'${code}'`);
+      }
+      expect(read(rel), `${rel} re-spells the role`).not.toContain(`'annual'`);
     }
   });
 
-  it('the swept NAMES come from the tenant’s own rows, active only, in name order', () => {
-    // Character for character the engine's own filter at its `type_not_swept` exit: standing code AND
-    // not archived, names, A–Z. The page reuses the read it already makes, so this costs no query.
-    expect(page).toContain('const sweptTypeNames = types');
-    expect(page).toContain('.filter((lt) => standingCodes.has(lt.code) && !lt.archivedAt)');
-    expect(page).toContain('.map((lt) => lt.name)');
-    expect(page).toContain('.sort((a, b) => a.localeCompare(b));');
+  it('the Annual Leave NAMES come from the tenant’s own rows, active only, in name order', () => {
+    expect(page).toContain('const activeAnnualLeave = types');
+    expect(page).toContain('.filter((lt) => !lt.archivedAt && isEarnedAccrualType(lt))');
+    expect(page).toContain('.sort((a, b) => a.name.localeCompare(b.name));');
+    // …and each panel is told the OTHER ones, never its own.
+    expect(page).toContain('otherAnnualLeaveTypeNames: activeAnnualLeave.filter((a) => a.id !== lt.id).map((a) => a.name),');
   });
 
-  it('NO leave-type name is written anywhere on the three touched files', () => {
-    // The reporting account has two leave types both called some variant of Annual Leave. A hardcoded
-    // default name would print a riddle on the very account that raised this.
+  it('NO tenant leave-type name is written anywhere on the three touched files', () => {
     for (const rel of [PAGE, TABS, FORMS]) {
-      const src = read(rel);
+      const code = read(rel)
+        .split('\n')
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+        .join('\n');
       for (const name of ['Annual Leave', 'Medical Leave', 'Hospitalization Leave', 'Sick Leave']) {
-        // Comments are stripped first: the file headers discuss "*Annual Leave" by name, deliberately,
-        // and a scan that cannot tell prose from code lies in both directions (CLAUDE.md §8).
-        const code = src
-          .split('\n')
-          .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-          .join('\n');
         expect(code, `${rel} hardcodes ${name}`).not.toContain(name);
       }
     }
   });
 
   it('the facts cross the server/client boundary as plain data', () => {
-    // r123 shipped a 500 by handing a client island a closure. The prop below is a boolean and two
-    // string arrays; test/server-client-boundary.test.ts is the general guard, this is the local pin.
-    expect(page).toContain('codeIsSwept: standingCodes.has(lt.code),');
-    expect(page).toContain('sweptTypeNames,');
+    expect(page).toContain('annualSwitch: annualLeaveSwitchState(lt),');
+    expect(page).toContain('leaveTypeName: lt.name,');
     expect(read(TABS)).toContain('sweep: EarnedSweepFacts;');
     expect(read(TABS)).toContain('sweep={sweep}');
     expect(read(FORMS)).toContain('sweep: EarnedSweepFacts;');
+    expect(read(FORMS)).toContain("annualSwitch: 'on' | 'off' | 'by_code' | 'other_role';");
   });
 
-  it('the warning is rendered on a condition, and posts nothing', () => {
+  it('Monthly and Daily are LISTED but disabled unless the switch is on, and the switch posts its own marker', () => {
     const form = read(FORMS).slice(
       read(FORMS).indexOf('function EarningMethodForm'),
       read(FORMS).indexOf('function CarryPolicyForm'),
     );
-    expect(form).toContain('const neverAccrues = sweep.earnedMethods.includes(methodToStore) && !sweep.codeIsSwept;');
-    expect(form).toContain('{neverAccrues && (');
-    // WARN, DO NOT REFUSE: no `disabled`, no `required`, no `setCustomValidity` reaching the warning,
-    // and no new posted field. The dom file proves the FormData is byte-identical either way.
-    const warningBlock = form.slice(form.indexOf('{neverAccrues && ('), form.indexOf("earningMappingHelp"));
-    expect(warningBlock).not.toContain('disabled');
-    expect(warningBlock).not.toContain('name=');
-    expect(warningBlock).not.toContain('setCustomValidity');
+    expect(form).toContain('<option value="monthly" disabled={!annualOn}>');
+    expect(form).toContain('<option value="daily" disabled={!annualOn}>');
+    // The None choice is never disabled — it is what every other leave type is offered.
+    expect(form).toContain('<option value="none">');
+    expect(form).toContain('<input type="hidden" name="annualLeaveRendered" value="1" />');
+    expect(form).toContain("<input type=\"hidden\" name=\"isAnnualLeave\" value={annualOn ? '1' : '0'} />");
+    // The marker is posted only while the switch is editable — a locked switch touches no role.
+    const markerAt = form.indexOf('name="annualLeaveRendered"');
+    expect(form.lastIndexOf('{switchEditable && (', markerAt)).toBeGreaterThan(-1);
   });
 });
 
-describe('§3 WARN, DO NOT REFUSE — the writer still stores the row', () => {
-  /** A leave type whose code the sweep can never reach — the reporter's `*Annual Leave`, in miniature. */
-  const nonStandingId = async () => {
-    const created = await createLeaveType(adminCtx(b), { code: 'AL', name: '*Annual Leave' });
-    expect(STANDING_LEAVE_CODES).not.toContain('AL');
-    return created.id;
-  };
-
+describe('§3 REFUSE A NEW EARNED METHOD, NEVER REWRITE A STORED ONE — the writer', () => {
   const rulesOf = async (id: string) => {
     const [row] = await owner.db
       .select({
         code: schema.leaveType.code,
+        role: schema.leaveType.role,
         accrualMethod: schema.leaveType.accrualMethod,
         accrualDay: schema.leaveType.accrualDay,
-        roundingMethod: schema.leaveType.roundingMethod,
       })
       .from(schema.leaveType)
       .where(eq(schema.leaveType.id, id))
@@ -174,66 +146,83 @@ describe('§3 WARN, DO NOT REFUSE — the writer still stores the row', () => {
     return row!;
   };
 
-  it('an earned method on a NON-standing code is accepted and stored unchanged', async () => {
-    // The plan's commitment, pinned at the writer rather than only at the screen: a tenant may keep such
-    // a type for a non-accruing purpose, and a hard validation here would be an unrequested behaviour
-    // change on every existing row. If a future round adds one, this goes red before it ships.
-    const id = await nonStandingId();
-    await setLeaveTypeRules(adminCtx(b), { id, accrualMethod: 'earned_monthly', accrualDay: 5 });
-    const row = await rulesOf(id);
-    expect(row.code).toBe('AL');
-    expect(row.accrualMethod).toBe('earned_monthly');
-    expect(row.accrualDay).toBe(5);
+  it('an earned method on a type that is not Annual Leave is REFUSED, and the row is untouched', async () => {
+    // r288 pinned the opposite ("accepted and stored unchanged"). The reporter's rule reverses it.
+    const created = await createLeaveType(adminCtx(b), { code: 'AL', name: '*Annual Leave' });
+    let refused: unknown = null;
+    try {
+      await setLeaveTypeRules(adminCtx(b), { id: created.id, accrualMethod: 'earned_monthly', accrualDay: 5 });
+    } catch (e) {
+      refused = e;
+    }
+    expect(refused).toBeInstanceOf(LeaveTypeRuleError);
+    expect(await rulesOf(created.id)).toMatchObject({ code: 'AL', role: null, accrualMethod: null, accrualDay: null });
   });
 
-  it('the stored row is identical to the one a STANDING code stores', async () => {
-    // Nothing this round added may make the write depend on the code. Same call, two codes, one result.
-    const [standing] = await owner.db
-      .select({ id: schema.leaveType.id })
-      .from(schema.leaveType)
-      .where(eq(schema.leaveType.code, 'ANNUAL'))
-      .limit(1);
-    await setLeaveTypeRules(adminCtx(b), { id: standing!.id, accrualMethod: 'earned_monthly', accrualDay: 5 });
-    const swept = await rulesOf(standing!.id);
+  it('…and the SAME call on Annual Leave stores it — the refusal is about the type, not the method', async () => {
+    // The positive arm, on the seeded ANNUAL (unclassified, Annual Leave by its code)…
+    await setLeaveTypeRules(adminCtx(b), { id: b.annualLeaveTypeId, accrualMethod: 'earned_monthly', accrualDay: 5 });
+    expect(await rulesOf(b.annualLeaveTypeId)).toMatchObject({ accrualMethod: 'earned_monthly', accrualDay: 5 });
+    // …and on a custom code switched on in the same save, once the seeded one is archived.
+    await owner.db.update(schema.leaveType).set({ archivedAt: new Date() }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const al = await createLeaveType(adminCtx(b), { code: 'AL', name: '*Annual Leave' });
+    await setLeaveTypeRules(adminCtx(b), { id: al.id, isAnnualLeave: true, accrualMethod: 'earned_monthly', accrualDay: 5 });
+    expect(await rulesOf(al.id)).toMatchObject({ role: 'annual', accrualMethod: 'earned_monthly', accrualDay: 5 });
+  });
 
-    const [notSwept] = await owner.db
-      .select({ id: schema.leaveType.id })
-      .from(schema.leaveType)
-      .where(eq(schema.leaveType.code, 'AL'))
-      .limit(1);
-    const unswept = await rulesOf(notSwept!.id);
-
-    const { code: _c1, ...sweptRules } = swept;
-    const { code: _c2, ...unsweptRules } = unswept;
-    expect(unsweptRules).toEqual(sweptRules);
+  it('a method stored BEFORE the rule is kept byte-for-byte when the form re-posts it', async () => {
+    const created = await createLeaveType(adminCtx(b), { code: 'MC', name: 'MC' });
+    await owner.db.update(schema.leaveType).set({ accrualMethod: 'earned_quarterly' }).where(eq(schema.leaveType.id, created.id));
+    await setLeaveTypeRules(adminCtx(b), { id: created.id, accrualMethod: 'earned_quarterly', roundingMethod: null });
+    expect((await rulesOf(created.id)).accrualMethod).toBe('earned_quarterly');
   });
 });
 
-describe('§4 the two catalogue keys', () => {
+describe('§4 the catalogue keys', () => {
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   const subStepOf = (loc: string) =>
     JSON.parse(read(`messages/${loc}.json`)).admin.leave.subStep as Record<string, string>;
+  const NEW_KEYS = [
+    'annualLeaveSwitchLabel',
+    'annualLeaveSwitchOnHelp',
+    'annualLeaveSwitchOffHelp',
+    'annualLeaveSwitchOtherHelp',
+    'annualLeaveSwitchByCodeHelp',
+    'annualLeaveSwitchOtherRoleHelp',
+    'annualLeaveSwitchHeldHelp',
+    'earningEntitlementBasedNote',
+    'earningStrandedNote',
+  ];
 
-  it('exist, are non-empty, and carry the right placeholder in all six locales', () => {
+  it('exist, are non-empty, and carry the right placeholders in all six locales', () => {
     for (const loc of LOCALES) {
       const sub = subStepOf(loc);
-      expect(sub.earningNotSwept, `${loc}: earningNotSwept`).toBeTruthy();
-      expect(sub.earningNotSweptNoneActive, `${loc}: earningNotSweptNoneActive`).toBeTruthy();
-      // The names arrive ONLY through the placeholder. The none-active sentence names nothing, because
-      // on that account there is nothing to name.
-      expect(sub.earningNotSwept, `${loc}: lost {swept}`).toContain('{swept}');
-      expect(sub.earningNotSweptNoneActive, `${loc}: stray {swept}`).not.toContain('{swept}');
+      for (const k of NEW_KEYS) expect(sub[k], `${loc}: ${k}`).toBeTruthy();
+      expect(sub.annualLeaveSwitchOtherHelp, `${loc}: lost {names}`).toContain('{names}');
+      expect(sub.earningEntitlementBasedNote, `${loc}: lost {type}`).toContain('{type}');
+      expect(sub.earningStrandedNote, `${loc}: lost {type}`).toContain('{type}');
+      // The option is named through its own label, so the note and the dropdown cannot disagree.
+      expect(sub.earningStrandedNote, `${loc}: lost {none}`).toContain('{none}');
+      for (const p of ['{none}', '{monthly}', '{daily}']) {
+        expect(sub.annualLeaveSwitchHeldHelp, `${loc}: lost ${p}`).toContain(p);
+      }
     }
+  });
+
+  it('r288’s two warning keys are retired in every locale, and nothing reads them', () => {
+    for (const loc of LOCALES) {
+      const sub = subStepOf(loc);
+      expect(sub.earningNotSwept, `${loc}.earningNotSwept survived`).toBeUndefined();
+      expect(sub.earningNotSweptNoneActive, `${loc}.earningNotSweptNoneActive survived`).toBeUndefined();
+    }
+    for (const rel of [PAGE, TABS, FORMS]) expect(read(rel)).not.toContain('earningNotSwept');
   });
 
   it('are translated — not six copies of the English string', () => {
     const en = subStepOf('en');
     for (const loc of LOCALES.filter((l) => l !== 'en')) {
       const sub = subStepOf(loc);
-      expect(sub.earningNotSwept, `${loc} is untranslated English`).not.toBe(en.earningNotSwept);
-      expect(sub.earningNotSweptNoneActive, `${loc} is untranslated English`).not.toBe(
-        en.earningNotSweptNoneActive,
-      );
+      for (const k of NEW_KEYS) expect(sub[k], `${loc}.${k} is untranslated English`).not.toBe(en[k]);
     }
   });
 });

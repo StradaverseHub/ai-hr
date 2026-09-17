@@ -539,8 +539,9 @@ describe('31e39d74: the breakdown says WHY a leave type reads 0.00', () => {
     // an instruction that would skip their type. The assertions below are, in order: the caption is the
     // earned one · running the remedy really does nothing · the accrual sweep is what moves it.
     // The SEEDED ANNUAL type, not a custom one, and that is load-bearing: `accrueEarnedLeave` sweeps only
-    // `STANDING_LEAVE_CODES` (core/leave.ts:6883), so a made-up code would sit at `earned_accrual` forever
-    // and the last leg of this case would prove nothing. This is the reporter's real shape.
+    // Annual Leave (`isEarnedAccrualType` since r299 — role first, the code ANNUAL for an unclassified row),
+    // so an unclassified made-up code would sit at `earned_accrual` forever and the last leg of this case
+    // would prove nothing. This is the reporter's real shape.
     const typeId = b.annualLeaveTypeId;
     await owner.db
       .update(schema.leaveType)

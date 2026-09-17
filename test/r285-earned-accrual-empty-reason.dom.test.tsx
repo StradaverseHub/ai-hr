@@ -64,10 +64,10 @@ const CARD_PROPS = {
   companies: [{ id: 'c1', name: 'Acme Sdn Bhd' }],
   grades: [{ id: 'g1', name: 'Executive' }],
   // r293 — the leave-type option gained `swept` (required) and the card gained `sweptLeaveTypeNames`.
-  // `*Annual Leave` is the production row this file was written around: an ACTIVE `AL`, outside
-  // STANDING_LEAVE_CODES, so `swept: false` is its real value and the picker now marks it. Nothing this
+  // `*Annual Leave` is the production row this file was written around: an ACTIVE `AL` not yet switched on
+  // as Annual Leave (r299), so `swept: false` is its real value and the picker disables it. Nothing this
   // file asserts lives in the picker — every assertion below reads the preview's own paragraphs — so the
-  // two props only keep it type-correct. test/r293-earned-accrual-picker.dom.test.tsx owns the marking.
+  // two props only keep it type-correct. test/r293-earned-accrual-picker.dom.test.tsx owns the picker.
   leaveTypes: [{ id: 'lt1', name: '*Annual Leave', swept: false }],
   sweptLeaveTypeNames: [] as string[],
   leaveYears: [{ year: 2026, status: 'draft' }],
@@ -180,27 +180,39 @@ describe('§A every reason NAMES its subject, and none of them paints MISSING_ME
 
 describe('§A2 the production sentence, pinned whole', () => {
   it('reads as the answer to the question that cost a day', async () => {
-    // ⚠️ THE REASON OBJECT BELOW IS NOT INVENTED. It is what `previewEarnedAccrualWithReasonAction`
-    // returned, character for character, when driven against a seeded database with the production shape
-    // reproduced (an active `AL` "*Annual Leave" beside an archived `ANNUAL`). Pinning the WHOLE sentence
-    // rather than a substring is the point: a reason that names its subject and still reads as a riddle
-    // has not fixed anything, and only a full-string assertion notices when it becomes one.
+    // ⚠️ THE REASON OBJECT BELOW IS THE PRODUCTION SHAPE. r285 pinned the engine's answer for an active `AL`
+    // "*Annual Leave" beside an archived `ANNUAL`. r299 (3de1453a) — UPDATED, NOT DELETED: the engine now
+    // covers Annual Leave only, so on that account, before the reporter switches "*Annual Leave" on, the
+    // Annual Leave list is EMPTY and the sentence names the switch. Pinning the WHOLE sentence rather than a
+    // substring is still the point: only a full-string assertion notices when a reason becomes a riddle.
     const text = await previewText({
       emptyReason: {
         kind: 'type_not_swept',
         leaveTypeNames: ['*Annual Leave'],
-        sweptLeaveTypeNames: ['Hospitalization Leave', 'Sick Leave'],
+        sweptLeaveTypeNames: [],
       },
       archivedHint: [{ id: 'eb16fd15', code: 'ANNUAL', name: 'Annual Leave' }],
     });
     expect(text).toBe(
-      'Earned accrual covers only these leave types: Hospitalization Leave and Sick Leave. It does not ' +
-        'cover *Annual Leave, so this run had nothing to examine — no entitlement table or eligibility ' +
-        'rule on *Annual Leave can change that.',
+      'Not Annual Leave: *Annual Leave. Earned Accrual applies only to Annual Leave, and no active leave type ' +
+        'is marked as your Annual Leave — switch on “This is our Annual Leave” on it under Leave config → ' +
+        'Entitlements → Leave types.',
     );
     expect(screen.getByTestId('earned-archived-hint').textContent).toBe(
       'Also worth knowing: the leave type Annual Leave is archived. Archived types are hidden from every ' +
         'picker on this screen and are never accrued — unarchive under Leave Config → Leave Types.',
+    );
+  });
+});
+
+describe('§A3 r299 — once Annual Leave is switched on, a non-Annual pick names it in brackets', () => {
+  it('reads as the reporter’s rule, with the tenant’s Annual Leave name', async () => {
+    const text = await previewText({
+      emptyReason: { kind: 'type_not_swept', leaveTypeNames: ['Medical Leave'], sweptLeaveTypeNames: ['*Annual Leave'] },
+    });
+    expect(text).toBe(
+      'Not Annual Leave: Medical Leave. Earned Accrual applies only to Annual Leave (*Annual Leave); other ' +
+        'leave types are entitlement-based, so this run had nothing to examine.',
     );
   });
 });

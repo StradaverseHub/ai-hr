@@ -1,34 +1,28 @@
 /**
  * r293 — THE SERVER HALF of "Run Earned Accrual marks the types it can never accrue".
+ * r299 (3de1453a) — UPDATED, NOT DELETED: the decision this file pinned has been REVERSED on the reporter's
+ * explicit instruction, and every section below now pins the new decision instead of the old one.
  *
- * The RENDERED half is test/r293-earned-accrual-picker.dom.test.tsx: both arms of the marking, the six
- * catalogues, and that a marked option is still selectable. This file holds the four things a jsdom render
- * cannot reach —
+ * WHAT r293 PINNED, AND WHY IT NO LONGER HOLDS. r293 kept `accrueEarnedLeave` keyed on
+ * `STANDING_LEAVE_CODES` (ANNUAL · SICK · HOSPITALIZATION) and only MARKED the other types in the picker,
+ * refusing the reporter's broader ask. The reporter then stated the rule outright: "Only Annual Leave
+ * (*Annual Leave) is subject to the Earned Accrual concept. All other leave types are managed based on
+ * entitlement and should not be included in the Earned Accrual process." So the sweep now keys on ONE
+ * predicate, `isEarnedAccrualType` (role 'annual' first, the seeded code ANNUAL for an unclassified row) —
+ * NARROWER than the constant, not wider: SICK and HOSPITALIZATION leave it, and nothing keys on
+ * `accrual_method` alone. r293's ADR-0066 §89 worry (a festive type that "earns days with no leave year
+ * opened and nothing ever forfeiting") is therefore untouched: festive types are not Annual Leave.
  *
- *   §1  the engine's constant, and the pin that the dom file's unavoidable COPY of it still matches;
- *   §2  that the screen DERIVES `swept` and the swept NAMES from the tenant's own rows and the engine's
- *       own constant, rather than from a second list written on the screen;
- *   §3  the three catalogue keys, in all six locales, with their placeholders;
- *   §4  ⚠️ THAT THE ENGINE ITSELF DID NOT MOVE — a real round trip through `accrueEarnedLeave` on the
- *       reporter's exact configuration, with a positive control.
+ *   §1  the predicate the marking is decided on, and the pin that the dom file's COPY of its fixture shape
+ *       still matches what the server sends;
+ *   §2  that the screen DERIVES `swept` and the Annual Leave NAMES from the tenant's own rows and the
+ *       engine's own predicate, rather than from a second rule written on the screen;
+ *   §3  the catalogue keys, in all six locales, with their placeholders (r293's three keys are retired);
+ *   §4  ⚠️ THE ENGINE, round-tripped on the reporter's exact configuration, with a positive control.
  *
- * ⚠️ §4 IS THE COMMITMENT THE PLAN MADE TO THE REPORTER, AND IT IS A REFUSAL. They asked for something
- * broader: that ANY type set to Daily Accrual be picked up. `accrueEarnedLeave` keys on
- * `STANDING_LEAVE_CODES`, and so do `openLeaveYear` and `expireCarriedLeave` — ADR-0066 line 89 keeps
- * festive types outside that constant precisely "so the accrual / `openLeaveYear` / expiry engines never
- * touch them — this is the deliberate reason festive days escape annual carry-cap/forfeit". Rekeying
- * accrual alone on `accrual_method` would produce a type that earns days with no leave year opened and
- * nothing ever forfeiting: worse than the reported fault and invisible until a year-end. Three engines,
- * one boundary; they move together or not at all. This round labels a list. §4 goes red the day someone
- * smuggles the engine change in behind it.
- *
- * ⚠️ §2 IS A SOURCE-SHAPE TEST, and the reason is the same one test/r288-earned-sweep-warning.test.ts
- * gives: the derivation lives inline in a `page.tsx` default export that begins with `requireAdmin()` and
- * ends in JSX, so importing it from a node test would drag Next's request context in and prove nothing
- * about what the screen shows. What CAN be pinned without that machinery is the shape — filtered from the
- * page's existing `types` read, against `STANDING_LEAVE_CODES`, taking `name`, sorted — and that no
- * leave-type name is written anywhere in the files. The dom file then proves the component marks and
- * prints whatever it is handed. Between them there is no gap where a hardcoded "Annual Leave" survives.
+ * ⚠️ §2 IS A SOURCE-SHAPE TEST for the reason r293 gave: the derivation lives inline in a `page.tsx` default
+ * export that begins with `requireAdmin()` and ends in JSX. test/r299-earned-accrual-annual-only.test.ts
+ * holds the behavioural engine and service arms; the dom file holds the rendered picker.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -37,7 +31,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { accrueEarnedLeave, EARNED_METHODS, STANDING_LEAVE_CODES } from '../core/leave';
+import { accrueEarnedLeave, EARNED_METHODS, isEarnedAccrualType, STANDING_LEAVE_CODES } from '../core/leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
@@ -61,10 +55,10 @@ let b: Base;
 
 const run = (p: Parameters<typeof accrueEarnedLeave>[1]) => accrueEarnedLeave(adminCtx(b), p);
 
-const mkType = async (code: string, name: string) => {
+const mkType = async (code: string, name: string, role: schema.LeaveTypeRoleValue | null = null) => {
   const [lt] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name, paid: true, allowNegativeBalance: true })
+    .values({ tenantId: b.tenantId, code, name, role, paid: true, allowNegativeBalance: true })
     .returning({ id: schema.leaveType.id });
   return lt.id;
 };
@@ -99,55 +93,55 @@ beforeEach(async () => {
 });
 afterAll(closeAll);
 
-describe('§1 the constant the marking is decided on', () => {
-  it('the sweep covers exactly the three standing codes', () => {
-    // The reporter's premise was that the process "only recognizes Hospitalization Leave and Medical
-    // Leave" and excludes Annual. ANNUAL is in the constant and always has been — the account's own `AL`
-    // is not. If this ever grows a fourth code the marking is not wrong, but the sentence on screen says
-    // "these leave types", so the change must be a deliberate one that comes past this line.
+describe('§1 the predicate the marking is decided on', () => {
+  it('Earned Accrual covers Annual Leave only — role first, the seeded code for an unclassified row', () => {
+    // r293 pinned "exactly the three standing codes" here. The reporter's rule retired that from the sweep:
+    // SICK and HOSPITALIZATION are entitlement-based, and a type switched on by ROLE is Annual Leave
+    // whatever its code. The constant itself is untouched because openLeaveYear still reads it.
+    expect(isEarnedAccrualType({ role: null, code: 'ANNUAL' })).toBe(true);
+    expect(isEarnedAccrualType({ role: 'annual', code: 'AL' })).toBe(true);
+    for (const code of STANDING_LEAVE_CODES.filter((c) => c !== 'ANNUAL')) {
+      expect(isEarnedAccrualType({ role: null, code }), code).toBe(false);
+    }
     expect([...STANDING_LEAVE_CODES]).toEqual(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
   });
 
-  it('the dom file’s copy of the constant still matches the engine', () => {
+  it('the dom file’s fixture marks exactly the rows this predicate would', () => {
     // WHY A COPY EXISTS AT ALL: core/leave.ts opens the database connection at module load, so the `dom`
-    // vitest project — which deliberately has no env bootstrap — cannot import its values. The copy is
-    // unavoidable; leaving it unpinned is not.
-    const m = read(DOM_TEST).match(/const ENGINE_STANDING_CODES_COPY = \[([^\]]*)\]/);
-    expect(m, `ENGINE_STANDING_CODES_COPY not found in ${DOM_TEST} — did its shape change?`).not.toBeNull();
-    const copy = m![1]
-      .split(',')
-      .map((s) => s.trim().replace(/^'|'$/g, ''))
-      .filter(Boolean);
-    expect(copy).toEqual([...STANDING_LEAVE_CODES]);
+    // vitest project cannot import its values. r293 pinned a copy of the constant; r299's dom file carries
+    // its fixture rows WITH the (role, code) each stands for, and this reads them back and asks the real
+    // predicate — so a fixture claiming `swept: true` for a SICK row goes red here.
+    const src = read(DOM_TEST);
+    const rows = [...src.matchAll(/\{ id: '[^']+', name: [A-Z_]+, swept: (true|false) \}, \/\/ role=([a-z]*) code=([A-Z_]+)/g)];
+    expect(rows.length, `no annotated fixture rows found in ${DOM_TEST} — did its shape change?`).toBeGreaterThan(3);
+    for (const [, swept, role, code] of rows) {
+      expect(isEarnedAccrualType({ role: role || null, code }), `${role}/${code}`).toBe(swept === 'true');
+    }
   });
 });
 
 describe('§2 the screen derives the facts — it does not restate them', () => {
   const page = read(PAGE);
 
-  it('reads the engine’s constant instead of spelling the codes out again', () => {
-    expect(page).toContain("import { STANDING_LEAVE_CODES, entitlementYearOptions } from '@/core/leave';");
-    expect(page).toContain('new Set<string>([...STANDING_LEAVE_CODES])');
-    // No second spelling of the constant anywhere on the screen or in the two client components it feeds:
-    // a local re-listing would be free to drift from the filter it is supposed to describe.
-    for (const code of STANDING_LEAVE_CODES) {
-      for (const rel of [PAGE, DIALOG, CARD, POPOVER]) {
+  it('reads the engine’s predicate instead of spelling the rule out again', () => {
+    expect(page).toContain("import { entitlementYearOptions, isEarnedAccrualType } from '@/core/leave';");
+    // No second spelling of the rule anywhere on the screen or in the client components it feeds: no code
+    // literal, no role literal.
+    for (const rel of [PAGE, DIALOG, CARD, POPOVER]) {
+      for (const code of STANDING_LEAVE_CODES) {
         expect(read(rel), `${rel} re-spells the code ${code}`).not.toContain(`'${code}'`);
       }
+      expect(read(rel), `${rel} re-spells the role`).not.toContain(`'annual'`);
     }
-    // …AND THE MARKING IS KEYED ON THE CODE, NOT ON THE EARNING METHOD. `accrueEarnedLeave` returns on the
-    // code filter BEFORE it has read a method, so a festive type granted in full is exactly as unreachable
-    // from this screen as a Daily Accrual one on the same non-standing code. A marking that also tested the
-    // method would mark only half of what the engine declines — which is how the reporter came to be told
-    // the wrong reason twice.
+    // …AND THE MARKING IS NOT KEYED ON THE EARNING METHOD. The engine declines a non-Annual type before it
+    // has read a method, so a festive type granted in full is exactly as out of scope as a Daily Accrual
+    // one. The card DOES spell the methods — in `methodLabel`, which captions the preview's "Accrual
+    // method" column and predates r293 (bc36c768) — and nowhere else.
     for (const method of EARNED_METHODS) {
       for (const rel of [PAGE, DIALOG]) {
         expect(read(rel), `${rel} keys the marking on the method ${method}`).not.toContain(`'${method}'`);
       }
     }
-    // The card DOES spell the three methods — in `methodLabel`, which captions the preview table's
-    // "Accrual method" column and predates this round (bc36c768). Outside that one function there is no
-    // method literal, so nothing this round added reads one.
     const card = read(CARD);
     const labelStart = card.indexOf('const methodLabel');
     const labelEnd = card.indexOf("t('earnedMethodMonthly');", labelStart);
@@ -159,36 +153,28 @@ describe('§2 the screen derives the facts — it does not restate them', () => 
         `'${method}'`,
       );
     }
-    // What the marking IS keyed on: the boolean the server decided against the engine's constant.
-    expect(card).toContain("optionNote={(o) => (notSweptIds.has(o.id) ? t('earnedTypeNotCoveredTag') : null)}");
+    // What the picker IS keyed on: the boolean the server decided with the engine's predicate.
     expect(card).toContain("leaveTypes.filter((o) => !o.swept)");
+    expect(card).toContain('optionDisabled={(o) => notSweptIds.has(o.id)}');
   });
 
-  it('every ACTIVE type is still offered — the list is marked, not filtered', () => {
-    // The scope filter is legitimately over all active types, the engine's typed empty reason (r285) is
-    // still the authority on why a run found nothing, and dropping the rows would hide the very type the
-    // reporter went looking for. The read is unchanged; one boolean rides along with each row.
+  it('every ACTIVE type is still offered — listed, not filtered; the others are disabled, not removed', () => {
     expect(page).toContain('listLeaveTypes(s, { includeArchived: false })');
-    expect(page).toContain('swept: standingCodes.has(lt.code),');
+    expect(page).toContain('swept: isEarnedAccrualType(lt),');
     expect(page).not.toMatch(/accrualTypes\s*=\s*types\s*\n?\s*\.filter/);
   });
 
-  it('the swept NAMES come from the tenant’s own rows, in name order', () => {
-    // The engine's own filter at its `type_not_swept` exit: standing code AND not archived, names, A–Z.
-    // `types` IS the non-archived read (asserted above), which is the second half of that filter, and the
-    // page reuses the read it already makes, so this costs no query.
-    expect(page).toContain('const sweptLeaveTypeNames = types');
-    expect(page).toContain('.filter((lt) => standingCodes.has(lt.code))');
+  it('the Annual Leave NAMES come from the tenant’s own rows, in name order', () => {
+    // The engine's own filter at its `type_not_swept` exit: the predicate AND not archived, names, A–Z.
+    expect(page).toContain('const sweptLeaveTypeNames = accrualTypes');
+    expect(page).toContain('.filter((lt) => lt.swept)');
     expect(page).toContain('.map((lt) => lt.name)');
     expect(page).toContain('.sort((a, b) => a.localeCompare(b));');
   });
 
-  it('NO leave-type name is written anywhere in the four touched files', () => {
-    // The reporting account has two leave types both called some variant of Annual Leave. A hardcoded
-    // default name would print a riddle on the very account that raised this.
+  it('NO tenant leave-type name is written anywhere in the four touched files', () => {
+    // The reporter's sentence carries THEIR name in brackets. A hardcoded default would print the wrong one.
     for (const rel of [PAGE, DIALOG, CARD, POPOVER]) {
-      // Comments are stripped first: the file headers discuss "*Annual Leave" by name, deliberately, and
-      // a scan that cannot tell prose from code lies in both directions (CLAUDE.md §8).
       const code = read(rel)
         .split('\n')
         .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
@@ -200,54 +186,64 @@ describe('§2 the screen derives the facts — it does not restate them', () => 
   });
 
   it('the facts cross the server/client boundary as plain data', () => {
-    // r123/r124 took production screens down handing a client island a closure. What crosses here is a
-    // boolean per option and one array of strings; test/server-client-boundary.test.ts is the general
-    // guard, this is the local pin.
     expect(page).toContain('sweptLeaveTypeNames={sweptLeaveTypeNames}');
     expect(read(DIALOG)).toContain('sweptLeaveTypeNames: string[];');
     expect(read(DIALOG)).toContain('sweptLeaveTypeNames={sweptLeaveTypeNames}');
     expect(read(CARD)).toContain('export type EarnedLeaveTypeOption = EarnedScopeOption & { swept: boolean };');
-    // REQUIRED, not optional: a picker that cannot answer "would a run ever look at this type" is the
-    // state this round exists to remove, and an optional flag would quietly restore it at the next mount.
+    // REQUIRED, not optional: an optional flag would quietly default and re-enable a row at the next mount.
     expect(read(CARD)).toContain('leaveTypes: EarnedLeaveTypeOption[];');
     expect(read(CARD)).toContain('sweptLeaveTypeNames: string[];');
   });
 
-  it('the shared picker’s new prop is OPT-IN — the other five call sites are untouched', () => {
+  it('the shared picker’s two props are OPT-IN — the other call sites are untouched', () => {
     const popover = read(POPOVER);
-    expect(popover).toContain('optionNote?: (option: MultiSelectPopoverOption) => string | null | undefined;');
+    expect(popover).toContain('optionNote?: (option: MultiSelectPopoverOption) => MultiSelectOptionNote | null | undefined;');
+    expect(popover).toContain('optionDisabled?: (option: MultiSelectPopoverOption) => boolean;');
     expect(popover).toContain('const note = optionNote?.(o);');
-    // Presentation-only, as the component has always been: the marker arrives already translated.
+    // Select all must not tick a disabled row.
+    expect(popover).toContain('const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));');
+    // Presentation-only, as the component has always been: the tag arrives already translated.
     expect(popover).not.toMatch(/useTranslations|next-intl/);
-    // Exactly ONE call site passes it, and it is the leave-type axis of the accrual card.
     const callSites = ['app/payroll/dashboard-filters.tsx', 'components/attendance/location-assignment.tsx',
       'components/leave/adjustment-form.tsx', 'components/leave/generate-form.tsx',
       'components/notice/notice-form.tsx', 'components/replacement-eligibility-picker.tsx'];
-    for (const rel of callSites) expect(read(rel), `${rel} unexpectedly marks options`).not.toContain('optionNote');
+    for (const rel of callSites) {
+      expect(read(rel), `${rel} unexpectedly marks options`).not.toContain('optionNote');
+      expect(read(rel), `${rel} unexpectedly disables options`).not.toContain('optionDisabled');
+    }
     expect(read(CARD).match(/optionNote=/g)).toHaveLength(1);
+    expect(read(CARD).match(/optionDisabled=/g)).toHaveLength(1);
   });
 });
 
-describe('§3 the three catalogue keys', () => {
+describe('§3 the catalogue keys', () => {
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   const leaveOf = (loc: string) =>
     JSON.parse(read(`messages/${loc}.json`)).admin.leave as Record<string, string>;
+  const NEW_KEYS = ['earnedTypeEarnedTag', 'earnedTypeEntitlementTag', 'earnedAnnualOnly', 'earnedAnnualOnlyNoneActive'];
 
   it('exist, are non-empty, and carry the right placeholders in all six locales', () => {
     for (const loc of LOCALES) {
       const L = leaveOf(loc);
-      expect(L.earnedTypeNotCoveredTag, `${loc}: earnedTypeNotCoveredTag`).toBeTruthy();
-      expect(L.earnedTypesNotSwept, `${loc}: earnedTypesNotSwept`).toBeTruthy();
-      expect(L.earnedTypesNotSweptNoneActive, `${loc}: earnedTypesNotSweptNoneActive`).toBeTruthy();
-      // The names arrive ONLY through the placeholders. A bare t() on an ICU string throws
-      // FORMATTING_ERROR and renders the key path, so a lost placeholder is a broken screen.
-      expect(L.earnedTypesNotSwept, `${loc}: lost {swept}`).toContain('{swept}');
-      expect(L.earnedTypesNotSwept, `${loc}: lost {types}`).toContain('{types}');
-      expect(L.earnedTypesNotSweptNoneActive, `${loc}: lost {types}`).toContain('{types}');
-      // The none-active sentence names nothing covered, because on that account there is nothing to name.
-      expect(L.earnedTypesNotSweptNoneActive, `${loc}: stray {swept}`).not.toContain('{swept}');
-      // The row marker is a marker: no placeholder, and short enough to sit beside a name.
-      expect(L.earnedTypeNotCoveredTag, `${loc}: marker takes a placeholder`).not.toContain('{');
+      for (const k of NEW_KEYS) expect(L[k], `${loc}: ${k}`).toBeTruthy();
+      // The tenant's Annual Leave name(s) arrive ONLY through the placeholder.
+      expect(L.earnedAnnualOnly, `${loc}: lost {names}`).toContain('{names}');
+      expect(L.earnedAnnualOnlyNoneActive, `${loc}: stray {names}`).not.toContain('{names}');
+      // The two tags are tags: no placeholder, short enough to sit beside a name.
+      expect(L.earnedTypeEarnedTag, `${loc}: tag takes a placeholder`).not.toContain('{');
+      expect(L.earnedTypeEntitlementTag, `${loc}: tag takes a placeholder`).not.toContain('{');
+    }
+  });
+
+  it('r293’s three keys are retired in every locale, and nothing reads them', () => {
+    for (const loc of LOCALES) {
+      const L = leaveOf(loc);
+      for (const k of ['earnedTypeNotCoveredTag', 'earnedTypesNotSwept', 'earnedTypesNotSweptNoneActive']) {
+        expect(L[k], `${loc}.${k} survived`).toBeUndefined();
+      }
+    }
+    for (const rel of [PAGE, DIALOG, CARD, POPOVER]) {
+      expect(read(rel)).not.toMatch(/earnedTypeNotCoveredTag|earnedTypesNotSwept/);
     }
   });
 
@@ -255,43 +251,57 @@ describe('§3 the three catalogue keys', () => {
     const en = leaveOf('en');
     for (const loc of LOCALES.filter((l) => l !== 'en')) {
       const L = leaveOf(loc);
-      for (const k of ['earnedTypeNotCoveredTag', 'earnedTypesNotSwept', 'earnedTypesNotSweptNoneActive']) {
+      for (const k of NEW_KEYS) {
         expect(L[k], `${loc}.${k} is untranslated English`).not.toBe(en[k]);
       }
     }
   });
+
+  it('the English sentence is the reporter’s, word for word, around the placeholder', () => {
+    expect(leaveOf('en').earnedAnnualOnly).toBe(
+      'Earned Accrual applies only to Annual Leave ({names}). Other leave types are entitlement-based and are excluded from this process.',
+    );
+  });
 });
 
-describe('§4 ⚠️ THE ENGINE IS UNTOUCHED — accrual still keys on the CODE, never on the method', () => {
-  it('an ACTIVE Daily Accrual type on a NON-standing code still accrues nothing, and says why', async () => {
-    // The reporter's account, reproduced: an ACTIVE `AL` set to Daily Accrual, with an entitlement table
-    // in force and an eligibility rule that reaches the employee — everything the screen asks for.
-    const al = await mkType('AL', '*Annual Leave');
+describe('§4 ⚠️ THE ENGINE — Annual Leave only, keyed on the predicate, never on the method', () => {
+  it('the reporter’s `AL` "*Annual Leave", switched on, accrues; a Daily Accrual SICK type does not', async () => {
+    // The reporter's account, reproduced: the seeded ANNUAL archived, an ACTIVE `AL` set to Daily Accrual
+    // with an entitlement table in force and an eligibility rule that reaches the employee. r293 pinned that
+    // this accrued NOTHING (`type_not_swept`); with the role written by "This is our Annual Leave", it does.
+    await hire();
+    await owner.db.update(schema.leaveType).set({ archivedAt: new Date() }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const al = await mkType('AL', '*Annual Leave', 'annual');
     await setMethod(al, 'earned_daily');
     await configure(al);
-    await hire();
 
     const res = await run({ asOf: MID, leaveTypeIds: [al], dryRun: true });
-    expect(res.breakdown).toHaveLength(0);
-    expect(res.granted).toBe(0);
-    expect(res.emptyReason?.kind).toBe('type_not_swept');
+    expect(res.emptyReason).toBeNull();
+    expect(res.breakdown.length).toBeGreaterThan(0);
 
-    // POSITIVE CONTROL — the identical configuration on a type the sweep DOES cover previews rows. Without
-    // it these assertions hold just as well against an engine that can never produce anything.
-    await setMethod(b.annualLeaveTypeId, 'earned_daily');
-    await configure(b.annualLeaveTypeId);
-    const ok = await run({ asOf: MID, leaveTypeIds: [b.annualLeaveTypeId], dryRun: true });
-    expect(ok.breakdown.length).toBeGreaterThan(0);
-    expect(ok.emptyReason).toBeNull();
+    // …and the identical configuration on SICK — which r293 swept — is declined, by name.
+    const sick = await mkType('SICK', 'Medical Leave');
+    await setMethod(sick, 'earned_daily');
+    await configure(sick);
+    const declined = await run({ asOf: MID, leaveTypeIds: [sick], dryRun: true });
+    expect(declined.breakdown).toHaveLength(0);
+    expect(declined.emptyReason).toEqual({
+      kind: 'type_not_swept',
+      leaveTypeNames: ['Medical Leave'],
+      sweptLeaveTypeNames: ['*Annual Leave'],
+    });
   });
 
-  it('the filter is still `code IN STANDING_LEAVE_CODES`, ahead of any method test', () => {
+  it('the filter is the predicate, ahead of any method test', () => {
     // The source pin beside the behavioural one, because the behaviour above could also be satisfied by a
-    // method filter that happened to decline the same row. ADR-0066 line 89 is the reason this line stays:
-    // festive types live outside the constant so the accrual / openLeaveYear / expiry engines never touch
-    // them, which is why festive days escape the annual carry cap.
+    // method filter that happened to decline the same row.
     const engine = read(ENGINE);
-    expect(engine).toContain('inArray(leaveType.code, [...STANDING_LEAVE_CODES]),');
+    const start = engine.indexOf('export async function accrueEarnedLeave(');
+    const body = engine.slice(start, engine.indexOf('\n}\n', start));
+    const filterAt = body.indexOf('const types = activeTypes.filter((t) => isEarnedAccrualType(t));');
+    expect(filterAt).toBeGreaterThan(-1);
+    expect(filterAt).toBeLessThan(body.indexOf('isEarnedMethod(t.accrualMethod)'));
+    // ADR-0066 §89's reason still holds and is still true: festive types are outside the sweep.
     const adr = read('docs/adr/0066-configurable-entitlement-per-company.md');
     expect(adr).toContain('so the accrual / `openLeaveYear` / expiry engines never touch them');
   });

@@ -1,35 +1,24 @@
 /**
  * r293 — RUN EARNED ACCRUAL MARKS THE LEAVE TYPES IT CAN NEVER ACCRUE, RENDERED.
+ * r299 (3de1453a) — UPDATED, NOT DELETED. r293 pinned "MARK, DO NOT REMOVE AND DO NOT DISABLE". The
+ * reporter's explicit rule — "Only Annual Leave (*Annual Leave) is subject to the Earned Accrual concept. All
+ * other leave types are managed based on entitlement and should not be included in the Earned Accrual
+ * process." — REVERSES the "do not disable" half. This file now pins the new decision:
  *
- * WHAT THE ITEM IS. `app/admin/leave-config/earned-accrual/page.tsx` feeds the picker
- * `listLeaveTypes(s, { includeArchived: false })` — EVERY active leave type, swept or not — while
- * `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` (ANNUAL · SICK · HOSPITALIZATION) BEFORE it
- * reads a single employment. So the control has always offered rows that can never produce a day, and the
- * only signal was the r285 typed empty reason (`type_not_swept`), reached AFTER the operator picked one
- * and spent a preview. This round moves that fact to where the choice is made.
+ *   §A  every non-Annual type is LISTED, DISABLED (cannot be ticked) and tagged Entitlement-based;
+ *   §B  THE SECOND ARM — Annual Leave is enabled and tagged Earned accrual; the other pickers carry nothing;
+ *   §C  Select all never ticks a disabled row; the scope the card posts can hold only Annual Leave ids;
+ *   §D  the reporter's sentence with THE TENANT'S OWN Annual Leave name(s) — never an English default;
+ *   §E  the none-active sentence, naming the switch;
+ *   §F  all six locales.
  *
- * ⚠️ THE REPORTER'S OWN DIAGNOSIS IS NOT WHAT IS BUILT HERE. They reported that the process "only
- * recognizes Hospitalization Leave and Medical Leave" and that Annual Leave is excluded from it. `ANNUAL`
- * IS in `STANDING_LEAVE_CODES` — what their account actually holds is an ACTIVE `AL` "*Annual Leave"
- * outside the constant beside an ARCHIVED `ANNUAL`. The engine is therefore correct and UNCHANGED (see
- * §4 of test/r293-earned-accrual-picker.test.ts, and ADR-0066 line 89 for why the boundary is deliberate);
- * the screen is what was silent.
+ * ⚠️ WHY THIS FILE RENDERS RATHER THAN GREPS (r293's reason, still true). The option rows exist only while
+ * the popover is OPEN, inside a client island — never in SSR output — so a curl proves nothing and a
+ * missing key paints MISSING_MESSAGE only in the browser. The real component, the SHIPPING catalogues.
  *
- * ⚠️ WHY THIS FILE RENDERS RATHER THAN GREPS. The option rows exist only while the popover is OPEN, and
- * the popover is a `useState` inside a client island mounted in a Radix portal — so none of this markup is
- * ever in the SSR output and a curl of the route proves nothing about it (CLAUDE.md §8). A key that exists
- * in no catalogue satisfies tsc, `next build` and every source scan while next-intl paints
- * `MISSING_MESSAGE` in the browser. The real component is therefore driven against the SHIPPING
- * catalogues, in all six locales.
- *
- * ⚠️ THE SECOND ARM IS THE ONE THAT MATTERS. A marker painted on every row would pass every "the marker
- * is shown" assertion in §A. §B is the arm a vacuous guard hides in: an ACTIVE type on a STANDING code
- * carries NOTHING, and §E pins that a tenant whose types are all swept sees no paragraph at all.
- *
- * NOTHING ABOUT THE ENGINE IS ASSERTED HERE. Which codes the sweep covers, and that this round left that
- * filter exactly where it was, is test/r293-earned-accrual-picker.test.ts's job against a real database.
- * This file pins only what the picker does with the facts it is handed — including that it prints THE
- * TENANT'S OWN type names and never a hardcoded English one.
+ * NOTHING ABOUT THE ENGINE IS ASSERTED HERE. test/r299-earned-accrual-annual-only.test.ts and
+ * test/r293-earned-accrual-picker.test.ts §4 own that, against a real database; this file pins only what the
+ * picker does with the booleans the server hands it.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -46,32 +35,20 @@ import zh from '../messages/zh.json';
 
 import { EarnedAccrualCard, type EarnedLeaveTypeOption } from '../components/earned-accrual-card';
 
-/**
- * ⚠️ THE ENGINE'S CONSTANT, WRITTEN OUT RATHER THAN IMPORTED — AND THAT IS NOT A SHORTCUT. `core/leave.ts`
- * opens the database connection at module load, and the `dom` vitest project deliberately has no env
- * bootstrap and no database; importing its VALUES fails collection outright. The copy is unavoidable,
- * leaving it unpinned is not: test/r293-earned-accrual-picker.test.ts runs in the node project, CAN import
- * the engine, and reads this literal back out of THIS FILE'S SOURCE. Keep the name and the single-line
- * array shape — it is what the regex there matches.
- */
-const ENGINE_STANDING_CODES_COPY = ['ANNUAL', 'SICK', 'HOSPITALIZATION'];
-
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(''),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-// Both action modules are server modules; in jsdom they would drag the database in. Nothing in this file
-// runs or previews an accrual — the marking is visible before either — so both are inert stubs.
+// Both action modules are server modules; in jsdom they would drag the database in. The PREVIEW records the
+// scope it is handed, so §C can prove what the card would post.
+const previewScopes: { leaveTypeIds: string[] }[] = [];
 vi.mock('@/app/admin/actions', () => ({ runEarnedAccrualAction: async () => ({ granted: 0, forfeits: 0 }) }));
 vi.mock('@/app/admin/leave-config/earned-accrual/actions', () => ({
-  previewEarnedAccrualWithReasonAction: async () => ({
-    rows: [],
-    asOf: '2026-09-15',
-    emptyReason: null,
-    archivedHint: [],
-    earnedToDateTotal: 0,
-  }),
+  previewEarnedAccrualWithReasonAction: async (scope: { leaveTypeIds: string[] }) => {
+    previewScopes.push(scope);
+    return { rows: [], asOf: '2026-09-15', emptyReason: null, archivedHint: [], earnedToDateTotal: 0 };
+  },
 }));
 
 const LOCALES = [
@@ -84,29 +61,30 @@ const LOCALES = [
 ] as const;
 
 /**
- * ⚠️ THE TENANT'S OWN NAMES, AND DELIBERATELY NOT THE ENGLISH DEFAULTS. The three standing CODES are
- * fixed; the names against them are whatever the tenant typed. "Annual Leave is not accrued here" is a
- * riddle on an account that has two leave types both called some variant of Annual Leave — which is
- * exactly the account that raised this — so these fixtures share no word with the defaults, and §D asserts
- * the defaults never appear. The `*`-prefixed twin beside its swept namesake reproduces the production
- * shape (an ACTIVE `AL` next to an `ANNUAL`) in miniature.
+ * ⚠️ THE TENANT'S OWN NAMES, DELIBERATELY NOT THE ENGLISH DEFAULTS. The reporter's sentence puts THEIR name
+ * in the brackets, asterisk and all; these fixtures share no word with the defaults, and §D asserts the
+ * defaults never leak into a row or a name slot.
+ *
+ * ⚠️ EACH ROW IS ANNOTATED WITH THE (role, code) IT STANDS FOR. core/leave.ts cannot be imported here (it
+ * opens the database at load), so test/r293-earned-accrual-picker.test.ts reads these comments back and asks
+ * the REAL `isEarnedAccrualType` whether `swept` is right for each row. Keep one row per line, in this shape.
  */
-const NOT_SWEPT_DAILY = '*Cuti Tahunan'; // code 'AL', accrual_method earned_daily, ACTIVE
-const NOT_SWEPT_FESTIVE = 'Hari Raya Day'; // code 'FEST', granted in full, ACTIVE
-const SWEPT_ANNUAL = 'Cuti Tahunan'; // code 'ANNUAL', ACTIVE
-const SWEPT_SICK = 'MC'; // code 'SICK', ACTIVE
-const SWEPT_HOSP = 'Ward Leave'; // code 'HOSPITALIZATION', ACTIVE
+const ANNUAL_BY_ROLE = '*Cuti Tahunan';
+const OLD_ANNUAL_BY_NAME = 'Cuti Tahunan (lama)';
+const FESTIVE = 'Hari Raya Day';
+const SICK = 'MC';
+const HOSP = 'Ward Leave';
 const ENGLISH_DEFAULTS = ['Annual Leave', 'Medical Leave', 'Hospitalization Leave', 'Sick Leave'];
 
-/** The tenant that raised this, in miniature: two non-swept actives, all three standing codes active. */
+/** The reporter's tenant in miniature, after they switch "*Annual Leave" on. */
 const MIXED: EarnedLeaveTypeOption[] = [
-  { id: 'lt-al', name: NOT_SWEPT_DAILY, swept: false },
-  { id: 'lt-fest', name: NOT_SWEPT_FESTIVE, swept: false },
-  { id: 'lt-annual', name: SWEPT_ANNUAL, swept: true },
-  { id: 'lt-sick', name: SWEPT_SICK, swept: true },
-  { id: 'lt-hosp', name: SWEPT_HOSP, swept: true },
+  { id: 'lt-al', name: ANNUAL_BY_ROLE, swept: true }, // role=annual code=AL
+  { id: 'lt-fest', name: FESTIVE, swept: false }, // role= code=FEST
+  { id: 'lt-sick', name: SICK, swept: false }, // role= code=SICK
+  { id: 'lt-hosp', name: HOSP, swept: false }, // role=hospitalization code=HOSPITALIZATION
+  { id: 'lt-old', name: OLD_ANNUAL_BY_NAME, swept: false }, // role= code=AL_OLD
 ];
-const SWEPT_NAMES_OF = (types: EarnedLeaveTypeOption[]) =>
+const ANNUAL_NAMES_OF = (types: EarnedLeaveTypeOption[]) =>
   types
     .filter((o) => o.swept)
     .map((o) => o.name)
@@ -127,184 +105,160 @@ const mount = (
 ) =>
   render(
     <NextIntlClientProvider locale={locale} messages={messages}>
-      <EarnedAccrualCard
-        {...CARD_PROPS}
-        leaveTypes={leaveTypes}
-        sweptLeaveTypeNames={sweptLeaveTypeNames}
-      />
+      <EarnedAccrualCard {...CARD_PROPS} leaveTypes={leaveTypes} sweptLeaveTypeNames={sweptLeaveTypeNames} />
     </NextIntlClientProvider>,
   );
 
-/** The pickers carry TRANSLATED captions, so each is found by its own locale's string. */
 const captions = (messages: typeof en) => ({
   type: messages.admin.leave.earnedScopeLeaveType,
   company: messages.admin.leave.earnedScopeCompany,
   grade: messages.admin.leave.earnedScopeGrade,
 });
 
-/** Open one of the three scope popovers by its caption — the trigger's accessible name. */
-const openPicker = async (caption: string) =>
-  userEvent.click(screen.getByRole('button', { name: caption }));
+const openPicker = async (caption: string) => userEvent.click(screen.getByRole('button', { name: caption }));
 
-/** Every option row that carries a marker, as `name → marker`. */
-const markedRows = () =>
-  Object.fromEntries(
-    screen.queryAllByTestId('multi-select-option-note').map((note) => {
-      const label = note.closest('label');
-      const name = label?.querySelector('span')?.textContent ?? '';
-      return [name, note.textContent ?? ''];
-    }),
-  );
+/** One option row: its checkbox, its tag text and tone, and whether it is marked disabled. */
+const row = (name: string) => {
+  const label = screen.getByText(name).closest('label')!;
+  const note = label.querySelector('[data-testid="multi-select-option-note"]');
+  return {
+    box: label.querySelector('input') as HTMLInputElement,
+    tag: note?.textContent ?? null,
+    tone: note?.getAttribute('data-tone') ?? null,
+    disabled: label.getAttribute('data-disabled') === 'true',
+  };
+};
 
-/** The whole row text for one option, marker included — `null` when the option is not on screen. */
-const rowTextOf = (name: string) => screen.getByText(name).closest('label')?.textContent ?? null;
-
-describe('§A the production case — an ACTIVE type outside the standing codes is MARKED', () => {
-  it('marks the earned_daily type the reporter can pick, in the picker, before any run', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
+describe('§A every type that is not Annual Leave is LISTED, DISABLED and tagged Entitlement-based', () => {
+  it('the rows stay in the list, cannot be ticked, and say why', async () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
     await openPicker(captions(en).type);
-    const tag = en.admin.leave.earnedTypeNotCoveredTag;
-    expect(rowTextOf(NOT_SWEPT_DAILY)).toBe(`${NOT_SWEPT_DAILY}${tag}`);
-    // The code decides, not the earning method: `accrueEarnedLeave` returns on the code filter before it
-    // has looked at one. A festive type set to grant in full is just as unreachable from this screen.
-    expect(rowTextOf(NOT_SWEPT_FESTIVE)).toBe(`${NOT_SWEPT_FESTIVE}${tag}`);
-  });
-
-  it('says what the two words mean, naming both halves', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
-    expect(screen.getByTestId('earned-types-not-swept').textContent).toBe(
-      'Run Earned Accrual covers only these leave types: Cuti Tahunan, MC, and Ward Leave. It does not ' +
-        'cover *Cuti Tahunan and Hari Raya Day, so those can never accrue day by day — no entitlement ' +
-        'table, date or earning method can change that.',
+    for (const name of [FESTIVE, SICK, HOSP, OLD_ANNUAL_BY_NAME]) {
+      const r = row(name);
+      expect(r.box, name).toBeDisabled();
+      expect(r.disabled, name).toBe(true);
+      expect(r.tag, name).toBe(en.admin.leave.earnedTypeEntitlementTag);
+      expect(r.tone, name).toBe('neutral');
+      // Clicking the label or the box ticks nothing.
+      await userEvent.click(screen.getByText(name));
+      expect(r.box, `${name} was ticked`).not.toBeChecked();
+    }
+    expect(screen.getByRole('button', { name: captions(en).type }).textContent).toContain(
+      en.admin.leave.earnedAllTypes,
     );
   });
 
-  it('agrees with the leave type editor, which is the point of reusing its sentence', () => {
-    // r288 shipped the same fact on the editing screen. The reporter has now been given the wrong reason
-    // twice; two screens describing ONE boundary in two different sets of words is how that happens. The
-    // shared shape is pinned, not a byte-identical string: the editor speaks about the one type being
-    // edited ("this one"), this screen about a list it is offering.
-    const editor = en.admin.leave.subStep.earningNotSwept;
-    const picker = en.admin.leave.earnedTypesNotSwept;
-    expect(editor).toContain('Run Earned Accrual covers only these leave types: {swept}.');
-    expect(picker).toContain('Run Earned Accrual covers only these leave types: {swept}.');
-    expect(editor).toContain('never accrue day by day');
-    expect(picker).toContain('never accrue day by day');
-    expect(editor).toContain('no entitlement table, date or earning method can change that');
-    expect(picker).toContain('no entitlement table, date or earning method can change that');
+  it('the decision is the SERVER’S boolean, not the name — a near-twin of the Annual Leave name stays disabled', async () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
+    await openPicker(captions(en).type);
+    expect(OLD_ANNUAL_BY_NAME.startsWith(ANNUAL_BY_ROLE.slice(1))).toBe(true);
+    expect(row(OLD_ANNUAL_BY_NAME).box).toBeDisabled();
+    expect(row(ANNUAL_BY_ROLE).box).toBeEnabled();
   });
 });
 
-describe('§B the second arm — an ACTIVE type ON a standing code is NOT marked', () => {
-  it('carries no marker, and the row is its name and nothing else', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
+describe('§B the second arm — Annual Leave is enabled and tagged Earned accrual', () => {
+  it('is selectable, carries the positive tag, and the scope reports it', async () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
     await openPicker(captions(en).type);
-    // ⚠️ THE VACUOUS-GUARD ARM. A marker painted on every row passes §A in full and fails here.
-    for (const name of [SWEPT_ANNUAL, SWEPT_SICK, SWEPT_HOSP]) expect(rowTextOf(name)).toBe(name);
-    expect(Object.keys(markedRows()).sort()).toEqual([NOT_SWEPT_FESTIVE, NOT_SWEPT_DAILY].sort());
+    const r = row(ANNUAL_BY_ROLE);
+    // ⚠️ THE VACUOUS-GUARD ARM. A picker that disabled every row passes §A in full and fails here.
+    expect(r.box).toBeEnabled();
+    expect(r.disabled).toBe(false);
+    expect(r.tag).toBe(en.admin.leave.earnedTypeEarnedTag);
+    expect(r.tone).toBe('positive');
+    await userEvent.click(r.box);
+    expect(r.box).toBeChecked();
+    expect(screen.getByRole('button', { name: captions(en).type }).textContent).toContain(
+      en.admin.leave.multiSelectSelectedCount.replace('{count}', '1'),
+    );
   });
 
-  it('a tenant whose active types are ALL swept sees no marker and no paragraph', async () => {
-    const allSwept = MIXED.filter((o) => o.swept);
-    mount(allSwept, SWEPT_NAMES_OF(allSwept));
-    expect(screen.queryByTestId('earned-types-not-swept')).toBeNull();
-    await openPicker(captions(en).type);
-    expect(screen.queryAllByTestId('multi-select-option-note')).toHaveLength(0);
-  });
-
-  it('the company and grade pickers are untouched — this is the leave-type axis only', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
+  it('the company and grade pickers are untouched — no tag, nothing disabled', async () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
     for (const caption of [captions(en).company, captions(en).grade]) {
       await openPicker(caption);
       expect(screen.queryAllByTestId('multi-select-option-note')).toHaveLength(0);
+      expect(document.querySelectorAll('label[data-disabled="true"]')).toHaveLength(0);
       await openPicker(caption); // close again
     }
   });
 });
 
-describe('§C MARK, DO NOT REMOVE AND DO NOT DISABLE', () => {
-  it('the marked option is still listed, still enabled and still selectable', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
+describe('§C Select all never ticks a disabled row — the posted scope holds Annual Leave only', () => {
+  it('Select all selects the one enabled row, and Preview posts exactly that id', async () => {
+    previewScopes.length = 0;
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
     await openPicker(captions(en).type);
-    // The engine's typed empty reason stays the authority on why a run found nothing. Hiding the row
-    // would replace one silence with another — and would hide the very type the reporter went looking for.
-    const box = screen.getByText(NOT_SWEPT_DAILY).closest('label')!.querySelector('input')!;
-    expect(box).toBeEnabled();
-    expect(box).not.toBeChecked();
-    await userEvent.click(box);
-    expect(box).toBeChecked();
-    // The scope the card would post is unchanged: one selected id, reported by the trigger exactly as it
-    // is for a swept type.
-    expect(
-      screen.getByRole('button', { name: captions(en).type }).textContent,
-    ).toContain(en.admin.leave.multiSelectSelectedCount.replace('{count}', '1'));
+    await userEvent.click(screen.getByRole('button', { name: en.admin.leave.multiSelectSelectAll }));
+    expect(row(ANNUAL_BY_ROLE).box).toBeChecked();
+    for (const name of [FESTIVE, SICK, HOSP, OLD_ANNUAL_BY_NAME]) expect(row(name).box, name).not.toBeChecked();
+    await openPicker(captions(en).type); // close
+    await userEvent.click(screen.getByRole('button', { name: en.admin.leave.earnedPreviewButton }));
+    expect(previewScopes.map((s) => s.leaveTypeIds)).toEqual([['lt-al']]);
   });
 });
 
-describe('§D the names are the TENANT’S — never an English default', () => {
-  it('neither the paragraph nor any marked row contains a default leave-type name', async () => {
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
-    await openPicker(captions(en).type);
-    const rendered = document.body.textContent ?? '';
-    for (const name of ENGLISH_DEFAULTS) {
-      expect(rendered, `the picker printed the English default "${name}"`).not.toContain(name);
-    }
-    // And the fixture is honest about which arm each row is: the two marked rows are the codes outside
-    // the engine's constant, the three unmarked ones are the constant itself.
-    expect(ENGINE_STANDING_CODES_COPY).toHaveLength(MIXED.filter((o) => o.swept).length);
-  });
-
-  it('prints whatever it is handed, including names that share a prefix', async () => {
-    // The production riddle in miniature: '*Cuti Tahunan' and 'Cuti Tahunan' differ by one character, and
-    // only one of them is swept. A screen that matched on name rather than on the server's boolean would
-    // mark both or neither.
-    mount(MIXED, SWEPT_NAMES_OF(MIXED));
-    await openPicker(captions(en).type);
-    expect(rowTextOf(NOT_SWEPT_DAILY)).toContain(en.admin.leave.earnedTypeNotCoveredTag);
-    expect(rowTextOf(SWEPT_ANNUAL)).toBe(SWEPT_ANNUAL);
-  });
-});
-
-describe('§E the none-active sentence — the reporting account’s actual state', () => {
-  it('names the types and says nothing is covered, rather than printing an empty list', () => {
-    // On that tenant `ANNUAL` and `SICK` are archived and `HOSPITALIZATION` grants in full: the swept
-    // list is EMPTY. A sentence built round an empty {swept} would read "covers only these leave types: ."
-    const onlyUnswept = MIXED.filter((o) => !o.swept);
-    mount(onlyUnswept, []);
-    expect(screen.getByTestId('earned-types-not-swept').textContent).toBe(
-      'Run Earned Accrual does not cover *Cuti Tahunan and Hari Raya Day, and no leave type it does ' +
-        'cover is active on this account — so those can never accrue day by day.',
+describe('§D the reporter’s sentence, with the TENANT’S own Annual Leave name — never a default', () => {
+  it('is drawn whatever is selected, word for word, with the name in the brackets', () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
+    expect(screen.getByTestId('earned-annual-only').textContent).toBe(
+      'Earned Accrual applies only to Annual Leave (*Cuti Tahunan). Other leave types are entitlement-based ' +
+        'and are excluded from this process.',
     );
   });
+
+  it('the name slot and every row print what the server sent, never an English default name', async () => {
+    mount(MIXED, ANNUAL_NAMES_OF(MIXED));
+    await openPicker(captions(en).type);
+    // The sentence's CONCEPT is Annual Leave (the reporter's words); the NAME in brackets is the tenant's.
+    const bracket = /\(([^)]*)\)/.exec(screen.getByTestId('earned-annual-only').textContent ?? '')?.[1];
+    expect(bracket).toBe(ANNUAL_BY_ROLE);
+    for (const label of document.querySelectorAll('label')) {
+      const name = label.querySelector('span')?.textContent ?? '';
+      for (const d of ENGLISH_DEFAULTS) expect(name, `a row printed "${d}"`).not.toBe(d);
+    }
+  });
+
+  it('two Annual Leave names are joined the reader’s way', () => {
+    const two: EarnedLeaveTypeOption[] = [
+      { id: 'a', name: 'Cuti A', swept: true },
+      { id: 'b', name: 'Cuti B', swept: true },
+    ];
+    mount(two, ANNUAL_NAMES_OF(two));
+    expect(screen.getByTestId('earned-annual-only').textContent).toContain('(Cuti A and Cuti B)');
+  });
 });
 
-describe('§F all six locales — a marker that paints MISSING_MESSAGE is not a marker', () => {
-  for (const [locale, messages] of LOCALES) {
-    it(`${locale} renders the marker and the sentence, with the subjects named`, async () => {
-      const m = messages as unknown as typeof en;
-      mount(MIXED, SWEPT_NAMES_OF(MIXED), locale, messages as never);
+describe('§E no active Annual Leave — the sentence says so and names the switch', () => {
+  it('replaces the bracketed sentence rather than printing empty brackets', () => {
+    const none = MIXED.filter((o) => !o.swept);
+    mount(none, []);
+    const text = screen.getByTestId('earned-annual-only').textContent ?? '';
+    expect(text).toBe(en.admin.leave.earnedAnnualOnlyNoneActive);
+    expect(text).toContain('This is our Annual Leave');
+    expect(text).not.toContain('()');
+  });
+});
 
-      const para = screen.getByTestId('earned-types-not-swept').textContent ?? '';
-      expect(para, `${locale}: paragraph`).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
-      expect(para, `${locale}: lost its subject`).toContain(NOT_SWEPT_DAILY);
-      expect(para, `${locale}: lost what IS covered`).toContain(SWEPT_HOSP);
-      // The raw ICU placeholders must be GONE — a bare t() on one of these renders the key path.
-      expect(para, `${locale}: unformatted placeholder`).not.toMatch(/\{swept\}|\{types\}/);
+describe('§F all six locales — a tag that paints MISSING_MESSAGE is not a tag', () => {
+  for (const [locale, messages] of LOCALES) {
+    it(`${locale} renders both tags and the sentence, with the tenant's name`, async () => {
+      const m = messages as unknown as typeof en;
+      mount(MIXED, ANNUAL_NAMES_OF(MIXED), locale, messages as never);
+
+      const para = screen.getByTestId('earned-annual-only').textContent ?? '';
+      expect(para, `${locale}: sentence`).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
+      expect(para, `${locale}: lost the tenant's name`).toContain(ANNUAL_BY_ROLE);
+      expect(para, `${locale}: unformatted placeholder`).not.toMatch(/\{names\}/);
 
       await openPicker(captions(m).type);
-      const marks = screen.queryAllByTestId('multi-select-option-note');
-      expect(marks, `${locale}: wrong number of marked rows`).toHaveLength(2);
-      for (const mark of marks) {
-        expect(mark.textContent, `${locale}: marker`).toBeTruthy();
-        expect(mark.textContent, `${locale}: marker`).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
-        expect(mark.textContent).toBe(m.admin.leave.earnedTypeNotCoveredTag);
-      }
-
-      // The none-active variant is a different sentence and gets the same treatment.
-      screen.getByTestId('earned-types-not-swept');
-      const noneActive = m.admin.leave.earnedTypesNotSweptNoneActive;
-      expect(noneActive, `${locale}: none-active sentence`).toBeTruthy();
-      expect(noneActive, `${locale}: none-active must name no swept list`).not.toContain('{swept}');
+      const tags = screen.queryAllByTestId('multi-select-option-note');
+      expect(tags, `${locale}: every row carries a tag`).toHaveLength(MIXED.length);
+      expect(tags.filter((t) => t.textContent === m.admin.leave.earnedTypeEarnedTag)).toHaveLength(1);
+      expect(tags.filter((t) => t.textContent === m.admin.leave.earnedTypeEntitlementTag)).toHaveLength(4);
+      for (const t of tags) expect(t.textContent, `${locale}: tag`).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
+      expect(m.admin.leave.earnedAnnualOnlyNoneActive, `${locale}: none-active sentence`).toBeTruthy();
     });
   }
 });
