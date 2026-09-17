@@ -130,6 +130,14 @@ const lots = async (ids: string[]) => {
 
 /** Employee applies for Replacement Leave over [from, to]; the line manager approves it. */
 async function approvedReplacementLeave(from: string, to: string) {
+  // r301 (83511d3b, migration 0471): the Replacement Leave type here is auto-created by the first credit
+  // (ensureReplacementLeaveType), i.e. a type created AFTER 0471 — and those start with employee cancellation
+  // of approved leave switched OFF. These cases are about the credit give-back, so the switch is turned on,
+  // stating the precondition rather than inheriting it; the switch itself is pinned in test/r301-*.
+  await owner.db
+    .update(schema.leaveType)
+    .set({ employeeCancelApproved: true })
+    .where(eq(schema.leaveType.id, await replacementTypeId()));
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
     leaveTypeId: await replacementTypeId(),

@@ -1978,7 +1978,8 @@
       "cancellationNoLongerCancellable": "Cuti ini telah berubah sejak pembatalan diminta, jadi ia tidak boleh dibatalkan lagi.",
       "cancellationAdminOnly": "Hanya pentadbir HR boleh membatalkan cuti bagi pihak pekerja.",
       "cancellationAdminOwnLeave": "Anda tidak boleh membatalkan cuti anda sendiri di sini. Minta pembatalan dari Cuti Saya.",
-      "cancellationAlreadyFinal": "Cuti ini telah ditolak atau dibatalkan, jadi tiada apa-apa untuk dibatalkan."
+      "cancellationAlreadyFinal": "Cuti ini telah ditolak atau dibatalkan, jadi tiada apa-apa untuk dibatalkan.",
+      "cancellationAlreadyApproved": "Cuti ini telah diluluskan. Gunakan Batal tarikh untuk meminta pembatalan."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",

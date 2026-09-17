@@ -1978,7 +1978,8 @@
       "cancellationNoLongerCancellable": "自申请取消以来此休假已发生变化，因此无法再取消。",
       "cancellationAdminOnly": "只有人力资源管理员才能代员工取消休假。",
       "cancellationAdminOwnLeave": "您无法在此取消自己的休假。请在\"我的休假\"中申请取消。",
-      "cancellationAlreadyFinal": "此休假已被拒绝或已取消，无需取消。"
+      "cancellationAlreadyFinal": "此休假已被拒绝或已取消，无需取消。",
+      "cancellationAlreadyApproved": "此休假已获批准。请使用“取消日期”申请取消。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",

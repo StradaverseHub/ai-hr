@@ -620,8 +620,10 @@ export type LeaveCancellationRefusal =
   | 'admin_only'
   /** adminCancelLeave: an HR administrator's own leave goes through the employee flow. */
   | 'admin_own_leave'
-  /** adminCancelLeave: the leave is already rejected or cancelled. */
-  | 'already_final';
+  /** adminCancelLeave / cancelOwnLeave: the leave is already rejected or cancelled. */
+  | 'already_final'
+  /** cancelOwnLeave: an approved leave is withdrawn through "Cancel dates", not the pending withdraw. */
+  | 'already_approved';
 
 export class LeaveCancellationNotAllowedError extends Error {
   readonly refusal?: LeaveCancellationRefusal;
@@ -6938,20 +6940,19 @@ export async function cancelOwnLeave(
     // Subject-only (creator). Enforced in code (RLS is symmetric).
     const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
-      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave');
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
 
     // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
+    // r301 (83511d3b): each refusal carries its reason, so the screen can say which.
     if (req.status !== 'pending') {
-      throw new LeaveCancellationNotAllowedError(
-        req.status === 'approved'
-          ? 'approved leave must be cancelled through the give-back flow'
-          : `the leave is already ${req.status}`,
-      );
+      throw req.status === 'approved'
+        ? new LeaveCancellationNotAllowedError('approved leave must be cancelled through the give-back flow', 'already_approved')
+        : new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     // v1: plain single-request rows only (an EL child would strand its sibling).
     if (req.parentGroupId != null) {
-      throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here');
+      throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
     const [lt] = await tx

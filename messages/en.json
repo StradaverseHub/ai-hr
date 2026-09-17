@@ -1978,7 +1978,8 @@
       "cancellationNoLongerCancellable": "This leave has changed since the cancellation was requested, so it can no longer be cancelled.",
       "cancellationAdminOnly": "Only an HR administrator can cancel leave on an employee's behalf.",
       "cancellationAdminOwnLeave": "You can't cancel your own leave here. Ask for a cancellation from My Leave instead.",
-      "cancellationAlreadyFinal": "This leave is already rejected or cancelled, so there is nothing to cancel."
+      "cancellationAlreadyFinal": "This leave is already rejected or cancelled, so there is nothing to cancel.",
+      "cancellationAlreadyApproved": "This leave is already approved. Use Cancel dates to ask for it to be cancelled."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",

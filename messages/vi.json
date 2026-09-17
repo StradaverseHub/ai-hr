@@ -1978,7 +1978,8 @@
       "cancellationNoLongerCancellable": "Kỳ nghỉ này đã thay đổi kể từ khi yêu cầu hủy, nên không thể hủy nữa.",
       "cancellationAdminOnly": "Chỉ quản trị viên HR mới có thể hủy nghỉ phép thay cho nhân viên.",
       "cancellationAdminOwnLeave": "Bạn không thể hủy nghỉ phép của chính mình tại đây. Hãy yêu cầu hủy từ trang Nghỉ phép của tôi.",
-      "cancellationAlreadyFinal": "Kỳ nghỉ này đã bị từ chối hoặc đã hủy, nên không có gì để hủy."
+      "cancellationAlreadyFinal": "Kỳ nghỉ này đã bị từ chối hoặc đã hủy, nên không có gì để hủy.",
+      "cancellationAlreadyApproved": "Kỳ nghỉ này đã được duyệt. Hãy dùng Hủy ngày để yêu cầu hủy."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",

@@ -489,6 +489,8 @@ export async function localizeLeaveError(
         return t('cancellationAdminOwnLeave');
       case 'already_final':
         return t('cancellationAlreadyFinal');
+      case 'already_approved':
+        return t('cancellationAlreadyApproved');
       default:
         return t('cancellationNotAllowed');
     }
