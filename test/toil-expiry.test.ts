@@ -337,14 +337,12 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
  */
 describe('Expiry of a self-declared credit (296fc027)', () => {
   /**
-   * 3fb1a611 (r299) CHANGED WHAT THE REQUEST PATH RECORDS, so this case is split in two rather than loosened.
-   *
-   * It used to assert that an employee-request credit carries a NULL day type and is valued on the generic
-   * ORP basis. The request path now RESOLVES the day kind from the schedule (and refuses an ordinary working
-   * day), so a rest-day request is stamped 'rest_day' and a First-Schedule convert reconciles to the exact
-   * statutory cash like every other rest-day credit. The NULL-day-type fallback still exists — for a legacy
-   * row banked before this round, and for an OFF day (test/r299-leave-credit-money.test.ts) — and the second
-   * case below keeps pinning it on a legacy-shaped row.
+   * 3fb1a611 (r299) split this case in two. The build first stamped a rest-day request's `day_type` and valued
+   * its expiry at the exact statutory cash; the r299 verifier measured that over-valuing (the statutory branch
+   * prices the whole declared minutes and ignores the part already used — 3 days on one rest day paid 384.76
+   * against 230.76), so the r299 FIX PASS reverted it. The request path now RESOLVES and stores the day KIND
+   * (`worked_day_kind`, for the gate and the screens) but still records NO valuation `day_type`, so it keeps
+   * the ORP × remaining-days basis 296fc027 decided. Both cases below pin that, on a new and a legacy row.
    */
   async function selfDeclaredRestDayCredit() {
     const a = await entitledCtx(b);
@@ -381,9 +379,9 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     return ev.payload as Record<string, unknown>;
   };
 
-  it('3fb1a611: a request on a rest day is STAMPED rest_day and converts at the exact statutory cash', async () => {
+  it('r299: a request on a rest day records the day KIND, no valuation day type, and converts on the ORP basis', async () => {
     const { a, acc } = await selfDeclaredRestDayCredit();
-    expect(acc.dayType).toBe('rest_day');
+    expect(acc.dayType, 'no valuation day type on a self-declared credit').toBeNull();
     expect(acc.workedDayKind).toBe('rest_day');
     // Floor protection still applies — an eligible employee's credit converts, it never lapses.
     expect(acc.expiryAction).toBe('convert_to_pay');
@@ -392,8 +390,8 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     expect(res.converted).toBe(1);
     expect(await statusOf(acc.id)).toBe('converted_to_pay');
     const payload = await convertedPayload(acc.id);
-    expect(payload.valuationBasis).toBe('statutory_exact');
-    // s.60(3)(b): more than half the normal hours on a rest day = 1 day ORP = 2000/26.
+    expect(payload.valuationBasis).toBe('generic_orp');
+    // ORP × remaining days = 2000/26 × 1 day.
     expect(payload.amountOwed).toBeCloseTo(76.92, 2);
   });
 

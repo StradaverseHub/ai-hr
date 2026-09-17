@@ -136,8 +136,9 @@ describe('Leave Credit request — the day-type gate (3fb1a611 gap 1)', () => {
     const credits = await creditsOf(employmentId);
     const byDate = Object.fromEntries(credits.map((c) => [c.workedDate, { kind: c.workedDayKind, dayType: c.dayType }]));
     expect(byDate[offDay]).toEqual({ kind: 'off_day', dayType: null });
-    expect(byDate[restDay]).toEqual({ kind: 'rest_day', dayType: 'rest_day' });
-    expect(byDate[holiday]).toEqual({ kind: 'holiday', dayType: 'holiday' });
+    // r299 fix pass — the KIND is stamped on every credit; the valuation day type is not (see toil-expiry).
+    expect(byDate[restDay]).toEqual({ kind: 'rest_day', dayType: null });
+    expect(byDate[holiday]).toEqual({ kind: 'holiday', dayType: null });
   });
 
   it('a rostered rest day on a weekday is a rest day; a rostered SHIFT on a Saturday is a working day', async () => {
