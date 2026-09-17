@@ -692,11 +692,18 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   };
   const earningRendered = formData.get('earningRendered') != null;
   const carryRendered = formData.get('carryBlockRendered') != null;
+  // r299 (3de1453a) — "This is our Annual Leave", on its OWN marker. The Earning Method form renders the
+  // switch only where the administrator may change it; where it is locked (another type already is Annual
+  // Leave, the type is classified as something else, or it is Annual Leave by its code) it posts NO marker,
+  // so the role is untouched. The value is a hidden '1' / '0' rather than a checkbox's presence, because a
+  // switch the form disables while an earned method is chosen would otherwise post nothing and read as OFF.
+  const annualLeaveRendered = formData.get('annualLeaveRendered') != null;
 
   let saved = { unconfiguredCleared: false };
   try {
     saved = (await setLeaveTypeRules(s, {
       id,
+      ...(annualLeaveRendered ? { isAnnualLeave: formData.get('isAnnualLeave') === '1' } : {}),
       // Earning half — method + rounding. roundingMethodField already carries its own tri-state marker.
       ...(earningRendered
         ? {

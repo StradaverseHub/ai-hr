@@ -74,6 +74,13 @@ import {
   APPLICATION_LIMIT_PERIODS,
   type ApplicationLimitPeriod,
   type ServiceBand,
+  // r299 (3de1453a) — the ONE predicate for "Earned Accrual applies to this type" (Annual Leave, role first)
+  // and the engine's earned-method family. The Annual Leave switch and the earned-method refusal below ask
+  // exactly what `accrueEarnedLeave` asks, so the editor can never save a combination the sweep reads
+  // differently.
+  isEarnedAccrualType,
+  isEarnedMethod,
+  type LeaveTypeRole,
 } from './leave';
 // Override Leave Application (56910869): the write validator reads the SAME vocabulary the engine acts on,
 // so a rule that saves is exactly a rule that fires.
@@ -719,6 +726,26 @@ export async function createLeaveType(
       .where(and(isNull(leaveType.archivedAt), sql`lower(${leaveType.name}) = lower(${name})`))
       .limit(1);
     if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
+    // r299 (3de1453a) — the third door to a second active Annual Leave. A new row carries no role, so a
+    // code that the predicate recognises as Annual Leave (the seeded one) makes it Annual Leave by the
+    // code fallback. Rows sharing the SAME code are left to the partial unique code index below, so a
+    // duplicate code still reads as a duplicate code rather than as this.
+    if (active && isEarnedAccrualType({ role: null, code })) {
+      const others = (
+        await tx
+          .select({ name: leaveType.name, code: leaveType.code, role: leaveType.role })
+          .from(leaveType)
+          .where(isNull(leaveType.archivedAt))
+      )
+        .filter((r) => isEarnedAccrualType(r) && r.code.toUpperCase() !== code)
+        .map((r) => r.name)
+        .sort((a, b) => a.localeCompare(b));
+      if (others.length > 0) {
+        throw new LeaveTypeRuleError(
+          `A leave type with code ${code} is Annual Leave, and ${others.join(', ')} is already your Annual Leave. Only one active leave type can be your Annual Leave.`,
+        );
+      }
+    }
     const [row] = await tx
       .insert(leaveType)
       .values({
@@ -2985,6 +3012,92 @@ const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at
 const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays', 'applyNotice'] as const;
 const CUSTOM_MESSAGE_MAX_LEN = 500;
 
+/**
+ * r299 (3de1453a) — THE ACTIVE LEAVE TYPES, OTHER THAN `excludeId`, THAT ARE ANNUAL LEAVE, by name, A–Z.
+ *
+ * Judged by `isEarnedAccrualType` (role first, code `ANNUAL` for an unclassified row) — the predicate the
+ * earned sweep itself uses — so "only one active Annual Leave" means one row the SWEEP would treat as
+ * Annual Leave, not one row carrying a particular role string. `role` and `code` must both be selected.
+ */
+async function otherActiveAnnualLeaveNames(tx: Tx, excludeId: string | null): Promise<string[]> {
+  const rows = await tx
+    .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role })
+    .from(leaveType)
+    .where(and(isNull(leaveType.archivedAt), excludeId ? sql`${leaveType.id} <> ${excludeId}` : undefined));
+  return rows
+    .filter((r) => isEarnedAccrualType(r))
+    .map((r) => r.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * r299 (3de1453a) — "THIS IS OUR ANNUAL LEAVE", DECIDED IN ONE PLACE FOR BOTH OF ITS WRITERS.
+ *
+ * The switch writes `leave_type.role = 'annual'`, and the reporter's rule ("only Annual Leave is subject to
+ * Earned Accrual") makes that the fact the earned sweep keys on. Two services accept it — `updateLeaveType`
+ * (the leave type's identity) and `setLeaveTypeRules` (because the switch sits on the Earning Method form,
+ * and "switch on + choose Monthly Accrual" has to be ONE save or the method half would be refused against
+ * the role the other half was about to write). Both call this, so there is one rule set, not two.
+ *
+ *   isAnnualLeave undefined ⇒ the role column is untouched (tri-state, like every other sub-form field).
+ *   true  ⇒ role = 'annual'. REFUSED when the row already carries a DIFFERENT role (a type classified as
+ *           Sick or Maternity leave cannot also be Annual Leave — silently overwriting it would switch its
+ *           own statutory protections off), and REFUSED when ANOTHER active type is already Annual Leave,
+ *           naming it. A no-op when the role is already 'annual'.
+ *   false ⇒ clears the role ONLY when it is 'annual'. REFUSED while the type would still store an earned
+ *           method after this save ("change its earning method first") — switching off would otherwise
+ *           create exactly the stranded state Leave Balance Health reports. REFUSED on an unclassified row
+ *           recognised as Annual Leave by its code, because there is no role to clear and a silent no-op
+ *           would tell the administrator their save worked. A no-op on any other row.
+ *
+ * ⚠️ WHAT SWITCHING ON ALSO DOES, disclosed in the approved plan: `isLockedType` (updateLeaveType) then
+ * locks the code, and `isStatutoryApplyType` forbids blocking employee applications — both already key on
+ * `role = 'annual'`. That is why the switch is a decision the administrator makes and no migration guesses.
+ *
+ * `accrualMethodAfter` is the method the row will hold once THIS save commits (the posted one on the rules
+ * path, the stored one on the identity path). Refusals throw `LeaveTypeRuleError`, which both actions
+ * surface verbatim. Returns the column patch and the before/after role for the audit event.
+ */
+async function resolveAnnualLeaveSwitch(
+  tx: Tx,
+  row: { id: string; name: string; code: string; role: string | null },
+  isAnnualLeave: boolean | undefined,
+  accrualMethodAfter: string | null | undefined,
+): Promise<{ roleSet: { role?: LeaveTypeRole | null }; roleBefore: string | null; roleAfter: string | null }> {
+  const roleBefore = row.role ?? null;
+  const unchanged = { roleSet: {} as { role?: LeaveTypeRole | null }, roleBefore, roleAfter: roleBefore };
+  if (isAnnualLeave === undefined) return unchanged;
+  if (isAnnualLeave) {
+    if (roleBefore === 'annual') return unchanged;
+    if (roleBefore != null && roleBefore !== '') {
+      throw new LeaveTypeRuleError(
+        `${row.name} is already recorded as a different kind of leave (${roleBefore}), so it cannot also be your Annual Leave.`,
+      );
+    }
+    const others = await otherActiveAnnualLeaveNames(tx, row.id);
+    if (others.length > 0) {
+      throw new LeaveTypeRuleError(
+        `${others.join(', ')} is already your Annual Leave. Only one active leave type can be your Annual Leave — switch off “This is our Annual Leave” on ${others.join(', ')} first.`,
+      );
+    }
+    return { roleSet: { role: 'annual' as const }, roleBefore, roleAfter: 'annual' };
+  }
+  if (roleBefore !== 'annual') {
+    if ((roleBefore == null || roleBefore === '') && isEarnedAccrualType(row)) {
+      throw new LeaveTypeRuleError(
+        `${row.name} is recognised as Annual Leave by its code ${row.code}, so “This is our Annual Leave” cannot be switched off on it.`,
+      );
+    }
+    return unchanged;
+  }
+  if (isEarnedMethod(accrualMethodAfter)) {
+    throw new LeaveTypeRuleError(
+      `${row.name} earns its days through Earned Accrual, which applies only to Annual Leave. Change its earning method first, then switch off “This is our Annual Leave”.`,
+    );
+  }
+  return { roleSet: { role: null }, roleBefore, roleAfter: null };
+}
+
 export async function updateLeaveType(
   ctx: SessionContext,
   p: {
@@ -3190,11 +3303,16 @@ export async function updateLeaveType(
     // untouched), mirroring allowNegativeBalance — its own sub-form posts `allowUpl=1`. false = today's
     // behaviour. Enforced at requestLeave/editLeaveRequest, settled at approval + payroll.
     allowUnpaidLeave?: boolean;
+    /** r299 (3de1453a) — "This is our Annual Leave". OWN tri-state: undefined ⇒ `role` untouched; true ⇒
+     *  role 'annual'; false ⇒ cleared only when it is 'annual'. Every refusal is in
+     *  `resolveAnnualLeaveSwitch`; the before/after role rides this service's `leave-type.updated` event. */
+    isAnnualLeave?: boolean;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
+  const touchAnnualLeave = p.isAnnualLeave !== undefined;
   const reason = normalizeReason(p.reason);
   // Edit Leave Type Code (a7194511): normalize the optional new code exactly like createLeaveType (uppercase,
   // spaces → underscores) so the canonical semantic key never drifts, then shape-validate. The statutory-code
@@ -3677,10 +3795,19 @@ export async function updateLeaveType(
         // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): selected for the audit diff.
         balanceSourceTypeId: leaveType.balanceSourceTypeId,
         allowUnpaidLeave: leaveType.allowUnpaidLeave,
+        // r299 (3de1453a): the stored earning method is what "switch off while an earned method is stored"
+        // is refused on — this service does not write the method, so the stored value IS the after-value.
+        accrualMethod: leaveType.accrualMethod,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // r299 (3de1453a) — the Annual Leave switch, decided (and refused) before anything is written.
+    if (touchAnnualLeave && !before) throw new LeaveTypeRuleError('Leave type not found.');
+    const annualSwitch = before
+      ? await resolveAnnualLeaveSwitch(tx, { id: p.id, name: before.name, code: before.code, role: before.role }, p.isAnnualLeave, before.accrualMethod)
+      : { roleSet: {}, roleBefore: null, roleAfter: null };
+    const roleSet: { role?: LeaveTypeRole | null } = annualSwitch.roleSet;
     // Balance Deduction Source (cdf9ca48) — refuse a configuration that has no well-defined answer, AT SAVE,
     // rather than letting it fail (or quietly mis-deduct) the first time somebody applies for leave.
     //
@@ -3854,6 +3981,8 @@ export async function updateLeaveType(
         // marker) case both were somehow forwarded, the placement decision is authoritative.
         ...placementColSet,
         ...placementVisibilitySet,
+        // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
+        ...roleSet,
       })
       .where(eq(leaveType.id, p.id))
       // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
@@ -3954,6 +4083,8 @@ export async function updateLeaveType(
           // Leave grouping visibility (b653ac1b): record both the stored column and the shared flag it drives.
           ...(touchPlacement ? { essPlacement: before?.essPlacement ?? null, visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
+          // r299 (3de1453a): the role the Annual Leave switch saw, recorded whenever the switch was posted.
+          ...(touchAnnualLeave ? { role: annualSwitch.roleBefore } : {}),
         },
         after: {
           name,
@@ -4024,6 +4155,7 @@ export async function updateLeaveType(
           // Leave grouping visibility (b653ac1b): the resolved next values (Hidden ⇒ column null + flag false).
           ...(touchPlacement ? { essPlacement: placementColSet.essPlacement ?? null, visibleToEmployee: placementVisibilitySet.visibleToEmployee ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
+          ...(touchAnnualLeave ? { role: annualSwitch.roleAfter } : {}),
         },
         ...(reason ? { reason } : {}),
       },
@@ -4077,6 +4209,13 @@ export async function setLeaveTypeRules(
      *  tests for null, not for emptiness). */
     roundingBands?: RoundingBand[] | null;
     maxBalanceDays?: number | null;
+    /**
+     * r299 (3de1453a) — "This is our Annual Leave", posted by the Earning Method form it sits on. Same
+     * tri-state and the same refusals as `updateLeaveType`'s field of that name (`resolveAnnualLeaveSwitch`
+     * is shared). It is here so that switching it on and choosing Monthly Accrual is ONE save, applied in
+     * ONE transaction: the earned-method refusal below is judged against the role this save WRITES.
+     */
+    isAnnualLeave?: boolean;
   },
 ) {
   const intIn = (v: number | null | undefined, lo: number, hi: number, label: string) => {
@@ -4197,9 +4336,17 @@ export async function setLeaveTypeRules(
   // exists to hold off.
   const clearsUnconfigured = p.accrualMethod !== undefined && p.accrualMethod !== null;
   if (clearsUnconfigured) set.accrualUnconfigured = null;
-  if (Object.keys(set).length === 0) return { unconfiguredCleared: false };
+  if (Object.keys(set).length === 0 && p.isAnnualLeave === undefined) return { unconfiguredCleared: false };
 
   return withTenant(ctx, async (tx) => {
+    // r299 (3de1453a) — WHAT THIS TYPE IS, read apart from the rule row below so the rules event keeps
+    // exactly the shape it always had. `role` + `code` are what `isEarnedAccrualType` reads.
+    const [identity] = await tx
+      .select({ name: leaveType.name, code: leaveType.code, role: leaveType.role })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.id))
+      .limit(1);
+    if (!identity) throw new LeaveTypeRuleError('Leave type not found.');
     const [before] = await tx
       .select({
         accrualMethod: leaveType.accrualMethod,
@@ -4225,6 +4372,53 @@ export async function setLeaveTypeRules(
       .where(eq(leaveType.id, p.id))
       .limit(1);
     if (!before) throw new LeaveTypeRuleError('Leave type not found.');
+
+    // r299 (3de1453a) — THE REPORTER'S RULE, ENFORCED WHERE THE METHOD IS WRITTEN. "Only Annual Leave is
+    // subject to the Earned Accrual concept. All other leave types are managed based on entitlement."
+    //
+    // Order matters and is the reason both fields arrive in one call: the Annual Leave switch is resolved
+    // FIRST, against the method this save will leave behind, and the earned-method refusal is then judged
+    // against the role that switch WRITES — so "switch on + Monthly Accrual" in one save is accepted, and
+    // "switch off + keep Monthly Accrual" is refused by the switch itself.
+    const methodAfter = 'accrualMethod' in set ? (set.accrualMethod as string | null) : before.accrualMethod;
+    const annualSwitch = await resolveAnnualLeaveSwitch(
+      tx,
+      { id: p.id, name: identity.name, code: identity.code, role: identity.role },
+      p.isAnnualLeave,
+      methodAfter,
+    );
+    // ⚠️ AN UNCHANGED STORED METHOD IS NEVER REFUSED, AND NEVER REWRITTEN. A non-Annual type that already
+    // stores an earned method (a SICK type set to Monthly Accrual before this round, say) re-posts that
+    // value verbatim on every save of its rounding half. Refusing it would make the rest of the form
+    // unsaveable; rewriting it would change people's balances. Only a CHANGE to an earned method is judged.
+    if (
+      p.accrualMethod !== undefined &&
+      isEarnedMethod(p.accrualMethod) &&
+      p.accrualMethod !== before.accrualMethod &&
+      !isEarnedAccrualType({ role: annualSwitch.roleAfter, code: identity.code })
+    ) {
+      throw new LeaveTypeRuleError(
+        `${identity.name} is not your Annual Leave. Earned Accrual (Monthly or Daily Accrual) applies only to Annual Leave; every other leave type is entitlement-based. Choose None, or switch on “This is our Annual Leave” if this is your Annual Leave.`,
+      );
+    }
+    if (annualSwitch.roleAfter !== annualSwitch.roleBefore) {
+      await tx.update(leaveType).set(annualSwitch.roleSet).where(eq(leaveType.id, p.id));
+      // The role is the leave type's IDENTITY, not one of its rules, so its change is recorded on the same
+      // event `updateLeaveType` records it on — every role change lands in `leave-type.updated`, whichever
+      // form made it.
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-type',
+        aggregateId: p.id,
+        eventType: 'leave-type.updated',
+        actor: actorOf(ctx),
+        payload: {
+          before: { name: identity.name, role: annualSwitch.roleBefore },
+          after: { name: identity.name, role: annualSwitch.roleAfter },
+        },
+      });
+    }
+    if (Object.keys(set).length === 0) return { unconfiguredCleared: false };
 
     // 8fec719e — THE UNRULED FALL-THROUGH GUARD. hasAnyLeaveTypeRule is a null test across the rule
     // columns, and applyLeaveTypeRules returns the LEGACY GRADE POLICY VERBATIM when it says false. So on
@@ -4267,6 +4461,26 @@ export async function setLeaveTypeRules(
 
 export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
+    // r299 (3de1453a) — RESTORING MUST NOT MAKE A SECOND ACTIVE ANNUAL LEAVE. The switch refuses to create
+    // one; unarchiving is the other door to the same state (production holds an ARCHIVED "Annual Leave" that
+    // migration 0387 classified by name, beside the active "*Annual Leave" the reporter will switch on). Two
+    // active Annual Leave types would both be swept by Earned Accrual. Only an unarchive is checked: archiving
+    // can only reduce the count.
+    if (!p.archived) {
+      const [row] = await tx
+        .select({ name: leaveType.name, code: leaveType.code, role: leaveType.role, archivedAt: leaveType.archivedAt })
+        .from(leaveType)
+        .where(eq(leaveType.id, p.id))
+        .limit(1);
+      if (row && row.archivedAt != null && isEarnedAccrualType(row)) {
+        const others = await otherActiveAnnualLeaveNames(tx, p.id);
+        if (others.length > 0) {
+          throw new LeaveTypeRuleError(
+            `${row.name} is Annual Leave, and ${others.join(', ')} is already your active Annual Leave. Only one active leave type can be your Annual Leave, so ${row.name} cannot be restored while ${others.join(', ')} is active.`,
+          );
+        }
+      }
+    }
     await tx.update(leaveType).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(leaveType.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError('An active leave type with this code already exists — it cannot be unarchived.');
       throw e;
