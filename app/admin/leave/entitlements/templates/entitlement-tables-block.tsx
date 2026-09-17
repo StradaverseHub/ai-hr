@@ -48,6 +48,9 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+// r299 (3de1453a) — the engine's own predicates, so the Balance Health finding for an earned method on a type
+// that is not Annual Leave is decided exactly where the sweep decides it. Server module; plain boolean out.
+import { isEarnedAccrualType, isEarnedMethod } from '@/core/leave';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
 import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
 // 9e2a89e9 — "who does this cover", derived ONCE for both Covers columns. The scheme list had this
@@ -263,6 +266,9 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
        * optional, so the compiler is what catches the next reshape rather than a rendered page.
        */
       defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
+      // r299 (3de1453a) — REQUIRED on HealthLeaveType for the reason the note above gives. `listLeaveTypes`
+      // projects `role`, which `isEarnedAccrualType` asks first.
+      earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
     })),
     templates,
     rules,

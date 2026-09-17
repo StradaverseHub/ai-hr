@@ -116,6 +116,9 @@ import {
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { leaveConfigHealthAll, type LeaveConfigHealth } from '../lib/leave-config-health';
+// r299 (3de1453a) — the health derivation's `earnedMethodNotAnnualLeave` is decided by the engine's own
+// predicates, here as on the two screens, so this report cannot call a stranded type healthy.
+import { isEarnedAccrualType, isEarnedMethod } from '../core/leave';
 import {
   criteriaSectionsFor,
   englishCriteriaLabels,
@@ -382,6 +385,8 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .select({
       id: leaveType.id,
       code: leaveType.code,
+      // r299 — `isEarnedAccrualType` asks the role first; without it every row falls back to its code.
+      role: leaveType.role,
       name: leaveType.name,
       archivedAt: leaveType.archivedAt,
       accrualMethod: leaveType.accrualMethod,
@@ -567,6 +572,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
       defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
+      earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
     })),
     templates: templates.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),
     rules: rules.map((x) => ({ ...x, criteria: (x.criteria ?? {}) as { gradeIds?: string[] } & Record<string, unknown> })),
@@ -775,6 +781,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           accrualMethod: x.accrualMethod ?? null,
           accrualUnconfigured: x.accrualUnconfigured != null,
           defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
+          earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
         })),
         templates: tplAfter.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),
         rules: rulesAfter.map((x) => ({

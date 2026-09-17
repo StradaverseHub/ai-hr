@@ -7192,6 +7192,22 @@ export function isEarnedAccrualType(lt: { role?: string | null; code?: string | 
 }
 
 /**
+ * r299 (3de1453a) — where the "This is our Annual Leave" switch stands for one row, for the leave type editor.
+ * `on` — recorded as Annual Leave by role (switchable off) · `off` — unclassified, not Annual Leave
+ * (switchable on) · `by_code` — unclassified, Annual Leave by its seeded code (no role to clear, locked) ·
+ * `other_role` — recorded as a different kind of leave (locked). It agrees with `isEarnedAccrualType` by
+ * construction: `on` and `by_code` are exactly the rows that predicate accepts. `core/admin.ts`'s
+ * `resolveAnnualLeaveSwitch` refuses the same transitions this marks as locked.
+ */
+export type AnnualLeaveSwitchState = 'on' | 'off' | 'by_code' | 'other_role';
+export function annualLeaveSwitchState(lt: { role?: string | null; code?: string | null }): AnnualLeaveSwitchState {
+  const role = lt.role ?? '';
+  if (role === 'annual') return 'on';
+  if (role !== '') return 'other_role';
+  return isEarnedAccrualType(lt) ? 'by_code' : 'off';
+}
+
+/**
  * bc36c768 — THE NOT-CONFIGURED GATE, as one predicate every granting and projecting path asks.
  *
  * A leave type carrying `accrual_unconfigured` grants nothing and earns nothing until HR saves an earning

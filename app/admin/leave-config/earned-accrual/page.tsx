@@ -1,13 +1,14 @@
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
-// r293 (this round) — THE CONSTANT THE SWEEP IS ACTUALLY DECIDED ON, read from the engine that decides
-// it. `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` BEFORE it reads a single employment, so
-// a type carrying any other code can never produce a day here. Imported on the SERVER and handed across
-// as plain data: the card is a client island and this module opens the database connection. A second
-// spelling of the three codes written on this screen would be free to drift from the filter it describes,
-// which is the failure mode the marking exists to end (the same argument as the r288 editor warning).
-import { STANDING_LEAVE_CODES, entitlementYearOptions } from '@/core/leave';
+// r299 (3de1453a) — THE PREDICATE THE SWEEP IS ACTUALLY DECIDED ON, read from the engine that decides it.
+// `accrueEarnedLeave` keeps only the types `isEarnedAccrualType` accepts — Annual Leave, by role first and
+// by the code ANNUAL for an unclassified row — BEFORE it reads a single employment. (r293 imported
+// `STANDING_LEAVE_CODES` here; the reporter's rule retired that constant from this sweep.) Imported on the
+// SERVER and handed across as plain booleans: the card is a client island and this module opens the
+// database connection. A second statement of the rule written on this screen would be free to drift from
+// the filter it describes, which is the failure mode r288 and r293 each paid for.
+import { entitlementYearOptions, isEarnedAccrualType } from '@/core/leave';
 import { listCompanies, listJobGrades, listLeaveTypes } from '@/core/read';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
@@ -38,13 +39,14 @@ import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config
  * to say so. Grades are the ACTIVE ones (an archived grade cannot be a live scope) and the leave-type
  * list excludes archived types for the same reason.
  *
- * ⚠️ r293 — AND EACH LEAVE TYPE NOW CARRIES WHETHER THE SWEEP CAN REACH IT AT ALL. The list itself is
- * unchanged (every active type); what changed is that a type whose code is outside `STANDING_LEAVE_CODES`
- * arrives marked, so the operator sees it in the picker instead of after a preview. No figure, no scope
- * and no engine filter moves with it — `accrueEarnedLeave` is untouched, deliberately: ADR-0066 §89 keeps
- * festive types outside that constant so the accrual / `openLeaveYear` / expiry engines never touch them,
- * and keying accrual on `accrual_method` alone would produce a type that accrues with no leave year
- * opened and nothing ever forfeiting.
+ * ⚠️ r293 → r299 — EACH LEAVE TYPE CARRIES WHETHER THE SWEEP CAN REACH IT AT ALL. The list itself is
+ * unchanged (every active type). r293 MARKED the unreachable ones and kept them selectable; r299
+ * (3de1453a) narrowed the engine to Annual Leave on the reporter's instruction ("Only Annual Leave is
+ * subject to the Earned Accrual concept") and the picker now DISABLES every other type, tagged
+ * Entitlement-based, while Annual Leave carries Earned accrual. The engine is still the control: a crafted
+ * scope naming a non-Annual id returns `type_not_swept` and writes nothing. Festive types stay outside the
+ * sweep exactly as ADR-0066 §89 wants, because they are not Annual Leave; keying accrual on
+ * `accrual_method` alone is still NOT what this does.
  *
  * THE YEAR LIST IS COMPUTED, NOT READ (`entitlementYearOptions`, currentYear − 3 … currentYear + 6).
  * `leave_year_config` was emptied by migration 0385 and every writer to it deleted, so reading it would
@@ -78,34 +80,33 @@ export default async function LeaveConfigEarnedAccrualPage() {
   ).map((c) => ({ id: c.id, name: c.name }));
   const accrualGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   /**
-   * r293 — THE PICKER SAYS WHICH TYPES THIS SCREEN CAN ACTUALLY ACCRUE, BEFORE A RUN IS SPENT.
+   * r293 → r299 — THE PICKER SAYS WHICH TYPES THIS SCREEN CAN ACTUALLY ACCRUE, BEFORE A RUN IS SPENT.
    *
-   * `types` is every ACTIVE leave type (`includeArchived: false` above) — swept or not — and the list
-   * stays that way: the scope filter is legitimately over all of them, the engine's typed empty reason
-   * (`type_not_swept`, r285) is still the authority on why a run found nothing, and dropping the rows
-   * would hide the very type the reporter went looking for. Each option carries ONE MORE BOOLEAN instead,
-   * decided here against the engine's own constant.
+   * `types` is every ACTIVE leave type (`includeArchived: false` above) — Annual Leave or not — and the
+   * list stays that way: dropping the rows would hide the very type an operator went looking for, and the
+   * engine's typed empty reason (`type_not_swept`) is still the authority on why a run found nothing. Each
+   * option carries ONE BOOLEAN, decided here by the engine's own predicate; the card disables and tags on
+   * it and re-derives nothing. `role` rides on `listLeaveTypes`' rows — without it every row would read as
+   * unclassified and fall back to its code, which is the r293 behaviour this round replaces.
    *
    * DERIVED FROM THE READ THIS PAGE ALREADY MAKES, so the marking costs no query.
    */
-  const standingCodes = new Set<string>([...STANDING_LEAVE_CODES]);
   const accrualTypes = types.map((lt) => ({
     id: lt.id,
     name: lt.name,
-    swept: standingCodes.has(lt.code),
+    swept: isEarnedAccrualType(lt),
   }));
   /**
-   * ⚠️ THE TENANT'S OWN NAMES, NOT HARDCODED — and that is the load-bearing part. The three standing
-   * CODES are fixed; the NAMES against them are whatever the tenant typed. The account that raised this
-   * holds two leave types both called some variant of Annual Leave, so "Annual Leave is not accrued
-   * here" would be a riddle on the very account it was written for. Character for character the filter
-   * and the A–Z order the engine's own `type_not_swept` exit reads (core/leave.ts), and the same list the
-   * leave type editor's r288 warning is built from — three places, one sentence. `types` is already the
-   * non-archived read, which is the second half of that filter: an archived ANNUAL is not something this
-   * run reaches either. EMPTY on the reporting account, which is true and has a sentence of its own.
+   * ⚠️ THE TENANT'S OWN ANNUAL LEAVE NAME(S), NOT HARDCODED — and that is the load-bearing part. The
+   * reporter's sentence reads "Earned Accrual applies only to Annual Leave (*Annual Leave)": the part in
+   * brackets is whatever the tenant typed, and on the account that raised this it carries an asterisk no
+   * default would. Character for character the filter and the A–Z order the engine's own `type_not_swept`
+   * exit reads (core/leave.ts), and the same list the leave type editor's switch names — three places, one
+   * sentence. `types` is already the non-archived read, the second half of that filter. EMPTY until a type
+   * is switched on (or carries the seeded code), which is true and has a sentence of its own.
    */
-  const sweptLeaveTypeNames = types
-    .filter((lt) => standingCodes.has(lt.code))
+  const sweptLeaveTypeNames = accrualTypes
+    .filter((lt) => lt.swept)
     .map((lt) => lt.name)
     .sort((a, b) => a.localeCompare(b));
   const currentYear = new Date().getUTCFullYear();

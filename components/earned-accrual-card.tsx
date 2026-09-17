@@ -18,13 +18,14 @@ export type EarnedScopeOption = { id: string; name: string };
 /**
  * r293 — THE LEAVE-TYPE AXIS CARRIES ONE FACT THE OTHER TWO DO NOT, and it is REQUIRED rather than
  * optional on purpose: a picker that cannot answer "would a run ever look at this type" is the state
- * this round exists to remove, and an optional flag defaulting to `true` would quietly restore it on
- * the next call site.
+ * r293 existed to remove, and an optional flag defaulting to `true` would quietly restore it on the next
+ * call site.
  *
- * `swept` is decided on the SERVER against the engine's own `STANDING_LEAVE_CODES`
- * (app/admin/leave-config/earned-accrual/page.tsx) and crosses as a plain boolean. This card may not
- * import `core/leave` — it is a client island and that module opens the database connection — so it
- * neither knows nor re-derives which codes are swept; it only marks what it is handed.
+ * r299 (3de1453a) — `swept` now means "this type is Annual Leave", decided on the SERVER by the engine's
+ * own `isEarnedAccrualType` (app/admin/leave-config/earned-accrual/page.tsx) and crossing as a plain
+ * boolean. This card may not import `core/leave` — it is a client island and that module opens the
+ * database connection — so it neither knows nor re-derives what Annual Leave is; it disables and tags on
+ * what it is handed.
  */
 export type EarnedLeaveTypeOption = EarnedScopeOption & { swept: boolean };
 export type EarnedLeaveYearOption = { year: number; status: string };
@@ -54,16 +55,15 @@ export function EarnedAccrualCard({
   /** Already narrowed by the page to the companies this admin administers (RLS re-enforces server-side). */
   companies: EarnedScopeOption[];
   grades: EarnedScopeOption[];
-  /** r293 — every ACTIVE leave type, each carrying whether this sweep can reach it. See the type. */
+  /** r293/r299 — every ACTIVE leave type, each carrying whether it is Annual Leave. See the type. */
   leaveTypes: EarnedLeaveTypeOption[];
   /**
-   * r293 — ⚠️ THE TENANT'S OWN NAMES for the swept types that are ACTIVE, A–Z: the same rows, the same
-   * filter and the same order the engine's `type_not_swept` empty state reads, and the same list the
-   * leave type editor's r288 warning is built from. NEVER the English defaults — the three standing
-   * codes carry whatever name the tenant gave them, and the account that raised this holds two leave
-   * types both called some variant of Annual Leave, so a hardcoded name would print a riddle on the
-   * very account it was written for. EMPTY when the tenant has archived all three, which is that
-   * account's actual state and why the empty case has a sentence of its own.
+   * r299 — ⚠️ THE TENANT'S OWN NAME(S) for its ACTIVE Annual Leave, A–Z: the same rows, the same filter and
+   * the same order the engine's `type_not_swept` empty state reads, and the same list the leave type
+   * editor's Annual Leave switch names. NEVER an English default — the reporter's sentence puts THEIR name
+   * in the brackets ("Annual Leave (*Annual Leave)"), asterisk and all. EMPTY until a type is switched on
+   * (or carries the seeded code), which is that account's state on release day and why the empty case has
+   * a sentence of its own.
    */
   sweptLeaveTypeNames: string[];
   /** The entitlement-year list, oldest first — the shared computed range (see the header). */
@@ -185,22 +185,16 @@ export function EarnedAccrualCard({
   );
 
   /**
-   * r293 — THE TYPES THIS SCREEN IS OFFERING BUT CAN NEVER ACCRUE.
+   * r293 → r299 — THE TYPES THIS SCREEN LISTS BUT MAY NOT RUN.
    *
-   * The page hands over every ACTIVE leave type, swept or not (`listLeaveTypes(s, { includeArchived:
-   * false })`), because the scope filter is legitimately over all of them. `accrueEarnedLeave` then
-   * filters `code IN STANDING_LEAVE_CODES` BEFORE it reads a single employment, so picking one of the
-   * others has always produced an empty preview — the r285 `type_not_swept` sentence — only AFTER the
-   * operator spent a run finding out. This is that same fact, moved to where the choice is made.
+   * The page hands over every ACTIVE leave type (`listLeaveTypes(s, { includeArchived: false })`).
+   * `accrueEarnedLeave` keeps only Annual Leave (`isEarnedAccrualType`) BEFORE it reads a single
+   * employment, so every other type is entitlement-based and a run over it can only come back empty.
    *
-   * NOTHING IS RE-DERIVED HERE: `swept` was decided on the server against the engine's own constant, and
-   * this is a partition of the list it arrived in, in the order it arrived in. A client-side rule about
-   * which codes accrue would be a second answer to a question the engine already owns.
+   * NOTHING IS RE-DERIVED HERE: `swept` was decided on the server by the engine's own predicate, and this
+   * is a partition of the list it arrived in. A client-side rule about which types accrue would be a second
+   * answer to a question the engine already owns.
    */
-  const notSweptNames = useMemo(
-    () => leaveTypes.filter((o) => !o.swept).map((o) => o.name),
-    [leaveTypes],
-  );
   const notSweptIds = useMemo(
     () => new Set(leaveTypes.filter((o) => !o.swept).map((o) => o.id)),
     [leaveTypes],
@@ -225,6 +219,7 @@ export function EarnedAccrualCard({
     const r = emptyReason;
     if (!r) return t('earnedPreviewEmpty');
     switch (r.kind) {
+      // r299 — "not Annual Leave". The same reason kind, reworded: the sweep covers Annual Leave only.
       case 'type_not_swept':
         return r.sweptLeaveTypeNames.length
           ? t('earnedEmptyNotSwept', {
@@ -300,12 +295,22 @@ export function EarnedAccrualCard({
           selectAllLabel={t('multiSelectSelectAll')}
           clearAllLabel={t('multiSelectClearAll')}
           selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
-          /* r293 — ⚠️ MARK, DO NOT REMOVE AND DO NOT DISABLE. The row stays selectable and the scope it
-             posts is byte-identical, so the engine's typed empty reason remains the authority on why a
-             run found nothing; dropping the row would replace one silence with another and would also
-             hide the very type the reporter came looking for. This is the LEAVE-TYPE picker only — the
-             company and grade pickers above and below pass no note. */
-          optionNote={(o) => (notSweptIds.has(o.id) ? t('earnedTypeNotCoveredTag') : null)}
+          /* r299 (3de1453a) — ⚠️ LIST, DO NOT REMOVE — BUT NOW DO DISABLE. r293 wrote "mark, do not remove
+             and do not disable". The "do not remove" half stands: dropping a row would hide the very type
+             someone came looking for. The "do not disable" half is REVERSED, on purpose and on the
+             reporter's explicit instruction — "Only Annual Leave (*Annual Leave) is subject to the Earned
+             Accrual concept. All other leave types are managed based on entitlement and should not be
+             included in the Earned Accrual process." A tickable row the process must never include is an
+             invitation to include it. So every other type is listed, greyed, cannot be ticked, and is
+             tagged Entitlement-based; Annual Leave is tagged Earned accrual. The ENGINE remains the control
+             — a crafted scope naming a non-Annual id still returns `type_not_swept` and writes nothing —
+             so this is the courtesy, not the guard. LEAVE-TYPE picker only; company and grade pass neither. */
+          optionNote={(o) =>
+            notSweptIds.has(o.id)
+              ? { label: t('earnedTypeEntitlementTag'), tone: 'neutral' }
+              : { label: t('earnedTypeEarnedTag'), tone: 'positive' }
+          }
+          optionDisabled={(o) => notSweptIds.has(o.id)}
         />
         <MultiSelectPopover
           label={t('earnedScopeGrade')}
@@ -323,21 +328,16 @@ export function EarnedAccrualCard({
         </Button>
       </div>
 
-      {/* r293 — the marker in the closed picker is two words; this is what those two words mean, and it is
-          deliberately the SAME SENTENCE the leave type editor shows while the administrator is setting the
-          earning method (r288, admin.leave.subStep.earningNotSwept). Two screens describing one boundary
-          in two different sets of words is how the reporter came to be told the wrong reason twice.
-          Rendered only when there is something to name — a permanent banner is furniture. */}
-      {notSweptNames.length > 0 && (
-        <p data-testid="earned-types-not-swept" className="max-w-2xl text-xs text-amber-600 dark:text-amber-400">
-          {sweptLeaveTypeNames.length
-            ? t('earnedTypesNotSwept', {
-                types: nameList(notSweptNames),
-                swept: nameList(sweptLeaveTypeNames),
-              })
-            : t('earnedTypesNotSweptNoneActive', { types: nameList(notSweptNames) })}
-        </p>
-      )}
+      {/* r299 (3de1453a) — THE REPORTER'S SENTENCE, IN THE REPORTER'S WORDS, with the tenant's own Annual
+          Leave name(s) in the brackets. It replaces r293's "covers only these leave types" paragraph and is
+          drawn whatever is selected, because "All leave types" must say out loud that it means Annual
+          Leave only. When no active type is Annual Leave the sentence says so and names the switch that
+          fixes it — on release day that is the reporting account's state until they switch it on. */}
+      <p data-testid="earned-annual-only" className="max-w-2xl rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+        {sweptLeaveTypeNames.length
+          ? t('earnedAnnualOnly', { names: nameList(sweptLeaveTypeNames) })
+          : t('earnedAnnualOnlyNoneActive')}
+      </p>
 
       {/* Step 2 — Preview table. */}
       {rows !== null && (

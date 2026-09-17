@@ -79,6 +79,20 @@ export type HealthLeaveType = {
    */
   defaultEntitlementTemplateLineageId: string | null;
   archived: boolean;
+  /**
+   * r299 (3de1453a) — this type STORES an earned method (Monthly / Daily / legacy Quarterly Accrual) and is
+   * NOT the Annual Leave Earned Accrual covers. Decided by the SERVER with the engine's own `isEarnedMethod`
+   * and `isEarnedAccrualType`, because this module is pure and may not import the engine.
+   *
+   * THE STRANDED STATE. `openLeaveYear` diverts every earned-method type to the accrual sweep, the hire grant
+   * skips it too, and the sweep now covers Annual Leave only — so such a type receives no days from ANY
+   * engine. The reporter's rule makes new ones unsaveable; this reports the ones saved before it existed,
+   * because the plan promised never to rewrite a stored method.
+   *
+   * ⚠️ REQUIRED, NOT OPTIONAL, for the reason `defaultEntitlementTemplateLineageId` above gives: an optional
+   * flag a projection forgets defaults to "no finding" and the finding goes quiet behind a green suite.
+   */
+  earnedMethodNotAnnualLeave: boolean;
 };
 
 /**
@@ -110,10 +124,14 @@ export type LeaveConfigFinding =
   | 'grades_without_table'
   /** WARNING — a table in force whose Maximum Balance is 0 on a band that grants days, so every granted
    *  day is clamped away the moment it is granted. Reported, never reinterpreted. */
-  | 'max_balance_zero';
+  | 'max_balance_zero'
+  /** BLOCKING — r299 (3de1453a): an earned method is stored on a type that is not Annual Leave. No engine
+   *  grants it a day (see `HealthLeaveType.earnedMethodNotAnnualLeave`). Reported, never rewritten. */
+  | 'earned_method_not_annual_leave';
 
 const BLOCKING: ReadonlySet<LeaveConfigFinding> = new Set<LeaveConfigFinding>([
   'no_earning_method',
+  'earned_method_not_annual_leave',
   'no_entitlement_table',
   'no_rule_in_force',
 ]);
@@ -315,6 +333,8 @@ export function leaveTypeConfigHealth(p: {
 
   const findings: LeaveConfigFinding[] = [];
   if (!earningMethodSet) findings.push('no_earning_method');
+  // r299 — gated on `earningMethodSet` so an unconfigured type reports the one finding that is true of it.
+  else if (leaveType.earnedMethodNotAnnualLeave) findings.push('earned_method_not_annual_leave');
   if (liveTemplates.length === 0) findings.push('no_entitlement_table');
   // 76ffdcf2 — `&& !defaultTableApplies`: with a default table in force every employee no scheme covers
   // resolves to it, so "no employee resolves to any of them" is no longer true and this must not read as

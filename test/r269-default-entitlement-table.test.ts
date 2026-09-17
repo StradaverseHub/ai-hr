@@ -423,6 +423,7 @@ describe('§B2 · the profile card and the config health read the engine’s own
       accrualUnconfigured: false,
       archived: false,
       defaultEntitlementTemplateLineageId: null,
+      earnedMethodNotAnnualLeave: false,
     };
     const templates = [
       { lineageId: 'l-a', leaveTypeId: 'lt-1', name: 'A', validFrom: '2020-01-01', validTo: null, serviceBands: BANDS },
@@ -457,6 +458,7 @@ describe('§B2 · the profile card and the config health read the engine’s own
         accrualUnconfigured: false,
         archived: false,
         defaultEntitlementTemplateLineageId: 'l-d',
+        earnedMethodNotAnnualLeave: false,
       },
       // Two tables still in force after the default is stopped — otherwise the sole-table gate answers
       // and the finding would be absent for a reason that has nothing to do with the default.
