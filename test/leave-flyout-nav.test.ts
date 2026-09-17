@@ -158,6 +158,19 @@ const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
 ] as const;
 
 /**
+ * 3fb1a611 (r299) — A ROW ADDED IMMEDIATELY AFTER LEAVE ADJUSTMENTS, and the place is the point once more.
+ *
+ * Leave Credit is where Replacement Leave balances change now — every credit earned, added by HR, used,
+ * reversed or expired, plus the Rules tab that took the replacement-leave policy off Company rules. Leave
+ * Adjustments refuses the Replacement Leave type and points here, so the two are neighbours. Named in its own
+ * list with its own insertion point, for the reason the two lists above give. It is the one row of this node
+ * gated on a module (`toil`): components/sidebar.tsx maps it by hand, pinned in test/r299-leave-credit-screens.
+ */
+const ADDED_AFTER_ADJUSTMENTS: readonly { href: string; labelKey: string }[] = [
+  { href: '/admin/leave-config/leave-credit', labelKey: 'leaveCredit' },
+] as const;
+
+/**
  * The fly-out's children, EXACTLY: the retired strip in its own order, with each row added since spliced
  * in at the position its round chose. Still an exact-set guard — a deletion, a rename or a re-sort all
  * fail it — and a genuinely new row is added by naming it above, in the commit that adds it.
@@ -165,8 +178,11 @@ const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
 const EXPECTED_CHILDREN: readonly { href: string; labelKey: string }[] = [
   RETIRED_STRIP[0],
   ...ADDED_AFTER_ENTITLEMENTS,
-  // Leave Adjustments and Generate Entitlement, then the row r281 spliced in behind the latter.
-  ...RETIRED_STRIP.slice(1, 3),
+  // Leave Adjustments, then the row r299 spliced in behind it, then Generate Entitlement and the row r281
+  // spliced in behind that.
+  RETIRED_STRIP[1],
+  ...ADDED_AFTER_ADJUSTMENTS,
+  RETIRED_STRIP[2],
   ...ADDED_AFTER_GENERATE,
   ...RETIRED_STRIP.slice(3),
   ...ADDED_SINCE,
@@ -198,6 +214,11 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       href: '/admin/leave-config/generate',
       labelKey: 'leaveGenerate',
     });
+    // r299 — the THIRD splice point: Leave Credit goes directly behind Leave Adjustments.
+    expect(RETIRED_STRIP[1], 'the third splice point moved').toEqual({
+      href: '/admin/leave-config/adjustments',
+      labelKey: 'leaveAdjustments',
+    });
     expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(EXPECTED_CHILDREN);
     expect(NODE.labelKey).toBe('leaveConfig');
     expect(NODE.group).toBe('admin');
@@ -216,6 +237,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // read it. A screen key of its own would invent a permission for a page that moved address.
       '/admin/leave-config/balance-health': 'leaveConfig',
       '/admin/leave-config/adjustments': 'leaveConfig',
+      // 3fb1a611 (r299) — Leave Credit is on `leaveConfig`, like every Leave Config destination (the map guard
+      // requires it). It replaces the retired `toilPolicy` column, whose only route (/admin/toil) is a redirect
+      // stub to this page now; both were requireAdmin, so no role gained or lost reach.
+      '/admin/leave-config/leave-credit': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
         // r281 (09386e29) — Run earned accrual is on `leaveConfig` ON PURPOSE: it WAS a section of the
         // Generate Entitlement page, so anybody who could open that screen could already run it. A screen
@@ -387,7 +412,8 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(NODE.children.find((c) => c.labelKey === 'leaveEntitlements')!.ownedSubpaths).not.toContain('/admin/leave-config/records/entitlement');
     // Non-vacuity: two rows own two tabs each and the Leave Inquiry row owns the rail's other admin tab
     // (2 → 3 at r269), and the sidebar consults them all (components/sidebar.tsx).
-    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(3);
+    // 3fb1a611 (r299) — 3 → 4: Leave Credit owns its Rules tab.
+    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(4);
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar).toContain('const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];');
     expect(sidebar).toContain('isParentActive(pathname, children.flatMap(childPaths))');
@@ -437,12 +463,16 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
    * leave lib/permissions.ts without test/function-access.test.ts reddening in either direction; and the
    * label key retires WITH the row instead of lingering as an orphan.
    */
-  it('/admin/leave/replacement survives as an UNGUARDED redirect stub to Company rules', () => {
+  it('/admin/leave/replacement survives as an UNGUARDED redirect stub to Leave Credit’s Rules tab', () => {
     // a6fe37fc Round 5. Same contract as the two stubs above: the bookmark lands, the stub carries no
     // page guard, and the route left lib/permissions.ts in the same commit.
+    // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: the replacement-leave policy left Company rules for Leave Config ›
+    // Leave Credit's Rules tab, so the stub now lands there in one hop (a stub aimed at a page that no longer
+    // holds the setting would deliver the bookmark to nothing).
     const stub = read('app/admin/leave/replacement/page.tsx');
     expect(stub).toContain('redirect(');
-    expect(stub).toContain('/admin/leave-config/company-rules');
+    expect(stub).toContain("redirect(`/admin/leave-config/leave-credit/rules${qs ? `?${qs}` : ''}`)");
+    expect(stub).not.toContain("redirect(`/admin/leave-config/company-rules");
     expect(/requireAdmin|scopedAdmin|scopedSession/.test(stub)).toBe(false);
     expect(read('lib/permissions.ts')).not.toContain("'/admin/leave/replacement',");
     // `nav.leaveCompanyRules` is the row's own key, in all six catalogues, with real translations.

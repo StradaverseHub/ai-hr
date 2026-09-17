@@ -163,17 +163,24 @@ const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule';
 // Attendance > Schedule, which is where the reporter asked the Work Schedule sub-menu to be consolidated.
 // Only setAttendancePolicyAction reads this constant, and only through the closed-list mapping in it.
 const SCHEDULE_TAB = '/admin/attendance/schedule';
-// 296fc027 split this route in two. /admin/toil keeps the balance LEDGER and the two settlement sweeps
-// (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to the Leave Config tab
-// below, which is where setToilPolicyAction now redirects. Both routes stay registered in lib/permissions.
-const TOIL_POLICY = '/admin/toil';
+// 296fc027 split this route in two. /admin/toil kept the balance LEDGER and the two settlement sweeps
+// (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to Leave Config.
+// 3fb1a611 (r299) — BOTH HALVES ARE ON LEAVE CONFIG › LEAVE CREDIT NOW: the sweeps and the ledger summary on
+// its Credits tab (which stays reachable, read-only apart from the sweeps and Reverse, when the `toil`
+// entitlement lapses with credits outstanding), the policy on its Rules tab. /admin/toil is a redirect stub.
+// The constant keeps its name so the two sweep actions below read as they always did.
+const TOIL_POLICY = '/admin/leave-config/leave-credit';
 // a6fe37fc ROUND 5 (cutover) — REPOINTED at Company rules, and this is the line that turns three
 // banners on that screen from dead markup into live UI. `setToilPolicyAction` returns through here with
 // `?saved=`, `?warning=` or `?error=`, and the `warning=` one carries the Phase-B #14 premium-equivalent
 // BANKING-RISK warning — produced on every qualifying save for months and silently dropped, because the
 // screen it landed on never read the param. Company rules was built reading all three precisely so this
 // repoint could not set that up to happen a second time.
-const LEAVE_REPLACEMENT = '/admin/leave-config/company-rules';
+//
+// 3fb1a611 (r299) — REPOINTED AGAIN, at Leave Credit's Rules tab. The replacement-leave policy left Company
+// rules entirely (not re-gated there); the three banners moved with the form, so `?saved=` / `?warning=` /
+// `?error=` land on the screen the change was made on.
+const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';
 const LOCATIONS = '/admin/locations';
 
 export async function createCompanyAction(formData: FormData) {
@@ -1986,7 +1993,12 @@ export async function setToilPolicyAction(fd: FormData) {
       expiryUnit: String(fd.get('expiryUnit') ?? 'days') as ToilExpiryUnit,
       expiryMonths: Number(fd.get('expiryMonths') ?? 3),
       employeeRequestEnabled: fd.get('employeeRequestEnabled') === 'on',
-      replacementLeaveFrom: String(fd.get('replacementLeaveFrom') ?? 'overtime') as ToilReplacementLeaveFrom,
+      // 3fb1a611 (r299) — NOT POSTED ANY MORE: the Rules tab dropped "Replacement leave from" (nothing reads
+      // it), so an absent field is passed as undefined and setToilPolicy keeps the stored value rather than
+      // resetting it to the default on every save. A form that still posts it still sets it.
+      replacementLeaveFrom: fd.has('replacementLeaveFrom')
+        ? (String(fd.get('replacementLeaveFrom')) as ToilReplacementLeaveFrom)
+        : undefined,
       requestEligibility,
     });
     warning = r.premiumEquivalentWarning;

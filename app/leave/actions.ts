@@ -25,7 +25,11 @@ import {
 } from '@/core/leave';
 import { resolveEssView } from '@/core/ess-view';
 // 296fc027 — the employee replacement-leave request path, reached through the leave-pack facade.
-import { decideReplacementLeaveRequest, submitReplacementLeaveRequest } from '@/packs/leave/service';
+import {
+  decideReplacementLeaveRequest,
+  submitReplacementLeaveRequest,
+  workedDayKindForEmployment,
+} from '@/packs/leave/service';
 import { localizeLeaveError } from '@/app/me/actions';
 // 5ff7daff — the ONE return-URL builder every /approvals decide action redirects through, so a replacement
 // leave decision keeps the approver's chosen category + sort exactly like the other nine queues do.
@@ -95,7 +99,7 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
     if (!employmentId) return null;
     const s = await leaveTypeApplySummary(session, { employmentId, leaveTypeId: p.leaveTypeId });
     if (!me || employmentId !== me.employmentId) {
-      return { pending: s.pending, taken: s.taken, balance: s.balance, available: s.available };
+      return { pending: s.pending, taken: s.taken, balance: s.balance, available: s.available, expiringSoon: s.expiringSoon };
     }
     const view = resolveEssView(s.essViewConfig);
     return {
@@ -103,6 +107,10 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
       taken: view.taken ? s.taken : null,
       balance: view.available && view.taken ? s.balance : null,
       available: view.available ? s.available : null,
+      // 3fb1a611 (r299) — Replacement Leave only (null for every other type). Gated with Available: it is a
+      // part OF the available figure (the unused credit that runs out soonest), so hiding one and showing the
+      // other would leak what HR chose to hide.
+      expiringSoon: view.available ? s.expiringSoon : null,
     };
   } catch {
     return null;
@@ -395,6 +403,25 @@ export async function cancelOwnLeaveAction(formData: FormData) {
 // approved and rejected ONLY through Approval Items (app/approvals/actions.ts → core/leave decideLeave,
 // single and bulk). Nothing else moved: the Requests table this page still carries has never held an
 // approve or reject control — see the enumeration recorded in test/leave-requests-not-approvals.test.ts.
+
+/**
+ * 3fb1a611 (r299) · the kind of day a date worked is for the signed-in employee, for the chip beside each date
+ * on the Leave Credit request form. Best-effort (null on anything unexpected) and never the control — the
+ * submit action's service refuses an ordinary working day regardless.
+ */
+export async function leaveCreditDayKindAction(
+  workedDate: string,
+): Promise<'workday' | 'rest_day' | 'off_day' | 'holiday' | null> {
+  const session = await getSession();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;
+  try {
+    const me = await myEmployment(session);
+    if (!me) return null;
+    return await workedDayKindForEmployment(session, me.employmentId, workedDate);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 296fc027 · Submit an employee replacement-leave request.

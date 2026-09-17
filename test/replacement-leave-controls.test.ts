@@ -1218,8 +1218,9 @@ describe('20e759a0 · company filter — the save redirect carries the selection
     // a6fe37fc ROUND 5 (cutover) — the destination is Company rules now: `LEAVE_REPLACEMENT` was
     // repointed there in the commit that emptied `/admin/leave/replacement`. What 20e759a0 promised —
     // the `?company=` selection survives the save — is unchanged and is the half asserted below.
+    // 3fb1a611 (r299) — and Leave Config › Leave Credit's Rules tab since the policy left Company rules.
     const url = await redirectedTo(saveForm(b.companyId));
-    expect(url).toContain('/admin/leave-config/company-rules?saved=1');
+    expect(url).toContain('/admin/leave-config/leave-credit/rules?saved=1');
     expect(url, 'without this the admin lands back on the first company after every save').toContain(
       `company=${encodeURIComponent(b.companyId)}`,
     );
@@ -1256,7 +1257,7 @@ describe('20e759a0 · company filter — the save redirect carries the selection
       const url = await redirectedTo(fd);
       expect(url.split('?').length, `two query strings in ${url}`).toBe(2);
       const parsed = new URL(url, 'https://example.test');
-      expect(parsed.pathname).toBe('/admin/leave-config/company-rules');
+      expect(parsed.pathname).toBe('/admin/leave-config/leave-credit/rules');
       expect(parsed.searchParams.get('company')).toBe(b.companyId);
     }
   });

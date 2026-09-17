@@ -490,6 +490,12 @@ export type PayrollSkipReason = 'NO_TRANSACTION_FOR_CYCLE' | 'NO_ADDITIONAL_PAY_
  * `status <> 'lapsed'` because a lapsed accrual was never compensated as leave, so its day is legitimately
  * back on the cash side.
  *
+ * 3fb1a611 (r299) — AND NOT 'reversed'. HR reversing a credit on the Leave Credit screen means the day was
+ * never banked: the register row stays (a reversal never deletes) with status 'reversed' beside an offsetting
+ * ledger debit, and that day's overtime is payable again. Leaving 'reversed' inside this exclusion would give
+ * the balance back while keeping the overtime unpaid forever — the money half of the reversal silently not
+ * happening. test/r299-leave-credit-money.test.ts pins both reads.
+ *
  * UNCONDITIONAL, i.e. NOT behind the `toil` entitlement (finding F15). The clause used to sit inside the
  * TOIL_ENABLED branch, which made the cash-XOR-TOIL invariant itself a feature flag: bank a day while
  * the gate is on, lose the gate, and the same worked day is also paid as overtime cash. Under a
@@ -510,7 +516,7 @@ const EXCLUDE_TOIL_BANKED_DAYS = sql`not exists (
   select 1 from toil_accrual ta
    where ta.employment_id = ${attendance.employmentId}
      and ta.worked_date = ${attendance.attendanceDate}
-     and ta.status <> 'lapsed')`;
+     and ta.status not in ('lapsed', 'reversed'))`;
 
 // Per-component payable-amount rounding (ADR-0035 1A, #15). 'none' keeps exact 2dp (legacy ⇒ the gated
 // path stays byte-identical when no component opts in); up/down/nearest round to a whole ringgit. This

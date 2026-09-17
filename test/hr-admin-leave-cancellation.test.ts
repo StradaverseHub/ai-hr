@@ -323,7 +323,12 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
     return lt.id;
   }
 
-  it('blocks an APPROVED replacement leave (no TOIL-register inverse)', async () => {
+  // 3fb1a611 (r299) — THIS USED TO PIN A REFUSAL ("no TOIL-register inverse"). The inverse exists now
+  // (core/toil.ts restoreReplacementLeaveTx), so an approved Replacement Leave cancels and its credit goes back.
+  // This fixture has a ledger debit and NO register rows (the legacy ghost credit), so the day comes back to
+  // the ledger and the register logs a shortfall instead of inventing a credit. The give-back into real
+  // credits — FIFO-split, and refused after expiry — is pinned in test/r299-leave-credit-cancel.test.ts.
+  it('cancels an APPROVED replacement leave and gives the day back (3fb1a611)', async () => {
     const rt = await replacementType();
     const [row] = await owner.db
       .insert(schema.leaveRequest)
@@ -347,8 +352,15 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
       sourceRequestId: row.id,
       effectiveOn: '2026-08-10',
     });
-    await expect(adminCancelLeave(adminCtx(b), { leaveRequestId: row.id })).rejects.toThrow(/replacement/i);
-    expect(await statusOf(row.id)).toBe('approved');
+    const out = await adminCancelLeave(adminCtx(b), { leaveRequestId: row.id });
+    expect(out.restoredDays).toBe(1);
+    expect(await statusOf(row.id)).toBe('cancelled');
+    const shortfall = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.eventType, 'toil.restore.shortfall'), eq(schema.domainEvent.aggregateId, row.id)));
+    expect(shortfall).toHaveLength(1);
+    expect((shortfall[0].payload as { shortfall: number }).shortfall).toBe(1);
   });
 
   it('cancels a PENDING replacement leave cleanly (register never consumed)', async () => {

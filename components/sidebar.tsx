@@ -215,6 +215,16 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // Without this line the row would advertise a module the tenant has not bought. The per-user
   // assistant_grant is a separate, second gate — this one only decides whether the row is offered.
   ['/assistant', 'assistant'] as const,
+  // 3fb1a611 (r299) — Leave Config › Leave Credit is the paid `toil` add-on living inside the CORE leave pack's
+  // node. Leave is core and absent from this map, and there is no toil pack, so no whole-pack flatMap can
+  // reach it: the one child is picked out of the leave pack's node BY ITS LABEL KEY and mapped to `toil`.
+  // Resolved from the descriptor rather than written as an href, so the address has one spelling (the pack's)
+  // — test/leave-pack.test.ts refuses a leave href hardcoded here. Without this line the row would advertise
+  // a module the tenant has not bought. test/r299-leave-credit-screens.test.ts pins the pair (this entry and
+  // `toil` in lib/nav-entitlements.ts MODULE_CODES_WITH_NAV).
+  ...(modulePackById('leave')!.navNodes ?? []).flatMap((n) =>
+    n.children.filter((c) => c.labelKey === 'leaveCredit').map((c) => [c.href, 'toil'] as const),
+  ),
 ]);
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children

@@ -58,8 +58,15 @@ const TICKET_HREFS = [
   '/admin/attendance',
   '/admin/attendance-allowance',
   '/admin/locations',
-  '/admin/toil',
 ] as const;
+
+/**
+ * 3fb1a611 (r299) — a ticket screen FOLDED into another module's screen: /admin/toil is a redirect stub to
+ * Leave Config › Leave Credit, which holds its ledger summary and both settlement sweeps. Stated positively
+ * rather than dropped: no row for it anywhere in the rail, and the old address still resolves (a redirect).
+ * The destination's own row, gate and guard are pinned in test/r299-leave-credit-screens.test.ts.
+ */
+const TICKET_FOLDED = ['/admin/toil'] as const;
 
 /**
  * 4509d2b8 — the fifth ticket screen, now a child of SYSTEM_SETTINGS_NODE in components/sidebar.tsx.
@@ -86,7 +93,8 @@ const ALL_TICKET_HREFS = [...TICKET_HREFS, ...TICKET_MOVED_OUT] as const;
  * The three that remain keep exactly the relative order they have always had among themselves; that is
  * the part of the ticket order this item did not touch, so it is still asserted.
  */
-const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/locations', '/admin/toil'] as const;
+// 3fb1a611 (r299) — two long now: /admin/toil was folded into Leave Credit (TICKET_FOLDED above).
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/locations'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -126,6 +134,16 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     const positions = TICKET_TAIL_HREFS.map((href) => node.indexOf(`'${href}'`));
     const sorted = [...positions].sort((a, b) => a - b);
     expect(positions, 'the three keep the ticket order (Allowance → Locations → TOIL)').toEqual(sorted);
+  });
+
+  it('3fb1a611: Time off in lieu has LEFT the rail — folded into Leave Credit, its address a redirect', () => {
+    for (const href of TICKET_FOLDED) {
+      expect(countQuoted(SRC, href), `${href} still has a row somewhere in the rail`).toBe(0);
+      const page = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+      expect(page, `${href} must still resolve, as a redirect to Leave Credit`).toContain(
+        'redirect(`/admin/leave-config/leave-credit',
+      );
+    }
   });
 
   it('4509d2b8: Holidays has LEFT this node — for System Settings, not for nowhere', () => {

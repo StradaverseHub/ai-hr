@@ -42,7 +42,7 @@
  * if that is ever wanted it is a different ticket with a different answer for what a partial approval of
  * a multi-date request would even mean.
  */
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -61,7 +61,7 @@ import {
 import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isReplacementRequestEligibleTx } from './replacement-eligibility';
-import { accrueSelfDeclaredToilTx, ToilAlreadyAccruedError } from './toil';
+import { accrueSelfDeclaredToilTx, resolveWorkedDayKindTx, ToilAlreadyAccruedError, ToilOrdinaryWorkingDayError } from './toil';
 // r219 — the reason union lives in lib/ so the service and the screens that EXPLAIN it share one list. A
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
@@ -260,6 +260,16 @@ async function resolvePolicyForTx(tx: Tx, employmentId: string) {
   return { companyId: emp.companyId, country: emp.country, policy: policy ?? null };
 }
 
+/**
+ * 3fb1a611 (r299) · the kind of day one date is for one employment — what the Leave Credit request form shows
+ * beside each date worked ("Rest day", "Off day", "Public holiday", or that an ordinary working day cannot
+ * earn a credit). Read-only, RLS-scoped (an employee can resolve their own schedule), and NOT the control:
+ * submission and approval re-resolve it and refuse a working day.
+ */
+export function workedDayKindForEmployment(ctx: SessionContext, employmentId: string, date: string) {
+  return withTenant(ctx, (tx) => resolveWorkedDayKindTx(tx, employmentId, date));
+}
+
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };
 
 /**
@@ -333,12 +343,30 @@ export async function submitReplacementLeaveRequest(
     const already = await tx
       .select({ workedDate: toilAccrual.workedDate })
       .from(toilAccrual)
-      .where(and(eq(toilAccrual.employmentId, p.employmentId), inArray(toilAccrual.workedDate, dates)));
+      .where(
+        and(
+          eq(toilAccrual.employmentId, p.employmentId),
+          inArray(toilAccrual.workedDate, dates),
+          // 3fb1a611: a REVERSED credit was never banked (migration 0469), so it does not block a new claim.
+          ne(toilAccrual.status, 'reversed'),
+        ),
+      );
     if (already.length > 0) {
       throw new ToilAlreadyAccruedError(
         `Replacement leave has already been banked for ${already.map((a) => a.workedDate).join(', ')}.`,
       );
     }
+
+    // 3fb1a611 (r299) — ONLY A REST DAY, OFF DAY OR PUBLIC HOLIDAY EARNS A LEAVE CREDIT. Until this round the
+    // request path accepted any date: the roster and auto paths refused an ordinary working day, this one did
+    // not. Checked per line, through the same schedule the attendance engine uses, and every offending date is
+    // named at once. This is the courtesy half — the binding check runs again at approval, inside
+    // accrueSelfDeclaredToilTx, because a roster can change in between.
+    const workingDays: string[] = [];
+    for (const d of dates) {
+      if ((await resolveWorkedDayKindTx(tx, p.employmentId, d)) === 'workday') workingDays.push(d);
+    }
+    if (workingDays.length > 0) throw new ToilOrdinaryWorkingDayError(workingDays);
 
     const [header] = await tx
       .insert(replacementLeaveRequest)

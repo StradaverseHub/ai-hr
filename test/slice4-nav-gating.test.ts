@@ -58,7 +58,9 @@ describe('slice 4 — which modules the rail may advertise', () => {
     const sellable = MODULE_CODES_WITH_NAV.filter((c) => !CORE_MODULE_CODES.includes(c as never));
     // `system_explorer` joined at r79 (deec1691) — the first gated nav row that is NOT pack-backed.
     // Spelled out rather than derived so adding a module to the rail stays a deliberate edit here.
-    expect(sellable.sort()).toEqual(['attendance', 'claims', 'payroll', 'performance', 'system_explorer']);
+    // 3fb1a611 (r299) — `toil` joined: the Leave Credit row (Leave Config) is its one nav row, mapped by hand in
+    // components/sidebar.tsx like system_explorer's.
+    expect(sellable.sort()).toEqual(['attendance', 'claims', 'payroll', 'performance', 'system_explorer', 'toil']);
   });
 
   it('hides a module the tenant does not have', () => {
@@ -118,6 +120,12 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     performance: 'app/performance/page.tsx',
     // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).
     system_explorer: 'app/admin/system-explorer/page.tsx',
+    // 3fb1a611 (r299) — the RULES tab, not the Credits tab the row opens, and deliberately so. The Credits tab
+    // must stay reachable without the module while credits are outstanding (the wind-down view: the statutory
+    // settlement sweeps are never gated through the UI), so a courtesy redirect there would strand them. The
+    // Rules tab has no such obligation and redirects like every other module entry page. Both pages carry
+    // their own in-page gate as well (test/r299-leave-credit-screens.test.ts).
+    toil: 'app/admin/leave-config/leave-credit/rules/page.tsx',
   };
 
   it('every SELLABLE module with nav guards its entry page', () => {

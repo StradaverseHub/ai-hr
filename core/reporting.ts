@@ -1751,9 +1751,16 @@ export async function attendanceDailyReport(
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(clockingLocation, eq(clockingLocation.id, attendance.checkInClockingLocationId))
+      // 3fb1a611 (migration 0469): the unique index now covers UNREVERSED credits only, so a reversed credit
+      // and its replacement can share a worked date. Excluding 'reversed' keeps this join at one row per day
+      // and keeps a reversed (never-banked) credit out of the Replacement Leave column.
       .leftJoin(
         toilAccrual,
-        and(eq(toilAccrual.employmentId, attendance.employmentId), eq(toilAccrual.workedDate, attendance.attendanceDate)),
+        and(
+          eq(toilAccrual.employmentId, attendance.employmentId),
+          eq(toilAccrual.workedDate, attendance.attendanceDate),
+          sql`${toilAccrual.status} <> 'reversed'`,
+        ),
       )
       .where(
         and(

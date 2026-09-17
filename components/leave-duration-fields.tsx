@@ -72,6 +72,11 @@ export type LeaveApplySummary = {
   balance: number | null;
   /** balance − pending: what the employee can still apply for, and the figure the submit-time guard uses. */
   available: number | null;
+  /**
+   * 3fb1a611 (r299) — Replacement Leave only: unused credit expiring within 30 days. OPTIONAL and null for
+   * every other type, which has no per-credit expiry; the column renders only when it is a number.
+   */
+  expiringSoon?: number | null;
 };
 
 /** The four duration types. full_day is always available; the other three are per-type opt-in. */
@@ -591,12 +596,21 @@ export function LeaveDurationFields({
                         summary.balance. */}
                     {t('breakdown.field.available')}
                   </th>
+                  {/* 3fb1a611 (r299) — Replacement Leave's third figure: the credit that runs out soonest
+                      (within 30 days). The approved plan's Apply form shows Available, Pending and Expiring soon
+                      so the employee uses the credit before it is lost. Rendered only for that type. */}
+                  {summary.expiringSoon != null && (
+                    <th scope="col" className="pb-0.5 text-right font-medium">
+                      {t('breakdown.field.expiringSoon')}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 <tr className="font-medium tabular-nums text-foreground">
                   <td className="text-right">{daysValue(summary.pending)}</td>
                   <td className="text-right">{daysValue(summary.available)}</td>
+                  {summary.expiringSoon != null && <td className="text-right">{daysValue(summary.expiringSoon)}</td>}
                 </tr>
               </tbody>
             </table>

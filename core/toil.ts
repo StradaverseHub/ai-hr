@@ -12,19 +12,26 @@
  * to convert unused TOIL to pay on expiry (never lapse). The same worked day is cash XOR TOIL — the OT-pay
  * prefill (core/payroll.ts) excludes any day with a non-lapsed accrual.
  */
-import { and, asc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
 import {
+  appUser,
   attendance,
   company,
   compensation,
   domainEvent,
   employment,
   leaveLedger,
+  leaveRequest,
   leaveType,
+  payrollBatch,
+  payrollInput,
+  person,
+  replacementLeaveRequest,
+  replacementLeaveRequestDate,
   toilAccrual,
   toilPolicy,
   type ReplacementRequestEligibility,
@@ -34,13 +41,15 @@ import {
   type ToilExpiryAction,
   type ToilExpiryUnit,
   type ToilReplacementLeaveFrom,
+  type ToilWorkedDayKind,
 } from '../db/schema';
 import { cleanReplacementEligibility } from './replacement-eligibility';
 import { packFor } from '../localization/registry';
-// 1cf5b37c — `assertModuleEnabled` left this import when setToilPolicy's entitlement gate was removed
-// (see its header for why). `isModuleEnabled` STAYS: it still gates both accrual paths, which is what
-// makes configuring-without-the-module inert rather than merely unbilled.
-import { isModuleEnabled } from './entitlements';
+// 3fb1a611 (r299) — `assertModuleEnabled` is BACK: setToilPolicy is gated on the `toil` entitlement again
+// (see its header for why 1cf5b37c's removal was reversed), and so is the HR grant. `isModuleEnabled` still
+// gates both accrual paths.
+import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
 
 export class ToilDisabledError extends Error {
@@ -67,6 +76,23 @@ export class ToilFirstScheduleConsentRequiredError extends ToilNotEligibleError 
   ) {
     super(msg);
     this.name = 'ToilFirstScheduleConsentRequiredError';
+  }
+}
+/**
+ * 3fb1a611 (r299) · the date asked for is an ORDINARY WORKING DAY for this employee, so it cannot earn a
+ * Leave Credit. Only a rest day, an off day or a public holiday can. Extends `ToilNotEligibleError` so every
+ * existing not-eligible handler treats it the same way; carries the dates so a screen can name them.
+ */
+export class ToilOrdinaryWorkingDayError extends ToilNotEligibleError {
+  readonly dates: string[];
+  constructor(dates: string[]) {
+    super(
+      `Only a rest day, off day or public holiday can earn a Leave Credit. ${dates.join(', ')} ${
+        dates.length === 1 ? 'is an ordinary working day' : 'are ordinary working days'
+      } for this employee.`,
+    );
+    this.name = 'ToilOrdinaryWorkingDayError';
+    this.dates = dates;
   }
 }
 export class ToilNoOvertimeError extends Error {
@@ -309,6 +335,15 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   // Own message — the default one talks about running the sweeps, which is not what this refuses.
   if (!isAdminCtx(ctx))
     throw new ToilSweepForbiddenError('Only an HR administrator may change the replacement-leave settings.');
+  // ── 3fb1a611 (r299) — THE ENTITLEMENT GATE IS BACK, and 1cf5b37c's paragraph above is superseded ──────
+  // 1cf5b37c ungated this writer so a tenant without the add-on could configure ahead of purchase. r281
+  // (8a494721) found the cost of that: the reporter spent days in August filling in a form that could never
+  // take effect, and the Company Rules section was gated away. With the rules now living on the Leave Credit
+  // screen's Rules tab — itself gated on `toil` — an ungated writer would be the one door left open behind
+  // a closed screen: a direct action POST could still write configuration for a module the tenant has not
+  // bought. The approved plan (3fb1a611 rev 3, gap 6) puts the check back. Saved rows are untouched: the
+  // eligibility entered in August is still there for the Rules tab to show once the module is on.
+  assertModuleEnabled(ctx, 'toil');
   if (!Number.isInteger(p.expiryDays) || p.expiryDays < 1 || p.expiryDays > 730)
     throw new Error('Expiry days must be a whole number between 1 and 730.');
   // 296fc027: the months count gets its OWN bound rather than sharing the days one. 24 months is the same
@@ -354,7 +389,11 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
           expiryUnit: p.expiryUnit ?? 'days',
           expiryMonths,
           employeeRequestEnabled: p.employeeRequestEnabled ?? false,
-          replacementLeaveFrom: p.replacementLeaveFrom ?? 'overtime',
+          // 3fb1a611 (r299) — PRESERVED WHEN OMITTED, the one exception to this upsert's full-replace
+          // contract. The Leave Credit Rules tab no longer shows "Replacement leave from" (nothing reads it),
+          // so the form stops posting it; resetting a stored value to the default on every save would be a
+          // silent edit to a setting the administrator can no longer see. A caller that passes it still sets it.
+          ...(p.replacementLeaveFrom !== undefined ? { replacementLeaveFrom: p.replacementLeaveFrom } : {}),
           requestEligibility,
         },
       })
@@ -534,6 +573,9 @@ export async function accrueToilTx(
     companyId: att.companyId,
     country: att.country,
     dayType,
+    // 3fb1a611: the roster and auto paths only ever reach here on a rest day or public holiday (1b above),
+    // and the attendance row's day type IS the kind of day that earned the credit.
+    workedDayKind: dayType as ToilWorkedDayKind,
     otMinutes,
     approvedOn: p.approvedOn,
     requestedOn: p.requestedOn,
@@ -588,6 +630,8 @@ export async function bankToilCreditTx(
      * says so on the event when the day type is unknown.
      */
     dayType: 'workday' | 'rest_day' | 'holiday' | null;
+    /** 3fb1a611: the kind of day that earned the credit (rest / off / public holiday). Recorded, never guessed. */
+    workedDayKind?: ToilWorkedDayKind | null;
     otMinutes: number;
     /** Employee path: the credit is this many days verbatim. Omitted ⇒ derived from otMinutes × basis. */
     declaredDays?: number;
@@ -596,6 +640,14 @@ export async function bankToilCreditTx(
     firstScheduleConsent?: boolean;
     viaAutoApproval?: boolean;
     source: ToilAccrualSource;
+    /** 3fb1a611: HR's stated reason and optional remarks on a hand-added credit. */
+    note?: string;
+    remarks?: string;
+    /**
+     * 3fb1a611: an expiry HR typed on the Add Leave Credit form, overriding the policy's period. The caller
+     * validates it (never before the date worked); omitted ⇒ `resolveExpiry` from the approval, as before.
+     */
+    expiresOnOverride?: string;
   },
 ): Promise<AccrueToilResult> {
   // 2 · the company policy must be enabled.
@@ -639,10 +691,18 @@ export async function bankToilCreditTx(
   // test/toil.test.ts pins the double payment as a characterization test ("OT-then-TOIL"), so the next
   // change to this area starts from a fixture rather than a paragraph and closing the gap is a visible,
   // deliberate edit to a named assertion.
+  // 3fb1a611: a REVERSED credit does not count — it was never banked (payroll agrees, see
+  // EXCLUDE_TOIL_BANKED_DAYS), and migration 0469 made the unique index skip it for the same reason.
   const [dupe] = await tx
     .select({ id: toilAccrual.id })
     .from(toilAccrual)
-    .where(and(eq(toilAccrual.employmentId, p.employmentId), eq(toilAccrual.workedDate, p.workedDate)))
+    .where(
+      and(
+        eq(toilAccrual.employmentId, p.employmentId),
+        eq(toilAccrual.workedDate, p.workedDate),
+        ne(toilAccrual.status, 'reversed'),
+      ),
+    )
     .limit(1);
   if (dupe) throw new ToilAlreadyAccruedError();
 
@@ -694,8 +754,12 @@ export async function bankToilCreditTx(
   // columns that carry it. Still frozen onto the accrual below and never re-derived, so changing the
   // period later moves nothing already banked.
   const approvedOn = p.approvedOn ?? new Date();
-  const approvedOnDate = approvedOn.toISOString().slice(0, 10);
-  const expiresOn = resolveExpiry(approvedOnDate, policy);
+  // r299 fix pass — a date from an instant goes through todayInKualaLumpur (CLAUDE.md §8): the UTC date froze
+  // an expiry one day early for any approval between midnight and 08:00 in Malaysia.
+  const approvedOnDate = todayInKualaLumpur(approvedOn);
+  // 3fb1a611: HR may type the expiry on the Add Leave Credit form (validated by the caller); every other path
+  // resolves it from the policy exactly as before.
+  const expiresOn = p.expiresOnOverride ?? resolveExpiry(approvedOnDate, policy);
 
   // 00307068 · the REQUEST date, which is a different question with two honest answers.
   //  • auto path — the employee really did ask: the attendance correction they filed IS the request, so its
@@ -729,6 +793,8 @@ export async function bankToilCreditTx(
       effectiveOn: p.workedDate,
     })
     .returning({ id: leaveLedger.id });
+  const note = p.note?.trim() || null;
+  const remarks = p.remarks?.trim() || null;
   const [acc] = await tx
     .insert(toilAccrual)
     .values({
@@ -736,6 +802,9 @@ export async function bankToilCreditTx(
       employmentId: p.employmentId,
       workedDate: p.workedDate,
       dayType,
+      workedDayKind: p.workedDayKind ?? null,
+      note,
+      remarks,
       otMinutes,
       daysCredited: daysCredited.toFixed(2),
       accrualBasis: policy.accrualBasis,
@@ -780,6 +849,13 @@ export async function bankToilCreditTx(
       forcedConvertOnExpiry: eligible,
       expiresOn,
       carryForwardAtYearEnd: policy.carryForwardAtYearEnd,
+      // 3fb1a611: which path minted it, the day that earned it, the ledger row it wrote and — for a
+      // hand-added credit — the reason HR gave.
+      source: p.source,
+      workedDayKind: p.workedDayKind ?? null,
+      ledgerEntryId: ledger.id,
+      ...(note ? { note } : {}),
+      ...(remarks ? { remarks } : {}),
       // Phase-B #14: stamp the consent + premium-equivalent-risk flags onto the audit record.
       ...(eligible ? { firstScheduleConsent: true } : {}),
       ...(premiumEquivalentWarning ? { premiumEquivalentWarning: true } : {}),
@@ -830,6 +906,32 @@ export async function accrueToil(
  * employee's Replacement Leave table can show what was claimed, but nothing computes a statutory
  * entitlement from it — the null `dayType` is what tells the expiry sweep that (see `convertAmountFor`).
  */
+/**
+ * 3fb1a611 (r299) · the kind of day an employee's date is — workday / rest_day / off_day / holiday — through
+ * the attendance pack's own schedule resolver (see `workedDayKindForTx` there for why it is the same ladder
+ * Daily Attendance and the clocking path use).
+ *
+ * A DYNAMIC import of the attendance facade, deliberately. That pack's engine already imports this file
+ * (auto-accrual on an approved correction), so a static import here would close a module cycle through a
+ * star re-export — the shape a transpiler can evaluate before its names exist. core/leave-adjustment.ts
+ * reaches for core/leave the same way for the same reason.
+ */
+export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date: string): Promise<ToilWorkedDayKind> {
+  const { workedDayKindForTx } = await import('../packs/attendance/service');
+  return workedDayKindForTx(tx, employmentId, date);
+}
+
+/**
+ * The attendance-vocabulary day type a credit is VALUED from on expiry, for a resolved day kind.
+ *
+ * Rest day and public holiday map straight across, so a convert-to-pay reconciles to the exact statutory
+ * cash for that day (`convertAmountFor`). An OFF day maps to NULL, deliberately: this repo's verified
+ * statutory source (docs/architecture/STATUTORY-SOURCES.md §6) states the rest-day, public-holiday and
+ * normal-workday rules and says nothing about an off day, so no exact figure is claimed for one — it stays
+ * on the existing ORP fallback, with the kind recorded beside it (`worked_day_kind`) so a person can
+ * reconcile it. A working day never reaches here: it cannot earn a credit.
+ */
+
 export async function accrueSelfDeclaredToilTx(
   tx: Tx,
   ctx: SessionContext,
@@ -854,12 +956,27 @@ export async function accrueSelfDeclaredToilTx(
     .where(eq(employment.id, p.employmentId))
     .limit(1);
   if (!emp) throw new ToilNotEligibleError('No employment on record for this request.');
+  // 3fb1a611 (r299) — THE DAY-TYPE GATE THIS PATH NEVER HAD. The roster and auto paths have always refused
+  // anything but a rest day or public holiday (RL_ELIGIBLE_DAY_TYPES); this one accepted any date, so an
+  // employee could claim a credit for an ordinary working day. Resolved HERE, at approval — the binding
+  // moment, inside the transaction that mints the credit — as well as at submission (the courtesy half in
+  // core/replacement-request.ts), because a roster can change between the two.
+  const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+  if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
   return bankToilCreditTx(tx, ctx, {
     employmentId: p.employmentId,
     workedDate: p.workedDate,
     companyId: emp.companyId,
     country: emp.country,
-    dayType: null, // self-declared: genuinely unknown, never guessed
+    // r299 fix pass (3fb1a611) — STILL NULL, deliberately. The day KIND is resolved and stored (worked_day_kind,
+    // below) so the screens and the gate can name it, but `day_type` is what the convert-to-pay valuation keys
+    // on, and its exact statutory branch prices the WHOLE `otMinutes` figure — which on this path is a
+    // declaration (days × 480 for a request in days), and which ignores how much of the credit was already
+    // used. Stamping it turned a part-used 1-day credit into a full day's statutory cash and a 3-day claim on
+    // one rest day into 384.76 where the remaining-days basis gives 230.76 (r299 verifier). The honest
+    // basis for a self-declared credit remains the ORP × remaining days fallback, as 296fc027 decided.
+    dayType: null,
+    workedDayKind: kind,
     otMinutes: Math.max(0, Math.round(p.declaredMinutes)),
     declaredDays: p.declaredDays,
     approvedOn: p.approvedOn,
@@ -978,13 +1095,18 @@ export async function consumeReplacementLeaveTx(
     const take = round2(Math.min(free, remaining));
     const newTaken = round2(alreadyTaken + take);
     const fully = newTaken >= credited - 1e-9; // float-safe: this accrual is now fully consumed
-    await tx
+    // r299 fix pass — guarded on the state just read, the mirror of reverseLeaveCredit's guard: an approval
+    // racing an HR reversal must not flip a REVERSED credit back to taken. A lot that changed underneath is
+    // skipped and the next lot (or the shortfall event) covers the leave.
+    const consumedRow = await tx
       .update(toilAccrual)
       .set({
         daysTaken: newTaken.toFixed(2),
         ...(fully ? { status: 'taken' as ToilAccrualStatus, takenByRequestId: p.requestId } : {}),
       })
-      .where(eq(toilAccrual.id, a.id));
+      .where(and(eq(toilAccrual.id, a.id), eq(toilAccrual.status, 'active'), eq(toilAccrual.daysTaken, a.daysTaken)))
+      .returning({ id: toilAccrual.id });
+    if (consumedRow.length !== 1) continue;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'toil-accrual',
@@ -1015,6 +1137,1104 @@ export async function consumeReplacementLeaveTx(
     });
   }
   return { allocated, fullyConsumed, partiallyConsumed, shortfall };
+}
+
+// ─── cancellation give-back: the inverse of consumption (3fb1a611, r299) ───────────────────────────────
+
+/**
+ * A cancellation that would have to give a credit back to a lot that can no longer hold one — it expired,
+ * was paid out, or was reversed since the leave used it. Typed so core/leave.ts can re-type it onto
+ * `LeaveCancellationNotAllowedError` and the reason reaches the person cancelling.
+ */
+export type RestoreBlock = {
+  /** The credit's date worked (null when the credit itself could not be read). */
+  workedDate: string | null;
+  expiresOn: string | null;
+  state: 'expired' | 'paid_out' | 'reversed' | 'missing' | 'unreadable';
+};
+export class ReplacementLeaveRestoreBlockedError extends Error {
+  /** Every credit that blocks the give-back, so a screen can name each one in the reader's language. */
+  readonly blocked: RestoreBlock[];
+  constructor(msg: string, blocked: RestoreBlock[] = []) {
+    super(msg);
+    this.name = 'ReplacementLeaveRestoreBlockedError';
+    this.blocked = blocked;
+  }
+}
+
+export type RestoreReplacementResult = {
+  /** days actually given back to the register (≤ need). */
+  restored: number;
+  /** credit lots that took some of it back. */
+  lotsRestored: number;
+  /** of those, the ones that flipped 'taken' back to 'active'. */
+  reactivated: number;
+  /** need − restored: days the LEDGER gives back that the register never held (a ghost credit was spent). */
+  shortfall: number;
+};
+
+/**
+ * The request a Replacement Leave's consumption was RECORDED against.
+ *
+ * Consumption runs once, at final approval, against the request being approved (finalizeLeaveApproval —
+ * per-date partial approval is refused for replacement leave, so there is exactly one such request). A
+ * partial cancellation later SPLITS that request: the original row id is reused for the first segment and
+ * the other segments become new rows. Since 3fb1a611 each new row's `leave-request.split` event names the
+ * row it was split from (`splitFromRequestId`), so following that chain from any surviving segment arrives
+ * back at the request the `toil.consumed` events carry. Replacement leave could not be cancelled at all
+ * before this round, so no replacement split exists without that field.
+ */
+/**
+ * Has this employment ever held a Leave Credit that could have been used? A REVERSED credit cannot have been
+ * (reverseLeaveCredit refuses a used one), so it is excluded — which is also exactly the predicate of the partial
+ * toil_accrual_emp_date_uq index (tenant_id, employment_id, worked_date) WHERE status <> 'reversed', so this is
+ * one index probe rather than a scan.
+ */
+async function employmentHoldsCreditsTx(tx: Tx, tenantId: string, employmentId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: toilAccrual.id })
+    .from(toilAccrual)
+    .where(and(eq(toilAccrual.tenantId, tenantId), eq(toilAccrual.employmentId, employmentId), ne(toilAccrual.status, 'reversed')))
+    .limit(1);
+  return row != null;
+}
+
+async function consumptionRootRequestIdTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<string> {
+  let current = requestId;
+  // Bounded: a split chain is one hop per cancellation, and a cycle is impossible (a new row cannot be split
+  // from itself), but a loop that trusts data to terminate is a loop that one day will not.
+  for (let hop = 0; hop < 64; hop++) {
+    const [ev] = await tx
+      .select({ from: sql<string | null>`${domainEvent.payload} ->> 'splitFromRequestId'` })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.tenantId, ctx.tenantId),
+          eq(domainEvent.eventType, 'leave-request.split'),
+          eq(domainEvent.aggregateId, current),
+        ),
+      )
+      .orderBy(asc(domainEvent.sequence))
+      .limit(1);
+    if (!ev?.from) return current;
+    current = ev.from;
+  }
+  return current;
+}
+
+type RestoreLot = {
+  id: string;
+  daysCredited: string;
+  daysTaken: string;
+  status: ToilAccrualStatus;
+  expiresOn: string;
+  workedDate: string;
+};
+
+/**
+ * THE READ-ONLY HALF of `restoreReplacementLeaveTx`: which lots would take the credit back, and a refusal —
+ * naming every blocking credit and its expiry date — if any of them no longer can. Writes nothing.
+ *
+ * Ported from build/r279-credit (13d9e3bb, cross-check 8aafa414) and changed in one respect: the allocation
+ * is read against the CONSUMPTION ROOT (see `consumptionRootRequestIdTx`), not the request id handed in, so
+ * a segment that survived an earlier partial cancellation gives back what its original request took.
+ *
+ * WHERE THE ALLOCATION COMES FROM. Consumption records the FIFO split in one place only: one `toil.consumed`
+ * event per lot, `{ requestId, daysConsumed }`, the lot as aggregate. The register cannot answer "how much
+ * did THIS request take from THIS lot" (`taken_by_request_id` is set only on a lot consumed in full), so the
+ * events are read; `domain_event` is append-only and carries `sequence` for a deterministic order.
+ *
+ * REVERSE FIFO: consumption walks earliest-expiry first, the give-back walks the same list backwards, so the
+ * employee gets back the credit with the most life left in it.
+ */
+async function planReplacementLeaveRestore(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; requestId: string; need: number; asOf: string },
+): Promise<{ root: string; plan: { accrualId: string; take: number }[]; byId: Map<string, RestoreLot> }> {
+  // r299 fix pass — AN EMPLOYEE WHO NEVER HELD A CREDIT HAS NOTHING TO GIVE BACK, so nothing below is read. The
+  // event reads that follow filter domain_event by event type and JSON payload, which no index serves, and since
+  // finalizeLeaveApproval reads the type's ROLE every cancellation of a role-classified Replacement Leave reaches
+  // here — including on a tenant without the module, where the register is empty.
+  if (!(await employmentHoldsCreditsTx(tx, ctx.tenantId, p.employmentId))) {
+    return { root: p.requestId, plan: [], byId: new Map() };
+  }
+  const root = await consumptionRootRequestIdTx(tx, ctx, p.requestId);
+
+  // 1 · what the root request took, per lot, in the order it took it.
+  const consumed = await tx
+    .select({
+      accrualId: domainEvent.aggregateId,
+      days: sql<string>`${domainEvent.payload} ->> 'daysConsumed'`,
+      seq: domainEvent.sequence,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.tenantId, ctx.tenantId),
+        eq(domainEvent.eventType, 'toil.consumed'),
+        sql`${domainEvent.payload} ->> 'requestId' = ${root}`,
+      ),
+    )
+    .orderBy(asc(domainEvent.sequence));
+
+  // 2 · what earlier give-backs of the same root already returned (partial cancellation is iterative).
+  const restoredAlready = await tx
+    .select({ accrualId: domainEvent.aggregateId, days: sql<string>`${domainEvent.payload} ->> 'daysRestored'` })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.tenantId, ctx.tenantId),
+        eq(domainEvent.eventType, 'toil.restored'),
+        sql`${domainEvent.payload} ->> 'requestId' = ${root}`,
+      ),
+    );
+  const backBy = new Map<string, number>();
+  for (const r of restoredAlready) backBy.set(r.accrualId, round2((backBy.get(r.accrualId) ?? 0) + Number(r.days ?? 0)));
+
+  // 2b · THE CROSS-CHECK (8aafa414). A caller who can see the register but not the events would find no
+  // allocation, restore nothing and hand the ledger credit back with no lot behind it — the ghost credit this
+  // function exists to prevent. `taken_by_request_id` is the independent witness: a lot stamped with the
+  // root that the events did not account for means the event record could not be read whole, so refuse.
+  const stamped = await tx
+    .select({ id: toilAccrual.id, workedDate: toilAccrual.workedDate })
+    .from(toilAccrual)
+    .where(eq(toilAccrual.takenByRequestId, root));
+  const seen = new Set(consumed.map((c) => c.accrualId));
+  const unaccounted = stamped.filter((r) => !seen.has(r.id));
+  if (unaccounted.length > 0) {
+    throw new ReplacementLeaveRestoreBlockedError(
+      `this replacement leave cannot be given back: the record of which credits it used could not be read in full (${unaccounted
+        .map((r) => r.workedDate)
+        .join(', ')}). An HR administrator can cancel it.`,
+      unaccounted.map((r) => ({ workedDate: r.workedDate, expiresOn: null, state: 'unreadable' as const })),
+    );
+  }
+
+  // 3 · the plan, built whole before any write so the refusal names every blocking lot at once.
+  const plan: { accrualId: string; take: number }[] = [];
+  const byId = new Map<string, RestoreLot>();
+  let remaining = round2(p.need);
+  for (let i = consumed.length - 1; i >= 0 && remaining > 0; i--) {
+    const c = consumed[i];
+    const available = round2(Number(c.days ?? 0) - (backBy.get(c.accrualId) ?? 0));
+    if (available <= 0) continue;
+    const take = round2(Math.min(available, remaining));
+    plan.push({ accrualId: c.accrualId, take });
+    // Consumed twice from the same lot is not possible (one event per lot per approval), but the running
+    // back-off keeps a duplicate from being planned twice if it ever were.
+    backBy.set(c.accrualId, round2((backBy.get(c.accrualId) ?? 0) + take));
+    remaining = round2(remaining - take);
+  }
+
+  if (plan.length > 0) {
+    const rows = await tx
+      .select({
+        id: toilAccrual.id,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        status: toilAccrual.status,
+        expiresOn: toilAccrual.expiresOn,
+        workedDate: toilAccrual.workedDate,
+      })
+      .from(toilAccrual)
+      .where(inArray(toilAccrual.id, plan.map((x) => x.accrualId)));
+    for (const r of rows) byId.set(r.id, r as RestoreLot);
+
+    // 3b · THE REFUSAL, per lot, with the date. Three ways a lot stops being able to hold a credit: swept to
+    // 'lapsed', settled to 'converted_to_pay', or past its frozen expiry and not yet swept (the sweep is a
+    // manual admin action). Re-crediting an expired lot for a First-Schedule employee would hand the next
+    // sweep a day to convert to CASH — a cancellation silently creating a payroll liability.
+    const blocked: string[] = [];
+    const blocks: RestoreBlock[] = [];
+    for (const step of plan) {
+      const row = byId.get(step.accrualId);
+      if (!row) {
+        blocked.push('a credit behind this leave no longer exists');
+        blocks.push({ workedDate: null, expiresOn: null, state: 'missing' });
+        continue;
+      }
+      if (row.status === 'lapsed' || row.status === 'converted_to_pay') {
+        blocked.push(
+          `the credit earned on ${row.workedDate} ${row.status === 'lapsed' ? 'expired' : 'was paid out when it expired'} on ${row.expiresOn}`,
+        );
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: row.status === 'lapsed' ? 'expired' : 'paid_out' });
+        continue;
+      }
+      if (row.status === 'reversed') {
+        blocked.push(`the credit earned on ${row.workedDate} has been reversed`);
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: 'reversed' });
+        continue;
+      }
+      if (row.expiresOn < p.asOf) {
+        blocked.push(`the credit earned on ${row.workedDate} expired on ${row.expiresOn}`);
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: 'expired' });
+      }
+    }
+    if (blocked.length > 0) {
+      throw new ReplacementLeaveRestoreBlockedError(
+        `this replacement leave cannot be given back: ${[...new Set(blocked)].join('; ')}`,
+        blocks,
+      );
+    }
+  }
+  return { root, plan, byId };
+}
+
+/**
+ * "Could this Replacement Leave be given back today?" — the read-only gate the employee's cancellation
+ * REQUEST runs, so the refusal lands on the employee's own screen rather than days later under a manager's
+ * approval button. Throws `ReplacementLeaveRestoreBlockedError`; returns silently otherwise, including when
+ * the register holds nothing to give back (a ghost credit is cancellable: the ledger gave, the ledger takes back).
+ */
+export async function assertReplacementLeaveRestorableTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; requestId: string; need: number; asOf: string },
+): Promise<void> {
+  if (round2(p.need) <= 0) return;
+  await planReplacementLeaveRestore(tx, ctx, p);
+}
+
+/**
+ * 3fb1a611 (r299) · GIVE THE CREDIT BACK when an approved Replacement Leave is cancelled — the inverse of
+ * `consumeReplacementLeaveTx`, and the reason approved replacement leave could not be cancelled at all
+ * before this round (core/leave.ts refused it three times over, correctly: giving the DAY back through the
+ * ledger without giving the CREDIT back to the register leaves a balance with no lot behind it).
+ *
+ * The caller has already written the ledger give-back; this updates the register only. A lot that was fully
+ * consumed returns to 'active' and releases `taken_by_request_id`. Refuses the whole give-back, naming every
+ * blocking credit and its expiry date, rather than half-restoring (see `planReplacementLeaveRestore`).
+ * No register rows to give back is NOT an error: it logs `toil.restore.shortfall`, mirroring consumption.
+ */
+export async function restoreReplacementLeaveTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; requestId: string; need: number; effectiveOn: string; asOf: string },
+): Promise<RestoreReplacementResult> {
+  const need = round2(p.need);
+  if (need <= 0) return { restored: 0, lotsRestored: 0, reactivated: 0, shortfall: 0 };
+  // r299 fix pass — no register, no shortfall to record: the leave was never paid for with credits.
+  if (!(await employmentHoldsCreditsTx(tx, ctx.tenantId, p.employmentId))) {
+    return { restored: 0, lotsRestored: 0, reactivated: 0, shortfall: need };
+  }
+  const { root, plan, byId } = await planReplacementLeaveRestore(tx, ctx, { ...p, need });
+
+  let restored = 0;
+  let reactivated = 0;
+  // Several steps can land on one lot only through a duplicate event; track the live tally so a second step
+  // subtracts from what the first left, never from the stale read.
+  const takenNow = new Map<string, number>();
+  for (const step of plan) {
+    const row = byId.get(step.accrualId)!;
+    const before = takenNow.get(row.id) ?? Number(row.daysTaken);
+    const newTaken = round2(Math.max(0, before - step.take));
+    takenNow.set(row.id, newTaken);
+    const wasTaken = row.status === 'taken';
+    await tx
+      .update(toilAccrual)
+      .set({
+        daysTaken: newTaken.toFixed(2),
+        ...(wasTaken ? { status: 'active' as ToilAccrualStatus, takenByRequestId: null } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(toilAccrual.id, row.id));
+    if (wasTaken) {
+      row.status = 'active';
+      reactivated += 1;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'toil-accrual',
+      aggregateId: row.id,
+      eventType: 'toil.restored',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        // The CONSUMPTION ROOT, so a later give-back of another segment of the same leave subtracts this one.
+        requestId: root,
+        cancelledRequestId: p.requestId,
+        daysRestored: step.take,
+        daysTaken: newTaken,
+        reactivated: wasTaken,
+        workedDate: row.workedDate,
+        expiresOn: row.expiresOn,
+        effectiveOn: p.effectiveOn,
+      },
+    });
+    restored = round2(restored + step.take);
+  }
+
+  const shortfall = round2(Math.max(0, need - restored));
+  if (shortfall > 0) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'toil-accrual',
+      aggregateId: p.requestId,
+      eventType: 'toil.restore.shortfall',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { requestId: root, cancelledRequestId: p.requestId, need, restored, shortfall, effectiveOn: p.effectiveOn },
+    });
+  }
+  return { restored, lotsRestored: plan.length, reactivated, shortfall };
+}
+
+// ─── Leave Credit: HR adds, previews and reverses credits (3fb1a611, r299) ─────────────────────────────
+
+/** A Leave Credit action refused for a reason the screen should show as-is. */
+export class LeaveCreditError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'LeaveCreditError';
+  }
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Is this employee within the First Schedule (s.2 wages at or below the country pack's OT wage ceiling)? */
+async function firstScheduleEligibleTx(
+  tx: Tx,
+  p: { employmentId: string; country: string | null; asOf: string },
+): Promise<boolean> {
+  const [comp] = await tx
+    .select({ basic: compensation.basicSalary, allowance: compensation.monthlyAllowance })
+    .from(compensation)
+    .where(and(eq(compensation.employmentId, p.employmentId), isNull(compensation.validTo), isNull(compensation.supersededAt)))
+    .limit(1);
+  const wages = comp ? round2(Number(comp.basic) + Number(comp.allowance ?? 0)) : null;
+  const pack = packFor(p.country);
+  const ceiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf: p.asOf })).ot.wageCeiling : 4000;
+  return wages != null && wages <= ceiling;
+}
+
+/**
+ * Is the caller an administrator FOR THIS EMPLOYEE'S COMPANY? (`app.can_admin_employment`, migration 0016.)
+ *
+ * Asked explicitly by the three HR actions below because migration 0469 WIDENED the register's write policy to
+ * admit a non-self line manager (so approvals can write it). `isAdminCtx` only says "an admin somewhere": an
+ * hr_admin scoped to company A who also manages someone in company B would otherwise pass it AND the widened
+ * RLS for that B employee. Adding, previewing and reversing a credit are HR powers for the employee's own
+ * company, so they are refused here in the service rather than left to a policy that now answers a different
+ * question.
+ */
+async function assertAdminForEmploymentTx(tx: Tx, employmentId: string, action: string): Promise<void> {
+  const res = await tx.execute(sql`SELECT app.can_admin_employment(${employmentId}::uuid) AS ok`);
+  if (!(res as unknown as { ok: boolean }[])[0]?.ok) {
+    throw new ToilSweepForbiddenError(`Only an HR administrator for this employee's company may ${action}.`);
+  }
+}
+
+/**
+ * r299 fix pass (3fb1a611) — HAS PAYROLL ALREADY TAKEN THIS DATE'S OVERTIME?
+ *
+ * A credit and that day's overtime pay are mutually exclusive, but payroll only honours that at PREFILL time
+ * (EXCLUDE_TOIL_BANKED_DAYS): `payroll_input.overtime_amount` is a per-batch aggregate with no per-day
+ * attribution, a processed run is not re-prefilled and a closed one cannot be written (see the note above
+ * EXCLUDE_TOIL_BANKED_DAYS in core/payroll.ts). So an HR credit added AFTER the overtime reached a run paid the
+ * day twice, and a reversal AFTER a run excluded it left the overtime unpaid — while the screens said the
+ * opposite (r299 verifier, measured). Rather than rewrite payroll-run state, the two HR actions REFUSE while a
+ * run holds that decision, and the promises on screen stay true.
+ *
+ * CONSERVATIVE BY DESIGN. A run is considered when it belongs to the employee's company and is for the date's
+ * month or the next one (a cut-off schedule can carry late-month overtime into the next period). That can refuse
+ * a date whose overtime actually falls in the other period — the price of never paying a day twice or not at all.
+ *
+ *   `settled`  a run PAST DRAFT (processed / closed): its overtime cannot be re-prefilled, so the action is
+ *              REFUSED.
+ *   `draft`    a DRAFT already carrying overtime for this employee: allowed, because a draft is not money yet
+ *              and re-running its overtime prefill makes it right — the same rule as any attendance change
+ *              after a prefill — but the period is returned so the screen tells HR to re-run it.
+ */
+async function payrollRunsHoldingOvertimeTx(
+  tx: Tx,
+  p: { employmentId: string; companyId: string; workedDate: string },
+): Promise<{ settled: { payPeriod: string; status: string } | null; draft: string | null }> {
+  const [y, m] = p.workedDate.slice(0, 7).split('-').map(Number);
+  const month = p.workedDate.slice(0, 7);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const runs = await tx
+    .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, overtime: payrollInput.overtimeAmount })
+    .from(payrollBatch)
+    .leftJoin(payrollInput, and(eq(payrollInput.batchId, payrollBatch.id), eq(payrollInput.employmentId, p.employmentId)))
+    .where(and(eq(payrollBatch.companyId, p.companyId), inArray(payrollBatch.payPeriod, [month, next])))
+    .orderBy(asc(payrollBatch.payPeriod), asc(payrollBatch.id));
+  const settled = runs.find((r) => r.status !== 'draft');
+  const draft = runs.find((r) => r.status === 'draft' && Number(r.overtime ?? 0) !== 0);
+  return { settled: settled ? { payPeriod: settled.payPeriod, status: settled.status } : null, draft: draft?.payPeriod ?? null };
+}
+
+/**
+ * r299 fix pass — HR may not add or reverse a Leave Credit on THEIR OWN record. Cancelling leave (core/leave.ts)
+ * and approvals already refuse the self case; a credit is worse, because for an employee within the First
+ * Schedule it becomes cash on expiry and the HR form ticks the consent box. Refused in the service, whatever
+ * RLS would allow.
+ */
+function assertNotOwnRecord(ctx: SessionContext, employeePersonId: string | null | undefined, action: string): void {
+  if (ctx.personId && employeePersonId && ctx.personId === employeePersonId) {
+    throw new ToilSweepForbiddenError(`You cannot ${action} on your own record. Another HR administrator must do it.`);
+  }
+}
+
+/** Recorded overtime on one attendance day (0 when there is no row). */
+async function overtimeMinutesOnTx(tx: Tx, employmentId: string, date: string): Promise<number> {
+  const [att] = await tx
+    .select({ otMinutes: attendance.otMinutes })
+    .from(attendance)
+    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
+    .limit(1);
+  return Math.max(0, att?.otMinutes ?? 0);
+}
+
+export type LeaveCreditPreview = {
+  workedDayKind: ToilWorkedDayKind;
+  /** false ⇒ an ordinary working day: the Add form refuses it. */
+  eligibleDay: boolean;
+  /** ⚠️ MONEY: overtime already recorded on the date. A credit suppresses its pay (EXCLUDE_TOIL_BANKED_DAYS). */
+  overtimeMinutes: number;
+  /** The policy's expiry counted from today — what the form pre-fills. NULL when the company has no enabled policy. */
+  defaultExpiresOn: string | null;
+  policyEnabled: boolean;
+  /** Within the First Schedule: a credit needs the company override AND the employee's recorded agreement. */
+  firstSchedule: boolean;
+  allowFirstSchedule: boolean;
+  /** An unreversed credit already exists for this employee and date. */
+  alreadyCredited: boolean;
+};
+
+/**
+ * What the Add Leave Credit form shows BEFORE save, for one employee and date: the kind of day, whether
+ * overtime is already recorded on it (and so would stop being paid), the default expiry, and whether the
+ * statutory floor applies. Read-only; admin-only because it reads a wage-derived fact.
+ */
+export async function previewLeaveCredit(
+  ctx: SessionContext,
+  p: { employmentId: string; workedDate: string; approvedOn?: Date },
+): Promise<LeaveCreditPreview> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
+  return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    const [emp] = await tx
+      .select({ companyId: employment.companyId, country: company.country, personId: employment.personId })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
+    const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+    const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
+    const approvedOnDate = todayInKualaLumpur(p.approvedOn ?? new Date());
+    const [dupe] = await tx
+      .select({ id: toilAccrual.id })
+      .from(toilAccrual)
+      .where(
+        and(
+          eq(toilAccrual.employmentId, p.employmentId),
+          eq(toilAccrual.workedDate, p.workedDate),
+          ne(toilAccrual.status, 'reversed'),
+        ),
+      )
+      .limit(1);
+    return {
+      workedDayKind: kind,
+      eligibleDay: kind !== 'workday',
+      overtimeMinutes: await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
+      // The same arithmetic bankToilCreditTx applies on save (approval instant → resolveExpiry), so the date
+      // the form pre-fills is the date an untouched save freezes.
+      defaultExpiresOn: policy?.enabled ? resolveExpiry(approvedOnDate, policy) : null,
+      policyEnabled: policy?.enabled === true,
+      firstSchedule: await firstScheduleEligibleTx(tx, { employmentId: p.employmentId, country: emp.country, asOf: p.workedDate }),
+      allowFirstSchedule: policy?.allowFirstScheduleEligible === true,
+      alreadyCredited: dupe != null,
+    };
+  });
+}
+
+export type GrantLeaveCreditResult = AccrueToilResult & {
+  workedDayKind: ToilWorkedDayKind;
+  /** ⚠️ MONEY: the overtime minutes on the worked date whose pay this credit has just suppressed (0 if none). */
+  overtimeSuppressedMinutes: number;
+  /** r299 fix pass — a DRAFT run (YYYY-MM) that already carries this employee's overtime and must have its overtime
+   *  prefill re-run for the credit to take effect; null when none. */
+  draftPayrollToRefresh: string | null;
+};
+
+/**
+ * 3fb1a611 (r299) · + ADD LEAVE CREDIT — HR adds a credit for a day an employee worked and never claimed.
+ * Ported from build/r279-credit's grantToilCreditManually (13d9e3bb, 07a0a69a), with the approved plan's rules:
+ *
+ *  · ADMIN, for the employee's company. `isAdminCtx` here; the register INSERT's RLS (`can_admin_employment`
+ *    or a non-self line manager, migration 0469) is the company-scoped check underneath, and an hr_admin
+ *    scoped to another company cannot see the employment at all.
+ *  · MODULE-GATED. Adding a credit is accrual — a new obligation — so it sits with `accrueToil`, not with the
+ *    two settlement sweeps.
+ *  · A DATE WORKED IS REQUIRED, not in the future, and it must be a REST DAY, OFF DAY OR PUBLIC HOLIDAY for
+ *    that employee — the same rule the employee's own request now meets. An ordinary working day is refused.
+ *  · THE FIRST SCHEDULE FLOOR IS NOT BYPASSED. Everything below goes through `bankToilCreditTx`, the executor
+ *    every earning path shares: an employee at or below the wage ceiling needs the company override AND their
+ *    own recorded agreement (`firstScheduleConsent`), exactly as on the request path.
+ *  · EXPIRY defaults to the policy's period counted from today; HR may type another, never before the date
+ *    worked.
+ *  · ⚠️ MONEY: if the date carries recorded overtime, this credit SUPPRESSES that overtime's pay
+ *    (core/payroll.ts EXCLUDE_TOIL_BANKED_DAYS, both reads, unconditional). The form says so before save
+ *    (`previewLeaveCredit`); the figure comes back here too so the banner can repeat it.
+ */
+export async function grantLeaveCredit(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    workedDate: string;
+    days: number;
+    reason: string;
+    remarks?: string;
+    /** Typed by HR; omitted ⇒ the policy's period counted from the approval (today). */
+    expiresOn?: string;
+    firstScheduleConsent?: boolean;
+    /** Injected for tests; the tenant-local date the "not in the future" check is judged against. */
+    today?: string;
+    approvedOn?: Date;
+  },
+): Promise<GrantLeaveCreditResult> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  assertModuleEnabled(ctx, 'toil');
+  const today = p.today ?? todayInKualaLumpur();
+  const days = round2(Number(p.days));
+  if (!Number.isFinite(days) || days <= 0 || days > 366)
+    throw new LeaveCreditError('The credit amount must be more than 0 and no more than 366 days.');
+  const reason = p.reason?.trim();
+  if (!reason) throw new LeaveCreditError('A reason is required when adding a Leave Credit.');
+  if (!ISO_DATE.test(p.workedDate ?? '')) throw new LeaveCreditError('Enter the date worked.');
+  if (p.workedDate > today) throw new LeaveCreditError('The date worked cannot be in the future.');
+  const expiresOn = p.expiresOn?.trim() || undefined;
+  if (expiresOn !== undefined) {
+    if (!ISO_DATE.test(expiresOn)) throw new LeaveCreditError('Enter a valid expiry date.');
+    if (expiresOn < p.workedDate) throw new LeaveCreditError('The expiry date cannot be before the date worked.');
+  }
+
+  return withTenant(ctx, async (tx) => {
+    await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
+    const [emp] = await tx
+      .select({
+        companyId: employment.companyId,
+        country: company.country,
+        personId: employment.personId,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
+    // r299 fix pass — a credit is for a day the employee WORKED for this employment.
+    if (p.workedDate < emp.hiredOn || (emp.terminatedOn != null && p.workedDate > emp.terminatedOn)) {
+      throw new LeaveCreditError(`The date worked must fall within this employee's service (${emp.hiredOn} onwards${emp.terminatedOn ? `, until ${emp.terminatedOn}` : ''}).`);
+    }
+    const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+    if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
+    const overtime = await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
+    let draftPayrollToRefresh: string | null = null;
+    if (overtime > 0) {
+      const runs = await payrollRunsHoldingOvertimeTx(tx, { employmentId: p.employmentId, companyId: emp.companyId, workedDate: p.workedDate });
+      if (runs.settled) {
+        throw new LeaveCreditError(
+          `The payroll for ${runs.settled.payPeriod} has already been ${runs.settled.status}, and ${p.workedDate} has overtime recorded. Adding a credit now would pay that day twice — as overtime and as leave. Correct that payroll first.`,
+        );
+      }
+      draftPayrollToRefresh = runs.draft;
+    }
+    const result = await bankToilCreditTx(tx, ctx, {
+      employmentId: p.employmentId,
+      workedDate: p.workedDate,
+      companyId: emp.companyId,
+      country: emp.country,
+      // r299 fix pass — NULL for the same reason as the request path: the valuation must not price HR's typed
+      // credit from the day's overtime minutes (0.5 day with 8h overtime was valued as a full day's cash).
+      dayType: null,
+      workedDayKind: kind,
+      // The measured overtime when the day has any (what a statutory convert-to-pay should be valued from);
+      // otherwise the declared credit in standard-day minutes, the request path's convention.
+      otMinutes: overtime > 0 ? overtime : Math.round(days * STD_DAY_MINUTES),
+      declaredDays: days,
+      approvedOn: p.approvedOn,
+      // There is no employee request behind a hand-added credit; the worked day is the only date in evidence,
+      // the same answer the roster election gives.
+      requestedOn: p.workedDate,
+      firstScheduleConsent: p.firstScheduleConsent === true,
+      source: 'hr_manual_grant',
+      note: reason,
+      remarks: p.remarks,
+      expiresOnOverride: expiresOn,
+    });
+    return { ...result, workedDayKind: kind, overtimeSuppressedMinutes: overtime, draftPayrollToRefresh };
+  });
+}
+
+export type ReverseLeaveCreditResult = {
+  accrualId: string;
+  employmentId: string;
+  workedDate: string;
+  daysReversed: number;
+  reversalLedgerEntryId: string;
+  /** ⚠️ MONEY: overtime minutes on the worked date that are payable again (0 if none was recorded). */
+  overtimeRestoredMinutes: number;
+  /** r299 fix pass — a DRAFT run (YYYY-MM) whose overtime prefill must be re-run to pay it; null when none. */
+  draftPayrollToRefresh: string | null;
+};
+
+/**
+ * 3fb1a611 (r299) · REVERSE A CREDIT — WITHOUT DELETING ANYTHING.
+ *
+ * The reporter: "the original line stays, marked Reversed, and a reversal line is added beside it". So:
+ *   · an offsetting `leave_ledger` debit for the whole credit, dated the day of the reversal (the balance
+ *     authority nets to zero for this credit and keeps both rows);
+ *   · the register row's status → 'reversed', with when, why, and the id of that debit. The row is NOT
+ *     deleted — build/r279-credit's reverseToilCredit deleted it, which the plan rejects, and it would have
+ *     been the first delete path under 0314's RLS;
+ *   · `toil.reversed` on the audit log, naming the actor.
+ *
+ * ⚠️ MONEY. core/payroll.ts EXCLUDE_TOIL_BANKED_DAYS skips a 'reversed' credit, so the worked day's overtime
+ * is payable again from the next prefill. That is the point of reversing, and it is pinned by a test.
+ *
+ * ONLY AN UNUSED, UNEXPIRED CREDIT, of ANY source (earned through a request, the roster, attendance, or added
+ * by HR — the approved mockup offers Reverse on both). A used or partly used credit is refused with "cancel
+ * the leave that used it first"; an expired, paid-out or already reversed one is refused naming its state.
+ *
+ * NOT module-gated, like the settlement sweeps and for their reason: undoing a wrong credit must not become
+ * unreachable because the add-on lapsed. Admin-only, in the service.
+ */
+export async function reverseLeaveCredit(
+  ctx: SessionContext,
+  p: { accrualId: string; reason: string; today?: string },
+): Promise<ReverseLeaveCreditResult> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may reverse a Leave Credit.');
+  const reason = p.reason?.trim();
+  if (!reason) throw new LeaveCreditError('A reason is required when reversing a Leave Credit.');
+  const today = p.today ?? todayInKualaLumpur();
+
+  return withTenant(ctx, async (tx) => {
+    const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
+    if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
+    await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
+    const [owner] = await tx
+      .select({ personId: employment.personId, companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, acc.employmentId))
+      .limit(1);
+    assertNotOwnRecord(ctx, owner?.personId, 'reverse a Leave Credit');
+    if (acc.status === 'reversed') throw new LeaveCreditError('That Leave Credit has already been reversed.');
+    if (acc.status === 'taken' || (acc.status === 'active' && Number(acc.daysTaken) > 0)) {
+      throw new LeaveCreditError(
+        'That Leave Credit has been used by Replacement Leave, so it cannot be reversed. Cancel the leave that used it first.',
+      );
+    }
+    if (acc.status === 'lapsed') throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
+    if (acc.status === 'converted_to_pay')
+      throw new LeaveCreditError(`That Leave Credit was paid out when it expired on ${acc.expiresOn} and cannot be reversed.`);
+    if (acc.expiresOn < today) throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
+    // r299 fix pass — a reversal only puts the overtime back if payroll has not already worked that date out
+    // without it. See payrollRunHoldingOvertimeTx.
+    let draftPayrollToRefresh: string | null = null;
+    if (owner && (await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0) {
+      const runs = await payrollRunsHoldingOvertimeTx(tx, { employmentId: acc.employmentId, companyId: owner.companyId, workedDate: acc.workedDate });
+      if (runs.settled) {
+        throw new LeaveCreditError(
+          `The payroll for ${runs.settled.payPeriod} has already been ${runs.settled.status} without the overtime for ${acc.workedDate}. Reversing the credit now would leave that overtime unpaid. Correct that payroll first.`,
+        );
+      }
+      draftPayrollToRefresh = runs.draft;
+    }
+
+    const days = round2(Number(acc.daysCredited));
+    // The ledger row the credit wrote tells us which leave type it sits on; fall back to the tenant's
+    // replacement type for a legacy row with no link.
+    const [orig] = acc.ledgerEntryId
+      ? await tx.select({ leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(eq(leaveLedger.id, acc.ledgerEntryId)).limit(1)
+      : [];
+    const leaveTypeId = orig?.leaveTypeId ?? (await ensureReplacementLeaveType(tx, ctx.tenantId));
+    const [debit] = await tx
+      .insert(leaveLedger)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: acc.employmentId,
+        leaveTypeId,
+        entryType: 'debit',
+        days: (-days).toFixed(2),
+        effectiveOn: today,
+      })
+      .returning({ id: leaveLedger.id });
+
+    // Guarded on the state just checked, so a consumption racing this reversal cannot be overwritten.
+    const updated = await tx
+      .update(toilAccrual)
+      .set({
+        status: 'reversed',
+        reversedAt: new Date(),
+        reversalReason: reason,
+        reversalLedgerEntryId: debit.id,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(toilAccrual.id, acc.id), eq(toilAccrual.status, 'active'), eq(toilAccrual.daysTaken, acc.daysTaken)))
+      .returning({ id: toilAccrual.id });
+    if (updated.length !== 1) throw new LeaveCreditError('That Leave Credit changed while it was being reversed. Reload and try again.');
+
+    const overtime = await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'toil-accrual',
+      aggregateId: acc.id,
+      eventType: 'toil.reversed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: acc.employmentId,
+      payload: {
+        reason,
+        workedDate: acc.workedDate,
+        workedDayKind: acc.workedDayKind,
+        daysReversed: days,
+        expiresOn: acc.expiresOn,
+        source: acc.source,
+        ledgerEntryId: debit.id,
+        creditLedgerEntryId: acc.ledgerEntryId,
+        // ⚠️ MONEY, on the audit record: the worked day's overtime is payable again.
+        overtimeRestoredMinutes: overtime,
+      },
+    });
+    return {
+      accrualId: acc.id,
+      employmentId: acc.employmentId,
+      workedDate: acc.workedDate,
+      daysReversed: days,
+      reversalLedgerEntryId: debit.id,
+      overtimeRestoredMinutes: overtime,
+      draftPayrollToRefresh,
+    };
+  });
+}
+
+/** 3fb1a611 (dd3af33d on build/r279-credit) — "Expiring soon" means within this many days, inclusive. */
+export const EXPIRING_SOON_DAYS = 30;
+
+/**
+ * The unused Replacement Leave credit that expires within `EXPIRING_SOON_DAYS` of `today` — the Apply form's
+ * "Expiring soon" figure. Only active credits, only their REMAINING part (a partly used credit counts what is
+ * left), and not one already past its date (that is expired, not expiring).
+ */
+export async function replacementExpiringSoonTx(tx: Tx, employmentId: string, today: string): Promise<number> {
+  const [row] = await tx
+    .select({ days: sql<string>`coalesce(sum(${toilAccrual.daysCredited} - ${toilAccrual.daysTaken}), 0)` })
+    .from(toilAccrual)
+    .where(
+      and(
+        eq(toilAccrual.employmentId, employmentId),
+        eq(toilAccrual.status, 'active'),
+        gte(toilAccrual.expiresOn, today),
+        lte(toilAccrual.expiresOn, addDays(today, EXPIRING_SOON_DAYS)),
+      ),
+    );
+  return round2(Math.max(0, Number(row?.days ?? 0)));
+}
+
+// ─── Leave Credit history: DERIVED from the ledger (3fb1a611, r299) ────────────────────────────────────
+
+export const LEAVE_CREDIT_MOVEMENTS = [
+  'earned_request',
+  'earned_roster',
+  'earned_attendance',
+  'earned_other',
+  'added_hr',
+  'used',
+  'returned',
+  'reversed',
+  'expired',
+  'paid_out',
+  'other',
+] as const;
+export type LeaveCreditMovement = (typeof LEAVE_CREDIT_MOVEMENTS)[number];
+export type LeaveCreditStatus = 'available' | 'used' | 'reversed' | 'expired' | 'paid_out';
+
+export type LeaveCreditMovementRow = {
+  ledgerEntryId: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  leaveTypeId: string;
+  /** The ledger row's effective date — the DATE column. */
+  effectiveOn: string;
+  /** When the row was written (ISO instant) — the "when" beside who did it. */
+  recordedAt: string;
+  movement: LeaveCreditMovement;
+  accrualId: string | null;
+  workedDate: string | null;
+  workedDayKind: ToilWorkedDayKind | null;
+  balanceBefore: number;
+  days: number;
+  balanceAfter: number;
+  expiresOn: string | null;
+  reason: string | null;
+  actorName: string | null;
+  actorIsSystem: boolean;
+  status: LeaveCreditStatus | null;
+  /** The Reverse action is offered: an unused, unexpired, unreversed credit line. */
+  reversible: boolean;
+};
+
+const round2Days = (n: string | number) => round2(Number(n));
+
+/**
+ * 3fb1a611 (r299) · EVERY LEAVE CREDIT MOVEMENT, with balance before and after — DERIVED, not stored.
+ *
+ * ONE LEDGER. The rows are the Replacement Leave type's `leave_ledger` rows (the balance authority), and
+ * nothing here is written anywhere. Each row is described by what it links to:
+ *   · toil_accrual.ledger_entry_id          → the credit itself: earned through a request / the roster /
+ *                                             attendance, or added by HR (source);
+ *   · toil_accrual.reversal_ledger_entry_id → a reversal line;
+ *   · toil_accrual.settled_ledger_entry_id  → the expiry sweep's line: expired, or paid out;
+ *   · leave_ledger.source_request_id        → Replacement Leave: used (negative) or returned on cancellation
+ *                                             (positive);
+ *   · none of the above                     → other (a Leave Adjustment from before this round, an import,
+ *                                             or an expiry swept before the settlement link existed).
+ *
+ * THE RUNNING TOTAL'S ORDER, stated because a backdated row changes "before" for every later row by design:
+ * per (employee, leave type), `effective_on`, then `created_at`, then `id`. The last row's "after" equals
+ * `leaveBalance` for that pair; every row's "after" is the balance of the rows up to and including it in that
+ * order. The DISPLAY order is newest first; the arithmetic is not affected by it or by the filters, which are
+ * applied after the totals are taken over the employee's whole history.
+ *
+ * WHO. `leave_ledger` has no created-by column, so the actor is the `domain_event` written IN THE SAME
+ * TRANSACTION for the same employee: both default to `now()`, which is the transaction's start instant, so
+ * `occurred_at = created_at` identifies it exactly. Every writer of these rows appends such an event.
+ */
+export async function listLeaveCreditMovements(
+  ctx: SessionContext,
+  p: {
+    companyIds?: string[];
+    employmentId?: string;
+    movement?: LeaveCreditMovement;
+    from?: string;
+    to?: string;
+    today?: string;
+    limit?: number;
+  } = {},
+): Promise<{ rows: LeaveCreditMovementRow[]; matched: number; truncated: boolean }> {
+  const today = p.today ?? todayInKualaLumpur();
+  const limit = p.limit ?? 500;
+  return withTenant(ctx, async (tx) => {
+    if (p.companyIds && p.companyIds.length === 0) return { rows: [], matched: 0, truncated: false };
+    const types = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(
+        sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and upper(${leaveType.code}) = 'REPLACEMENT'))`,
+      );
+    if (types.length === 0) return { rows: [], matched: 0, truncated: false };
+
+    const ledger = await tx
+      .select({
+        id: leaveLedger.id,
+        employmentId: leaveLedger.employmentId,
+        leaveTypeId: leaveLedger.leaveTypeId,
+        days: leaveLedger.days,
+        effectiveOn: leaveLedger.effectiveOn,
+        createdAt: leaveLedger.createdAt,
+        sourceRequestId: leaveLedger.sourceRequestId,
+        ledgerReason: leaveLedger.reason,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        actorType: sql<string | null>`(
+          select de.actor_type::text from domain_event de
+           where de.tenant_id = ${leaveLedger.tenantId}
+             and de.subject_employment_id = ${leaveLedger.employmentId}
+             and de.occurred_at = ${leaveLedger.createdAt}
+           order by de.sequence limit 1)`,
+        actorId: sql<string | null>`(
+          select de.actor_id::text from domain_event de
+           where de.tenant_id = ${leaveLedger.tenantId}
+             and de.subject_employment_id = ${leaveLedger.employmentId}
+             and de.occurred_at = ${leaveLedger.createdAt}
+           order by de.sequence limit 1)`,
+      })
+      .from(leaveLedger)
+      .innerJoin(employment, eq(employment.id, leaveLedger.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(leaveLedger.leaveTypeId, types.map((t) => t.id)),
+          p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+          p.employmentId ? eq(leaveLedger.employmentId, p.employmentId) : undefined,
+        ),
+      )
+      .orderBy(
+        asc(leaveLedger.employmentId),
+        asc(leaveLedger.leaveTypeId),
+        asc(leaveLedger.effectiveOn),
+        asc(leaveLedger.createdAt),
+        asc(leaveLedger.id),
+      );
+    if (ledger.length === 0) return { rows: [], matched: 0, truncated: false };
+
+    const empIds = [...new Set(ledger.map((r) => r.employmentId))];
+    const accruals = await tx
+      .select({
+        id: toilAccrual.id,
+        workedDate: toilAccrual.workedDate,
+        workedDayKind: toilAccrual.workedDayKind,
+        dayType: toilAccrual.dayType,
+        expiresOn: toilAccrual.expiresOn,
+        status: toilAccrual.status,
+        source: toilAccrual.source,
+        daysTaken: toilAccrual.daysTaken,
+        note: toilAccrual.note,
+        reversalReason: toilAccrual.reversalReason,
+        ledgerEntryId: toilAccrual.ledgerEntryId,
+        reversalLedgerEntryId: toilAccrual.reversalLedgerEntryId,
+        settledLedgerEntryId: toilAccrual.settledLedgerEntryId,
+      })
+      .from(toilAccrual)
+      .where(inArray(toilAccrual.employmentId, empIds));
+    type Acc = (typeof accruals)[number];
+    const byCredit = new Map<string, Acc>();
+    const byReversal = new Map<string, Acc>();
+    const bySettled = new Map<string, Acc>();
+    for (const a of accruals) {
+      if (a.ledgerEntryId) byCredit.set(a.ledgerEntryId, a);
+      if (a.reversalLedgerEntryId) byReversal.set(a.reversalLedgerEntryId, a);
+      if (a.settledLedgerEntryId) bySettled.set(a.settledLedgerEntryId, a);
+    }
+
+    // The employee's stated reason on an earned-through-a-request credit.
+    const requestReasonByAccrual = new Map<string, string | null>();
+    if (accruals.length) {
+      const reqs = await tx
+        .select({ accrualId: replacementLeaveRequestDate.accrualId, reason: replacementLeaveRequest.reason })
+        .from(replacementLeaveRequestDate)
+        .innerJoin(replacementLeaveRequest, eq(replacementLeaveRequest.id, replacementLeaveRequestDate.requestId))
+        .where(inArray(replacementLeaveRequestDate.accrualId, accruals.map((a) => a.id)));
+      for (const r of reqs) if (r.accrualId) requestReasonByAccrual.set(r.accrualId, r.reason ?? null);
+    }
+    // The leave's own reason on a used / returned line.
+    const requestIds = [...new Set(ledger.map((r) => r.sourceRequestId).filter((x): x is string => x != null))];
+    const leaveReasonById = new Map<string, string | null>();
+    if (requestIds.length) {
+      const lrs = await tx
+        .select({ id: leaveRequest.id, reason: leaveRequest.reason })
+        .from(leaveRequest)
+        .where(inArray(leaveRequest.id, requestIds));
+      for (const r of lrs) leaveReasonById.set(r.id, r.reason ?? null);
+    }
+    // Actor names: app_user → person.
+    const userIds = [...new Set(ledger.map((r) => r.actorId).filter((x): x is string => x != null))];
+    const nameByUser = new Map<string, string>();
+    if (userIds.length) {
+      const us = await tx
+        .select({ id: appUser.id, name: person.fullName })
+        .from(appUser)
+        .leftJoin(person, eq(person.id, appUser.personId))
+        .where(inArray(appUser.id, userIds));
+      for (const u of us) if (u.name) nameByUser.set(u.id, u.name);
+    }
+
+    const statusOf = (a: Acc): LeaveCreditStatus =>
+      a.status === 'taken'
+        ? 'used'
+        : a.status === 'lapsed'
+          ? 'expired'
+          : a.status === 'converted_to_pay'
+            ? 'paid_out'
+            : a.status === 'reversed'
+              ? 'reversed'
+              : 'available';
+    const kindOf = (a: Acc): ToilWorkedDayKind | null => a.workedDayKind ?? (a.dayType as ToilWorkedDayKind | null) ?? null;
+
+    const all: LeaveCreditMovementRow[] = [];
+    let runKey = '';
+    let running = 0;
+    for (const r of ledger) {
+      const key = `${r.employmentId}|${r.leaveTypeId}`;
+      if (key !== runKey) {
+        runKey = key;
+        running = 0;
+      }
+      const days = round2Days(r.days);
+      const before = running;
+      running = round2(running + days);
+
+      let movement: LeaveCreditMovement = 'other';
+      let acc: Acc | undefined;
+      let reason: string | null = null;
+      let status: LeaveCreditStatus | null = null;
+      let reversible = false;
+      if ((acc = byCredit.get(r.id))) {
+        movement =
+          acc.source === 'employee_request'
+            ? 'earned_request'
+            : acc.source === 'hr_manual_grant'
+              ? 'added_hr'
+              : acc.source === 'roster'
+                ? 'earned_roster'
+                : acc.source === 'auto_approval'
+                  ? 'earned_attendance'
+                  : 'earned_other';
+        reason = acc.source === 'hr_manual_grant' ? acc.note : (requestReasonByAccrual.get(acc.id) ?? null);
+        status = statusOf(acc);
+        reversible = acc.status === 'active' && Number(acc.daysTaken) === 0 && acc.expiresOn >= today;
+      } else if ((acc = byReversal.get(r.id))) {
+        movement = 'reversed';
+        reason = acc.reversalReason;
+        status = 'reversed';
+      } else if ((acc = bySettled.get(r.id))) {
+        movement = acc.status === 'converted_to_pay' ? 'paid_out' : 'expired';
+        status = acc.status === 'converted_to_pay' ? 'paid_out' : 'expired';
+      } else if (r.sourceRequestId) {
+        movement = days < 0 ? 'used' : 'returned';
+        reason = leaveReasonById.get(r.sourceRequestId) ?? null;
+        status = days < 0 ? 'used' : null;
+      } else {
+        // A machine code (`sys:…`) is not a reason a person gave.
+        reason = r.ledgerReason && !r.ledgerReason.startsWith('sys:') ? r.ledgerReason : null;
+      }
+      all.push({
+        ledgerEntryId: r.id,
+        employmentId: r.employmentId,
+        employeeName: r.employeeName,
+        employeeCode: r.employeeCode ?? null,
+        leaveTypeId: r.leaveTypeId,
+        effectiveOn: r.effectiveOn,
+        recordedAt: r.createdAt.toISOString(),
+        movement,
+        accrualId: acc?.id ?? null,
+        workedDate: acc?.workedDate ?? null,
+        workedDayKind: acc ? kindOf(acc) : null,
+        balanceBefore: before,
+        days,
+        balanceAfter: running,
+        expiresOn: movement === 'reversed' || movement === 'used' || movement === 'returned' ? null : (acc?.expiresOn ?? null),
+        reason,
+        actorName: r.actorId ? (nameByUser.get(r.actorId) ?? null) : null,
+        actorIsSystem: r.actorType === 'system',
+        status,
+        reversible,
+      });
+    }
+
+    const filtered = all.filter(
+      (row) =>
+        (!p.movement || row.movement === p.movement) &&
+        (!p.from || row.effectiveOn >= p.from) &&
+        (!p.to || row.effectiveOn <= p.to),
+    );
+    // Newest first for reading; ties broken the same way the running total is, reversed.
+    filtered.sort((a, b) =>
+      a.effectiveOn !== b.effectiveOn
+        ? b.effectiveOn.localeCompare(a.effectiveOn)
+        : a.recordedAt !== b.recordedAt
+          ? b.recordedAt.localeCompare(a.recordedAt)
+          : b.ledgerEntryId.localeCompare(a.ledgerEntryId),
+    );
+    return { rows: filtered.slice(0, limit), matched: filtered.length, truncated: filtered.length > limit };
+  });
 }
 
 // ─── expiry sweep (ADR-0033 33-4) ────────────────────────────────────────────────────────────────────
@@ -1064,6 +2284,8 @@ type SweepRow = {
   /** 296fc027: NULL on a self-declared (employee-request) credit — no attendance row, so no day type. */
   dayType: 'workday' | 'rest_day' | 'holiday' | null;
   otMinutes: number;
+  /** 3fb1a611: the kind of day that earned it — lets the valuation note name an OFF day rather than call it unknown. */
+  workedDayKind?: ToilWorkedDayKind | null;
 };
 
 /**
@@ -1166,19 +2388,27 @@ async function expireAccrualsTx(
     if (days <= 0) continue; // nothing left to forfeit (fully consumed already) — defensive, SELECT filters it
     const convert = a.expiryAction === 'convert_to_pay';
     // Debit the replacement-leave credit either way — the unused in-lieu day is gone (paid out or forfeited).
-    await tx.insert(leaveLedger).values({
-      tenantId: ctx.tenantId,
-      employmentId: a.employmentId,
-      leaveTypeId: replacementTypeId,
-      entryType: 'debit',
-      days: (-days).toFixed(2),
-      effectiveOn: asOf,
-    });
+    // 3fb1a611: the debit's id is recorded on the credit (`settled_ledger_entry_id`) so the Leave Credit
+    // history can say which credit an Expired / Paid out line belongs to.
+    const [settled] = await tx
+      .insert(leaveLedger)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: a.employmentId,
+        leaveTypeId: replacementTypeId,
+        entryType: 'debit',
+        days: (-days).toFixed(2),
+        effectiveOn: asOf,
+      })
+      .returning({ id: leaveLedger.id });
     // Phase-B #14: exact s.60(3)/s.60D(3) cash for a First-Schedule employee (statutory_exact); generic
     // ORP × banked-days for > ceiling staff (generic_orp). Basis is recorded on the event for auditability.
     const owed = convert ? convertAmountFor(a) : { amount: 0, basis: 'generic_orp' as const };
     const amount = owed.amount;
-    await tx.update(toilAccrual).set({ status: convert ? 'converted_to_pay' : 'lapsed' }).where(eq(toilAccrual.id, a.id));
+    await tx
+      .update(toilAccrual)
+      .set({ status: convert ? 'converted_to_pay' : 'lapsed', settledLedgerEntryId: settled.id })
+      .where(eq(toilAccrual.id, a.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'toil-accrual',
@@ -1190,6 +2420,8 @@ async function expireAccrualsTx(
         workedDate: a.workedDate,
         daysCredited: days,
         asOf,
+        ledgerEntryId: settled.id,
+        ...(a.workedDayKind ? { workedDayKind: a.workedDayKind } : {}),
         ...(convert
           ? {
               amountOwed: amount,
@@ -1201,12 +2433,17 @@ async function expireAccrualsTx(
               valuationNote:
                 owed.basis === 'statutory_exact'
                   ? 'Exact s.60(3)/s.60D(3) cash for the worked day-type, valued at close-run wages; reconcile to the correct pay period.'
-                  : a.dayType == null
-                    ? // 296fc027: a self-declared credit. The day type was never recorded, so the exact
-                      // statutory cash for it cannot be computed — this is the contractual ORP basis and
-                      // needs a human to reconcile it if the employee is within the First Schedule.
-                      'Self-declared replacement leave with no recorded day type: ORP computed at close-run wages. The exact statutory overtime cash could not be derived — verify the worked day before paying.'
-                    : 'ORP computed at close-run wages; reconcile to the correct pay period.',
+                  : a.workedDayKind === 'off_day'
+                    ? // 3fb1a611: an OFF day IS recorded, but this repo's verified statutory sources
+                      // (docs/architecture/STATUTORY-SOURCES.md §6) state no rule for off-day work, so no
+                      // exact figure is claimed — ORP basis, named as an off day for the person reconciling.
+                      'Off day: ORP computed at close-run wages. No exact statutory figure for off-day work is recorded in this system — verify before paying.'
+                    : a.dayType == null
+                      ? // 296fc027: a self-declared credit. The day type was never recorded, so the exact
+                        // statutory cash for it cannot be computed — this is the contractual ORP basis and
+                        // needs a human to reconcile it if the employee is within the First Schedule.
+                        'Self-declared replacement leave with no recorded day type: ORP computed at close-run wages. The exact statutory overtime cash could not be derived — verify the worked day before paying.'
+                      : 'ORP computed at close-run wages; reconcile to the correct pay period.',
             }
           : {}),
       },
@@ -1286,6 +2523,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
         // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
         dayType: toilAccrual.dayType,
         otMinutes: toilAccrual.otMinutes,
+        workedDayKind: toilAccrual.workedDayKind,
       })
       .from(toilAccrual)
       .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER));
@@ -1297,6 +2535,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
       workedDate: d.workedDate,
       dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
       otMinutes: d.otMinutes,
+      workedDayKind: d.workedDayKind,
     }));
     // THE RESIDUE, COUNTED (review r3). Identical predicate MINUS `SETTLEABLE_BY_CALLER`, so the
     // difference is exactly the accruals that were due and that this caller's company scope hid. Both
@@ -1403,6 +2642,7 @@ export async function closeReplacementLeaveYear(
         // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
         dayType: toilAccrual.dayType,
         otMinutes: toilAccrual.otMinutes,
+        workedDayKind: toilAccrual.workedDayKind,
         hiredOn: employment.hiredOn,
         companyId: employment.companyId,
         leaveCycle: company.leaveCycle,
@@ -1448,6 +2688,7 @@ export async function closeReplacementLeaveYear(
         workedDate: a.workedDate,
         dayType: a.dayType as 'workday' | 'rest_day' | 'holiday',
         otMinutes: a.otMinutes,
+        workedDayKind: a.workedDayKind,
         boundary,
       });
     }

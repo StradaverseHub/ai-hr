@@ -403,7 +403,13 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).
-    { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
+    // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is
+    // DELIBERATELY GONE. That address
+    // is a redirect stub to Leave Config › Leave Credit now, which holds the same ledger summary and the two
+    // settlement sweeps beside every credit movement — one screen per fact. A menu row pointing at a redirect
+    // is a row that reaches its screen through a wasted hop, under a module (attendance) that is not the one
+    // that governs it (toil).
+
   ],
 };
 

@@ -4317,7 +4317,10 @@ export const employmentShiftArrangement = pgTable(
 // signed leave_ledger credit so leaveBalance() just works. ──────────────────────────────────────────────
 export const toilAccrualBasisEnum = pgEnum('toil_accrual_basis', ['hours_worked', 'premium_equivalent']);
 export const toilExpiryActionEnum = pgEnum('toil_expiry_action', ['convert_to_pay', 'lapse']);
-export const toilAccrualStatusEnum = pgEnum('toil_accrual_status', ['active', 'taken', 'converted_to_pay', 'lapsed']);
+// 3fb1a611 (migration 0469): 'reversed' — an HR reversal. The register row is NEVER deleted: it stays, marked
+// reversed, beside the offsetting leave_ledger debit (`reversalLedgerEntryId`). core/payroll.ts
+// EXCLUDE_TOIL_BANKED_DAYS treats a reversed credit as never banked, so the worked day's overtime is payable again.
+export const toilAccrualStatusEnum = pgEnum('toil_accrual_status', ['active', 'taken', 'converted_to_pay', 'lapsed', 'reversed']);
 // 296fc027 (migration 0380): the expiry PERIOD gains a unit. `days` reproduces today's behaviour exactly
 // and is the default every existing row lands on; `months` is calendar-month addition (see addMonths in
 // core/toil.ts), never 30-day arithmetic.
@@ -4337,8 +4340,16 @@ export type ToilAccrualStatus = (typeof toilAccrualStatusEnum.enumValues)[number
 export type ToilExpiryUnit = (typeof toilExpiryUnitEnum.enumValues)[number];
 export type ToilReplacementLeaveFrom = (typeof toilReplacementLeaveFromEnum.enumValues)[number];
 // 296fc027 (migration 0381): which path minted a credit. NULL on every row banked before this existed.
-export const toilAccrualSourceEnum = pgEnum('toil_accrual_source', ['roster', 'auto_approval', 'employee_request']);
+// 3fb1a611 (migration 0469) adds 'hr_manual_grant' — a credit HR added on the Leave Credit screen for a day
+// worked that nobody claimed. Written through the same `bankToilCreditTx` as every other path, so it carries a
+// frozen expiry, a FIFO position and the First Schedule gate.
+export const toilAccrualSourceEnum = pgEnum('toil_accrual_source', ['roster', 'auto_approval', 'employee_request', 'hr_manual_grant']);
 export type ToilAccrualSource = (typeof toilAccrualSourceEnum.enumValues)[number];
+// 3fb1a611 (migration 0469): the kind of day that EARNED a credit, resolved from the employee's schedule
+// (core/attendance.ts workedDayKindForTx). A separate enum and NOT a widening of `attendance_day_type`, which
+// is shared with plan_ot and payroll's OT math and deliberately has no off day (core/attendance.ts b8aa3466).
+export const toilWorkedDayKindEnum = pgEnum('toil_worked_day_kind', ['workday', 'rest_day', 'off_day', 'holiday']);
+export type ToilWorkedDayKind = (typeof toilWorkedDayKindEnum.enumValues)[number];
 
 // One TOIL policy per company. allowFirstScheduleEligible is the per-company toggle (ADR-0033 §6): OFF ⇒
 // ≤RM4,000 staff cannot elect TOIL (cash only); ON ⇒ they may, but with a compliance warning + forced
@@ -4458,6 +4469,19 @@ export const toilAccrual = pgTable(
     // 296fc027 (migration 0381): which path minted this credit. NULLABLE with no backfill — a legacy row
     // genuinely does not know, and a guessed value would make the audit trail claim a precision it lacks.
     source: toilAccrualSourceEnum('source'),
+    // 3fb1a611 (migration 0469) — all NULLABLE, none back-filled. See the migration header.
+    //  • workedDayKind — workday / rest_day / off_day / holiday: the day that earned the credit. `dayType` keeps
+    //    the attendance vocabulary the expiry sweep values from; an off day is recorded HERE with dayType NULL.
+    //  • note / remarks — HR's stated reason (required) and optional remarks on a hand-added credit.
+    //  • reversedAt / reversalReason / reversalLedgerEntryId — a reversal: the offsetting leave_ledger debit.
+    //  • settledLedgerEntryId — the debit the expiry sweep wrote when it expired or paid out this credit.
+    workedDayKind: toilWorkedDayKindEnum('worked_day_kind'),
+    note: text('note'),
+    remarks: text('remarks'),
+    reversedAt: timestamp('reversed_at', { withTimezone: true }),
+    reversalReason: text('reversal_reason'),
+    reversalLedgerEntryId: uuid('reversal_ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
+    settledLedgerEntryId: uuid('settled_ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
     policyId: uuid('policy_id').references((): AnyPgColumn => toilPolicy.id),
     ledgerEntryId: uuid('ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
     takenByRequestId: uuid('taken_by_request_id').references((): AnyPgColumn => leaveRequest.id),
@@ -4465,8 +4489,12 @@ export const toilAccrual = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    // At most one accrual per worked day — the no-double-pay guard at the DB level.
-    uniqueIndex('toil_accrual_emp_date_uq').on(t.tenantId, t.employmentId, t.workedDate),
+    // At most one UNREVERSED accrual per worked day — the no-double-pay guard at the DB level. 3fb1a611
+    // (migration 0469) made it partial: a reversed credit no longer occupies the key, so a credit entered
+    // wrongly can be reversed and entered again. Two live credits for one worked day stay impossible.
+    uniqueIndex('toil_accrual_emp_date_uq')
+      .on(t.tenantId, t.employmentId, t.workedDate)
+      .where(sql`${t.status} <> 'reversed'`),
     index('toil_accrual_expiry_idx').on(t.tenantId, t.status, t.expiresOn),
   ],
 );

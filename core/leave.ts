@@ -37,7 +37,18 @@ import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
 // year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
 // the helper returns the same calendar-year pair this function has always built.
 import { sharedGroupCycleWindow } from '../lib/leave-groups';
-import { consumeReplacementLeaveTx } from './toil';
+// 3fb1a611 fix pass — Leave Credit's r299 changes apply only while the tenant has the paid `toil` module.
+import { leaveCreditRegisterLive } from './leave-credit-live';
+// 3fb1a611 (r299) — the register INVERSE arrived: an approved Replacement Leave can now be cancelled, because
+// the credit it used is given back to the register as well as the day to the ledger (restoreReplacementLeaveTx).
+import {
+  assertReplacementLeaveRestorableTx,
+  consumeReplacementLeaveTx,
+  replacementExpiringSoonTx,
+  ReplacementLeaveRestoreBlockedError,
+  restoreReplacementLeaveTx,
+  type RestoreBlock,
+} from './toil';
 import {
   holidayDatesFor,
   effectiveHolidayState,
@@ -580,6 +591,21 @@ export class LeaveCancellationNotAllowedError extends Error {
   constructor(reason?: string) {
     super(reason ? `Leave date(s) cannot be cancelled: ${reason}` : 'Leave date(s) cannot be cancelled.');
     this.name = 'LeaveCancellationNotAllowedError';
+  }
+}
+/**
+ * 3fb1a611 (r299) — a Replacement Leave cannot be cancelled because a credit it used can no longer take the
+ * day back (expired, paid out, reversed). A `LeaveCancellationNotAllowedError`, so every existing handler still
+ * treats it as a refusal; it carries the blocking credits so the screen can NAME them in the reader's language
+ * instead of the generic "can't be cancelled" (app/me/actions.ts localizeLeaveError). The plan's promise is that
+ * the screen says the credit has expired, not merely that something went wrong.
+ */
+export class ReplacementCreditCancellationBlockedError extends LeaveCancellationNotAllowedError {
+  readonly credits: RestoreBlock[];
+  constructor(reason: string, credits: RestoreBlock[]) {
+    super(reason);
+    this.name = 'ReplacementCreditCancellationBlockedError';
+    this.credits = credits;
   }
 }
 /** A requested cancel date is on/before "today" (tenant working-day frame) — too late to give back. */
@@ -1516,6 +1542,12 @@ export async function leaveTypeApplySummary(
   taken: number;
   balance: number;
   available: number;
+  /**
+   * 3fb1a611 (r299) — Replacement Leave only: unused credit expiring within 30 days (core/toil.ts
+   * replacementExpiringSoonTx). NULL for every other type, which has no per-credit expiry to speak of, and
+   * NULL for Replacement Leave too on a tenant without the `toil` module (fix pass D8: no register, no figure).
+   */
+  expiringSoon: number | null;
   essViewConfig: Record<string, boolean> | null;
 }> {
   return withTenant(ctx, async (tx) => {
@@ -1533,7 +1565,7 @@ export async function leaveTypeApplySummary(
       .from(leaveLedger)
       .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, sourceTypeId)));
     const [lt] = await tx
-      .select({ essViewConfig: leaveType.essViewConfig })
+      .select({ essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
@@ -1544,6 +1576,14 @@ export async function leaveTypeApplySummary(
       // Not clamped at zero: an overdrawn type must read the same negative figure the guard measures, or the
       // popup would understate how far the employee is already committed.
       available: round2(balance - pending),
+      // 3fb1a611 fix pass (D8) — and ONLY while the tenant's Leave Credit register is live (the paid `toil`
+      // module). Without it there are no credits to expire, so the figure is not "0", it is not a thing: null,
+      // and the Apply form draws exactly main@60a40452's summary (components/leave-duration-fields.tsx renders
+      // the column only for a number). Asked second, so no other leave type reaches an entitlement question.
+      expiringSoon:
+        leaveTypeIs(lt, 'replacement') && leaveCreditRegisterLive(ctx)
+          ? await replacementExpiringSoonTx(tx, p.employmentId, todayInKualaLumpur())
+          : null,
       essViewConfig: (lt?.essViewConfig ?? null) as Record<string, boolean> | null,
     };
   });
@@ -4735,6 +4775,11 @@ async function finalizeLeaveApproval(
   const [lt] = await tx
     .select({
       code: leaveType.code,
+      // 3fb1a611 (r299) — `role` WAS MISSING, so `leaveTypeIs(lt, 'replacement')` below fell back to the code
+      // alone: a tenant whose replacement type is classified by role and coded anything but REPLACEMENT
+      // (production's is `RL`, 5ff7daff) approved Replacement Leave WITHOUT consuming a single credit from the
+      // register, leaving every credit 'active' for the expiry sweep to convert or lapse a second time.
+      role: leaveType.role,
       paid: leaveType.paid,
       sendToPayroll: leaveType.sendToPayroll,
       balanceSourceTypeId: leaveType.balanceSourceTypeId,
@@ -5452,15 +5497,17 @@ export async function requestLeaveCancellation(
     const [lt] = await tx
       // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
       // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
-      .select({ code: leaveType.code, dayTypeInclusion: leaveType.dayTypeInclusion })
+      // 3fb1a611: `role` too — leaveTypeIs resolves the role first and only then falls back to the code.
+      .select({ code: leaveType.code, role: leaveType.role, dayTypeInclusion: leaveType.dayTypeInclusion })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
-    if (leaveTypeIs(lt, 'replacement')) {
-      // Restoring a REPLACEMENT day via the ledger without re-crediting the toil_accrual register would
-      // reintroduce the ghost-credit / negative-balance bug — and there is no inverse of consumeReplacementLeaveTx.
-      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
-    }
+    // 3fb1a611 (r299) — THIS WAS A FLAT REFUSAL ("replacement (time-off-in-lieu) leave cannot be cancelled"),
+    // and it was right while there was no inverse of consumeReplacementLeaveTx: giving the DAY back without the
+    // CREDIT leaves a balance with no credit behind it. The inverse exists now, so the refusal narrows to the
+    // one case that genuinely cannot be undone — a credit that has expired since the leave used it — and that
+    // check needs the give-back amount, so it runs below once `requestedDays` is known.
+    const isReplacement = leaveTypeIs(lt, 'replacement');
     const cancelIncl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
 
     // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
@@ -5512,6 +5559,23 @@ export async function requestLeaveCancellation(
     // Day Type Inclusion (feedback ef6d7146): weigh each cancel date through the SAME vector the leave was
     // deducted under (cancelIncl above), so a re-included public-holiday/rest date previews its real weight.
     const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols, cancelIncl), 0));
+    // 3fb1a611 — CAN THE CREDIT COME BACK? Asked when the employee asks, so the refusal names the expired
+    // credit on their own screen instead of stranding a pending card under the manager's approval button.
+    // Read-only: nothing is restored until decideLeaveCancellation runs (and it asks again).
+    if (isReplacement) {
+      try {
+        await assertReplacementLeaveRestorableTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: requestedDays,
+          asOf: today,
+        });
+      } catch (e) {
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
+        throw e;
+      }
+    }
     const [row] = await tx
       .insert(leaveCancellationRequest)
       .values({
@@ -5604,7 +5668,8 @@ export async function decideLeaveCancellation(
     // absent from workingDates, so sum(segment days) < req.days and the whole-span reversal below would
     // over-restore. undefined ⇒ byte-identical legacy split.
     const [decLt] = await tx
-      .select({ dayTypeInclusion: leaveType.dayTypeInclusion })
+      // 3fb1a611: role + code as well — the register give-back below is keyed on leaveTypeIs(decLt, 'replacement').
+      .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
@@ -5691,7 +5756,10 @@ export async function decideLeaveCancellation(
           eventType: 'leave-request.split',
           actor: actorOf(ctx),
           subjectEmploymentId: req.employmentId,
-          payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays },
+          // 3fb1a611: `splitFromRequestId` — the row this segment was cut from. A Replacement Leave's credit
+          // consumption is recorded against the request that was APPROVED; a later cancellation of this new
+          // segment follows this link back to it (core/toil.ts consumptionRootRequestIdTx). Additive.
+          payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays, splitFromRequestId: req.id },
         });
       }
 
@@ -5760,6 +5828,27 @@ export async function decideLeaveCancellation(
       }
     }
 
+    // 3fb1a611 (r299) — GIVE THE CREDIT BACK TO THE REGISTER, not only the day to the ledger. The reversal and
+    // re-debits above restore `restoredDays` to leave_ledger (the balance authority); for Replacement Leave that
+    // balance is backed credit by credit in toil_accrual, and a ledger-only restore is exactly the ghost credit
+    // the old flat refusal existed to prevent. Reverse FIFO; refuses (rolling this whole approval back, so the
+    // leave stays approved) when a credit has expired since it was used, naming it.
+    if (leaveTypeIs(decLt, 'replacement') && restoredDays > 0) {
+      try {
+        await restoreReplacementLeaveTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: round2(restoredDays),
+          effectiveOn: req.startDate,
+          asOf: todayInKualaLumpur(),
+        });
+      } catch (e) {
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
+        throw e;
+      }
+    }
+
     await tx
       .update(leaveCancellationRequest)
       .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
@@ -5822,17 +5911,17 @@ export async function adminCancelLeave(
     const previousStatus = req.status as 'pending' | 'approved';
 
     const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
+      // 3fb1a611: `role` too — leaveTypeIs resolves the role first (production's replacement type is coded `RL`).
+      .select({ code: leaveType.code, name: leaveType.name, role: leaveType.role })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
 
-    // An APPROVED REPLACEMENT (time-off-in-lieu) leave already consumed the toil_accrual register at approval,
-    // and there is no inverse of consumeReplacementLeaveTx — restoring it via the ledger would reintroduce the
-    // ghost-credit bug. A PENDING replacement never consumed the register, so it cancels cleanly.
-    if (previousStatus === 'approved' && leaveTypeIs(lt, 'replacement')) {
-      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
-    }
+    // 3fb1a611 (r299) — THIS USED TO REFUSE an APPROVED Replacement Leave outright: it had consumed the register
+    // at approval and there was no inverse of consumeReplacementLeaveTx. The inverse exists now and runs below,
+    // after the net ledger reversal, against the same `restoredDays` — so the two halves cannot disagree about
+    // how much came back. A PENDING one never consumed anything (restoredDays 0 ⇒ nothing to give back).
+    const isReplacement = leaveTypeIs(lt, 'replacement');
 
     // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
     // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
@@ -5868,6 +5957,25 @@ export async function adminCancelLeave(
         sourceRequestId: req.id,
         effectiveOn: req.startDate, // same cycle/carry window as the original debit
       });
+    }
+
+    // 1b) 3fb1a611 — …and give the CREDIT back to the register, for Replacement Leave. Refuses, naming the credit
+    //     and its expiry date, where a credit expired since the leave used it; the refusal rolls this whole
+    //     transaction back, so the leave stays approved rather than half-cancelled.
+    if (isReplacement && restoredDays > 0) {
+      try {
+        await restoreReplacementLeaveTx(tx, ctx, {
+          employmentId: req.employmentId,
+          requestId: req.id,
+          need: restoredDays,
+          effectiveOn: req.startDate,
+          asOf: todayInKualaLumpur(),
+        });
+      } catch (e) {
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
+        throw e;
+      }
     }
 
     // 2) Flip the request to cancelled. decidedByEmploymentId/decidedAt are left untouched (they record the
@@ -6004,6 +6112,12 @@ export async function editLeaveRequest(
     const [lt] = await tx
       .select({
         code: leaveType.code,
+        // 3fb1a611: `role` — leaveTypeIs resolves the role first. Without it the Emergency refusal below read
+        // the code alone, so a role-classified Emergency type with another code was editable in place.
+        role: leaveType.role,
+        // 3fb1a611 fix pass (D4): the refusal below is the DECOMPOSITION's, and requestLeave decomposes only a
+        // type with no balance source — so the edit must read the same column to ask the same question.
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
@@ -6035,8 +6149,19 @@ export async function editLeaveRequest(
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
     if (!lt) throw new Error('leave type not found');
-    // EMERGENCY / REPLACEMENT decompose or consume registers — never edited in place (v1).
-    if (leaveTypeIs(lt, 'emergency') || leaveTypeIs(lt, 'replacement')) {
+    // EMERGENCY decomposes into coupled child rows — never edited in place (v1).
+    // 3fb1a611 (r299) — REPLACEMENT is no longer refused here. Only a PENDING leave reaches this function, and a
+    // pending Replacement Leave has consumed nothing (the register is consumed at final approval), so editing it
+    // is the same re-validation every other type gets — including the balance guard against Available.
+    //
+    // 3fb1a611 fix pass (D4) — …and EMERGENCY is refused only where it DECOMPOSES. requestLeave splits an
+    // Emergency application into ANNUAL / UNPAID children ONLY when the type has no balance source
+    // (`leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null`, the branch into requestEmergencyLeave);
+    // with a source set it is saved as ONE ordinary request against that source and every gate below applies
+    // to it as to any other type. r299 added `role` to this read, which made production's role-classified `EL`
+    // (a code the old code-only check never matched, so it was editable on main) refuse even where it had never
+    // decomposed. The condition is requestLeave's, verbatim, so an edit refuses exactly what a submission splits.
+    if (leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null) {
       throw new LeaveEditNotAllowedError('this leave type cannot be edited here');
     }
 

@@ -326,7 +326,8 @@
     "controlTowerReadiness": "Record readiness",
     "controlTowerActions": "Agent actions",
     "sectionHome": "Home",
-    "schedule": "Schedule"
+    "schedule": "Schedule",
+    "leaveCredit": "Leave Credit"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1960,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "This Replacement Leave can't be cancelled: {credits}. A credit that has expired can't be given back.",
+      "cancellationCreditExpired": "the credit for the day worked on {workedDate} expired on {expiresOn}",
+      "cancellationCreditPaidOut": "the credit for the day worked on {workedDate} was paid out when it expired on {expiresOn}",
+      "cancellationCreditReversed": "the credit for the day worked on {workedDate} has been reversed",
+      "cancellationCreditUnreadable": "the record of which credits it used could not be read in full, so an HR administrator must cancel it"
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -1985,7 +1991,8 @@
         "pendingApproval": "Pending approval",
         "broughtForwardForfeited": "Brought forward forfeited",
         "availableBalance": "Available balance",
-        "available": "Available Balance"
+        "available": "Available Balance",
+        "expiringSoon": "Expiring soon"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
@@ -2027,7 +2034,8 @@
         "pendingHint": "Waiting for your line manager",
         "approvedLabel": "Replacement Leave",
         "approvedHint": "Approved and ready to use",
-        "cardPending": "{days} in lieu"
+        "cardPending": "{days} in lieu",
+        "statusReversed": "Reversed"
       },
       "statusNotGeneratedTitle": "Configured, but not yet generated",
       "statusNotGeneratedBody": "An entitlement table applies to this leave type for this leave year. The entitlement has not been generated yet, so the figures below are not the amount you are entitled to. Running Generate Entitlement grants it. If the figures do not change afterwards, this balance may be frozen for an encashment, or the country pack for this company may not be active.",
@@ -7266,6 +7274,7 @@
       "negativeBalanceNeedsLimitHelp": "These leave types are set to allow a negative balance but have no maximum. They behave exactly as they do today — approval still refuses a balance below zero — because the new permission only takes effect once you enter a limit. Work through them: enter a figure where you meant it, or set the switch back to No.",
       "adjustmentsTitle": "Make an adjustment",
       "adjustmentsHelp": "Add or take away leave days for a group of employees in one action. Choose the leave types, choose who it applies to, then enter the adjustment. Everything you do here is recorded as one action and can be reversed as a unit.",
+      "adjustmentsReplacementNote": "Replacement Leave is not adjusted here: every day of it is a credit with a date worked, an expiry date and a history. Add or reverse credits on",
       "adjustmentsStepTypes": "Leave type",
       "adjustmentsStepWho": "Employee Selection",
       "adjustmentsStepWhat": "Adjustment Details",
@@ -8735,6 +8744,7 @@
       "healthNoRuleInForce": "{tables} entitlement tables, no benefit scheme in force and no default table named, so no employee resolves to any of them.",
       "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. None of them reaches anybody, because no benefit scheme in force names them and no default table is set - so the entitlement run grants nothing from this configuration. Days already on an employee’s record came from an earlier configuration or were entered by hand.",
       "healthTableWithoutRule": "No benefit scheme names: {tables}. Nobody receives them until a scheme names one, or one of them becomes this leave type’s default table.",
+      "healthReplacementLeaveHasEntitlementTable": "Leave Credit is switched on, so every day of this leave type should come from Leave Credit. An entitlement table in force still adds days nobody earned: {tables}. Remove the table.",
       "healthRuleExpired": "Benefit scheme expired, so it covers nobody: {rules}",
       "healthRuleExpiring": "Benefit scheme ends soon: {rules}",
       "healthGradesWithoutTable": "Job grades that belong to no entitlement table: {grades}",
@@ -8856,7 +8866,9 @@
         "adjustments": "Adjust balances",
         "importLeaveData": "Import leave data",
         "entitlementArchive": "Configuration record",
-        "ledgerArchive": "Balance record"
+        "ledgerArchive": "Balance record",
+        "leaveCredit": "Credits",
+        "leaveCreditRules": "Rules"
       }
     },
     "leaveConfigRecords": {
@@ -9006,6 +9018,113 @@
       "gapDayTypesBody": "Only partly real. The five day types are fixed, and two of them — company holiday and shutdown day — are recorded but not yet acted on. Off day and rest day are treated as one non-working weekday. The setting that uses them belongs to leave counting, not to the schedule.",
       "gapOtCapTitle": "Monthly overtime-hour limit",
       "gapOtCapBody": "Stored on the payroll policy, not on the schedule, and edited under Payroll. Shown there so one figure has one owner."
+    },
+    "leaveConfigLeaveCredit": {
+      "pageDescription": "Credits earned by working a rest day, off day or public holiday, and the Replacement Leave that uses them."
+    },
+    "leaveCredit": {
+      "addButton": "+ Add Leave Credit",
+      "moduleOffTitle": "Leave Credit is not switched on for this account",
+      "moduleOffBody": "Leave Credit is a paid add-on. Turning it on is arranged separately; until then no credit can be earned, added or configured here.",
+      "windDown": "Leave Credit is not switched on for this account, so no new credit can be earned or added and the rules cannot be changed. {accruals} credit(s) are still outstanding: they are listed below and can still be expired, paid out or reversed.",
+      "filterEmployee": "Employee",
+      "filterAllEmployees": "All employees",
+      "filterMovement": "Movement",
+      "filterAllMovements": "All movements",
+      "filterFrom": "From",
+      "filterTo": "To",
+      "filterApply": "Apply",
+      "filterClear": "Clear",
+      "col": {
+        "date": "Date",
+        "employee": "Employee",
+        "movement": "Movement",
+        "dateWorked": "Date worked",
+        "before": "Before",
+        "amount": "Amount",
+        "after": "After",
+        "expires": "Expires",
+        "reason": "Reason",
+        "by": "By",
+        "status": "Status",
+        "action": "Action"
+      },
+      "movement": {
+        "earnedRequest": "Earned — request",
+        "earnedRoster": "Earned — roster",
+        "earnedAttendance": "Earned — attendance",
+        "earnedOther": "Earned",
+        "addedHr": "Added by HR",
+        "used": "Used — Replacement Leave",
+        "returned": "Returned — leave cancelled",
+        "reversed": "Reversed",
+        "expired": "Expired",
+        "paidOut": "Paid out on expiry",
+        "other": "Other adjustment"
+      },
+      "dayKind": {
+        "workday": "Working day",
+        "restDay": "Rest day",
+        "offDay": "Off day",
+        "holiday": "Public holiday"
+      },
+      "status": {
+        "available": "Available",
+        "used": "Used",
+        "reversed": "Reversed",
+        "expired": "Expired",
+        "paidOut": "Paid out"
+      },
+      "bySystem": "System",
+      "empty": "No Leave Credit movements match these filters.",
+      "truncated": "Showing the {shown} most recent of {matched} movements. Narrow the filters to see older ones.",
+      "reverseFootnote": "Reversing never deletes a line. The original stays exactly as it was, marked Reversed, and a reversal line is added beside it. A credit that has already been used cannot be reversed; cancel the leave that used it first.",
+      "orderFootnote": "Before and After are the employee's running Replacement Leave balance, counted in date order and then in the order the lines were recorded. A line dated earlier than lines already recorded changes Before and After for every later line. The list shows the newest first.",
+      "reverse": {
+        "button": "Reverse",
+        "title": "Reverse this Leave Credit",
+        "body": "The credit line stays, marked Reversed, and a reversal line is added. If overtime was recorded on the date worked, it becomes payable again.",
+        "reason": "Reason",
+        "confirm": "Reverse credit",
+        "cancel": "Cancel"
+      },
+      "banner": {
+        "granted": "Leave Credit of {days} day(s) added.",
+        "grantedOvertime": "The {hours} hour(s) of overtime recorded on {date} will not also be paid.",
+        "reversed": "Leave Credit of {days} day(s) reversed.",
+        "reversedOvertime": "The {hours} hour(s) of overtime recorded on {date} are payable again.",
+        "refreshDraftOvertime": "The draft payroll for {period} already carries this employee's overtime: re-run its overtime prefill so it reflects this."
+      },
+      "add": {
+        "title": "Add Leave Credit",
+        "description": "For a day an employee worked but did not send a request, and management agreed HR should credit it.",
+        "employee": "Employee",
+        "employeePlaceholder": "Search by name or Employee ID",
+        "search": "Search…",
+        "noResults": "No matching employee",
+        "leaveType": "Leave type",
+        "leaveTypeValue": "Replacement Leave",
+        "dateWorked": "Date worked",
+        "credit": "Credit amount (days)",
+        "expiry": "Expiry date",
+        "expiryHint": "Filled in from your rule; you can change it. It cannot be before the date worked.",
+        "reason": "Reason",
+        "reasonPlaceholder": "Required",
+        "remarks": "Remarks",
+        "remarksPlaceholder": "Optional",
+        "submit": "Add credit",
+        "cancel": "Cancel",
+        "checking": "Checking the date…",
+        "dayKind": "{kind} for this employee.",
+        "workingDay": "This is an ordinary working day for this employee. Only a rest day, off day or public holiday can earn a Leave Credit.",
+        "overtime": "This date already has {hours} hour(s) of overtime recorded for this employee. Once credited, that overtime will not also be paid, because the day is being given back as leave instead.",
+        "alreadyCredited": "This employee already has a Leave Credit for this date.",
+        "policyOff": "Leave Credit is switched off for this employee's company. Switch it on in the Rules tab first.",
+        "firstScheduleConsent": "This employee is within the First Schedule, so statutory overtime pay applies. A credit needs their recorded agreement to take leave instead of that pay, and any credit they do not use will be paid out when it expires.",
+        "firstScheduleConsentLabel": "The employee has agreed to take this day as leave instead of statutory overtime pay.",
+        "firstScheduleBlocked": "This employee is within the First Schedule and their company does not allow a Leave Credit in place of statutory overtime pay. Change that in the Rules tab first."
+      },
+      "rulesIntro": "Who can earn a Leave Credit, how it is earned and how long a credit lasts, per company. A change here applies to credits granted after it; a credit already granted keeps its expiry date."
     }
   },
   "topbar": {
@@ -11768,9 +11887,9 @@
     "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
   },
   "replacementRequest": {
-    "trigger": "+ Replacement Leave Request",
-    "title": "Replacement leave request",
-    "description": "Claim replacement leave for days you have already worked. Your line manager approves it, and the credit appears on your balance once they do.",
+    "trigger": "+ Leave Credit request",
+    "title": "Leave Credit request",
+    "description": "Ask for a credit for a rest day, off day or public holiday you worked. Nothing is credited until your manager approves.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -11787,8 +11906,8 @@
     "totalHours": "{hours} hour(s)",
     "reason": "Reason",
     "cancel": "Cancel",
-    "submit": "Submit request",
-    "submittedToast": "Replacement leave request submitted.",
+    "submit": "Send to manager",
+    "submittedToast": "Leave Credit request sent to your manager.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
     "unavailable": {
       "moduleOffTitle": "Replacement Leave in Lieu is not part of this plan",
@@ -11810,7 +11929,15 @@
       "title": "The overtime protection rule applies here",
       "body": "Your wages are at or below the statutory overtime wage ceiling, so each request asks you to agree to bank the time instead of taking the statutory overtime cash for those days. Unused credit is paid out when it expires rather than lapsing.",
       "bodyAdmin": "This employee's wages are at or below the statutory overtime wage ceiling, so each request asks them to agree to bank the time instead of taking the statutory overtime cash for those days. Unused credit is paid out when it expires rather than lapsing."
-    }
+    },
+    "eligibleDaysNote": "Only a rest day, off day or public holiday can earn a credit. Nothing is credited until your manager approves.",
+    "dayKind": {
+      "workday": "Working day",
+      "restDay": "Rest day",
+      "offDay": "Off day",
+      "holiday": "Public holiday"
+    },
+    "workingDayRefused": "An ordinary working day cannot earn a credit."
   },
   "notices": {
     "pageTitle": "Notice Board",

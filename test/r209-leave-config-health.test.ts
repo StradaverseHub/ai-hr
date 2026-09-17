@@ -107,6 +107,8 @@ const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
   // 76ffdcf2 — required on HealthLeaveType so a projection that drops it fails the compiler, not a page.
   defaultEntitlementTemplateLineageId: null,
   accrualUnconfigured: false,
+  // 3fb1a611 (r299 fix pass) — required too, for the same reason; false = no Leave Credit on this tenant.
+  daysFromLeaveCreditOnly: false,
   archived: false,
   // r299 (3de1453a) — required on HealthLeaveType; false ⇒ no stranded earned method on this fixture.
   earnedMethodNotAnnualLeave: false,
@@ -716,6 +718,7 @@ describe('r209 · the health card and the ENGINE agree about which zero is a fau
         name: 'Medical Leave',
         accrualMethod: 'grant_on_hire_prorated',
         accrualUnconfigured: false,
+        daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — required on HealthLeaveType
         archived: false,
         defaultEntitlementTemplateLineageId: null,
         earnedMethodNotAnnualLeave: false,

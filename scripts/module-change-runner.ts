@@ -208,11 +208,11 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   // Tenant-level ONCE. `tenant_setting` is keyed by (tenant, key), so running this per company would
   // repeat one insert and report the repeats as skips — a false "already present" in the audit event.
   for (const activator of tenantLevel) {
-    outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null }));
+    outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null, firstInstall: !existing }));
   }
   for (const activator of perCompany) {
     for (const target of targets) {
-      outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: target.id }));
+      outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: target.id, firstInstall: !existing }));
     }
   }
   const merged = mergeOutcomes(outcomes);

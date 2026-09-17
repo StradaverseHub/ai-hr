@@ -77,6 +77,7 @@ import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status
 import {
   requestLeaveAction,
   submitReplacementLeaveRequestAction,
+  leaveCreditDayKindAction,
   requestLeaveCancellationAction,
   adminCancelLeaveAction,
   editLeaveAction,
@@ -899,6 +900,8 @@ export default async function LeavePage({
                   submitAction={submitReplacementLeaveRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
+                  // 3fb1a611 (r299) — the kind-of-day chip beside each date worked (a server action, not a closure).
+                  dayKindAction={leaveCreditDayKindAction}
                 />
               )}
             </div>

@@ -383,9 +383,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // 645e67c4 added /admin/leave/replacement, and 296fc027 made it the HOME of replacement-leave
     // CONFIGURATION (the policy editor moved onto it from /admin/toil, which keeps the balance ledger and
     // the two settlement sweeps). Still a ROUTE rather than a new screenKey — same admin surface behind
-    // the same requireAdmin guard, the /admin/personnel precedent above. `toilPolicy` stays registered
-    // separately below: the two screens are gated differently ON PURPOSE, because the sweeps must stay
-    // reachable when the `toil` entitlement lapses and configuration must not.
+    // the same requireAdmin guard, the /admin/personnel precedent above. `toilPolicy` stayed registered
+    // separately below until 3fb1a611 (r299) folded /admin/toil into Leave Config › Leave Credit — which keeps
+    // the sweeps reachable when the `toil` entitlement lapses (a wind-down view), so the gating difference
+    // this note defended is preserved on the one screen rather than by two.
     routes: [
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
       // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
@@ -491,6 +492,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave-config/earned-accrual',
       '/admin/leave-config/adjustments',
+      // 3fb1a611 (r299) — LEAVE CREDIT's own address: every Replacement Leave credit movement, + Add Leave
+      // Credit, Reverse, the settlement sweeps and the Rules tab. Same admin surface behind the same
+      // `requireAdmin` guard as every other `/admin/leave-config/` screen, so it is a ROUTE on this screen key
+      // (test/leave-config-map.test.ts requires every map href to be declared here). It REPLACES the
+      // `toilPolicy` column below, whose only route (/admin/toil) is a redirect stub to this page now — no
+      // role loses access: both were requireAdmin, and screen keys are not persisted anywhere.
+      '/admin/leave-config/leave-credit',
+      // …and its Rules tab, the replacement-leave policy form that left Company rules (same guard, same key).
+      '/admin/leave-config/leave-credit/rules',
       '/admin/leave-config/import',
       // 7f69bd71 — THE RESET RECORDS SUB-SCREEN: the two read-only registers as sub-tabs of one page
       // (`?record=configuration` / `?record=balances`), reached from the foot of Leave Adjustments. Same
@@ -681,8 +691,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     // authority is the group administrator's (core/clocking-location.ts assertGroupAdmin + RLS).
     routes: ['/admin/locations', '/admin/locations/clocking/new', '/admin/locations/clocking/[id]'],
   },
-  // a324a4b3: nav.toilPolicy → nav.timeOffInLieu ("Time off in lieu", the page's own title). screenKey unchanged.
-  { screenKey: 'toilPolicy', href: '/admin/toil', labelKey: 'nav.timeOffInLieu', guard: 'requireAdmin', routes: ['/admin/toil'] },
+  // 3fb1a611 (r299) — `{ screenKey: 'toilPolicy', href: '/admin/toil', … }` STOOD HERE and is DELIBERATELY
+  // GONE. /admin/toil is an unguarded redirect stub to Leave Config › Leave Credit, which holds its ledger
+  // summary and settlement sweeps, and a stub is not a screen this grid can describe — the route left in the
+  // SAME commit that emptied the page (test/function-access.test.ts fails BOTH ways). The destination is
+  // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
+  // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
   {
     screenKey: 'claimsConfig',
     href: '/admin/claims',
