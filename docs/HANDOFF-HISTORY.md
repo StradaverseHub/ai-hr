@@ -1,3 +1,96 @@
+## r299 (2026-09-17) — Earned Accrual is Annual Leave only, decided by one predicate; Leave Credit held back. `main@5c3ecb8a`, **no migration**.
+
+Closed and DEPLOYED: `3de1453a`. **Built but NOT shipped: `3fb1a611` Leave Credit** (branch `build/r299-credit`,
+migration 0469 unmerged) — see below. Gate: **887 files — equal to the suite file count — 13,490 tests, 0
+AssertionErrors after one re-run**: chunk 11 went red on `test/r291-detached-deploy.test.ts` (a timing-sensitive
+end-to-end release test; the chunk took 429 s against ~80 s because I ran tsc beside it) and passed alone 33/33 on
+the same commit — the round touches neither the deploy scripts nor that test. `next build` exit 0. Deployed:
+rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 5c3ecb8a.
+**Lesson re-learned: run NOTHING heavy beside a gate, not even tsc.**
+
+### ONE PREDICATE, THREE ENGINES, AND THE THIRD WAS FOUND BY READING, NOT BY TESTING
+
+`isEarnedAccrualType(lt) = leaveTypeIs(lt, 'annual')` — role first, code `ANNUAL` only for an unclassified row —
+replaces `STANDING_LEAVE_CODES` wherever Earned Accrual decides coverage. `STANDING_LEAVE_CODES` itself is
+untouched (openLeaveYear and the expiry sweeps still need all three). The builder delivered the sweep, the screens
+and the editor; **its own report named a second path it had not closed**: `reprojectEntitlementForEmployment`
+corrects any type with an accrual row this cycle, so a SICK type the old sweep had been topping up would still be
+topped up on an ordinary profile save — the plan told the reporter "nothing is calculated, added or changed". Hand-fixed
+(`9242afb4`) with the same boundary, so sweep, year-open and reprojection now agree: a **stranded** earned method
+posts nothing until HR changes it, and Leave Balance Health names it.
+
+### THE VERIFIER'S FINDINGS, AND WHICH WERE HAND-FIXED
+
+- **Two active Annual Leave types under concurrent saves** — 9 of 10 attempts in the verifier's probe; Earned
+  Accrual would post to both. A row lock cannot help (the conflicting row is a different row), so every door
+  (switch on either service, unarchive, create with the ANNUAL code) takes a per-tenant transaction advisory lock
+  before its read — the `core/claims.ts` `lockClaimLimit` precedent (`70d651d1`). Pinned by a 5-round
+  concurrent test; removing the lock turns it red.
+- **Switching off an ANNUAL-coded type that carries the role** cleared the role and changed nothing (the code
+  fallback kept it Annual Leave) — refused now.
+- **Switching on while employee applications are blocked** left the plan's "employees can never be blocked from
+  applying for it" untrue — refused now; HR allows applications first.
+- `scripts/reset-entitlement-configuration.ts` imported `core/leave` directly — `leave-pack-drift` red; now via
+  `packs/leave/service`.
+- Fix pass (agent): stranded types now read "Earning method for Annual Leave only" on the balance screens and
+  Generate Entitlement instead of "Accrues through the year"; a legacy `earned_quarterly` on a non-Annual type can
+  be changed to None (it was read-only while the note told HR to change it).
+- The render check found a **MISSING_MESSAGE already on main**: every earning/carry save toasted the raw key
+  `admin.entitlementUpdatedToast` (it lives at `admin.leave.entitlementUpdatedToast`). Fixed.
+
+### DECISIONS the ticket did not settle
+
+- **The picker DISABLES non-Annual types**, reversing half of r293's "mark, do not remove, do not disable" on the
+  reporter's explicit instruction; rows stay listed. The engine remains the control.
+- **We did not switch "This is our Annual Leave" on for them.** On the reporting account `*Annual Leave` carries a
+  non-standing code and no role (migration 0387's header records exactly which rows were classified), so until the
+  reporter switches it on, Run Earned Accrual has nothing to work on — and says so. Marking it also turns on the
+  statutory code lock and can-apply lock; that is their call on the right row.
+- **Production could not be measured** (the auto-mode classifier refuses production reads). Relied on r293's
+  recorded state: no active leave type on that account carried ANNUAL/SICK/HOSPITALIZATION, so narrowing the
+  sweep stops no live accrual. **ASSUMPTION, not verified.**
+
+### CORRECTIONS OWED TO THE REPORTER
+
+- **The plan's list of "older rules that still recognise Annual Leave by its code" was incomplete.** It named the
+  statutory minimum and the Anniversary-to-Calendar first-year rule. It omitted **carry-forward expiry**
+  (`expireCarriedLeave` filters `code = 'ANNUAL'`): carried days on a switched-on `*Annual Leave` will NOT expire in
+  the 1 April run. Also code-keyed: `hireYearGrantDays` proration. To be said at the top of the next item.
+- With no Annual Leave switched on, an "All leave types" preview still names the archived `Annual Leave` and says
+  to unarchive it, beside the sentence telling them to switch on `*Annual Leave`. Both are true; they point
+  different ways until the reporter acts. Not changed.
+
+### `3fb1a611` LEAVE CREDIT — BUILT, VERIFIED, NOT SHIPPED, AND WHY THAT WAS RIGHT
+
+The adversarial verifier found it would not break production on deploy day in the ways I feared most (a
+Replacement Leave approval with zero credits logs a shortfall and succeeds), but found **two money defects, a
+false promise and two deploy-day regressions**:
+- **Expired credits over-valued**: stamping a day type on request/HR credits routed them to the statutory branch,
+  which prices the WHOLE declared/overtime minutes and ignores the used part (3 days on one rest day: 384.76 vs
+  230.76). The builder's re-pointed test used one whole unused day, where both bases agree.
+- **Overtime promises the payroll cannot keep**: payroll only excludes a credited day at PREFILL (`overtime_amount`
+  is a per-batch aggregate), so a credit added after a processed run paid the day twice and a reversal after one
+  left it unpaid — while the banners said the opposite.
+- **HR could credit themselves** (366 days on one date, consent box ticked by HR).
+- **Deploy-day**: Leave Adjustments and import refused the RL type on a tenant WITHOUT the module, where RL is still
+  entitlement-based and HR has no other lever; editing a pending Emergency leave with a balance source was newly
+  refused.
+- **Promise**: the Rules tab could not show the August eligibility before the module was on, and granting the
+  module would make a stored `enabled` policy live instantly.
+
+Money and security **hand-fixed** on the branch (`24c49a42`, `453f2e9c`, `0ec8b6e9`), each re-derived red: no
+valuation day type on request/HR credits; HR add/reverse refused against a processed/closed run holding that date's
+overtime, drafts allowed with the period named for re-prefill; self-credit refused; service dates checked;
+consumption guarded against a concurrent reversal; Malaysian dates for expiry; give-back skips its unindexed event
+scans when the employee holds no credit. Non-money deploy-day items are with a fix-pass agent. **Leave Credit ships
+only after a final verification and its own gate.**
+
+### NOT DONE
+
+- The "Monthly accrued to date" figure still shows for a stranded type. No DB constraint for "one active Annual
+  Leave" (the lock is the mechanism). Stale switch state if two admins edit one type (ordinary lost update).
+- `graphify update` after this entry.
+
 ## r298 (2026-09-17) — payroll sections ask before they read, Daily Attendance resolves holidays per calendar, and two plans rewritten from the reporter's words. `main@60a40452`, **no migration**.
 
 Closed and DEPLOYED: `ceb1c560` (payroll sections on core screens) · `b6a995c1` (Daily Attendance holiday N+1).
