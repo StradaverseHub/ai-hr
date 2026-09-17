@@ -32,6 +32,7 @@ import { appendEvent, actorOf } from '../db/events';
 import { employment, person, employeeStatutoryMy, leaveType, leaveLedger } from '../db/schema';
 import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { listLeaveTypes } from './read';
+import { isReplacementLeaveType } from './ess-view';
 import {
   LEAVE_IMPORT_COLUMNS,
   LEAVE_IMPORT_ENTRY_TYPES,
@@ -96,6 +97,10 @@ async function analyze(
   // Leave types (non-archived) matched by code, case-insensitive. listLeaveTypes lives in core/read.
   const types = await listLeaveTypes(ctx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
+  // 3fb1a611 (r299) — the Replacement Leave type(s): an imported row on one is a balance with no credit behind
+  // it (no date worked, no expiry, no place in the expiring-first order), the same ghost Leave Adjustments now
+  // refuses. Replacement Leave balances change on Leave Config › Leave Credit.
+  const replacementTypeIds = new Set(types.filter((t) => isReplacementLeaveType(t)).map((t) => t.id));
 
   // Every employment the caller may see (RLS-scoped), matched on employeeCode / primaryEmail / IC.
   // NOT active-only: leave history migration routinely includes people who have since left (their final
@@ -193,6 +198,9 @@ async function analyze(
     // ── Leave type resolution (non-archived, case-insensitive) ──
     const leaveTypeId = leaveTypeRaw ? typeByCode.get(leaveTypeRaw.toLowerCase()) : undefined;
     if (leaveTypeRaw && !leaveTypeId) errors.push(`Leave type not found: ${leaveTypeRaw}`);
+    if (leaveTypeId && replacementTypeIds.has(leaveTypeId)) {
+      errors.push('Replacement Leave balances are changed on Leave Config › Leave Credit, not by import');
+    }
 
     // ── Transaction type → entryType enum (in_lieu_accrual explicitly rejected) ──
     let entryType: LeaveImportEntryType | undefined;

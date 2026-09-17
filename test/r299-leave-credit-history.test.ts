@@ -21,6 +21,7 @@ import { setRestDay } from '../core/roster';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCancelLeave, decideLeave, leaveBalance, leaveTypeApplySummary, requestLeave } from '../core/leave';
 import { applyLeaveAdjustmentBatch, LeaveAdjustmentError } from '../core/leave-adjustment';
+import { commitLeaveImport, validateLeaveImport } from '../core/leave-import';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   EXPIRING_SOON_DAYS,
@@ -236,6 +237,41 @@ describe('Leave Adjustments refuses the Replacement Leave type (gap 8)', () => {
         employmentIds: [emp.employmentId],
       }),
     ).resolves.toMatchObject({ written: 1 });
+  });
+});
+
+describe('Leave import refuses the Replacement Leave type (same promise as gap 8)', () => {
+  it('errors the row in the preview, commits nothing for it, and still imports another type', async () => {
+    const emp = await hire('Imported');
+    await setRestDay(adminCtx(b), { employmentId: emp.employmentId, shiftDate: `${LAST_MONTH}-08` });
+    await grantLeaveCredit(admin, { employmentId: emp.employmentId, workedDate: `${LAST_MONTH}-08`, days: 1, reason: 'creates the type', today: TODAY });
+    const [row] = await owner.db
+      .select({ code: schema.employment.employeeCode })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, emp.employmentId));
+    const records = [
+      { employee_id: row.code!, leave_type: 'REPLACEMENT', transaction_type: 'adjustment', days: '3', effective_date: TODAY },
+      { employee_id: row.code!, leave_type: 'ANNUAL', transaction_type: 'adjustment', days: '1', effective_date: TODAY },
+    ];
+    const preview = await validateLeaveImport(admin, { records });
+    expect(preview.rows[0].ok).toBe(false);
+    expect(preview.rows[0].errors.join(' ')).toMatch(/Leave Credit/);
+    expect(preview.rows[1].ok).toBe(true);
+
+    const replacement = await replacementTypeId();
+    const ledger = () =>
+      owner.db
+        .select({ id: schema.leaveLedger.id })
+        .from(schema.leaveLedger)
+        .where(and(eq(schema.leaveLedger.employmentId, emp.employmentId), eq(schema.leaveLedger.leaveTypeId, replacement)));
+    const before = (await ledger()).length;
+    await commitLeaveImport(admin, { records });
+    expect((await ledger()).length, 'no Replacement Leave row written by import').toBe(before);
+    const annual = await owner.db
+      .select({ id: schema.leaveLedger.id })
+      .from(schema.leaveLedger)
+      .where(and(eq(schema.leaveLedger.employmentId, emp.employmentId), eq(schema.leaveLedger.leaveTypeId, b.annualLeaveTypeId), eq(schema.leaveLedger.entryType, 'adjustment')));
+    expect(annual.length, 'the valid row beside it is still imported').toBe(1);
   });
 });
 
