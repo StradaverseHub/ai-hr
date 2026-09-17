@@ -108,11 +108,11 @@ export async function CompanyPolicyCard({
                     <td className="px-4 py-2 font-medium text-foreground">{c.name}</td>
                     <td className="px-4 py-2">
                       {p.isDefault ? (
-                        <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                        <span className="whitespace-nowrap rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
                           {tp('usingDefaults')}
                         </span>
                       ) : (
-                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                        <span className="whitespace-nowrap rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                           {t('policySaved')}
                         </span>
                       )}
@@ -126,7 +126,7 @@ export async function CompanyPolicyCard({
                         {p.halfWorkingDays.length > 0 && ` · ${t('colHalfDays')}: ${days(p.halfWorkingDays)}`}
                       </span>
                     </td>
-                    <td className="px-4 py-2 tabular-nums text-muted-foreground">
+                    <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">
                       {/* The latest attendance-policy.updated for this company, as a Kuala Lumpur calendar date.
                           No event: a company with no row has never been saved (—); a SAVED row with no event
                           was written by provisioning, and the date is genuinely unknown (Not recorded). */}

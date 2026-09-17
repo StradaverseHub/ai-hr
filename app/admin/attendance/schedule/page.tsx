@@ -337,8 +337,10 @@ export default async function ScheduleConfigPage({
           the same reads and writers; see the r301 note in the header and each card's own file. When a panel
           is open the cards and the panel sit side by side on a very wide screen (the approved mockup); on
           anything narrower the panel comes first, so the editor the reader just opened is not below four
-          cards. ───────────────────────────────────────────────────────────────────────────────────────── */}
-      <div className={panelNode ? 'grid items-start gap-6 2xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]' : 'space-y-6'}>
+          cards. The side-by-side threshold is 1900px, not Tailwind's 2xl (1536px): rendered at 1600px the
+          left column was ~540px and the Schedule Group row actions (Deactivate, Delete) scrolled out of view
+          behind the table's horizontal scroll. ─────────────────────────────────────────────────────── */}
+      <div className={panelNode ? 'grid items-start gap-6 min-[1900px]:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]' : 'space-y-6'}>
         <div className="min-w-0 space-y-6">
           <ScheduleGroupCard rules={rules} />
           <CompanyPolicyCard companies={visible} policies={policies} lastUpdated={lastUpdated} />
@@ -376,7 +378,7 @@ export default async function ScheduleConfigPage({
           </Card>
         </div>
         {panelNode && (
-          <section id={SCHEDULE_PANEL_ANCHOR} className="order-first min-w-0 scroll-mt-6 space-y-6 2xl:order-none">
+          <section id={SCHEDULE_PANEL_ANCHOR} className="order-first min-w-0 scroll-mt-6 space-y-6 min-[1900px]:order-none">
             {panelNode}
           </section>
         )}
