@@ -361,6 +361,9 @@ describe('D4 · editLeaveRequest refuses Emergency only where requestLeave decom
         paid: true,
         counting: 'working_days',
         balanceSourceTypeId,
+        // Without a source EL has no balance of its own; the balance gate is opened so that, were the refusal
+        // gone, the edit would SUCCEED — the refusal is then the only thing that can stop it.
+        allowNegativeBalance: balanceSourceTypeId == null,
       })
       .returning({ id: schema.leaveType.id });
     return row.id;
