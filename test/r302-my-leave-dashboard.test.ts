@@ -266,12 +266,15 @@ describe('every figure follows the year chosen — a pick off leaveEntitlementBr
     // STARTS in": year Y is (currentYear − Y) cycles before the cycle containing today. For an October type the
     // cycle containing today opened this October (from October on) or last October (before it); the year before
     // is the cycle before that one. test/r302fp-my-leave-fixpass.test.ts walks three selections.
+    // r302 hand-fix (second verification): the selector offers a year only when its mapped cycle holds rows, so the
+    // fixture's row sits IN the cycle before today's (it used to sit in today's, which that year no longer offers).
     const emp = await hire('2019-10-01');
     const T = await type({ yearCycleOverride: 'a2a' });
-    await ledger(emp.employmentId, T, 'accrual', 5, `${YEAR - 1}-10-01`);
-    const d = await myLeaveDashboard(emp.ctx, emp.employmentId, { today: TODAY, year: String(YEAR - 1) });
-    const c = d.cards.find((x) => x.leaveTypeId === T)!;
     const currentStartYear = TODAY >= `${YEAR}-10-01` ? YEAR : YEAR - 1;
+    await ledger(emp.employmentId, T, 'accrual', 5, `${currentStartYear - 1}-10-01`);
+    const d = await myLeaveDashboard(emp.ctx, emp.employmentId, { today: TODAY, year: String(YEAR - 1) });
+    expect(d.selectedYear, 'the year is offered').toBe(YEAR - 1);
+    const c = d.cards.find((x) => x.leaveTypeId === T)!;
     expect(c.cycleStart).toBe(`${currentStartYear - 1}-10-01`);
     expect(c.cycleEnd).toBe(`${currentStartYear}-09-30`);
   });

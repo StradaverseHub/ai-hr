@@ -319,11 +319,13 @@ describe('D4 · rows of one application all show the application’s per-date ou
     const survivor = rows.find((r) => r.status === 'approved')!;
     expect(survivor.hasRejectedDates, 'the precondition: the rejected date’s own row stayed on the original').toBe(false);
     const trails = await ownLeaveApprovalTrails(emp.ctx, rows.map((r) => r.id));
-    const outcome = { approved: [MON, TUE], rejected: [{ date: WED, reason: 'Audit week' }] };
+    // UPDATED by the r302 hand-fix after the second verification: the outcome is the application's AS IT STANDS —
+    // MON, given back, reads cancelled on both rows (test/r302-my-leave-handfix2.test.ts §1 carries the defect).
+    const outcome = { approved: [TUE], rejected: [{ date: WED, reason: 'Audit week' }], cancelled: [MON] };
     for (const r of rows) expect(trails.get(r.id)?.perDateOutcome, `${r.status} row: the application’s outcome`).toEqual(outcome);
     expect(isPartiallyApproved(survivor, trails.get(survivor.id)), 'the survivor reads "Partially approved"').toBe(true);
     expect(applicationDateOutcomeRows(outcome).map((d) => `${d.leaveDate}:${d.status}:${d.rejectReason ?? ''}`)).toEqual([
-      `${MON}:approved:`,
+      `${MON}:cancelled:`,
       `${TUE}:approved:`,
       `${WED}:rejected:Audit week`,
     ]);
