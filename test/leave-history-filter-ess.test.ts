@@ -224,9 +224,11 @@ describe('5f2e20fb · only the history box is affected (source shape)', () => {
     for (const p of ['hFrom', 'hTo', 'hType']) {
       expect(beforeHistory.includes(p), `${p} must not reach the balance/entitlement reads`).toBe(false);
     }
-    // The as-at date the balance table owns is untouched by the history filter, and rides along as a
-    // hidden input so applying a filter cannot reset it.
-    expect(page).toContain("['asOf', sp.asOf]");
+    // The leave YEAR the dashboard owns is untouched by the history filter, and rides along as a hidden input
+    // so applying a filter cannot reset it. UPDATED BY r302 (6c9802c9): this was the as-at date, which went
+    // with the My balances card; the Year selector replaced it, and the carrier moved with it.
+    expect(page).toContain("['leaveYear', sp.leaveYear]");
+    expect(page).not.toContain("['asOf', sp.asOf]");
   });
 
   it('the tick-list options come from the UNFILTERED read, or they vanish on first use', () => {

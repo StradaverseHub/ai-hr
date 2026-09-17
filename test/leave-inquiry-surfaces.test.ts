@@ -40,11 +40,17 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // ec991c2a: the call now carries an explicit `{ includeArchived: false }`, so this is a prefix match
     // rather than the whole line. The decision pinned is untouched — the READ itself, not just the markup,
     // is behind the `ess` gate, so an admin page load pays nothing for balances nobody renders.
-    expect(leavePage).toContain('const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale');
-    expect(leavePage).toContain('const selfRequests = ess && me ?');
-    // My Balances: the primary cards and the detailed balance card.
-    expect(leavePage).toContain('{ess && primaryCards.length > 0 && (');
-    expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<Card className="overflow-hidden" data-tour="leave-balance">/);
+    //
+    // UPDATED BY r302 (6c9802c9): the balance reads are ONE per-year dashboard read now (core/my-leave.ts), and
+    // it is behind the same gate. The flat `leaveRequestsFor` read that sat beside it fed nothing and is gone.
+    expect(leavePage).toContain('const dashboard = ess && me ? await myLeaveDashboard(session, me.employmentId,');
+    expect(leavePage).toContain('ess && me ? await sharedLeaveGroupBalances(');
+    expect(leavePage).not.toContain('leaveRequestsFor(');
+    // My Balances → the dashboard card (the primary tiles and the detailed balance card were replaced by it).
+    expect(leavePage).toMatch(/\{ess && dashboard && \(\s*\n\s*<Card className="p-5" data-tour="me-leave">/);
+    expect(leavePage).toContain('<div className="mt-3" data-tour="leave-balance">');
+    // Upcoming Leave is own-leave too.
+    expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<Card className="p-5">\s*\n\s*<h2 className="text-sm font-semibold">\{t\('myLeave\.upcomingTitle'\)\}/);
     // Request Leave. UPDATED BY ad965821 (AGENTS rule 18): the `ess` gate is intact and is still what this
     // block is about — a second condition was ADDED beside it, so an employee who qualifies for no leave
     // type at all gets no trigger rather than an empty form. Asserting the old exact shape would have
@@ -53,14 +59,15 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
   });
 
   it('leaves leave application, approval and balance calculation untouched', () => {
-    // Same server actions, same on-behalf-of options, same balance derivation helper.
-    for (const kept of [
-      'submitAction={requestLeaveAction}',
-      'previewAction={previewLeaveDeductionAction}',
-      'deriveBalanceRow(b, bd ?? null)',
-    ]) {
+    // Same server actions, same on-behalf-of options. r302 (6c9802c9): the balance figures are picked off the
+    // SAME owners — leaveEntitlementBreakdown per year, and the Apply popup's own leaveTypeApplySummary for
+    // "You can apply for" — in core/my-leave.ts; the page no longer derives a row itself.
+    for (const kept of ['submitAction={requestLeaveAction}', 'previewAction={previewLeaveDeductionAction}']) {
       expect(leavePage.includes(kept), kept).toBe(true);
     }
+    const myLeave = read('core/my-leave.ts');
+    expect(myLeave).toContain('leaveTypeApplySummary(ctx, { employmentId, leaveTypeId: b.leaveTypeId })');
+    expect(myLeave).toContain('leaveEntitlementBreakdown(ctx, employmentId, storyId, asOf, locale)');
     // afd0a87c — AdminCancelLeaveDialog went with the request table, and is NOT a loss: cancelling
     // someone else's leave lives on Employee Leave Record and on the dashboard calendar. Asserted at both
     // surviving homes rather than merely dropped, so a later edit cannot quietly leave it homeless.

@@ -312,15 +312,32 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
 });
 
 describe('Leave Details panel: both call sites feed the trimmed §1 summary + visual', () => {
-  const PAGES = ['/app/leave/page.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
+  // UPDATED BY r302 (6c9802c9): the employee's side-sheet is opened by the My Leave dashboard island now (the
+  // page no longer renders a breakdown itself), so the call site moved from app/leave/page.tsx to it. The
+  // same three facts are asserted at the new site.
+  const PAGES = ['/components/leave/my-leave-dashboard.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
   for (const p of PAGES) {
     const src = read(p);
-    it(`${p} passes summary + visual to EntitlementBreakdown`, () => {
+    it(`${p} passes summary + visual to the breakdown panel`, () => {
       expect(src.includes('summary={{')).toBe(true);
       expect(src.includes('visual={{')).toBe(true);
       expect(src.includes('upcoming={')).toBe(false);
     });
   }
+
+  // 11876072 removed the panel's §5 "Upcoming Approved Leave", and the pins above (no `upcoming=` prop; no
+  // 'upcoming' section descriptor) keep the PANEL that way. r302 (6c9802c9) REVERSES that removal at the
+  // reporter's request — but as a section of the PAGE, not a line in the panel: "Upcoming Leave lists approved
+  // and pending leave from today onwards". Pinned here beside the no-upcoming pins so the two decisions are
+  // read together: the page has an Upcoming Leave section; the panel still has no upcoming list.
+  it('r302: /leave renders an Upcoming Leave section of its own, fed by the approved+pending read', () => {
+    const page = read('/app/leave/page.tsx');
+    expect(page).toContain('<UpcomingLeave rows={upcoming} locale={locale} />');
+    expect(page).toContain('myUpcomingLeave(session, historyEmploymentIds, today)');
+    expect(read('/core/my-leave.ts')).toContain("statuses: ['pending', 'approved'],");
+    // …and the panel takes no upcoming prop (comments recording the 11876072 removal are allowed).
+    expect(read('/components/leave/LeaveDetailsPanel.tsx')).not.toMatch(/\bupcoming\??:\s/);
+  });
 
   it('1f6fd6d8: no call site still feeds the four figures the summary stopped taking from leaveBalances', () => {
     // PanelSummary is down to `available`. A call site still passing taken/pending/ytdEntitled/balance would

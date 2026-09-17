@@ -117,6 +117,8 @@ export function LeaveDetailsPanel({
   open,
   onOpenChange,
   hideTrigger = false,
+  hideAsOfForm = false,
+  footnote = null,
   triggerLabel,
   triggerClassName,
 }: {
@@ -156,6 +158,15 @@ export function LeaveDetailsPanel({
   onOpenChange?: (open: boolean) => void;
   /** Hide the built-in "View Breakdown" trigger (used with controlled-open, where an external card opens it). */
   hideTrigger?: boolean;
+  /**
+   * r302 (6c9802c9) — hide the as-at date form. My Leave replaced "As at" with a Year selector: the panel there
+   * shows one leave year's figures, read at that year's last day, and an as-at form beside them would post a
+   * date nothing on the page reads. Omit it and every other host is byte-identical.
+   */
+  hideAsOfForm?: boolean;
+  /** r302 hand-fix — one plain line under the column (My Leave: what the card's Balance counts beyond this leave
+   *  year, so the column that adds up and the card's figure are never left to contradict each other silently). */
+  footnote?: string | null;
   /**
    * r242 — the built-in trigger's CAPTION and CLASSES, for a host whose surface names this affordance
    * differently. Employee Balances puts it in a table cell under an "Explanation" heading, where the
@@ -419,6 +430,7 @@ export function LeaveDetailsPanel({
 
           <div className="space-y-5 px-5 py-4">
             {/* As-at date control — the preserved ?asOf= GET form, moved INTO the panel. */}
+            {!hideAsOfForm && (
             <form method="GET" action={action} className="flex flex-wrap items-end gap-2">
               {Object.entries(hiddenParams).flatMap(([k, v]) =>
                 (Array.isArray(v) ? v : [v]).map((one, i) => (
@@ -441,6 +453,7 @@ export function LeaveDetailsPanel({
                 {t('apply')}
               </button>
             </form>
+            )}
 
             {/* 31e39d74 — "configured but not yet generated", said before the column of figures rather than
                 left to be inferred from a 0.00 inside it. Named alongside the entitlement TABLE that is
@@ -545,6 +558,11 @@ export function LeaveDetailsPanel({
                 </section>
               );
             })}
+            {footnote && (
+              <p className="text-xs text-muted-foreground" data-testid="panel-footnote">
+                {footnote}
+              </p>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

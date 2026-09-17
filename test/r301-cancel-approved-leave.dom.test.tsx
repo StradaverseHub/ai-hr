@@ -202,14 +202,20 @@ describe('PENDING CANCELLATION on the employee’s own record, in every locale',
       startDate: '2026-10-12',
       endDate: '2026-10-14',
       days: 3,
+      // r302 (6c9802c9) — the entry's shape changed with My Leave History's rows: the stage line and the
+      // single-manager name/photo fields were replaced by approverLine / approvalProgress (names from
+      // migration 0472), plus the date submitted, the reason, a rejection reason and cancellation detail.
+      appliedOn: '2026-09-01',
+      reason: null,
+      approverLine: null,
+      approvalProgress: null,
+      rejectionReason: null,
+      cancellation: null,
       splitRows: null,
       sessionSuffix: null,
       sessionLabel: 'Full day',
       statusKey: 'pendingCancellation',
       statusLabel: leave.pendingCancellationStatus,
-      stageLabel: null,
-      approverName: null,
-      approverPersonId: null,
       cancelPendingLabel: leave.cancelPendingBadge,
       cancelProgress: {
         steps: [

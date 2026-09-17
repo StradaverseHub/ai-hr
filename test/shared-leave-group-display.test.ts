@@ -427,9 +427,14 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     // uses <SharedLeaveGroupCards> — one render site, not two. A group placed Secondary that only ever drew
     // Primary would be a setting the admin can choose and the screen ignores; the primary path is pinned by
     // the assertion below.
-    expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(1);
-    // PRIMARY placement flows into the per-type card row (46afcc48), not a separate category.
-    expect(leavePage).toMatch(/<LeaveCards[^>]*sharedGroups={sharedGroupsPrimary}/);
+    //
+    // UPDATED BY r302 (6c9802c9): "One My Leave page … the leave balance dashboard", with placement as ORDER
+    // rather than location. Both placements now render as tiles inside the ONE dashboard grid — Primary groups
+    // before Secondary ones — so the separate Secondary card is gone too. What this case defends is unchanged:
+    // a group placed Secondary still draws (it is not silently dropped), and so does a Primary one.
+    expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(0);
+    expect(leavePage).toMatch(/<MyLeaveDashboard[^>]*sharedGroups=\{\[\.\.\.sharedGroupsPrimary, \.\.\.sharedGroupsSecondary\]\}/);
+    expect(read('../components/leave/my-leave-dashboard.tsx')).toContain('sharedGroups.map((g) =>');
   });
 
   it('it is SELF-SERVICE only — the read is suppressed for an HR admin, not merely the markup', () => {

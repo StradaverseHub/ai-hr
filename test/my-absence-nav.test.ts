@@ -127,10 +127,12 @@ describe('My Absence: /me is purely profile — Leave tab removed, deep-links fo
 
 describe('My Absence: everything the /me Leave tab had now lives on /leave', () => {
   it('hosts the primary "My Leave" summary cards (with the relocated me-leave tour anchor)', () => {
-    // 46afcc48: LeaveCards now also takes a sharedGroups prop (primary-placed shared groups render inside
-    // this row), so match the tag prefix rather than the exact self-closing form.
-    expect(leavePage.includes('<LeaveCards entries={primaryCards}')).toBe(true);
+    // UPDATED BY r302 (6c9802c9): the primary tiles became the leave balance dashboard (every type that
+    // applies, Primary first, with shared groups as tiles). The me-leave tour anchor stays on its Card, which
+    // is what this case defends: the My Profile walkthrough still lands on the employee's balances.
+    expect(leavePage).toMatch(/<MyLeaveDashboard\s+cards=\{dashboardCards\}/);
     expect(leavePage.includes('data-tour="me-leave"')).toBe(true);
+    expect(leavePage.split('data-tour="me-leave"').length - 1).toBe(1);
     // The me-tour step follows the cards to /leave.
     const tours = JSON.parse(read('lib/module-tours.json')) as {
       me: { steps: { target: string | null; route: string | null }[] };
@@ -146,12 +148,17 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
     expect(leavePage.includes('/me/leave/attachment/${r.id}?inline=1')).toBe(true);
     expect(existsSync(root + 'app/me/leave/attachment/[id]/route.ts')).toBe(true);
     expect(leavePage.includes("tMe('leaveStatus.partiallyApproved')")).toBe(true);
-    expect(leavePage.includes("tMe('stageManager')")).toBe(true);
+    // r302 (6c9802c9): the stage line ("Manager review" / "HR review") is replaced by the approver line — who
+    // it is waiting for and at which level, labelled by the step's KIND — and the step-by-step progress.
+    expect(leavePage.includes("tMe('stageManager')")).toBe(false);
+    expect(leavePage.includes('approverLine: approverLineFor(r)')).toBe(true);
+    expect(read('lib/my-leave-history.ts').includes("t('myLeave.waitingForRole', { role, level: line.level, of: line.of })")).toBe(true);
   });
 
   it('keeps the pre-existing /leave capabilities intact (balances, apply, edit/cancel history)', () => {
     for (const kept of [
-      '<LeaveBalanceTable',
+      // r302: balances are the dashboard now (the My balances table is removed by the approved plan).
+      '<MyLeaveDashboard',
       '<RequestLeaveDialog',
       '<EditLeaveDialog',
       '<CancelLeaveDialog',

@@ -270,7 +270,9 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // 5f2e20fb renamed the history read (the flat scope-wide `listLeaveRequests` became the
     // self-narrowed `listLeaveRequestsPage`). The property is unchanged — no self-service read may run
     // above the early return — so the list follows the read rather than the read being kept for the list.
-    for (const r of ['leaveBalances(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
+    // r302 (6c9802c9): the balance read became the per-year dashboard read (core/my-leave.ts calls
+    // leaveBalances inside it), so the list follows the read again — the property is unchanged.
+    for (const r of ['myLeaveDashboard(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
       expect(leavePage.indexOf(r), r).toBeGreaterThan(guardAt);
     }
   });
@@ -295,7 +297,9 @@ describe('388e53c2 · My Leave means your own leave again', () => {
   it('the self-service half of /leave is untouched — this item moved nothing of the employee\'s', () => {
     for (const kept of [
       '<RequestLeaveDialog',
-      '<LeaveBalanceTable',
+      // r302 (6c9802c9) — the employee's balances are the dashboard now (the My balances table is gone by the
+      // approved plan); what this case defends — the self-service half is still here — is unchanged.
+      '<MyLeaveDashboard',
       '<LeaveHistoryCards',
       '<EditLeaveDialog',
       '<CancelLeaveDialog',

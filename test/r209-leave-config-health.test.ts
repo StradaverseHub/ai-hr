@@ -833,7 +833,9 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     // HR's grid + its export, and the Personnel profile all show the pooled figure; all three must resolve
     // the breakdown through `balanceStoryTypeId` or the contradiction comes back on the one that does not.
     for (const rel of [
-      'app/leave/page.tsx',
+      // r302 (6c9802c9): the employee's own balances are read per leave year in core/my-leave.ts, which is
+      // where the pool lookup moved with them (the page no longer resolves any breakdown itself).
+      'core/my-leave.ts',
       'app/leave/employee-balances/rows.ts',
       'app/admin/personnel/[employmentId]/page.tsx',
     ]) {

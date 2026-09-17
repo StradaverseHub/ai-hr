@@ -289,35 +289,43 @@ describe('Leave Balance table source: responsive DB-free client island', () => {
 });
 
 // R37 e5a158d3: the detailed Workday-style balance table was RELOCATED from the /me Leave tab to the
-// dedicated /leave page. These guards moved with it — /leave now composes it (preserving R22), and /me
-// no longer renders it.
-describe('Leave Balance table: /leave composes it while preserving R22 (panel + shared as-at form)', () => {
+// dedicated /leave page.
+//
+// UPDATED BY r302 (board 6c9802c9), which REMOVES it from /leave: the approved My Leave dashboard plan drops the
+// "My balances" card (this table, its As-at form and its cookie) in favour of per-type cards for one leave year.
+// The table component itself is untouched and its own guards above still run. What this block now pins is the
+// replacement keeping R22's two promises — each type still opens its breakdown side-sheet, ESS-gated, and the
+// balances are still the VIEWER's own — and that the table does not quietly come back beside the dashboard.
+describe('Leave Balance table: /leave no longer composes it; the dashboard keeps R22 (side-sheet, viewer scope)', () => {
   const page = read('/app/leave/page.tsx');
+  const dashboard = read('/components/leave/my-leave-dashboard.tsx');
+  const myLeave = read('/core/my-leave.ts');
 
-  it('renders LeaveBalanceTable built from deriveBalanceRow', () => {
-    expect(page).toMatch(/<LeaveBalanceTable/);
-    expect(page).toMatch(/deriveBalanceRow\(b, bd \?\? null\)/);
+  it('the table and its row helper are gone from /leave', () => {
+    expect(page).not.toMatch(/<LeaveBalanceTable/);
+    expect(page).not.toMatch(/deriveBalanceRow\(/);
   });
 
-  it('keeps each row wired to the EntitlementBreakdown side-sheet as its detail (R22)', () => {
-    expect(page).toMatch(/detail:/);
-    expect(page).toMatch(/<EntitlementBreakdown/);
-    expect(page.includes('applyEssConfig')).toBe(true);
+  it('each dashboard card still opens its breakdown side-sheet, ESS-gated (R22)', () => {
+    expect(dashboard).toMatch(/<LeaveDetailsPanel/);
+    expect(dashboard).toMatch(/data=\{selected\.breakdown\}/);
+    expect(dashboard.includes('applyEssConfig')).toBe(true);
+    expect(dashboard).toContain('essViewHasAnyVisibleRow(c.essView)');
   });
 
-  it('lifts ONE shared ?asOf= GET form above the table (posts back to /leave)', () => {
+  it('the As-at form is replaced by the Year GET form (posts back to /leave); the panel hides its own', () => {
     expect(page).toMatch(/method="GET"/);
-    expect(page).toMatch(/name="asOf"/);
+    expect(page).toMatch(/name="leaveYear"/);
     expect(page).toMatch(/action="\/leave"/);
-    expect(page).toMatch(/defaultValue=\{breakdownAsOf\}/);
+    expect(page).not.toMatch(/name="asOf"/);
+    expect(dashboard).toContain('hideAsOfForm');
   });
 
   it('scopes the balances to the VIEWER via per-employment leaveBalances (not the all-employee pivot)', () => {
-    // ec991c2a: same relaxation as test/leave-balance-relocation.test.ts — the call carries an explicit
-    // `{ includeArchived: false }` now. Viewer-scoped + localized is still what is asserted, and the
-    // all-employee pivot is still ruled out on the next line.
-    expect(page).toMatch(/leaveBalances\(session, me\.employmentId, locale\b/);
+    expect(page).toContain('myLeaveDashboard(session, me.employmentId,');
+    expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale\b/);
     expect(page.includes('leaveBalancesAll')).toBe(false);
+    expect(myLeave.includes('leaveBalancesAll')).toBe(false);
   });
 });
 
