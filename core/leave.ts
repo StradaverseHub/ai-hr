@@ -8043,6 +8043,23 @@ export function effectiveAccrualDay(asOf: string, accrualDay?: number | null): n
 }
 
 /**
+ * r303 (31492f74) — THE DATE AN EARNED METHOD STARTS COUNTING FROM, lifted out of `earnedToDateFor` verbatim
+ * (both of its branches) so the Leave Summary explanation can say which joiner rule applies without holding
+ * a second copy of it. The cycle start for anyone hired on or before it and for every anniversary cycle; for a
+ * calendar-cycle joiner, the hire DATE on earned_daily and the first of the hire MONTH on the monthly and
+ * quarterly methods. See `earnedToDateFor`'s header for why the two differ.
+ */
+export function earnedAccrualStart(p: {
+  method: string | null | undefined;
+  cycleStart: string;
+  hiredOn: string;
+  leaveCycle: string | null | undefined;
+}): string {
+  if (p.leaveCycle === 'anniversary' || p.hiredOn <= p.cycleStart) return p.cycleStart;
+  return p.method === 'earned_daily' ? p.hiredOn : `${p.hiredOn.slice(0, 7)}-01`;
+}
+
+/**
  * bc36c768 — THE ONE EARNED-TO-DATE KERNEL. Returns the RAW cumulative an employee has earned in the
  * current cycle as of `asOf`, BEFORE rounding and before any max-balance room cap.
  *
@@ -8080,23 +8097,6 @@ export function effectiveAccrualDay(asOf: string, accrualDay?: number | null): n
  * hire date, which is the behaviour monthly accrual has always had; matching it was chosen over silently
  * giving anniversary employees a different first cycle than the one they have today.)
  */
-/**
- * r303 (31492f74) — THE DATE AN EARNED METHOD STARTS COUNTING FROM, lifted out of `earnedToDateFor` verbatim
- * (both of its branches) so the Leave Summary explanation can say which joiner rule applies without holding
- * a second copy of it. The cycle start for anyone hired on or before it and for every anniversary cycle; for a
- * calendar-cycle joiner, the hire DATE on earned_daily and the first of the hire MONTH on the monthly and
- * quarterly methods. See `earnedToDateFor`'s header for why the two differ.
- */
-export function earnedAccrualStart(p: {
-  method: string | null | undefined;
-  cycleStart: string;
-  hiredOn: string;
-  leaveCycle: string | null | undefined;
-}): string {
-  if (p.leaveCycle === 'anniversary' || p.hiredOn <= p.cycleStart) return p.cycleStart;
-  return p.method === 'earned_daily' ? p.hiredOn : `${p.hiredOn.slice(0, 7)}-01`;
-}
-
 export function earnedToDateFor(p: {
   /** The RESOLVED accrual method. Anything not in EARNED_METHODS yields 0 — this kernel is only ever
    *  reached behind an `isEarnedMethod` guard, and returning 0 for a lump method is the honest answer
@@ -8248,6 +8248,22 @@ export function isA2cFirstYear(
 }
 
 /**
+ * r303 (31492f74) — WHICH of `hireYearGrantDays`' three branches applies, as a value, so the Leave Summary
+ * explanation names the join-year rule the engine uses instead of restating its predicates. `hireYearGrantDays`
+ * branches on THIS, so the sentence and the grant cannot describe different rules.
+ */
+export type HireYearGrantShape = 'a2c_up_front' | 'months_remaining' | 'full';
+export function hireYearGrantShape(p: {
+  typeCode: string;
+  yearCycleOverride: string | null | undefined;
+  hiredOn: string;
+}): HireYearGrantShape {
+  if (isA2cFirstYear(p.yearCycleOverride, p.typeCode, p.hiredOn, p.hiredOn)) return 'a2c_up_front';
+  if (p.typeCode === 'ANNUAL') return 'months_remaining';
+  return 'full';
+}
+
+/**
  * r193 — HOW A GRANT IS SHAPED IN THE EMPLOYEE'S HIRE YEAR, as ONE function two engines share.
  *
  * ⚠️ THIS EXISTS BECAUSE FAULT 2'S FIX WOULD OTHERWISE BREAK THE ONE-COMPOSITION INVARIANT. `openLeaveYear`
@@ -8273,22 +8289,6 @@ export function isA2cFirstYear(
  * `serviceEnd` caps a first-year LEAVER's a2c figure at their last day of service (adcdf215). The hire
  * grant passes nothing (a fresh hire has not left); the year-open passes `terminatedOn`.
  */
-/**
- * r303 (31492f74) — WHICH of `hireYearGrantDays`' three branches applies, as a value, so the Leave Summary
- * explanation names the join-year rule the engine uses instead of restating its predicates. `hireYearGrantDays`
- * branches on THIS, so the sentence and the grant cannot describe different rules.
- */
-export type HireYearGrantShape = 'a2c_up_front' | 'months_remaining' | 'full';
-export function hireYearGrantShape(p: {
-  typeCode: string;
-  yearCycleOverride: string | null | undefined;
-  hiredOn: string;
-}): HireYearGrantShape {
-  if (isA2cFirstYear(p.yearCycleOverride, p.typeCode, p.hiredOn, p.hiredOn)) return 'a2c_up_front';
-  if (p.typeCode === 'ANNUAL') return 'months_remaining';
-  return 'full';
-}
-
 export function hireYearGrantDays(p: {
   days: number;
   typeCode: string;
