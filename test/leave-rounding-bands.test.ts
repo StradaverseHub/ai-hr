@@ -264,7 +264,7 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
       { kind: 'decimals', index: 1 },
       { kind: 'decimals', index: 2 },
     ]);
-    expect(checkRoundingBands(SNAP_TO_HALF_PRE_R303)).toEqual([{ kind: 'overlap', index: 1 }]);
+    expect(checkRoundingBands(SNAP_TO_HALF_PRE_R303)).toEqual([{ kind: 'overlap', index: 1, with: 0 }]);
     expect(isWellFormedRoundingBands(SNAP_TO_HALF_PRE_R303)).toBe(false);
   });
 
@@ -274,7 +274,7 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
       { from: 0.4, to: 1, result: 1 },
     ];
     expect(kinds(overlapping)).toContain('overlap');
-    expect(checkRoundingBands(overlapping)).toContainEqual({ kind: 'overlap', index: 1 });
+    expect(checkRoundingBands(overlapping)).toContainEqual({ kind: 'overlap', index: 1, with: 0 });
     expect(roundingBandErrors(overlapping).length).toBeGreaterThan(0);
     expect(isWellFormedRoundingBands(overlapping)).toBe(false);
   });
@@ -285,7 +285,8 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
       { from: 0, to: 0.49, result: 1 },
       { from: 0.5, to: 1, result: 0.5 },
     ];
-    expect(checkRoundingBands(dup)).toContainEqual({ kind: 'duplicate', index: 1 });
+    // r303 — both rows of the pair are named (`with` is the earlier one), so the message can say which.
+    expect(checkRoundingBands(dup)).toContainEqual({ kind: 'duplicate', index: 1, with: 0 });
     expect(kinds(dup)).not.toContain('overlap'); // reported once, as the more specific thing it is
   });
 
@@ -340,7 +341,7 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
     expect(checkRoundingBands([
       { from: 0, to: 0.24, result: 0 },
       { from: 0.24, to: 0.49, result: 0.5 },
-    ])).toContainEqual({ kind: 'overlap', index: 1 });
+    ])).toContainEqual({ kind: 'overlap', index: 1, with: 0 });
     expect(roundingBandErrors([
       { from: 0, to: 0.24, result: 0 },
       { from: 0.25, to: 0.49, result: 0.5 },
@@ -349,7 +350,7 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
     expect(checkRoundingBands([
       { from: 0, to: 0.99, result: 0 },
       { from: 0.5, to: 0.5, result: 1 },
-    ])).toEqual([{ kind: 'overlap', index: 1 }]);
+    ])).toEqual([{ kind: 'overlap', index: 1, with: 0 }]);
   });
 
   it('coverage is only reported once the rows are individually sane', () => {
@@ -387,7 +388,8 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
     await expect(attempt).rejects.toThrow(
       'The rounding table was not saved. Row 3: use at most two decimal places. Row 3: From cannot be above To. ' +
         'Row 4: keep From, To and Round To between 0.00 and 1.00. Row 4: From cannot be above To. ' +
-        'Row 5: fill in From, To and Round To. Row 2: this range overlaps another row (a range includes both its From and its To).',
+        'Row 5: fill in From, To and Round To. ' +
+        'Row 2: 0.24 to 0.49 overlaps 0.00 to 0.24 (row 1); two ranges cannot cover the same figure, and a range includes both its From and its To.',
     );
     // Nothing was written.
     expect((await typeRow(id)).roundingBands).toBeNull();

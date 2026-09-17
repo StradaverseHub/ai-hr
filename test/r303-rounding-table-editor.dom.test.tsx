@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { NextIntlClientProvider, useTranslations } from 'next-intl';
+import { NextIntlClientProvider, createTranslator, useTranslations } from 'next-intl';
 
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -91,6 +91,13 @@ const cells = (label: string) => screen.getAllByRole('spinbutton', { name: label
 const posted = (container: HTMLElement) =>
   JSON.parse((container.querySelector('input[name="roundingBands"]') as HTMLInputElement).value) as unknown;
 const text = (container: HTMLElement) => container.textContent ?? '';
+/** Every problem message the table draws, in order, as [kind, text]. `data-problem` is on each paragraph. */
+const problemsShown = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('[data-problem]')].map((p) => [p.dataset.problem, p.textContent ?? '']);
+/** The shipping catalogue's message, formatted by the real ICU engine with the arguments the screen passes. */
+const say = (locale: string, messages: Record<string, unknown>, key: keyof Sub, values?: Record<string, string>) =>
+  // Untyped on purpose: the six catalogues are loaded as JSON, and the key list is `keyof Sub` already.
+  (createTranslator({ locale, messages, namespace: 'admin.leave.subStep' }) as unknown as (k: string, v?: Record<string, string>) => string)(key, values);
 
 describe('§A the columns are From / To / Round To, and a saved table shows exactly what was saved', () => {
   it.each(LOCALES)('%s', (locale, messages) => {
@@ -108,9 +115,7 @@ describe('§A the columns are From / To / Round To, and a saved table shows exac
       expect(c).toHaveAttribute('step', '0.01');
     }
     // A converted table is complete: no refusal, no gap.
-    for (const key of ['roundingBandBlank', 'roundingBandDecimals', 'roundingBandRange', 'roundingBandOrder', 'roundingBandOverlap', 'roundingBandDuplicate'] as const) {
-      expect(text(view.container), `${locale} ${key}`).not.toContain(S[key]);
-    }
+    expect(problemsShown(view.container)).toEqual([]);
     expect(text(view.container)).toContain(S.roundingBandsHelp);
     expect(posted(view.container)).toEqual(CONVERTED);
     expect(intlErrors).toEqual([]);
@@ -139,7 +144,7 @@ describe("§B From and To are typed on every row, and the reporter's table posts
     const view = mount(custom(null), locale, messages);
     for (let i = 0; i < REPORTER.length; i++) await user.click(screen.getByRole('button', { name: S.roundingBandAddRow }));
     // Blank rows are not a rule nobody typed — they are a blank-cell problem until filled in.
-    expect(text(view.container)).toContain(S.roundingBandBlank);
+    expect(problemsShown(view.container)).toEqual([['blank', S.roundingBandBlank]]);
     for (const [i, [from, to, result]] of REPORTER.entries()) {
       await user.type(cells(S.roundingBandFrom)[i]!, from!);
       await user.type(cells(S.roundingBandTo)[i]!, to!);
@@ -152,50 +157,48 @@ describe("§B From and To are typed on every row, and the reporter's table posts
       { from: 0.5, to: 0.74, result: 0.5 },
       { from: 0.75, to: 0.99, result: 1 },
     ]);
-    for (const key of ['roundingBandBlank', 'roundingBandDecimals', 'roundingBandRange', 'roundingBandOrder', 'roundingBandOverlap', 'roundingBandDuplicate'] as const) {
-      expect(text(view.container), `${locale} ${key}`).not.toContain(S[key]);
-    }
-    // No gap warning: the four ranges join up with both ends included.
-    expect(view.container.querySelector('p.text-amber-600')).toBeNull();
+    // No refusal and no gap warning: the four ranges join up with both ends included.
+    expect(problemsShown(view.container)).toEqual([]);
     expect(intlErrors).toEqual([]);
   });
 });
 
 describe('§C every rule has its own message, and a gap warns with the uncovered decimals', () => {
-  const PROBLEMS: [keyof Sub, LeaveTypeRules['roundingBands']][] = [
-    ['roundingBandBlank', [{ from: 0, to: Number.NaN, result: 0 }]],
-    ['roundingBandDecimals', [{ from: 0, to: 0.245, result: 0 }]],
-    ['roundingBandRange', [{ from: 0, to: 1, result: 1.5 }]],
-    ['roundingBandOrder', [{ from: 0.6, to: 0.5, result: 0 }]],
+  type Case = [string, LeaveTypeRules['roundingBands'], (locale: string, m: Record<string, unknown>) => [string, string][]];
+  const PROBLEMS: Case[] = [
+    ['blank', [{ from: 0, to: Number.NaN, result: 0 }], (l, m) => [['blank', say(l, m, 'roundingBandBlank')]]],
+    ['decimals', [{ from: 0, to: 0.245, result: 0 }], (l, m) => [['decimals', say(l, m, 'roundingBandDecimals')]]],
+    ['range', [{ from: 0, to: 1, result: 1.5 }], (l, m) => [['range', say(l, m, 'roundingBandRange')]]],
+    ['order', [{ from: 0.6, to: 0.5, result: 0 }], (l, m) => [['order', say(l, m, 'roundingBandOrder')]]],
     [
-      'roundingBandOverlap',
+      // The approved mockup's own example check: "0.25 to 0.49 overlaps 0.40 to 0.60".
+      'overlap',
       [
         { from: 0, to: 0.24, result: 0 },
-        { from: 0.24, to: 0.99, result: 1 },
+        { from: 0.25, to: 0.49, result: 0.5 },
+        { from: 0.4, to: 0.6, result: 0.5 },
       ],
+      (l, m) => [['overlap', say(l, m, 'roundingBandOverlap', { from: '0.25', to: '0.49', otherFrom: '0.40', otherTo: '0.60' })]],
     ],
     [
-      'roundingBandDuplicate',
+      'duplicate',
       [
         { from: 0, to: 0.99, result: 0 },
         { from: 0, to: 0.99, result: 1 },
       ],
+      (l, m) => [['duplicate', say(l, m, 'roundingBandDuplicate', { from: '0.00', to: '0.99' })]],
     ],
   ];
-  const ALL = PROBLEMS.map(([k]) => k);
 
   for (const [locale, messages] of LOCALES) {
-    it.each(PROBLEMS)(`${locale}: %s — shown alone, on the row it concerns`, (key, bands) => {
-      const S = subOf(messages);
+    it.each(PROBLEMS)(`${locale}: %s — its own message and nothing else, on a highlighted row`, (_kind, bands, want) => {
       const view = mount(custom(bands), locale, messages);
-      expect(text(view.container)).toContain(S[key]);
-      for (const other of ALL.filter((k) => k !== key)) expect(text(view.container), `${locale} ${other}`).not.toContain(S[other]);
+      expect(problemsShown(view.container)).toEqual(want(locale, messages));
       expect(view.container.querySelectorAll('tr.bg-destructive\\/10').length).toBeGreaterThan(0);
       expect(intlErrors).toEqual([]);
     });
 
     it(`${locale}: a gap is a warning naming both ends, and the table is still posted`, () => {
-      const S = subOf(messages);
       const view = mount(
         custom([
           { from: 0, to: 0.24, result: 0 },
@@ -204,13 +207,15 @@ describe('§C every rule has its own message, and a gap warns with the uncovered
         locale,
         messages,
       );
-      const warnings = [...view.container.querySelectorAll('p.text-amber-600')].map((p) => p.textContent ?? '');
-      expect(warnings).toHaveLength(2);
-      expect(warnings[0]).toContain('0.25');
-      expect(warnings[0]).toContain('0.49');
-      expect(warnings[1]).toContain('0.75');
-      expect(warnings[1]).toContain('0.99');
-      for (const k of ALL) expect(text(view.container)).not.toContain(S[k]);
+      expect(problemsShown(view.container)).toEqual([
+        ['gap', say(locale, messages, 'roundingBandGap', { from: '0.25', to: '0.49' })],
+        ['gap', say(locale, messages, 'roundingBandGap', { from: '0.75', to: '0.99' })],
+      ]);
+      expect(view.container.querySelectorAll('tr.bg-destructive\\/10')).toHaveLength(0);
+      expect(posted(view.container)).toEqual([
+        { from: 0, to: 0.24, result: 0 },
+        { from: 0.5, to: 0.74, result: 0.5 },
+      ]);
       expect(intlErrors).toEqual([]);
     });
   }

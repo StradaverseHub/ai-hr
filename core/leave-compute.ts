@@ -494,10 +494,12 @@ export type RoundingBandProblem =
   | { kind: 'range'; index: number }
   /** From above To — an inverted row, which can never match anything */
   | { kind: 'order'; index: number }
-  /** the SAME (from, to) appears twice; `index` is the later row */
-  | { kind: 'duplicate'; index: number }
-  /** this row's range shares at least one decimal with an earlier row's; `index` is the later row */
-  | { kind: 'overlap'; index: number }
+  /** the SAME (from, to) appears twice; `index` is the later row, `with` the earlier one */
+  | { kind: 'duplicate'; index: number; with: number }
+  /** this row's range shares at least one decimal with an earlier row's; `index` is the later row, `with` the
+   *  earlier one — both are named, so the message can say WHICH two ranges clash ("0.25 to 0.49 overlaps
+   *  0.40 to 0.60"), as the approved mockup does */
+  | { kind: 'overlap'; index: number; with: number }
   /** the decimals from..to (both included, 2dp) that no row covers. WARNING only — see the header. */
   | { kind: 'gap'; from: number; to: number };
 
@@ -546,9 +548,9 @@ export function checkRoundingBands(bands: unknown): RoundingBandProblem[] {
     for (let z = a + 1; z < rows.length; z++) {
       const x = rows[a];
       const y = rows[z];
-      if (x.from === y.from && x.to === y.to) out.push({ kind: 'duplicate', index: y.i });
+      if (x.from === y.from && x.to === y.to) out.push({ kind: 'duplicate', index: y.i, with: x.i });
       // INCLUSIVE at both ends: two rows sharing even one decimal (0.00–0.24 and 0.24–0.49) is two answers.
-      else if (x.from <= y.to && y.from <= x.to) out.push({ kind: 'overlap', index: y.i });
+      else if (x.from <= y.to && y.from <= x.to) out.push({ kind: 'overlap', index: y.i, with: x.i });
     }
   }
   // Coverage is only meaningful once the rows are individually sane; on a broken table the gaps would be

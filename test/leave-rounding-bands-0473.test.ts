@@ -450,7 +450,7 @@ describe("§3 the reporter's table works exactly as typed", () => {
       ],
     });
     await expect(attempt).rejects.toBeInstanceOf(LeaveTypeRuleError);
-    await expect(attempt).rejects.toThrow(/Row 2: this range overlaps another row/);
+    await expect(attempt).rejects.toThrow(/Row 2: 0\.50 to 1\.00 overlaps 0\.00 to 0\.50 \(row 1\)/);
   });
 });
 

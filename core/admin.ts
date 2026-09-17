@@ -4372,18 +4372,26 @@ export async function setLeaveTypeRules(
       // (subStep.roundingBandBlank / Decimals / Range / Order / Overlap / Duplicate). Thrown by the service
       // and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad table), so it
       // must describe the table as the screen now labels it: From and To both typed, both INCLUDED.
-      const say: Record<Exclude<RoundingBandProblem['kind'], 'gap'>, string> = {
-        shape: 'fill in From, To and Round To',
-        blank: 'fill in From, To and Round To',
-        decimals: 'use at most two decimal places',
-        range: 'keep From, To and Round To between 0.00 and 1.00',
-        order: 'From cannot be above To',
-        duplicate: 'this range is entered twice',
-        overlap: 'this range overlaps another row (a range includes both its From and its To)',
+      const bands = p.roundingBands;
+      const range = (i: number) => `${bands[i]!.from.toFixed(2)} to ${bands[i]!.to.toFixed(2)}`;
+      const say = (x: Exclude<RoundingBandProblem, { kind: 'gap' }>): string => {
+        switch (x.kind) {
+          case 'shape':
+          case 'blank':
+            return 'fill in From, To and Round To';
+          case 'decimals':
+            return 'use at most two decimal places';
+          case 'range':
+            return 'keep From, To and Round To between 0.00 and 1.00';
+          case 'order':
+            return 'From cannot be above To';
+          case 'duplicate':
+            return `${range(x.index)} is entered twice (row ${x.with + 1})`;
+          case 'overlap':
+            return `${range(x.index)} overlaps ${range(x.with)} (row ${x.with + 1}); two ranges cannot cover the same figure, and a range includes both its From and its To`;
+        }
       };
-      const sentences = problems.map((x) =>
-        x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say[x.kind]}.`,
-      );
+      const sentences = problems.map((x) => (x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say(x)}.`));
       throw new LeaveTypeRuleError(`The rounding table was not saved. ${sentences.filter(Boolean).join(' ')}`);
     }
   }

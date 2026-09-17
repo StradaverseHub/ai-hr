@@ -231,7 +231,9 @@ describe('§1 8fec719e — the TYPE-level round trip: method and table are saved
     expect(redirectSpy).toHaveBeenCalledTimes(1);
     const target = decodeURIComponent(String(redirectSpy.mock.calls[0]![0]));
     expect(target).not.toContain('error=undefined');
-    expect(target).toContain('Row 2: this range overlaps another row (a range includes both its From and its To).');
+    expect(target).toContain(
+      'Row 2: 0.50 to 1.00 overlaps 0.00 to 0.50 (row 1); two ranges cannot cover the same figure, and a range includes both its From and its To.',
+    );
     expect((await typeRulesOf()).roundingBands).toEqual(HALF_DAY_TABLE);
   });
 

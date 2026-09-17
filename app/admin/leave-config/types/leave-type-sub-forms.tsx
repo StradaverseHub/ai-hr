@@ -239,14 +239,30 @@ function RoundingBandsEditor({
       </Button>
       {/* Errors first, ONE MESSAGE PER PROBLEM (r303), then the gap warning: an overlapping table is refused,
           an incomplete one is not. */}
-      {(has('shape') || has('blank')) && <p className="text-xs text-destructive">{t('subStep.roundingBandBlank')}</p>}
-      {has('decimals') && <p className="text-xs text-destructive">{t('subStep.roundingBandDecimals')}</p>}
-      {has('range') && <p className="text-xs text-destructive">{t('subStep.roundingBandRange')}</p>}
-      {has('order') && <p className="text-xs text-destructive">{t('subStep.roundingBandOrder')}</p>}
-      {has('overlap') && <p className="text-xs text-destructive">{t('subStep.roundingBandOverlap')}</p>}
-      {has('duplicate') && <p className="text-xs text-destructive">{t('subStep.roundingBandDuplicate')}</p>}
+      {(has('shape') || has('blank')) && (
+        <p data-problem="blank" className="text-xs text-destructive">{t('subStep.roundingBandBlank')}</p>
+      )}
+      {has('decimals') && <p data-problem="decimals" className="text-xs text-destructive">{t('subStep.roundingBandDecimals')}</p>}
+      {has('range') && <p data-problem="range" className="text-xs text-destructive">{t('subStep.roundingBandRange')}</p>}
+      {has('order') && <p data-problem="order" className="text-xs text-destructive">{t('subStep.roundingBandOrder')}</p>}
+      {/* An overlap or a duplicate names the ranges involved, one message per clashing pair, in the figures
+          as typed ("0.25 to 0.49 overlaps 0.40 to 0.60" — the approved mockup's own example). */}
+      {problems.map((p, i) =>
+        p.kind === 'overlap' || p.kind === 'duplicate' ? (
+          <p key={`clash-${i}`} data-problem={p.kind} className="text-xs text-destructive">
+            {p.kind === 'overlap'
+              ? t('subStep.roundingBandOverlap', {
+                  from: rows[p.with]!.from,
+                  to: rows[p.with]!.to,
+                  otherFrom: rows[p.index]!.from,
+                  otherTo: rows[p.index]!.to,
+                })
+              : t('subStep.roundingBandDuplicate', { from: rows[p.index]!.from, to: rows[p.index]!.to })}
+          </p>
+        ) : null,
+      )}
       {gaps.map((g, i) => (
-        <p key={i} className="text-xs text-amber-600 dark:text-amber-400">
+        <p key={i} data-problem="gap" className="text-xs text-amber-600 dark:text-amber-400">
           {t('subStep.roundingBandGap', { from: bandText(g.from), to: bandText(g.to) })}
         </p>
       ))}
