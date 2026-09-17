@@ -88,12 +88,6 @@ const deps: HistoryLineDeps = {
 };
 
 
-const deps: HistoryLineDeps = {
-  t: (key, values) => (values ? `${key}${JSON.stringify(values)}` : key),
-  kindLabel: (kind) => (kind ? `KIND:${kind}` : null),
-  fmtInstant: (d) => (d ? `T:${d.toISOString()}` : null),
-  listNames: (n) => n.join('|'),
-};
 const LOG = (_k: string, _v: unknown) => {};
 async function world() {
   const emp = await person('Nadia Employee', 'employee');
@@ -165,18 +159,17 @@ describe('1 · a given-back day reads Cancelled on every row of the application'
       const t = trails.get(id)!;
       expect(t.lineage, 'split rows read the root').toBe('root');
       expect(t.submittedAt?.toISOString(), 'Submitted = the application’s submission, every generation').toBe(submitted.toISOString());
-      expect(t.perDateOutcome).toEqual({ approved: [MON, TUE, THU, FRI], rejected: [{ date: WED, reason: 'Audit week; see memo, v2' }] });
+      expect(t.perDateOutcome).toEqual({ approved: [THU, FRI], rejected: [{ date: WED, reason: 'Audit week; see memo, v2' }], cancelled: [MON, TUE] });
     }
     expect(todayInKualaLumpur(trails.get(C.id)!.submittedAt!)).toBe(todayInKualaLumpur(submitted));
-    // THE GIVEN-BACK DAYS. The hand-fix marks MON and TUE 'cancelled' on their own date rows; the page's per-date
-    // list for every row of the application is the approval event's, which knows nothing of the give-backs.
+    // THE GIVEN-BACK DAYS. The r302 split marks MON and TUE 'cancelled' on their own date rows, and every row of the
+    // application now lists them so (core/my-leave.ts currentPerDateOutcomes), not as the approval event recorded them.
     const ownAll = new Map(rows.flatMap((r) => (breakdowns.get(r.id) ?? []).map((d) => [d.leaveDate, d.status] as const)));
     expect([ownAll.get(MON), ownAll.get(TUE)], 'the date rows say the given-back days are cancelled').toEqual(['cancelled', 'cancelled']);
     for (const r of rows) {
       const list = shown(r.id);
       expect(list.filter((s) => s.startsWith(MON) || s.startsWith(TUE)), `row ${r.status} ${r.startDate}: a given-back day never reads Approved`).not.toContain(`${MON}:approved`);
     }
-  });
 
     // Every row's list: MON and TUE Cancelled, WED Rejected, THU and FRI Approved.
     for (const r of rows) {
