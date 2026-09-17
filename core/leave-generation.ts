@@ -335,6 +335,22 @@ async function generate(
     };
   }
 
+  // r301 (parent hand-fix) — which leave types in scope are EARNED ANNUAL LEAVE, read BEFORE the year-open so the
+  // two engines stay strictly sequenced with no transaction of this module's between them (§5's guard). Used below
+  // to hand `already_open` pairs on those types to the accrual too.
+  const earnedAnnualTypeIds = new Set<string>(
+    (
+      await withTenant(ctx, (tx) =>
+        tx
+          .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, accrualMethod: leaveType.accrualMethod })
+          .from(leaveType)
+          .where(leaveTypeIds.length ? inArray(leaveType.id, leaveTypeIds) : undefined),
+      )
+    )
+      .filter((t) => isEarnedAccrualType(t) && isEarnedMethod(t.accrualMethod))
+      .map((t) => t.id),
+  );
+
   // ── ④/⑤ THE ENGINE. One call. `dryRun` is the ONLY difference between preview and commit. ───────────
   const res = await openLeaveYear(ctx, { year, leaveTypeIds, employmentIds: targets, dryRun });
   const engineRows = res.rows;
@@ -374,23 +390,8 @@ async function generate(
   //   was earned" are never confused; this does not reopen that: Run Earned Accrual keeps its own page, and
   //   nothing earned is ever created ahead of time.
   const earnedLines = engineRows.filter((r) => r.outcome === 'earned_method');
-  const openTypeIds = [...new Set(engineRows.filter((r) => r.outcome === 'already_open').map((r) => r.leaveTypeId))];
-  const earnedAnnualOpenTypeIds = new Set<string>(
-    openTypeIds.length === 0
-      ? []
-      : (
-          await withTenant(ctx, (tx) =>
-            tx
-              .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, accrualMethod: leaveType.accrualMethod })
-              .from(leaveType)
-              .where(inArray(leaveType.id, openTypeIds)),
-          )
-        )
-          .filter((t) => isEarnedAccrualType(t) && isEarnedMethod(t.accrualMethod))
-          .map((t) => t.id),
-  );
   const openAnnualLeaveLines = engineRows.filter(
-    (r) => r.outcome === 'already_open' && earnedAnnualOpenTypeIds.has(r.leaveTypeId),
+    (r) => r.outcome === 'already_open' && earnedAnnualTypeIds.has(r.leaveTypeId),
   );
   const annualLeaveLines = [...earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave), ...openAnnualLeaveLines];
   let accrual: LeaveGenerationAccrual | null = null;
@@ -432,7 +433,7 @@ async function generate(
   // scoped to exactly those pairs — and the guard says so rather than trusting the scope to have held.
   const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, a.days]));
   const earnedAccrualOf = (r: LeaveYearGrantRow): LeaveGenerationLine['earnedAccrual'] => {
-    const openAnnual = r.outcome === 'already_open' && earnedAnnualOpenTypeIds.has(r.leaveTypeId);
+    const openAnnual = r.outcome === 'already_open' && earnedAnnualTypeIds.has(r.leaveTypeId);
     if (!openAnnual && (r.outcome !== 'earned_method' || r.earnedMethodNotAnnualLeave)) return null;
     const days = accruedBy.get(`${r.employmentId}|${r.leaveTypeId}`);
     if (days === undefined) return null;
