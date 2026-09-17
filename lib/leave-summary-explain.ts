@@ -369,8 +369,11 @@ export function explainLeaveSummary(
   const sKey = statusKey[status];
   if (sKey) ytd.push({ key: sKey });
   if (earned.credits.length === 0) {
-    // A status sentence already said why nothing is here; saying "nothing credited" again adds nothing.
-    if (!sKey) ytd.push({ key: 'earnedNone', args: { start: date(f.cycleStart), asOf: date(f.asOf) } });
+    // A status sentence already said why nothing is here; saying "nothing credited" again adds nothing. An empty
+    // list is guarded like a full one: "nothing credited" beside a non-zero figure would be false.
+    ytd.push(
+      ...guarded(0, f.currentYearEntitlement, sKey ? [] : [{ key: 'earnedNone', args: { start: date(f.cycleStart), asOf: date(f.asOf) } }]),
+    );
   } else {
     ytd.push(
       ...guarded(sum(earned.credits), f.currentYearEntitlement, [
@@ -412,7 +415,7 @@ export function explainLeaveSummary(
   const adj: ExplainStep[] = [];
   const { manual, system } = d.adjustments;
   if (manual.length === 0 && system.length === 0) {
-    adj.push({ key: 'adjNone' });
+    adj.push(...guarded(0, f.adjustments, [{ key: 'adjNone' }]));
   } else {
     const list: ExplainStep[] = [];
     if (manual.length === 0) {
@@ -455,7 +458,7 @@ export function explainLeaveSummary(
   const t = d.taken;
   const period = { start: date(f.cycleStart), asOf: date(f.asOf) };
   if (t.leaveDays === 0 && t.other.length === 0) {
-    taken.push({ key: 'takenNone', args: period });
+    taken.push(...guarded(0, f.takenThisCycle, [{ key: 'takenNone', args: period }]));
   } else {
     const list: ExplainStep[] = [{ key: 'takenLeave', args: { days: days(t.leaveDays), ...period } }];
     if (t.other.length > 0) {
@@ -479,7 +482,7 @@ export function explainLeaveSummary(
   // ── Pending Approval ────────────────────────────────────────────────────────────────────────────────
   const pending: ExplainStep[] = [];
   if (d.pending.length === 0) {
-    pending.push({ key: 'pendingNone', args: { asOf: date(f.asOf) } });
+    pending.push(...guarded(0, f.pendingApproval, [{ key: 'pendingNone', args: { asOf: date(f.asOf) } }]));
   } else {
     pending.push(
       ...guarded(sum(d.pending), f.pendingApproval, [
@@ -499,7 +502,7 @@ export function explainLeaveSummary(
   // ── Brought Forward Forfeited ───────────────────────────────────────────────────────────────────────
   const forfeited: ExplainStep[] = [];
   if (d.forfeited.length === 0) {
-    forfeited.push({ key: 'forfeitNone', args: period });
+    forfeited.push(...guarded(0, f.forfeitedThisCycle, [{ key: 'forfeitNone', args: period }]));
   } else {
     forfeited.push(
       ...guarded(sum(d.forfeited), f.forfeitedThisCycle, [
