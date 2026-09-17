@@ -5759,7 +5759,18 @@ export async function requestLeaveCancellation(
 ) {
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    // r301 hand-fix (verifier defect 1) — LOCK THE LEAVE ROW. Everything below reads this row and the pending
+    // cancellations on it to decide what may be given back, and an automatic approval then splits it in this
+    // same transaction. Unlocked, two requests at the same moment (two tabs, or a crafted POST) each saw the
+    // leave as it was before the other: both approved, the same day came back twice and the approved rows
+    // overlapped. Locked, the second waits, re-reads the row the first one split, and is refused. The order is
+    // leave row, then cancellation row — the same as decideLeaveCancellation and adminCancelLeave.
+    const [req] = await tx
+      .select()
+      .from(leaveRequest)
+      .where(eq(leaveRequest.id, p.leaveRequestId))
+      .limit(1)
+      .for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
 
     // §6(1): subject-only. RLS is symmetric (a manager can SEE a subordinate's leave) so the "employee-
@@ -5851,20 +5862,24 @@ export async function requestLeaveCancellation(
       if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
     }
 
-    // §3: another PENDING cancellation request on the same leave may already target one of these dates.
-    // Reject the overlap so two pending requests can't both approve and double-restore.
-    const pendings = await tx
-      .select({ cancelDates: leaveCancellationRequest.cancelDates })
+    // §3: ONE pending cancellation per leave row. r301 hand-fix (verifier defect 4): this used to refuse only
+    // an OVERLAPPING second request. A non-overlapping one was accepted, and whichever was approved first split
+    // the row, so the other's dates were no longer on it: its approval then "succeeded" giving back 0 days and
+    // told the employee the leave was cancelled. The screen already hides Cancel while one is pending; the
+    // service now says the same. (A request that predates this is refused at decision — see
+    // applyLeaveCancellationApprovalTx.)
+    const [pending] = await tx
+      .select({ id: leaveCancellationRequest.id })
       .from(leaveCancellationRequest)
       .where(
         and(
           eq(leaveCancellationRequest.leaveRequestId, req.id),
           eq(leaveCancellationRequest.status, 'pending'),
         ),
-      );
-    const pendingSet = new Set(pendings.flatMap((r) => (r.cancelDates as string[]) ?? []));
-    if (cancelDates.some((d) => pendingSet.has(d))) {
-      throw new LeaveCancellationNotAllowedError('a pending cancellation already covers one of these dates', 'already_pending');
+      )
+      .limit(1);
+    if (pending) {
+      throw new LeaveCancellationNotAllowedError('a cancellation of this leave is already waiting for approval', 'already_pending');
     }
 
     // requestedDays = the WEIGHTED total of the cancel dates (Feedback 31474452 4e) — each is a working date
@@ -6003,11 +6018,22 @@ export async function decideLeaveCancellation(
   p: { cancellationRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
+    // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
+    // pressing Approve at once used to both read 'pending'; the second now waits and reads the first's outcome.
+    const [peek] = await tx
+      .select({ leaveRequestId: leaveCancellationRequest.leaveRequestId })
+      .from(leaveCancellationRequest)
+      .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
+      .limit(1);
+    if (!peek) throw new Error('cancellation request not found (or not visible)');
+    await tx.select({ id: leaveRequest.id }).from(leaveRequest).where(eq(leaveRequest.id, peek.leaveRequestId)).for('update');
     const [cr] = await tx
       .select()
       .from(leaveCancellationRequest)
       .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!cr) throw new Error('cancellation request not found (or not visible)');
     if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
 
@@ -6125,7 +6151,9 @@ async function applyLeaveCancellationApprovalTx(
   },
 ): Promise<{ restoredDays: number; remainingDays: number; remainingDates: string[] }> {
   const { cr } = p;
-  const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1);
+  // r301 hand-fix (verifier defect 1): locked — both callers already hold it; taking it here keeps this body
+  // safe for any future caller that does not.
+  const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1).for('update');
   if (!req) throw new Error('leave request not found');
   // Re-assert the request is still a cancellable approved row. A prior cancellation may have split it (giving
   // it a parentGroupId) — that survivor is STILL cancellable (R5 Build #2 — iterative cancellation), so admit
@@ -6166,9 +6194,34 @@ async function applyLeaveCancellationApprovalTx(
   // not a new behaviour) and thread each working date's real WEIGHT through the split, so a cancelled Half
   // date gives back exactly the configured amount (0.5 OFF / 1.0 ON) instead of always 1.
   const sched = await resolveSchedule(tx, req.employmentId);
+  // r301 hand-fix (verifier defect 2) — A PER-DATE-APPROVED LEAVE SPLITS OVER ITS APPROVED DATES ONLY. This used
+  // to split the whole span, so a date the approver REJECTED became part of a surviving row with no per-date
+  // rows of its own — i.e. approved leave (approvedLeaveDates expands such a row's span) that /leave then
+  // offered for cancellation, giving back a day that was never charged. requestLeaveCancellation and the /leave
+  // read already offer only the approved dates; the split now agrees with them.
+  const dateRows = await tx
+    .select({ id: leaveRequestDate.id, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+    .from(leaveRequestDate)
+    .where(eq(leaveRequestDate.leaveRequestId, req.id));
+  const approvedDateSet = dateRows.length > 0 ? new Set(dateRows.filter((d) => d.status === 'approved').map((d) => d.leaveDate)) : null;
   const workingDates = eachDate(req.startDate, req.endDate)
     .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
+    .filter((d) => !approvedDateSet || approvedDateSet.has(d))
     .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
+  // r301 hand-fix (verifier defect 4) — EVERY DATE ASKED FOR MUST STILL BE ON THIS ROW. A cancellation decided
+  // after another one split the row (a second pending request from before the one-pending rule, or the row
+  // changed some other way) used to be approved with 0 days given back and a notification saying the leave was
+  // cancelled. Refused instead; the approver can reject it and the employee asks again on the leave as it is now.
+  const cancellableNow = new Set(workingDates.map((w) => w.date));
+  if (cancelDates.length === 0 || cancelDates.some((d) => !cancellableNow.has(d))) {
+    throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
+  }
+  // r301 hand-fix (verifier defect 3) — A CLOSED PAYROLL MONTH IS ASKED AT THE DECISION TOO. The request only
+  // checked it when the employee asked; with a chain of approvers the month can close in between, and the last
+  // approval then gave days back inside a payslip that is final. Same rule, same error as the request's.
+  for (const d of cancelDates) {
+    if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
+  }
   const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
 
   // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
@@ -6180,16 +6233,27 @@ async function applyLeaveCancellationApprovalTx(
   // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
   // and leave the borrowed one permanently short. Resolved once for the whole split.
   const cancelBalanceTypeId = await resolveBalanceSourceTypeId(tx, req.leaveTypeId);
-  // 1) Reverse the original whole-span debit (inverse of finalizeLeaveApproval's single debit).
-  await tx.insert(leaveLedger).values({
-    tenantId: ctx.tenantId,
-    employmentId: req.employmentId,
-    leaveTypeId: cancelBalanceTypeId,
-    entryType: 'debit',
-    days: Number(req.days).toFixed(2), // positive = reversal of the original negative debit
-    sourceRequestId: req.id,
-    effectiveOn: req.startDate, // same cycle/carry window as the original debit (window-consistent, §1 caveat)
-  });
+  // 1) Reverse what this row was ACTUALLY charged (inverse of finalizeLeaveApproval's single debit, or of a
+  //    previous split's re-debit). r301 hand-fix (verifier defect 2): this reversed `req.days`, which on a
+  //    per-date-approved leave still counts the rejected dates the debit never included — 5 reversed against a
+  //    4-day debit, balanced only while the rejected day sat inside a survivor. The net ledger sum sourced to the
+  //    row is what adminCancelLeave reverses for the same reason; for every other leave it equals -req.days.
+  const [netRow] = await tx
+    .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+    .from(leaveLedger)
+    .where(eq(leaveLedger.sourceRequestId, req.id));
+  const chargedDays = round2(-Number(netRow?.net ?? 0));
+  if (chargedDays > 0) {
+    await tx.insert(leaveLedger).values({
+      tenantId: ctx.tenantId,
+      employmentId: req.employmentId,
+      leaveTypeId: cancelBalanceTypeId,
+      entryType: 'debit',
+      days: chargedDays.toFixed(2), // positive = reversal of the original negative debit
+      sourceRequestId: req.id,
+      effectiveOn: req.startDate, // same cycle/carry window as the original debit (window-consistent, §1 caveat)
+    });
+  }
 
   const cancelledRowIds: string[] = [];
   const remainingDates: string[] = [];
@@ -6250,6 +6314,27 @@ async function applyLeaveCancellationApprovalTx(
         // r301: the same link is how a later cancellation of this segment finds the approval chain to copy.
         payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays, splitFromRequestId: req.id },
       });
+    }
+
+    // r301 hand-fix (verifier defect 2) — THE PER-DATE ROWS MOVE WITH THEIR DATES. Each date's approval record
+    // (approved, and any rejected date inside this segment's span) now belongs to the segment row that holds the
+    // date, and a cancelled segment's dates read 'cancelled'. Left on the original row, its dates outside the
+    // new span kept counting as that row's approved leave (approvedLeaveDates, unpaid-leave payroll) beside the
+    // survivor that now also carries them, and a survivor without rows read its whole span as approved.
+    if (dateRows.length > 0) {
+      const inSegment = dateRows.filter((d) => d.leaveDate >= seg.from && d.leaveDate <= seg.to).map((d) => d.id);
+      if (inSegment.length > 0) {
+        await tx
+          .update(leaveRequestDate)
+          .set({ leaveRequestId: rowId })
+          .where(inArray(leaveRequestDate.id, inSegment));
+        if (isCancelled) {
+          await tx
+            .update(leaveRequestDate)
+            .set({ status: 'cancelled' })
+            .where(and(inArray(leaveRequestDate.id, inSegment), eq(leaveRequestDate.status, 'approved')));
+        }
+      }
     }
 
     // Each segment gets its OWN debit sourced to its own row (mirrors the EL per-row sourcing). A cancelled
@@ -6391,7 +6476,9 @@ export async function adminCancelLeave(
     }
     const isSuper = ctx.roles?.includes('super_admin') ?? false;
 
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    // r301 hand-fix — locked, in the same order as the employee's cancellation paths (leave row, then any
+    // cancellation on it), so an HR cancellation and an employee's automatic one cannot both act on a stale row.
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
 
     // Self-ban: an HR admin's own leave goes through the normal employee flow, not this on-behalf power
