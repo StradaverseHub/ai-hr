@@ -685,6 +685,16 @@ describe('I. panel addressing', () => {
     );
   });
 
+  it('the tab shell is KEYED on the open panel (source pin — the behaviour lives in client state)', () => {
+    // ClientTabs keeps its active tab in useState, and a soft navigation (a <Link> click, a server-action
+    // redirect) re-renders the same component in place, so `defaultTab` changing is IGNORED. Clicking the
+    // Attendance tab's "Edit this Schedule Group" would leave the reader on Attendance with the editor open on a
+    // hidden General tab. Re-keying on the panel re-mounts the shell. Server rendering cannot observe a key, so
+    // this is pinned on the source; the render check exercises it in a browser.
+    const page = fs.readFileSync(path.join(root, 'app/admin/attendance/schedule/page.tsx'), 'utf8');
+    expect(page).toMatch(/<ClientTabs<ScheduleTabKey>\s+key=\{schedulePanelKey\(panel\)\}/);
+  });
+
   it('the Attendance and Overtime tabs’ "Edit this Schedule Group" opens that group’s panel', async () => {
     const group = await createAttendanceRule(ADMIN, ruleInput());
     const html = await renderSchedule({ tab: 'overtime', group: group.id });
