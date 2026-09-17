@@ -39,9 +39,10 @@ export function EarnedAccrualDialog({
 }: {
   companies: EarnedScopeOption[];
   grades: EarnedScopeOption[];
-  /** r293 — each active type carries whether this sweep can reach it; forwarded untouched. */
+  /** r293/r299 — each active type carries whether it is Annual Leave (the only type Earned Accrual
+   *  covers, decided on the server); forwarded untouched — the card disables the rest. */
   leaveTypes: EarnedLeaveTypeOption[];
-  /** r293 — the tenant's own names for the ACTIVE swept types, A–Z; forwarded untouched. */
+  /** r299 — the tenant's own names for its ACTIVE Annual Leave, A–Z; forwarded untouched. */
   sweptLeaveTypeNames: string[];
   leaveYears: EarnedLeaveYearOption[];
   defaultYear: number;

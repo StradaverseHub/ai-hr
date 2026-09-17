@@ -84,6 +84,9 @@ const ALL_STATUSES: EntitlementStatus[] = [
   'granted',
   'not_generated',
   'earned_accrual',
+  // r299 (3de1453a) — an earned method on a type that is not Annual Leave: no engine adds its days, so it may
+  // not read as `earned_accrual`. Pinned both ways in test/r299-earned-accrual-annual-only.test.ts §6.
+  'earned_method_not_annual_leave',
   'zero_entitlement',
   'earning_method_missing',
   // r209 — see the `no table in force` case below for why the one `not_configured` became three states.
@@ -108,6 +111,8 @@ const facts = (over: Partial<Parameters<typeof resolveEntitlementStatus>[0]> = {
   maxBalanceDays: null as number | null,
   accrualUnconfigured: false,
   earnedMethod: false,
+  // r299 — false is every Annual Leave and every non-earned type, i.e. every case below that predates r299.
+  earnedMethodNotAnnualLeave: false,
   entitlementDays: 14,
   hasAccrualRowInCycle: false,
   ...over,
@@ -134,20 +139,23 @@ describe('resolveEntitlementStatus: the engine’s own branches, in the engine�
     for (const accrualUnconfigured of [false, true]) {
       for (const hasAccrualRowInCycle of [false, true]) {
         for (const earnedMethod of [false, true]) {
-          for (const entitlementDays of [0, 14]) {
-            const base = { hasTemplateInForce: false, accrualUnconfigured, hasAccrualRowInCycle, earnedMethod, entitlementDays };
-            const label = `${accrualUnconfigured}/${hasAccrualRowInCycle}/${earnedMethod}/${entitlementDays}`;
-            // The leave type has NO table at all: 0.00 is arithmetically true and the missing piece is the
-            // day table.
-            expect(
-              resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: false })),
-              label,
-            ).toBe('no_entitlement_table');
-            // The tables EXIST and none of them reaches this employee. THE PRODUCTION STATE.
-            expect(
-              resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: true })),
-              label,
-            ).toBe('no_eligibility_match');
+          // r299 — a STRANDED earned method cannot outrank an unresolved table either.
+          for (const earnedMethodNotAnnualLeave of earnedMethod ? [false, true] : [false]) {
+            for (const entitlementDays of [0, 14]) {
+              const base = { hasTemplateInForce: false, accrualUnconfigured, hasAccrualRowInCycle, earnedMethod, earnedMethodNotAnnualLeave, entitlementDays };
+              const label = `${accrualUnconfigured}/${hasAccrualRowInCycle}/${earnedMethod}/${earnedMethodNotAnnualLeave}/${entitlementDays}`;
+              // The leave type has NO table at all: 0.00 is arithmetically true and the missing piece is the
+              // day table.
+              expect(
+                resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: false })),
+                label,
+              ).toBe('no_entitlement_table');
+              // The tables EXIST and none of them reaches this employee. THE PRODUCTION STATE.
+              expect(
+                resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: true })),
+                label,
+              ).toBe('no_eligibility_match');
+            }
           }
         }
       }
@@ -220,13 +228,16 @@ describe('resolveEntitlementStatus: the engine’s own branches, in the engine�
     // unconfigured type before it ever asks what its method column says.
     for (const hasAccrualRowInCycle of [false, true]) {
       for (const earnedMethod of [false, true]) {
-        for (const entitlementDays of [0, 14]) {
-          expect(
-            resolveEntitlementStatus(
-              facts({ accrualUnconfigured: true, hasAccrualRowInCycle, earnedMethod, entitlementDays }),
-            ),
-            `row=${hasAccrualRowInCycle}/earned=${earnedMethod}/days=${entitlementDays}`,
-          ).toBe('earning_method_missing');
+        // r299 — …and a STRANDED earned method: the not-configured gate reads first and ignores the method.
+        for (const earnedMethodNotAnnualLeave of earnedMethod ? [false, true] : [false]) {
+          for (const entitlementDays of [0, 14]) {
+            expect(
+              resolveEntitlementStatus(
+                facts({ accrualUnconfigured: true, hasAccrualRowInCycle, earnedMethod, earnedMethodNotAnnualLeave, entitlementDays }),
+              ),
+              `row=${hasAccrualRowInCycle}/earned=${earnedMethod}/stranded=${earnedMethodNotAnnualLeave}/days=${entitlementDays}`,
+            ).toBe('earning_method_missing');
+          }
         }
       }
     }
@@ -238,6 +249,7 @@ describe('resolveEntitlementStatus: the engine’s own branches, in the engine�
     expect(ALL_STATUSES.filter(entitlementStatusNeedsNotice)).toEqual([
       'not_generated',
       'earned_accrual',
+      'earned_method_not_annual_leave',
       'zero_entitlement',
       'earning_method_missing',
       'no_entitlement_table',
@@ -539,8 +551,9 @@ describe('31e39d74: the breakdown says WHY a leave type reads 0.00', () => {
     // an instruction that would skip their type. The assertions below are, in order: the caption is the
     // earned one · running the remedy really does nothing · the accrual sweep is what moves it.
     // The SEEDED ANNUAL type, not a custom one, and that is load-bearing: `accrueEarnedLeave` sweeps only
-    // `STANDING_LEAVE_CODES` (core/leave.ts:6883), so a made-up code would sit at `earned_accrual` forever
-    // and the last leg of this case would prove nothing. This is the reporter's real shape.
+    // Annual Leave (`isEarnedAccrualType` since r299 — role first, the code ANNUAL for an unclassified row),
+    // so an unclassified made-up code would sit at `earned_accrual` forever and the last leg of this case
+    // would prove nothing. This is the reporter's real shape.
     const typeId = b.annualLeaveTypeId;
     await owner.db
       .update(schema.leaveType)
@@ -772,6 +785,8 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     expect(bal.statusEarnedAccrualTip).not.toContain('Run Generate Entitlement');
     expect(bal.statusZeroEntitlementTip).toContain('will not change the figure');
     expect(bal.statusZeroEntitlementTip).not.toContain('Run Generate Entitlement');
+    // r299 — the stranded state skips the year-open too, and nothing else adds its days either.
+    expect(bal.statusEarnedMethodNotAnnualLeaveTip).not.toContain('Run Generate Entitlement');
   });
 
   it('ships every string in all six locales', () => {
@@ -786,6 +801,8 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
       'statusEarnedAccrualTip',
       'statusZeroEntitlementTip',
       'statusEarningMethodMissingTip',
+      'statusEarnedMethodNotAnnualLeave',
+      'statusEarnedMethodNotAnnualLeaveTip',
     ];
     const breakdownKeys = [
       'statusNotGeneratedTitle',
@@ -796,6 +813,8 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
       'statusZeroEntitlementBody',
       'statusEarningMethodMissingTitle',
       'statusEarningMethodMissingBody',
+      'statusEarnedMethodNotAnnualLeaveTitle',
+      'statusEarnedMethodNotAnnualLeaveBody',
       'statusEntitlementTable',
     ];
     for (const loc of LOCALES) {

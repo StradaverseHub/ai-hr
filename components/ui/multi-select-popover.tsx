@@ -55,9 +55,16 @@
  * offers every ACTIVE leave type, but `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` before
  * it reads a single employment — so the list has always contained rows that can never produce a day, and
  * the only signal was an empty preview AFTER the operator picked one and pressed Preview. The note marks
- * them where the choice is made. It is a MARKER, not a filter: the option stays selectable, because the
- * engine's typed empty reason is still the authority on why a run came back with nothing, and hiding the
- * row would replace one silence with another.
+ * them where the choice is made. It is a MARKER, not a filter: hiding the row would replace one silence
+ * with another.
+ *
+ * ── r299 (3de1453a) — A FOURTH OPT-IN PROP, `optionDisabled`, AND A TONE ON THE NOTE ─────────────────────
+ * The reporter's rule — "Only Annual Leave is subject to the Earned Accrual concept" — reverses the half of
+ * r293 that kept a marked option selectable. `optionDisabled` returns true for a row that must stay LISTED
+ * but cannot be ticked: its checkbox is disabled, Select all skips it, and a click on its label does
+ * nothing. `optionNote` now returns `{ label, tone }` so the two tags the reporter's mockup draws can differ
+ * ("Earned accrual" in the positive tone, "Entitlement-based" in the neutral one). Omit both props and this
+ * component behaves EXACTLY as it did for every other call site; the accrual card is still the only caller.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
@@ -65,6 +72,14 @@ import { cn } from '@/lib/utils';
 import { inputCls } from '@/components/ui';
 
 export type MultiSelectPopoverOption = { id: string; name: string };
+/** r299 — a row's tag and the tone it is drawn in. `positive` for a row the caller wants read as included,
+ *  `neutral` for one that is listed but out of scope. Presentation only. */
+export type MultiSelectOptionNote = { label: string; tone: 'positive' | 'neutral' };
+
+const NOTE_TONE: Record<MultiSelectOptionNote['tone'], string> = {
+  positive: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  neutral: 'bg-muted text-muted-foreground',
+};
 
 export function MultiSelectPopover({
   label,
@@ -81,6 +96,7 @@ export function MultiSelectPopover({
   matchOption,
   emptyLabelFor,
   optionNote,
+  optionDisabled,
 }: {
   /** Translated caption shown above the trigger (owned by the component — no <Field> at the call site). */
   label: string;
@@ -110,10 +126,16 @@ export function MultiSelectPopover({
   /**
    * r293 — opt-in: a short translated marker rendered beside an option's name. Return `null`/`undefined`
    * for the options that carry no marker; omit the prop entirely and no option carries one, which is what
-   * every pre-r293 call site has. Presentation only — a marked option is still selectable and still posts
-   * exactly as it did (this component owns no filter on it).
+   * every pre-r293 call site has. r299: it carries a tone as well as its label. Presentation only — whether
+   * the row can be ticked is `optionDisabled`'s business, never the note's.
    */
-  optionNote?: (option: MultiSelectPopoverOption) => string | null | undefined;
+  optionNote?: (option: MultiSelectPopoverOption) => MultiSelectOptionNote | null | undefined;
+  /**
+   * r299 — opt-in: true ⇒ the row stays LISTED but cannot be ticked (disabled checkbox, skipped by Select
+   * all). Omitted ⇒ every row is selectable, which is what every other call site has. The caller decides
+   * WHICH rows from facts it was handed; this component owns no rule about them.
+   */
+  optionDisabled?: (option: MultiSelectPopoverOption) => boolean;
 }) {
   const captionId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,6 +150,12 @@ export function MultiSelectPopover({
     return options.filter((o) => o.name.toLowerCase().includes(lower));
   }, [options, search, matchOption]);
   const visibleIds = useMemo(() => new Set(visible.map((o) => o.id)), [visible]);
+  // r299 — what Select all may tick: the visible rows the caller has not disabled. Clear all is unchanged
+  // (it only ever removes), so a disabled row can never be ADDED by either bulk control.
+  const selectableVisibleIds = useMemo(
+    () => new Set(visible.filter((o) => !optionDisabled?.(o)).map((o) => o.id)),
+    [visible, optionDisabled],
+  );
   // r287 — THE TERMINAL EMPTY STATE. `search.trim()` rather than `search`, so a box holding only spaces
   // (which filters nothing and shows everything) never claims a failed search.
   const noMatches = search.trim() !== '' && visible.length === 0;
@@ -156,7 +184,7 @@ export function MultiSelectPopover({
     onChange(next);
   };
   // Select/Clear All act on the currently VISIBLE (search-filtered) options, matching both prior copies.
-  const selectAll = () => onChange(new Set([...selected, ...visibleIds]));
+  const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));
   const clearAll = () => onChange(new Set([...selected].filter((id) => !visibleIds.has(id))));
 
   const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);
@@ -212,31 +240,41 @@ export function MultiSelectPopover({
             )}
             <div className="max-h-56 overflow-y-auto">
               {options.map((o) => {
-                // r293 — computed per row and rendered ONLY when the caller returns one: a marker on every
-                // row is furniture, and furniture stops being read. It sits INSIDE the <label>, so it is
-                // part of the option's accessible name too — a screen reader hears "…, not covered".
+                // r293 — computed per row and rendered ONLY when the caller returns one. It sits INSIDE the
+                // <label>, so it is part of the option's accessible name too — a screen reader hears
+                // "…, Entitlement-based".
                 const note = optionNote?.(o);
+                // r299 — a disabled row is LISTED, greyed and inert: nobody wonders where it went, and
+                // nobody can tick it. `disabled` on the checkbox is what makes it inert — the label cannot
+                // toggle a disabled control — and `toggle` is not reachable from it.
+                const disabledRow = optionDisabled?.(o) === true;
                 return (
                   <label
                     key={o.id}
+                    data-disabled={disabledRow ? 'true' : undefined}
                     className={cn(
-                      'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+                      'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm',
+                      disabledRow ? 'cursor-not-allowed text-muted-foreground' : 'cursor-pointer hover:bg-muted',
                       !visibleIds.has(o.id) && 'hidden',
                     )}
                   >
                     <input
                       type="checkbox"
                       checked={selected.has(o.id)}
-                      onChange={() => toggle(o.id)}
-                      className="size-4 accent-[var(--color-primary)]"
+                      disabled={disabledRow}
+                      onChange={() => {
+                        if (!disabledRow) toggle(o.id);
+                      }}
+                      className="size-4 accent-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <span className="truncate">{o.name}</span>
                     {note ? (
                       <span
                         data-testid="multi-select-option-note"
-                        className="ml-auto shrink-0 text-[11px] text-amber-600 dark:text-amber-400"
+                        data-tone={note.tone}
+                        className={cn('ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', NOTE_TONE[note.tone])}
                       >
-                        {note}
+                        {note.label}
                       </span>
                     ) : null}
                   </label>

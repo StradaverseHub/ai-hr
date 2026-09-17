@@ -632,8 +632,15 @@ export function GenerateForm({
                         <td className="px-3 py-2 text-foreground">{l.employeeName}</td>
                         <td className="px-3 py-2 text-muted-foreground">{l.leaveTypeName}</td>
                         {/* The engine's own verdict, translated for display only. The stored value stays
-                            the engine's string so a support question is answerable by grepping. */}
-                        <td className="px-3 py-2 text-muted-foreground">{t(`generateOutcome_${l.outcome}`)}</td>
+                            the engine's string so a support question is answerable by grepping.
+                            r299 (3de1453a): an `earned_method` line on a type that is NOT Annual Leave carries
+                            the server's `earnedMethodNotAnnualLeave` — nothing will add its days, so it must
+                            not read "accrues through the year". Annual Leave keeps the outcome's own label. */}
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {l.earnedMethodNotAnnualLeave
+                            ? t('generateOutcomeEarnedMethodNotAnnualLeave')
+                            : t(`generateOutcome_${l.outcome}`)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -6386,7 +6386,9 @@ export async function cancelOwnLeave(
 
 // ───────────────────── Leave-year boundary (STATUTORY-SOURCES §5) ─────────────────────
 
-/** Types granted as standing yearly entitlements; situational types are claimed per event. */
+/** Types granted as standing yearly entitlements; situational types are claimed per event.
+ *  r299 (3de1453a): the EARNED ACCRUAL sweep no longer reads this — it covers Annual Leave only, through
+ *  `isEarnedAccrualType`. `openLeaveYear` still does, deliberately; see that predicate's header. */
 export const STANDING_LEAVE_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION'] as const;
 
 /**
@@ -6651,6 +6653,19 @@ export type LeaveYearGrantRow = {
   forfeit: number;
   /** fa3f4ccb: advisory only — the resolved figure is under the statutory minimum for the type. */
   belowStatutoryFloor: boolean;
+  /**
+   * r299 (3de1453a) — true only on an `earned_method` line whose leave type is NOT Annual Leave
+   * (`!isEarnedAccrualType`): a STRANDED earned method. The branch is the same one — the year-open skips an
+   * earned method either way — but the two are opposite facts for the operator. On Annual Leave the days come
+   * from Run Earned Accrual; on any other type nothing adds them, because Earned Accrual covers Annual Leave
+   * only. So the SCREEN'S LABEL branches on this, decided here beside the engine's own predicates.
+   *
+   * ⚠️ NOT A NEW OUTCOME, AND NOT STORED. `outcome` is persisted verbatim into
+   * `leave_generation_run_item.outcome` (free text, no CHECK — 0400) and into the downloadable log, and the
+   * engine branch has not changed, so it keeps its value: a stranded line logged before this flag existed and
+   * one logged after it read the same. The flag rides the preview line only.
+   */
+  earnedMethodNotAnnualLeave: boolean;
 };
 
 export type OpenLeaveYearResult = {
@@ -6798,6 +6813,9 @@ export async function openLeaveYear(
       .select({
         id: leaveType.id,
         code: leaveType.code,
+        // r299 (3de1453a) — read so the `earned_method` line can say whether this type is Annual Leave
+        // (`isEarnedAccrualType` asks the role first). Nothing about the grant reads it.
+        role: leaveType.role,
         yearCycleOverride: leaveType.yearCycleOverride,
         ...leaveTypeRuleColumns,
       })
@@ -7013,7 +7031,9 @@ export async function openLeaveYear(
             : fullYearDays;
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) {
-          rows.push(logRow(e.employmentId, t.id, 'earned_method'));
+          // r299 (3de1453a): the SAME skip for every type; the flag only tells the screen whether a run of
+          // Earned Accrual will add the days (Annual Leave) or nothing will (any other type — stranded).
+          rows.push(logRow(e.employmentId, t.id, 'earned_method', !isEarnedAccrualType(t)));
           continue;
         }
         if (days <= 0) {
@@ -7117,6 +7137,7 @@ export async function openLeaveYear(
           carry,
           forfeit,
           belowStatutoryFloor,
+          earnedMethodNotAnnualLeave: false,
         });
       }
     }
@@ -7143,8 +7164,13 @@ export async function openLeaveYear(
 }
 
 /** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
-function logRow(employmentId: string, leaveTypeId: string, outcome: LeaveYearGrantOutcome): LeaveYearGrantRow {
-  return { employmentId, leaveTypeId, outcome, days: 0, carry: 0, forfeit: 0, belowStatutoryFloor: false };
+function logRow(
+  employmentId: string,
+  leaveTypeId: string,
+  outcome: LeaveYearGrantOutcome,
+  earnedMethodNotAnnualLeave = false,
+): LeaveYearGrantRow {
+  return { employmentId, leaveTypeId, outcome, days: 0, carry: 0, forfeit: 0, belowStatutoryFloor: false, earnedMethodNotAnnualLeave };
 }
 
 // ── Earned accrual (ADR-0040 / 2D-1) ──────────────────────────────────────────────────────────────
@@ -7160,6 +7186,49 @@ function logRow(employmentId: string, leaveTypeId: string, outcome: LeaveYearGra
 export const EARNED_METHODS = ['earned_monthly', 'earned_quarterly', 'earned_daily'] as const;
 export function isEarnedMethod(m: unknown): m is (typeof EARNED_METHODS)[number] {
   return m === 'earned_monthly' || m === 'earned_quarterly' || m === 'earned_daily';
+}
+
+/**
+ * r299 (3de1453a) — WHICH LEAVE TYPES THE EARNED ACCRUAL CONCEPT APPLIES TO, AS ONE PREDICATE.
+ *
+ * THE REPORTER'S RULE, verbatim: "Only Annual Leave (*Annual Leave) is subject to the Earned Accrual
+ * concept. All other leave types are managed based on entitlement and should not be included in the
+ * Earned Accrual process."
+ *
+ * It REPLACES `STANDING_LEAVE_CODES` wherever the earned sweep, or a screen describing that sweep, decides
+ * coverage — and it was wrong twice over. The constant let SICK and HOSPITALIZATION be earned (the
+ * reporter's rule forbids it), and it asked the CODE, so a tenant's own Annual Leave on a code the pack
+ * never seeded (production's `AL` "*Annual Leave") could never accrue a day. `leave_type.role` (65f466e2)
+ * is the tenant-independent answer to "what IS this type", and `leaveTypeIs` asks it first, falling back to
+ * the seeded code `ANNUAL` only for a row nobody has classified — which keeps every unclassified tenant's
+ * Annual Leave accruing exactly as before.
+ *
+ * ⚠️ `STANDING_LEAVE_CODES` ITSELF IS DELIBERATELY UNTOUCHED. `openLeaveYear` still enters its three codes
+ * whatever the configuration says, and the carry-expiry sweep, `isA2cFirstYear`, `hireYearGrantDays` and
+ * the pack's statutory floor still key on the code `ANNUAL`. Those decide HOW MANY days people receive;
+ * moving them to the role moves day counts and is a separate, recorded change (see the r299 round entry).
+ *
+ * Pure and DB-free, but it lives in this module because `leaveTypeIs` does; screens receive its RESULT as
+ * a boolean decided on the server, never the function (a client island cannot import this file).
+ */
+export function isEarnedAccrualType(lt: { role?: string | null; code?: string | null } | null | undefined): boolean {
+  return leaveTypeIs(lt, 'annual');
+}
+
+/**
+ * r299 (3de1453a) — where the "This is our Annual Leave" switch stands for one row, for the leave type editor.
+ * `on` — recorded as Annual Leave by role (switchable off) · `off` — unclassified, not Annual Leave
+ * (switchable on) · `by_code` — unclassified, Annual Leave by its seeded code (no role to clear, locked) ·
+ * `other_role` — recorded as a different kind of leave (locked). It agrees with `isEarnedAccrualType` by
+ * construction: `on` and `by_code` are exactly the rows that predicate accepts. `core/admin.ts`'s
+ * `resolveAnnualLeaveSwitch` refuses the same transitions this marks as locked.
+ */
+export type AnnualLeaveSwitchState = 'on' | 'off' | 'by_code' | 'other_role';
+export function annualLeaveSwitchState(lt: { role?: string | null; code?: string | null }): AnnualLeaveSwitchState {
+  const role = lt.role ?? '';
+  if (role === 'annual') return 'on';
+  if (role !== '') return 'other_role';
+  return isEarnedAccrualType(lt) ? 'by_code' : 'off';
 }
 
 /**
@@ -7551,10 +7620,13 @@ export type EarnedAccrualGroup = {
  * `forfeits` and every `entitlementGenerated` are byte-identical to what this engine produced before.
  *
  * In the order the engine decides them:
- *  • `type_not_swept`          the chosen type is not one of STANDING_LEAVE_CODES — the earned sweep
- *                              covers only the three standing statutory types and never touches another,
- *                              whatever its accrual method says (see the ADR-0066 note on that constant).
- *                              THIS IS THE PRODUCTION CASE: `AL` is not `ANNUAL`.
+ *  • `type_not_swept`          the chosen type is NOT ANNUAL LEAVE (`isEarnedAccrualType` — role first,
+ *                              code `ANNUAL` for an unclassified row). r299 (3de1453a): the earned sweep
+ *                              covers Annual Leave and nothing else, whatever another type's accrual
+ *                              method says; every other leave type is entitlement-based. It used to mean
+ *                              "not one of STANDING_LEAVE_CODES", which let SICK / HOSPITALIZATION accrue
+ *                              and declined the reporter's own `AL` "*Annual Leave". `sweptLeaveTypeNames`
+ *                              is now the tenant's ACTIVE Annual Leave type name(s).
  *  • `type_archived`           the chosen type is archived (reachable only from a stale screen — the
  *                              picker does not offer archived types, and deliberately must not).
  *  • `table_not_yet_in_force`  the type's entitlement table starts AFTER the as-at date. Names the date.
@@ -7677,21 +7749,28 @@ export async function accrueEarnedLeave(
     //
     // ⚠️ THE ARCHIVED HINT IS TWO FACTS, NOT A GUESS. (1) an archived type whose NAME collides with one the
     // scope asked for — "Annual Leave" against the "*Annual Leave" HR could pick — and (2) an archived
-    // STANDING type carrying an earned method, which is a type this sweep would have covered were it not
+    // ANNUAL LEAVE type carrying an earned method, which is a type this sweep would have covered were it not
     // archived. On the reporting account both point at the same row, which is the point: an archived leave
     // type is invisible on every screen in the product, so an empty result has to say the word out loud.
+    // r299 (3de1453a): (2) asks `isEarnedAccrualType`, the same predicate as the filter below. `role` is
+    // selected for exactly that reason — without it every row reads as unclassified and falls back to code.
     const archivedHintFor = async (scopedNames: string[]): Promise<ArchivedLeaveTypeHint[]> => {
       const archived = await tx
-        .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, accrualMethod: leaveType.accrualMethod })
+        .select({
+          id: leaveType.id,
+          code: leaveType.code,
+          role: leaveType.role,
+          name: leaveType.name,
+          accrualMethod: leaveType.accrualMethod,
+        })
         .from(leaveType)
         .where(sql`${leaveType.archivedAt} is not null`);
       const wanted = new Set(scopedNames.map(normaliseLeaveTypeName).filter(Boolean));
-      const standing = new Set<string>([...STANDING_LEAVE_CODES]);
       return archived
         .filter(
           (a) =>
             wanted.has(normaliseLeaveTypeName(a.name)) ||
-            (standing.has(a.code) && isEarnedMethod(a.accrualMethod)),
+            (isEarnedAccrualType(a) && isEarnedMethod(a.accrualMethod)),
         )
         .map((a) => ({ id: a.id, code: a.code, name: a.name }))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -7710,47 +7789,63 @@ export async function accrueEarnedLeave(
       earnedToDateTotal: 0,
     });
 
-    const types = await tx
+    // r299 (3de1453a) — WHICH TYPES THIS SWEEP TOUCHES AT ALL: ANNUAL LEAVE, AND NOTHING ELSE.
+    //
+    // This was `code IN STANDING_LEAVE_CODES`, in SQL. It is now `isEarnedAccrualType` over the active (and
+    // scoped) rows, in memory, for one reason: the predicate is ONE function shared with every screen that
+    // describes this sweep, and a second spelling of it in SQL is the drift r288 and r293 each paid for.
+    // `leave_type` is a small per-tenant table, so reading its active rows costs nothing measurable.
+    //
+    // `role` MUST ride in the select. Without it every row is unclassified to `leaveTypeIs`, the predicate
+    // silently falls back to the code, and the reporter's `AL` "*Annual Leave" — switched on by role — is
+    // declined exactly as before. Nothing would fail; the sweep would just stay wrong.
+    const activeTypes = await tx
       // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
       // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
       // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
-      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(
         and(
-          inArray(leaveType.code, [...STANDING_LEAVE_CODES]),
           isNull(leaveType.archivedAt),
-          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ all standing types.
+          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
           scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined,
         ),
       );
+    const types = activeTypes.filter((t) => isEarnedAccrualType(t));
     const typeIds = types.map((t) => t.id);
     if (typeIds.length === 0) {
       // feedback cf9dcb98 — EXIT 1, AND THE ONE THE REPORTER HIT. Nothing the scope asked for survived the
-      // `code IN STANDING_LEAVE_CODES AND archived_at IS NULL` filter above, so this run was over before it
-      // read an employment. Re-ask for the SAME rows without that filter — the only way to name what was
-      // declined — and say which half of the filter declined it.
-      const declined = await tx
-        .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, archivedAt: leaveType.archivedAt })
-        .from(leaveType)
-        .where(
-          scopeTypeIds.length
-            ? inArray(leaveType.id, scopeTypeIds)
-            : inArray(leaveType.code, [...STANDING_LEAVE_CODES]),
-        );
+      // `isEarnedAccrualType AND archived_at IS NULL` filter above, so this run was over before it read an
+      // employment. Re-ask for the SAME rows without that filter — the only way to name what was declined —
+      // and say which half of the filter declined it. Unscoped, "the same rows" are the Annual Leave types,
+      // archived ones included, which is what lets an archived Annual Leave be named.
+      const declined = (
+        await tx
+          .select({
+            id: leaveType.id,
+            code: leaveType.code,
+            role: leaveType.role,
+            name: leaveType.name,
+            archivedAt: leaveType.archivedAt,
+          })
+          .from(leaveType)
+          .where(scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined)
+      ).filter((d) => scopeTypeIds.length > 0 || isEarnedAccrualType(d));
       const scopedNames = declined.map((d) => d.name);
-      const standing = new Set<string>([...STANDING_LEAVE_CODES]);
-      const notSwept = declined.filter((d) => !d.archivedAt && !standing.has(d.code));
+      const notSwept = declined.filter((d) => !d.archivedAt && !isEarnedAccrualType(d));
       const archivedPick = declined.filter((d) => d.archivedAt);
       if (notSwept.length) {
-        // ⚠️ NAME WHAT *IS* SWEPT TOO. "Annual Leave is not accrued here" is a riddle on an account that has
-        // two types called Annual Leave; "this screen accrues Annual Leave, Medical Leave and Hospitalization
-        // Leave" is the sentence that ends the search. Read from the tenant's own rows, never hardcoded — the
-        // three standing codes carry whatever name the tenant gave them.
-        const swept = await tx
-          .select({ name: leaveType.name })
-          .from(leaveType)
-          .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
+        // ⚠️ NAME WHAT *IS* SWEPT TOO. "Medical Leave is not accrued here" leaves the reader asking what is;
+        // "Earned Accrual applies only to Annual Leave (*Annual Leave)" is the sentence that ends the search.
+        // Read from the tenant's own rows, never hardcoded — Annual Leave carries whatever name the tenant
+        // gave it. Same predicate, same active-only filter as the sweep itself.
+        const swept = (
+          await tx
+            .select({ name: leaveType.name, code: leaveType.code, role: leaveType.role })
+            .from(leaveType)
+            .where(isNull(leaveType.archivedAt))
+        ).filter((s) => isEarnedAccrualType(s));
         return emptyResult(
           {
             kind: 'type_not_swept',
@@ -8881,7 +8976,8 @@ export async function reprojectEntitlementForEmployment(
     // Leave Year Type override (e1a51aea): yearCycleOverride resolves each type's effective cycle below.
     const types = await tx
       // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
-      .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+      // r299 (3de1453a): `role` rides along for the Earned Accrual boundary below.
+      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(and(eq(leaveType.tenantId, ctx.tenantId), isNull(leaveType.archivedAt)));
     if (types.length === 0) return none;
@@ -8947,6 +9043,15 @@ export async function reprojectEntitlementForEmployment(
     let totalDelta = 0;
     for (const type of types) {
       if (frozenSet.has(`${p.employmentId}|${type.id}`)) continue;
+      // r299 (3de1453a) — THE SAME BOUNDARY AS accrueEarnedLeave, OR THE PROMISE IS FALSE. Earned Accrual
+      // is Annual Leave only now, and the reporter was told that for every other leave type "nothing is
+      // calculated, added or changed". This kernel corrects any type with an accrual row this cycle, so a
+      // non-Annual type left on an earned method (e.g. a SICK type the old sweep had been topping up) would
+      // still be topped up here on an ordinary profile save — the one path left adding earned days to a type
+      // the sweep no longer touches. openLeaveYear skips it too (outcome 'earned_method'), so skipping it
+      // here makes all three engines agree: a STRANDED method posts nothing until HR changes it, and Leave
+      // Balance Health names it (earned_method_not_annual_leave).
+      if (isEarnedMethod(type.accrualMethod) && !isEarnedAccrualType(type)) continue;
       // Leave Year Type override (e1a51aea): the kernel receives the EFFECTIVE cycle for this type — a
       // per-type 'a2a'/'c2c' override wins; null falls back to the company cycle (byte-identical).
       const projected = projectExpectedEntitlement(
@@ -9592,7 +9697,8 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 // A festive grant credits N extra days to EVERY active employee in a chosen (company, leave_type) on a chosen
 // date, with a human reason (e.g. "CNY 2026"). No new table: each grant is one `leaveLedger` `adjustment`
 // (+days) per targeted employment + ONE summary DomainEvent. Festive leave types are expected to live OUTSIDE
-// STANDING_LEAVE_CODES so the accrual / openLeaveYear / expiry engines never touch them (deliberate — see
+// STANDING_LEAVE_CODES (and, since r299, outside Annual Leave, the only type the earned sweep covers) so the
+// accrual / openLeaveYear / expiry engines never touch them (deliberate — see
 // ADR-0066: this is why festive days escape annual carry-cap/forfeit). Expiry clawback is DEFERRED; `expiresOn`
 // is accepted and stored only as a payload/reason note (no sweep this pass).
 

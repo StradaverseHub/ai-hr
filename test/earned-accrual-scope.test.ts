@@ -194,16 +194,24 @@ describe('feedback 2c7c6385 — scoped earned accrual + dry-run preview', () => 
   });
 
   it('leave-type scope narrows to the selected type only', async () => {
+    // r299 (3de1453a) — UPDATED, NOT DELETED. This used to prove narrowing with TWO swept types, ANNUAL and
+    // SICK. The reporter's rule makes Annual Leave the only type Earned Accrual covers, so "all" is Annual
+    // Leave alone even with an earned SICK type configured, and scoping to SICK narrows to nothing.
     await earnedPolicy(b.annualLeaveTypeId);
     const sickId = await mkType('SICK', 'Sick Leave');
     await earnedPolicy(sickId, 14);
     await hire(b.companyId, b.deptA, null);
 
     const all = await run({ asOf: '2026-06-15', dryRun: true });
-    expect(new Set(all.breakdown.map((g) => g.leaveTypeCode))).toEqual(new Set(['ANNUAL', 'SICK']));
+    expect(new Set(all.breakdown.map((g) => g.leaveTypeCode))).toEqual(new Set(['ANNUAL']));
 
     const scoped = await run({ asOf: '2026-06-15', leaveTypeIds: [b.annualLeaveTypeId], dryRun: true });
+    expect(scoped.breakdown.length).toBeGreaterThan(0);
     expect(scoped.breakdown.every((g) => g.leaveTypeCode === 'ANNUAL')).toBe(true);
+
+    const sickOnly = await run({ asOf: '2026-06-15', leaveTypeIds: [sickId], dryRun: true });
+    expect(sickOnly.breakdown).toEqual([]);
+    expect(sickOnly.emptyReason?.kind).toBe('type_not_swept');
   });
 
   it('a scoped real run is idempotent and the commit event carries the scope (audit distinguishes manual vs cron)', async () => {

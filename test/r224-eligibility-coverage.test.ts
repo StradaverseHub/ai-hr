@@ -54,6 +54,8 @@ const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
   accrualUnconfigured: false,
   defaultEntitlementTemplateLineageId: null,
   archived: false,
+  // r299 (3de1453a) — required on HealthLeaveType; false ⇒ no stranded earned method on this fixture.
+  earnedMethodNotAnnualLeave: false,
   ...over,
 });
 

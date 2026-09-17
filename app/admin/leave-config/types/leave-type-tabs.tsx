@@ -191,13 +191,13 @@ export function LeaveTypeTabs({
 }: {
   type: LeaveTypeTabsData;
   /**
-   * r288 (686dc512) — whether the earned sweep could ever reach THIS type, and what it does reach
-   * instead, both decided on the server out of the engine's own constants (see `EarnedSweepFacts`).
+   * r288 (686dc512) → r299 (3de1453a) — where this type stands on "This is our Annual Leave", which other
+   * active type (if any) already is Annual Leave, and the engine's earned-method family, all decided on the
+   * server by the engine's own predicate (see `EarnedSweepFacts`).
    *
-   * It is a prop of the TABS rather than a field of `LeaveTypeTabsData` on purpose: only `codeIsSwept`
-   * is a property of this leave type. The other two are facts about the tenant and about the engine, and
-   * folding them into the per-type data object would have copied one tenant-wide list onto every panel
-   * and invited a future edit to derive it per type.
+   * It is a prop of the TABS rather than a field of `LeaveTypeTabsData` on purpose: most of it is a fact
+   * about the tenant and about the engine, not a column of this leave type, and folding it into the
+   * per-type data object would invite a future edit to derive it per type on the client.
    */
   sweep: EarnedSweepFacts;
   /**

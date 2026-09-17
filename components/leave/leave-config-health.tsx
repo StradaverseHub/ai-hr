@@ -87,6 +87,8 @@ function findingText(t: T, h: LeaveConfigHealth, f: LeaveConfigFinding): string 
       return t('healthGradesWithoutTable', { grades: list(h.gradesWithoutTable) });
     case 'max_balance_zero':
       return t('healthMaxBalanceZero', { tables: list(h.zeroMaxBalanceTables) });
+    case 'earned_method_not_annual_leave':
+      return t('healthEarnedMethodNotAnnualLeave');
   }
 }
 

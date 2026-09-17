@@ -692,11 +692,18 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   };
   const earningRendered = formData.get('earningRendered') != null;
   const carryRendered = formData.get('carryBlockRendered') != null;
+  // r299 (3de1453a) — "This is our Annual Leave", on its OWN marker. The Earning Method form renders the
+  // switch only where the administrator may change it; where it is locked (another type already is Annual
+  // Leave, the type is classified as something else, or it is Annual Leave by its code) it posts NO marker,
+  // so the role is untouched. The value is a hidden '1' / '0' rather than a checkbox's presence, because a
+  // switch the form disables while an earned method is chosen would otherwise post nothing and read as OFF.
+  const annualLeaveRendered = formData.get('annualLeaveRendered') != null;
 
   let saved = { unconfiguredCleared: false };
   try {
     saved = (await setLeaveTypeRules(s, {
       id,
+      ...(annualLeaveRendered ? { isAnnualLeave: formData.get('isAnnualLeave') === '1' } : {}),
       // Earning half — method + rounding. roundingMethodField already carries its own tri-state marker.
       ...(earningRendered
         ? {
@@ -763,7 +770,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
       console.error(`leave-type cohort catch-up failed for leave type ${id}:`, e);
     }
   }
-  okEntitlements(t('entitlementUpdatedToast'), id);
+  // r299 render check — the key lives at admin.leave.entitlementUpdatedToast; `t` here is the `admin`
+  // namespace, so the bare key threw MISSING_MESSAGE on every earning / carry save and the toast showed the
+  // raw key path (pre-existing on main@60a40452, found by rendering the Annual Leave switch save).
+  okEntitlements(t('leave.entitlementUpdatedToast'), id);
 }
 
 

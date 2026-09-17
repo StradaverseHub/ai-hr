@@ -108,6 +108,8 @@ const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
   defaultEntitlementTemplateLineageId: null,
   accrualUnconfigured: false,
   archived: false,
+  // r299 (3de1453a) — required on HealthLeaveType; false ⇒ no stranded earned method on this fixture.
+  earnedMethodNotAnnualLeave: false,
   ...over,
 });
 
@@ -716,6 +718,7 @@ describe('r209 · the health card and the ENGINE agree about which zero is a fau
         accrualUnconfigured: false,
         archived: false,
         defaultEntitlementTemplateLineageId: null,
+        earnedMethodNotAnnualLeave: false,
       },
       templates,
       rules,

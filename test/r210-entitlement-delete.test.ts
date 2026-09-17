@@ -698,6 +698,7 @@ describe('§C r210 · a deleted table is not still reported as a table without a
     accrualUnconfigured: false,
     defaultEntitlementTemplateLineageId: null,
     archived: false,
+    earnedMethodNotAnnualLeave: false,
   });
 
   it('the finding names both tables, then only the survivor, from the same derivation', async () => {

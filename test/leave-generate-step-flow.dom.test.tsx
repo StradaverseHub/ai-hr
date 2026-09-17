@@ -88,6 +88,7 @@ const line = (i: number, outcome: (typeof OUTCOMES)[number]): LeaveGenerationRes
   carry: 0,
   forfeit: 0,
   belowStatutoryFloor: false,
+  earnedMethodNotAnnualLeave: false,
 });
 
 const result: LeaveGenerationResult = {
@@ -228,6 +229,45 @@ describe('93249794 · the validation table resolves every COMPUTED message key',
     await waitFor(() => expect(preview).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: 'Employee Selection' }));
     expect(screen.getByText('7 employees selected')).toBeTruthy();
+  });
+});
+
+describe('r299 (3de1453a) · an earned_method line says whether anything will ever add the days', () => {
+  /**
+   * The engine skips an earned method on a year-open for EVERY type, so the stored outcome is `earned_method`
+   * either way. But Earned Accrual covers Annual Leave only: on Annual Leave the days come from Run Earned
+   * Accrual, and on any other type nothing adds them. The server marks the second (`earnedMethodNotAnnualLeave`,
+   * decided beside `isEarnedAccrualType` in openLeaveYear) and the label follows it. BOTH ARMS, one table.
+   */
+  it('a STRANDED earned method reads as stranded; Annual Leave on the same method keeps its label exactly', async () => {
+    const L = messages.admin.leave;
+    const mixed: LeaveGenerationResult = {
+      ...result,
+      lines: [
+        line(0, 'earned_method'), // Annual Leave, unflagged
+        { ...line(1, 'earned_method'), leaveTypeId: 'lt-sick', leaveTypeName: 'Sick Leave', earnedMethodNotAnnualLeave: true },
+      ],
+    };
+    preview.mockImplementation(async () => mixed);
+    try {
+      const user = userEvent.setup();
+      mount();
+      await waitFor(() => expect(preview).toHaveBeenCalled());
+      await user.click(screen.getByRole('button', { name: 'Validation & Preview' }));
+      const table = await screen.findByRole('table');
+      const reason = (employee: string) => {
+        const row = within(table).getAllByRole('row').find((r) => r.textContent?.includes(employee));
+        return row?.querySelectorAll('td')[2]?.textContent;
+      };
+      // ANNUAL LEAVE — byte-identical to the label it has always had.
+      expect(reason('Employee 0')).toBe(L.generateOutcome_earned_method);
+      // THE STRANDED TYPE — never "accrues through the year".
+      expect(reason('Employee 1')).toBe(L.generateOutcomeEarnedMethodNotAnnualLeave);
+      expect(reason('Employee 1')).not.toBe(L.generateOutcome_earned_method);
+      expect(table.textContent).not.toContain('generateOutcome');
+    } finally {
+      preview.mockImplementation(async () => result);
+    }
   });
 });
 

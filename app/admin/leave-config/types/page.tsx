@@ -3,12 +3,13 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
-// r288 (686dc512) — THE TWO CONSTANTS THE EARNED SWEEP IS ACTUALLY DECIDED ON, read from the engine that
-// decides it. Before this round nothing under app/ or messages/ referenced either, which is precisely the
-// gap the item closes: this screen would accept an earned method on a code `accrueEarnedLeave` can never
-// reach and say nothing at all. Imported here, on the SERVER, and handed across as plain data — the
-// editor is a client island and the engine module pulls the database in.
-import { EARNED_METHODS, STANDING_LEAVE_CODES } from '@/core/leave';
+// r288 (686dc512) → r299 (3de1453a) — WHAT THE EARNED SWEEP IS ACTUALLY DECIDED ON, read from the engine that
+// decides it: the earned-method family, and the ONE predicate for "Earned Accrual applies to this type"
+// (Annual Leave, role first). r288 imported `STANDING_LEAVE_CODES` here; the reporter's rule ("only Annual
+// Leave is subject to the Earned Accrual concept") retired that constant from the sweep. Imported on the
+// SERVER and handed across as plain data — the editor is a client island and the engine module pulls the
+// database in.
+import { EARNED_METHODS, annualLeaveSwitchState, isEarnedAccrualType } from '@/core/leave';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
@@ -124,25 +125,21 @@ export default async function LeaveConfigTypesPage({
   const activeTypeOptions = types.filter((lt) => !lt.archivedAt).map((lt) => ({ id: lt.id, name: lt.name }));
 
   /**
-   * r288 (686dc512) — THE THREE TYPE NAMES THE EARNED SWEEP ACTUALLY COVERS, READ FROM THIS TENANT'S OWN
-   * ROWS.
+   * r299 (3de1453a) — THE TENANT'S ACTIVE ANNUAL LEAVE, READ FROM ITS OWN ROWS.
    *
-   * ⚠️ NOT HARDCODED, and that is the load-bearing part. The three standing CODES are fixed; the NAMES
-   * against them are whatever the tenant typed. The account that raised this holds two leave types both
-   * called some variant of Annual Leave, so "Annual Leave is not accrued here" would be a riddle on the
-   * very account it was written for. The engine's own `type_not_swept` empty state re-reads the rows for
-   * the same reason, with this same filter (standing code AND not archived) and this same A–Z order.
+   * ⚠️ NOT HARDCODED, and that is the load-bearing part. "Your Annual Leave is *Annual Leave" names whatever
+   * the tenant typed. The engine's own `type_not_swept` exit reads the same rows with the same filter
+   * (`isEarnedAccrualType` AND not archived) and the same A–Z order, and so does Run Earned Accrual.
    *
-   * DERIVED FROM THE READ THIS PAGE ALREADY MAKES — `types` is every leave type including the archived
-   * ones — so the warning below costs no query. The archived ones are excluded because the sweep excludes
-   * them: an archived ANNUAL is not something the run reaches either. On the reporting account that
-   * leaves this list EMPTY, which is true and has a sentence of its own.
+   * DERIVED FROM THE READ THIS PAGE ALREADY MAKES — `types` is every leave type including the archived ones,
+   * each carrying `role` — so the switch facts below cost no query. Archived rows are excluded because the
+   * sweep excludes them and so does the "only one active Annual Leave" rule. On the reporting account this
+   * is EMPTY until they switch "*Annual Leave" on.
    */
-  const standingCodes = new Set<string>([...STANDING_LEAVE_CODES]);
-  const sweptTypeNames = types
-    .filter((lt) => standingCodes.has(lt.code) && !lt.archivedAt)
-    .map((lt) => lt.name)
-    .sort((a, b) => a.localeCompare(b));
+  const activeAnnualLeave = types
+    .filter((lt) => !lt.archivedAt && isEarnedAccrualType(lt))
+    .map((lt) => ({ id: lt.id, name: lt.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   /** The engine's earned-method family, handed over verbatim rather than respelled in the editor. */
   const earnedMethods = [...EARNED_METHODS];
 
@@ -485,12 +482,14 @@ export default async function LeaveConfigTypesPage({
                 <LeaveTypeTabs
                   key={lt.id}
                   type={data}
-                  /* r288 (686dc512) — a plain object of a boolean and two string arrays. Serialisable,
-                     so it may cross into the client island (test/server-client-boundary.test.ts). */
+                  /* r288 → r299 — a plain object of strings and string arrays, every field decided here by the
+                     engine's own predicate. Serialisable, so it may cross into the client island
+                     (test/server-client-boundary.test.ts). */
                   sweep={{
-                    codeIsSwept: standingCodes.has(lt.code),
+                    leaveTypeName: lt.name,
+                    annualSwitch: annualLeaveSwitchState(lt),
+                    otherAnnualLeaveTypeNames: activeAnnualLeave.filter((a) => a.id !== lt.id).map((a) => a.name),
                     earnedMethods,
-                    sweptTypeNames,
                   }}
                   orgAssignmentOptions={orgAssignmentOptions}
                   /* The candidates THIS type may point at: exclude self, exclude archived, and exclude any

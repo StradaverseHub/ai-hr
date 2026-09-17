@@ -335,8 +335,20 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
       panelSrc.indexOf('function CarryPolicyForm'),
     );
     expect(earningForm).toContain("<option value=\"none\">{t('subStep.earningNone')}</option>");
-    expect(earningForm).toContain("<option value=\"monthly\">{t('subStep.earningByMonth')}</option>");
-    expect(earningForm).toContain("<option value=\"daily\">{t('subStep.earningDaily')}</option>");
+    // r299 (3de1453a) — UPDATED, NOT LOOSENED: Monthly and Daily are still two of the three choices, and now
+    // carry `disabled={!annualOn}` because only Annual Leave may earn ("This is our Annual Leave").
+    expect(earningForm).toMatch(
+      /<option value="monthly" disabled=\{!annualOn\}>\s*\{t\('subStep\.earningByMonth'\)\}\s*<\/option>/,
+    );
+    expect(earningForm).toMatch(/<option value="daily" disabled=\{!annualOn\}>\s*\{t\('subStep\.earningDaily'\)\}\s*<\/option>/);
+    // Exactly three real choices (the Not configured placeholder is value ""), counted in the earning select
+    // only — the Rounding select below it has its own "none".
+    const earningSelect = earningForm.slice(0, earningForm.indexOf('name="roundingMethodRendered"'));
+    expect([...earningSelect.matchAll(/<option value="(none|monthly|daily)"/g)].map((m) => m[1])).toEqual([
+      'none',
+      'monthly',
+      'daily',
+    ]);
     // The quarterly round-trip option is gone from the dropdown. It survives as a READ-ONLY re-post for a
     // type that still stores it (see the unknown-method branch), which is what lets the option go without
     // recreating the eee43966 silent-downgrade class.

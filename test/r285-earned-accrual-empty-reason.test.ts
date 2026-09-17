@@ -8,9 +8,15 @@
  * both tables ARE in force at that date, and the two eligibility rules behind them reach SIX employments
  * (4 + 2). So the plan's reason was not the reason.
  *
- * THE REAL ONE is `accrueEarnedLeave`'s very first filter, `code IN STANDING_LEAVE_CODES`
- * ('ANNUAL', 'SICK', 'HOSPITALIZATION'). `AL` is not one of them, so the sweep returns before it reads an
- * employment — whatever tables, rules or accrual method that type carries. The picker, meanwhile, offers
+ * THE REAL ONE was `accrueEarnedLeave`'s very first filter, `code IN STANDING_LEAVE_CODES`
+ * ('ANNUAL', 'SICK', 'HOSPITALIZATION'). `AL` is not one of them, so the sweep returned before it read an
+ * employment — whatever tables, rules or accrual method that type carried.
+ *
+ * r299 (3de1453a) — UPDATED, NOT DELETED. That filter is now `isEarnedAccrualType` (Annual Leave only, by
+ * role first), on the reporter's rule. `type_not_swept` means "not Annual Leave"; §A's production case now
+ * declines an UNCLASSIFIED `AL`, and its positive control is an `AL` switched on by role — where r285 used a
+ * SICK type, which the rule now excludes. §I's "nothing earned" arm moved onto Annual Leave for the same
+ * reason. No other reason, exit or figure moved. The picker, meanwhile, offers
  * EVERY active leave type. That is the defect this file pins: not the gate, which is deliberate (see the
  * ADR-0066 note on the constant), but a screen that offers a choice the engine can never act on and then
  * declines to say so. §A is that case, and it reproduces the production account exactly.
@@ -52,10 +58,10 @@ const mkGrade = async (code: string, name: string, rank: number) => {
   return g.id;
 };
 
-const mkType = async (code: string, name: string) => {
+const mkType = async (code: string, name: string, role: schema.LeaveTypeRoleValue | null = null) => {
   const [lt] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name, paid: true, allowNegativeBalance: true })
+    .values({ tenantId: b.tenantId, code, name, role, paid: true, allowNegativeBalance: true })
     .returning({ id: schema.leaveType.id });
   return lt.id;
 };
@@ -128,12 +134,19 @@ describe('§A the production case — a leave type the earned sweep does not cov
 
     // POSITIVE CONTROL — the identical configuration on a type the sweep DOES cover previews rows. Without
     // this the assertions above hold just as well against an engine that can never produce anything.
-    const annual = await mkType('SICK', 'Medical Leave');
+    // r299: the covered type is Annual Leave by ROLE — the switch the reporter turns on — where r285 used
+    // SICK, which the reporter's rule now excludes from Earned Accrual.
+    const annual = await mkType('AL2', '*Annual Leave (switched on)', 'annual');
     await setEarned(annual);
     await configure(annual);
     const ok = await run({ asOf: MID, leaveTypeIds: [annual], dryRun: true });
     expect(ok.breakdown.length).toBeGreaterThan(0);
     expect(ok.emptyReason).toBeNull();
+    // …and SICK, which r285 used as that control, is now declined by the same exit.
+    const sick = await mkType('SICK', 'Medical Leave');
+    await setEarned(sick);
+    await configure(sick);
+    expect((await run({ asOf: MID, leaveTypeIds: [sick], dryRun: true })).emptyReason?.kind).toBe('type_not_swept');
   });
 
   it('an archived type asked for by id says ARCHIVED, not "not covered"', async () => {
@@ -347,13 +360,17 @@ describe('§I reason (c) — already posted is NOT an empty preview', () => {
     expect(second.breakdown.reduce((s, g) => s + g.entitlementGenerated, 0)).toBe(0);
     expect(second.earnedToDateTotal).toBe(first.earnedToDateTotal);
 
-    // And the OTHER zero, which the screen must not call "already posted": a type whose table says zero
-    // days. Same grid of zeroes, opposite action — HR has to go and put days in the table, not stop
-    // worrying. Nothing has been EARNED, so the Σ is 0 and the two states separate on the engine's figure.
-    const sick = await mkType('SICK', 'Medical Leave');
-    await setEarned(sick);
-    await configure(sick, { days: 0 });
-    const nothingEarned = await run({ asOf: MID, leaveTypeIds: [sick], dryRun: true });
+  });
+
+  it('…and the OTHER zero — a table that says zero days — is not "already posted"', async () => {
+    // Same grid of zeroes, opposite action — HR has to go and put days in the table, not stop worrying.
+    // Nothing has been EARNED, so the Σ is 0 and the two states separate on the engine's figure.
+    // r299: on Annual Leave, in its own case. r285 used a second, SICK type here; the reporter's rule makes
+    // Annual Leave the only type Earned Accrual covers, so there is no second covered type to borrow.
+    await setEarned(b.annualLeaveTypeId);
+    await configure(b.annualLeaveTypeId, { days: 0 });
+    await hire();
+    const nothingEarned = await run({ asOf: MID, leaveTypeIds: [b.annualLeaveTypeId], dryRun: true });
     expect(nothingEarned.breakdown.length).toBeGreaterThan(0);
     expect(nothingEarned.breakdown.reduce((s, g) => s + g.entitlementGenerated, 0)).toBe(0);
     expect(nothingEarned.earnedToDateTotal).toBe(0);

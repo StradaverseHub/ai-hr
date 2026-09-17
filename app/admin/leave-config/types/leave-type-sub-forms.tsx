@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 // core/leave-compute.ts is the RSC-SAFE half of the leave engine (it imports no db/postgres, see its
 // header), which is why a client component may pull VALUES from it. The worked example below runs the
@@ -256,9 +256,13 @@ function RoundingBandsEditor({
 
 /* ── Earning method + rounding (TAB 3) ─────────────────────────────────────────────────────────── */
 
-type EarningChoice = '' | 'none' | 'monthly' | 'daily';
+/** r299 (3de1453a) — `legacy` is the STORED legacy earned method (a stranded `earned_quarterly`) held as the
+ *  select's own value on a type that is not Annual Leave, so it is re-posted verbatim until HR picks
+ *  something else. It maps to no fixed engine value; `methodToStore` reads the stored one. */
+type EarningChoice = '' | 'none' | 'monthly' | 'daily' | 'legacy';
 /** A stored value outside this set (a legacy 'earned_quarterly', or anything a hand-crafted POST once
- *  put there) takes the READ-ONLY branch rather than being silently collapsed onto a choice nobody made. */
+ *  put there) takes the READ-ONLY branch rather than being silently collapsed onto a choice nobody made —
+ *  except, since r299, a legacy EARNED method on a type that is not Annual Leave (see `legacyReplaceable`). */
 const KNOWN_EARNING_METHODS = ['', 'grant_on_hire_prorated', 'earned_monthly', 'earned_daily'];
 const isKnownEarningMethod = (m?: string | null) => KNOWN_EARNING_METHODS.includes(m ?? '');
 const earningChoiceOf = (m?: string, unconfigured?: boolean): EarningChoice =>
@@ -273,37 +277,38 @@ const earningMethodOf = (c: EarningChoice): string =>
         : '';
 
 /**
- * r288 (686dc512) — WHAT THIS FORM NEEDS TO KNOW ABOUT THE EARNED SWEEP, DECIDED ON THE SERVER.
+ * r288 (686dc512) → r299 (3de1453a) — WHAT THIS FORM NEEDS TO KNOW ABOUT EARNED ACCRUAL, DECIDED ON THE SERVER.
  *
- * `accrueEarnedLeave` filters `code IN STANDING_LEAVE_CODES` BEFORE it reads a single employment, so a
- * leave type whose code is not one of those three NEVER accrues, whatever its earning method, its
- * entitlement tables or their dates say. The engine's own comment at that exit reads "THIS IS THE
- * PRODUCTION CASE: `AL` is not `ANNUAL`".
+ * THE REPORTER'S RULE: "Only Annual Leave (*Annual Leave) is subject to the Earned Accrual concept. All other
+ * leave types are managed based on entitlement and should not be included in the Earned Accrual process."
  *
- * Until this round NOTHING under app/ or messages/ referenced that constant, so this editor accepted the
- * combination in silence and the only signal an administrator ever got was a run that came back empty,
- * days later, on a different screen. That is how the reporting account came to hold a second leave type
- * called "*Annual Leave" which looked correctly configured and could never accrue a day.
- *
- * ⚠️ EVERY FIELD IS DECIDED ON THE SERVER, OUT OF THE ENGINE'S OWN CONSTANTS, and crosses as plain data
- * (test/server-client-boundary.test.ts). A client component may not import the engine module — it pulls
- * the database in — and a second copy of either constant written HERE would be free to drift from the
- * filter it is supposed to describe, which is the whole failure mode this warning exists to end.
+ * r288 WARNED — and deliberately did not refuse — when an earned method sat on a code the sweep could not
+ * reach ("a tenant may legitimately keep such a type for a non-accruing purpose"). The reporter's rule
+ * REVERSES that: `setLeaveTypeRules` now refuses a change to an earned method on anything that is not Annual
+ * Leave, and this form offers Monthly and Daily Accrual only while "This is our Annual Leave" is on. What
+ * r288 got right survives: the facts are decided on the server by the engine's OWN predicate
+ * (`isEarnedAccrualType`) and cross as plain data (test/server-client-boundary.test.ts), because a client
+ * island may not import the engine module and a second statement of the rule here would drift from it.
  */
 export type EarnedSweepFacts = {
-  /** This leave type's `code` is one of the three standing codes — i.e. the sweep can reach it at all.
-   *  Decided against the engine's constant; false is what raises the warning below. */
-  codeIsSwept: boolean;
+  /** This leave type's own name, for the sentences that talk about it ("Medical Leave is entitlement-based"). */
+  leaveTypeName: string;
+  /**
+   * Where "This is our Annual Leave" stands for THIS row, decided on the server:
+   *  · `on`         — the row is recorded as Annual Leave (its role). The switch can be turned off.
+   *  · `off`        — unclassified and not Annual Leave. The switch can be turned on, unless another active
+   *                   type already is Annual Leave (`otherAnnualLeaveTypeNames`).
+   *  · `by_code`    — unclassified but recognised as Annual Leave by its seeded code. Shown on, locked:
+   *                   there is no role to clear.
+   *  · `other_role` — recorded as a different kind of leave (Sick, Maternity…). Shown off, locked.
+   */
+  annualSwitch: 'on' | 'off' | 'by_code' | 'other_role';
+  /** ⚠️ THE TENANT'S OWN NAMES for the OTHER active types that are Annual Leave, A–Z — never an English
+   *  default. Non-empty ⇒ this type's switch cannot be turned on, and the sentence says which type is. */
+  otherAnnualLeaveTypeNames: string[];
   /** The engine's earned-method family, verbatim. The value this form WOULD POST is tested against this
    *  list rather than against a second spelling of "earned" written in this file. */
   earnedMethods: string[];
-  /** ⚠️ THE TENANT'S OWN NAMES for the swept types that are ACTIVE, A–Z — the same rows, the same filter
-   *  and the same order the engine's `type_not_swept` empty state reads. NEVER the English defaults: the
-   *  three standing codes carry whatever name the tenant gave them, and the reporting account has two
-   *  leave types both called some variant of Annual Leave, so a hardcoded name would print a riddle on
-   *  the very account that raised this. EMPTY when the tenant has archived all three — which is that
-   *  account's actual state, and why the empty case has a sentence of its own rather than an empty list. */
-  sweptTypeNames: string[];
 };
 
 /**
@@ -313,6 +318,8 @@ export type EarnedSweepFacts = {
  * MARKERS: `earningRendered=1` (method, accrual day, rounding method, threshold AND bands are gated on
  * it inside ONE `...(earningRendered ? {} : {})` in the action) and `roundingMethodRendered=1` (the
  * inner marker that reads 'none' as an explicit CLEAR). Dropping either is a half-save.
+ * r299: `annualLeaveRendered=1` + `isAnnualLeave` ('1' / '0'), posted ONLY while the Annual Leave switch is
+ * editable — a locked switch posts no marker, so the role column is untouched.
  */
 export function EarningMethodForm({
   t,
@@ -325,16 +332,37 @@ export function EarningMethodForm({
   rules: LeaveTypeRules;
   action: Action;
   leaveTypeId: string;
-  /** r288 (686dc512) — see EarnedSweepFacts. Required, not optional: a leave type editor that cannot
-   *  answer "would the sweep ever reach this type" is the state this round exists to remove. */
+  /** r288/r299 — see EarnedSweepFacts. Required, not optional: an editor that cannot answer "is this type
+   *  Annual Leave" would offer Monthly Accrual on a type the service must refuse it for. */
   sweep: EarnedSweepFacts;
 }) {
   const locale = useLocale();
+  const switchLabelId = useId();
+  const switchHelpId = useId();
   const storedMethod = rules.accrualMethod ?? '';
   const unknownStoredMethod = !isKnownEarningMethod(storedMethod);
   const unconfigured = rules.accrualUnconfigured != null;
+  /**
+   * r299 (3de1453a) — A LEGACY EARNED METHOD ON A TYPE THAT IS NOT ANNUAL LEAVE MUST BE REPLACEABLE HERE.
+   *
+   * The stranded note and Leave Balance Health both tell HR to change such a type's earning method to None.
+   * On the read-only branch below there was nothing to change it WITH, so a type stored on `earned_quarterly`
+   * (retired from the dropdown in bc36c768) could be told the fix and never apply it. On a type the SERVER
+   * says is not Annual Leave (`annualSwitch` off / other_role), a stored method in the engine's earned family
+   * that the dropdown cannot name renders on the select instead: held as `legacy` (re-posted verbatim, so a
+   * rounding-only save rewrites nothing), with None beside it — the choice the note names. Everything else
+   * about the read-only branch is unchanged, including Annual Leave on a legacy method (its method is valid
+   * there and the sweep honours it) and any unknown value that is not an earned method.
+   */
+  const legacyReplaceable =
+    unknownStoredMethod &&
+    sweep.earnedMethods.includes(storedMethod) &&
+    sweep.annualSwitch !== 'on' &&
+    sweep.annualSwitch !== 'by_code';
+  const legacyReadOnly = unknownStoredMethod && !legacyReplaceable;
   const [choice, setChoice] = useState<EarningChoice>(
-    earningChoiceOf(rules.accrualMethod ?? undefined, unconfigured),
+    // An unconfigured type starts on the Not configured placeholder, exactly as the known branch does.
+    legacyReplaceable && !unconfigured ? 'legacy' : earningChoiceOf(rules.accrualMethod ?? undefined, unconfigured),
   );
   const [accrualDay, setAccrualDay] = useState<string>(
     rules.accrualDay == null ? '' : String(rules.accrualDay),
@@ -343,26 +371,104 @@ export function EarningMethodForm({
   const [bandRows, setBandRows] = useState<BandRow[]>(() => rowsFromStored(rules.roundingBands));
   const showBands = rounding === 'custom';
   /**
-   * r288 (686dc512) — THE COMBINATION THAT CAN NEVER PRODUCE A DAY.
+   * r299 (3de1453a) — "THIS IS OUR ANNUAL LEAVE", LIVE.
    *
-   * `methodToStore` is the value the hidden `method` input posts on whichever branch is rendered, so the
-   * warning is keyed on the literal string that WOULD BE STORED rather than on a second reading of the
-   * dropdown. That matters on the read-only branch too: a legacy `earned_quarterly` on a non-standing
-   * code is just as unreachable as `earned_monthly` is, and a check written against the three options
-   * this select happens to render would quietly exempt it.
-   *
-   * It is LIVE on `choice`: the point of the item is that the mismatch is visible while the
-   * administrator is still editing, not three days later through a run that finds nothing.
+   * The switch and the method are ONE save (`setLeaveTypeRules` takes both and judges the method against
+   * the role it writes), so turning the switch on offers Monthly and Daily Accrual immediately, before
+   * anything is saved. `annualOn` starts from the server's state and is the only thing the options read.
    */
-  const methodToStore = unknownStoredMethod ? storedMethod : earningMethodOf(choice);
-  const neverAccrues = sweep.earnedMethods.includes(methodToStore) && !sweep.codeIsSwept;
+  const switchEditable =
+    sweep.annualSwitch === 'on' || (sweep.annualSwitch === 'off' && sweep.otherAnnualLeaveTypeNames.length === 0);
+  const [annualOn, setAnnualOn] = useState<boolean>(sweep.annualSwitch === 'on' || sweep.annualSwitch === 'by_code');
+  /** The value the hidden `method` input posts on whichever branch is rendered — the literal that WOULD BE
+   *  STORED, so a legacy `earned_quarterly` on the read-only branch is judged exactly like Monthly Accrual. */
+  const methodToStore = legacyReadOnly || choice === 'legacy' ? storedMethod : earningMethodOf(choice);
+  const methodIsEarned = sweep.earnedMethods.includes(methodToStore);
+  /** Held ON exactly where the save would otherwise be refused: switching a recorded Annual Leave off while
+   *  an earned method stays stored ("change its earning method first"), or switching off after choosing a
+   *  NEW earned method on this form (an earned method may only be chosen on Annual Leave). A stranded
+   *  method re-posted unchanged is neither, so it does not hold the switch. */
+  const switchHeldByMethod =
+    switchEditable && annualOn && methodIsEarned && (sweep.annualSwitch === 'on' || methodToStore !== storedMethod);
+  /** A type that is not Annual Leave but still stores an earned method — only reachable from a value saved
+   *  before this rule existed, because Monthly and Daily are not selectable here. It is NEVER rewritten: the
+   *  hidden `method` re-posts it verbatim and the service accepts an unchanged value. */
+  const stranded = !annualOn && methodIsEarned;
+  const annualNames = new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(
+    sweep.otherAnnualLeaveTypeNames,
+  );
+  const switchHelp =
+    sweep.annualSwitch === 'by_code'
+      ? t('subStep.annualLeaveSwitchByCodeHelp')
+      : sweep.annualSwitch === 'other_role'
+        ? t('subStep.annualLeaveSwitchOtherRoleHelp')
+        : annualOn
+          ? t('subStep.annualLeaveSwitchOnHelp')
+          : sweep.otherAnnualLeaveTypeNames.length > 0
+            ? t('subStep.annualLeaveSwitchOtherHelp', { names: annualNames })
+            : t('subStep.annualLeaveSwitchOffHelp');
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
       <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+      {/* r299 — THE SWITCH'S OWN TRI-STATE MARKER, posted only while the switch is editable. The value rides a
+          hidden input rather than a checkbox's presence: a control disabled while an earned method is chosen
+          posts nothing, and "nothing" would read as OFF. */}
+      {switchEditable && (
+        <>
+          <input type="hidden" name="annualLeaveRendered" value="1" />
+          <input type="hidden" name="isAnnualLeave" value={annualOn ? '1' : '0'} />
+        </>
+      )}
+      <div
+        data-testid="annual-leave-switch"
+        className={cn(
+          'flex items-start gap-3 rounded-lg border p-3',
+          annualOn ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30',
+        )}
+      >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={annualOn}
+          aria-labelledby={switchLabelId}
+          aria-describedby={switchHelpId}
+          disabled={!switchEditable || switchHeldByMethod}
+          onClick={() => setAnnualOn((on) => !on)}
+          className={cn(
+            'relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+            annualOn ? 'bg-primary' : 'bg-muted-foreground/30',
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'inline-block size-4 rounded-full bg-background shadow transition-transform',
+              annualOn ? 'translate-x-4' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+        <div className="space-y-0.5">
+          <span id={switchLabelId} className="text-sm font-medium text-foreground">
+            {t('subStep.annualLeaveSwitchLabel')}
+          </span>
+          <p id={switchHelpId} className="text-xs text-muted-foreground">
+            {switchHelp}
+          </p>
+          {switchHeldByMethod && (
+            <p data-testid="annual-leave-switch-held" className="text-xs text-muted-foreground">
+              {t('subStep.annualLeaveSwitchHeldHelp', {
+                none: t('subStep.earningNone'),
+                monthly: t('subStep.earningByMonth'),
+                daily: t('subStep.earningDaily'),
+              })}
+            </p>
+          )}
+        </div>
+      </div>
       {/* Tri-state marker: names the HALF of the rule row this form renders. The carry half is a separate
           form, and without this marker an earning-only save would clear its configuration. */}
       <input type="hidden" name="earningRendered" value="1" />
-      {unknownStoredMethod ? (
+      {legacyReadOnly ? (
         <>
           {/* BELT AND BRACES: re-post a method this editor cannot render VERBATIM, so an unrelated save
               of the ROUNDING half is not a silent downgrade of the earning method to the lump path. */}
@@ -376,8 +482,10 @@ export function EarningMethodForm({
         </>
       ) : (
         <>
-          {/* the mapped engine value — the select speaks the reporter's vocabulary */}
-          <input type="hidden" name="method" value={earningMethodOf(choice)} />
+          {/* the mapped engine value — the select speaks the reporter's vocabulary. r299: on a type that is
+              not annual leave this re-posts a stored earned method VERBATIM until the administrator picks
+              something else, which is how a stranded method is kept rather than rewritten. */}
+          <input type="hidden" name="method" value={methodToStore} />
           <Field label={t('subStep.earningMethodLabel')}>
             <select
               value={choice}
@@ -389,9 +497,24 @@ export function EarningMethodForm({
                   someone who opens the dropdown and thinks better of it must be able to leave the type
                   unconfigured rather than be forced into a choice by the UI. */}
               {choice === '' && <option value="">{t('subStep.earningNotConfigured')}</option>}
+              {/* r299 — the stored legacy earned method, named, on a type that is not annual leave. Listed so
+                  the select shows what is stored; disabled like Monthly and Daily, because only annual leave
+                  may choose an earned method — once HR moves off it, it is not offered back. (Lower case on
+                  purpose: test/r288-earned-sweep-warning.test.ts scans this file for hardcoded type names.) */}
+              {legacyReplaceable && (
+                <option value="legacy" disabled={!annualOn}>
+                  {storedMethod === 'earned_quarterly' ? t('earnedMethodQuarterly') : storedMethod}
+                </option>
+              )}
               <option value="none">{t('subStep.earningNone')}</option>
-              <option value="monthly">{t('subStep.earningByMonth')}</option>
-              <option value="daily">{t('subStep.earningDaily')}</option>
+              {/* r299 — LISTED, and disabled unless the switch is on: the reporter's mockup greys them
+                  rather than hiding them, so the administrator can see what the switch unlocks. */}
+              <option value="monthly" disabled={!annualOn}>
+                {t('subStep.earningByMonth')}
+              </option>
+              <option value="daily" disabled={!annualOn}>
+                {t('subStep.earningDaily')}
+              </option>
             </select>
           </Field>
           {choice === '' && (
@@ -424,31 +547,26 @@ export function EarningMethodForm({
           )}
         </>
       )}
-      {/* r288 (686dc512) — ⚠️ WARN, DO NOT REFUSE, AND DO NOT TOUCH THE SAVE.
-          This paragraph is the entire change: it posts nothing, gates nothing and disables nothing, so a
-          save made while it is on screen stores exactly the row it stored before. That is deliberate and
-          it is the plan's own commitment — a tenant may legitimately keep such a type for a non-accruing
-          purpose, and a hard validation here would be an unrequested behaviour change on every existing
-          row. The same reasoning as the Daily Accrual rounding warning a few lines up.
-          Rendered OUTSIDE the unknown/known branch so the read-only branch is covered too, and rendered
-          only when true: a permanent banner is furniture, and furniture stops being read. */}
-      {neverAccrues && (
-        <p
-          role="note"
-          data-testid="earning-not-swept"
-          className="text-xs text-amber-600 dark:text-amber-400"
-        >
-          {sweep.sweptTypeNames.length
-            ? t('subStep.earningNotSwept', {
-                // Joined the way the READER'S language joins a list, exactly as the empty-result card
-                // does with the same three names — not with a hardcoded comma.
-                swept: new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(
-                  sweep.sweptTypeNames,
-                ),
-              })
-            : t('subStep.earningNotSweptNoneActive')}
-        </p>
-      )}
+      {/* r299 (3de1453a) — WHAT THE ADMINISTRATOR IS TOLD WHEN THIS IS NOT ANNUAL LEAVE. Rendered OUTSIDE the
+          unknown/known branch so a legacy stored method is covered too, and LIVE on the switch.
+            · stranded — an earned method is still stored on a type Earned Accrual does not cover. Nothing is
+              rewritten; the note names the fix. Leave Balance Health raises the same fact as a finding.
+            · otherwise — the reporter's own sentence from the mockup: this type is entitlement-based. */}
+      {!annualOn &&
+        (stranded ? (
+          <p role="note" data-testid="earning-stranded" className="text-xs text-amber-600 dark:text-amber-400">
+            {/* The option is named through its OWN label, so the note and the dropdown cannot disagree. */}
+            {t('subStep.earningStrandedNote', { type: sweep.leaveTypeName, none: t('subStep.earningNone') })}
+          </p>
+        ) : (
+          <p
+            role="note"
+            data-testid="earning-entitlement-based"
+            className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground"
+          >
+            {t('subStep.earningEntitlementBasedNote', { type: sweep.leaveTypeName })}
+          </p>
+        ))}
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
       {/* Rounding sits directly UNDER Earning Method and rides the same rule row: it tidies whatever the
           earning calculation produces, without changing the calculation. The SECOND tri-state marker. */}
