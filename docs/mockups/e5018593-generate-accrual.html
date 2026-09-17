@@ -1,0 +1,137 @@
+<meta charset="utf-8"><title>e5018593 — Generate adds earned Annual Leave</title>
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#7c2d12;margin-top:7px}
+  .tabs2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .tb{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px;color:var(--mf);background:#fff}
+  .tb.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .btn.dis{background:#e6e7ef;color:#9a9ba8}
+/* ---- this mockup ---- */
+
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.stp{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11px;color:var(--mf);background:#fff}
+.stp.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:10px 0}
+.st{border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+.st .k{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+.st .v{font-size:15px;font-weight:700;color:#9a9ba8;margin-top:2px}
+.ok{background:#f0fdf4;border:1px solid #86efac;border-radius:9px;padding:9px 11px;font-size:12px;color:#14532d}
+.sec{font-size:12px;font-weight:700;margin:12px 0 6px}
+td.n{text-align:right;color:#9a9ba8}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Leave Config &gt; Generate Entitlement &mdash; Validation &amp; Preview</h2>
+  <p class="q">The preview now shows both parts before you confirm. Figures are left blank on purpose.</p>
+  <div class="steps"><span class="stp">Leave Selection</span><span class="stp">Generation Settings</span><span class="stp">Employee Selection</span><span class="stp on">Validation &amp; Preview</span><span class="stp">Process</span></div>
+  <div class="explain">This is a rehearsal of the real run, not a separate checklist: it runs the same calculation and writes nothing. What it says here is what will happen.</div>
+  <div class="stat">
+    <div class="st"><div class="k">Employees selected</div><div class="v">&ndash;</div></div>
+    <div class="st"><div class="k">Passed</div><div class="v">&ndash;</div></div>
+    <div class="st"><div class="k">Failed</div><div class="v">&ndash;</div></div>
+  </div>
+  <div class="two">
+    <div>
+      <div class="sec">Entitlement to grant</div>
+      <div class="panel" style="overflow:hidden"><table>
+        <tr><th>Leave type</th><th>Employees</th><th style="text-align:right">Days</th></tr>
+        <tr><td>Medical Leave</td><td class="n">&ndash;</td><td class="n">&ndash;.&ndash;&ndash;</td></tr>
+        <tr><td>Hospitalisation Leave</td><td class="n">&ndash;</td><td class="n">&ndash;.&ndash;&ndash;</td></tr>
+        <tr><td>Compassionate Leave</td><td class="n">&ndash;</td><td class="n">&ndash;.&ndash;&ndash;</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <div class="sec">Earned Annual Leave to add <span class="chip new">new</span></div>
+      <div class="panel" style="overflow:hidden"><table>
+        <tr><th>Leave type</th><th>Topped up</th><th>Already up to date</th><th style="text-align:right">Days</th></tr>
+        <tr><td>*Annual Leave</td><td class="n">&ndash;</td><td class="n">&ndash;</td><td class="n">&ndash;.&ndash;&ndash;</td></tr>
+      </table></div>
+      <p class="note">Earned Annual Leave is no longer counted as Failed when the earned days are added.</p>
+    </div>
+  </div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <h2><span class="num">2</span>After Generate &mdash; one message for both parts</h2>
+    <div class="ok">Leave year generated for the selected employees. Earned Annual Leave added for some of them; the rest were already up to date.</div>
+    <p class="note">Wording will name the actual counts. Run Earned Accrual stays on its own screen for re-runs and corrections.</p>
+  </div>
+  <div class="card">
+    <h2><span class="num">3</span>A future year</h2>
+    <div class="hole">Entitlement generated. Earned Annual Leave for next year is not added in advance &mdash; it is added as the year goes by.</div>
+    <p class="note">If the earned part cannot run, the entitlement is kept and the message says so, with a link to Run Earned Accrual.</p>
+  </div>
+</div>
