@@ -285,12 +285,14 @@ export function ApprovalTemplateManager({
     pendingFocus.current = null;
   }, [closedTick, templates]);
 
-  /* The saved row's highlight is brief: it says "this one", then gets out of the way. */
+  /* The saved row's highlight is brief: it says "this one", then gets out of the way. The clock starts when
+     the row is actually in the list — a created row arrives with the refresh, however long that takes. */
+  const savedRowListed = justSaved !== null && templates.some((tpl) => tpl.id === justSaved);
   useEffect(() => {
-    if (!justSaved) return;
+    if (!savedRowListed) return;
     const timer = window.setTimeout(() => setJustSaved(null), 2500);
     return () => window.clearTimeout(timer);
-  }, [justSaved]);
+  }, [savedRowListed, justSaved]);
 
   const editingId = editing && editing !== 'new' ? editing.id : null;
 

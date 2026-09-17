@@ -485,6 +485,16 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     expect(screen.getByRole('alertdialog', { name: L.discardTitle })).toBeTruthy();
   });
 
+  it('the saved row is highlighted briefly, then goes back to normal', async () => {
+    const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: SENIOR.name, created: false }));
+    mount('en', save);
+    await userEvent.click(editButtonOf('en', SENIOR.name));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: L.save }));
+    await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(true));
+    expect(rowOf(STANDARD.name).hasAttribute('data-saved')).toBe(false);
+    await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(false), { timeout: 4000 });
+  }, 10_000);
+
   it('only one drawer: while it is open the list behind it is hidden from assistive tech and nothing else opens', async () => {
     mount('en');
     await userEvent.click(editButtonOf('en', SENIOR.name));
