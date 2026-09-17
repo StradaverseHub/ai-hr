@@ -74,7 +74,8 @@ export type LeaveHistoryEntry = {
   endDate: string;
   days: number;
   /** r302 — the date the request was submitted, tenant-local ISO yyyy-mm-dd. */
-  appliedOn: string;
+  /** Null when the submission date is not known (a split made before r299 recorded its lineage). */
+  appliedOn: string | null;
   /** r302 — the employee's own reason, as submitted. */
   reason: string | null;
   /** fef49b9a — the paid/unpaid breakdown, PRE-TRANSLATED and pre-split by lib/leave-split.ts on the
@@ -265,7 +266,7 @@ export function LeaveHistoryCards({
                   </td>
                   <td className="block py-0.5 tabular-nums text-muted-foreground md:table-cell md:py-2.5 md:pr-3">
                     {cellLabel(t('myLeave.colApplied'))}
-                    {fmtDate(e.appliedOn)}
+                    {e.appliedOn ? fmtDate(e.appliedOn) : '—'}
                   </td>
                   <td className="block py-0.5 md:table-cell md:py-2.5 md:pr-3">
                     <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badgeCls(e.statusKey)}`}>
@@ -345,7 +346,7 @@ export function LeaveHistoryCards({
                   )}
                   {field(t('details.session'), selected.sessionLabel)}
                   {field(t('myLeave.reason'), selected.reason?.trim() ? selected.reason : '—')}
-                  {field(t('myLeave.submitted'), <span className="tabular-nums">{fmtDate(selected.appliedOn)}</span>)}
+                  {field(t('myLeave.submitted'), <span className="tabular-nums">{selected.appliedOn ? fmtDate(selected.appliedOn) : '—'}</span>)}
                   {field(
                     t('details.status'),
                     <span className="flex flex-wrap items-center gap-2">

@@ -130,7 +130,7 @@ export function MyLeaveDashboard({
   );
 
   /** The one plain line under Balance when it includes ledger rows dated after this leave year (core/my-leave.ts). */
-  const laterLine = (c: MyLeaveDashboardCard) => {
+  const laterText = (c: MyLeaveDashboardCard, where: 'card' | 'panel'): string | null => {
     const later = c.balanceIncludesLater;
     if (!later || c.balance == null) return null;
     let text: string;
@@ -145,11 +145,15 @@ export function MyLeaveDashboard({
       } catch {
         joined = parts.join(', ');
       }
-      text = t('laterIncludes', { span: later.span, parts: joined });
+      text = t(where === 'card' ? 'laterIncludes' : 'panelLaterIncludes', { span: later.span, parts: joined });
     } else {
-      text = t('laterOther');
+      text = t(where === 'card' ? 'laterOther' : 'panelLaterOther');
     }
-    return (
+    return text;
+  };
+  const laterLine = (c: MyLeaveDashboardCard) => {
+    const text = laterText(c, 'card');
+    return text == null ? null : (
       <p className="mt-1 text-[11px] text-muted-foreground" data-testid="balance-includes-later">
         {text}
       </p>
@@ -326,6 +330,7 @@ export function MyLeaveDashboard({
           hideAsOfForm
           data={selected.breakdown}
           summary={{ available: selected.breakdown.totalAvailable }}
+          footnote={laterText(selected, 'panel')}
           visual={{ color: selected.color, icon: selected.icon, code: selected.code }}
           asOf={selected.asOf}
           action="/leave"

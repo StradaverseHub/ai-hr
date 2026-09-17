@@ -118,6 +118,7 @@ export function LeaveDetailsPanel({
   onOpenChange,
   hideTrigger = false,
   hideAsOfForm = false,
+  footnote = null,
   triggerLabel,
   triggerClassName,
 }: {
@@ -163,6 +164,9 @@ export function LeaveDetailsPanel({
    * date nothing on the page reads. Omit it and every other host is byte-identical.
    */
   hideAsOfForm?: boolean;
+  /** r302 hand-fix — one plain line under the column (My Leave: what the card's Balance counts beyond this leave
+   *  year, so the column that adds up and the card's figure are never left to contradict each other silently). */
+  footnote?: string | null;
   /**
    * r242 — the built-in trigger's CAPTION and CLASSES, for a host whose surface names this affordance
    * differently. Employee Balances puts it in a table cell under an "Explanation" heading, where the
@@ -554,6 +558,11 @@ export function LeaveDetailsPanel({
                 </section>
               );
             })}
+            {footnote && (
+              <p className="text-xs text-muted-foreground" data-testid="panel-footnote">
+                {footnote}
+              </p>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

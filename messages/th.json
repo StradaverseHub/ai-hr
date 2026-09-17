@@ -2251,6 +2251,8 @@
       "laterGranted": "ได้รับ {cat, select, other {{v} วัน}}",
       "laterBooked": "จองแล้ว {cat, select, other {{v} วัน}}",
       "laterOther": "รวมรายการที่ลงวันที่หลังปีการลานี้",
+      "panelLaterIncludes": "เฉพาะปีการลานี้ ยอดคงเหลือบนการ์ดนับรวม{span, select, next {ปีการลาถัดไป: {parts}} other {ปีการลาถัด ๆ ไป: {parts}}}",
+      "panelLaterOther": "เฉพาะปีการลานี้ ยอดคงเหลือบนการ์ดนับรวมรายการที่ลงวันที่หลังปีการลานี้",
       "takenOnlyCaption": "ใช้ไปแล้ว — ไม่มีสิทธิ์",
       "cycleDates": "ปีการลา {from} – {to}",
       "details": "รายละเอียด",

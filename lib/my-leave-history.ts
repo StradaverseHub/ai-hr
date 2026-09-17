@@ -115,7 +115,12 @@ export type HistoryLineDeps = {
 export type HistoryRowInput = { status: string; appliedOn: Date; decidedAt: Date | null };
 
 /** core/my-leave.ts OwnPerDateOutcome, structurally. */
-export type PerDateOutcomeInput = { approved: readonly string[]; rejected: readonly { date: string; reason: string | null }[] };
+export type PerDateOutcomeInput = {
+  approved: readonly string[];
+  rejected: readonly { date: string; reason: string | null }[];
+  /** r302 hand-fix — approved days since given back (core/my-leave.ts currentPerDateOutcomes). */
+  cancelled?: readonly string[];
+};
 
 /** core/my-leave.ts OwnApprovalTrail, structurally. */
 export type ApprovalTrailFull = {
@@ -311,11 +316,13 @@ export function applicationDateOutcomeRows(outcome: PerDateOutcomeInput): {
   id: string;
   leaveDate: string;
   days: string;
-  status: 'approved' | 'rejected';
+  status: 'approved' | 'rejected' | 'cancelled';
   rejectReason: string | null;
 }[] {
   return [
     ...outcome.approved.map((d) => ({ id: `approved:${d}`, leaveDate: d, days: '', status: 'approved' as const, rejectReason: null })),
     ...outcome.rejected.map((r) => ({ id: `rejected:${r.date}`, leaveDate: r.date, days: '', status: 'rejected' as const, rejectReason: r.reason })),
+    // r302 hand-fix — a day given back after the approval reads Cancelled, never Approved.
+    ...(outcome.cancelled ?? []).map((d) => ({ id: `cancelled:${d}`, leaveDate: d, days: '', status: 'cancelled' as const, rejectReason: null })),
   ].sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
 }

@@ -32,7 +32,8 @@ export function LeaveDateOutcome({
   // r302 — the date in the viewer's own format, not the ISO string (the rest of the history formats dates).
   const shortDate = (iso: string) => {
     try {
-      return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+      // The history's own format (components/leave/leave-history-cards.tsx fmtDate), so one View panel reads one way.
+      return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
     } catch {
       return iso;
     }

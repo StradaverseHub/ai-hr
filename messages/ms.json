@@ -2251,6 +2251,8 @@
       "laterGranted": "{cat, select, other {{v} hari}} diberikan",
       "laterBooked": "{cat, select, other {{v} hari}} telah ditempah",
       "laterOther": "Termasuk entri bertarikh selepas tahun cuti ini",
+      "panelLaterIncludes": "Tahun cuti ini sahaja. Baki pada kad turut mengira {span, select, next {tahun cuti seterusnya: {parts}} other {tahun-tahun cuti berikutnya: {parts}}}",
+      "panelLaterOther": "Tahun cuti ini sahaja. Baki pada kad turut mengira entri bertarikh selepas tahun cuti ini",
       "takenOnlyCaption": "Diambil — tiada kelayakan",
       "cycleDates": "Tahun cuti {from} – {to}",
       "details": "Butiran",

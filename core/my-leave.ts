@@ -57,7 +57,7 @@
  */
 import { and, asc, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { company, domainEvent, employment, leaveLedger, leaveRequest, leaveType } from '../db/schema';
+import { company, domainEvent, employment, leaveLedger, leaveRequest, leaveRequestDate, leaveType } from '../db/schema';
 // Leave services through the pack facade (ADR-0080 D9), never the pack's implementation modules directly.
 import {
   earnedCycleStart,
@@ -209,6 +209,51 @@ export function leaveYearsFor(ctx: SessionContext, employmentId: string, today: 
   });
 }
 
+/**
+ * r302 hand-fix (second verification, defect 3) — the selections the dashboard offers: the current year, and
+ * currentYear − N for every N such that some card's type has ledger rows in the cycle N cycles before the one in
+ * force today (earnedCycleStart stepped back a day at a time — the mapping myLeaveDashboard renders with). For a
+ * January–December type this is exactly the calendar years with rows. Never a future year.
+ */
+async function offeredLeaveYears(
+  ctx: SessionContext,
+  employmentId: string,
+  today: string,
+  hiredOn: string,
+  cycleByType: Map<string, string | null | undefined>,
+): Promise<number[]> {
+  const currentYear = Number(today.slice(0, 4));
+  const typeIds = [...cycleByType.keys()];
+  if (typeIds.length === 0) return [currentYear];
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ typeId: leaveLedger.leaveTypeId, d: leaveLedger.effectiveOn })
+      .from(leaveLedger)
+      .where(and(eq(leaveLedger.employmentId, employmentId), inArray(leaveLedger.leaveTypeId, typeIds), lt(leaveLedger.effectiveOn, today))),
+  );
+  const backs = new Set<number>();
+  for (const typeId of typeIds) {
+    const cycle = cycleByType.get(typeId);
+    const dates = rows.filter((r) => r.typeId === typeId).map((r) => String(r.d)).sort().reverse();
+    let cs = earnedCycleStart(hiredOn, today, cycle);
+    let back = 0;
+    for (const d of dates) {
+      while (d < cs && back < MAX_CYCLES_BACK) {
+        const prev = earnedCycleStart(hiredOn, dayBefore(cs), cycle);
+        if (prev >= cs) break; // no progress: never loop on a cycle the helper cannot step back from
+        cs = prev;
+        back++;
+      }
+      // A cycle that ended before the employee joined is never offered: its card is not shown (myLeaveDashboard).
+      if (d >= cs && back >= 1 && leaveCycleEnd(cs) >= hiredOn) backs.add(back);
+    }
+  }
+  return [currentYear, ...[...backs].sort((a, b) => a - b).map((n) => currentYear - n)];
+}
+
+/** Bounds offeredLeaveYears' walk back (a century of leave years). */
+const MAX_CYCLES_BACK = 100;
+
 /** A `?leaveYear=` value narrowed to one of the offered years; anything else is the current year. */
 export function resolveSelectedLeaveYear(raw: string | undefined, years: readonly number[], currentYear: number): number {
   if (raw == null || !/^\d{4}$/.test(raw)) return currentYear;
@@ -223,14 +268,15 @@ export async function myLeaveDashboard(
 ): Promise<MyLeaveDashboard> {
   const { today, locale } = opts;
   const currentYear = Number(today.slice(0, 4));
-  const years = await leaveYearsFor(ctx, employmentId, today);
-  const selectedYear = resolveSelectedLeaveYear(opts.year, years, currentYear);
 
   // The same type list the page has always read: visible, not archived, eligible-or-active, pooled (r209).
   const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false })).filter(
     (b) => b.placement !== 'hidden',
   );
-  if (balances.length === 0) return { today, currentYear, selectedYear, years, cards: [] };
+  if (balances.length === 0) {
+    const years = await leaveYearsFor(ctx, employmentId, today);
+    return { today, currentYear, selectedYear: resolveSelectedLeaveYear(opts.year, years, currentYear), years, cards: [] };
+  }
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];
   const { hiredOn, companyCycle, overrides } = await withTenant(ctx, async (tx) => {
@@ -250,12 +296,20 @@ export async function myLeaveDashboard(
       overrides: new Map(types.map((t) => [t.id, t.yearCycleOverride])),
     };
   });
-  if (hiredOn == null) return { today, currentYear, selectedYear, years, cards: [] };
+  if (hiredOn == null) {
+    return { today, currentYear, selectedYear: currentYear, years: [currentYear], cards: [] };
+  }
+  const cycleByType = new Map(storyIds.map((id) => [id, resolveLeaveYearCycle(overrides.get(id), companyCycle)]));
+  // r302 hand-fix (second verification, defect 3) — the selector offers exactly the selections whose cycles hold
+  // rows, under the SAME year → cycle mapping the cards use (N years back = N cycles back from today's), so every
+  // cycle with rows is reachable and no offered year maps to an empty cycle for want of a calendar-year match.
+  const years = await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType);
+  const selectedYear = resolveSelectedLeaveYear(opts.year, years, currentYear);
 
-  const cards = await Promise.all(
-    balances.map(async (b): Promise<MyLeaveCard> => {
+  const maybeCards = await Promise.all(
+    balances.map(async (b): Promise<MyLeaveCard | null> => {
       const storyId = balanceStoryTypeId(b);
-      const cycle = resolveLeaveYearCycle(overrides.get(storyId), companyCycle);
+      const cycle = cycleByType.get(storyId);
       // The cycle in force today, then one cycle back per year before the current one (see the header): the day
       // before a cycle opens belongs to the cycle before it, so this can neither repeat a cycle nor skip one.
       let cycleStart = earnedCycleStart(hiredOn, today, cycle);
@@ -263,6 +317,8 @@ export async function myLeaveDashboard(
         cycleStart = earnedCycleStart(hiredOn, dayBefore(cycleStart), cycle);
       }
       const cycleEnd = leaveCycleEnd(cycleStart);
+      // r302 hand-fix (defect 3b) — a leave year that ended before the employee joined is not theirs to show.
+      if (cycleEnd < hiredOn) return null;
       const asOf = cycleEnd;
       const isCurrentCycle = cycleStart <= today && today <= cycleEnd;
       const [bd, apply] = await Promise.all([
@@ -309,10 +365,16 @@ export async function myLeaveDashboard(
         entitlementStatus: bd ? bd.entitlementStatus : 'not_configured',
         sharedBalance: b.sharedBalance ?? null,
         essView: view,
-        breakdown: bd && apply ? { ...bd, pendingApproval: apply.pending, totalAvailable: apply.available } : bd,
+        // r302 hand-fix (second verification, defect 2) — the Details column must ADD UP: this leave year's Total −
+        // Taken − Pending − Forfeited = its Available. Pending is the Apply form's (unpaid days excluded, as the card);
+        // Available is this year's balance less it. Where the card's Balance also counts rows dated after this leave
+        // year, the two Availables differ by exactly what `balanceIncludesLater` itemises, and the panel prints that
+        // line under its column (MyLeaveDashboard passes it) rather than a figure its own lines cannot reach.
+        breakdown: bd && apply ? { ...bd, pendingApproval: apply.pending, totalAvailable: round2(bd.balance - apply.pending) } : bd,
       };
     }),
   );
+  const cards = maybeCards.filter((c): c is MyLeaveCard => c != null);
 
   const groupRank = (c: MyLeaveCard) => (SECONDARY_GROUPS as readonly string[]).indexOf(resolveSecondaryGroup(c.code));
   cards.sort(
@@ -338,8 +400,10 @@ export type OwnApprovalStep = {
   decidedAt: Date | null;
 };
 
-/** The application's per-date outcome, as its approval event recorded it (mixed outcomes only). Dates ascending. */
-export type OwnPerDateOutcome = { approved: string[]; rejected: { date: string; reason: string | null }[] };
+/** The application's per-date outcome (mixed outcomes only), dates ascending: the approval event's approved and
+ *  rejected dates, with the approved dates since GIVEN BACK moved to `cancelled` (r302 hand-fix — see
+ *  currentPerDateOutcomes). `cancelled` is present only when a day was given back. */
+export type OwnPerDateOutcome = { approved: string[]; rejected: { date: string; reason: string | null }[]; cancelled?: string[] };
 
 export type OwnApprovalTrail = {
   leaveRequestId: string;
@@ -421,6 +485,83 @@ async function splitRootsTx(tx: Tx, ctx: SessionContext, ids: readonly string[])
     return null;
   };
   return new Map(ids.map((id) => [id, rootOf(id)]));
+}
+
+/**
+ * r302 hand-fix (second verification, defect 1) — THE APPLICATION'S ROWS, root first. Every row split off `appIds`
+ * through leave-request.split's splitFromRequestId, followed DOWN (the inverse of splitRootsTx), batched per hop.
+ * Read under RLS (domain_event is subject-scoped): only rows the caller could already see can join a family.
+ */
+async function applicationFamiliesTx(tx: Tx, ctx: SessionContext, appIds: readonly string[]): Promise<Map<string, string[]>> {
+  const familyOf = new Map<string, string>(appIds.map((id) => [id, id]));
+  let frontier = [...new Set(appIds)];
+  for (let hop = 0; hop < MAX_SPLIT_HOPS && frontier.length > 0; hop++) {
+    const rows = await tx
+      .select({ id: domainEvent.aggregateId, from: sql<string | null>`${domainEvent.payload} ->> 'splitFromRequestId'` })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.tenantId, ctx.tenantId),
+          eq(domainEvent.aggregateType, 'leave-request'),
+          eq(domainEvent.eventType, 'leave-request.split'),
+          inArray(sql`${domainEvent.payload} ->> 'splitFromRequestId'`, frontier),
+        ),
+      );
+    const next: string[] = [];
+    for (const r of rows) {
+      if (r.from == null || familyOf.has(r.id) || !familyOf.has(r.from)) continue;
+      familyOf.set(r.id, familyOf.get(r.from)!);
+      next.push(r.id);
+    }
+    frontier = next;
+  }
+  const out = new Map<string, string[]>(appIds.map((id) => [id, [] as string[]]));
+  for (const [id, app] of familyOf) out.get(app)!.push(id);
+  return out;
+}
+
+/**
+ * r302 hand-fix (second verification, defect 1) — THE PER-DATE OUTCOME AS IT STANDS NOW, not as approved. The
+ * approval event records only approved/rejected; a day later given back by Cancel Approved Leave read "Approved"
+ * on every row of the application. A day is `cancelled` when its per-date row says so (the r302 split moves the
+ * row onto the segment holding the date and marks it), or — for a split made before that, whose rows stayed on
+ * the root — when a CANCELLED row of the application spans the date and no APPROVED row does.
+ */
+async function currentPerDateOutcomes(
+  tx: Tx,
+  ctx: SessionContext,
+  outcomes: Map<string, OwnPerDateOutcome>,
+): Promise<Map<string, OwnPerDateOutcome>> {
+  if (outcomes.size === 0) return outcomes;
+  const families = await applicationFamiliesTx(tx, ctx, [...outcomes.keys()]);
+  const members = [...new Set([...families.values()].flat())];
+  const [reqs, dates] = await Promise.all([
+    tx
+      .select({ id: leaveRequest.id, status: leaveRequest.status, startDate: leaveRequest.startDate, endDate: leaveRequest.endDate })
+      .from(leaveRequest)
+      .where(inArray(leaveRequest.id, members)),
+    tx
+      .select({ leaveRequestId: leaveRequestDate.leaveRequestId, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+      .from(leaveRequestDate)
+      .where(inArray(leaveRequestDate.leaveRequestId, members)),
+  ]);
+  const out = new Map<string, OwnPerDateOutcome>();
+  for (const [app, o] of outcomes) {
+    const fam = new Set(families.get(app) ?? [app]);
+    const famReqs = reqs.filter((r) => fam.has(r.id));
+    const dateStatus = new Map(dates.filter((d) => fam.has(d.leaveRequestId)).map((d) => [d.leaveDate, d.status as string]));
+    const spannedBy = (status: string, d: string) => famReqs.some((r) => r.status === status && r.startDate <= d && d <= r.endDate);
+    const cancelled = o.approved.filter(
+      (d) => dateStatus.get(d) === 'cancelled' || (spannedBy('cancelled', d) && !spannedBy('approved', d)),
+    );
+    out.set(
+      app,
+      cancelled.length > 0
+        ? { approved: o.approved.filter((d) => !cancelled.includes(d)), rejected: o.rejected, cancelled }
+        : o,
+    );
+  }
+  return out;
 }
 
 /** A `perDateOutcome` payload (core/leave.ts finalizePerDateIfComplete), shape-checked; null unless a date was rejected. */
@@ -533,6 +674,7 @@ export function ownLeaveApprovalTrails(
         const parsed = parsePerDateOutcome(e.outcome);
         if (parsed) outcomes.set(e.id, parsed); // newest wins
       }
+      for (const [app, o] of await currentPerDateOutcomes(tx, ctx, outcomes)) outcomes.set(app, o);
     }
     const submitted = new Map<string, Date>();
     if (splitRootIds.length > 0) {

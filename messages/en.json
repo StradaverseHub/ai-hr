@@ -2251,6 +2251,8 @@
       "laterGranted": "{cat, select, one {{v} day} other {{v} days}} granted",
       "laterBooked": "{cat, select, one {{v} day} other {{v} days}} booked",
       "laterOther": "Includes entries dated after this leave year",
+      "panelLaterIncludes": "This leave year only. The Balance on the card also counts {span, select, next {next leave year: {parts}} other {later leave years: {parts}}}",
+      "panelLaterOther": "This leave year only. The Balance on the card also counts entries dated after this leave year",
       "takenOnlyCaption": "Taken — no entitlement",
       "cycleDates": "Leave year {from} – {to}",
       "details": "Details",

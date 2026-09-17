@@ -698,7 +698,9 @@ export default async function LeavePage({
       // r302 — the date submitted (tenant-local) and the employee's own reason, for the row and for View.
       // r302 fix pass: a row split off by a partial cancellation was created by the split, so its application's
       // submission is its root request's (the trail's `submittedAt`), matching the approval progress in View.
-      appliedOn: todayInKualaLumpur(trail?.submittedAt ?? new Date(r.appliedOn)),
+      // r302 hand-fix (second verification, defect 4): a split whose lineage was not recorded (before r299) was
+      // CREATED by the split, so its own creation is not when the application was submitted — no date, not a wrong one.
+      appliedOn: trail?.lineage === 'unrecorded' ? null : todayInKualaLumpur(trail?.submittedAt ?? new Date(r.appliedOn)),
       reason: r.reason ?? null,
       // fef49b9a — the paid/unpaid breakdown, derived ONCE by lib/leave-split.ts and pre-translated here
       // because LeaveHistoryCards is a client island that translates nothing. `unpaidTypeName` comes from
