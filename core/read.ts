@@ -27,6 +27,9 @@ import {
 // the row chip reads, so the filter and the chip can never disagree. Pure, no DB, safe to import here.
 import { MAPPED_AGGREGATE_TYPES, aggregateTypesForModule, type ModuleKey } from '../lib/audit-format';
 import {
+  // r303 (31492f74) — the Anniversary-to-Calendar correction's reason prefix, so classifyLedgerAdjustment
+  // treats its reversal row as the system correction it is.
+  A2C_RECALC_REASON_PREFIX,
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
@@ -3176,8 +3179,11 @@ export type LeaveEntitlementBreakdown = {
  *   • 'forfeit' — one of the THREE machine forfeit reasons. Enumerating all three matters: treating only the
  *     cap forfeit as a boundary row would leave the carry-EXPIRY forfeit counted as an adjustment AND as a
  *     forfeit (a second double-count).
- *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`) or a profile
- *     change (`sys:profile_recalc:<id>`). Invisible on the Adjustment configuration screen, hence its own line.
+ *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`), a profile
+ *     change (`sys:profile_recalc:<id>`) or the Anniversary-to-Calendar first-year correction
+ *     (`sys:a2c_recalc:<leaveTypeId>`, r303). Invisible on the Adjustment configuration screen, hence its own
+ *     line. The a2c prefix was missing until r303: reprojectA2cEntitlement's REVERSAL row fell through to
+ *     'config', so HR's grid Adjustment column showed a machine reversal as a typed adjustment.
  *   • 'config'  — everything else: the festive / one-off / manual grants HR actually enters. A NULL reason
  *     falls here (a hand-written ledger row with no reason is a manual adjustment, not a machine one).
  * Exported so the tests can assert the partition directly against the reason constants.
@@ -3189,7 +3195,11 @@ export function classifyLedgerAdjustment(reason: string | null): LedgerAdjustmen
   if (r === CARRY_FORFEIT_REASON_CAP || r === CARRY_FORFEIT_REASON_EXPIRY || r === AGED_FORFEIT_REASON) {
     return 'forfeit';
   }
-  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`) || r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) {
+  if (
+    r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`) ||
+    r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`) ||
+    r.startsWith(`${A2C_RECALC_REASON_PREFIX}:`)
+  ) {
     return 'system';
   }
   return 'config';
