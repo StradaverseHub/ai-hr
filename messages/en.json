@@ -8731,6 +8731,7 @@
       "healthNoRuleInForce": "{tables} entitlement tables, no benefit scheme in force and no default table named, so no employee resolves to any of them.",
       "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. None of them reaches anybody, because no benefit scheme in force names them and no default table is set - so the entitlement run grants nothing from this configuration. Days already on an employee’s record came from an earlier configuration or were entered by hand.",
       "healthTableWithoutRule": "No benefit scheme names: {tables}. Nobody receives them until a scheme names one, or one of them becomes this leave type’s default table.",
+      "healthReplacementLeaveHasEntitlementTable": "Leave Credit is switched on, so every day of this leave type should come from Leave Credit. An entitlement table in force still adds days nobody earned: {tables}. Remove the table.",
       "healthRuleExpired": "Benefit scheme expired, so it covers nobody: {rules}",
       "healthRuleExpiring": "Benefit scheme ends soon: {rules}",
       "healthGradesWithoutTable": "Job grades that belong to no entitlement table: {grades}",

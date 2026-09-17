@@ -147,7 +147,13 @@ describe('/admin/toil redirects to Leave Credit', () => {
 describe('Leave Adjustments points Replacement Leave at Leave Credit', () => {
   it('the picker leaves the replacement type out, and a note links to Leave Credit', () => {
     const src = read('app/admin/leave-config/adjustments/page.tsx');
-    expect(src).toContain('leaveTypes={types.filter((x) => !isReplacementLeaveType(x)).map(');
+    // 3fb1a611 fix pass (D3) — UPDATED, NOT LOOSENED: both halves now apply only while the tenant has Leave
+    // Credit (the page's quiet read of `toil`); without it the picker and the page are main's. Rendered on
+    // both arms in test/r299-leave-credit-deploy-day.test.ts.
+    expect(src).toContain("const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');");
+    expect(src).toContain('const leftToLeaveCredit = (x: (typeof types)[number]) => leaveCreditLive && isReplacementLeaveType(x);');
+    expect(src).toContain('const hasReplacementType = types.some(leftToLeaveCredit);');
+    expect(src).toContain('leaveTypes={types.filter((x) => !leftToLeaveCredit(x)).map(');
     expect(src).toContain("href={leaveConfigScreenHref('leaveCredit')}");
     expect(en.admin.leave.adjustmentsReplacementNote).toMatch(/not adjusted here/);
   });

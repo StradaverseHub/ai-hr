@@ -37,6 +37,7 @@ import {
 } from '../db/schema';
 import { countOrgCriteriaTargets, resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 import { isReplacementLeaveType } from './ess-view';
+import { leaveCreditRegisterLive } from './leave-credit-live';
 
 export class LeaveAdjustmentError extends Error {
   constructor(message: string) {
@@ -143,7 +144,13 @@ export async function applyLeaveAdjustmentBatch(
     // consumeReplacementLeaveTx logs as `toil.consumption.shortfall`). Replacement Leave balances change on the
     // Leave Credit screen, where every day is a credit. Refused whole, before anything is written. Adjustment
     // rows already on file are history and are left exactly as they are.
-    if (types.some((t) => isReplacementLeaveType(t))) {
+    //
+    // …ONLY WHILE THE TENANT'S LEAVE CREDIT REGISTER IS LIVE (fix pass, D3). Without the paid `toil` module
+    // there is no Leave Credit screen to change the balance on — it shows only "not switched on" — and a
+    // tenant's Replacement Leave balance comes from its entitlement tables, as production's does. Refusing
+    // then left HR no way at all to correct it. So without the module this is main@60a40452's adjustment,
+    // unchanged. Asked second, so a batch with no Replacement Leave type never asks it (core/leave-credit-live.ts).
+    if (types.some((t) => isReplacementLeaveType(t)) && leaveCreditRegisterLive(ctx)) {
       throw new LeaveAdjustmentError(
         'Replacement Leave balances are changed on Leave Config › Leave Credit, so every day has a date worked, an expiry date and a history. Remove Replacement Leave from this adjustment.',
       );

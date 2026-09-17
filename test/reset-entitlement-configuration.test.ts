@@ -461,7 +461,7 @@ describe('fe9c73bc — stage config: configuration cleared, archived first, heal
       [fx.sickTypeId, 'Medical Leave'],
     ] as const) {
       const h = leaveTypeConfigHealth({
-        leaveType: { id, name, accrualMethod: 'annual', accrualUnconfigured: false, archived: false, defaultEntitlementTemplateLineageId: null },
+        leaveType: { id, name, accrualMethod: 'annual', accrualUnconfigured: false, daysFromLeaveCreditOnly: false, archived: false, defaultEntitlementTemplateLineageId: null },
         templates: tpls.map((x) => ({ ...x, serviceBands: x.serviceBands as { days: number }[] })),
         rules: rules.map((x) => ({ ...x, criteria: x.criteria as { gradeIds?: string[] } })),
         grades: [{ id: fx.gradeId, name: 'Grade 1' }],

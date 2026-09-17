@@ -67,6 +67,22 @@ export type HealthLeaveType = {
    *  Populated since 2026-08-04 on this tenant and, until r209, read by nothing. */
   accrualUnconfigured: boolean;
   /**
+   * 3fb1a611 (r299 fix pass, D9) — THIS TENANT HAS LEAVE CREDIT (the paid `toil` module) AND THIS IS ITS
+   * REPLACEMENT LEAVE TYPE (`leaveTypeIs(lt, 'replacement')`, role first), so every day of it should come from a
+   * credit in the Leave Credit register: earned, dated, expiring. Decided by the SERVER, because this module is
+   * pure and may not ask about entitlements or import the engine.
+   *
+   * WHY IT IS A FINDING AND NOT AN ENGINE CHANGE. With the module on, openLeaveYear, the earned sweep, the hire
+   * grant and reprojection still add days to a replacement-role type that has an entitlement table in force —
+   * days no credit stands behind, which breaks the plan's "Nobody gets Replacement Leave they did not earn".
+   * What those engines count is a reporter decision this fix does not take, so the configuration that causes it
+   * is reported here instead: remove the table.
+   *
+   * ⚠️ REQUIRED, NOT OPTIONAL, for the reason `defaultEntitlementTemplateLineageId` below gives: an optional flag
+   * a projection forgets defaults to "no finding" and the finding goes quiet behind a green suite.
+   */
+  daysFromLeaveCreditOnly: boolean;
+  /**
    * 76ffdcf2 — `leave_type.default_entitlement_template_lineage_id`: the entitlement table anyone no
    * benefit scheme covers receives. NULL ⇒ nothing falls back, i.e. the pre-76ffdcf2 behaviour, and every
    * finding below reads exactly as it did.
@@ -101,6 +117,10 @@ export type LeaveConfigFinding =
   | 'no_rule_in_force'
   /** WARNING — a table in force that no rule in force points at. Nobody can ever receive it. */
   | 'table_without_rule'
+  /** WARNING — 3fb1a611 (r299 fix pass): Leave Credit is on and this Replacement Leave type still has an
+   *  entitlement table in force, which adds days no credit stands behind (see
+   *  `HealthLeaveType.daysFromLeaveCreditOnly`). Remove the table. Reported, never removed for the customer. */
+  | 'replacement_leave_has_entitlement_table'
   /** WARNING — a rule lineage whose latest version has already ended. It matches nobody from that date. */
   | 'rule_expired'
   /** WARNING — a rule lineage that ends within `RULE_EXPIRY_WARNING_DAYS`. This is the notice that would
@@ -166,6 +186,9 @@ export type LeaveConfigHealth = {
   expiringRules: { name: string; endsOn: string }[];
   gradesWithoutTable: string[];
   zeroMaxBalanceTables: string[];
+  /** 3fb1a611 fix pass — the tables in force on a type whose days come only from Leave Credit (the ones to
+   *  remove). Empty for every other type. */
+  leaveCreditTables: string[];
 };
 
 /** In force at `on`: started on or before it, and not stopped on or before it. Half-open, exactly as
@@ -326,6 +349,21 @@ export function leaveTypeConfigHealth(p: {
   if (gradesWithoutTable.length > 0) findings.push('grades_without_table');
   if (zeroMaxBalanceTables.length > 0) findings.push('max_balance_zero');
 
+  /**
+   * 3fb1a611 (r299 fix pass, D9) — A TYPE WHOSE DAYS COME ONLY FROM LEAVE CREDIT IS JUDGED ON ONE QUESTION: is an
+   * entitlement table still adding days to it? Everything above is about making tables REACH people, which is
+   * the opposite of what this type needs, so none of it is true of it: "no entitlement table" is its HEALTHY
+   * state, and telling HR to remove the table while the row beside it says "Cannot grant — no entitlement table"
+   * would send them straight back to re-add it. So the findings are replaced, not appended to, and a type with
+   * no table in force reads Ready. Only for a tenant with the module (the flag is false without it), so every
+   * tenant without Leave Credit — production today — reads exactly as before.
+   */
+  const leaveCreditTables = leaveType.daysFromLeaveCreditOnly ? liveTemplates.map((t) => t.name) : [];
+  if (leaveType.daysFromLeaveCreditOnly) {
+    findings.length = 0;
+    if (leaveCreditTables.length > 0) findings.push('replacement_leave_has_entitlement_table');
+  }
+
   // r224 — the configured day figures, across every band of every table in force. `days` is the granted
   // figure and the only one that is comparable with what an employee is actually credited.
   const bandDays = liveTemplates.flatMap((t) => t.serviceBands.map((b) => b.days));
@@ -349,6 +387,7 @@ export function leaveTypeConfigHealth(p: {
     expiringRules,
     gradesWithoutTable,
     zeroMaxBalanceTables,
+    leaveCreditTables,
   };
 }
 

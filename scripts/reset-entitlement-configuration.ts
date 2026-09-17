@@ -569,6 +569,10 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       archived: x.archivedAt != null,
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
+      // 3fb1a611 (r299 fix pass) — FALSE, deliberately: this report is about ENTITLEMENT configuration and the
+      // after-check below reads `no_entitlement_table` as "the tables are gone". The Leave Credit judgement
+      // (which replaces that finding on a replacement type) is the Balance Health screen's, not this script's.
+      daysFromLeaveCreditOnly: false,
       defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
     })),
     templates: templates.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),
@@ -777,6 +781,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           archived: x.archivedAt != null,
           accrualMethod: x.accrualMethod ?? null,
           accrualUnconfigured: x.accrualUnconfigured != null,
+          daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — see the census above
           defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
         })),
         templates: tplAfter.map((x) => ({ ...x, serviceBands: bandsForHealth(x.serviceBands) })),

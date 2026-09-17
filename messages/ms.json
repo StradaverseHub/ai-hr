@@ -8731,6 +8731,7 @@
       "healthNoRuleInForce": "{tables} jadual kelayakan, tiada skim faedah berkuat kuasa dan tiada jadual lalai dinamakan, jadi tiada pekerja terpakai kepada mana-mana daripadanya.",
       "healthConfiguredVsActual": "Dikonfigurasikan: {configured} hari merentas {tables} jadual kelayakan yang berkuat kuasa. Tiada satu pun sampai kepada sesiapa, kerana tiada skim faedah berkuat kuasa menamakannya dan tiada jadual lalai ditetapkan - jadi larian kelayakan tidak memberikan apa-apa daripada konfigurasi ini. Hari yang sudah ada pada rekod pekerja datang daripada konfigurasi terdahulu atau dimasukkan secara manual.",
       "healthTableWithoutRule": "Tiada skim faedah menamakan: {tables}. Tiada sesiapa menerimanya sehingga satu skim menamakannya, atau salah satu daripadanya menjadi jadual lalai jenis cuti ini.",
+      "healthReplacementLeaveHasEntitlementTable": "Kredit Cuti diaktifkan, jadi setiap hari jenis cuti ini sepatutnya datang daripada Kredit Cuti. Jadual kelayakan yang berkuat kuasa masih menambah hari yang tidak diperoleh sesiapa: {tables}. Alih keluar jadual itu.",
       "healthRuleExpired": "Skim faedah telah tamat tempoh, jadi ia tidak merangkumi sesiapa: {rules}",
       "healthRuleExpiring": "Skim faedah akan tamat tidak lama lagi: {rules}",
       "healthGradesWithoutTable": "Gred jawatan yang tidak tergolong dalam mana-mana jadual kelayakan: {grades}",

@@ -37,6 +37,8 @@ import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
 // year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
 // the helper returns the same calendar-year pair this function has always built.
 import { sharedGroupCycleWindow } from '../lib/leave-groups';
+// 3fb1a611 fix pass — Leave Credit's r299 changes apply only while the tenant has the paid `toil` module.
+import { leaveCreditRegisterLive } from './leave-credit-live';
 // 3fb1a611 (r299) — the register INVERSE arrived: an approved Replacement Leave can now be cancelled, because
 // the credit it used is given back to the register as well as the day to the ledger (restoreReplacementLeaveTx).
 import {
@@ -1542,7 +1544,8 @@ export async function leaveTypeApplySummary(
   available: number;
   /**
    * 3fb1a611 (r299) — Replacement Leave only: unused credit expiring within 30 days (core/toil.ts
-   * replacementExpiringSoonTx). NULL for every other type, which has no per-credit expiry to speak of.
+   * replacementExpiringSoonTx). NULL for every other type, which has no per-credit expiry to speak of, and
+   * NULL for Replacement Leave too on a tenant without the `toil` module (fix pass D8: no register, no figure).
    */
   expiringSoon: number | null;
   essViewConfig: Record<string, boolean> | null;
@@ -1573,9 +1576,14 @@ export async function leaveTypeApplySummary(
       // Not clamped at zero: an overdrawn type must read the same negative figure the guard measures, or the
       // popup would understate how far the employee is already committed.
       available: round2(balance - pending),
-      expiringSoon: leaveTypeIs(lt, 'replacement')
-        ? await replacementExpiringSoonTx(tx, p.employmentId, todayInKualaLumpur())
-        : null,
+      // 3fb1a611 fix pass (D8) — and ONLY while the tenant's Leave Credit register is live (the paid `toil`
+      // module). Without it there are no credits to expire, so the figure is not "0", it is not a thing: null,
+      // and the Apply form draws exactly main@60a40452's summary (components/leave-duration-fields.tsx renders
+      // the column only for a number). Asked second, so no other leave type reaches an entitlement question.
+      expiringSoon:
+        leaveTypeIs(lt, 'replacement') && leaveCreditRegisterLive(ctx)
+          ? await replacementExpiringSoonTx(tx, p.employmentId, todayInKualaLumpur())
+          : null,
       essViewConfig: (lt?.essViewConfig ?? null) as Record<string, boolean> | null,
     };
   });
@@ -6107,6 +6115,9 @@ export async function editLeaveRequest(
         // 3fb1a611: `role` — leaveTypeIs resolves the role first. Without it the Emergency refusal below read
         // the code alone, so a role-classified Emergency type with another code was editable in place.
         role: leaveType.role,
+        // 3fb1a611 fix pass (D4): the refusal below is the DECOMPOSITION's, and requestLeave decomposes only a
+        // type with no balance source — so the edit must read the same column to ask the same question.
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
@@ -6142,7 +6153,15 @@ export async function editLeaveRequest(
     // 3fb1a611 (r299) — REPLACEMENT is no longer refused here. Only a PENDING leave reaches this function, and a
     // pending Replacement Leave has consumed nothing (the register is consumed at final approval), so editing it
     // is the same re-validation every other type gets — including the balance guard against Available.
-    if (leaveTypeIs(lt, 'emergency')) {
+    //
+    // 3fb1a611 fix pass (D4) — …and EMERGENCY is refused only where it DECOMPOSES. requestLeave splits an
+    // Emergency application into ANNUAL / UNPAID children ONLY when the type has no balance source
+    // (`leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null`, the branch into requestEmergencyLeave);
+    // with a source set it is saved as ONE ordinary request against that source and every gate below applies
+    // to it as to any other type. r299 added `role` to this read, which made production's role-classified `EL`
+    // (a code the old code-only check never matched, so it was editable on main) refuse even where it had never
+    // decomposed. The condition is requestLeave's, verbatim, so an edit refuses exactly what a submission splits.
+    if (leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null) {
       throw new LeaveEditNotAllowedError('this leave type cannot be edited here');
     }
 
