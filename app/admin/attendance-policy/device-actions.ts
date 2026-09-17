@@ -9,10 +9,14 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { revokeDevice } from '@/core/attendance-device';
+import { SCHEDULE } from './schedule-panel';
 
 // af7a8eb4 — the devices table moved onto the Company work schedule page; revoke returns to the screen the
 // operator was on, not to the rule list that no longer renders the table.
-const LIST = '/admin/attendance-policy/schedule';
+// 6d091cc0 (r301) — and moved again, onto the Work Schedule & Overtime Rates card of Attendance › Schedule ›
+// General. That old page is a redirect stub now, so Revoke returns to the Schedule screen itself: a PLAIN path
+// (General is the default tab), because the refusal below appends `?error=` by concatenation.
+const LIST = SCHEDULE;
 
 export async function revokeDeviceAction(fd: FormData) {
   const s = await getSession();

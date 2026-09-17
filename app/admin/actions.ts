@@ -154,15 +154,19 @@ const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
 const HOLIDAY_GROUPS = '/admin/holidays/groups';
-// R33 f21d6eee — the per-company attendance policy + OT-rates form moved to its own /admin/attendance-policy
-// screen (the /admin/attendance route is now the shared shift library). setAttendancePolicyAction redirects here.
-// af7a8eb4 — and moved again, one level down: /admin/attendance-policy is now the calculation-rule LIST and
-// no longer renders these forms at all, so redirecting there would drop the operator on a screen that does
-// not show what they just saved. Only setAttendancePolicyAction reads this constant.
-const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule';
-// e4471e3c (r287) — the OTHER screen the company work-schedule form is now rendered on: the General tab of
-// Attendance > Schedule, which is where the reporter asked the Work Schedule sub-menu to be consolidated.
-// Only setAttendancePolicyAction reads this constant, and only through the closed-list mapping in it.
+// R33 f21d6eee → af7a8eb4 → e4471e3c (r287) → 6d091cc0 (r301): the per-company attendance policy form has moved
+// four times. It lived on /admin/attendance-policy, then /admin/attendance-policy/schedule, then on BOTH that page
+// and the Schedule General tab (a `returnTo` closed list picked between them). r301 folded the Work Schedule page
+// into the Schedule screen — /admin/attendance-policy/schedule is a redirect stub — so the form has ONE home, the
+// Edit panel of Company Policy Settings, and every save returns here. The `ATTENDANCE_POLICY` constant that named
+// the old page went with it: a redirect constant naming an address that is no longer a screen is a statement
+// about where the screen lives that has stopped being true. Only setAttendancePolicyAction reads this.
+//
+// ⚠️ A PLAIN PATH, AND IT HAS TO BE. `fail()` and `ok()` build `${path}?error=…` by concatenation, so a path that
+// already carries a query string produced '/admin/attendance/schedule?tab=general?error=…' — `tab` read as
+// 'general?error=…' and `error` never parsed, so a REFUSED save showed no banner and looked as though it had
+// saved (r287 → r301). General is the default tab, so the plain path lands on it. Pinned by
+// test/r301-schedule-general.test.ts, which runs the action.
 const SCHEDULE_TAB = '/admin/attendance/schedule';
 // 296fc027 split this route in two. /admin/toil kept the balance LEDGER and the two settlement sweeps
 // (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to Leave Config.
@@ -2044,22 +2048,14 @@ export async function setLeaveEncashmentPolicyAction(fd: FormData) {
 export async function setAttendancePolicyAction(fd: FormData) {
   const s = await getSession();
   /**
-   * e4471e3c (r287) — WHERE THE SAVE LANDS, resolved against a CLOSED LIST and never taken as a URL.
+   * 6d091cc0 (r301) — WHERE THE SAVE LANDS: the Schedule screen, always, as a PLAIN path.
    *
-   * This one form is now rendered from two screens (app/admin/attendance-policy/schedule/work-schedule-form.tsx): its own page at
-   * /admin/attendance-policy/schedule, which survives as the owning editor, and the General tab of
-   * Attendance > Schedule, which is where the reporter asked for it to live. Both post the same fields to
-   * this action, so there is ONE writer and the two mounts cannot store different rows — but a save must
-   * return to the screen the operator was on, or they land on a page that does not show what they saved,
-   * and on the error path get a refusal about a form they can no longer see.
-   *
-   * ⚠️ READ AS A VALUE, MAPPED THROUGH A TWO-ENTRY TABLE. A hidden field is ALWAYS submitted, so this can
-   * never be a presence test (CLAUDE.md §8), and redirecting to a path taken from the request body would
-   * be an open redirect on an admin-authenticated action. An unknown or absent value resolves to the
-   * owning editor, which is where every save landed before this round.
+   * r287 mapped a hidden `returnTo` through a two-entry closed list, because the form had two mounts. It has one
+   * now (see SCHEDULE_TAB above), so there is nothing left to choose between and nothing is read from the request
+   * body to decide it — which also closes the open-redirect question for good. The General tab is the default
+   * tab, so no `?tab=` is needed; adding one is exactly the defect that hid every refusal (see SCHEDULE_TAB).
    */
-  const backTo =
-    fd.get('returnTo') === 'schedule-tab' ? `${SCHEDULE_TAB}?tab=general` : ATTENDANCE_POLICY;
+  const backTo = SCHEDULE_TAB;
   const workingDays: number[] = [];
   const halfWorkingDays: number[] = [];
   for (let d = 1; d <= 7; d++) {

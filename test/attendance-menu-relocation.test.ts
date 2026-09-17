@@ -90,11 +90,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   //
   // ⚠️ e4471e3c (r287) — '/admin/attendance-policy' AND '/admin/attendance-policy/schedule' STAY IN THIS
   // LOOP THOUGH THEY ARE NO LONGER MENU ROWS, and that is the whole premise of this file rather than an
-  // exception to it. Their rows were retired into the Schedule sub-menu at the reporter's request; the
-  // SCREENS remain, still owning the deduction switch, the overtime bands and rates, the tenant overtime
-  // rates and the registered devices. A screen reachable only by URL is precisely the screen whose own
-  // guard is the only thing protecting it, so dropping it from this loop because "it is not in the menu"
-  // would retire the coverage at the exact moment it became load-bearing.
+  // exception to it. Their rows were retired into the Schedule sub-menu at the reporter's request. A screen
+  // reachable only by URL is precisely the screen whose own guard is the only thing protecting it, so
+  // dropping it from this loop because "it is not in the menu" would retire the coverage at the exact moment
+  // it became load-bearing.
+  //
+  // 6d091cc0 (r301) — and they STAY again. Their content moved onto the Schedule screen's General tab, and
+  // both pages became redirects to the matching card — but a redirect that ran BEFORE the guard would tell a
+  // non-administrator where the setting lives, and would drop the route out of the function-access matrix
+  // (which only counts a page.tsx that calls a guard). So each stub calls requireAdmin() first, and this loop
+  // is what keeps it that way.
   it.each([
     '/admin/attendance',
     '/admin/attendance-policy',

@@ -666,6 +666,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // ad52212d round 1 gave '/admin/attendance-policy/schedule' its own nav row ("Work Schedule"). It keeps
     // riding THIS column: same guard, same admin surface, and the reverse-completeness case only asks that
     // every guarded route on disk be covered — a second nav row does not make it a second screen.
+    // 6d091cc0 (r301): all four routes below are requireAdmin() REDIRECT STUBS now — their content is the Schedule
+    // Group, Company Policy Settings and Work Schedule & Overtime Rates cards (and the editor panels) on
+    // '/admin/attendance/schedule'. They stay registered here because this screenKey is a permission identity and
+    // each stub still calls the guard before it redirects; removing them would silently revoke grants that name it.
     routes: [
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',

@@ -1,130 +1,25 @@
-import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
-import { Badge, Card, ErrorBanner, PageHeader, btnPrimary, btnGhost, pageWideCls } from '@/components/ui';
-import { copyAttendanceRuleAction, deleteAttendanceRuleAction, setAttendanceRuleStatusAction } from './rule-actions';
+import { SCHEDULE, SCHEDULE_GROUPS_ANCHOR } from './schedule-panel';
 
 /**
- * Lateness, Early Out & Overtime Settings — the tenant-wide library of attendance calculation rules.
+ * 6d091cc0 (r301) — Schedule Groups moved onto Attendance › Schedule › General. This address redirects there.
  *
- * af7a8eb4 — this page is now the rule LIST and nothing else, at FULL window width. The company work
- * schedule, the tenant Overtime rates, the backup-shift coverage card and the registered-devices table
- * MOVED (not deleted, and no value changed) to /admin/attendance-policy/schedule, reached by the button in
- * the header. The reporter's complaint was that the list they came to read was a small strip at the top of
- * a very long page.
+ * The list this page rendered (88e94371, ad52212d round 2) is now the Schedule Group card on the General tab,
+ * and its Add / Edit form opens as a panel on that page. Nothing was copied or reset; see
+ * ./schedule-group-card.tsx.
  *
- * Admin-only via requireAdmin(); rule writes are DB-gated by RLS.
+ * WHY A GUARDED STUB AND NOT A DELETED ROUTE. `requireAdmin()` first, THEN the redirect, so:
+ *   · the route stays registered under `attendancePolicyConfig` in lib/permissions.ts — a screenKey is a
+ *     permission identity, and test/function-access.test.ts only counts a page.tsx that calls a guard;
+ *   · a non-administrator following an old bookmark is refused here, not told where the setting now lives;
+ *   · the module gate (./layout.tsx, `moduleLayout('attendance')`) still applies to the segment;
+ *   · bookmarks and the old links in other people's notes land on the card they meant.
+ *
+ * The fragment rides the Location header of the 307; a browser applies it to the destination. Verified on a dev
+ * server render (round report).
  */
-export default async function AttendancePolicyPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const s = await requireAdmin();
-  const { error } = await searchParams;
-
-  // 88e94371 — the attendance-rule library. Ensure the tenant's un-deletable Standard rule exists
-  // (idempotent), then list every rule. This is the runtime complement of migration 0203.
-  // 6da67ab7: the library is tenant-wide — no company column, no company filter. A rule reaches an employee
-  // through the SHIFT they are assigned to, and shifts are tenant-wide too.
-  const tr = await getTranslations('admin.attendanceRule');
-  await ensureStandardRule(s);
-  const rules = await listAttendanceRules(s);
-
-
-  return (
-    <div className={pageWideCls}>
-      <PageHeader
-        title={tr('moduleTitle')}
-        description={tr('moduleDescription')}
-        actions={
-          <>
-            {/* af7a8eb4 — the way to the relocated company work schedule + overtime rates. Labelled with
-                the section's OWN existing heading string, so the button says exactly what the block it
-                opens used to be called on this page. */}
-            <Link href="/admin/attendance-policy/schedule" className={btnGhost}>
-              {tr('scheduleSectionTitle')}
-            </Link>
-            <Link href="/admin/attendance-policy/rules/new" className={btnPrimary}>
-              {tr('addNew')}
-            </Link>
-          </>
-        }
-      />
-      <ErrorBanner message={error} />
-
-      {/* ── 88e94371 · Rule library: the reporter's "simple list of available attendance calculation rules" ── */}
-      <Card className="overflow-hidden">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">{tr('libraryTitle')}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{tr('libraryIntro')}</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2 font-medium">{tr('colName')}</th>
-                <th className="px-4 py-2 font-medium">{tr('colDescription')}</th>
-                <th className="px-4 py-2 font-medium">{tr('colDefault')}</th>
-                <th className="px-4 py-2 font-medium">{tr('colStatus')}</th>
-                <th className="px-4 py-2 text-right font-medium">{tr('colAction')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((r) => (
-                <tr key={r.id} className="border-b border-border/60">
-                  <td className="px-4 py-2 font-medium text-foreground">{r.name}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.description ?? '—'}</td>
-                  <td className="px-4 py-2">{r.isDefault ? <Badge>{tr('defaultBadge')}</Badge> : <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-4 py-2">
-                    <span className={r.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
-                      {r.status === 'active' ? tr('statusActive') : tr('statusInactive')}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    {/* ad52212d round 2 — the housekeeping actions the reporter listed, in the same shape the
-                        shift library next door already uses: Edit · Duplicate · Activate/Deactivate · Delete.
-                        Delete stays hidden on the Standard rule (it is un-deletable by service too); Duplicate
-                        and the status toggle are offered on EVERY row, Standard included — duplicating it is
-                        the natural way to start a new pattern from the tenant's baseline. */}
-                    <div className="flex items-center justify-end gap-3">
-                      <Link href={`/admin/attendance-policy/rules/${r.id}`} className="text-primary hover:underline">
-                        {tr('edit')}
-                      </Link>
-                      <form action={copyAttendanceRuleAction}>
-                        <input type="hidden" name="ruleId" value={r.id} />
-                        <button className="text-primary hover:underline">{tr('duplicate')}</button>
-                      </form>
-                      <form action={setAttendanceRuleStatusAction}>
-                        <input type="hidden" name="ruleId" value={r.id} />
-                        {/* The target status, not the current one — and read as a VALUE by the action, because
-                            a hidden field is submitted whatever it says (trap 17). */}
-                        <input type="hidden" name="status" value={r.status === 'active' ? 'inactive' : 'active'} />
-                        <button
-                          className={
-                            r.status === 'active'
-                              ? 'text-rose-600 hover:underline dark:text-rose-400'
-                              : 'text-emerald-700 hover:underline dark:text-emerald-400'
-                          }
-                        >
-                          {r.status === 'active' ? tr('deactivate') : tr('activate')}
-                        </button>
-                      </form>
-                      {!r.isDefault && (
-                        <form action={deleteAttendanceRuleAction}>
-                          <input type="hidden" name="ruleId" value={r.id} />
-                          <button className="text-destructive hover:underline">{tr('delete')}</button>
-                        </form>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
+export default async function AttendancePolicyPage() {
+  await requireAdmin();
+  redirect(`${SCHEDULE}#${SCHEDULE_GROUPS_ANCHOR}`);
 }

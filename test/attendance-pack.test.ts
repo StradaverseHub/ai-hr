@@ -204,11 +204,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   const RETIRED = [
     {
       href: '/admin/attendance-policy',
-      why: 'Schedule Group — consolidated into Attendance > Schedule (e4471e3c). Still the owning editor for the deduction switch, the overtime bands and rates, and the group name / status / allowed shifts.',
+      why: 'Schedule Group — consolidated into Attendance > Schedule (e4471e3c); since 6d091cc0 (r301) the list is a card on its General tab and the editor a panel there, and this route is a requireAdmin() redirect to that card (#schedule-groups), kept registered because the screenKey is a permission identity.',
     },
     {
       href: '/admin/attendance-policy/schedule',
-      why: 'Work Schedule — its per-company working-week editor is rendered on the Schedule screen’s General tab (components/work-schedule-form.tsx, same component, same action). The page keeps the tenant overtime rates, the registered devices and the backup-shift coverage card, none of which is a schedule setting.',
+      why: 'Work Schedule — its per-company working-week editor is the Company Policy Settings card on the Schedule screen’s General tab, and since 6d091cc0 (r301) the tenant overtime rates, registered devices and backup-shift coverage are the Work Schedule & Overtime Rates card beside it. This route is a requireAdmin() redirect to that card (#work-schedule-overtime), kept registered because the screenKey is a permission identity.',
     },
   ] as const;
   const retiredHrefs: string[] = RETIRED.map((r) => r.href);

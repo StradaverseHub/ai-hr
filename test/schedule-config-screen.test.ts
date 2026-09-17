@@ -78,9 +78,9 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
       ).not.toContain(route);
       expect(
         existsSync(path.join(root, `app${route}/page.tsx`)),
-        `${route} lost its page. The plan says the ROUTES survive as the owning editors for everything ` +
-          `that did NOT move — the deduction switch above all — so retiring the row must never delete ` +
-          `the screen.`,
+        `${route} lost its page. The ROUTES survive — as the owning editors in r287, and since r301 ` +
+          `(6d091cc0) as requireAdmin() redirects to the General-tab card that holds their content — so ` +
+          `retiring the row must never delete the page: bookmarks, the module gate and the screenKey ride it.`,
       ).toBe(true);
       expect(
         REGISTERED_ROUTES.has(route),
@@ -91,15 +91,46 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     }
   });
 
-  it('…and this screen links to both, because it is the only way in now', () => {
-    // An absence assertion with nothing positive beside it would be satisfied by a screen nobody can
-    // reach. The General tab points at the Work Schedule page (which still owns the tenant overtime
-    // rates, the registered devices and the backup-shift coverage card) and the Attendance / Overtime
-    // tabs point at the Schedule Group editor for the group in view (which still owns the deduction
-    // switch, the overtime bands and rates, and the group's name, status and allowed shifts).
+  /**
+   * ⚠️ 6d091cc0 (r301) — THIS CASE USED TO PIN TWO LINKS AWAY, AND THE REPORTER ASKED FOR THEM TO GO.
+   *
+   * It asserted `href="/admin/attendance-policy/schedule"` on the General tab and a link to
+   * `/admin/attendance-policy/rules/` on the group tabs, because those links were "the only way in" to the
+   * screens that still owned the moved settings. The reporter then asked for Schedule Group and Work Schedule &
+   * Overtime Configuration to be managed ON the General tab with no links away, and approved that plan. So the
+   * guard's job — "the settings the menu no longer lists are still reachable" — is kept, and asserted MORE
+   * strictly than before: the content is rendered here (not merely linked), both old addresses are guarded
+   * redirects that land on the matching card, and the group tabs open the editor on this page.
+   */
+  it('…and this screen RENDERS what both held; their old addresses are guarded redirects to the matching card', () => {
     const src = read(PAGE_REL);
-    expect(src, 'the General tab links to the Work Schedule page').toContain(`href="${OLD_WORK_SCHEDULE_ROUTE}"`);
-    expect(src, 'the group tabs link to the Schedule Group editor').toContain('/admin/attendance-policy/rules/');
+    // The three consolidated cards are mounted by this page, in the approved order.
+    const order = ['<ScheduleGroupCard', '<CompanyPolicyCard', '<WorkScheduleOvertimeCard', "t('gapsTitle')"].map((m) =>
+      src.indexOf(m),
+    );
+    expect(order.every((i) => i > -1), 'all three cards and the gaps card are rendered on the General tab').toBe(true);
+    expect([...order].sort((a, b) => a - b), 'in the approved order').toEqual(order);
+    expect(src.indexOf("t('shiftsTitle')"), 'Shifts available leads').toBeLessThan(order[0]);
+    // The two links away are GONE — an href to either old page would be a way off the one setup screen.
+    expect(src, 'the General tab no longer links to the Work Schedule page').not.toContain(`href="${OLD_WORK_SCHEDULE_ROUTE}"`);
+    expect(src, 'nor to the Schedule Group list').not.toContain(`href="${OLD_SCHEDULE_GROUP_ROUTE}"`);
+    expect(src, 'nor to the retired editor routes').not.toContain('/admin/attendance-policy/rules/');
+    // The group tabs open the ONE editor, as a panel on this page.
+    expect(src, 'the group tabs open the Schedule Group editor panel').toContain('groupEditorHref(selectedGroup.id)');
+    // Both old addresses: guard first, then a redirect to the card that now holds their content.
+    const stubs: [string, string][] = [
+      [OLD_SCHEDULE_GROUP_ROUTE, 'SCHEDULE_GROUPS_ANCHOR'],
+      [OLD_WORK_SCHEDULE_ROUTE, 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
+    ];
+    for (const [route, anchor] of stubs) {
+      const stub = read(`app${route}/page.tsx`);
+      expect(stub, `${route} still refuses a non-administrator itself`).toMatch(/await requireAdmin\(\);\s*redirect\(/);
+      expect(stub, `${route} redirects to its card on the General tab`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+    }
+    const panel = read('app/admin/attendance-policy/schedule-panel.ts');
+    expect(panel).toContain(`export const SCHEDULE = '${NEW_ROUTE}';`);
+    expect(panel).toContain("export const SCHEDULE_GROUPS_ANCHOR = 'schedule-groups';");
+    expect(panel).toContain("export const WORK_SCHEDULE_OVERTIME_ANCHOR = 'work-schedule-overtime';");
   });
 
   it('both routes are registered in the function-access matrix', () => {
@@ -207,7 +238,34 @@ describe('1c5602cc — six named tabs; r277 built two more of them', () => {
     // the reporter must still be able to SEE its state and find out where to change it.
     expect(src, 'the switch is still shown').toContain('applyDeductions');
     expect(src, 'with the sentence explaining where it is edited').toContain("t('deductionsElsewhere')");
-    expect(src, 'and a link to the editor that owns it').toContain('/admin/attendance-policy/rules/');
+    // r301 — the editor that owns it is a PANEL on this screen's General tab now, and it is the SAME editor:
+    // rules/rule-form.tsx, mounted once, by the Schedule Group card. So "the switch is not editable here" keeps
+    // its meaning — no SECOND control over it — and is asserted as exactly that: rule-form.tsx is the only file
+    // under app/ that draws it, and the only thing that mounts rule-form.tsx is that panel.
+    expect(src, 'and a link to the editor that owns it').toContain('groupEditorHref(selectedGroup.id)');
+    const walk = (dir: string): string[] =>
+      readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory()) return walk(rel);
+        return /\.tsx?$/.test(e.name) ? [rel] : [];
+      });
+    const appFiles = walk('app');
+    expect(
+      appFiles.filter((f) => /name=["'{`]?applyDeductions/.test(read(f))),
+      'exactly one control over the deduction switch exists, and it is the Schedule Group editor’s',
+    ).toEqual(['app/admin/attendance-policy/rules/rule-form.tsx']);
+    // Resolved, not string-matched: any file importing THAT rule-form.tsx, by whatever relative spelling or the
+    // @/ alias (app/admin/leave-approval has an unrelated RuleForm of its own). Type-only imports are not mounts.
+    const importsRuleForm = (f: string) =>
+      [...read(f).matchAll(/import\s+(?!type\b)[^;]*?from '([^']*rule-form)'/g)].some((m) => {
+        const spec = m[1];
+        const resolved = spec.startsWith('@/') ? spec.slice(2) : path.posix.join(path.posix.dirname(f), spec);
+        return resolved === 'app/admin/attendance-policy/rules/rule-form';
+      });
+    expect(
+      appFiles.filter((f) => importsRuleForm(f)),
+      'and that editor is mounted once — by the Schedule Group panel',
+    ).toEqual(['app/admin/attendance-policy/schedule-group-card.tsx']);
   });
 
   it('the two new tabs show settings that ALREADY EXIST, and read them from the Schedule Group', () => {
