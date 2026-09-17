@@ -184,15 +184,18 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     // 4's screen, not Round 3's), so this file is the only place the hole can be closed.
     //
     // WHY IT IS LOAD-BEARING HERE ABOVE ALL: this is the only stub an action still redirects INTO.
-    // `PAGE` above is the target of 17 redirects in app/admin/leave-approval/actions.ts — 8 success
-    // `?toast=` (escalation settings saved, template created / updated / duplicated / activated /
-    // deleted, default flow set or cleared, assignment added or removed) and 9 `?error=` — and
-    // `ToastFromQuery` in app/layout.tsx renders them from the query string ALONE. A stub that stops
+    // `PAGE` above is the target of 14 redirects in app/admin/leave-approval/actions.ts — 7 success
+    // `?toast=` (escalation settings saved, template duplicated / activated or deactivated / deleted,
+    // default flow set or cleared, assignment added, assignment removed) and 7 `?error=` — and
+    // `ToastFromQuery` in app/layout.tsx renders them from the query string ALONE. (r304 / 85875e4b took
+    // the template SAVE out of this count: it returns its outcome to the template drawer instead of
+    // redirecting, so its "created / updated" confirmation is a client toast now. Pinned in the
+    // "wires the SAME server actions" case below.) A stub that stops
     // forwarding does not 404 and does not fail a render: it silently drops every approval-chain
     // confirmation AND every approval-chain error. That is the Phase-B #14 class this round exists to
     // prevent. All three halves are checked: the params are read, they are carried, and the query is
     // appended to the redirect.
-    expect(stub, "the approval stub does not READ the incoming params — every ?toast= and ?error= from actions.ts's 17 redirect sites is dropped").toMatch(
+    expect(stub, "the approval stub does not READ the incoming params — every ?toast= and ?error= from actions.ts's 14 redirect sites is dropped").toMatch(
       /for \(const \[k, v\] of Object\.entries\(sp\)\)/,
     );
     expect(stub, 'the approval stub does not carry the incoming params onto the destination').toMatch(
@@ -230,10 +233,35 @@ describe('a6fe37fc R4 · the approval editor is MOUNTED at the new address, not 
   });
 
   it('wires the SAME server actions — no new action, and none declared here', () => {
-    // Round 2's rule 2, still in force: every save goes through an action that already exists, with its
-    // signature unchanged, which is what keeps the OLD screen working while both are live.
+    // Round 2's rule 2, still in force for NEW actions: every save goes through an action that already
+    // exists. Its "signature unchanged" half has ONE deliberate exception since r304 (board 85875e4b):
+    // `saveApprovalTemplateAction` RETURNS `{ ok, … }` instead of redirecting, so the template drawer keeps
+    // a refused save's edits on screen. The old screen that rule protected is a redirect stub now, and the
+    // template manager is the action's only caller. Pinned both ways below, so a second signature change —
+    // or this one quietly reverting to a redirect — is a visible decision rather than drift.
     expect(page.includes("'use server'"), `${NEW_PAGE} must not declare server actions`).toBe(false);
     const actions = read('app/admin/leave-approval/actions.ts');
+    const fnBody = (name: string) => {
+      const from = actions.indexOf(`export async function ${name}(`);
+      const next = actions.indexOf('\nexport async function ', from + 1);
+      return actions.slice(from, next === -1 ? undefined : next);
+    };
+    const save = fnBody('saveApprovalTemplateAction');
+    expect(save).toContain('Promise<SaveTemplateResult>');
+    expect(save, 'the template save redirects again — a refused save would lose the drawer\'s edits').not.toContain(
+      'redirect(',
+    );
+    for (const action of [
+      'duplicateApprovalTemplateAction',
+      'setApprovalTemplateActiveAction',
+      'deleteApprovalTemplateAction',
+      'setTenantDefaultTemplateAction',
+      'assignApprovalTemplateAction',
+      'unassignApprovalTemplateAction',
+      'saveLeaveEscalationPolicyAction',
+    ]) {
+      expect(fnBody(action), `${action} stopped redirecting to PAGE`).toContain('redirect(`${PAGE}?toast=');
+    }
     for (const action of [
       'saveApprovalTemplateAction',
       'duplicateApprovalTemplateAction',
