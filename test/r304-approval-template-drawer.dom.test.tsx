@@ -14,10 +14,11 @@
  * NO DEV-SERVER RENDER WAS DONE FOR THIS ROUND (the dev database has no users and the seeder is refused);
  * this file is the render check.
  */
+import * as React from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 
@@ -148,11 +149,43 @@ const noop = vi.fn(async () => undefined);
 
 type SaveMock = ReturnType<typeof vi.fn<(fd: FormData) => Promise<SaveTemplateResult>>>;
 
+/** A named-approver template: its level 1 renders the employee search whose suggestions Escape must close. */
+const EMP_A = '11111111-1111-4111-8111-111111111111';
+const EMP_B = '22222222-2222-4222-8222-222222222222';
+const EMPLOYEES = [
+  { value: EMP_A, name: 'Aisha Rahman', employeeCode: 'EMP-0001' },
+  { value: EMP_B, name: 'Bala Kumar', employeeCode: 'EMP-0002' },
+];
+const NAMED: TemplateRow = {
+  id: 'tpl-named',
+  name: 'Named Approver Flow',
+  description: null,
+  levels: [
+    { kind: 'specific_employee', employmentId: EMP_A, alternates: [] },
+    { kind: 'hr_admin', employmentId: null, alternates: [] },
+  ],
+  isTenantDefault: false,
+  active: true,
+  assignedCount: 0,
+};
+
+/** What a thrown transition reaches when nothing catches it: the page's error boundary, and the drawer gone. */
+class Boundary extends React.Component<{ children: React.ReactNode }, { err: string | null }> {
+  state = { err: null as string | null };
+  static getDerivedStateFromError(e: Error) {
+    return { err: String(e?.message ?? e) };
+  }
+  render() {
+    return this.state.err ? <p data-testid="error-boundary">{this.state.err}</p> : this.props.children;
+  }
+}
+
 function managerNode(loc: Locale, save: SaveMock, templates: TemplateRow[] = TEMPLATES) {
   return (
     <ApprovalTemplateManager
       templates={templates}
       labels={labelsFor(loc)}
+      employees={EMPLOYEES}
       actions={{
         saveTemplate: save,
         duplicateTemplate: noop,
@@ -172,7 +205,7 @@ function mount(loc: Locale, save: SaveMock = vi.fn(), templates: TemplateRow[] =
       messages={CATALOGUES[loc]}
       onError={(e) => errors.push(String((e as Error).message ?? e))}
     >
-      {node}
+      <Boundary>{node}</Boundary>
     </NextIntlClientProvider>
   );
   const view = render(wrap(managerNode(loc, save, templates)));
@@ -215,9 +248,9 @@ async function closeFully() {
   await waitFor(() => expect(drawerEl()).toBeNull());
 }
 /** Radix registers its outside-pointer listener a tick after the layer mounts. */
-const settle = () =>
+const settle = (ms = 20) =>
   act(async () => {
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, ms));
   });
 
 const NIGHT: TemplateRow = {
@@ -369,6 +402,79 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     await settle();
     expect(document.activeElement).toBe(nameInput);
     expect(save).not.toHaveBeenCalled();
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  it('Escape in the named-approver suggestions closes ONLY the list; a second Escape then closes the unchanged drawer', async () => {
+    const { errors } = mount(loc, vi.fn(), [...TEMPLATES, NAMED]);
+    const edit = editButtonOf(loc, NAMED.name);
+    await userEvent.click(edit);
+    await settle();
+    const dialog = screen.getByRole('dialog');
+    const search = within(dialog).getAllByRole('combobox', { name: L.previewSearchAria })[0] as HTMLInputElement;
+    await userEvent.clear(search);
+    await userEvent.type(search, 'Bal');
+    expect(within(dialog).getByRole('listbox')).toBeTruthy();
+    expect(search.getAttribute('aria-expanded')).toBe('true');
+
+    await userEvent.keyboard('{Escape}');
+    expect(within(dialog).queryByRole('listbox'), 'Escape did not close the suggestions').toBeNull();
+    expect(dialog.getAttribute('data-state'), 'Escape in the suggestions list closed the whole drawer').toBe('open');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(document.activeElement).toBe(search);
+
+    // The list is closed now, so Escape is the drawer's again — and nothing was changed, so it just closes.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(dialog.getAttribute('data-state')).toBe('closed');
+    await closeFully();
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  it('with a change, Escape in the suggestions closes only the list; the second Escape asks to discard', async () => {
+    const { errors, save } = mount(loc, vi.fn(), [...TEMPLATES, NAMED]);
+    await userEvent.click(editButtonOf(loc, NAMED.name));
+    await settle();
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
+    const search = within(dialog).getAllByRole('combobox', { name: L.previewSearchAria })[0] as HTMLInputElement;
+    await userEvent.clear(search);
+    await userEvent.type(search, 'Bal');
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog'), 'Escape in the suggestions list asked to discard the template').toBeNull();
+    expect(within(dialog).queryByRole('listbox')).toBeNull();
+    expect(dialog.getAttribute('data-state')).toBe('open');
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('alertdialog', { name: L.discardTitle })).toBeTruthy();
+    expect(dialog.getAttribute('data-state')).toBe('open');
+    expect(save).not.toHaveBeenCalled();
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  it('a save that THROWS (network drop, expired session) keeps the drawer and the edits, and says the generic sentence', async () => {
+    const save: SaveMock = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const { errors } = mount(loc, save);
+    await userEvent.click(editButtonOf(loc, SENIOR.name));
+    const dialog = screen.getByRole('dialog');
+    const nameInput = within(dialog).getByLabelText(L.templateName) as HTMLInputElement;
+    await userEvent.type(nameInput, ' renamed after an hour of work');
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave(loc) }));
+
+    const alert = await within(dialog).findByRole('alert');
+    expect(screen.queryByTestId('error-boundary'), 'the thrown save reached the error boundary: drawer and edits gone').toBeNull();
+    expect(alert.textContent).toBe(L.templateSaveFailed);
+    expect(alert.textContent).not.toContain('Failed to fetch');
+    expect(dialog.isConnected).toBe(true);
+    expect(dialog.getAttribute('data-state')).toBe('open');
+    expect(nameInput.value).toBe(`${SENIOR.name} renamed after an hour of work`);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    // …and it can be tried again.
+    expect((within(dialog).getByRole('button', { name: commonSave(loc) }) as HTMLButtonElement).disabled).toBe(false);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
@@ -542,6 +648,118 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: L.cancel }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await closeFully();
+  });
+
+  it('Enter during the slide-out posts nothing — after Escape, after X, after Cancel, and after a successful save', async () => {
+    /** What Enter in a text field does: implicit submission of the field's form. jsdom's user-event only
+     *  submits a form holding its own submit button, and this one's Save sits in the drawer footer (form=),
+     *  so the submission is requested directly — the same submit event the browser dispatches. */
+    const pressEnterIn = (dialog: HTMLElement) =>
+      act(() => {
+        dialog.querySelector('form')!.requestSubmit();
+      });
+
+    for (const how of ['escape', 'x', 'cancel'] as const) {
+      const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: SENIOR.name, created: false }));
+      const { view } = mount('en', save);
+      await userEvent.click(editButtonOf('en', SENIOR.name));
+      await settle();
+      const dialog = screen.getByRole('dialog');
+      await userEvent.click(within(dialog).getByLabelText(L.templateName));
+      if (how === 'escape') await userEvent.keyboard('{Escape}');
+      if (how === 'x') await userEvent.click(within(dialog).getByRole('button', { name: closeLabel('en') }));
+      if (how === 'cancel') await userEvent.click(within(dialog).getByRole('button', { name: L.cancel }));
+      expect(dialog.getAttribute('data-state'), how).toBe('closed');
+      expect(dialog.isConnected, `${how}: the drawer finished closing before Enter — this case would prove nothing`).toBe(true);
+      await pressEnterIn(dialog);
+      await settle();
+      expect(save, `${how}: a closed drawer posted a save of the values it opened with`).not.toHaveBeenCalled();
+      expect((within(dialog).getByRole('button', { name: commonSave('en'), hidden: true }) as HTMLButtonElement).disabled).toBe(true);
+      view.unmount();
+    }
+
+    const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: 'Senior Staff v2', created: false }));
+    mount('en', save);
+    await userEvent.click(editButtonOf('en', SENIOR.name));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave('en') }));
+    await waitFor(() => expect(dialog.getAttribute('data-state')).toBe('closed'));
+    expect(dialog.isConnected).toBe(true);
+    await pressEnterIn(dialog);
+    await settle();
+    expect(save, 'the sliding-out drawer posted a second save').toHaveBeenCalledTimes(1);
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('while a save is in flight the form is disabled, Save and Cancel are disabled, and Escape / X do nothing; a refusal hands it back intact', async () => {
+    let resolve!: (r: SaveTemplateResult) => void;
+    const save: SaveMock = vi.fn(() => new Promise<SaveTemplateResult>((r) => (resolve = r)));
+    mount('en', save);
+    await userEvent.click(editButtonOf('en', SENIOR.name));
+    await settle();
+    const dialog = screen.getByRole('dialog');
+    const nameInput = within(dialog).getByLabelText(L.templateName) as HTMLInputElement;
+    const descInput = within(dialog).getByLabelText(L.templateDescription) as HTMLInputElement;
+    await userEvent.type(nameInput, ' A');
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave('en') }));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    // Pending: nothing in the form can be changed, and neither footer button can be pressed.
+    const fieldset = dialog.querySelector('form > fieldset') as HTMLFieldSetElement;
+    expect(fieldset, 'no fieldset wraps the form body').not.toBeNull();
+    expect(fieldset.disabled).toBe(true);
+    expect(nameInput.matches(':disabled')).toBe(true);
+    expect(descInput.matches(':disabled')).toBe(true);
+    expect((within(dialog).getByRole('combobox', { name: L.levelN.replace('{n}', '1') }) as HTMLSelectElement).matches(':disabled')).toBe(true);
+    expect((within(dialog).getByRole('button', { name: commonSave('en') }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole('button', { name: L.cancel }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.type(descInput, 'typed during the save');
+    expect(descInput.value, 'typing during the save reached the field').toBe('');
+
+    // Escape and X wait for the answer.
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(dialog).getByRole('button', { name: closeLabel('en') }));
+    expect(dialog.getAttribute('data-state')).toBe('open');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    await act(async () => resolve({ ok: false, error: 'A template with that name already exists' }));
+    await within(dialog).findByRole('alert');
+    expect(fieldset.disabled).toBe(false);
+    expect(nameInput.matches(':disabled')).toBe(false);
+    expect(nameInput.value).toBe(`${SENIOR.name} A`);
+    expect((within(dialog).getByRole('button', { name: L.cancel }) as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.type(descInput, 'now it types');
+    expect(descInput.value).toBe('now it types');
+    expect(dialog.getAttribute('data-state')).toBe('open');
+  });
+
+  it('re-opening another template while the first slides out: one drawer, focus inside it, and closing returns focus to the SECOND Edit', async () => {
+    mount('en');
+    const editStandard = editButtonOf('en', STANDARD.name);
+    const editSenior = editButtonOf('en', SENIOR.name);
+    await userEvent.click(editStandard);
+    await settle();
+    await userEvent.keyboard('{Escape}');
+    expect(drawerEl()!.getAttribute('data-state')).toBe('closed');
+
+    // Mid-exit, another row's Edit is activated.
+    act(() => editSenior.focus());
+    fireEvent.click(editSenior);
+    await settle();
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    const dialog = screen.getByRole('dialog', { name: fill(L.drawerEditTitle, SENIOR.name) });
+    expect(dialog.getAttribute('data-state')).toBe('open');
+    expect((within(dialog).getByLabelText(L.templateName) as HTMLInputElement).value).toBe(SENIOR.name);
+    await waitFor(() => expect(dialog.contains(document.activeElement), 'focus left outside the re-opened drawer').toBe(true));
+    // The first drawer's exit timer must not unmount the re-opened one, nor pull focus back out.
+    await settle(600);
+    expect(drawerEl()!.getAttribute('data-state')).toBe('open');
+    expect(drawerEl()!.contains(document.activeElement)).toBe(true);
+
+    await userEvent.keyboard('{Escape}');
+    await closeFully();
+    await waitFor(() => expect(document.activeElement, "focus went back to the FIRST template's Edit").toBe(editSenior));
   });
 
   it('only one drawer: while it is open the list behind it is hidden from assistive tech and nothing else opens', async () => {

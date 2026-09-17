@@ -206,6 +206,12 @@ export function ApprovalTemplateManager({
   const [closedTick, setClosedTick] = useState(0);
   /** Set by "Discard", so the confirm's focus return does not pull focus into a drawer that is closing. */
   const discarding = useRef(false);
+  /** r304 fix pass — true from the moment the drawer is told to close until the next open. A form still
+   *  sliding out must not post: Enter in its name field would save the values it OPENED with, over whatever
+   *  another administrator saved since. */
+  const closing = useRef(false);
+  /** Mirrors the transition's pending flag synchronously, so a second submit in the same tick is refused. */
+  const inFlight = useRef(false);
 
   const stepLabels = stepLabelBag(labels);
   const employeeName = (id: string) => {
@@ -226,6 +232,7 @@ export function ApprovalTemplateManager({
     levels.map((l) => approversOf(l).map(approverText).join(` ${labels.orLabel} `)).join(' → ');
 
   function openDrawer(target: TemplateRow | 'new') {
+    closing.current = false;
     drawerSettled.current = false;
     pendingFocus.current = null;
     setEditing(target);
@@ -238,6 +245,7 @@ export function ApprovalTemplateManager({
   }
 
   function closeDrawer() {
+    closing.current = true;
     setEditing(null);
     setConfirmDiscard(false);
   }
@@ -255,9 +263,25 @@ export function ApprovalTemplateManager({
   }
 
   function save(fd: FormData) {
+    // Closing or closed (a slide-out still has a form in it), or a save already on its way: nothing to post.
+    if (closing.current || inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     startSaving(async () => {
-      const result = await actions.saveTemplate(fd);
+      let result: SaveTemplateResult;
+      try {
+        result = await actions.saveTemplate(fd);
+      } catch (e) {
+        // r304 fix pass — the action THREW rather than answered: a dropped connection, a server exception, an
+        // expired session (getSession sits outside the action's own try). Uncaught, that reached the error
+        // boundary and took the drawer and every edit with it. The drawer stays, with the edits, and says
+        // the one sentence it says for any failure it cannot name.
+        console.error('ApprovalTemplateManager — saving a template threw:', e);
+        setError(t('templateSaveFailed'));
+        return;
+      } finally {
+        inFlight.current = false;
+      }
       if (!result.ok) {
         setError(result.error);
         return;
@@ -422,7 +446,12 @@ export function ApprovalTemplateManager({
             </Button>
             {/* A named-approver level with nobody named is refused by the service (it would be a step that can
                 never be decided and can never be dropped), so the button says so BEFORE the round trip. */}
-            <Button type="submit" form={TEMPLATE_FORM_ID} size="sm" disabled={!formStatus.canSave || saving}>
+            <Button
+              type="submit"
+              form={TEMPLATE_FORM_ID}
+              size="sm"
+              disabled={!formStatus.canSave || saving || editing === null}
+            >
               {labels.save}
             </Button>
           </div>
@@ -440,6 +469,8 @@ export function ApprovalTemplateManager({
             template={shown === 'new' ? null : shown}
             onSubmit={save}
             onStatusChange={setFormStatus}
+            pending={saving}
+            closing={editing === null}
             stepLabels={stepLabels}
             labels={labels}
             employees={employees}
@@ -683,6 +714,8 @@ function TemplateForm({
   formId,
   onSubmit,
   onStatusChange,
+  pending,
+  closing,
   stepLabels,
   labels,
   employees,
@@ -693,6 +726,11 @@ function TemplateForm({
   /** r304 — the form no longer posts itself: the drawer awaits the action's answer to keep or close. */
   onSubmit: (fd: FormData) => void;
   onStatusChange: (status: TemplateFormStatus) => void;
+  /** r304 fix pass — a save is on its way: every field and button in the form is disabled until it answers,
+   *  so nothing typed meanwhile is silently dropped when the drawer closes on success. */
+  pending: boolean;
+  /** r304 fix pass — the drawer is sliding out: the form does not submit. */
+  closing: boolean;
   stepLabels: React.ComponentProps<typeof StepListEditor>['labels'];
   labels: TemplateManagerLabels;
   employees: EmployeeSearchOption[];
@@ -764,6 +802,7 @@ function TemplateForm({
       id={formId}
       onSubmit={(e) => {
         e.preventDefault();
+        if (closing || pending) return;
         onSubmit(new FormData(e.currentTarget));
       }}
       className="space-y-4"
@@ -774,48 +813,52 @@ function TemplateForm({
           shape (parseLevels), so the two unmounted CSV surfaces are unaffected. */}
       <input type="hidden" name="levels" value={JSON.stringify(levels)} />
 
-      <label className="block space-y-1 text-sm">
-        <span className="text-xs font-medium text-muted-foreground">{labels.templateName}</span>
-        <input
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={labels.templateNamePlaceholder}
-          required
-          className={inputCls}
-        />
-      </label>
+      {/* r304 fix pass — disabled while a save is pending. The hidden fields above stay OUTSIDE it: a disabled
+          fieldset's controls are left out of the form data, and those two are what the action reads. */}
+      <fieldset disabled={pending} className="m-0 min-w-0 space-y-4 border-0 p-0">
+        <label className="block space-y-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{labels.templateName}</span>
+          <input
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={labels.templateNamePlaceholder}
+            required
+            className={inputCls}
+          />
+        </label>
 
-      <label className="block space-y-1 text-sm">
-        <span className="text-xs font-medium text-muted-foreground">{labels.templateDescription}</span>
-        <input
-          name="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className={inputCls}
-        />
-      </label>
+        <label className="block space-y-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">{labels.templateDescription}</span>
+          <input
+            name="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className={inputCls}
+          />
+        </label>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={multiStep}
-          onChange={(e) => toggleMultiStep(e.target.checked)}
-          className="size-4 rounded border-border"
-        />
-        <span>{labels.requireMultiStep}</span>
-      </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={multiStep}
+            onChange={(e) => toggleMultiStep(e.target.checked)}
+            className="size-4 rounded border-border"
+          />
+          <span>{labels.requireMultiStep}</span>
+        </label>
 
-      {/* Single-step still renders the SAME editor, capped at one row, rather than a separate control:
-          two ways to pick an approver would be two places for the value to diverge. */}
-      <StepListEditor
-        levels={levels}
-        setLevels={setLevels}
-        labels={stepLabels}
-        maxSteps={multiStep ? undefined : 1}
-        employees={employees}
-        endedEmploymentIds={endedEmploymentIds}
-      />
+        {/* Single-step still renders the SAME editor, capped at one row, rather than a separate control:
+            two ways to pick an approver would be two places for the value to diverge. */}
+        <StepListEditor
+          levels={levels}
+          setLevels={setLevels}
+          labels={stepLabels}
+          maxSteps={multiStep ? undefined : 1}
+          employees={employees}
+          endedEmploymentIds={endedEmploymentIds}
+        />
+      </fieldset>
       {/* r304 — Save and Cancel are in the drawer's sticky footer (the Save button posts this form by id). */}
     </form>
   );

@@ -51,6 +51,23 @@ const WIDTHS = {
 
 export type DrawerWidth = keyof typeof WIDTHS;
 
+/**
+ * r304 fix pass — ESCAPE BELONGS TO AN OPEN POPUP INSIDE THE DRAWER BEFORE IT BELONGS TO THE DRAWER.
+ *
+ * Radix listens for Escape on the document in the CAPTURE phase, so it hears the key before the focused
+ * field does. Without this, Escape pressed to dismiss a combobox's suggestions (the named-approver search in
+ * the approval template drawer) closed the whole drawer — or asked to discard it — where on the inline form
+ * it only closed the list. When focus sits in an expanded control (`aria-expanded="true"`, which is how the
+ * shared comboboxes announce an open list) or inside an open listbox, the drawer ignores that Escape and the
+ * control closes its own list; the next Escape, with the list closed, is the drawer's again.
+ */
+function escapeBelongsToOpenPopup(): boolean {
+  if (typeof document === 'undefined') return false;
+  const active = document.activeElement;
+  if (!(active instanceof Element)) return false;
+  return active.closest('[aria-expanded="true"], [role="listbox"]') !== null;
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -70,6 +87,7 @@ export function Drawer({
   width = 'default',
   closeLabel,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   className,
 }: {
   open: boolean;
@@ -86,12 +104,30 @@ export function Drawer({
   width?: DrawerWidth;
   closeLabel?: string;
   onCloseAutoFocus?: (event: Event) => void;
+  /** Runs first; `preventDefault()` keeps the drawer open. An open popup inside it already does (above). */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   className?: string;
 }) {
   const t = useTranslations('components.drawer');
   const [present, setPresent] = React.useState(open);
   // Mount in the same render that opens it — never one frame late, so the entry animation starts from open.
   if (open && !present) setPresent(true);
+
+  /* r304 fix pass — EVERY OPEN IS A FRESH RADIX TREE, including one that arrives while the previous close is
+     still sliding out. Re-used, the still-mounted focus scope never ran its mount again: focus stayed on the
+     button behind the overlay, and on close it went back to the button that opened the FIRST time. Keyed on
+     this counter, the re-opened drawer mounts its own scope (focus moves in, the opener is re-captured), and
+     the superseded scope's late unmount is ignored rather than pulling focus back out. */
+  const [session, setSession] = React.useState(0);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSession((n) => n + 1);
+  }
+  const currentSession = React.useRef(session);
+  React.useLayoutEffect(() => {
+    currentSession.current = session;
+  }, [session]);
 
   const panelRef = React.useRef<HTMLDivElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
@@ -117,8 +153,9 @@ export function Drawer({
 
   if (!present) return null;
 
+  const renderedSession = session;
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root key={renderedSession} open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal forceMount>
         <Dialog.Overlay forceMount className="ui-drawer-overlay fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content
@@ -129,7 +166,17 @@ export function Drawer({
             const active = typeof document !== 'undefined' ? document.activeElement : null;
             returnFocusRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
           }}
+          onEscapeKeyDown={(event) => {
+            onEscapeKeyDown?.(event);
+            if (event.defaultPrevented) return;
+            if (escapeBelongsToOpenPopup()) event.preventDefault();
+          }}
           onCloseAutoFocus={(event) => {
+            // A drawer re-opened during this one's exit owns focus now; this late unmount must not move it.
+            if (renderedSession !== currentSession.current) {
+              event.preventDefault();
+              return;
+            }
             onCloseAutoFocus?.(event);
             if (event.defaultPrevented) return;
             event.preventDefault();
