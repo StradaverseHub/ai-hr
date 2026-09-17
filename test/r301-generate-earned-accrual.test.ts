@@ -282,8 +282,6 @@ describe('§2 the commit equals the preview', () => {
       upToDate: 0,
       days: 24,
       skippedFutureYear: false,
-      heldBackNextYearStarted: 0,
-      forfeits: 0,
       failed: false,
     });
   });

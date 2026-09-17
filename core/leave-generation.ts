@@ -81,7 +81,7 @@
  * and should not grow for 26 rows. The completion summary and the downloadable log ship instead, which is
  * what the plan's build notes ask for in as many words.
  */
-import { and, desc, eq, inArray, gt } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -90,8 +90,7 @@ import {
   leaveGenerationRun,
   leaveGenerationRunItem,
   leaveType,
-  person,
-  leaveLedger,
+  person
 } from '../db/schema';
 import {
   countTemplatesForLeaveType,
@@ -101,6 +100,7 @@ import {
   accrueEarnedLeave,
   asOfForLeaveYear,
   isEarnedAccrualType,
+  pairsWithLedgerRowsAfter,
   isEarnedMethod,
   openLeaveYear,
   type EarnedAccrualResult,
@@ -364,22 +364,10 @@ async function generate(
   // r301 (parent hand-fix) — for a PAST year, which (employee, earned Annual Leave type) pairs already have ANY ledger
   // row dated after that year: their following year has started, so its carry has been (or is being) worked out on a
   // balance that did not include the old year's missing days. Read before the year-open, like the lookup above.
-  const nextYearStarted = new Set<string>();
-  if (today > `${year}-12-31` && earnedAnnualTypeIds.size > 0 && targets.length > 0) {
-    const later = await withTenant(ctx, (tx) =>
-      tx
-        .selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
-        .from(leaveLedger)
-        .where(
-          and(
-            inArray(leaveLedger.employmentId, targets),
-            inArray(leaveLedger.leaveTypeId, [...earnedAnnualTypeIds]),
-            gt(leaveLedger.effectiveOn, `${year}-12-31`),
-          ),
-        ),
-    );
-    for (const r of later) nextYearStarted.add(`${r.employmentId}|${r.leaveTypeId}`);
-  }
+  const nextYearStarted =
+    today > `${year}-12-31` && earnedAnnualTypeIds.size > 0 && targets.length > 0
+      ? await pairsWithLedgerRowsAfter(ctx, { employmentIds: targets, leaveTypeIds: [...earnedAnnualTypeIds], after: `${year}-12-31` })
+      : new Set<string>();
 
   // ── ④/⑤ THE ENGINE. One call. `dryRun` is the ONLY difference between preview and commit. ───────────
   const res = await openLeaveYear(ctx, { year, leaveTypeIds, employmentIds: targets, dryRun });

@@ -7859,6 +7859,33 @@ export function asOfForLeaveYear(year: number, today: string): string {
   return today; // current year → to-date
 }
 
+/**
+ * r301 (e5018593, parent hand-fix) — which (employment, leave type) pairs already hold ANY ledger row dated AFTER
+ * `after`. A read the generation module needs and may not write itself (test/leave-generation.test.ts D forbids it
+ * from touching the ledger at all): a PAST-year Generate uses it to hold back pairs whose following year has begun,
+ * because the old year's missing days would land after that year's carry forfeit was fixed. Keys are
+ * `${employmentId}|${leaveTypeId}`.
+ */
+export async function pairsWithLedgerRowsAfter(
+  ctx: SessionContext,
+  p: { employmentIds: string[]; leaveTypeIds: string[]; after: string },
+): Promise<Set<string>> {
+  if (p.employmentIds.length === 0 || p.leaveTypeIds.length === 0) return new Set();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, p.employmentIds),
+          inArray(leaveLedger.leaveTypeId, p.leaveTypeIds),
+          gt(leaveLedger.effectiveOn, p.after),
+        ),
+      );
+    return new Set(rows.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+  });
+}
+
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
  *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
