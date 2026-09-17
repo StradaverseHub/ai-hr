@@ -1974,7 +1974,7 @@
       "cancellationNotFullDay": "Half-day and hourly leave can't be cancelled after approval. Ask HR if it needs to be cancelled.",
       "cancellationGrouped": "This leave is part of an Emergency Leave or a day-by-day approval, so it can't be cancelled here. Ask HR if it needs to be cancelled.",
       "cancellationUnpaidDays": "This leave includes unpaid days, so it can't be cancelled after approval. Ask HR if it needs to be cancelled.",
-      "cancellationAlreadyPending": "A cancellation of one of these days is already waiting for approval.",
+      "cancellationAlreadyPending": "A cancellation of this leave is already waiting for approval.",
       "cancellationNoLongerCancellable": "This leave has changed since the cancellation was requested, so it can no longer be cancelled.",
       "cancellationAdminOnly": "Only an HR administrator can cancel leave on an employee's behalf.",
       "cancellationAdminOwnLeave": "You can't cancel your own leave here. Ask for a cancellation from My Leave instead.",

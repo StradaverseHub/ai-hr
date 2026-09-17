@@ -1974,7 +1974,7 @@
       "cancellationNotFullDay": "Cuti separuh hari dan cuti mengikut jam tidak boleh dibatalkan selepas diluluskan. Minta HR jika cuti ini perlu dibatalkan.",
       "cancellationGrouped": "Cuti ini sebahagian daripada Cuti Kecemasan atau kelulusan mengikut hari, jadi ia tidak boleh dibatalkan di sini. Minta HR jika cuti ini perlu dibatalkan.",
       "cancellationUnpaidDays": "Cuti ini mengandungi hari tanpa gaji, jadi ia tidak boleh dibatalkan selepas diluluskan. Minta HR jika cuti ini perlu dibatalkan.",
-      "cancellationAlreadyPending": "Pembatalan bagi salah satu hari ini sedang menunggu kelulusan.",
+      "cancellationAlreadyPending": "Pembatalan bagi cuti ini sedang menunggu kelulusan.",
       "cancellationNoLongerCancellable": "Cuti ini telah berubah sejak pembatalan diminta, jadi ia tidak boleh dibatalkan lagi.",
       "cancellationAdminOnly": "Hanya pentadbir HR boleh membatalkan cuti bagi pihak pekerja.",
       "cancellationAdminOwnLeave": "Anda tidak boleh membatalkan cuti anda sendiri di sini. Minta pembatalan dari Cuti Saya.",

@@ -38,8 +38,9 @@
 -- The kind/approver pairing is enforced in the service that writes it (core/leave.ts), not in a CHECK —
 -- the same reasoning 0467 gives for leave_approval_step: a check here fires on every decide.
 --
--- RLS: leave_approval_step's policy VERBATIM, keyed on subject_employment_id (tenant + can_see_employment
--- OR can_decide_via_delegation). GRANT to ai_hr_app (§6 — a dev restore has no default privileges).
+-- RLS: the PARENT leave_cancellation_request's policy (tenant + can_see_employment), keyed on
+-- subject_employment_id — NOT leave_approval_step's, whose delegation branch would show a delegate the levels
+-- of a cancellation they cannot read (the parent has never had one). GRANT to ai_hr_app (§6).
 --
 -- ⚠️ NUMBERING. 0471, allocated centrally (journal max idx 470 on the base, main@769e6d9a).
 --
@@ -96,12 +97,9 @@ ALTER TABLE leave_cancellation_step ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON leave_cancellation_step TO ai_hr_app;
 --> statement-breakpoint
+-- The PARENT's visibility, exactly (0132 leave_cancellation_request_rls): a step is readable only by someone who
+-- can read the cancellation it belongs to. A delegation branch here (as leave_approval_step has) would let a
+-- delegate read the levels of a cancellation the parent's policy hides from them (verifier, r301).
 CREATE POLICY leave_cancellation_step_rls ON leave_cancellation_step FOR ALL
-  USING (
-    tenant_id = app.current_tenant_id()
-    AND (app.can_see_employment(subject_employment_id) OR app.can_decide_via_delegation(subject_employment_id))
-  )
-  WITH CHECK (
-    tenant_id = app.current_tenant_id()
-    AND (app.can_see_employment(subject_employment_id) OR app.can_decide_via_delegation(subject_employment_id))
-  );
+  USING (tenant_id = app.current_tenant_id() AND app.can_see_employment(subject_employment_id))
+  WITH CHECK (tenant_id = app.current_tenant_id() AND app.can_see_employment(subject_employment_id));
