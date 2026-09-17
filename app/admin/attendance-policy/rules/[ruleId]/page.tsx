@@ -1,27 +1,13 @@
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { getAttendanceRule, listAttendanceRules } from '@/core/attendance-rule';
-import { listShiftsForTenant } from '@/core/roster';
-import { RuleForm } from '../rule-form';
-import { ruleShiftChoices } from '../shift-choices';
+import { SCHEDULE_PANEL_ANCHOR, groupEditorPath } from '../../schedule-panel';
 
-// 88e94371 — Edit an existing rule. Standard (is_default) rules are editable here (name locked). The route
-// is registered in lib/permissions.ts.
-export default async function EditAttendanceRulePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ ruleId: string }>;
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const s = await requireAdmin();
+// 88e94371 — Edit one Schedule Group. 6d091cc0 (r301): the form (../rule-form.tsx, unchanged) opens as a panel on
+// Attendance › Schedule › General, so this address redirects to that panel. requireAdmin() first: the route stays
+// registered in lib/permissions.ts and a non-administrator is refused here. An id that is not a group this viewer
+// can see opens no panel there (read by value), where it used to 404 here.
+export default async function EditAttendanceRulePage({ params }: { params: Promise<{ ruleId: string }> }) {
+  await requireAdmin();
   const { ruleId } = await params;
-  const { error } = await searchParams;
-  const rule = await getAttendanceRule(s, ruleId);
-  if (!rule) notFound();
-  // 870b79e2 — the "Shifts allowed" editor. Non-archived shifts only (an archived shift is not assignable
-  // anywhere else either), read through the SAME listShiftsForTenant the shift library and the Schedule
-  // screen use, so three surfaces cannot disagree about which shifts exist or in what order.
-  const [shifts, rules] = await Promise.all([listShiftsForTenant(s), listAttendanceRules(s)]);
-  return <RuleForm rule={rule} shifts={ruleShiftChoices(shifts, rules, rule.id)} error={error} />;
+  redirect(`${groupEditorPath(ruleId)}#${SCHEDULE_PANEL_ANCHOR}`);
 }

@@ -20,48 +20,34 @@ const toMin = (t: string) => {
 const hm = (mins: number) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
 
 /**
- * ONE company work-schedule editor, rendered from TWO places (feedback e4471e3c, r287).
+ * ONE company work-schedule editor (feedback e4471e3c, r287; mounted ONCE since 6d091cc0, r301).
  *
  * ── WHY IT LIVES HERE AND NOT IN components/ ───────────────────────────────────────────────────────
  * It is PACK UI, not a generic control: it renders `attendance_policy`, which the attendance pack owns
  * (ADR-0080 D9). A file under `components/` importing `core/attendance` is a NEW direct consumer of the
  * pack's implementation and fails the drift ratchet — correctly, and that allowlist only ever shrinks. So
- * the form sits inside the pack's own route surface, beside the screen that has always owned it, and the
- * Schedule tab imports it from here.
+ * the form sits inside the pack's own route surface, and the Schedule screen imports it from here.
  *
- * ── WHY IT IS A SHARED COMPONENT AND NOT A SECOND FORM ──────────────────────────────────────────────
- * The reporter asked for the Work Schedule sub-menu to be consolidated into Attendance › Schedule, so the
- * working week has to be editable on the Schedule screen's General tab. The obvious way to do that is to
- * draw a form on the tab with the fields the tab already displays — and it is the wrong way, twice over:
+ * ── WHY IT IS A COMPONENT AND NOT A FORM DRAWN BY THE SCREEN ───────────────────────────────────────
+ * `setAttendancePolicyAction` is a FULL-ROW writer. It reads every field of `attendance_policy` off the
+ * submission, so a partial form would save `lateAfter`, `halfDayBefore`, the overtime-approval method and
+ * the registered-device switch at whatever `String(fd.get(...) ?? '')` yields for a field the browser never
+ * sent — i.e. it would quietly wipe settings the form does not show. This component is the complete form,
+ * and its `dayType_<d>` naming contract with the action lives in exactly one place.
  *
- *   1. `setAttendancePolicyAction` is a FULL-ROW writer. It reads every field of `attendance_policy` off
- *      the submission, so a partial form would save `lateAfter`, `halfDayBefore`, the overtime-approval
- *      method and the registered-device switch at whatever `String(fd.get(...) ?? '')` yields for a field
- *      the browser never sent — i.e. it would quietly wipe four settings the tab does not even show.
- *   2. Two forms over one table drift. The old screen's disjoint Full/Half/Rest decoding, its time inputs
- *      and its `dayType_<d>` naming contract with the action are exactly the kind of thing a copy
- *      re-implements and then re-implements differently.
- *
- * So the editor MOVED into this component and both screens render it. A save from the Schedule tab and a
- * save from /admin/attendance-policy/schedule post the SAME field names to the SAME action, which is the
- * strongest available form of "the new tab produces the same stored row as the old screen": they are not
- * two writers that agree, they are one writer.
- *
- * ── `returnTo` IS READ AS A VALUE AGAINST A CLOSED LIST, NEVER AS A URL ────────────────────────────
- * The only thing that differs between the two mounts is where a save lands. That rides a hidden field, and
- * a hidden field is ALWAYS submitted — so the action resolves it against a two-entry allow-list rather
- * than redirecting to whatever arrived (CLAUDE.md §8: a field that is always submitted cannot be read by
- * presence; and an unchecked redirect target is an open redirect). See setAttendancePolicyAction.
+ * ── r301: ONE MOUNT, SO `returnTo` IS GONE ─────────────────────────────────────────────────────────
+ * r287 rendered this from two screens (the Work Schedule page and the Schedule General tab) and carried a
+ * hidden `returnTo` read against a two-entry closed list so each save landed where it was made. 6d091cc0
+ * folded the Work Schedule page into the Schedule screen — it is a redirect stub now — so the form has one
+ * home, the Edit panel of the Company Policy Settings card, and the action returns there unconditionally.
+ * A hidden field that nothing reads is a contract nobody honours; it went with the second mount.
  */
 export async function WorkScheduleForm({
   company,
   policy,
-  returnTo,
 }: {
   company: { id: string; name: string };
   policy: AttendancePolicyView;
-  /** Which screen this mount is on. Resolved server-side against a closed list; never a free URL. */
-  returnTo: 'schedule-tab' | 'work-schedule';
 }) {
   const t = await getTranslations('admin.attendancePolicy');
   const net = Math.max(0, toMin(policy.workEnd) - toMin(policy.workStart) - policy.breakMinutes);
@@ -80,7 +66,6 @@ export async function WorkScheduleForm({
       </div>
       <form action={setAttendancePolicyAction} className="space-y-4 p-4">
         <input type="hidden" name="companyId" value={company.id} />
-        <input type="hidden" name="returnTo" value={returnTo} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label={t('workStart')}>
             <input type="time" name="workStart" required defaultValue={policy.workStart.slice(0, 5)} className={inputCls} />
