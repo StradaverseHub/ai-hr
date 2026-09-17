@@ -1,0 +1,176 @@
+<meta charset="utf-8"><title>3de1453a — Earned Accrual is Annual Leave only</title>
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#7c2d12;margin-top:7px}
+  .tabs2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .tb{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px;color:var(--mf);background:#fff}
+  .tb.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .btn.dis{background:#e6e7ef;color:#9a9ba8}
+
+/* ---- this mockup ---- */
+.pop{border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(20,20,40,.10);margin-top:6px}
+.pop .srch{margin:8px;}
+.opt{display:flex;align-items:center;gap:9px;padding:7px 11px;border-top:1px solid var(--border);font-size:12px}
+.opt .cb{width:14px;height:14px;border:1.5px solid #a5a6b4;border-radius:4px;flex:none}
+.opt .cb.on{background:var(--primary);border-color:var(--primary);position:relative}
+.opt .cb.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.opt.off{color:#9a9ba8;background:#fafafd}
+.opt.off .cb{border-color:#d6d7e0;background:#f0f1f7}
+.opt .t{margin-left:auto}
+.chip.ent{background:#f0f1f7;color:#63636f}
+.chip.earn{background:#dcfce7;color:#166534}
+.radio{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px}
+.radio .r{width:14px;height:14px;border-radius:999px;border:1.5px solid #a5a6b4;flex:none}
+.radio .r.on{border:4px solid var(--primary)}
+.radio.off{color:#9a9ba8}
+.radio.off .r{border-color:#d6d7e0;background:#f0f1f7}
+.tog{display:flex;gap:10px;align-items:flex-start;border:1px solid color-mix(in srgb,var(--primary) 30%,white);background:color-mix(in srgb,var(--primary) 5%,white);border-radius:9px;padding:9px 11px;margin-bottom:11px}
+.sw{width:30px;height:17px;border-radius:999px;background:var(--primary);position:relative;flex:none;margin-top:1px}
+.sw::after{content:"";position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:999px;background:#fff}
+.sw.offsw{background:#d6d7e0}
+.sw.offsw::after{left:2px;right:auto}
+.small{font-size:11px;color:var(--mf)}
+.info{background:#f0f1f7;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#3b3b47;margin-top:8px}
+.three{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:16px;align-items:start}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Leave Config &gt; Run Earned Accrual &mdash; the Leave Type list, opened</h2>
+  <p class="q">Only Annual Leave can be ticked. Every other leave type is still listed, so nobody wonders where it went, but it is greyed out and says why.</p>
+  <div class="three">
+    <div class="box">
+      <span class="tag good">AFTER</span>
+      <div class="page-h">Run earned accrual</div>
+      <div class="page-d">Posts the Annual Leave your staff have earned so far and that is not yet on their balance.</div>
+      <div class="g2">
+        <div><span class="lbl">Leave year</span><span class="inp">Current year</span></div>
+        <div><span class="lbl">Company</span><span class="inp">All companies</span></div>
+      </div>
+      <span class="lbl">Leave type</span>
+      <span class="inp">*Annual Leave</span>
+      <div class="pop">
+        <div class="srch"><span class="inp" style="color:#9a9ba8">Search leave types</span></div>
+        <div class="opt"><span class="cb on"></span>*Annual Leave<span class="t chip earn">Earned accrual</span></div>
+        <div class="opt off"><span class="cb"></span>Caregiver Leave<span class="t chip ent">Entitlement-based</span></div>
+        <div class="opt off"><span class="cb"></span>Compassionate Leave<span class="t chip ent">Entitlement-based</span></div>
+        <div class="opt off"><span class="cb"></span>Hospitalisation Leave<span class="t chip ent">Entitlement-based</span></div>
+        <div class="opt off"><span class="cb"></span>Medical Leave<span class="t chip ent">Entitlement-based</span></div>
+      </div>
+      <div class="info">Earned Accrual applies only to Annual Leave (*Annual Leave). Other leave types are entitlement-based and are excluded from this process.</div>
+    </div>
+    <div class="box">
+      <span class="tag good">AFTER &mdash; "All leave types"</span>
+      <span class="lbl">Leave type</span>
+      <span class="inp">All leave types</span>
+      <div class="info">Earned Accrual applies only to Annual Leave (*Annual Leave). Other leave types are entitlement-based and are excluded from this process.</div>
+      <p class="note">Choosing all leave types runs Annual Leave only. The preview and the run list Annual Leave and nothing else, and no other leave type's balance is touched.</p>
+    </div>
+    <div class="box bad">
+      <span class="tag bad">TODAY</span>
+      <span class="lbl">Leave type</span>
+      <div class="pop">
+        <div class="opt"><span class="cb"></span>*Annual Leave<span class="t chip no">not covered</span></div>
+        <div class="opt"><span class="cb"></span>Caregiver Leave<span class="t chip no">not covered</span></div>
+        <div class="opt"><span class="cb"></span>Compassionate Leave<span class="t chip no">not covered</span></div>
+        <div class="opt"><span class="cb"></span>Medical Leave<span class="t chip no">not covered</span></div>
+      </div>
+      <p class="note">Every type can be ticked, and the "not covered" mark follows a fixed list of internal codes rather than which leave type is your Annual Leave. A leave type you created yourself is marked "not covered" even when it is your Annual Leave.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Leave Config &gt; Entitlements &gt; Leave types &mdash; Earning Method</h2>
+  <p class="q">You tell the system once which leave type is your Annual Leave. The earned options then appear only on that type.</p>
+  <div class="two">
+    <div class="box good">
+      <span class="tag good">*Annual Leave</span>
+      <div class="tog"><span class="sw"></span><div><b style="font-size:12px">This is our Annual Leave</b><div class="small">Earned Accrual works on this leave type. Only one active leave type can be your Annual Leave.</div></div></div>
+      <span class="lbl">Earning method</span>
+      <div class="radio"><span class="r"></span>None &mdash; granted up front</div>
+      <div class="radio"><span class="r on"></span>Monthly Accrual</div>
+      <div class="radio"><span class="r"></span>Daily Accrual</div>
+    </div>
+    <div class="box">
+      <span class="tag" style="background:#f0f1f7;color:#3b3b47">Medical Leave</span>
+      <div class="tog" style="background:#fafafd;border-color:var(--border)"><span class="sw offsw"></span><div><b style="font-size:12px;color:#63636f">This is our Annual Leave</b><div class="small">Your Annual Leave is *Annual Leave.</div></div></div>
+      <span class="lbl">Earning method</span>
+      <div class="radio"><span class="r on"></span>None &mdash; granted up front</div>
+      <div class="radio off"><span class="r"></span>Monthly Accrual</div>
+      <div class="radio off"><span class="r"></span>Daily Accrual</div>
+      <div class="info">Medical Leave is entitlement-based. Only Annual Leave can be earned through Earned Accrual.</div>
+    </div>
+  </div>
+</div>
