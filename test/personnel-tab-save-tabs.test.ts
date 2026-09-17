@@ -774,8 +774,10 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // inside Basic Salary, whose own headline control records an effective-dated salary revision, so a
       // bar reading "Basic Salary" would claim exactly what the classification forbids it to claim.
       // `payMethodGroup` is the heading the reader sees directly above the control the Save owns.
+      // r298 (ceb1c560) — the policy card's name is dropped on a SECOND axis too: it is not drawn for a
+      // tenant without Payroll, so `whenPayroll` wraps the same `whenLive` entry rather than replacing it.
       expect(page).toContain(
-        "payroll: [t('payMethodGroup'), ...whenLive(tp('assignTitle')), t('tp3SectionTitle')]",
+        "payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')]",
       );
       expect(page, 'the bar must not name the card that holds the salary revision').not.toContain(
         "payroll: [t('compensation')",
@@ -808,7 +810,12 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(page).toContain(
         'const whenLive = (...names: string[]): string[] => (emp.terminatedOn ? [] : names);',
       );
-      const gated = [...page.matchAll(/const (\w+Card) = admin && !emp\.terminatedOn \?/g)].map((m) => m[1]);
+      // r298 — `payrollPolicyCard` gained a `payrollOn` term between `admin` and the termination test; it is
+      // still a card a terminated employment does not render, so the pattern admits the term rather than
+      // letting the card fall out of this set (which would make the whenLive assertion below vacuous for it).
+      const gated = [...page.matchAll(/const (\w+Card) = admin (?:&& payrollOn )?&& !emp\.terminatedOn \?/g)].map(
+        (m) => m[1],
+      );
       // Every scope region on the page, gathered by scanning rather than through `scopeOf` — that helper
       // keys on a 12-space indentation the Profile scope does not have, so using it here silently checked
       // four of the five tabs.
@@ -824,7 +831,30 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       ).toEqual(['clockingCard', 'payrollPolicyCard']);
       // Payment Method is deliberately NOT dropped: that card IS rendered on a terminated employment,
       // with its select disabled, so naming it describes something the reader can see.
-      expect(page).toContain("payroll: [t('payMethodGroup'), ...whenLive");
+      expect(page).toContain("payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive");
+    });
+
+    /**
+     * r298 (ceb1c560) — THE SAME RULE ON THE PAYROLL AXIS. A tenant that has not bought Payroll is not
+     * shown the Payroll Policy picker (its read, core/payroll-policy.ts, is the Payroll pack's). The bar
+     * that owns that card must then not name it — the r256 fault again, reached by a different condition.
+     * Every `payrollOn`-gated card inside a save scope must have its name inside `whenPayroll(...)`.
+     */
+    it('the bar never names a card that a tenant without Payroll does not render', () => {
+      const page = PAGE();
+      expect(page).toContain('const whenPayroll = (...names: string[]): string[] => (payrollOn ? names : []);');
+      const gated = [...page.matchAll(/const (\w+Card) = admin && payrollOn\b[^?]*\?/g)].map((m) => m[1]);
+      const regions: string[] = [];
+      for (let at = page.indexOf('<TabSaveScope'); at > -1; at = page.indexOf('<TabSaveScope', at + 1)) {
+        regions.push(page.slice(at, page.indexOf('</TabSaveScope>', at)));
+      }
+      expect(regions.length, 'one region per consolidated tab').toBe(5);
+      const inAScope = gated.filter((card) => regions.some((r) => r.includes(`{${card}}`)));
+      expect(
+        inAScope.sort(),
+        'a Payroll-gated card inside a save scope must have its name dropped by whenPayroll',
+      ).toEqual(['payrollPolicyCard']);
+      expect(page).toContain("...whenPayroll(...whenLive(tp('assignTitle')))");
     });
 
     it('every section the map declares has a writer in its tab action, and no tab has a stray one', () => {
