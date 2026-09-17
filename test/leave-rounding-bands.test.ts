@@ -238,6 +238,15 @@ describe('§1 the band evaluator — the arithmetic, in numbers', () => {
       expect(applyRoundingBands(whole + 0.56, tight), `${whole}.56`).toBe(whole + 0.5);
       expect(applyRoundingBands(whole + 0.57, tight), `${whole}.57`).toBe(whole + 1);
     }
+    // A bound carrying binary noise that the validator still accepts as two decimals (a hand-written row) is
+    // read as its whole hundredth. Compared raw, 0.1 + 0.2 = 0.30000000000000004 would start ABOVE 0.300 and
+    // 0.7 − 0.4 = 0.29999999999999993 would end BELOW 0.309.
+    const noisyFrom: RoundingBand[] = [{ from: 0.1 + 0.2, to: 0.5, result: 0.5 }];
+    const noisyTo: RoundingBand[] = [{ from: 0, to: 0.7 - 0.4, result: 0 }];
+    expect(roundingBandErrors(noisyFrom)).toEqual([]);
+    expect(roundingBandErrors(noisyTo)).toEqual([]);
+    expect(applyRoundingBands(10.3, noisyFrom)).toBe(10.5);
+    expect(applyRoundingBands(10.309, noisyTo)).toBe(10);
   });
 
   it('a DECIMAL A GAP DOES NOT COVER keeps its exact calculated value', () => {
