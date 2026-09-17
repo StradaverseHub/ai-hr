@@ -329,6 +329,32 @@ describe('§2 what 0473 leaves alone, and what it writes to the deploy log', () 
     );
   });
 
+  it('r303 hand-fix — a hand-written absurd number does not abort the migration (and so the deploy): the table is left untouched and named', async () => {
+    const ids = await storeTables({ ABSURD: [{ from: 0, to: 0.5, result: 0 }] });
+    // 1e131071 cannot travel through a JS number; write the jsonb text directly, as only a hand edit could.
+    await noticeClient.unsafe('update leave_type set rounding_bands = $1::text::jsonb where id = $2', [
+      '[{"from": 0, "to": 0.5, "result": 0}, {"from": 0.5, "to": 1e131071, "result": 1}, {"from": -1e131071, "to": 0.9, "result": 1}]',
+      ids.ABSURD,
+    ]);
+    await expect(runMigration()).resolves.toBeUndefined();
+    expect(notices.some((n) => n.message.includes('left untouched') && n.message.includes(ids.ABSURD))).toBe(true);
+  });
+
+  it('r303 hand-fix — a converted table whose stored figures had a third decimal is a WARNING that 3dp leave figures can round differently', async () => {
+    const THREE_DP_BOUNDS: RoundingBand[] = [
+      { from: 0, to: 0.333, result: 0 },
+      { from: 0.333, to: 0.667, result: 0.5 },
+      { from: 0.667, to: 1, result: 1 },
+    ];
+    const ids = await storeTables({ THREE_DP_BOUNDS });
+    await runMigration();
+    const warning = notices.find((n) => n.severity === 'WARNING' && n.message.includes(ids.THREE_DP_BOUNDS));
+    expect(warning?.message).toContain('CAN ROUND DIFFERENTLY');
+    // And the class it warns about is real: 6.333 rounded to 6.50 before, 6.00 now.
+    expect(preR303ApplyRoundingBands(6.333, THREE_DP_BOUNDS)).toBe(6.5);
+    expect(applyRoundingBands(6.333, (await bandsById(ids)).THREE_DP_BOUNDS)).toBe(6);
+  });
+
   it('a third-decimal RESULT on an exact half cannot be exact for every whole part: rounded half-up and named', async () => {
     // Old: round2dp(whole + 0.505) in binary float, which is 0.51 at whole 0 and 1.50 at whole 1. No 2dp
     // result reproduces both, so the conversion takes the decimal rule (half-up) and the log names the type.

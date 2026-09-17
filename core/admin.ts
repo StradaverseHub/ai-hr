@@ -4278,6 +4278,10 @@ export async function updateLeaveType(
     });
   });
 }
+
+/** r303 — the most per-row sentences one rounding-table refusal carries (it travels in a redirect URL). */
+const MAX_ROUNDING_REFUSAL_SENTENCES = 10;
+
 /**
  * THE TYPE-LEVEL RULE EDITOR (9816a5ad step 2). The five settings the reporter agreed to consolidate —
  * Earning Method, Carry Forward (+ expiry), Rounding, Maximum Balance, and the Leave Year Type that rides
@@ -4391,8 +4395,15 @@ export async function setLeaveTypeRules(
             return `${range(x.index)} overlaps ${range(x.with)} (row ${x.with + 1}); two ranges cannot cover the same figure, and a range includes both its From and its To`;
         }
       };
-      const sentences = problems.map((x) => (x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say(x)}.`));
-      throw new LeaveTypeRuleError(`The rounding table was not saved. ${sentences.filter(Boolean).join(' ')}`);
+      const sentences = problems.map((x) => (x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say(x)}.`)).filter(Boolean);
+      // r303 hand-fix (verification defect 6) — the refusal travels in a redirect URL (?error=), and a table of
+      // many clashing rows produced one sentence per PAIR (38k characters for 20 overlapping rows), past Node's
+      // 16 KB header limit: an error page instead of the message. The first ten, then how many more.
+      const shown = sentences.slice(0, MAX_ROUNDING_REFUSAL_SENTENCES);
+      const more = sentences.length - shown.length;
+      throw new LeaveTypeRuleError(
+        `The rounding table was not saved. ${shown.join(' ')}${more > 0 ? ` And ${more} more problem${more === 1 ? '' : 's'} in the table.` : ''}`,
+      );
     }
   }
   // Feedback 9f5164d8 — the reporter's four validation rules, all of which reduce to a bound on ONE number.

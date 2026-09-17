@@ -434,6 +434,20 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
     expect((await typeRow(id)).roundingBands).toBeNull();
   });
 
+  it('r303 hand-fix — a table of many clashing rows is refused in a message short enough for a redirect URL', async () => {
+    const id = await annualId();
+    // Twenty rows that all overlap each other: one sentence per clashing PAIR was 38k characters (verification).
+    const rows: RoundingBand[] = Array.from({ length: 20 }, (_, i) => ({ from: i / 100, to: 0.9, result: 0 }));
+    const err = await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'custom', roundingBands: rows }).catch((e) => e as Error);
+    expect(err).toBeInstanceOf(LeaveTypeRuleError);
+    const message = (err as Error).message;
+    expect(message.startsWith('The rounding table was not saved. Row ')).toBe(true);
+    expect(message.match(/Row \d+:/g)).toHaveLength(10);
+    expect(message).toMatch(/ And \d+ more problems in the table\.$/);
+    expect(encodeURIComponent(message).length, 'fits a redirect URL comfortably').toBeLessThan(4000);
+    expect((await typeRow(id)).roundingBands).toBeNull();
+  });
+
   it('r303 — a table is stored EXACTLY as typed, at two decimals, From included', async () => {
     const id = await annualId();
     const typed: RoundingBand[] = [

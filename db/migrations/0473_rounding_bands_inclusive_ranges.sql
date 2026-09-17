@@ -143,9 +143,11 @@ BEGIN
         SELECT max(z.th) FILTER (WHERE q.col = 1) AS tf,
                max(z.th) FILTER (WHERE q.col = 2) AS tu,
                max(z.th) FILTER (WHERE q.col = 3) AS tr,
-               count(*) FILTER (WHERE q.x * 100 <> floor(q.x * 100)) AS n_fine,
+               -- abs(x) <= 2 first: a hand-written 1e131071 would otherwise overflow numeric here and abort the
+               -- deploy (r303 verification defect 4); such a cell is already outside every rule below.
+               count(*) FILTER (WHERE abs(q.x) <= 2 AND q.x * 100 <> floor(q.x * 100)) AS n_fine,
                -- the NEW rules' per-figure test, for the warning only: 2dp and 0.00–1.00
-               bool_and(abs(q.x * 100 - round(q.x * 100)) < 0.000001 AND q.x >= 0 AND q.x <= 1) AS new_cells_ok
+               bool_and(CASE WHEN abs(q.x) <= 2 THEN abs(q.x * 100 - round(q.x * 100)) < 0.000001 AND q.x >= 0 AND q.x <= 1 ELSE false END) AS new_cells_ok
         FROM (VALUES (1, c.xf), (2, c.xu), (3, c.xr)) AS q(col, x)
         CROSS JOIN LATERAL (
           SELECT CASE
@@ -169,8 +171,8 @@ BEGIN
              ceil(th.tf / 10.0) AS from_h,
              ceil(th.tu / 10.0) - 1 AS to_h,
              floor((th.tr + 5) / 10.0) AS result_h,
-             round(th.xf * 100) AS new_from_h,
-             round(th.xu * 100) AS new_to_h
+             CASE WHEN abs(th.xf) <= 2 THEN round(th.xf * 100) END AS new_from_h,
+             CASE WHEN abs(th.xu) <= 2 THEN round(th.xu * 100) END AS new_to_h
       FROM thous th
     ),
     agg AS (
@@ -225,6 +227,12 @@ BEGIN
     END IF;
     IF t.old_ok THEN
       UPDATE leave_type SET rounding_bands = t.bands_new WHERE id = t.id;
+      -- r303 verification defect 5: a table whose stored figures had a THIRD decimal converts to the nearest
+      -- whole-hundredth bounds, so a leave figure that itself has three decimals can land in a different band.
+      IF t.n_fine > 0 THEN
+        RAISE WARNING '0473 leave_type % (%) had figures with more than two decimals; its bounds are now whole hundredths, so a leave figure with three decimals CAN ROUND DIFFERENTLY: % -> %',
+          t.code, t.id, t.bands, t.bands_new;
+      END IF;
       n_converted := n_converted + 1;
       n_rows_in := n_rows_in + t.n_rows;
       n_rows_out := n_rows_out + t.n_out;
