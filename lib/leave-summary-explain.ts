@@ -203,6 +203,10 @@ export const LEAVE_SUMMARY_EXPLAIN_KEYS = [
   'earnedMethodMissing',
   'earnedCappedAtZero',
   'earnedNoTable',
+  'earnedNothingYetWithCredits',
+  'earnedZeroTableWithCredits',
+  'earnedMethodMissingWithCredits',
+  'earnedNoTableWithCredits',
   'earnedNone',
   'earnedCreditsIntro',
   'creditItem',
@@ -366,7 +370,17 @@ export function explainLeaveSummary(
     no_entitlement_table: 'earnedNoTable',
     no_eligibility_match: 'earnedNoTable',
   };
-  const sKey = statusKey[status];
+  // r303 hand-fix (verification defect 1) — a status sentence must never say "nothing is credited" above a list of
+  // credits (a Replacement Leave with Leave Credits; a year granted before its eligibility rule expired). Where
+  // credits exist, the same status is stated without that claim.
+  const withCredits: Partial<Record<LeaveSummaryExplainKey, LeaveSummaryExplainKey>> = {
+    earnedNothingYet: 'earnedNothingYetWithCredits',
+    earnedZeroTable: 'earnedZeroTableWithCredits',
+    earnedMethodMissing: 'earnedMethodMissingWithCredits',
+    earnedNoTable: 'earnedNoTableWithCredits',
+  };
+  const sKey0 = statusKey[status];
+  const sKey = sKey0 && earned.credits.length > 0 ? (withCredits[sKey0] ?? sKey0) : sKey0;
   if (sKey) ytd.push({ key: sKey });
   if (earned.credits.length === 0) {
     // A status sentence already said why nothing is here; saying "nothing credited" again adds nothing. An empty
