@@ -145,6 +145,9 @@ const MARKERS = [
   // TAB 2 — who is eligible
   'eligibility',
   // TAB 3 — what they are entitled to
+  // r299 (3de1453a) — "This is our Annual Leave", on the Earning Method form. A NEW marker, not a merge:
+  // the switch is its own tri-state (the role column), posted only while the switch is editable.
+  'annualLeaveRendered',
   'earningRendered',
   'roundingMethodRendered',
   'carryBlockRendered',
@@ -171,7 +174,7 @@ describe('a6fe37fc R2 · rule 1 — every sub-form keeps its tri-state marker an
     expect(newScreen).toContain(`<input type="hidden" name="${marker}" value="1" />`);
   });
 
-  it('renders 27 markers and no more — nothing was merged into a neighbour', () => {
+  it('renders 28 markers and no more — nothing was merged into a neighbour (r299 added annualLeaveRendered)', () => {
     const count = [...newScreen.matchAll(/name="[a-zA-Z]+" value="1"/g)].length;
     expect(count, 'a marker was added, dropped or merged').toBe(MARKERS.length);
   });
@@ -271,6 +274,8 @@ const MARKER_FIELDS: Record<(typeof MARKERS)[number], PostedField[]> = {
     ORG_PICKERS,
   ],
   // setLeaveTypeRulesAction — the earning half and the rounding half ride two markers on ONE form.
+  // r299 — and the Annual Leave switch rides a third, on the same form: its value is a hidden '1'/'0'.
+  annualLeaveRendered: [posted('isAnnualLeave')],
   earningRendered: [posted('method'), posted('accrualDay')],
   roundingMethodRendered: [posted('roundingMethod'), posted('roundingBands')],
   carryBlockRendered: [
