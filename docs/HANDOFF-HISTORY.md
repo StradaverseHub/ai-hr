@@ -1,3 +1,47 @@
+## r304 (2026-09-17) — Approval Workflow: Edit and Add template open in a right-side drawer. `main@70f4b774`, **no migration**.
+
+Closed and DEPLOYED: `85875e4b`. Gate: **920 files — equal to the suite file count — 14,070 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 70f4b774.
+
+### WHAT SHIPPED
+
+- `components/ui/drawer.tsx` — the codebase's first SHARED right-side drawer (Radix Dialog): full screen below `lg`
+  (the approved plan says phone OR tablet), `clamp(36rem, 40vw, 48rem)` from `lg`; sticky footer; a real slide-out (it stays
+  mounted until its own `animationend`, 400 ms backstop, no motion under prefers-reduced-motion — proven in real Chromium by
+  the verifier). Only the template manager uses it; LeaveDetailsPanel, leave-history-cards and leave-type-workspace are still
+  hand-rolled (a follow-up with no visible change).
+- Edit and Add template open the SAME form in the drawer ("Edit: <name>" / "Add template"), the edited row is marked, footer
+  Cancel / Save (`common.save`), a discard confirm only when the form differs from what it OPENED with (name, description,
+  multi-step, steps incl. alternates and named approvers), a localized "<name> updated / created" toast, focus back on the
+  saved row's Edit button.
+- **The template save returns a result instead of redirecting**, so a refused save keeps the drawer open with the edits. Still
+  the only save path. The verifier ran 37 crafted inputs through the new action and main's action + service (git-show
+  oracle): stored templates and audit events identical in every case.
+
+### DECISIONS the ticket did not settle
+
+- **Refusal text:** the service threw plain Errors, so a new `ApprovalTemplateRefusedError` marks deliberate refusals
+  (missing name, empty chain, unnamed approver, duplicate name, not found) — shown verbatim. ANY other error (RLS refusal,
+  driver/constraint error, missing session) shows one localized generic sentence and is logged: on main a non-admin POST or a
+  NUL byte put `Failed query: insert … params: <tenant id>, …` in the banner.
+- **Authorization unchanged, and recorded:** neither create nor update checks admin in code; `leave_approval_template`'s RLS
+  (0170) requires `app.is_admin()`, which is "admin anywhere" — a company-scoped HR admin can edit any template tenant-wide
+  (pre-existing).
+- From the adversarial verification (one fix pass, each re-derived red): Escape inside an expanded control (the
+  named-approver search) closes only that control — the drawer had been closing on it, a regression from main; a save cannot
+  be posted while the drawer slides out (Enter in that 240 ms posted the opened values, overwriting a concurrent admin's
+  change); the form is disabled while a save is in flight; a save that THROWS (network, expired session) keeps the drawer
+  and its edits; re-opening mid-exit owns focus.
+- Tablet: full screen below `lg` (1024 px), because the approved plan says "phone or tablet".
+
+### NOT DONE / KNOWN
+
+- The other template and assignment actions (Duplicate, Set default, Activate/Deactivate, Delete, Assign, Unassign) still
+  redirect with the raw error text on failure — a database refusal there can still print SQL in the page banner (admins only).
+  Their `?toast=` messages are still English.
+- No dev-server render of the screen (the seeder is refused; the dev DB has no users); rendering and interaction proven by
+  DOM tests in six catalogues and the verifier's real-Chromium scratch tests.
+- Browser back / page unload with unsaved edits is not guarded (same as main). Safari focus-return after a mouse click untested.
+
 ## r303 (2026-09-17) — My Leave dashboard, Leave Summary explanations, inclusive Custom Rounding. `main@37ab0667`, **migrations 0472 + 0473**.
 
 Closed and DEPLOYED: `6c9802c9`, `31492f74`, `05db6aa7`. Gate: **918 files — equal to the suite file count — 13,978 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `gate:shadow` **PASS 389/389**. `next build` exit 0.
