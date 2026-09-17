@@ -88,7 +88,7 @@ ALTER TABLE "leave_cancellation_step" ADD CONSTRAINT "leave_cancellation_step_su
 --> statement-breakpoint
 ALTER TABLE "leave_cancellation_step" ADD CONSTRAINT "leave_cancellation_step_approver_employment_id_employment_id_fk" FOREIGN KEY ("approver_employment_id") REFERENCES "public"."employment"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "leave_cancellation_step" ADD CONSTRAINT "leave_cancellation_step_decided_by_employment_id_employment_id_fk" FOREIGN KEY ("decided_by_employment_id") REFERENCES "public"."employment"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "leave_cancellation_step" ADD CONSTRAINT "leave_cancellation_step_decided_by_employment_id_fk" FOREIGN KEY ("decided_by_employment_id") REFERENCES "public"."employment"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "leave_cancellation_step_request_idx" ON "leave_cancellation_step" USING btree ("cancellation_request_id", "step_index");
 --> statement-breakpoint
