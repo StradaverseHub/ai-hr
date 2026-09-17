@@ -503,6 +503,7 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
     await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
     await waitFor(() => expect(dialog.getAttribute('data-state')).toBe('closed'));
+    expect(dialog.isConnected, 'the drawer finished closing before Escape — this case would prove nothing').toBe(true);
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await closeFully();
