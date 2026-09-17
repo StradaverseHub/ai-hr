@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance } from '@/core/read';
+import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance, type TaxReliefResult } from '@/core/read';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's field-by-field permission for change requests (ess.profile_change_fields).
 // The QUIET reader, and the closed fallback, for the reason spelled out where it is used below.
-import { getSettingOrFallback } from '@/core/entitlements';
+import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
 import { resolveAllowedRequestKeys } from '@/lib/profile-requestable-fields';
 import { myResignation } from '@/core/offboarding';
 import { isChildReliefEligible, childAgeYears } from '@/core/dependents';
@@ -167,22 +167,41 @@ export default async function MePage({
 
   const { employmentId } = record;
   const employments = await myEmployments(s);
+  /**
+   * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE for the page. My Profile is a CORE
+   * screen, and four things on it are the Payroll pack's, so for a tenant without Payroll each is neither
+   * READ nor drawn — gating only the render would leave the reads that core/module-gate.ts names as
+   * stopping core/loans.ts from being bound:
+   *   • My payslips          ← myPayslips               (payslip + payroll_batch, through core/read.ts)
+   *   • Personal tax relief  ← myTaxReliefEmploymentIds + myTaxRelief (payslip.statutory.lp; its
+   *                            "manage" link is /me/tax-relief, whose writes core/tax-relief.ts refuses)
+   *   • My loans             ← listLoansForEmployment    (core/loans.ts)
+   *   • Tax statement (EA)   ← myEmploymentIdsAll + myPayslips — on the DOCUMENTS tab, not Payroll
+   * Basic Salary stays: it is the compensation row (core/comp.ts is spine, packs/payroll/index.ts), so
+   * the Payroll tab is never empty and keeps its place, and `?tab=payroll` / `?tab=pay` still land on it.
+   *
+   * Tenant-wide, no companyId — core/module-gate.ts's COMPANY SCOPE paragraph. The QUIET form, because
+   * this is what to draw (core/entitlements.ts): an unreadable snapshot hides the four cards, it does not
+   * take the page down.
+   */
+  const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
   // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
-  const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
+  const taxReliefEmploymentIds = payrollOn ? await myTaxReliefEmploymentIds(s) : [];
+  const noTaxRelief: TaxReliefResult = { year: Number(todayInKualaLumpur().slice(0, 4)), rows: [], ytd: 0 };
   // NOTE — `myProfile(s)` used to be read here purely to default the contact fold-out's inputs. It is
   // gone on purpose: the fold-out now defaults from `record.contact` / `record.emergencyContacts`, i.e.
   // from the very object the card prints. Two reads of the same person row is exactly how a screen ends
   // up displaying one value and saving another.
   const [payslips, taxRelief, attendance, profileRequests, resignation, myLoans] = await Promise.all([
-    myPayslips(s, employments.map((e) => e.employmentId)),
-    myTaxRelief(s, taxReliefEmploymentIds),
+    payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
+    payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
     myAttendance(s, employmentId, 14),
     myProfileChangeRequests(s),
     myResignation(s, employmentId),
     // 1.2.8 (ADR-0060): read-only "My loans" — RLS scopes to the caller's own employment. ESS NEVER calls
     // a loan write service (the loan write methods are admin-only; this is a read helper).
-    listLoansForEmployment(s, employmentId),
+    payrollOn ? listLoansForEmployment(s, employmentId) : [],
   ]);
   /**
    * ── r260 STAGE TWO: A CHANGE THAT IS WAITING IS DRAWN BESIDE THE MASTER VALUE, NEVER OVER IT ──────
@@ -238,8 +257,9 @@ export default async function MePage({
 
   // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
   // employments incl. terminated ones (leavers must reach their prior employer's EA).
-  const eaEmployments = await myEmploymentIdsAll(s);
-  const eaPayslips = await myPayslips(s, eaEmployments.map((e) => e.employmentId));
+  // r298 — Payroll-owned: neither read runs for a tenant without Payroll, and the EA card is not drawn.
+  const eaEmployments = payrollOn ? await myEmploymentIdsAll(s) : [];
+  const eaPayslips = payrollOn ? await myPayslips(s, eaEmployments.map((e) => e.employmentId)) : [];
   const employmentIdByCompany = new Map(eaEmployments.map((e) => [e.company, e.employmentId]));
   const eaRowMap = new Map<string, { employmentId: string; company: string; year: string }>();
   for (const ps of eaPayslips) {
@@ -694,6 +714,8 @@ export default async function MePage({
         <ReadField label={tp('rateAmount')} value={comp?.rateAmount ?? null} notSet={notSet} />
       </ReadCard>
 
+      {/* r298 — this card, TP1 and My loans are the Payroll pack's; absent (and unread) without Payroll. */}
+      {payrollOn && (
       <Card className="overflow-hidden" data-tour="me-payslips">
         <SectionHeader title={t('myPayslips')} count={finalizedPayslips.length} />
         {payslipMonths.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('noPayslipsYet')}</p>}
@@ -777,8 +799,10 @@ export default async function MePage({
           </table>
         </div>
       </Card>
+      )}
 
       {/* My Payroll — Self Personal Tax Relief (LHDN TP1). Year-scoped, grouped per company. */}
+      {payrollOn && (
       <Card className="overflow-hidden">
         <SectionHeader title={t('taxReliefTp1')} count={taxRelief.rows.length} />
         <p className="px-4 pb-2 pt-1 text-xs text-muted-foreground">
@@ -845,9 +869,10 @@ export default async function MePage({
           </div>
         )}
       </Card>
+      )}
 
       {/* 1.2.8 My loans (ADR-0060) — read-only: outstanding balance + per-instalment schedule. */}
-      {myLoans.length > 0 && (
+      {payrollOn && myLoans.length > 0 && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('myLoans')} count={myLoans.length} />
           <table className="w-full text-sm">
@@ -933,6 +958,8 @@ export default async function MePage({
   // What is here is the set of documents produced FOR the employee.
   const documentsPanel = (
     <>
+      {/* r298 — the EA statement is derived from payslips: absent (and unread) for a tenant without Payroll. */}
+      {payrollOn && (
       <Card className="p-5">
         <SectionHeader title={t('taxStatementEa')} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('taxStatementDescription')}</p>
@@ -963,6 +990,7 @@ export default async function MePage({
           </ul>
         )}
       </Card>
+      )}
 
       {/* Employment review outcome (0110) — info-only; surfaces the employee's own completed review. */}
       <MeReviewCard s={s} employmentId={employmentId} />

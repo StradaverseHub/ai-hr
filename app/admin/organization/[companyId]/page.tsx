@@ -7,6 +7,7 @@ import { packFor } from '@/localization/registry';
 import { listCompanyBankProfiles } from '@/core/bank-profile';
 import { listCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/packs/payroll/service';
 import { listPayrollCycles } from '@/packs/payroll/service';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { CompanyPanel } from '@/components/company-panel';
 import { resolveGroupTree } from '../group-tree';
@@ -67,11 +68,32 @@ export default async function CompanyMaintenancePage({
   const c = companies.find((x) => x.id === companyId);
   if (!c) notFound();
 
+  /**
+   * r298 (board ceb1c560) — THE DEFAULT PAYROLL CYCLE IS A PAYROLL SECTION, AND A TENANT WITHOUT PAYROLL
+   * DOES NOT GET IT. Organization is a CORE screen; the cycle catalogue is the Payroll pack's
+   * (core/payroll-cycle.ts). So the READ is skipped, not merely its render: this unconditional read is one
+   * of the two things core/module-gate.ts names as stopping core/payroll-cycle.ts from being bound.
+   *
+   * Tenant-wide (no companyId), for the reason core/module-gate.ts's COMPANY SCOPE paragraph gives: the
+   * rail, the route guard and the service gate all ask tenant-wide, so a company-scoped-only grant reads
+   * OFF here too rather than in two places of three. The QUIET form because this is a display decision.
+   *
+   * `null` is the section's absence, not an empty list: `[]` still draws the form (disabled, with its
+   * "no active cycles" warning), which would tell a customer who never bought Payroll to go and set one up.
+   */
+  const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
+
   const [statutory, bankProfiles, authorities, signatories, stateOpts, cycles] = await Promise.all([
     // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct
     // import. A non-MY company simply has no row, exactly as the grouped listing resolved it before.
     packFor('MY')?.companyStatutory.get(s, companyId) ?? null,
     listCompanyBankProfiles(s, companyId),
+    // r298 — these two ARE Payroll-pack reads (core/statutory-authority.ts) and are deliberately NOT gated
+    // by the payroll check below. Each statutory body's card on the Statutory tab also carries the
+    // company's EPF / SOCSO / LHDN filing numbers and its HRD Corp band (company_statutory_my, the COUNTRY
+    // axis, not Payroll) and saves both halves with one button; hiding the card would take that identity
+    // away from a tenant without Payroll while the header badge still counted it. Splitting the card is
+    // its own change.
     listCompanyStatutoryAuthorities(s, companyId),
     listSignatoryCandidates(s),
     // Enhance Company General Tab (bc5d4891): the tenant-wide profile-option catalog backs the
@@ -79,7 +101,7 @@ export default async function CompanyMaintenancePage({
     listProfileOptions(s, 'state', { activeOnly: true }),
     // Organization Module (361e3b15): THIS company's ACTIVE cycles, so the General-tab picker lists its
     // own cycles with the saved default pre-selected (and can flag a default that is no longer active).
-    listPayrollCycles(s, companyId, { activeOnly: true }),
+    payrollOn ? listPayrollCycles(s, companyId, { activeOnly: true }) : null,
   ]);
 
   // The group hierarchy still comes from the separate companyTree read — listCompanies does not carry
@@ -130,7 +152,7 @@ export default async function CompanyMaintenancePage({
         statutoryAuthorities={authorities}
         signatories={signatories.filter((sg) => sg.companyId === companyId)}
         stateOptions={stateOpts.map((o) => ({ value: o.value, label: o.label }))}
-        activeCycleNames={cycles.map((r) => r.name)}
+        activeCycleNames={cycles ? cycles.map((r) => r.name) : null}
         // 3c2f55d7 — `defaultExpanded` is gone, not defaulted: the panel no longer folds at all. This
         // was its only caller and it always passed the prop, so the flag could only ever have one
         // value; the same reasoning now applies to the three folds that were INSIDE the panel.

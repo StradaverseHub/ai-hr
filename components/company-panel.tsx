@@ -748,7 +748,10 @@ export function CompanyPanel({
   stateOptions?: PanelOption[];
   // Organization Module (361e3b15) — THIS company's ACTIVE payroll cycle names, for the Default Payroll
   // Cycle picker on the General tab.
-  activeCycleNames?: string[];
+  // r298 (ceb1c560) — `null` means the tenant does not hold Payroll: the page did not read the cycles and
+  // the Default Payroll Cycle form is not drawn at all. Distinct from `[]` (Payroll, but no active cycle),
+  // which draws the form disabled with its warning.
+  activeCycleNames?: string[] | null;
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -959,7 +962,9 @@ export function CompanyPanel({
         {/* Organization Module (361e3b15) — Default Payroll Cycle. Lists THIS company's ACTIVE cycles with
             the saved default pre-selected. Changing it affects FUTURE runs only (batches snapshot their run
             type at creation) and is audit-trailed. If the saved default is no longer active (archived or
-            renamed), an inline note flags it and the admin re-points — no silent invalid selection. */}
+            renamed), an inline note flags it and the admin re-points — no silent invalid selection.
+            r298 (ceb1c560) — absent altogether for a tenant without Payroll (`activeCycleNames === null`). */}
+        {activeCycleNames !== null && (
         <form action={actions.updateCompanyDefaultCycle} className="space-y-2.5 rounded-lg bg-background p-3">
           <SubHeader>{t('defaultPayrollCycle')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
@@ -998,6 +1003,7 @@ export function CompanyPanel({
             );
           })()}
         </form>
+        )}
 
         {/* Group parent + archive/delete */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
