@@ -497,9 +497,10 @@ export function EarningMethodForm({
                   someone who opens the dropdown and thinks better of it must be able to leave the type
                   unconfigured rather than be forced into a choice by the UI. */}
               {choice === '' && <option value="">{t('subStep.earningNotConfigured')}</option>}
-              {/* r299 — the stored legacy earned method, named, on a type that is not Annual Leave. Listed so
-                  the select shows what is stored; disabled like Monthly and Daily, because only Annual Leave
-                  may choose an earned method — once HR moves off it, it is not offered back. */}
+              {/* r299 — the stored legacy earned method, named, on a type that is not annual leave. Listed so
+                  the select shows what is stored; disabled like Monthly and Daily, because only annual leave
+                  may choose an earned method — once HR moves off it, it is not offered back. (Lower case on
+                  purpose: test/r288-earned-sweep-warning.test.ts scans this file for hardcoded type names.) */}
               {legacyReplaceable && (
                 <option value="legacy" disabled={!annualOn}>
                   {storedMethod === 'earned_quarterly' ? t('earnedMethodQuarterly') : storedMethod}
