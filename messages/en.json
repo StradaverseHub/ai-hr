@@ -1876,10 +1876,10 @@
       "attachment": "Attachment"
     },
     "cancelDatesToggle": "Cancel date(s)",
-    "cancelDatesHint": "Tick the day(s) you want to give back. Only days that haven't started yet can be cancelled.",
+    "cancelDatesHint": "Tick the day(s) you want to give back. Only the days that can still be cancelled are listed.",
     "cancelPendingBadge": "Cancellation pending",
     "cancelSubmit": "Request cancellation",
-    "cancelRequestedToast": "Cancellation request submitted — awaiting your manager's decision.",
+    "cancelRequestedToast": "Cancellation request submitted — waiting for approval.",
     "cancelDatesButton": "Cancel dates",
     "cancelDialogTitle": "Cancel leave dates",
     "cancelDialogDismiss": "Close",
@@ -1966,7 +1966,19 @@
       "cancellationCreditExpired": "the credit for the day worked on {workedDate} expired on {expiresOn}",
       "cancellationCreditPaidOut": "the credit for the day worked on {workedDate} was paid out when it expired on {expiresOn}",
       "cancellationCreditReversed": "the credit for the day worked on {workedDate} has been reversed",
-      "cancellationCreditUnreadable": "the record of which credits it used could not be read in full, so an HR administrator must cancel it"
+      "cancellationCreditUnreadable": "the record of which credits it used could not be read in full, so an HR administrator must cancel it",
+      "cancellationTooClose": "{date} is too close to cancel. {typeName} can be cancelled up to {days} day(s) before each leave day.",
+      "cancellationTypeOff": "{typeName} can't be cancelled by employees once it has been approved. Ask HR if it needs to be cancelled.",
+      "cancellationNotYours": "Only the employee whose leave this is can ask to cancel it.",
+      "cancellationNotApproved": "Only approved leave can be cancelled this way. A leave that is still pending can be withdrawn instead.",
+      "cancellationNotFullDay": "Half-day and hourly leave can't be cancelled after approval. Ask HR if it needs to be cancelled.",
+      "cancellationGrouped": "This leave is part of an Emergency Leave or a day-by-day approval, so it can't be cancelled here. Ask HR if it needs to be cancelled.",
+      "cancellationUnpaidDays": "This leave includes unpaid days, so it can't be cancelled after approval. Ask HR if it needs to be cancelled.",
+      "cancellationAlreadyPending": "A cancellation of one of these days is already waiting for approval.",
+      "cancellationNoLongerCancellable": "This leave has changed since the cancellation was requested, so it can no longer be cancelled.",
+      "cancellationAdminOnly": "Only an HR administrator can cancel leave on an employee's behalf.",
+      "cancellationAdminOwnLeave": "You can't cancel your own leave here. Ask for a cancellation from My Leave instead.",
+      "cancellationAlreadyFinal": "This leave is already rejected or cancelled, so there is nothing to cancel."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -2206,7 +2218,19 @@
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
-    "unpaidPortionLabel": "Unpaid Leave"
+    "unpaidPortionLabel": "Unpaid Leave",
+    "cancelAutoApprovedToast": "Leave cancelled — the days went back to your balance.",
+    "pendingCancellationStatus": "Pending Cancellation",
+    "cancelProgress": {
+      "requested": "Cancellation requested · {date}",
+      "waiting": "Waiting for approval",
+      "levelApproved": "Level {level} · approved",
+      "levelWaiting": "Level {level} · waiting for approval",
+      "levelUpcoming": "Level {level} · not reached yet",
+      "cancelled": "Cancelled · days returned to your balance",
+      "dates": "Days to cancel: {dates}",
+      "sameChainNote": "The same approval levels, in the same order, as the original leave request."
+    }
   },
   "leaveTracker": {
     "title": "Team Leave Tracker",
@@ -7440,7 +7464,21 @@
       "generateRunsHeading": "Leave year {year}",
       "generateRunsLine": "{selected} selected · {passed} passed · {failed} failed · {granted} records granted · {forfeits} forfeit(s)",
       "generateRunsDownload": "Download log",
-      "generateReviewEmployees": "Employees this run will reach"
+      "generateReviewEmployees": "Employees this run will reach",
+      "cancelApprovedSectionTitle": "Cancel Approved Leave",
+      "cancelApprovedSectionHelp": "Whether employees may ask to cancel leave of this type after it has been approved.",
+      "cancelApprovedAllowLabel": "Allow employees to cancel this approved leave",
+      "cancelApprovedOffNote": "Employees see no cancel option for approved leave of this type. HR can still cancel on their behalf.",
+      "cancelApprovedNoticeBefore": "Allow cancellation up to",
+      "cancelApprovedNoticeAfter": "day(s) before each leave day",
+      "cancelApprovedNoticeHelp": "Counted for each leave day being cancelled. 0 means any day that has not started yet.",
+      "cancelApprovedApprovalLabel": "Approval",
+      "cancelApprovedApprovalReapprove": "Requires the approver's re-approval",
+      "cancelApprovedApprovalAuto": "Approved automatically",
+      "cancelApprovedApprovalHelp": "Re-approval goes through the same approval levels, in the same order, as the original leave request. Approved automatically cancels the leave and returns the days straight away.",
+      "cancelApprovedReplacementNote": "Replacement Leave cancellations always need the approver's re-approval, because giving the leave back returns its credit.",
+      "cancelApprovedNotifyLabel": "Notify the approver and HR when a cancellation is requested",
+      "cancelApprovedNotifyHelp": "Notifications appear in the notification bell. The system does not send email."
     },
     "holidays": {
       "pageTitle": "Public holidays",

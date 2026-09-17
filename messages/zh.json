@@ -1876,10 +1876,10 @@
       "attachment": "附件"
     },
     "cancelDatesToggle": "取消日期",
-    "cancelDatesHint": "勾选您想归还的日期。只有尚未开始的日期才能取消。",
+    "cancelDatesHint": "勾选您想归还的日期。仅列出仍可取消的日期。",
     "cancelPendingBadge": "取消待审",
     "cancelSubmit": "申请取消",
-    "cancelRequestedToast": "取消申请已提交——等待您的经理决定。",
+    "cancelRequestedToast": "取消申请已提交——等待审批。",
     "cancelDatesButton": "取消日期",
     "cancelDialogTitle": "取消请假日期",
     "cancelDialogDismiss": "关闭",
@@ -1966,7 +1966,19 @@
       "cancellationCreditExpired": "{workedDate} 工作日的额度已于 {expiresOn} 到期",
       "cancellationCreditPaidOut": "{workedDate} 工作日的额度已于 {expiresOn} 到期时折现",
       "cancellationCreditReversed": "{workedDate} 工作日的额度已被冲销",
-      "cancellationCreditUnreadable": "无法完整读取其所用额度的记录，需由人事管理员取消"
+      "cancellationCreditUnreadable": "无法完整读取其所用额度的记录，需由人事管理员取消",
+      "cancellationTooClose": "{date} 离得太近，无法取消。{typeName} 最迟可在每个休假日前 {days} 天取消。",
+      "cancellationTypeOff": "{typeName} 批准后员工无法取消。如需取消，请联系人力资源部。",
+      "cancellationNotYours": "只有该休假所属的员工才能申请取消。",
+      "cancellationNotApproved": "只有已批准的休假才能以此方式取消。仍在等待审批的休假可以撤回。",
+      "cancellationNotFullDay": "半天假和按小时请的假在批准后无法取消。如需取消，请联系人力资源部。",
+      "cancellationGrouped": "此休假属于紧急假或逐日审批的一部分，无法在此取消。如需取消，请联系人力资源部。",
+      "cancellationUnpaidDays": "此休假包含无薪日，批准后无法取消。如需取消，请联系人力资源部。",
+      "cancellationAlreadyPending": "这些日期中已有一天的取消申请正在等待审批。",
+      "cancellationNoLongerCancellable": "自申请取消以来此休假已发生变化，因此无法再取消。",
+      "cancellationAdminOnly": "只有人力资源管理员才能代员工取消休假。",
+      "cancellationAdminOwnLeave": "您无法在此取消自己的休假。请在\"我的休假\"中申请取消。",
+      "cancellationAlreadyFinal": "此休假已被拒绝或已取消，无需取消。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -2206,7 +2218,19 @@
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
-    "unpaidPortionLabel": "无薪假"
+    "unpaidPortionLabel": "无薪假",
+    "cancelAutoApprovedToast": "休假已取消——天数已退回您的余额。",
+    "pendingCancellationStatus": "待取消",
+    "cancelProgress": {
+      "requested": "已申请取消 · {date}",
+      "waiting": "等待审批",
+      "levelApproved": "第 {level} 级 · 已批准",
+      "levelWaiting": "第 {level} 级 · 等待审批",
+      "levelUpcoming": "第 {level} 级 · 尚未到达",
+      "cancelled": "已取消 · 天数退回您的余额",
+      "dates": "要取消的日期：{dates}",
+      "sameChainNote": "与原休假申请相同的审批级别，顺序相同。"
+    }
   },
   "leaveTracker": {
     "title": "团队休假追踪",
@@ -7440,7 +7464,21 @@
       "generateRunsHeading": "休假年度 {year}",
       "generateRunsLine": "已选 {selected} · 通过 {passed} · 失败 {failed} · 发放 {granted} 条记录 · 没收 {forfeits} 次",
       "generateRunsDownload": "下载日志",
-      "generateReviewEmployees": "本次运行将涉及的员工"
+      "generateReviewEmployees": "本次运行将涉及的员工",
+      "cancelApprovedSectionTitle": "取消已批准的休假",
+      "cancelApprovedSectionHelp": "员工是否可以在此类休假批准后申请取消。",
+      "cancelApprovedAllowLabel": "允许员工取消已批准的此类休假",
+      "cancelApprovedOffNote": "员工不会看到此类已批准休假的取消选项。人力资源部仍可代其取消。",
+      "cancelApprovedNoticeBefore": "最迟可在每个休假日前",
+      "cancelApprovedNoticeAfter": "天取消",
+      "cancelApprovedNoticeHelp": "按每个被取消的休假日分别计算。0 表示任何尚未开始的日期。",
+      "cancelApprovedApprovalLabel": "审批",
+      "cancelApprovedApprovalReapprove": "需要审批人重新审批",
+      "cancelApprovedApprovalAuto": "自动批准",
+      "cancelApprovedApprovalHelp": "重新审批将按与原休假申请相同的审批级别和顺序进行。自动批准会立即取消休假并退回天数。",
+      "cancelApprovedReplacementNote": "取消补休始终需要审批人重新审批，因为退回休假也会退回其抵扣额度。",
+      "cancelApprovedNotifyLabel": "有取消申请时通知审批人和人力资源部",
+      "cancelApprovedNotifyHelp": "通知显示在通知铃中。系统不会发送电子邮件。"
     },
     "holidays": {
       "pageTitle": "公共假期",

@@ -301,6 +301,8 @@ export default async function ApprovalsPage({
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
   // 6fadb036: a manager step reads "Manager review"; every other kind (HR, HR Manager, Payroll, Dept/BU
   // Head, Custom Role) is an admin/role-authority step and reads under the generic HR-review stage label.
+  // r301 (83511d3b) — the approval-step kinds only an HR admin can clear (core/leave.ts assertCanDecideAsApprover).
+  const HR_ONLY_STEP_KINDS = new Set(['hr_admin', 'hr_manager', 'custom_role']);
   const stageLabel = (kind: string | null) =>
     kind === 'direct_manager' ? t('stageManager') : t('stageHr');
   // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
@@ -681,7 +683,22 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {/* A cancellation row carries no parent_group_id, so no Emergency Leave (0106) tag —
                         the chip + icon are the same palette (styleFor) as every other leave surface. */}
-                    <LeaveTypeCell typeCode={c.typeCode} typeName={c.leaveType} />
+                    <LeaveTypeCell typeCode={c.typeCode} typeName={c.leaveType}>
+                      {/* r301 (83511d3b) — the leave's state while the cancellation waits, and the LEVEL it is
+                          waiting at in the copy of the original request's approval chain (stepCount 0 ⇒ a
+                          single-level chain, which has no level to show). */}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-800 dark:bg-orange-500/10 dark:text-orange-400">
+                          {tLeave('pendingCancellationStatus')}
+                        </span>
+                        {c.stepCount > 0 && (
+                          <span>
+                            {stageLabel(c.currentStepKind)} ·{' '}
+                            {t('stepOfN', { n: (c.currentStepIndex ?? 0) + 1, total: c.stepCount })}
+                          </span>
+                        )}
+                      </div>
+                    </LeaveTypeCell>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {c.originalStart} → {c.originalEnd}
@@ -709,7 +726,15 @@ export default async function ApprovalsPage({
                     <LeaveDaysCell days={c.requestedDays} />
                   </td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} nav={nav} />
+                    {/* r301: a level only HR can clear (hr_admin / hr_manager / custom_role — assertIsHrAdmin) shows
+                        its stage to a non-admin viewer instead of buttons. Every OTHER kind keeps the buttons,
+                        because its approver is not an admin: a manager's manager, a department or business-unit
+                        head, a named person, payroll. The service (decideLeaveCancellation) stays the authority. */}
+                    {c.currentStepKind && HR_ONLY_STEP_KINDS.has(c.currentStepKind) && !admin ? (
+                      <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(c.currentStepKind)}</span>
+                    ) : (
+                      <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} nav={nav} />
+                    )}
                   </td>
                 </tr>
               ))}

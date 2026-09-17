@@ -1207,7 +1207,13 @@ export async function employmentHoldsCreditsTx(tx: Tx, tenantId: string, employm
   return row != null;
 }
 
-async function consumptionRootRequestIdTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<string> {
+/**
+ * The request a (possibly split) leave row descends from: follow each `leave-request.split` event's
+ * `splitFromRequestId` back until a row that was not cut from another. EXPORTED for r301 (83511d3b): a
+ * cancellation of a split survivor copies the approval chain of that same root request (core/leave.ts
+ * requestLeaveCancellation) — one lineage walk, not two.
+ */
+export async function consumptionRootRequestIdTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<string> {
   let current = requestId;
   // Bounded: a split chain is one hop per cancellation, and a cycle is impossible (a new row cannot be split
   // from itself), but a loop that trusts data to terminate is a loop that one day will not.

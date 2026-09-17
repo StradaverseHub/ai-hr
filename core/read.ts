@@ -50,6 +50,11 @@ import {
   policyForDatedReader,
   workingDatesForSpan,
   workingDatesForSpans,
+  // r301 (83511d3b) — Cancel Approved Leave: the leave type's rule and THE button predicate, so the Team Leave
+  // Tracker (plannedAbsences) and /leave (employeeCancelOffers) offer exactly what the service accepts.
+  cancelApprovedSettingOf,
+  cancelApprovedTypeColumns,
+  employeeCancellableDates,
   type LeaveEligibility,
   // ad965821 — the probation rule lives in its OWN column, not the eligibility JSONB, so the apply-menu
   // gate merges it in the same way requestLeave/editLeave do (core/leave.ts:2467 and :5356). The MERGE is
@@ -99,6 +104,7 @@ import {
   holidayGroup,
   jobGrade,
   leaveCancellationRequest,
+  leaveCancellationStep,
   leaveLedger,
   leaveRequest,
   leaveRequestDate,
@@ -831,6 +837,13 @@ export function listLeaveTypes(
         // the "my setting didn't save" report this list has already had twice).
         balanceSourceTypeId: leaveType.balanceSourceTypeId,
         allowUnpaidLeave: leaveType.allowUnpaidLeave,
+        // r301 (83511d3b) — the Cancel Approved Leave card. MUST be projected or the switch renders OFF (and
+        // the notice / approval / notify settings at their defaults) on every reload, and the card's next
+        // save writes those defaults back over what HR had set.
+        employeeCancelApproved: leaveType.employeeCancelApproved,
+        cancelNoticeDays: leaveType.cancelNoticeDays,
+        cancelAutoApprove: leaveType.cancelAutoApprove,
+        cancelNotify: leaveType.cancelNotify,
         // Override Leave Application (56910869): feeds the admin panel's "Override Leave Application" card —
         // every row's action select and its on/off switch read their state from here, so an unprojected
         // column would render every configured rule as off on every reload (the "my setting didn't save"
@@ -1575,6 +1588,12 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         requestedDays: leaveCancellationRequest.requestedDays,
         reason: leaveCancellationRequest.reason,
         createdAt: leaveCancellationRequest.createdAt,
+        // r301 (83511d3b) — WHERE the cancellation is in its copied approval chain, the same three facts the
+        // leave-request projection carries: the current level's kind and index, and how many levels there
+        // are. stepCount 0 ⇒ a single-level chain (decided as a cancellation always was).
+        currentStepKind: sql<string | null>`(select approver_kind from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        currentStepIndex: sql<number | null>`(select step_index from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        stepCount: sql<number>`(select count(*)::int from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id)`,
       })
       .from(leaveCancellationRequest)
       .innerJoin(leaveRequest, eq(leaveRequest.id, leaveCancellationRequest.leaveRequestId))
@@ -1609,6 +1628,100 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         remainingDates: allDays.filter((d) => !cancelSet.has(d)),
       };
     });
+  });
+}
+
+/**
+ * r301 (board 83511d3b) — the "Cancel dates" offer for each of the viewer's OWN leave rows on /leave, computed on
+ * the server through the SAME predicate the Team Leave Tracker uses (employeeCancellableDates) and the SAME
+ * reading of the leave type the service gates on (cancelApprovedSettingOf). null ⇒ no button at all (type
+ * switched off, unpaid days, not a cancellable row, already pending); [] ⇒ the disabled "nothing left to
+ * cancel" button; otherwise the dates to offer. One read of the leave types behind the rows, never per row.
+ */
+export function employeeCancelOffers(
+  ctx: SessionContext,
+  rows: readonly {
+    id: string;
+    leaveTypeId: string;
+    status: string;
+    durationType: string | null;
+    parentGroupId: string | null;
+    isCancellationSplit?: boolean | null;
+    pendingCancellationId?: string | null;
+    unpaidDays?: string | number | null;
+    workingDates?: readonly string[];
+  }[],
+  today: string,
+): Promise<Map<string, string[] | null>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, string[] | null>();
+    const typeIds = [...new Set(rows.map((r) => r.leaveTypeId))];
+    if (typeIds.length === 0) return out;
+    const types = await tx
+      .select({ id: leaveType.id, ...cancelApprovedTypeColumns })
+      .from(leaveType)
+      .where(inArray(leaveType.id, typeIds));
+    const settingByType = new Map(types.map((t) => [t.id, cancelApprovedSettingOf(t)]));
+    for (const r of rows) {
+      // A type this read cannot see reads as NOT allowed (cancelApprovedSettingOf(null)) — fail closed.
+      const setting = settingByType.get(r.leaveTypeId) ?? cancelApprovedSettingOf(null);
+      out.set(r.id, employeeCancellableDates(r, r.workingDates ?? [], setting, today));
+    }
+    return out;
+  });
+}
+
+/** r301 — where one pending cancellation stands: when it was asked for, and each copied level's status. */
+export type PendingCancellationProgress = {
+  cancellationRequestId: string;
+  requestedAt: Date;
+  cancelDates: string[];
+  /** In level order. Empty for a single-level chain. */
+  levels: { stepIndex: number; status: string }[];
+};
+
+/**
+ * r301 (board 83511d3b) — the "Pending Cancellation" progress an employee sees on their own leave record:
+ * requested (date) → each level of the copied approval chain, approved or waiting → cancelled. Levels only,
+ * never the approver's name (an employee cannot read approver names today; that is a separate item). RLS
+ * scopes both reads to rows the caller may see; the page asks only about its own rows.
+ */
+export function pendingCancellationProgress(
+  ctx: SessionContext,
+  cancellationRequestIds: readonly string[],
+): Promise<Map<string, PendingCancellationProgress>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, PendingCancellationProgress>();
+    const ids = [...new Set(cancellationRequestIds)];
+    if (ids.length === 0) return out;
+    const crs = await tx
+      .select({
+        id: leaveCancellationRequest.id,
+        createdAt: leaveCancellationRequest.createdAt,
+        cancelDates: leaveCancellationRequest.cancelDates,
+      })
+      .from(leaveCancellationRequest)
+      .where(inArray(leaveCancellationRequest.id, ids));
+    const steps = await tx
+      .select({
+        cancellationRequestId: leaveCancellationStep.cancellationRequestId,
+        stepIndex: leaveCancellationStep.stepIndex,
+        status: leaveCancellationStep.status,
+      })
+      .from(leaveCancellationStep)
+      .where(inArray(leaveCancellationStep.cancellationRequestId, ids))
+      .orderBy(asc(leaveCancellationStep.cancellationRequestId), asc(leaveCancellationStep.stepIndex));
+    for (const cr of crs) {
+      out.set(cr.id, {
+        cancellationRequestId: cr.id,
+        requestedAt: cr.createdAt,
+        cancelDates: ((cr.cancelDates as string[]) ?? []).slice().sort(),
+        levels: steps
+          .filter((st) => st.cancellationRequestId === cr.id)
+          .map((st) => ({ stepIndex: st.stepIndex, status: st.status })),
+      });
+    }
+    return out;
   });
 }
 
@@ -1699,6 +1812,13 @@ export function plannedAbsences(
         // parent_group_id AND a sibling in the group is 'cancelled') — still cancellable; a genuine EL / per-date
         // child (parent group with NO 'cancelled' sibling) never matches.
         isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+        // r301 (83511d3b) — what employeeCancellableDates needs beyond the row shape: the type's Cancel
+        // Approved Leave rule (role + code so Emergency Leave reads today's behaviour) and the unpaid days.
+        // Read for the candidate list below and NOT returned on the pill (stripped when the pills are built).
+        cancelRuleRole: leaveType.role,
+        cancelRuleAllowed: leaveType.employeeCancelApproved,
+        cancelRuleNoticeDays: leaveType.cancelNoticeDays,
+        cancelRuleUnpaidDays: leaveRequest.unpaidDays,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -1717,7 +1837,18 @@ export function plannedAbsences(
       )
       .orderBy(leaveRequest.startDate);
 
-    type Leave = (typeof leaves)[number] & { candidateCancelDates: string[] };
+    type LeaveRow = (typeof leaves)[number];
+    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays'> & {
+      candidateCancelDates: string[];
+    };
+    // r301 (83511d3b) — the type's Cancel Approved Leave rule for one row, through the ONE resolver.
+    const cancelSettingFor = (l: LeaveRow) =>
+      cancelApprovedSettingOf({
+        role: l.cancelRuleRole,
+        code: l.typeCode,
+        employeeCancelApproved: l.cancelRuleAllowed,
+        cancelNoticeDays: l.cancelRuleNoticeDays,
+      });
 
     // ADR-0068 §4A: a per-date-approval request is now a single row whose interior dates may be rejected.
     // For APPROVED such requests, render ONLY the approved dates (as contiguous segments), not the raw span —
@@ -1764,12 +1895,17 @@ export function plannedAbsences(
       // that have eligible leave, independent of leave count. Ineligible rows simply have no map entry —
       // candidatesFor() already defaults them to []. Per-span results are byte-identical to the old
       // workingDatesForSpan path; the per-date-approval filter + `d > today` cut apply after, unchanged.
+      // r301 (83511d3b): the row shape is now ONE predicate shared with /leave — employeeCancellableDates with
+      // no dates answers "is this row offered at all" (approved full-day, plain or split survivor, nothing
+      // pending, the type's switch on, no unpaid days) — so a switched-off type is never resolved here.
       const eligible = leaves.filter(
         (l) =>
-          l.status === 'approved' &&
-          l.durationType === 'full_day' &&
-          (l.parentGroupId == null || l.isCancellationSplit) &&
-          !l.pendingCancellationId,
+          employeeCancellableDates(
+            { ...l, unpaidDays: l.cancelRuleUnpaidDays },
+            [],
+            cancelSettingFor(l),
+            today,
+          ) !== null,
       );
       const byEmployment = new Map<string, typeof eligible>();
       for (const l of eligible) {
@@ -1790,9 +1926,11 @@ export function plannedAbsences(
             const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
             working = working.filter((d) => approvedSet.has(d));
           }
+          // r301 (83511d3b): the date cut is the shared predicate too — strictly after today AND at least the
+          // type's notice period away, counted per date — so the calendar offers exactly the dates /leave does.
           candidateByReq.set(
             l.id,
-            working.filter((d) => d > today),
+            employeeCancellableDates({ ...l, unpaidDays: l.cancelRuleUnpaidDays }, working, cancelSettingFor(l), today) ?? [],
           );
         }
       }
@@ -1812,7 +1950,9 @@ export function plannedAbsences(
       return runs;
     };
     const expandedLeaves: Leave[] = [];
-    for (const l of leaves) {
+    for (const row of leaves) {
+      // r301 — the rule columns were read for the candidate list only; the pill carries no new fields.
+      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, ...l } = row;
       const candidateCancelDates = candidatesFor(l.id);
       // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
       if (hasDateRows.has(l.id) && l.status === 'approved') {

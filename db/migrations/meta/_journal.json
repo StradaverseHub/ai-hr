@@ -2703,6 +2703,13 @@
       "when": 1781862570000,
       "tag": "0470_payroll_run_exists",
       "breakpoints": true
+    },
+    {
+      "idx": 471,
+      "version": "7",
+      "when": 1781862571000,
+      "tag": "0471_cancel_approved_leave",
+      "breakpoints": true
     }
   ]
 }

@@ -1876,10 +1876,10 @@
       "attachment": "Lampiran"
     },
     "cancelDatesToggle": "Batal tarikh",
-    "cancelDatesHint": "Tandakan hari yang anda mahu pulangkan. Hanya hari yang belum bermula boleh dibatalkan.",
+    "cancelDatesHint": "Tandakan hari yang anda mahu pulangkan. Hanya hari yang masih boleh dibatalkan disenaraikan.",
     "cancelPendingBadge": "Pembatalan menunggu",
     "cancelSubmit": "Mohon pembatalan",
-    "cancelRequestedToast": "Permohonan pembatalan dihantar — menunggu keputusan pengurus anda.",
+    "cancelRequestedToast": "Permohonan pembatalan dihantar — menunggu kelulusan.",
     "cancelDatesButton": "Batal tarikh",
     "cancelDialogTitle": "Batal tarikh cuti",
     "cancelDialogDismiss": "Tutup",
@@ -1966,7 +1966,19 @@
       "cancellationCreditExpired": "kredit bagi hari bekerja {workedDate} telah luput pada {expiresOn}",
       "cancellationCreditPaidOut": "kredit bagi hari bekerja {workedDate} telah dibayar apabila luput pada {expiresOn}",
       "cancellationCreditReversed": "kredit bagi hari bekerja {workedDate} telah dibatalkan",
-      "cancellationCreditUnreadable": "rekod kredit yang digunakan tidak dapat dibaca sepenuhnya, jadi pentadbir HR perlu membatalkannya"
+      "cancellationCreditUnreadable": "rekod kredit yang digunakan tidak dapat dibaca sepenuhnya, jadi pentadbir HR perlu membatalkannya",
+      "cancellationTooClose": "{date} terlalu hampir untuk dibatalkan. {typeName} boleh dibatalkan sehingga {days} hari sebelum setiap hari cuti.",
+      "cancellationTypeOff": "{typeName} tidak boleh dibatalkan oleh pekerja selepas diluluskan. Minta HR jika cuti ini perlu dibatalkan.",
+      "cancellationNotYours": "Hanya pekerja yang memiliki cuti ini boleh meminta untuk membatalkannya.",
+      "cancellationNotApproved": "Hanya cuti yang telah diluluskan boleh dibatalkan dengan cara ini. Cuti yang masih menunggu boleh ditarik balik.",
+      "cancellationNotFullDay": "Cuti separuh hari dan cuti mengikut jam tidak boleh dibatalkan selepas diluluskan. Minta HR jika cuti ini perlu dibatalkan.",
+      "cancellationGrouped": "Cuti ini sebahagian daripada Cuti Kecemasan atau kelulusan mengikut hari, jadi ia tidak boleh dibatalkan di sini. Minta HR jika cuti ini perlu dibatalkan.",
+      "cancellationUnpaidDays": "Cuti ini mengandungi hari tanpa gaji, jadi ia tidak boleh dibatalkan selepas diluluskan. Minta HR jika cuti ini perlu dibatalkan.",
+      "cancellationAlreadyPending": "Pembatalan bagi salah satu hari ini sedang menunggu kelulusan.",
+      "cancellationNoLongerCancellable": "Cuti ini telah berubah sejak pembatalan diminta, jadi ia tidak boleh dibatalkan lagi.",
+      "cancellationAdminOnly": "Hanya pentadbir HR boleh membatalkan cuti bagi pihak pekerja.",
+      "cancellationAdminOwnLeave": "Anda tidak boleh membatalkan cuti anda sendiri di sini. Minta pembatalan dari Cuti Saya.",
+      "cancellationAlreadyFinal": "Cuti ini telah ditolak atau dibatalkan, jadi tiada apa-apa untuk dibatalkan."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -2206,7 +2218,19 @@
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
-    "unpaidPortionLabel": "Cuti Tanpa Gaji"
+    "unpaidPortionLabel": "Cuti Tanpa Gaji",
+    "cancelAutoApprovedToast": "Cuti dibatalkan — hari cuti telah dikembalikan ke baki anda.",
+    "pendingCancellationStatus": "Menunggu Pembatalan",
+    "cancelProgress": {
+      "requested": "Pembatalan diminta · {date}",
+      "waiting": "Menunggu kelulusan",
+      "levelApproved": "Peringkat {level} · diluluskan",
+      "levelWaiting": "Peringkat {level} · menunggu kelulusan",
+      "levelUpcoming": "Peringkat {level} · belum sampai",
+      "cancelled": "Dibatalkan · hari dikembalikan ke baki anda",
+      "dates": "Hari untuk dibatalkan: {dates}",
+      "sameChainNote": "Peringkat kelulusan yang sama, mengikut susunan yang sama, seperti permohonan cuti asal."
+    }
   },
   "leaveTracker": {
     "title": "Penjejak Cuti Pasukan",
@@ -7440,7 +7464,21 @@
       "generateRunsHeading": "Tahun cuti {year}",
       "generateRunsLine": "{selected} dipilih · {passed} lulus · {failed} gagal · {granted} rekod diberikan · {forfeits} pelucutan",
       "generateRunsDownload": "Muat turun log",
-      "generateReviewEmployees": "Pekerja yang akan dicapai oleh larian ini"
+      "generateReviewEmployees": "Pekerja yang akan dicapai oleh larian ini",
+      "cancelApprovedSectionTitle": "Batal Cuti Yang Diluluskan",
+      "cancelApprovedSectionHelp": "Sama ada pekerja boleh meminta untuk membatalkan cuti jenis ini selepas ia diluluskan.",
+      "cancelApprovedAllowLabel": "Benarkan pekerja membatalkan cuti yang telah diluluskan ini",
+      "cancelApprovedOffNote": "Pekerja tidak melihat pilihan batal bagi cuti jenis ini yang telah diluluskan. HR masih boleh membatalkannya bagi pihak mereka.",
+      "cancelApprovedNoticeBefore": "Benarkan pembatalan sehingga",
+      "cancelApprovedNoticeAfter": "hari sebelum setiap hari cuti",
+      "cancelApprovedNoticeHelp": "Dikira bagi setiap hari cuti yang dibatalkan. 0 bermaksud mana-mana hari yang belum bermula.",
+      "cancelApprovedApprovalLabel": "Kelulusan",
+      "cancelApprovedApprovalReapprove": "Memerlukan kelulusan semula pelulus",
+      "cancelApprovedApprovalAuto": "Diluluskan secara automatik",
+      "cancelApprovedApprovalHelp": "Kelulusan semula melalui peringkat kelulusan yang sama, mengikut susunan yang sama, seperti permohonan cuti asal. Diluluskan secara automatik membatalkan cuti dan memulangkan hari dengan serta-merta.",
+      "cancelApprovedReplacementNote": "Pembatalan Cuti Gantian sentiasa memerlukan kelulusan semula pelulus, kerana memulangkan cuti turut memulangkan kreditnya.",
+      "cancelApprovedNotifyLabel": "Maklumkan pelulus dan HR apabila pembatalan diminta",
+      "cancelApprovedNotifyHelp": "Pemberitahuan dipaparkan dalam loceng pemberitahuan. Sistem tidak menghantar e-mel."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

@@ -18,6 +18,10 @@ import {
   // 5206539f: the selector is a named permission now, not a shape of the org chart.
   listEligibleLeaveTypesFor,
   replacementLeaveLedger,
+  // r301 (83511d3b) — Cancel Approved Leave: THE button predicate (shared with the Team Leave Tracker) and the
+  // Pending Cancellation progress on the viewer's own records.
+  employeeCancelOffers,
+  pendingCancellationProgress,
 } from '@/core/read';
 // 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
@@ -204,11 +208,11 @@ export default async function LeavePage({
   const balanceOpen = cookieStore.get(BALANCE_OPEN_COOKIE)?.value === '1';
 
   // Partial Leave Cancellation (ADR-0065 / R5 Build #2): the candidate dates for a row's Cancel-dates pop-up are
-  // the row's REAL working dates (roster + holiday aware, resolved server-side in core/read.ts) that are
-  // strictly after today (MYT). This replaces the old Mon–Fri heuristic that could offer a holiday the service
-  // rejects or hide a working Saturday. The service still re-validates every posted date authoritatively.
-  const cancellableCandidates = (workingDates: string[] | undefined): string[] =>
-    (workingDates ?? []).filter((d) => d > today);
+  // the row's REAL working dates (roster + holiday aware, resolved server-side in core/read.ts). r301 (83511d3b):
+  // WHETHER the button appears and WHICH dates it offers are now decided by core/read.ts employeeCancelOffers —
+  // the leave type's own rule (switch, per-date notice), the unpaid-day refusal and the row shape, through the
+  // SAME predicate the Team Leave Tracker uses — instead of a "strictly after today" filter here. The service
+  // still re-validates every posted date authoritatively.
 
   const locale = await getLocale();
   const [employees, leaveTypes, eligibleLeaveTypes] = await Promise.all([
@@ -602,6 +606,14 @@ export default async function LeavePage({
     );
   const requestDateBreakdowns = new Map(dateBreakdownEntries);
 
+  // r301 (83511d3b) — Cancel Approved Leave, both read ONCE for the page: the offer per row (null ⇒ no button)
+  // and where each pending cancellation stands in its copied approval chain.
+  const cancelOffers = await employeeCancelOffers(session, selfHistory, today);
+  const cancelProgress = await pendingCancellationProgress(
+    session,
+    selfHistory.flatMap((r) => (r.pendingCancellationId ? [r.pendingCancellationId] : [])),
+  );
+
   // ── Self-service history cards (feedback 657962ec) ───────────────────────────────────────────────────
   // Each of the viewer's OWN records becomes a plain, pre-translated entry for the LeaveHistoryCards client
   // island: the card shows type / dates / duration / status only, while the slide-out detail panel carries
@@ -659,16 +671,21 @@ export default async function LeavePage({
           />
           <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} />
         </>
-      ) : r.status === 'approved' &&
-        r.durationType === 'full_day' &&
-        (r.parentGroupId == null || r.isCancellationSplit) &&
-        !r.pendingCancellationId ? (
+      ) : (cancelOffers.get(r.id) ?? null) !== null ? (
+        // r301: no button at all when the leave type does not allow it (or the leave has unpaid days, or a
+        // cancellation is already waiting) — cancelOffers answers null for every one of those.
         <CancelDatesDialog
           leaveRequestId={r.id}
-          candidateDates={cancellableCandidates(r.workingDates)}
+          candidateDates={cancelOffers.get(r.id) ?? []}
           submitAction={requestLeaveCancellationAction}
         />
       ) : null;
+    // r301 (83511d3b) — PENDING CANCELLATION. leave_request.status stays 'approved' (no new enum value); the
+    // pending leave_cancellation_request row is what the employee sees as the leave's state, with its
+    // progress through the copied approval levels — levels only, never an approver's name.
+    const pendingCancellation =
+      r.status === 'approved' && r.pendingCancellationId ? (cancelProgress.get(r.pendingCancellationId) ?? null) : null;
+    const firstWaiting = pendingCancellation?.levels.find((l) => l.status === 'pending')?.stepIndex ?? null;
     return {
       id: r.id,
       leaveType: r.leaveType,
@@ -693,8 +710,43 @@ export default async function LeavePage({
       })(),
       sessionSuffix,
       sessionLabel: `${sessionSuffix ?? t('duration.full_day')}${hourlyWindow}`,
-      statusKey: isPartial ? 'partial' : r.status,
-      statusLabel: isPartial ? tMe('leaveStatus.partiallyApproved') : t(`status.${r.status}`),
+      statusKey: pendingCancellation ? 'pendingCancellation' : isPartial ? 'partial' : r.status,
+      statusLabel: pendingCancellation
+        ? t('pendingCancellationStatus')
+        : isPartial
+          ? tMe('leaveStatus.partiallyApproved')
+          : t(`status.${r.status}`),
+      cancelProgress: pendingCancellation
+        ? {
+            steps: [
+              {
+                label: t('cancelProgress.requested', {
+                  date: todayInKualaLumpur(new Date(pendingCancellation.requestedAt)),
+                }),
+                state: 'done' as const,
+              },
+              ...(pendingCancellation.levels.length === 0
+                ? [{ label: t('cancelProgress.waiting'), state: 'current' as const }]
+                : pendingCancellation.levels.map((l, i) => ({
+                    label:
+                      l.status === 'approved'
+                        ? t('cancelProgress.levelApproved', { level: i + 1 })
+                        : l.stepIndex === firstWaiting
+                          ? t('cancelProgress.levelWaiting', { level: i + 1 })
+                          : t('cancelProgress.levelUpcoming', { level: i + 1 }),
+                    state:
+                      l.status === 'approved'
+                        ? ('done' as const)
+                        : l.stepIndex === firstWaiting
+                          ? ('current' as const)
+                          : ('upcoming' as const),
+                  }))),
+              { label: t('cancelProgress.cancelled'), state: 'upcoming' as const },
+            ],
+            dates: t('cancelProgress.dates', { dates: pendingCancellation.cancelDates.join(', ') }),
+            note: pendingCancellation.levels.length > 0 ? t('cancelProgress.sameChainNote') : null,
+          }
+        : null,
       stageLabel:
         r.status === 'pending' && r.stepCount > 0
           ? r.currentStepKind === 'direct_manager'
@@ -930,6 +982,12 @@ export default async function LeavePage({
       {sp.toast === 'cancellationRequested' && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
           {t('cancelRequestedToast')}
+        </div>
+      )}
+      {/* r301 (83511d3b) — the leave type approves cancellations automatically: already cancelled, days back. */}
+      {sp.toast === 'cancellationApproved' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('cancelAutoApprovedToast')}
         </div>
       )}
 

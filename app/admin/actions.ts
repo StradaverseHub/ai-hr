@@ -1815,6 +1815,31 @@ export async function updateLeaveTypeAction(fd: FormData) {
           },
         }
       : {};
+  // r301 (board 83511d3b) — Cancel Approved Leave: its own card posts `cancelApproved=1` (marker), the
+  // `employeeCancelApproved` switch and — ONLY while the switch is ticked, because the card renders them only
+  // then — the notice days, the approval choice and the notify box. So: marker absent ⇒ nothing forwarded (any
+  // other card's save leaves all four columns alone); switch off ⇒ only the switch is written, and the three
+  // settings stay as they were (a checkbox or select the card did not render is NOT read as off); switch on ⇒
+  // all four. A blank notice means 0 (no minimum notice). The service validates the figure and refuses
+  // automatic approval on Replacement Leave.
+  const touchCancelApproved = fd.get('cancelApproved') === '1';
+  const cancelApprovedOn = fd.get('employeeCancelApproved') === 'on';
+  const cancelNoticeRaw = String(fd.get('cancelNoticeDays') ?? '').trim();
+  const cancelApprovedFields: {
+    employeeCancelApproved?: boolean;
+    cancelNoticeDays?: number;
+    cancelAutoApprove?: boolean;
+    cancelNotify?: boolean;
+  } = !touchCancelApproved
+    ? {}
+    : cancelApprovedOn
+      ? {
+          employeeCancelApproved: true,
+          cancelNoticeDays: cancelNoticeRaw === '' ? 0 : Number(cancelNoticeRaw),
+          cancelAutoApprove: fd.get('cancelApproval') === 'auto',
+          cancelNotify: fd.get('cancelNotify') === 'on',
+        }
+      : { employeeCancelApproved: false };
   const leaveTypeId = String(fd.get('id'));
   try {
     await updateLeaveType(s, {
@@ -1842,6 +1867,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...visibilityFields,
       ...placementFields,
       ...customMessageFields,
+      ...cancelApprovedFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
       reason: String(fd.get('reason') || '') || null,
     });

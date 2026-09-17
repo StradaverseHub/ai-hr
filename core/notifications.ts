@@ -322,6 +322,93 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(out)];
     },
   },
+  // ── r301 (board 83511d3b) — Cancel Approved Leave. The reporter's complaint was that an employee was never
+  // told what became of their cancellation, so the two DECISIONS go to the employee ALWAYS (the event's
+  // subject — the default recipient). The REQUEST goes to the approver and HR only when the leave type's
+  // "Notify the approver and HR" box was ticked, a choice SNAPSHOTTED into the event payload at request time
+  // (re-reading the leave type at dispatch would let a later untick retroactively un-notify). In-app only:
+  // see the file header — nothing here sends email. English-only strings, the registry convention.
+  'leave-cancellation.requested': {
+    kind: 'leave.cancellation-requested',
+    category: 'leave',
+    render: (p) => {
+      const what = `${p?.leaveTypeName ?? 'leave'} (${Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : ''})`;
+      return p?.autoApproved === true
+        ? {
+            severity: 'info',
+            title: 'Leave cancelled by an employee',
+            body: `An employee cancelled ${what}. It was approved automatically by the leave type setting.`,
+            linkPath: '/approvals',
+          }
+        : {
+            severity: 'action',
+            title: 'Leave cancellation awaiting approval',
+            body: `An employee asked to cancel ${what}. It is waiting for approval.`,
+            linkPath: '/approvals',
+          };
+    },
+    recipients: async (tx, ev, payload) => {
+      if (payload?.notify !== true || !ev.subjectEmploymentId) return [];
+      // WHO APPROVES: the first level of the cancellation's copied chain — resolved through the SAME per-kind
+      // resolver the escalation fan-out uses, alternates included — or, for a single-level chain (no steps),
+      // the subject's current administrative manager, who decides a single-level cancellation today.
+      const first = (payload.firstStep ?? null) as { kind?: unknown; employmentId?: unknown; alternates?: unknown } | null;
+      let approvers: string[] = [];
+      if (first && typeof first.kind === 'string') {
+        approvers = await approverEmploymentsForKind(
+          tx,
+          ev.subjectEmploymentId,
+          first.kind,
+          typeof first.employmentId === 'string' ? first.employmentId : null,
+        );
+        for (const alt of sanitizeApprovalLevels(Array.isArray(first.alternates) ? first.alternates : [])) {
+          approvers = approvers.concat(
+            await approverEmploymentsForKind(tx, ev.subjectEmploymentId, alt.kind, alt.employmentId),
+          );
+        }
+      } else {
+        approvers = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
+      }
+      const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
+      // Never the employee who asked (an HR admin or a manager cancelling their own leave).
+      return [...new Set([...approvers, ...hr])].filter((id) => id !== ev.subjectEmploymentId);
+    },
+  },
+  'leave-cancellation.approved': {
+    kind: 'leave.cancellation-approved',
+    category: 'leave',
+    render: (p) => {
+      const dates = Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : '';
+      const days = typeof p?.restoredDays === 'number' ? p.restoredDays : null;
+      return {
+        severity: 'info',
+        title: 'Leave cancellation approved',
+        body:
+          `Your cancellation of ${p?.leaveTypeName ?? 'leave'}${dates ? ` on ${dates}` : ''} was approved` +
+          `${p?.autoApproved === true ? ' automatically' : ''}. The leave is cancelled` +
+          `${days != null ? ` and ${days} day(s) went back to your balance` : ''}.`,
+        linkPath: '/leave',
+      };
+    },
+  },
+  'leave-cancellation.rejected': {
+    kind: 'leave.cancellation-rejected',
+    category: 'leave',
+    render: (p) => {
+      const dates = Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : '';
+      return {
+        severity: 'warning',
+        title: 'Leave cancellation not approved',
+        body: `Your cancellation of ${p?.leaveTypeName ?? 'leave'}${dates ? ` on ${dates}` : ''} was not approved. The leave stays approved.`,
+        linkPath: '/leave',
+      };
+    },
+    // The subject — EXCEPT when HR cancelled the whole leave on the employee's behalf and the pending
+    // give-back was closed as superseded (adminCancelLeave): the employee is already told "Leave cancelled
+    // by HR", and "your cancellation was not approved… the leave stays approved" would be untrue.
+    recipients: async (_tx, ev, payload) =>
+      payload?.supersededByAdminCancellation === true || !ev.subjectEmploymentId ? [] : [ev.subjectEmploymentId],
+  },
   'toil.accrued': {
     kind: 'toil.accrued',
     category: 'toil',

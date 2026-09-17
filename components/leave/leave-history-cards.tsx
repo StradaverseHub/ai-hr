@@ -32,6 +32,15 @@ const STATUS_BADGE: Record<string, string> = {
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
   partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+  // r301 (83511d3b) — an approved leave with a cancellation waiting for approval.
+  pendingCancellation: 'bg-orange-50 text-orange-800 dark:bg-orange-500/10 dark:text-orange-400',
+};
+
+/** r301 — one line of the Pending Cancellation progress: done (green), current (amber), upcoming (hollow). */
+const PROGRESS_DOT: Record<'done' | 'current' | 'upcoming', string> = {
+  done: 'bg-emerald-600 dark:bg-emerald-400',
+  current: 'bg-amber-500 ring-4 ring-amber-200 dark:ring-amber-500/30',
+  upcoming: 'border-2 border-muted-foreground/40 bg-transparent',
 };
 
 export type LeaveHistoryEntry = {
@@ -64,6 +73,16 @@ export type LeaveHistoryEntry = {
   approverPersonId: string | null;
   /** Pre-translated ADR-0065 pending-cancellation pill; null when none. */
   cancelPendingLabel: string | null;
+  /**
+   * r301 (83511d3b) — where a pending cancellation stands, pre-translated on the server: requested (date),
+   * each approval LEVEL of the copied chain (approved / waiting / not reached — levels only, no approver
+   * names), then "Cancelled · days returned to your balance". null when nothing is pending.
+   */
+  cancelProgress: {
+    steps: { label: string; state: 'done' | 'current' | 'upcoming' }[];
+    dates: string;
+    note: string | null;
+  } | null;
   /** Own-attachment link + pre-translated label; null when the request carries no document. */
   documentHref: string | null;
   documentLabel: string | null;
@@ -237,7 +256,8 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                         >
                           {selected.statusLabel}
                         </span>
-                        {selected.cancelPendingLabel && (
+                        {/* r301: the status badge already reads "Pending Cancellation" — the pill would repeat it. */}
+                        {selected.cancelPendingLabel && selected.statusKey !== 'pendingCancellation' && (
                           <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
                             {selected.cancelPendingLabel}
                           </span>
@@ -288,6 +308,28 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                       </a>,
                     )}
                 </dl>
+
+                {/* r301 (83511d3b) — Pending Cancellation progress: the same levels, in the same order, as the
+                    original request, and nothing about who holds each one. */}
+                {selected.cancelProgress && (
+                  <div className="px-5 pb-4">
+                    <p className="text-xs text-muted-foreground">{selected.cancelProgress.dates}</p>
+                    <ol className="mt-2 space-y-2">
+                      {selected.cancelProgress.steps.map((step, i) => (
+                        <li
+                          key={i}
+                          className={`flex items-center gap-2.5 text-sm ${step.state === 'current' ? 'font-medium text-foreground' : step.state === 'upcoming' ? 'text-muted-foreground' : 'text-foreground'}`}
+                        >
+                          <span aria-hidden className={`inline-block size-2.5 shrink-0 rounded-full ${PROGRESS_DOT[step.state]}`} />
+                          {step.label}
+                        </li>
+                      ))}
+                    </ol>
+                    {selected.cancelProgress.note && (
+                      <p className="mt-2 text-xs text-muted-foreground">{selected.cancelProgress.note}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Per-date outcome breakdown for a partially-approved record (R17 600be8ac ask #6). */}
                 {selected.dateOutcome && <div className="px-5 pb-4">{selected.dateOutcome}</div>}
