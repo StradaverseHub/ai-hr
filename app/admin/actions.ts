@@ -758,7 +758,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
         : {}),
     })) ?? { unconfiguredCleared: false };
   } catch (e) {
-    if (e instanceof LeaveTypeRuleError) return fail(ENTITLEMENTS, e.message);
+    // r303 (05db6aa7) — the ERROR, not its message. `fail()` reads `.message` off what it is given, so passing
+    // the string put `?error=undefined` in the URL and every refusal of this form (the rounding table's
+    // row-by-row sentences included) reached the operator as the word "undefined".
+    if (e instanceof LeaveTypeRuleError) return fail(ENTITLEMENTS, e);
     throw e;
   }
   // bc36c768 — THE CATCH-UP, AFTER THE CONFIG WRITE HAS COMMITTED, never inside it.

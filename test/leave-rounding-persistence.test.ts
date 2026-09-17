@@ -87,10 +87,13 @@ const typeRulesOf = async (): Promise<{ roundingMethod: string | null; roundingB
   return row!;
 };
 
-/** The two-row table that reproduces the retired "Nearest 0.5 day" default, as HR would type it. */
+/** The two-row table that reproduces the retired "Nearest 0.5 day" default, as HR would type it.
+ *  r303 (05db6aa7) — rewritten into the new meaning, same figures: a range includes BOTH its From and its To,
+ *  so the rows no longer touch at 0.50 (0.00–0.50 and 0.50–1.00 is now an overlap the writer refuses, and
+ *  this round trip would store nothing). */
 const HALF_DAY_TABLE: RoundingBand[] = [
-  { from: 0, to: 0.5, result: 0 },
-  { from: 0.5, to: 1, result: 0.5 },
+  { from: 0, to: 0.49, result: 0 },
+  { from: 0.5, to: 0.99, result: 0.5 },
 ];
 
 beforeAll(async () => {
@@ -192,6 +195,46 @@ describe('§1 8fec719e — the TYPE-level round trip: method and table are saved
       .from(schema.leaveType)
       .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
     expect(row!.accrualMethod).toBe('earned_monthly');
+  });
+
+  it('r303 — the old touching table is REFUSED loudly and the stored table is untouched', async () => {
+    await run(() =>
+      setLeaveTypeRulesAction(
+        fd({
+          leaveTypeId: b.annualLeaveTypeId,
+          earningRendered: '1',
+          method: 'grant_on_hire_prorated',
+          roundingMethodRendered: '1',
+          roundingMethod: 'custom',
+          roundingBands: JSON.stringify(HALF_DAY_TABLE),
+        }),
+      ),
+    );
+    redirectSpy.mockClear();
+    await run(() =>
+      setLeaveTypeRulesAction(
+        fd({
+          leaveTypeId: b.annualLeaveTypeId,
+          earningRendered: '1',
+          method: 'grant_on_hire_prorated',
+          roundingMethodRendered: '1',
+          roundingMethod: 'custom',
+          roundingBands: JSON.stringify([
+            { from: 0, to: 0.5, result: 0 },
+            { from: 0.5, to: 1, result: 0.5 },
+          ]),
+        }),
+      ),
+    );
+    // The refusal reaches the operator verbatim through the redirect, naming the row and the rule. (Before
+    // r303 the action passed `e.message` to `fail()`, which reads `.message` again: the URL said "undefined".)
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    const target = decodeURIComponent(String(redirectSpy.mock.calls[0]![0]));
+    expect(target).not.toContain('error=undefined');
+    expect(target).toContain(
+      'Row 2: 0.50 to 1.00 overlaps 0.00 to 0.50 (row 1); two ranges cannot cover the same figure, and a range includes both its From and its To.',
+    );
+    expect((await typeRulesOf()).roundingBands).toEqual(HALF_DAY_TABLE);
   });
 
   it('a malformed roundingBands payload PRESERVES the stored table rather than wiping it', async () => {

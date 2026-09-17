@@ -37,6 +37,15 @@
  *
  * So the exception was retired and From was made DERIVED instead — and the assertions below now pin that,
  * including the fraction of exactly 0.40 that used to fall through and now lands in the second band.
+ *
+ * ═══ THE THIRD PASS (r303, 05db6aa7): FROM IS TYPED AGAIN, AND RANGES INCLUDE BOTH ENDS ═══
+ *
+ * The derived From is REVERSED on the reporter's instruction, and the guard below is UPDATED to pin the new
+ * decision rather than deleted. Deriving From joined the rows up, but it made the reporter's own table —
+ * 0.00–0.24, 0.25–0.49, 0.50–0.74, 0.75–0.99, both ends included — impossible to enter as written, because
+ * each row could only start where the row above stopped. Now From and To are both typed, a range includes
+ * both, and the validator names an overlap or a gap instead of the screen preventing one by construction.
+ * What 4a1abc4a established still holds and is still pinned: ONE precision (two decimals), no 0.001 step.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +62,7 @@ import {
   normalizeDayText,
 } from '@/lib/day-format';
 import { applyRoundingBands } from '@/core/leave-compute';
+import { preR303ApplyRoundingBands } from './helpers/rounding-bands-pre-r303';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -162,7 +172,7 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     expect(mod).toContain('ROUNDING_BAND_DECIMALS');
   });
 
-  it('the band editor tidies at DAY precision, and its From column is DERIVED, not typed', () => {
+  it('the band editor tidies at DAY precision, and (r303) its From column is TYPED, not derived', () => {
     const panel = codeOnly(
       ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
         .map((f) => read(f))
@@ -172,11 +182,19 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     expect(panel).toMatch(/const bandText = \(v: number\) => formatDays\(v\);/);
     expect(panel).toMatch(/normalizeDayText\(e\.currentTarget\.value\)/);
     expect(panel, 'no band figure may ask for a precision of its own').not.toMatch(/decimals:/);
-    // THE STRUCTURAL HALF, and the one that closes the holes: row 0 starts at 0.00 and row n starts at the
-    // row above's Round To. A typed From is what produced 0.401 / 0.701 in the first place.
-    expect(panel).toMatch(/const fromText = \(rows: BandRow\[\], i: number\): string =>\s*\(i === 0 \? bandText\(0\) : rows\[i - 1\]\.to\);/);
-    expect(panel, 'the From cell must be read-only').toMatch(/readOnly[\s\S]{0,200}roundingBandFrom/);
-    expect(panel, 'a From cell nobody can type into cannot be patched').not.toMatch(/patch\(i, 'from'/);
+    // THE STRUCTURAL HALF, REVERSED BY r303 (05db6aa7). 4a1abc4a pinned `fromText` (row 0 at 0.00, row n
+    // at the row above's Round To), a read-only From cell and no way to patch it. The reporter's table
+    // cannot be typed under that, so the pin is now the opposite: no derivation, the stored From is kept
+    // on load and posted as typed, and the From cell is an ordinary editable number box.
+    expect(panel, 'From is no longer derived from the row above').not.toMatch(/fromText/);
+    expect(panel, 'the band cells carry no readOnly').not.toMatch(/readOnly[\s\S]{0,200}roundingBandFrom/);
+    expect(panel, 'type BandRow holds From').toMatch(/type BandRow = \{ from: string; to: string; result: string \};/);
+    expect(panel, 'the stored From is kept on load').toMatch(/from: cellText\(b\.from\)/);
+    expect(panel, 'and posted as typed').toMatch(/from: bandNum\(r\.from\)/);
+    expect(panel, 'the From cell is typed into').toMatch(/numberCell\(i, 'from', r\.from, t\('subStep\.roundingBandFrom'\)\)/);
+    // The tidy on blur WIDENS and never narrows: "0.5" → "0.50", but a typed 0.245 is left for the validator
+    // to refuse by name ("at most two decimals — refuse, do not round").
+    expect(panel).toMatch(/if \(next !== typed && Number\(next\) === Number\(typed\)\) patch\(i, field, next\);/);
     // The steppers follow the precision: a 0.001 step invites the third decimal back through the arrows.
     expect(panel).not.toContain('step="0.001"');
     // The example is "one month of a 14-day entitlement" — a number of DAYS, so it takes the 2dp default.
@@ -184,9 +202,9 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
   });
 
   it('THE BEHAVIOUR DELTA: a fraction of exactly 0.40 used to fall through a hole and now rounds', () => {
-    // The reporter's stored table, before and after. The engine is UNCHANGED — `applyRoundingBands` still
-    // snaps the fraction to 3dp and `bandRound` still widens a stored 0.40 to 0.400 — so this test is
-    // entirely about the two boundaries the migration moves.
+    // The reporter's stored table, before and after 0414. That delta was made under the pre-r303 engine
+    // (half-open ranges at 3dp), so it is asserted against the verbatim copy of that engine; r303's own
+    // conversion (0473) is then asserted to keep every one of these figures exactly where 0414 left it.
     const before = [
       { from: 0, to: 0.4, result: 0 },
       { from: 0.401, to: 0.7, result: 0.5 },
@@ -199,15 +217,26 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     ];
     // THE HOLES. 10.4 is past the end of row 1 and below the start of row 2, so nothing matched and the
     // value was left exactly as calculated. This is the line the reporter was warned about in the plan.
-    expect(applyRoundingBands(10.4, before)).toBe(10.4);
-    expect(applyRoundingBands(10.7, before)).toBe(10.7);
+    expect(preR303ApplyRoundingBands(10.4, before)).toBe(10.4);
+    expect(preR303ApplyRoundingBands(10.7, before)).toBe(10.7);
     // …and closed. 0.40 now lands in the SECOND band (half a day), 0.70 in the third (a whole day).
-    expect(applyRoundingBands(10.4, after)).toBe(10.5);
-    expect(applyRoundingBands(10.7, after)).toBe(11);
+    expect(preR303ApplyRoundingBands(10.4, after)).toBe(10.5);
+    expect(preR303ApplyRoundingBands(10.7, after)).toBe(11);
     // Nothing else moves: every other fraction lands where it always landed.
     for (const [v, want] of [[10.39, 10], [10.401, 10.5], [10.69, 10.5], [10.701, 11], [10.999, 11]] as const) {
-      expect(applyRoundingBands(v, after), `fraction ${v}`).toBe(applyRoundingBands(v, before));
-      expect(applyRoundingBands(v, after), `fraction ${v}`).toBe(want);
+      expect(preR303ApplyRoundingBands(v, after), `fraction ${v}`).toBe(preR303ApplyRoundingBands(v, before));
+      expect(preR303ApplyRoundingBands(v, after), `fraction ${v}`).toBe(want);
+    }
+    // r303 — the same table as 0473 writes it (both ends included), under the engine that ships now: every
+    // 2dp figure above lands exactly where 0414 left it. The exhaustive version, run through the real
+    // migration SQL, is test/leave-rounding-bands-0473.test.ts §1.
+    const r303 = [
+      { from: 0, to: 0.39, result: 0 },
+      { from: 0.4, to: 0.69, result: 0.5 },
+      { from: 0.7, to: 0.99, result: 1 },
+    ];
+    for (const [v, want] of [[10.39, 10], [10.4, 10.5], [10.69, 10.5], [10.7, 11], [10.99, 11]] as const) {
+      expect(applyRoundingBands(v, r303), `fraction ${v}`).toBe(want);
     }
   });
 
@@ -215,10 +244,18 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     // MISSING_MESSAGE and a stale figure both pass a 200. The catalogs are read, not assumed.
     for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const) {
       const sub = JSON.parse(read(`/messages/${loc}.json`)).admin.leave.subStep;
-      expect(sub.roundingBandRowInvalid, loc).toContain('0.00');
-      expect(sub.roundingBandRowInvalid, loc).toContain('1.00');
-      expect(sub.roundingBandRowInvalid, loc).not.toContain('0.000');
-      expect(sub.roundingBandRowInvalid, loc).not.toContain('1.000');
+      // r303 — the one catch-all `roundingBandRowInvalid` ("a Round To above where the row before it
+      // stopped") described the derived From this item removed, and is RETIRED in all six catalogues. Each
+      // problem has its own message now; the range one carries the two-decimal bounds this guard pins.
+      expect(sub.roundingBandRowInvalid, `${loc} roundingBandRowInvalid is retired`).toBeUndefined();
+      expect(sub.roundingBandRange, loc).toContain('0.00');
+      expect(sub.roundingBandRange, loc).toContain('1.00');
+      expect(sub.roundingBandRange, loc).not.toContain('0.000');
+      expect(sub.roundingBandRange, loc).not.toContain('1.000');
+      for (const key of ['roundingBandBlank', 'roundingBandDecimals', 'roundingBandOrder', 'roundingBandOverlap', 'roundingBandDuplicate', 'roundingBandGap']) {
+        expect(typeof sub[key], `${loc}.${key}`).toBe('string');
+        expect(sub[key], `${loc}.${key} must not quote a third decimal`).not.toMatch(/\d\.\d{3}/);
+      }
       // The help text carries worked figures of its own and must not contradict the table beside it.
       expect(sub.roundingBandsHelp, loc).not.toContain('0.000');
       expect(sub.roundingBandsHelp, loc).not.toContain('1.000');

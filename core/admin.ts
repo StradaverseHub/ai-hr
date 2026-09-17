@@ -67,6 +67,7 @@ import {
   isUserRoundingMethod,
   roundingBandErrors,
   type RoundingBand,
+  type RoundingBandProblem,
   // 8fec719e — the same engagement test applyLeaveTypeRules uses, so the writer can refuse to leave a type
   // "unruled" by a rounding change (see the guard in setLeaveTypeRules).
   hasAnyLeaveTypeRule,
@@ -4277,6 +4278,10 @@ export async function updateLeaveType(
     });
   });
 }
+
+/** r303 — the most per-row sentences one rounding-table refusal carries (it travels in a redirect URL). */
+const MAX_ROUNDING_REFUSAL_SENTENCES = 10;
+
 /**
  * THE TYPE-LEVEL RULE EDITOR (9816a5ad step 2). The five settings the reporter agreed to consolidate —
  * Earning Method, Carry Forward (+ expiry), Rounding, Maximum Balance, and the Leave Year Type that rides
@@ -4367,15 +4372,37 @@ export async function setLeaveTypeRules(
   if (p.roundingBands !== undefined && p.roundingBands !== null && p.roundingBands.length > 0) {
     const problems = roundingBandErrors(p.roundingBands);
     if (problems.length > 0) {
-      const kinds = [...new Set(problems.map((x) => x.kind))];
-      const rows = [...new Set(problems.map((x) => (x.kind === 'gap' ? 0 : x.index + 1)))].join(', ');
+      // r303 (05db6aa7) — ONE SENTENCE PER PROBLEM, in the same words as the editor's own messages
+      // (subStep.roundingBandBlank / Decimals / Range / Order / Overlap / Duplicate). Thrown by the service
+      // and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad table), so it
+      // must describe the table as the screen now labels it: From and To both typed, both INCLUDED.
+      const bands = p.roundingBands;
+      const range = (i: number) => `${bands[i]!.from.toFixed(2)} to ${bands[i]!.to.toFixed(2)}`;
+      const say = (x: Exclude<RoundingBandProblem, { kind: 'gap' }>): string => {
+        switch (x.kind) {
+          case 'shape':
+          case 'blank':
+            return 'fill in From, To and Round To';
+          case 'decimals':
+            return 'use at most two decimal places';
+          case 'range':
+            return 'keep From, To and Round To between 0.00 and 1.00';
+          case 'order':
+            return 'From cannot be above To';
+          case 'duplicate':
+            return `${range(x.index)} is entered twice (row ${x.with + 1})`;
+          case 'overlap':
+            return `${range(x.index)} overlaps ${range(x.with)} (row ${x.with + 1}); two ranges cannot cover the same figure, and a range includes both its From and its To`;
+        }
+      };
+      const sentences = problems.map((x) => (x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say(x)}.`)).filter(Boolean);
+      // r303 hand-fix (verification defect 6) — the refusal travels in a redirect URL (?error=), and a table of
+      // many clashing rows produced one sentence per PAIR (38k characters for 20 overlapping rows), past Node's
+      // 16 KB header limit: an error page instead of the message. The first ten, then how many more.
+      const shown = sentences.slice(0, MAX_ROUNDING_REFUSAL_SENTENCES);
+      const more = sentences.length - shown.length;
       throw new LeaveTypeRuleError(
-        `The rounding table is not usable (${kinds.join(', ')}) at row ${rows}. ` +
-          // 4a1abc4a — kept in step with the client string `roundingBandRowInvalid`. This one is thrown by
-          // the service and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad
-          // table), so it was still telling them to change From — the field this round made derived and
-          // read-only — and still quoting three decimals the boxes no longer accept.
-          'Every row needs a Round To above where the row before it stopped, and both figures must be between 0.00 and 1.00.',
+        `The rounding table was not saved. ${shown.join(' ')}${more > 0 ? ` And ${more} more problem${more === 1 ? '' : 's'} in the table.` : ''}`,
       );
     }
   }
@@ -4437,10 +4464,13 @@ export async function setLeaveTypeRules(
       ? p.roundingBands === undefined
         ? undefined
         : null
-      : p.roundingBands.map((b) => ({
-          from: Math.round(b.from * 1000) / 1000,
-          to: Math.round(b.to * 1000) / 1000,
-          result: Math.round(b.result * 1000) / 1000,
+      : // r303 (05db6aa7) — stored EXACTLY AS TYPED, at two decimals. The check above has already refused
+        // anything with a third decimal, so this only strips binary-float noise; it can never round a
+        // figure somebody typed into a different one.
+        p.roundingBands.map((b) => ({
+          from: Math.round(b.from * 100) / 100,
+          to: Math.round(b.to * 100) / 100,
+          result: Math.round(b.result * 100) / 100,
         })),
   );
   put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));

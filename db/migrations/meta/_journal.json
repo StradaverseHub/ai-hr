@@ -2717,6 +2717,13 @@
       "when": 1781862572000,
       "tag": "0472_own_leave_request_approvers",
       "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1781862573000,
+      "tag": "0473_rounding_bands_inclusive_ranges",
+      "breakpoints": true
     }
   ]
 }

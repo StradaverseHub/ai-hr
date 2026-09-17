@@ -1569,7 +1569,9 @@ export const leaveType = pgTable('leave_type', {
   //     which is what this column is. See DEFAULT_ROUNDING_THRESHOLD in core/leave-compute.ts.
   roundingThreshold: numeric('rounding_threshold', { precision: 4, scale: 3 }),
   //   roundingBands — 8fec719e (migration 0358): the CUSTOM ROUNDING TABLE. An ordered jsonb array of
-  //     {from, to, result} rows over the DECIMAL PORTION 0.000–1.000, evaluated by applyRoundingBands.
+  //     {from, to, result} rows over the DECIMAL PORTION, evaluated by applyRoundingBands. r303 (migration
+  //     0473): From / To / Round To at two decimals, 0.00–1.00, a range INCLUDING both its from and its to
+  //     (it was from <= f < to at three decimals; 0473 rewrote every stored table with identical results).
   //     NULL ⇒ no table, which is every row 0358 leaves behind and reads as No Rounding.
   //
   //     WHY jsonb AND NOT A CHILD TABLE. The rows have no identity of their own — they are not referenced,

@@ -79,19 +79,25 @@ export type ResolvedPolicy = {
 };
 
 /**
- * 8fec719e — ONE ROW of the custom rounding table the reporter fills in: "a decimal portion from `from`
- * up to `to` becomes `result`".
+ * 8fec719e — ONE ROW of the custom rounding table the reporter fills in. r303 (05db6aa7) — the row now
+ * reads exactly as the screen labels it: "a decimal portion From … To becomes Round To", BOTH ENDS
+ * INCLUDED.
  *
- * THE UNIT IS THE DECIMAL PORTION, NOT THE WHOLE VALUE. A band is matched against `value − floor(value)`,
- * and the whole-day part is added back untouched. That is what makes ONE table usable at every
- * entitlement size: the reporter writes the table once for 0.000–1.000 and it shapes 1.17, 10.17 and
- * 21.17 identically, which is exactly how the three fixed methods it replaces behaved.
+ * THE UNIT IS THE DECIMAL PORTION, NOT THE WHOLE VALUE. A band is matched against the decimal part of the
+ * figure (a third decimal is placed by its first two: 0.00–0.24 covers 0.240–0.249), and the whole-day
+ * part is added back untouched. That is what makes ONE table
+ * usable at every entitlement size: the reporter writes the table once for 0.00–0.99 and it shapes 1.17,
+ * 10.17 and 21.17 identically, which is exactly how the three fixed methods it replaces behaved.
  *
- *   from   inclusive lower bound of the decimal portion, 0 <= from < to
- *   to     upper bound. EXCLUSIVE, except for a band ending at exactly 1.000, which is inclusive — so a
- *          table ending at 1.000 has no unreachable sliver at the top and `result: 1` means "round up to
- *          the next whole day" (the old 'up' method, expressible as a single row 0 → 1 ⇒ 1).
- *   result what the decimal portion becomes, 0 <= result <= 1. `whole + result` is credited.
+ *   from   INCLUSIVE lower bound of the decimal portion, 0.00–1.00, at most two decimals, from <= to
+ *   to     INCLUSIVE upper bound, 0.00–1.00, at most two decimals. A single-point row (from = to) is legal.
+ *   result what the decimal portion becomes ("Round To" on screen), 0.00–1.00. `whole + result` is credited.
+ *
+ * ⚠️ UNTIL r303 `to` WAS EXCLUSIVE (from <= f < to, a row ending at 1.000 inclusive) and the three columns
+ * were labelled From / Round To / Rounded Result, so the column called "Round To" was really the END of the
+ * range. Migration 0473 rewrote every stored table into this meaning with identical results for every 2dp
+ * figure, and for every figure on a table whose bounds were whole hundredths; its header and
+ * test/leave-rounding-bands-0473.test.ts are the record of how.
  */
 export type RoundingBand = { from: number; to: number; result: number };
 
@@ -470,51 +476,72 @@ export function applyRounding(
  * THE GAP IS A WARNING, NOT AN ERROR, and that asymmetry is deliberate. An overlap or a duplicate means
  * the table has TWO answers for one decimal and the engine would silently pick one — unresolvable, so it
  * is refused. A gap means the table has NO answer for part of the range, and there IS a defined answer
- * for that: the value is left exactly as calculated (`applyRoundingBands` falls through). A
- * half-finished table must be savable, or an administrator cannot build one row at a time.
+ * for that: the figure keeps its exact value (`applyRoundingBands` falls through). A half-finished table
+ * must be savable, or an administrator cannot build one row at a time.
+ *
+ * r303 (05db6aa7) — THE RULES THE REPORTER APPROVED, one problem kind per rule so each gets its own
+ * message: every field filled in (`blank`), at most two decimals (`decimals` — REFUSED, never rounded),
+ * every figure 0.00–1.00 (`range`), From not above To (`order`; From = To is a legal single-point row), and
+ * no two ranges overlapping (`overlap`) or repeated (`duplicate`). Ranges are INCLUSIVE at both ends, so
+ * 0.00–0.24 and 0.24–0.49 overlap at 0.24, and 0.00–0.24 then 0.25–0.49 join up with no gap.
  */
 export type RoundingBandProblem =
-  /** a row that is not three finite numbers at all */
+  /** the table is not a list, or a row is not a row at all */
   | { kind: 'shape'; index: number }
-  /** a bound outside 0.000–1.000 (from, to and result all live in the decimal portion) */
+  /** a From, To or Round To cell that is empty or not a finite number */
+  | { kind: 'blank'; index: number }
+  /** a figure with more than two decimal places — refused rather than silently rounded */
+  | { kind: 'decimals'; index: number }
+  /** a figure outside 0.00–1.00 (from, to and result all live in the decimal portion) */
   | { kind: 'range'; index: number }
-  /** from >= to — an empty or inverted band, which can never match anything */
+  /** From above To — an inverted row, which can never match anything */
   | { kind: 'order'; index: number }
-  /** the SAME (from, to) appears twice; `index` is the later row */
-  | { kind: 'duplicate'; index: number }
-  /** this row's interval intersects an earlier row's; `index` is the later row */
-  | { kind: 'overlap'; index: number }
-  /** part of 0.000–1.000 that no row covers. WARNING only — see the header. */
+  /** the SAME (from, to) appears twice; `index` is the later row, `with` the earlier one */
+  | { kind: 'duplicate'; index: number; with: number }
+  /** this row's range shares at least one decimal with an earlier row's; `index` is the later row, `with` the
+   *  earlier one — both are named, so the message can say WHICH two ranges clash ("0.25 to 0.49 overlaps
+   *  0.40 to 0.60"), as the approved mockup does */
+  | { kind: 'overlap'; index: number; with: number }
+  /** the decimals from..to (both included, 2dp) that no row covers. WARNING only — see the header. */
   | { kind: 'gap'; from: number; to: number };
 
-/** Three decimal places, matching the precision the reporter's own tables are written at and the one
- *  `applyRounding`'s nearest-half branch already snaps the decimal portion to. Comparing at this
- *  precision is what stops 0.1 + 0.2 = 0.30000000000000004 from reading as an overlap. */
-const bandRound = (n: number) => Math.round(n * 1000) / 1000;
+/** A band figure as a whole number of HUNDREDTHS. Every band comparison is made on integers, never on the
+ *  raw floats: 0.29 * 100 is 28.999999999999996 in IEEE754, and a raw `<=` against it is how a figure
+ *  quietly moves into the neighbouring band. Only meaningful for a value `hasAtMostTwoDecimals` accepts. */
+const toHundredths = (n: number) => Math.round(n * 100);
+
+/** At most two decimal places, judged with a tolerance far below one hundredth and far above float noise
+ *  (0.29 * 100 is off by 4e-15; a typed 0.245 is off by 0.5). */
+function hasAtMostTwoDecimals(n: number): boolean {
+  return Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
+}
 
 export function checkRoundingBands(bands: unknown): RoundingBandProblem[] {
   const out: RoundingBandProblem[] = [];
   if (!Array.isArray(bands)) return [{ kind: 'shape', index: 0 }];
   const rows: { from: number; to: number; i: number }[] = [];
   bands.forEach((b, i) => {
-    const row = b as Record<string, unknown> | null;
-    const nums = [row?.from, row?.to, row?.result];
-    if (row == null || typeof row !== 'object' || nums.some((n) => typeof n !== 'number' || !Number.isFinite(n))) {
+    if (b == null || typeof b !== 'object' || Array.isArray(b)) {
       out.push({ kind: 'shape', index: i });
       return;
     }
-    const from = bandRound(row.from as number);
-    const to = bandRound(row.to as number);
-    const result = bandRound(row.result as number);
-    if (from < 0 || from > 1 || to < 0 || to > 1 || result < 0 || result > 1) {
-      out.push({ kind: 'range', index: i });
+    const row = b as Record<string, unknown>;
+    const nums = [row.from, row.to, row.result];
+    if (nums.some((n) => typeof n !== 'number' || !Number.isFinite(n))) {
+      out.push({ kind: 'blank', index: i });
       return;
     }
-    if (from >= to) {
-      out.push({ kind: 'order', index: i });
-      return;
-    }
-    rows.push({ from, to, i });
+    const [from, to, result] = nums as number[];
+    // Every rule the row breaks is named, not just the first: "0.245" and "1.5" on one row are two things
+    // to fix, and the editor shows one message per kind.
+    const decimals = !nums.every((n) => hasAtMostTwoDecimals(n as number));
+    const range = [from, to, result].some((n) => n < 0 || n > 1);
+    const order = from > to;
+    if (decimals) out.push({ kind: 'decimals', index: i });
+    if (range) out.push({ kind: 'range', index: i });
+    if (order) out.push({ kind: 'order', index: i });
+    if (decimals || range || order) return;
+    rows.push({ from: toHundredths(from), to: toHundredths(to), i });
   });
   // Pairwise rather than sort-then-compare-neighbours: the rows are in the order the administrator typed
   // them, a table is a handful of rows, and reporting the LATER row of a clashing pair is what lets the
@@ -523,19 +550,22 @@ export function checkRoundingBands(bands: unknown): RoundingBandProblem[] {
     for (let z = a + 1; z < rows.length; z++) {
       const x = rows[a];
       const y = rows[z];
-      if (x.from === y.from && x.to === y.to) out.push({ kind: 'duplicate', index: y.i });
-      else if (x.from < y.to && y.from < x.to) out.push({ kind: 'overlap', index: y.i });
+      if (x.from === y.from && x.to === y.to) out.push({ kind: 'duplicate', index: y.i, with: x.i });
+      // INCLUSIVE at both ends: two rows sharing even one decimal (0.00–0.24 and 0.24–0.49) is two answers.
+      else if (x.from <= y.to && y.from <= x.to) out.push({ kind: 'overlap', index: y.i, with: x.i });
     }
   }
   // Coverage is only meaningful once the rows are individually sane; on a broken table the gaps would be
   // an artefact of the rows we already refused, and reporting both would bury the real problem.
   if (out.length === 0) {
-    let cursor = 0;
+    // In hundredths. `next` is the first decimal not yet covered; the table is complete once it passes 0.99
+    // (a row may end at 1.00, but no worked-out decimal portion is ever larger than 0.99).
+    let next = 0;
     for (const r of [...rows].sort((p, q) => p.from - q.from)) {
-      if (r.from > cursor) out.push({ kind: 'gap', from: cursor, to: r.from });
-      cursor = Math.max(cursor, r.to);
+      if (r.from > next) out.push({ kind: 'gap', from: next / 100, to: (r.from - 1) / 100 });
+      next = Math.max(next, r.to + 1);
     }
-    if (cursor < 1) out.push({ kind: 'gap', from: cursor, to: 1 });
+    if (next <= 99) out.push({ kind: 'gap', from: next / 100, to: 0.99 });
   }
   return out;
 }
@@ -546,24 +576,34 @@ export function roundingBandErrors(bands: unknown): RoundingBandProblem[] {
 }
 
 /** A table the engine will act on: a non-empty array with no ERROR-class problem. Gaps are permitted (the
- *  uncovered decimals simply keep their calculated value), so a part-built table rounds what it covers. */
+ *  uncovered decimals simply keep their value), so a part-built table rounds what it covers. */
 export function isWellFormedRoundingBands(bands: unknown): bands is RoundingBand[] {
   return Array.isArray(bands) && bands.length > 0 && roundingBandErrors(bands).length === 0;
 }
 
 /**
- * 8fec719e — evaluate a custom rounding table against a calculated entitlement.
+ * 8fec719e — evaluate a custom rounding table against a calculated entitlement. r303 (05db6aa7) — with
+ * the bounds INCLUSIVE at both ends, every comparison made in integer THOUSANDTHS:
  *
  *     whole = floor(value)
- *     f     = the decimal portion, snapped to three places FIRST (the 9f5164d8 precedent, and load-bearing
- *             for the same reason: 0.1 + 0.2 + 1.2 is 1.5000000000000002 in IEEE754, and a raw compare
- *             would drop it in the band above the one an administrator reading the table expects)
- *     hit   = the band with from <= f < to, or from <= f <= to for a band closing at exactly 1.000
- *     out   = whole + hit.result
+ *     fk    = round((value − whole) × 1000)   the decimal portion in thousandths, 0..1000 — exactly the f the
+ *                                              pre-r303 engine computed (it snapped f to three places too)
+ *     hit   = the band with  round(from × 100) × 10  <=  fk  <=  round(to × 100) × 10 + 9
+ *             (a band whose To is 0.99 also takes fk = 1000: the old top row was inclusive at 1.000)
+ *     out   = round2(whole + hit.result)
  *
- * A WHOLE VALUE IS NEVER MOVED. f === 0 returns immediately, before any lookup. Every method this
+ * A FIGURE WITH A THIRD DECIMAL IS PLACED BY ITS FIRST TWO. A row To of 0.24 covers 0.240 up to 0.249, so a
+ * figure can still never fall between 0.24 and 0.25, and nothing is rounded before the lookup — rounding
+ * first would move a 3dp figure across a band edge (14.397 into 0.40–0.69) that the old engine never
+ * moved. For a 2dp figure this is exactly from <= decimal <= to. For ANY figure on a table whose stored
+ * bounds were whole hundredths, it is exactly the pre-r303 engine on that table before migration 0473
+ * rewrote it (to' × 1000 + 9 = to × 1000 − 1, so fk <= to' × 1000 + 9 ⇔ fk < to × 1000). Every engine caller
+ * hands in a 2dp figure except the full grant of a template's configured days, which the service does not
+ * limit to two decimals; test/leave-rounding-bands-0473.test.ts §4 runs every 3dp figure through that path.
+ *
+ * A WHOLE VALUE IS NEVER MOVED. fk === 0 returns immediately, before any lookup. Every method this
  * replaces behaved that way (ceil, floor and the nearest-half branch all leave 11.0 at 11.0), and without
- * the guard a first band of 0.000→0.500 ⇒ 0.500 would quietly hand out half a day to everyone whose
+ * the guard a first band of 0.00→0.50 ⇒ 0.50 would quietly hand out half a day to everyone whose
  * entitlement came out whole — a table that looks like "round the stragglers up" silently inflating the
  * exact figures.
  *
@@ -575,12 +615,14 @@ export function applyRoundingBands(value: number, bands: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return value;
   if (!isWellFormedRoundingBands(bands)) return value;
   const whole = Math.floor(value);
-  const f = Math.round((value - whole) * 1000) / 1000;
-  if (f === 0) return round2dp(value);
+  const fk = Math.round((value - whole) * 1000);
+  if (fk === 0) return round2dp(value);
   for (const b of bands) {
-    const from = bandRound(b.from);
-    const to = bandRound(b.to);
-    if (f >= from && (to >= 1 ? f <= to : f < to)) return round2dp(whole + bandRound(b.result));
+    const fromH = toHundredths(b.from);
+    const toH = toHundredths(b.to);
+    if (fromH * 10 <= fk && (fk <= toH * 10 + 9 || (toH === 99 && fk === 1000))) {
+      return round2dp(whole + b.result);
+    }
   }
   return value;
 }
