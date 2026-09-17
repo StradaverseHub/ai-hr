@@ -495,7 +495,7 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(false), { timeout: 4000 });
   }, 10_000);
 
-  it('a drawer that is already sliding out after a save does not ask "discard?" when Escape reaches it', async () => {
+  it('a drawer already sliding out after a save does not ask "discard?" — not from Escape, not from its own Cancel', async () => {
     const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: 'Senior Staff v2', created: false }));
     mount('en', save);
     await userEvent.click(editButtonOf('en', SENIOR.name));
@@ -504,7 +504,11 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
     await waitFor(() => expect(dialog.getAttribute('data-state')).toBe('closed'));
     expect(dialog.isConnected, 'the drawer finished closing before Escape — this case would prove nothing').toBe(true);
+    // Escape: Radix does not report a close for a dialog that is already closed.
     await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    // The footer Cancel is still on screen while the panel slides, and it calls the close path directly.
+    await userEvent.click(within(dialog).getByRole('button', { name: L.cancel }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await closeFully();
   });
