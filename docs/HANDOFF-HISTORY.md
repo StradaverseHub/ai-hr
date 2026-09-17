@@ -1,3 +1,62 @@
+## r301 (2026-09-17) — Generate Entitlement reaches earned Annual Leave; Schedule setup on one tab. `main@789730f5`, **no migration**.
+
+Closed and DEPLOYED: `e5018593`, `6d091cc0`. Gate: **898 files — equal to the suite file count — 13,652 tests, 0
+AssertionErrors**, first pass, 14 chunks. `next build` exit 0. Deployed: active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 789730f5; migrations step a no-op as expected.
+
+### e5018593 — Generate Entitlement also adds earned Annual Leave
+
+One path: `openLeaveYear` still writes nothing for an earned Annual Leave pair; the generation hands the pairs to
+`accrueEarnedLeave` (new `employmentIds` scope, per-pair breakdown returned) at its late edge, with the SAME dryRun,
+in its own transaction after the year-open commits. A future year is never accrued; an accrual failure is returned,
+not thrown. The adversarial verifier found four defects the builder's tests did not; all hand-fixed and re-derived red.
+
+### DECISIONS the ticket did not settle
+
+- **`already_open` earned Annual Leave pairs are handed over too.** The year-open calls a pair already_open (any
+  accrual row this leave year) BEFORE reading its method, so on a tenant where the monthly cron has run, handing
+  over only `earned_method` lines made the screen's promise true only for employees with no row yet. The accrual
+  adds only the shortfall; an up-to-date pair writes nothing.
+- **A PAST-year Generate holds back pairs whose next leave year has started** (any ledger row dated after the
+  generated year) and says so in a six-locale sentence. Measured: topping up December after the following year's
+  carry was fixed carried 3 days past a cap of 2. `pairsWithLedgerRowsAfter` lives in `core/leave.ts` — the
+  generation module still never touches the ledger (its source guard).
+- **The accrual's carry forfeit is disclosed**: folded into the run's forfeits (toast, run log, event). It was
+  posted but never reported.
+- **Counts come from the pairs**: a 0-day pair (entitlement 0) is not listed as reached, so it neither reads
+  "already up to date" nor counts as passed. `notAnnualLeaveLines` counts stranded lines directly.
+- **All three earned-accrual screen actions require admin** (`previewEarnedAccrualAction`,
+  `runEarnedAccrualAction`, `previewEarnedAccrualWithReasonAction` — the last is the screen's real preview). They
+  used `getSession` and the service has no admin check: the 4b0e76ae shape.
+- r196's status copy said Generate Entitlement does not grant the type; now the true sentence in six locales, and the
+  guard still forbids "Run Generate Entitlement".
+
+### 6d091cc0 — Schedule General tab is the one setup page
+
+Five cards in the approved order; the three middle ones are MOVES (same reads, same writers) under
+`app/admin/attendance-policy/`. Old routes redirect to the cards; the refused Save policy banner now shows (the
+`?tab=general?error=` double query).
+
+- **Panel parameters deviate from the plan's names**: `?editGroup=<id|new>` (the plan's `?group=` is already the
+  Attendance/Overtime tabs' selector) and `?viewPolicy=` / `?policy=`. At most one panel; every parameter is read by
+  value against what the viewer can see. The tab shell is keyed on the open panel (a soft navigation otherwise
+  opened the panel on a hidden General tab). Panel title for an existing group reads "Edit rule".
+- **Last updated is read off the audit ledger** (`attendance-policy.updated`; there is no `updated_at`), verified
+  readable by a company-scoped HR admin under RLS. A saved row with no event (provisioning inserts directly) shows
+  **"Not recorded"**, never a dash or "never changed".
+- The panel sits beside the list only from 1900px (at 1600px the row actions scrolled out of view). The General tab
+  now loads the overtime-rate, device and coverage reads: measured +45ms on the seeded tenant.
+- No Delete on a company setting (silent fall-back to Mon–Fri 9–6 and device gate off).
+
+### OWED TO THE OWNER
+
+- Switch on "This is our Annual Leave" for *Annual Leave (r299) — until then Generate adds nothing earned for it.
+
+### NOT DONE / KNOWN
+
+- A re-run of Generate for a year whose next year has started does not top up; HR sees the held-back count and uses
+  Leave Adjustments.
+- Device list on the General tab grows with headcount; not paginated.
+
 ## r300 (2026-09-17) — Leave Credit, after three verifications each found money defects the builder's tests did not. `main@769e6d9a`, **migrations 0469 + 0470**.
 
 Closed and DEPLOYED: `3fb1a611`. Gate: **895 files — equal to the suite file count — 13,596 tests, 0 AssertionErrors**,
