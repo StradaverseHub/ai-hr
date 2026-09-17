@@ -258,9 +258,15 @@ describe('20c699f8: Employee Balances', () => {
     expect(rowsHelper).toContain('hrExplanation: { sharedBalance: row.sharedBalance },');
     expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'still exactly one breakdown read').toBe(1);
     const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(personnel).toContain('leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf, undefined, { derivation: true })');
+    // The Personnel record is HR-only for the sentences by the page's OWN admin predicate: the read and the switch
+    // go through ./leave-breakdowns.ts, which asks `isAdmin(s)` (driven with real sessions in
+    // test/r303-personnel-leave-explain.test.ts).
+    expect(personnel).toContain('await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf)');
+    const helper = read('app/admin/personnel/[employmentId]/leave-breakdowns.ts');
+    expect(helper).toContain('const derivation = isAdmin(s);');
+    expect(helper).toContain('return isAdmin(s) ? { sharedBalance: sharedBalance ?? null } : undefined;');
     const pMount = personnel.slice(personnel.indexOf('<EntitlementBreakdown'));
-    expect(pMount.slice(0, pMount.indexOf('/>'))).toContain('hrExplanation={{ sharedBalance: b.sharedBalance ?? null }}');
+    expect(pMount.slice(0, pMount.indexOf('/>'))).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
     expect(pMount.slice(0, pMount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
     // The employee side: neither the prop nor the working.
     expect(read('components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
