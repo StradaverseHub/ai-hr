@@ -73,15 +73,33 @@ const DATA: EntitlementBreakdownData = {
   essView: {},
 };
 
+/**
+ * r303 (31492f74) UPDATED THIS MOUNT to the one Employee Balances now renders: the HR explanation switch is on, and
+ * the breakdown carries the working it is rendered from (the r285 production shape, itemised). The row assertions
+ * below are unchanged — the label and figure of each line are exactly what they were; the sentences sit beneath
+ * the row, not inside it — and the no-MISSING_MESSAGE assertion now also covers every sentence under the nine lines.
+ */
 async function openPanel(locale: string, messages: Record<string, unknown>) {
   render(
     <NextIntlClientProvider locale={locale} messages={messages}>
       <LeaveDetailsPanel
-        data={DATA}
+        data={{
+          ...DATA,
+          derivation: {
+            entitlement: { tableName: 'Annual', via: 'sole_table', schemeName: null, winReason: null, hiredOn: '2024-01-01', serviceYears: 2, band: { fromYears: 0, toYears: null }, days: 18 },
+            earned: { method: 'earned_monthly', leaveYear: 'calendar', leaveYearOverride: null, cycleEnd: '2026-12-31', rounding: 'none', joinYear: null, credits: [{ effectiveOn: '2026-01-01', days: 5.5, kind: 'grant' }] },
+            carry: { rule: 'off', maxDays: 0, percent: null },
+            adjustments: { manual: [], system: [] },
+            taken: { leaveDays: 12, other: [] },
+            pending: [{ startDate: '2026-08-03', endDate: '2026-08-06', days: 4 }],
+            forfeited: [],
+          },
+        }}
         summary={{ available: -10.5 }}
         visual={{ color: null, icon: null, code: 'ANNUAL' }}
         asOf="2026-08-04"
         action="/leave/employee-balances"
+        hrExplanation={{ sharedBalance: null }}
       />
     </NextIntlClientProvider>,
   );
@@ -112,6 +130,8 @@ describe('r285: the Explain panel prints the grid’s words on the two rows the 
       // A rename that lost a catalogue entry paints this instead of a label, returns 200, and is green
       // through tsc, the suite and `next build`.
       expect(panel.queryByText(/MISSING_MESSAGE/)).toBeNull();
+      // r303: and the HR mount's sentence under the last line closes onto the same printed figure.
+      expect(panel.getByTestId('leave-explain-available').textContent).toContain('-10.50');
     });
   }
 

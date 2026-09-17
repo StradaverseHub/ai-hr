@@ -286,6 +286,8 @@ describe('3ddae357: the page comment no longer claims something false', () => {
     expect(rows).toContain(
       'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
     );
-    expect(rows).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
+    // r303 (31492f74): the breakdown read now also asks for HR's per-line working. The decision this guard pins is
+    // untouched — the SAME asOf reaches both reads — so the pin is updated to the new call, not loosened.
+    expect(rows).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })');
   });
 });

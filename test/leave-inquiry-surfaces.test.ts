@@ -161,7 +161,9 @@ describe('20c699f8: Employee Balances', () => {
     expect(rowsHelper).toContain(
       'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
     );
-    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
+    // r303 (31492f74) UPDATED THIS PIN, it did not retire it: the SAME read at the SAME asOf and locale, now
+    // asking for the per-line working HR's Explain panel prints (`derivation: true`). Still ONE read.
+    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.
     expect(rowsHelper).toContain('essView: {}');
@@ -241,6 +243,28 @@ describe('20c699f8: Employee Balances', () => {
     const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
     expect(mount.slice(0, mount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
     expect(read('app/admin/personnel/[employmentId]/page.tsx')).toContain('<EntitlementBreakdown');
+  });
+
+  /**
+   * r303 (31492f74) — HR'S SENTENCES RIDE ON THE SAME ROW. The Explain panel on this screen now replaces each
+   * line's icon with sentences written from this employee's records. The switch (`hrExplanation`) is set by the
+   * row builder off the SAME balance row every figure came from (its pool descriptor), and the working behind the
+   * sentences is the SAME `bd` (`derivation: true` on the one read) — no second read, no second source. The
+   * Personnel record is the other HR mount and passes it too; the employee's My Leave dashboard never does.
+   */
+  it('r303: both HR mounts switch the sentences on, off the row they already hold; the employee mount does not', () => {
+    const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
+    expect(mount.slice(0, mount.indexOf('/>'))).toContain('hrExplanation={r.hrExplanation}');
+    expect(rowsHelper).toContain('hrExplanation: { sharedBalance: row.sharedBalance },');
+    expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'still exactly one breakdown read').toBe(1);
+    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    expect(personnel).toContain('leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf, undefined, { derivation: true })');
+    const pMount = personnel.slice(personnel.indexOf('<EntitlementBreakdown'));
+    expect(pMount.slice(0, pMount.indexOf('/>'))).toContain('hrExplanation={{ sharedBalance: b.sharedBalance ?? null }}');
+    expect(pMount.slice(0, pMount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
+    // The employee side: neither the prop nor the working.
+    expect(read('components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
+    expect(read('core/my-leave.ts')).not.toContain('derivation: true');
   });
 
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
