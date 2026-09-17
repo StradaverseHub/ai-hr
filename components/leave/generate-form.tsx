@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
@@ -331,7 +332,28 @@ export function GenerateForm({
    * behaviour the bare Generate button this screen replaces has always had.
    */
   const nextBlocked = step === 'employees' && mode === 'individual' && individualIds.length === 0;
-  const failures = (preview?.lines ?? []).filter((l) => l.outcome !== 'granted' && l.outcome !== 'already_open');
+  // r301 (e5018593) — an earned Annual Leave line the accrual REACHED is not an issue: its days are added (or
+  // already were). The server decided that (`earnedAccrual`); this reads the flag and restates nothing.
+  const failures = (preview?.lines ?? []).filter(
+    (l) => l.outcome !== 'granted' && l.outcome !== 'already_open' && l.earnedAccrual === null,
+  );
+  /**
+   * r301 — "Entitlement to grant", one row per leave type: the `granted` lines the engine returned, counted
+   * and summed. A tally of the server's own lines for display, not a composition — each line's `days` is
+   * the figure the run will post, and a pair is an employee within one type.
+   */
+  const grantRows = useMemo(() => {
+    const byType = new Map<string, { leaveTypeId: string; leaveTypeName: string; employees: number; days: number }>();
+    for (const l of preview?.lines ?? []) {
+      if (l.outcome !== 'granted') continue;
+      const row = byType.get(l.leaveTypeId) ?? { leaveTypeId: l.leaveTypeId, leaveTypeName: l.leaveTypeName, employees: 0, days: 0 };
+      row.employees += 1;
+      row.days = Math.round((row.days + l.days) * 100) / 100;
+      byType.set(l.leaveTypeId, row);
+    }
+    return [...byType.values()].sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName));
+  }, [preview]);
+  const accrual = preview?.accrual ?? null;
 
   return (
     <form ref={formRef} action={action} className="space-y-5" onChange={schedulePreview}>
@@ -612,13 +634,111 @@ export function GenerateForm({
                 </div>
               ))}
             </dl>
+            {/* r301 (e5018593) — BOTH PARTS OF THE RUN, SIDE BY SIDE, before anything is written: what the
+                year-open will grant, and the earned Annual Leave the same run will add. Both come from the one
+                dry run (`previewAction`), so neither can say something the commit will not do. The earned
+                half renders only when the engine logged an earned line at all. */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
+                <span id="generate-grant-title" className="block text-xs font-semibold text-foreground">
+                  {t('generateGrantTitle')}
+                </span>
+                {grantRows.length === 0 ? (
+                  <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{t('generateGrantNone')}</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table aria-labelledby="generate-grant-title" className="w-full text-left text-xs">
+                      <thead className="bg-muted/60 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">{t('generateIssuesType')}</th>
+                          <th className="px-3 py-2 text-right font-medium">{t('generateGrantColEmployees')}</th>
+                          <th className="px-3 py-2 text-right font-medium">{t('generateGrantColDays')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {grantRows.map((r) => (
+                          <tr key={r.leaveTypeId}>
+                            <td className="px-3 py-2 text-foreground">{r.leaveTypeName}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.employees}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.days}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {accrual && (
+                <div className="min-w-0 space-y-1.5">
+                  <span id="generate-accrual-title" className="block text-xs font-semibold text-foreground">
+                    {t('generateAccrualTitle')}
+                  </span>
+                  {accrual.annualLeaveLines > 0 &&
+                    (accrual.skippedFutureYear ? (
+                      <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                        {t('generateAccrualFuture', { year: preview.year })}
+                      </p>
+                    ) : accrual.error !== null ? (
+                      // The dry run of the accrual failed. Said before Generate is pressed, with the way to the
+                      // tool that tops the days up once the entitlement is in.
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                        {t.rich('generateAccrualFailed', {
+                          reason: accrual.error,
+                          link: (chunks) => (
+                            <Link href="/admin/leave-config/earned-accrual" className="font-medium underline underline-offset-2">
+                              {chunks}
+                            </Link>
+                          ),
+                        })}
+                      </p>
+                    ) : accrual.byLeaveType.length === 0 ? (
+                      <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                        {t('generateAccrualNothing', { date: accrual.asOf ?? '' })}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto rounded-lg border border-border">
+                          <table aria-labelledby="generate-accrual-title" className="w-full text-left text-xs">
+                            <thead className="bg-muted/60 text-muted-foreground">
+                              <tr>
+                                <th className="px-3 py-2 font-medium">{t('generateIssuesType')}</th>
+                                <th className="px-3 py-2 text-right font-medium">{t('generateAccrualColToppedUp')}</th>
+                                <th className="px-3 py-2 text-right font-medium">{t('generateAccrualColUpToDate')}</th>
+                                <th className="px-3 py-2 text-right font-medium">{t('generateGrantColDays')}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {accrual.byLeaveType.map((r) => (
+                                <tr key={r.leaveTypeId}>
+                                  <td className="px-3 py-2 text-foreground">{r.leaveTypeName}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.posted}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.upToDate}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.days}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {t('generateAccrualAsAt', { date: accrual.asOf ?? '' })}
+                        </p>
+                      </>
+                    ))}
+                  {accrual.notAnnualLeaveLines > 0 && (
+                    <p className="rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+                      {t('generateAccrualNotAnnualLeave', { count: accrual.notAnnualLeaveLines })}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
             {failures.length === 0 ? (
               <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
                 {t('generateIssuesNone')}
               </p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-left text-xs">
+                <table aria-label={t('generateIssuesAria')} className="w-full text-left text-xs">
                   <thead className="bg-muted/60 text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-medium">{t('generateIssuesEmployee')}</th>

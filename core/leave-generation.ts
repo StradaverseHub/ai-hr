@@ -91,7 +91,14 @@ import {
   countTemplatesForLeaveType,
   resolveEntitlementForEmployment,
 } from './entitlement-template';
-import { asOfForLeaveYear, openLeaveYear, type LeaveYearGrantOutcome, type LeaveYearGrantRow } from './leave';
+import {
+  accrueEarnedLeave,
+  asOfForLeaveYear,
+  openLeaveYear,
+  type EarnedAccrualResult,
+  type LeaveYearGrantOutcome,
+  type LeaveYearGrantRow,
+} from './leave';
 import { resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -121,6 +128,44 @@ export type LeaveGenerationLine = {
    *  `earned_method` line on a type that is not Annual Leave. The screen labels it; it is NOT stored (the
    *  run item keeps the engine's `outcome` verbatim, and has no column for this). */
   earnedMethodNotAnnualLeave: boolean;
+  /**
+   * r301 (e5018593) — did the earned accrual this generation triggered REACH this line, and with what?
+   *   'topped_up'   the accrual posted (or, on a preview, would post) days for this pair.
+   *   'up_to_date'  the accrual reached the pair and nothing was outstanding.
+   *   null          not reached: not an earned Annual Leave line, a future year, a failed accrual, or an
+   *                 employee the accrual resolved no earned entitlement for at its as-at date.
+   * A reached line COUNTS AS PASSED and leaves the issues table. ⚠️ Like `earnedMethodNotAnnualLeave`, a
+   * DISPLAY flag and NOT stored: the run item keeps the engine's `earned_method` verbatim (test E pins the
+   * outcome set; the processing log and its CSV read the same before and after this change).
+   */
+  earnedAccrual: 'topped_up' | 'up_to_date' | null;
+};
+
+/**
+ * r301 (e5018593) — THE EARNED ANNUAL LEAVE HALF OF A GENERATION, present whenever the engine logged at least
+ * one `earned_method` line (null when it logged none, which is every tenant with no earned type selected).
+ *
+ * Three figures, each read off the accrual engine's own counters and never re-derived:
+ *   posted    = `granted` — pairs topped up. Pairs ARE employees here: r299 allows ONE active Annual Leave.
+ *   upToDate  = Σ breakdown.employeeCount − posted — pairs reached with nothing outstanding.
+ *   days      = Σ breakdown.entitlementGenerated.
+ */
+export type LeaveGenerationAccrual = {
+  /** `earned_method` lines on Annual Leave — the pairs handed to (or, for a future year, held back from) accrual. */
+  annualLeaveLines: number;
+  /** r299 stranded lines: an earned method on a type that is NOT Annual Leave. Never accrued, only counted. */
+  notAnnualLeaveLines: number;
+  /** The year has not started. Nothing is accrued in advance: earned days are earned as the year goes by. */
+  skippedFutureYear: boolean;
+  /** The as-at date the accrual ran at (the generation's late edge); null when it did not run. */
+  asOf: string | null;
+  posted: number;
+  upToDate: number;
+  days: number;
+  /** One row per Annual Leave type the accrual reached — the preview's "Earned Annual Leave to add" table. */
+  byLeaveType: { leaveTypeId: string; leaveTypeName: string; posted: number; upToDate: number; days: number }[];
+  /** The accrual threw. The generation before it is ALREADY COMMITTED and stays so; this is the reason. */
+  error: string | null;
 };
 
 export type LeaveGenerationResult = {
@@ -146,6 +191,8 @@ export type LeaveGenerationResult = {
    * this column becomes the explanation of the days beside it with no further change here.
    */
   decidedBy: { employmentId: string; ruleName: string | null; templateName: string; alsoMatched: number }[];
+  /** r301 (e5018593) — the earned Annual Leave this generation added, or would add. See the type. */
+  accrual: LeaveGenerationAccrual | null;
   /** Set only by `runLeaveGeneration` — the processing-log row this run wrote. */
   runId?: string;
 };
@@ -224,7 +271,11 @@ async function generate(
   // year-boundary conditions, so this widens WHO IS CONSIDERED and never what is granted. It is honest
   // about one gap rather than hiding it: someone who joined AND left inside the year, both before the late
   // edge, is in neither pass. Their entitlement was granted at hire and is theirs already.
-  const asOfLate = asOfForLeaveYear(year, todayInKualaLumpur());
+  //
+  // r301: `today` is read ONCE and shared with the earned-accrual step below, so the late edge the
+  // selection used and the as-at date the accrual runs at cannot straddle a midnight.
+  const today = todayInKualaLumpur();
+  const asOfLate = asOfForLeaveYear(year, today);
   const targets = await withTenant(ctx, async (tx) => {
     const at = (on: string) =>
       targetMode === 'individual'
@@ -273,6 +324,7 @@ async function generate(
       forfeits: 0,
       lines: [],
       decidedBy: [],
+      accrual: null,
     };
   }
 
@@ -281,7 +333,80 @@ async function generate(
   const engineRows = res.rows;
   const counts = { granted: res.granted, skipped: res.skipped, forfeits: res.forfeits };
 
-  const lines = await withTenant(ctx, (tx) => nameLines(tx, engineRows));
+  // ── r301 (e5018593) · EARNED ANNUAL LEAVE, IN THE SAME GENERATION ─────────────────────────────────────
+  //
+  // The year-open above logs an earned Annual Leave pair as `earned_method` and writes nothing for it, by
+  // design (ADR-0040): those days are `accrueEarnedLeave`'s. Until this round nothing called that engine from
+  // here, so every such pair read as Failed and the days appeared only when someone remembered Run Earned
+  // Accrual or the monthly cron came round. Now the SAME generation hands exactly those pairs to it.
+  //
+  // • ANOTHER ENGINE, NOT A SECOND DEFINITION. This module still composes no day: it aims `accrueEarnedLeave`
+  //   the way it aims `openLeaveYear`, and passes it the SAME `dryRun` variable, so the preview's earned
+  //   figures are the commit's (2c7c6385, preview-must-not-lie) and there is still one path, not two.
+  // • WHO: the employees and Annual Leave types of the `earned_method` lines whose r299 flag is false, and
+  //   nobody else. The employee list is passed as `employmentIds`, where EMPTY MEANS NOBODY — and it is
+  //   never empty here anyway, because the call is skipped when there is no such line.
+  // • WHEN: at `asOfLate`, the late edge the selection already used — today for the current year, 31
+  //   December for a past one (`asOfForLeaveYear`).
+  // • ⚠️ NEVER A FUTURE YEAR. `asOfForLeaveYear` maps a future year to its 31 December, which was a decision
+  //   for the MANUAL button. Here it would post a whole unearned year: the balance readers carry no date
+  //   bound, so days dated next 31 December are spendable today, and the once-per-cycle carry forfeit would
+  //   lock on a mid-year balance. The result says the days are added as the year goes by instead.
+  // • ⚠️ ITS OWN TRANSACTION, AFTER THE YEAR-OPEN HAS COMMITTED, AND A FAILURE IS RETURNED, NOT THROWN. The
+  //   header's rule: the ledger is the truth, and a failure after a grant must never read as "nothing
+  //   happened" — the entitlement above is written and stays written. The operator is told the earned part
+  //   did not run and where to run it. On a preview the same failure is shown before anything is written.
+  // • ⚠️ A FORMER NEIGHBOUR, BY ADDRESS ONLY. r281 split the two screens so "create a year" and "top up what
+  //   was earned" are never confused; this does not reopen that: Run Earned Accrual keeps its own page, and
+  //   nothing earned is ever created ahead of time.
+  const earnedLines = engineRows.filter((r) => r.outcome === 'earned_method');
+  const annualLeaveLines = earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave);
+  let accrual: LeaveGenerationAccrual | null = null;
+  let accrued: EarnedAccrualResult['pairs'] = [];
+  if (earnedLines.length > 0) {
+    const skippedFutureYear = today < `${year}-01-01`;
+    accrual = {
+      annualLeaveLines: annualLeaveLines.length,
+      notAnnualLeaveLines: earnedLines.length - annualLeaveLines.length,
+      skippedFutureYear,
+      asOf: null,
+      posted: 0,
+      upToDate: 0,
+      days: 0,
+      byLeaveType: [],
+      error: null,
+    };
+    if (annualLeaveLines.length > 0 && !skippedFutureYear) {
+      accrual.asOf = asOfLate;
+      try {
+        const acc = await accrueEarnedLeave(ctx, {
+          asOf: asOfLate,
+          leaveTypeIds: [...new Set(annualLeaveLines.map((r) => r.leaveTypeId))],
+          employmentIds: [...new Set(annualLeaveLines.map((r) => r.employmentId))],
+          dryRun,
+        });
+        accrued = acc.pairs;
+        const reachedPairs = acc.breakdown.reduce((n, g) => n + g.employeeCount, 0);
+        accrual.posted = acc.granted;
+        accrual.upToDate = reachedPairs - acc.granted;
+        accrual.days = round2(acc.breakdown.reduce((n, g) => n + g.entitlementGenerated, 0));
+        accrual.byLeaveType = summariseByLeaveType(acc);
+      } catch (e) {
+        accrual.error = (e as Error).message || 'Earned accrual failed.';
+      }
+    }
+  }
+  // Which engine lines the accrual reached. Only an Annual Leave `earned_method` line can be — the accrual was
+  // scoped to exactly those pairs — and the guard says so rather than trusting the scope to have held.
+  const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, a.days]));
+  const earnedAccrualOf = (r: LeaveYearGrantRow): LeaveGenerationLine['earnedAccrual'] => {
+    if (r.outcome !== 'earned_method' || r.earnedMethodNotAnnualLeave) return null;
+    const days = accruedBy.get(`${r.employmentId}|${r.leaveTypeId}`);
+    if (days === undefined) return null;
+    return days > 0 ? 'topped_up' : 'up_to_date';
+  };
+
+  const lines = await withTenant(ctx, (tx) => nameLines(tx, engineRows, earnedAccrualOf));
   const reached = new Set(engineRows.map((r) => r.employmentId));
   // ⚠️ `already_open` COUNTS AS PASSED, and getting this wrong makes the summary actively misleading.
   // The reporter's figures are "235 Successful / 3 Failed", per EMPLOYEE. On a re-run — which is the
@@ -289,8 +414,14 @@ async function generate(
   // `already_open`, and counting those as failures would report the entire company as failed while their
   // entitlement sits correctly in the ledger. "Failed" here means the employee ended the run with no
   // entitlement for any selected type, which is the only reading an operator can act on.
+  //
+  // r301 — …and so does an earned Annual Leave line the accrual REACHED, topped up or already up to date:
+  // that employee's entitlement for the type is on the ledger. A line it did not reach stays exactly as it
+  // was, including a future year's, whose days have not been earned yet.
   const passed = new Set(
-    engineRows.filter((r) => r.outcome === 'granted' || r.outcome === 'already_open').map((r) => r.employmentId),
+    engineRows
+      .filter((r) => r.outcome === 'granted' || r.outcome === 'already_open' || earnedAccrualOf(r) !== null)
+      .map((r) => r.employmentId),
   );
   const employeesPassed = passed.size;
   const employeesFailed = reached.size - employeesPassed;
@@ -308,6 +439,7 @@ async function generate(
     ...counts,
     lines,
     decidedBy,
+    accrual,
   };
   if (dryRun) return result;
 
@@ -357,7 +489,10 @@ async function generate(
       aggregateId: run.id,
       eventType: 'leave-generation.run',
       actor: actorOf(ctx),
-      payload: { year, leaveTypeIds, targetMode, criteriaAxes: Object.keys(criteria), employeesSelected: targets.length, granted: counts.granted, skipped: counts.skipped, forfeits: counts.forfeits, employeesPassed, employeesFailed },
+      // r301 — the earned half rides the same event as COUNTS and a failed flag: the accrual engine appends
+      // its own `leave.earned-accrual.run` with the scope, and an error message is free text that has no
+      // business in an immutable log.
+      payload: { year, leaveTypeIds, targetMode, criteriaAxes: Object.keys(criteria), employeesSelected: targets.length, granted: counts.granted, skipped: counts.skipped, forfeits: counts.forfeits, employeesPassed, employeesFailed, earnedAccrual: accrual ? { posted: accrual.posted, upToDate: accrual.upToDate, days: accrual.days, skippedFutureYear: accrual.skippedFutureYear, failed: accrual.error !== null } : null },
     });
     return run.id;
   });
@@ -397,8 +532,38 @@ async function resolveDecidedBy(
   return out;
 }
 
+/**
+ * r301 — the "Earned Annual Leave to add" rows, one per leave type, read off the accrual's own pairs (which
+ * are its breakdown unrolled — see `EarnedAccrualResult.pairs`). The name comes from the breakdown the same
+ * engine returned, so this reads no table of its own.
+ */
+function summariseByLeaveType(acc: EarnedAccrualResult): LeaveGenerationAccrual['byLeaveType'] {
+  const nameOf = new Map(acc.breakdown.map((g) => [g.leaveTypeId, g.leaveTypeName]));
+  const byType = new Map<string, LeaveGenerationAccrual['byLeaveType'][number]>();
+  for (const p of acc.pairs) {
+    let row = byType.get(p.leaveTypeId);
+    if (!row) {
+      row = { leaveTypeId: p.leaveTypeId, leaveTypeName: nameOf.get(p.leaveTypeId) ?? p.leaveTypeId, posted: 0, upToDate: 0, days: 0 };
+      byType.set(p.leaveTypeId, row);
+    }
+    if (p.days > 0) {
+      row.posted += 1;
+      row.days = round2(row.days + p.days);
+    } else {
+      row.upToDate += 1;
+    }
+  }
+  return [...byType.values()].sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName));
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 /** Attach the employee and leave-type names the error table and the CSV need. IDs stay, names are added. */
-async function nameLines(tx: Tx, rows: LeaveYearGrantRow[]): Promise<LeaveGenerationLine[]> {
+async function nameLines(
+  tx: Tx,
+  rows: LeaveYearGrantRow[],
+  earnedAccrualOf: (r: LeaveYearGrantRow) => LeaveGenerationLine['earnedAccrual'],
+): Promise<LeaveGenerationLine[]> {
   if (rows.length === 0) return [];
   const empIds = [...new Set(rows.map((r) => r.employmentId))];
   const typeIds = [...new Set(rows.map((r) => r.leaveTypeId))];
@@ -418,6 +583,7 @@ async function nameLines(tx: Tx, rows: LeaveYearGrantRow[]): Promise<LeaveGenera
     // scoped to one company, and a nameless line in an error table is a line nobody can act on.
     employeeName: empName.get(r.employmentId) ?? r.employmentId,
     leaveTypeName: typeName.get(r.leaveTypeId) ?? r.leaveTypeId,
+    earnedAccrual: earnedAccrualOf(r),
   }));
 }
 

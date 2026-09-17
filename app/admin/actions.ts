@@ -70,6 +70,7 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 // the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
 // engine has one entry point from the app layer instead of two.
 import { runLeaveGeneration } from '@/packs/leave/service';
+import { leaveGenerationMessages } from '@/lib/leave-generation-message';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
 // cannot disagree about which rows exist.
@@ -1210,7 +1211,12 @@ export async function openLeaveYearAction(formData: FormData) {
   }
   // Localised HERE before the redirect (the dcd8e32f convention): ToastFromQuery renders the raw string, so
   // an i18n key in the URL would surface to HR verbatim.
-  okToast(GENERATE, t('generateToast', { year, granted: res.granted, skipped: res.skipped, forfeits: res.forfeits }));
+  //
+  // r301 (e5018593) — ONE message for both halves of the run, composed from the result by one pure function
+  // (lib/leave-generation-message.ts). A failed earned accrual rides `?error=` beside it: the entitlement is
+  // committed and the toast says so, and the error says the earned part did not run and where to run it.
+  const message = leaveGenerationMessages((key, values) => t(key as never, values as never), res);
+  okToast(GENERATE, message.toast, message.error);
 }
 
 export async function assignRoleAction(formData: FormData) {
