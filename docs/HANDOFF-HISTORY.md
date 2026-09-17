@@ -1,3 +1,96 @@
+## r303 (2026-09-17) — My Leave dashboard, Leave Summary explanations, inclusive Custom Rounding. `main@37ab0667`, **migrations 0472 + 0473**.
+
+Closed and DEPLOYED: `6c9802c9`, `31492f74`, `05db6aa7`. Gate: **918 files — equal to the suite file count — 13,978 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `gate:shadow` **PASS 389/389**. `next build` exit 0.
+Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 37ab0667.
+
+Every item was adversarially verified; every verifier found defects the builders' tests did not. Leave-money and security
+defects were hand-fixed; each fix re-derived red.
+
+### 6c9802c9 — My Leave dashboard (two verifications)
+
+- **0472 `app.own_leave_request_approvals` / `own_leave_request_cancellations`**: SECURITY DEFINER, names only, for requests
+  the caller OWNS (employment.person_id = app_user.person_id); no admin branch; person RLS untouched. Verifier 1 proved
+  `SET search_path = public` let a TEMP `app_user` table return a colleague's approver — now `pg_catalog, public, pg_temp`
+  with every relation qualified (0312's rule). **HR's free-text reason on an on-behalf cancellation is never returned**
+  (the dialog never told HR the employee would read it; the notification never carried it).
+- **Figures (decision, reverses the build note):** Entitlement / Earned so far / Taken are the leave year's (breakdown read
+  at the year's last day); **Balance, Pending and You can apply for are the Apply form's own** (`leaveTypeApplySummary`),
+  so the page and the form never disagree. Verifier 1 proved the year-balance version disagreed whenever leave was booked
+  into next year or next year's entitlement was granted early. A line under Balance itemises rows dated after the year
+  ("Includes next leave year: 14.00 days granted and 2.00 days booked", from the rows; a vaguer sentence when they don't
+  itemise). The Details column adds up for the year (Available = year balance − the form's pending) and carries the same
+  fact as a footnote.
+- **Split rows** (partial cancellation) read the ROOT request's chain, submission date and per-date outcome through
+  `leave-request.split` lineage; a pre-r299 split with no lineage shows "Approved by" with no levels and no Applied date.
+  **A given-back day reads Cancelled on every row of the application** — derived from the current per-date rows of the
+  whole family (and, for splits before r302 whose rows stayed on the root, from a cancelled row spanning the date).
+- Ring arcs = legend (Taken, Pending approval, You can apply for / Remaining, Not earned yet), Balance in the centre.
+- **Year selector** offers exactly the selections whose cycles hold rows under the cards' own mapping (N years back = N
+  cycles back from today's), and a leave year that ended before the hire date is neither offered nor shown.
+- Per-date outcome list: a Cancelled pill; dates in the viewer's format.
+
+### 31492f74 — Leave Summary explanations (HR only)
+
+- `leaveEntitlementBreakdown(…, { derivation: true })` builds the derivation in the same ledger loop as the figures;
+  a pure renderer prints a list only when it sums EXACTLY to its figure. Verifier ran the merge-base engine as an oracle
+  across a wide fixture matrix plus fuzzed ledgers: **no figure moved** except the classifier change below.
+- **`sys:a2c_recalc:` rows are system corrections** (were counted as HR adjustments). HR's Employee Balances Adjustment
+  column and export change for Anniversary-to-Calendar first-year employees with a reversal row (e.g. 9.50 → 0.00) — and
+  the grid now adds up where it did not (verified). **Owed to the reporter: say so.**
+- Sentences only on Employee Balances and Personnel, Personnel only for `isAdmin(s)` (a second guard; the page already
+  requires admin). My Leave never requests the derivation.
+- Hand-fixed: a status sentence said "No entitlement table applies, so nothing is credited" above a list of credits
+  (Replacement Leave with Leave Credits; a year granted before its eligibility rule expired) — a with-credits variant now;
+  English band plurals.
+
+### 05db6aa7 — Custom Rounding: From / To / Round To, inclusive
+
+- **Engine decision (the builder's first version moved figures):** compare in THOUSANDTHS — a band matches when
+  from×1000 ≤ fk ≤ to×1000 + 9 (to 0.99 also takes 1.000); no match keeps the raw value. The plan's premise "every input is
+  2dp" is FALSE for full grants of a template's days (no decimal limit), and rounding to 2dp first moved 14.397 from 14.00
+  to 14.50. A third decimal is now placed by the first two, so every stored table gives exactly its old results. The
+  approved plan's line "worked out to two decimal places before the table is applied" is therefore not literally how it
+  works; the promise it serves (nothing falls between 0.24 and 0.25) holds.
+- **0473** converts every table valid under the old rules with from' = ceil2(from), to' = ceil2(to) − 0.01 (integer
+  arithmetic; a JS-compatible tie path for half-thousandths), drops rows covering no 2dp decimal, leaves old-malformed
+  tables untouched and names them, WARNS for a From = To table (old rules refused it, new accept it: starts rounding) and
+  for a table with 3dp figures (3dp leave figures can round differently). Verifier: equivalence exact through the real SQL
+  on 234 tables; classification and counts exact; guarded against a hand-written 1e131071 aborting the deploy.
+- Out-of-plan fix kept: `app/admin/actions.ts` passed a string to `fail()`, so every refusal on the leave-type rules form
+  (max balance, carry %, accrual day…) read "undefined" on main.
+- Refusal message capped at ten sentences (twenty clashing rows produced a 38 KB redirect URL).
+
+### WHAT THE DEPLOY LOG SHOWED ON PRODUCTION (0473) — AND A CORRECTION OWED TO THE REPORTER
+
+`0473 summary: 4 leave type(s) carry a rounding table; 4 converted (13 rows in, 13 rows out, 0 dropped); 0 figures with more
+than two decimals; 0 malformed; 0 warnings.` The 2026-08-07 snapshot was stale on two of them:
+
+- **AL** held `[0–0.24)→0, [0.24–0.49)→0.5, [0.49–0.74)→0.5, [0.74–0.99)→1` — the reporter's own attempt to enter their
+  table in the OLD editor (From filled in from the row above). Under the old rules that meant 0.00–0.23 → 0, 0.24–0.48 → 0.5,
+  0.49–0.73 → 0.5, 0.74–0.98 → 1, and 0.99 uncovered. 0473 preserved exactly that, so AL now DISPLAYS as 0.00–0.23 /
+  0.24–0.48 / 0.49–0.73 / 0.74–0.98 (with a gap warning at 0.99). **Tell the reporter: the table they typed is not the one
+  they described (0.24 rounds to 0.5 and 0.99 is not rounded); open AL's Custom Rounding table and enter 0.00–0.24 → 0.00,
+  0.25–0.49 → 0.50, 0.50–0.74 → 0.50, 0.75–0.99 → 1.00 as described — it can be typed exactly that way now.**
+- **ANNUAL** had been re-saved as 0.39 / 0.69 bounds (not 0.40 / 0.70): converted to 0.00–0.38 / 0.39–0.68 / 0.69–0.99.
+- CGL and CPL: the 0414 shape, converted to 0.00–0.39 / 0.40–0.69 / 0.70–0.99.
+
+### DEPLOY-DAY RISKS (recorded, not removed)
+
+- Between `db:migrate` and the restart the OLD server reads converted tables: figures ending .39/.69/.99 briefly unrounded;
+  a rounding-table SAVE from the old editor in that window stores an old-style table the new rules read as overlapping, so
+  that type stops rounding until an admin re-saves it. Owner check after deploy: open each custom rounding table's editor
+  (or `select code, rounding_bands from leave_type where rounding_method = 'custom'`) — any overlap error means re-save.
+- `accrue-earned` (1st of the month, 02:00) must not overlap a release: new engine on unconverted tables.
+
+### NOT DONE / KNOWN
+
+- No dev-server render of /leave, Employee Balances or Personnel this round: the auto-mode classifier refused
+  `pnpm db:seed` and the dev DB has no users. Rendering is covered by DOM tests in six locales only.
+- 0473's shape counts on production were not measured beforehand (production reads refused); the deploy log is the record.
+- `ownLeaveRejections` returns a report's rejection to their manager/HR through event RLS; no page passes another person's ids.
+- Personnel's Available is read at today while its breakdown uses `?asOf`; the sentence now says they differ.
+- Five non-English translations for the new sentences have not been reviewed by a native speaker.
+
 ## r302 (2026-09-17) — Cancel Approved Leave, and the balance defects the verifier found under it. `main@bbc024e9`, **migration 0471**.
 
 Closed and DEPLOYED: `83511d3b`. Gate: **903 files — equal to the suite file count — 13,717 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `gate:shadow` **PASS 387/387**. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` bbc024e9. The deploy log's 0471 NOTICE: **all 19 existing production leave types keep employee cancellation ON** (no notice, re-approval, no notification).
