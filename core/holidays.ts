@@ -557,7 +557,9 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
  *
  * Exact-equivalence rules, each pinned by test/r298-holiday-memo.test.ts:
  *  - an employment with MORE THAN ONE open assignment is resolved ON ITS OWN: `holidayDatesFor` joins an
- *    arbitrary one via `.limit(1)`, and the memo must not pick a different one than it would;
+ *    arbitrary one via `.limit(1)`, and the memo must not pick a different one than it would. The database
+ *    forbids that state (`assignment_no_overlap`, migration 0001), so this is defence in depth, kept because
+ *    core/absence-days.ts makes the same promise and a relaxed constraint must not change anyone's calendar;
  *  - the open-assignment predicate is the resolver's own (valid_to IS NULL AND superseded_at IS NULL);
  *  - an id with no visible employment row maps to an empty Set, as `holidayDatesFor`'s `if (!emp)` does;
  *  - the inputs are read through the caller's `tx`, so RLS hides from this exactly what it hides from the
@@ -602,17 +604,17 @@ export async function holidayDatesByEmployment(
       out.set(id, new Set<string>());
       continue;
     }
-    const window = { employmentId: id, startDate, endDate };
+    const one = { employmentId: id, startDate, endDate };
     if ((openCount.get(id) ?? 0) > 1) {
       // Ambiguous open assignment — resolve this one alone rather than guess which row `.limit(1)` takes.
-      out.set(id, await holidayDatesFor(tx, window));
+      out.set(id, await holidayDatesFor(tx, one));
       continue;
     }
     // JSON, not a joined string: null and '' stay distinct, and no value can forge a separator.
     const key = JSON.stringify([e.companyId, e.workState, e.holidayGroupId, locationByEmp.get(id) ?? null]);
     let dates = memo.get(key);
     if (!dates) {
-      dates = await holidayDatesFor(tx, window);
+      dates = await holidayDatesFor(tx, one);
       memo.set(key, dates);
     }
     out.set(id, new Set(dates));
