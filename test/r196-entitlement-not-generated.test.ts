@@ -781,7 +781,9 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     expect(bal[ENTITLEMENT_STATUS_TIP_KEY[REMEDY_STATUS]!]).toContain('frozen');
     expect(bal[ENTITLEMENT_STATUS_TIP_KEY[REMEDY_STATUS]!]).toContain('country pack');
     // Neither of the two skip states may be phrased as an instruction to run it.
-    expect(bal.statusEarnedAccrualTip).toContain('Generate Entitlement does not grant it');
+    // r301 (e5018593) — Generate Entitlement now ADDS what an earned Annual Leave type has earned so far, so the
+    // copy no longer says it does not grant it; it still must not read as the one instruction to run it.
+    expect(bal.statusEarnedAccrualTip).toContain('nothing has been posted for this leave year yet');
     expect(bal.statusEarnedAccrualTip).not.toContain('Run Generate Entitlement');
     expect(bal.statusZeroEntitlementTip).toContain('will not change the figure');
     expect(bal.statusZeroEntitlementTip).not.toContain('Run Generate Entitlement');

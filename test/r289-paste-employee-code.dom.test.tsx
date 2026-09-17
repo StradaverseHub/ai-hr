@@ -63,6 +63,8 @@ const genResult = (selected: number): LeaveGenerationResult => ({
   forfeits: 0,
   lines: [],
   decidedBy: [],
+  // r301 (e5018593) — no earned line in this fixture, so no earned Annual Leave half.
+  accrual: null,
 });
 let genPayloads: Parameters<Parameters<typeof GenerateForm>[0]['previewAction']>[0][] = [];
 const genPreview = vi.fn(async (p: (typeof genPayloads)[number]) => {

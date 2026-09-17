@@ -96,9 +96,12 @@ export function ok(path: string): never {
 /** Cluster dcd8e32f — like ok(), but also surfaces an ALREADY-LOCALISED success message through the
  *  globally mounted ToastFromQuery (app/layout.tsx reads ?toast= via useSearchParams). Localise the text
  *  before calling — ToastFromQuery renders the raw string, so never pass an i18n key/code in the URL. */
-export function okToast(path: string, msg: string): never {
+export function okToast(path: string, msg: string, error?: string | null): never {
   revalidatePath(path);
-  redirect(`${path}?toast=${encodeURIComponent(msg)}`);
+  // r301 (e5018593) — an OPTIONAL localised error beside the success, for an operation that committed and
+  // then had a second, separate part fail (Generate Entitlement's earned accrual). ToastFromQuery fires both;
+  // omitted, the URL is byte-identical to before.
+  redirect(`${path}?toast=${encodeURIComponent(msg)}${error ? `&error=${encodeURIComponent(error)}` : ''}`);
 }
 
 /** 9b0503ac — success return for entitlement-area saves (policy add/edit/remove, scheme-entitlement
