@@ -1,3 +1,67 @@
+## r300 (2026-09-17) — Leave Credit, after three verifications each found money defects the builder's tests did not. `main@769e6d9a`, **migrations 0469 + 0470**.
+
+Closed and DEPLOYED: `3fb1a611`. Gate: **895 files — equal to the suite file count — 13,596 tests, 0 AssertionErrors**,
+first pass, 14 chunks. `gate:shadow` **PASS 386/386** (384 → 386). `next build` exit 0. Deployed: rsync dry-run zero lines,
+active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 769e6d9a. The deploy log's own 0469 NOTICE settles a fact
+we could not read: **production had 0 toil_accrual rows**. The `toil` module is still NOT granted — Leave Credit is dormant
+on production until the owner turns the add-on on.
+
+### THE SHAPE OF THE ROUND: VERIFY, FIX, VERIFY AGAIN — THREE TIMES
+
+1. **Builder** (9 commits): register migration 0469, HR add/reverse, day-type gate on the request path, cancellation
+   give-back, Leave Credit screen with Rules tab moved off Company Rules, /admin/toil redirect, six locales.
+2. **Verifier 1** found: expired credits over-valued (statutory branch pricing whole declared minutes, ignoring the used
+   part — 3 days on one rest day 384.76 vs 230.76); HR add/reverse promising overtime outcomes payroll cannot keep; HR could
+   credit themselves (366 days); Leave Adjustments/import refused RL on a module-OFF tenant (HR's only lever); pending
+   Emergency Leave edits newly refused; a stored August policy would go live the instant the module was granted.
+   Money + security hand-fixed; non-money deploy-day items by one fix-pass agent; D5 decided by me (below).
+3. **Verifier 2**, on the INTEGRATED tree, found my payroll fix was still wrong three ways — a re-run prefill never zeroes a
+   stale overtime figure (a draft whose only overtime was the credited day kept paying it), a reversal after a prefill named
+   no draft, and a transferred employee's OLD company was not checked — plus my own early return broke a guard, the D5
+   first-install check keyed on module SCOPE, and the Leave Credit health replacement swallowed r299's blocking finding.
+   All hand-fixed (`9dd5e77e`, `5bd2ce22`), each re-derived red.
+
+### DECISIONS the ticket did not settle
+
+- **HR add/reverse on a date with recorded overtime is REFUSED while ANY payroll run exists for the date's month or the
+  next — draft included, any company.** I first allowed drafts with a "re-run the prefill" banner; the verifier proved that
+  advice false. Payroll only excludes a credited day at prefill and `overtime_amount` is a per-batch aggregate, so this is
+  the ADR-0033 run-state question in its sharpest form; refusing is the only rule that keeps the screen's promise true.
+  HR's remedy: act before payroll starts, or delete the draft. **Deliberately conservative**: a sister company's run
+  refuses too (overtime follows the company that employed the person that day).
+- **Migration 0470 `app.payroll_run_exists_for_periods(text[])`, SECURITY DEFINER, yes/no only.** payroll_batch RLS shows a
+  run only to an admin for its company, so asking under RLS let a company-scoped admin miss a sister company's run
+  (mutation: SECURITY INVOKER → the cross-company test goes red). GRANT EXECUTE to ai_hr_app.
+- **Request-path and HR credits carry NO valuation day type** (`worked_day_kind` keeps the kind for screens): expiry pays
+  ORP × remaining days, 296fc027's honest basis. The roster/auto paths still price whole minutes — pre-existing, recorded.
+- **The register is invisible to an employee who never held a credit**: consumption and give-back read, write and log
+  nothing, and the per-date assertion is skipped. Reading the type's ROLE (needed: production's RL is `role='replacement'`,
+  code `RL`) had made every RL approval on a module-off tenant log `toil.consumption.shortfall` and reach an assertion main
+  never ran. Now byte-for-byte main there (verifier's deploy-day scratch: approve/cancel/edit RL with zero credits all pass).
+- **D5 — a toil_policy saved BEFORE the module was ever installed is kept but its three live switches are turned off on a
+  FIRST install** (judged across every scope). `core/module-activation.ts` documents D4 "reactivation must never re-seed" —
+  that is about edits made while owning the module; this is configuration that pre-dates the purchase, and the plan
+  promised "nothing uses it until you do". Reactivation and later companies untouched.
+- Leave Adjustments / import refuse the Replacement Leave type ONLY while the register is live (toil on); the Leave Credit
+  health finding replaces only TABLE findings.
+- HR cannot add/preview/reverse on their own record; the worked date must be within service; consumption is guarded against
+  a concurrent reversal; expiry dates use `todayInKualaLumpur`.
+
+### OWED TO THE OWNER BEFORE THE ADD-ON IS GRANTED (I could not read production)
+
+- `select status, company_id from tenant_module where module_code='toil'` — if ANY row exists (a past trial), activation is
+  a reactivation and the August policy goes live untouched. If none, the first-install switch-off applies.
+- `select enabled, employee_request_enabled, auto_accrue_on_approval from toil_policy` — what would go live.
+- Pending RL leave with per-date approval rows created before 2026-08-05 (verifier: data-dependent; gated now for
+  employees without credits, untested against real rows).
+
+### NOT DONE / KNOWN
+
+- Employee-request, attendance-auto and roster credit paths still have no payroll-run check (pre-existing double-pay
+  window after a processed run). Off-day valuation stays on the ORP fallback — no statutory source in the repo.
+- The Leave Credit menu row is hidden when the module lapses with credits outstanding (typed URL / Adjustments note only).
+- `r298`'s `/me` tour step and Organization statutory cards still as recorded there.
+
 ## r299 (2026-09-17) — Earned Accrual is Annual Leave only, decided by one predicate; Leave Credit held back. `main@5c3ecb8a`, **no migration**.
 
 Closed and DEPLOYED: `3de1453a`. **Built but NOT shipped: `3fb1a611` Leave Credit** (branch `build/r299-credit`,
