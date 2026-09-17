@@ -99,6 +99,8 @@ import {
 import {
   accrueEarnedLeave,
   asOfForLeaveYear,
+  isEarnedAccrualType,
+  isEarnedMethod,
   openLeaveYear,
   type EarnedAccrualResult,
   type LeaveYearGrantOutcome,
@@ -351,10 +353,13 @@ async function generate(
   // • WHO: the employees and Annual Leave types of the `earned_method` lines whose r299 flag is false, and
   //   nobody else. The employee list is passed as `employmentIds`, where EMPTY MEANS NOBODY — and it is
   //   never empty here anyway, because the call is skipped when there is no such line.
-  // • ⚠️ WHO IT DOES NOT REACH, STATED SO NOBODY READS IT AS COVERED: a pair that already has ANY accrual row
-  //   inside this leave year (a prior Run Earned Accrual, the monthly cron, a hire grant) is `already_open` to
-  //   the year-open, not `earned_method`, so it is not handed over here and whatever it has earned since is
-  //   left to the cron and the manual screen. It counts as passed, exactly as before this round.
+  // • ⚠️ …AND THE PAIRS THE YEAR-OPEN CALLS `already_open` ON AN EARNED ANNUAL LEAVE TYPE (parent hand-fix).
+  //   The year-open decides "already open" (ANY accrual row inside the year — a prior Run Earned Accrual, the
+  //   monthly cron, a hire grant) BEFORE it reads the earning method, so on any tenant where the cron has run
+  //   once, every earned Annual Leave pair comes back `already_open`, never `earned_method`. Handing over only
+  //   `earned_method` lines left the plan's "works out the earned Annual Leave straight away" true only for
+  //   employees with no row yet (the builder measured it on the dev database). The accrual only ever adds the
+  //   SHORTFALL, so handing an up-to-date pair over is safe: it reads "already up to date" and writes nothing.
   // • WHEN: at `asOfLate`, the late edge the selection already used — today for the current year, 31
   //   December for a past one (`asOfForLeaveYear`).
   // • ⚠️ NEVER A FUTURE YEAR. `asOfForLeaveYear` maps a future year to its 31 December, which was a decision
@@ -369,10 +374,28 @@ async function generate(
   //   was earned" are never confused; this does not reopen that: Run Earned Accrual keeps its own page, and
   //   nothing earned is ever created ahead of time.
   const earnedLines = engineRows.filter((r) => r.outcome === 'earned_method');
-  const annualLeaveLines = earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave);
+  const openTypeIds = [...new Set(engineRows.filter((r) => r.outcome === 'already_open').map((r) => r.leaveTypeId))];
+  const earnedAnnualOpenTypeIds = new Set<string>(
+    openTypeIds.length === 0
+      ? []
+      : (
+          await withTenant(ctx, (tx) =>
+            tx
+              .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, accrualMethod: leaveType.accrualMethod })
+              .from(leaveType)
+              .where(inArray(leaveType.id, openTypeIds)),
+          )
+        )
+          .filter((t) => isEarnedAccrualType(t) && isEarnedMethod(t.accrualMethod))
+          .map((t) => t.id),
+  );
+  const openAnnualLeaveLines = engineRows.filter(
+    (r) => r.outcome === 'already_open' && earnedAnnualOpenTypeIds.has(r.leaveTypeId),
+  );
+  const annualLeaveLines = [...earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave), ...openAnnualLeaveLines];
   let accrual: LeaveGenerationAccrual | null = null;
   let accrued: EarnedAccrualResult['pairs'] = [];
-  if (earnedLines.length > 0) {
+  if (earnedLines.length > 0 || openAnnualLeaveLines.length > 0) {
     const skippedFutureYear = today < `${year}-01-01`;
     accrual = {
       annualLeaveLines: annualLeaveLines.length,
@@ -409,7 +432,8 @@ async function generate(
   // scoped to exactly those pairs — and the guard says so rather than trusting the scope to have held.
   const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, a.days]));
   const earnedAccrualOf = (r: LeaveYearGrantRow): LeaveGenerationLine['earnedAccrual'] => {
-    if (r.outcome !== 'earned_method' || r.earnedMethodNotAnnualLeave) return null;
+    const openAnnual = r.outcome === 'already_open' && earnedAnnualOpenTypeIds.has(r.leaveTypeId);
+    if (!openAnnual && (r.outcome !== 'earned_method' || r.earnedMethodNotAnnualLeave)) return null;
     const days = accruedBy.get(`${r.employmentId}|${r.leaveTypeId}`);
     if (days === undefined) return null;
     return days > 0 ? 'topped_up' : 'up_to_date';

@@ -819,7 +819,9 @@ export type EarnedAccrualScope = {
 export async function previewEarnedAccrualAction(
   scope: EarnedAccrualScope,
 ): Promise<{ rows?: EarnedAccrualGroup[]; asOf?: string; error?: string }> {
-  const s = await getSession();
+  // r301 (parent hand-fix) — requireAdmin, not getSession: the page is admin-only but a server action is its own
+  // endpoint, and accrueEarnedLeave carries no admin check. The same hole 4b0e76ae closed on openLeaveYearAction.
+  const s = await requireAdmin();
   try {
     const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
     const { breakdown } = await accrueEarnedLeave(s, {
@@ -843,7 +845,7 @@ export async function previewEarnedAccrualAction(
 export async function runEarnedAccrualAction(
   scope: EarnedAccrualScope,
 ): Promise<{ granted?: number; forfeits?: number; error?: string }> {
-  const s = await getSession();
+  const s = await requireAdmin();
   try {
     const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
     const { granted, forfeits } = await accrueEarnedLeave(s, {

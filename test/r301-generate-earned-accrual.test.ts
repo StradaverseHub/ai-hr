@@ -313,7 +313,7 @@ describe('§2 the commit equals the preview', () => {
 // ── §3 ───────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§3 running it again adds nothing', () => {
-  it('a second commit posts no row: the Annual Leave pairs now read already_open and pass', async () => {
+  it('a second commit posts no row: the Annual Leave pairs read already_open, are handed over anyway, and are up to date', async () => {
     const al = await earnedAnnual();
     await hire('Aina');
     await hire('Chen');
@@ -324,10 +324,33 @@ describe('§3 running it again adds nothing', () => {
     const second = await runLeaveGeneration(ctx(), everyone(PAST));
     expect(await ledgerFor(al)).toEqual(rowsAfterFirst);
     expect(second.lines.filter((l) => l.leaveTypeId === al).every((l) => l.outcome === 'already_open')).toBe(true);
-    // No earned line was logged, so no accrual half — and the accrual engine was not even asked.
-    expect(second.accrual).toBeNull();
+    // Parent hand-fix — an already-open earned Annual Leave pair IS handed to the accrual (the cron makes every pair
+    // already_open on a live tenant); the shortfall is nil, so it reads up to date and writes nothing.
+    expect(second.accrual).toMatchObject({ annualLeaveLines: 2, posted: 0, upToDate: 2, days: 0 });
+    expect(second.lines.filter((l) => l.leaveTypeId === al).every((l) => l.earnedAccrual === 'up_to_date')).toBe(true);
     expect(second.employeesFailed).toBe(0);
-    expect(await eventCount('leave.earned-accrual.run')).toBe(1);
+  });
+
+  it('a pair the monthly run ALREADY OPENED this year is topped up to today by Generate (the cron case)', async () => {
+    const al = await earnedAnnual();
+    const a = await hire('Aina');
+    // An earlier accrual run inside THIS leave year, as the monthly cron would have posted: the year-open now calls
+    // the pair `already_open`, and before the hand-fix Generate never reached it.
+    const firstOfYear = `${YEAR}-01-31`;
+    await accrueEarnedLeave(ctx(), { asOf: firstOfYear, leaveTypeIds: [al], employmentIds: [a.employmentId] });
+    const before = await ledgerSum(al, a.employmentId);
+
+    const commit = await runLeaveGeneration(ctx(), everyone(YEAR));
+    const line = commit.lines.find((l) => l.employmentId === a.employmentId && l.leaveTypeId === al);
+    expect(line?.outcome).toBe('already_open');
+    const after = await ledgerSum(al, a.employmentId);
+    if (Number(TODAY.slice(5, 7)) > 1) {
+      // Earned more since 31 January: Generate adds it.
+      expect(after, 'Generate tops the already-opened pair up to today').toBeGreaterThan(before);
+      expect(line?.earnedAccrual).toBe('topped_up');
+    } else {
+      expect(line?.earnedAccrual).toBe('up_to_date');
+    }
   });
 
   it('a pair reached with NOTHING outstanding reads "already up to date": counted, passed, nothing posted', async () => {
