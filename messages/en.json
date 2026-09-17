@@ -9468,6 +9468,9 @@
     },
     "themeToggle": {
       "toggle": "Toggle theme"
+    },
+    "drawer": {
+      "close": "Close"
     }
   },
   "kb": {
@@ -10559,6 +10562,13 @@
     "requireMultiStep": "Require multi-step approval",
     "templatesHint": "Reusable approval chains you build once and assign to many leave types and companies.",
     "addTemplate": "Add template",
+    "drawerEditTitle": "Edit: {name}",
+    "templateUpdatedToast": "{name} updated",
+    "templateCreatedToast": "{name} created",
+    "discardTitle": "Discard your changes?",
+    "discardBody": "You changed this template and have not saved it.",
+    "discardKeep": "Keep editing",
+    "discardConfirm": "Discard",
     "editTemplate": "Edit",
     "duplicateTemplate": "Duplicate",
     "deleteTemplate": "Delete",

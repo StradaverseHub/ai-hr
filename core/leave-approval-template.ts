@@ -289,7 +289,9 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
       actor: actorOf(ctx),
       payload: { name: c.name, description: c.description, levels: c.levels },
     });
-    return { id: row.id };
+    // r304 — the name AS STORED (whitespace-collapsed by cleanTemplate) comes back with the id, so the
+    // "<name> created" confirmation names what was saved, not what was typed.
+    return { id: row.id, name: c.name };
   });
 }
 
@@ -321,7 +323,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
       actor: actorOf(ctx),
       payload: { before: { name: before.name, levels: sanitizeLevels(before.levels) }, after: c },
     });
-    return { id };
+    return { id, name: c.name };
   });
 }
 

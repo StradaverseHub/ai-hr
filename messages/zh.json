@@ -9468,6 +9468,9 @@
     },
     "themeToggle": {
       "toggle": "切换主题"
+    },
+    "drawer": {
+      "close": "关闭"
     }
   },
   "kb": {
@@ -10559,6 +10562,13 @@
     "requireMultiStep": "需要多级审批",
     "templatesHint": "可重复使用的审批链，构建一次即可分配给多种假期类型和公司。",
     "addTemplate": "添加模板",
+    "drawerEditTitle": "编辑：{name}",
+    "templateUpdatedToast": "已更新 {name}",
+    "templateCreatedToast": "已创建 {name}",
+    "discardTitle": "放弃您的更改？",
+    "discardBody": "您已更改此模板，但尚未保存。",
+    "discardKeep": "继续编辑",
+    "discardConfirm": "放弃",
     "editTemplate": "编辑",
     "duplicateTemplate": "复制",
     "deleteTemplate": "删除",

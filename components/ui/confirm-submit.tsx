@@ -181,23 +181,33 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel,
   variant = 'destructive',
   onConfirm,
   onCancel,
+  onCloseAutoFocus,
 }: {
   title?: string;
   description?: string;
   confirmLabel?: string;
+  /** r304 — the dismiss button's words when "Cancel" would be ambiguous (the drawer's "Keep editing"). */
+  cancelLabel?: string;
   variant?: ButtonProps['variant'];
   onConfirm: () => void;
   onCancel: () => void;
+  /** r304 — where focus goes when the dialog closes. It has no trigger, so Radix's own return lands on
+   *  <body>; a caller inside another dialog passes this to put focus back where the user was. */
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const t = useTranslations('components.confirmSubmit');
   return (
     <AlertDialog.Root open onOpenChange={(open) => { if (!open) onCancel(); }}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+        <AlertDialog.Content
+          onCloseAutoFocus={onCloseAutoFocus}
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
+        >
           <AlertDialog.Title className="text-base font-semibold">{title ?? t('title')}</AlertDialog.Title>
           {description ? (
             <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">{description}</AlertDialog.Description>
@@ -205,7 +215,7 @@ export function ConfirmDialog({
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" size="sm">
-                {t('cancel')}
+                {cancelLabel ?? t('cancel')}
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>

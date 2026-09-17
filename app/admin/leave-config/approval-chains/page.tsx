@@ -80,11 +80,14 @@ import { ApprovalChainPreview, type ChainPreviewLabels } from '../../leave-appro
  *
  * A SAVE MADE HERE RETURNS THROUGH ONE HOP — `app/admin/leave-approval/actions.ts` still redirects to
  * its own `PAGE` constant (`/admin/leave/approval`), which is a redirect stub as of a6fe37fc Round 5.
- * Round 2's rule 2 stands: no action changes signature and no new action is written. The constant was
+ * Round 2's rule 2 stands with ONE deliberate exception: no new action is written, and no action changes
+ * signature EXCEPT `saveApprovalTemplateAction`, which r304 (board 85875e4b) made RETURN its outcome
+ * instead of redirecting, so the template drawer can keep a refused save's edits on screen. Its only caller
+ * is the template manager below; the wiring on this page did not change. The constant was
  * left where it is deliberately — the migration order's Round 5 names the redirect constants it moves
  * (app/admin/_redirects.ts's five, and app/admin/actions.ts's LEAVE_REPLACEMENT) and this private one is
  * not among them. So the hop is real and its whole cost is that the stub must forward the query string,
- * or all 17 `?toast=` / `?error=` returns land here blank. test/leave-config-round4.test.ts pins the
+ * or every remaining `?toast=` / `?error=` return (14 since r304) lands here blank. test/leave-config-round4.test.ts pins the
  * forwarding loop by name rather than by token. (Before the cutover this was said out loud on the page
  * itself by `../preview-note.tsx`; that component came off at the cutover and was deleted with it,
  * because a real screen telling the administrator it is a preview is worse than no note.)

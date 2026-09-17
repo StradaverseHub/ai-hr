@@ -9468,6 +9468,9 @@
     },
     "themeToggle": {
       "toggle": "தீம் மாற்று"
+    },
+    "drawer": {
+      "close": "மூடு"
     }
   },
   "kb": {
@@ -10559,6 +10562,13 @@
     "requireMultiStep": "பல-நிலை ஒப்புதல் தேவை",
     "templatesHint": "ஒருமுறை உருவாக்கி பல விடுப்பு வகைகள் மற்றும் நிறுவனங்களுக்கு ஒதுக்கக்கூடிய மீண்டும் பயன்படுத்தக்கூடிய ஒப்புதல் சங்கிலிகள்.",
     "addTemplate": "வார்ப்புருவைச் சேர்",
+    "drawerEditTitle": "திருத்து: {name}",
+    "templateUpdatedToast": "{name} புதுப்பிக்கப்பட்டது",
+    "templateCreatedToast": "{name} உருவாக்கப்பட்டது",
+    "discardTitle": "உங்கள் மாற்றங்களை நிராகரிக்கவா?",
+    "discardBody": "இந்த வார்ப்புருவை மாற்றினீர்கள், ஆனால் இன்னும் சேமிக்கவில்லை.",
+    "discardKeep": "தொடர்ந்து திருத்து",
+    "discardConfirm": "நிராகரி",
     "editTemplate": "திருத்து",
     "duplicateTemplate": "நகலெடு",
     "deleteTemplate": "நீக்கு",

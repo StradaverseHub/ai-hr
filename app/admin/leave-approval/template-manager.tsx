@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, inputCls } from '@/components/ui';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { toast } from 'sonner';
+import { Badge, Button, ErrorBanner, inputCls } from '@/components/ui';
+import { ConfirmDialog, ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Drawer } from '@/components/ui/drawer';
 import { groupTemplateAssignments } from './assignment-groups';
 import { StepListEditor, kindLabelOf, type StepListLabels } from './step-list-editor';
 import { approversOf, isFixedLevelKind, type ApprovalLevel } from '@/lib/leave-approval-kinds';
@@ -118,9 +121,17 @@ export type TemplateManagerLabels = StepListLabels & {
   cancel: string;
 };
 
+/** r304 — what `saveApprovalTemplateAction` answers. A refusal carries the SERVICE's message; a success
+ *  carries the saved row's id (a created row does not exist on the client until the refresh lands, and
+ *  focus has to find it) and its name as stored. */
+export type SaveTemplateResult =
+  | { ok: true; id: string; name: string; created: boolean }
+  | { ok: false; error: string };
+
 /** Approval Template Creation actions (9b0d99f3 — section 1 of the Approval Workflow tab). */
 export type TemplateActions = {
-  saveTemplate: (fd: FormData) => void | Promise<void>;
+  /** r304 — RETURNS instead of redirecting, so a refused save keeps the drawer and its edits. */
+  saveTemplate: (fd: FormData) => Promise<SaveTemplateResult>;
   duplicateTemplate: (fd: FormData) => void | Promise<void>;
   setActive: (fd: FormData) => void | Promise<void>;
   deleteTemplate: (fd: FormData) => void | Promise<void>;
@@ -148,6 +159,14 @@ const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.
  * 9b0d99f3 — this component is now ONLY the "Approval Template Creation" card. The assignments table
  * (which template covers which company × leave type) split out into ApprovalAssignmentManager below,
  * so the page can head the two concerns separately. No behaviour changed on either side.
+ *
+ * r304 (board 85875e4b) — EDIT AND ADD OPEN THE FORM IN A SIDE DRAWER (components/ui/drawer.tsx), not
+ * inline under the list. The list stays behind it, dimmed, with the row being edited marked; a refused save
+ * keeps the drawer, the edits and the service's reason; a successful one closes it, refreshes the list,
+ * confirms "<name> updated" in the viewer's language and puts focus on that row's Edit button. Closing with
+ * unsaved changes asks first. ONE drawer: with a modal overlay nothing behind it can be clicked, so a second
+ * cannot open. The row actions (Duplicate, Set as default, Deactivate, Delete) are untouched — pinned
+ * byte-for-byte against main by test/r304-approval-template-drawer.dom.test.tsx.
  */
 export function ApprovalTemplateManager({
   templates,
@@ -164,7 +183,28 @@ export function ApprovalTemplateManager({
   /** Of those, the ones no longer in an active employment — what the departed-approver warning reads. */
   endedEmploymentIds?: readonly string[];
 }) {
+  const t = useTranslations('leaveApproval');
+  const router = useRouter();
   const [editing, setEditing] = useState<TemplateRow | 'new' | null>(null);
+  /* What the drawer SHOWS. It outlives `editing` by the length of the exit animation, so the panel slides
+     out with its form in it rather than emptying first. */
+  const [shown, setShown] = useState<TemplateRow | 'new' | null>(null);
+  /* Bumped on every open and used as the form's key: reopening the same template — even mid-exit — starts
+     from the saved values, never from a discarded session's state. */
+  const [session, setSession] = useState(0);
+  const [formStatus, setFormStatus] = useState<TemplateFormStatus>({ dirty: false, canSave: true });
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [justSaved, setJustSaved] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  const editButtons = useRef(new Map<string, HTMLButtonElement>());
+  /** The row whose Edit button takes focus once the drawer has finished closing after a save. */
+  const pendingFocus = useRef<string | null>(null);
+  const drawerSettled = useRef(true);
+  const [closedTick, setClosedTick] = useState(0);
+  /** Where the keyboard was when a close was asked for — "Keep editing" puts it back there. */
+  const beforeConfirm = useRef<HTMLElement | null>(null);
 
   const stepLabels = stepLabelBag(labels);
   const employeeName = (id: string) => {
@@ -184,6 +224,76 @@ export function ApprovalTemplateManager({
   const stepsPreview = (levels: ApprovalLevel[]) =>
     levels.map((l) => approversOf(l).map(approverText).join(` ${labels.orLabel} `)).join(' → ');
 
+  function openDrawer(target: TemplateRow | 'new') {
+    drawerSettled.current = false;
+    pendingFocus.current = null;
+    setEditing(target);
+    setShown(target);
+    setSession((n) => n + 1);
+    setFormStatus({ dirty: false, canSave: true });
+    setError(null);
+    setJustSaved(null);
+    setConfirmDiscard(false);
+  }
+
+  function closeDrawer() {
+    setEditing(null);
+    setConfirmDiscard(false);
+  }
+
+  /** X, Cancel, Escape and a click on the dimmed list all come here. Unsaved changes ask first. */
+  function requestClose() {
+    if (saving) return;
+    if (!formStatus.dirty) {
+      closeDrawer();
+      return;
+    }
+    const active = document.activeElement;
+    beforeConfirm.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    setConfirmDiscard(true);
+  }
+
+  function save(fd: FormData) {
+    setError(null);
+    startSaving(async () => {
+      const result = await actions.saveTemplate(fd);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      pendingFocus.current = result.id;
+      setJustSaved(result.id);
+      closeDrawer();
+      router.refresh();
+      toast.success(
+        result.created
+          ? t('templateCreatedToast', { name: result.name })
+          : t('templateUpdatedToast', { name: result.name }),
+      );
+    });
+  }
+
+  /* Focus the saved row's Edit button once the drawer is GONE (focusing it while the drawer is still sliding
+     out would be undone by the drawer's own focus return). A created row only exists after the refresh
+     lands, so this re-runs when `templates` changes. */
+  useEffect(() => {
+    const id = pendingFocus.current;
+    if (!id || !drawerSettled.current) return;
+    const button = editButtons.current.get(id);
+    if (!button) return;
+    button.focus();
+    pendingFocus.current = null;
+  }, [closedTick, templates]);
+
+  /* The saved row's highlight is brief: it says "this one", then gets out of the way. */
+  useEffect(() => {
+    if (!justSaved) return;
+    const timer = window.setTimeout(() => setJustSaved(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [justSaved]);
+
+  const editingId = editing && editing !== 'new' ? editing.id : null;
+
   return (
     <div className="space-y-6">
       {/* ── Approval templates ── */}
@@ -193,91 +303,171 @@ export function ApprovalTemplateManager({
             <div className="text-sm font-semibold">{labels.templatesTitle}</div>
             <p className="text-xs text-muted-foreground">{labels.templatesHint}</p>
           </div>
-          {editing === null && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setEditing('new')}>
-              {labels.addTemplate}
-            </Button>
-          )}
+          {/* r304 — no longer hidden while a template is open: the drawer's overlay already keeps it out of
+              reach, and a button that disappears and comes back moves the header under the pointer. */}
+          <Button type="button" variant="outline" size="sm" onClick={() => openDrawer('new')}>
+            {labels.addTemplate}
+          </Button>
         </div>
 
         <div className="space-y-3 p-4">
-          {templates.length === 0 && editing === null ? (
+          {templates.length === 0 ? (
             <p className="text-sm text-muted-foreground">{labels.noTemplates}</p>
           ) : (
             <ul className="space-y-2">
-              {templates.map((t) => (
-                <li key={t.id} className="rounded-xl border border-border bg-muted/10 p-3 text-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{t.name}</span>
-                        {t.isTenantDefault && <Badge variant="info">{labels.tenantDefault}</Badge>}
-                        <Badge variant={t.active ? 'accent' : 'default'}>
-                          {t.active ? labels.statusActive : labels.statusInactive}
-                        </Badge>
+              {templates.map((tpl) => {
+                const isEditing = editingId === tpl.id;
+                const isSaved = justSaved === tpl.id;
+                return (
+                  <li
+                    key={tpl.id}
+                    data-editing={isEditing ? '' : undefined}
+                    data-saved={isSaved ? '' : undefined}
+                    className={`rounded-xl border p-3 text-sm transition-colors ${
+                      isEditing
+                        ? 'border-border border-l-4 border-l-primary bg-primary/5'
+                        : isSaved
+                          ? 'border-primary/40 bg-primary/5 ring-2 ring-primary/30'
+                          : 'border-border bg-muted/10'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{tpl.name}</span>
+                          {tpl.isTenantDefault && <Badge variant="info">{labels.tenantDefault}</Badge>}
+                          <Badge variant={tpl.active ? 'accent' : 'default'}>
+                            {tpl.active ? labels.statusActive : labels.statusInactive}
+                          </Badge>
+                        </div>
+                        {tpl.description && <div className="text-xs text-muted-foreground">{tpl.description}</div>}
+                        <div className="text-xs text-muted-foreground">{stepsPreview(tpl.levels)}</div>
                       </div>
-                      {t.description && <div className="text-xs text-muted-foreground">{t.description}</div>}
-                      <div className="text-xs text-muted-foreground">{stepsPreview(t.levels)}</div>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setEditing(t)}>
-                        {labels.editTemplate}
-                      </Button>
-                      <form action={actions.duplicateTemplate}>
-                        <input type="hidden" name="templateId" value={t.id} />
-                        <Button type="submit" variant="ghost" size="sm">
-                          {labels.duplicateTemplate}
+                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                        <Button
+                          ref={(el) => {
+                            if (el) editButtons.current.set(tpl.id, el);
+                            else editButtons.current.delete(tpl.id);
+                          }}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDrawer(tpl)}
+                        >
+                          {labels.editTemplate}
                         </Button>
-                      </form>
-                      {t.active && (
-                        <form action={actions.setDefault}>
-                          {!t.isTenantDefault && <input type="hidden" name="templateId" value={t.id} />}
+                        <form action={actions.duplicateTemplate}>
+                          <input type="hidden" name="templateId" value={tpl.id} />
                           <Button type="submit" variant="ghost" size="sm">
-                            {t.isTenantDefault ? labels.unsetTenantDefault : labels.setTenantDefault}
+                            {labels.duplicateTemplate}
                           </Button>
                         </form>
-                      )}
-                      <form action={actions.setActive}>
-                        <input type="hidden" name="templateId" value={t.id} />
-                        <input type="hidden" name="active" value={t.active ? '0' : '1'} />
-                        <Button type="submit" variant="ghost" size="sm">
-                          {t.active ? labels.deactivateTemplate : labels.activateTemplate}
-                        </Button>
-                      </form>
-                      <form action={actions.deleteTemplate}>
-                        <input type="hidden" name="templateId" value={t.id} />
-                        <ConfirmSubmit
-                          size="sm"
-                          title={labels.deleteTemplate}
-                          description={labels.deleteTemplateConfirm}
-                          confirmLabel={labels.deleteTemplate}
-                        >
-                          {labels.deleteTemplate}
-                        </ConfirmSubmit>
-                      </form>
+                        {tpl.active && (
+                          <form action={actions.setDefault}>
+                            {!tpl.isTenantDefault && <input type="hidden" name="templateId" value={tpl.id} />}
+                            <Button type="submit" variant="ghost" size="sm">
+                              {tpl.isTenantDefault ? labels.unsetTenantDefault : labels.setTenantDefault}
+                            </Button>
+                          </form>
+                        )}
+                        <form action={actions.setActive}>
+                          <input type="hidden" name="templateId" value={tpl.id} />
+                          <input type="hidden" name="active" value={tpl.active ? '0' : '1'} />
+                          <Button type="submit" variant="ghost" size="sm">
+                            {tpl.active ? labels.deactivateTemplate : labels.activateTemplate}
+                          </Button>
+                        </form>
+                        <form action={actions.deleteTemplate}>
+                          <input type="hidden" name="templateId" value={tpl.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            title={labels.deleteTemplate}
+                            description={labels.deleteTemplateConfirm}
+                            confirmLabel={labels.deleteTemplate}
+                          >
+                            {labels.deleteTemplate}
+                          </ConfirmSubmit>
+                        </form>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
-          )}
-
-          {editing !== null && (
-            <TemplateForm
-              key={editing === 'new' ? 'new' : editing.id}
-              template={editing === 'new' ? null : editing}
-              action={actions.saveTemplate}
-              stepLabels={stepLabels}
-              labels={labels}
-              employees={employees}
-              endedEmploymentIds={endedEmploymentIds}
-              onCancel={() => setEditing(null)}
-            />
           )}
 
           <p className="text-[11px] text-muted-foreground">{labels.rolesGatedNote}</p>
         </div>
       </div>
+
+      <Drawer
+        open={editing !== null}
+        onOpenChange={(next) => {
+          if (!next) requestClose();
+        }}
+        title={shown === null || shown === 'new' ? labels.addTemplate : t('drawerEditTitle', { name: shown.name })}
+        onCloseAutoFocus={(event) => {
+          drawerSettled.current = true;
+          if (!pendingFocus.current) return;
+          event.preventDefault();
+          setClosedTick((n) => n + 1);
+        }}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={requestClose} disabled={saving}>
+              {labels.cancel}
+            </Button>
+            {/* A named-approver level with nobody named is refused by the service (it would be a step that can
+                never be decided and can never be dropped), so the button says so BEFORE the round trip. */}
+            <Button type="submit" form={TEMPLATE_FORM_ID} size="sm" disabled={!formStatus.canSave || saving}>
+              {labels.save}
+            </Button>
+          </div>
+        }
+      >
+        {error && (
+          <div role="alert" className="mb-4">
+            <ErrorBanner message={error} />
+          </div>
+        )}
+        {shown !== null && (
+          <TemplateForm
+            key={session}
+            formId={TEMPLATE_FORM_ID}
+            template={shown === 'new' ? null : shown}
+            onSubmit={save}
+            onStatusChange={setFormStatus}
+            stepLabels={stepLabels}
+            labels={labels}
+            employees={employees}
+            endedEmploymentIds={endedEmploymentIds}
+          />
+        )}
+      </Drawer>
+
+      {confirmDiscard && (
+        <ConfirmDialog
+          title={t('discardTitle')}
+          description={t('discardBody')}
+          cancelLabel={t('discardKeep')}
+          confirmLabel={t('discardConfirm')}
+          onConfirm={() => {
+            beforeConfirm.current = null;
+            closeDrawer();
+          }}
+          onCancel={() => setConfirmDiscard(false)}
+          onCloseAutoFocus={(event) => {
+            // "Keep editing": back to the field or button the close was asked from. "Discard": the drawer
+            // is closing and returns focus itself.
+            const back = beforeConfirm.current;
+            beforeConfirm.current = null;
+            if (back?.isConnected) {
+              event.preventDefault();
+              back.focus();
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -463,44 +653,73 @@ export function ApprovalAssignmentManager({
   );
 }
 
+/** r304 — the form's own read of itself, reported up to the drawer that holds its Save button. */
+type TemplateFormStatus = { dirty: boolean; canSave: boolean };
+
+/** The drawer's sticky Save sits OUTSIDE the scrolling body, so it reaches the form by id. One drawer, one id. */
+const TEMPLATE_FORM_ID = 'approval-template-form';
+
+/** A level list as a comparable string: kind and named approver per level, alternates included, in order. A
+ *  tuple rather than `JSON.stringify(levels)` so key order inside a level object can never read as a change. */
+const levelsKey = (levels: ApprovalLevel[]) =>
+  JSON.stringify(
+    levels.map((l) => [l.kind, l.employmentId ?? null, l.alternates.map((a) => [a.kind, a.employmentId ?? null])]),
+  );
+
 function TemplateForm({
   template,
-  action,
+  formId,
+  onSubmit,
+  onStatusChange,
   stepLabels,
   labels,
   employees,
   endedEmploymentIds,
-  onCancel,
 }: {
   template: TemplateRow | null;
-  action: (fd: FormData) => void | Promise<void>;
+  formId: string;
+  /** r304 — the form no longer posts itself: the drawer awaits the action's answer to keep or close. */
+  onSubmit: (fd: FormData) => void;
+  onStatusChange: (status: TemplateFormStatus) => void;
   stepLabels: React.ComponentProps<typeof StepListEditor>['labels'];
   labels: TemplateManagerLabels;
   employees: EmployeeSearchOption[];
   endedEmploymentIds: readonly string[];
-  onCancel: () => void;
 }) {
-  const [levels, setLevels] = useState<ApprovalLevel[]>(
-    template?.levels ?? [
+  /* r304 — THE VALUES THE FORM OPENED WITH, captured once. The dirty check compares against these and
+     nothing else: opening a template and closing it untouched must never ask "discard your changes?". */
+  const [initial] = useState(() => {
+    const levels: ApprovalLevel[] = template?.levels ?? [
       { kind: 'direct_manager', employmentId: null, alternates: [] },
       { kind: 'hr_admin', employmentId: null, alternates: [] },
-    ],
-  );
-  /**
-   * "Require multi-step approval" (feedback d4735493).
-   *
-   * The engine has always supported an ordered chain — `ApprovalTemplate.levels` is a list and
-   * resolveApprovalChain consumes it in order — and this form has always let you add and remove steps.
-   * What was missing is the DECISION being explicit. The editor simply opened on a two-step default, so
-   * an administrator who wanted one approver had to notice a second row and delete it, and one who
-   * wanted several had no signal that was expected rather than accidental.
-   *
-   * DERIVED from the template being edited rather than defaulted to a constant, so opening an existing
-   * single-step template does not silently present it as multi-step (and vice versa). A new template
-   * opens multi-step, preserving today's two-step default exactly — this adds a control, it does not
-   * change what a new template starts as.
-   */
-  const [multiStep, setMultiStep] = useState<boolean>((template?.levels?.length ?? 2) > 1);
+    ];
+    return {
+      name: template?.name ?? '',
+      description: template?.description ?? '',
+      /**
+       * "Require multi-step approval" (feedback d4735493).
+       *
+       * The engine has always supported an ordered chain — `ApprovalTemplate.levels` is a list and
+       * resolveApprovalChain consumes it in order — and this form has always let you add and remove steps.
+       * What was missing is the DECISION being explicit. The editor simply opened on a two-step default, so
+       * an administrator who wanted one approver had to notice a second row and delete it, and one who
+       * wanted several had no signal that was expected rather than accidental.
+       *
+       * DERIVED from the template being edited rather than defaulted to a constant, so opening an existing
+       * single-step template does not silently present it as multi-step (and vice versa). A new template
+       * opens multi-step, preserving today's two-step default exactly — this adds a control, it does not
+       * change what a new template starts as.
+       */
+      multiStep: (template?.levels?.length ?? 2) > 1,
+      levels,
+    };
+  });
+  /* Controlled since r304 (they were `defaultValue`): the dirty check has to read them, and a refused save
+     must leave exactly what was typed in place. */
+  const [name, setName] = useState(initial.name);
+  const [description, setDescription] = useState(initial.description);
+  const [levels, setLevels] = useState<ApprovalLevel[]>(initial.levels);
+  const [multiStep, setMultiStep] = useState<boolean>(initial.multiStep);
 
   /** Collapse to the first step, or restore a second, WITHOUT discarding what was already chosen. */
   function toggleMultiStep(next: boolean) {
@@ -514,10 +733,28 @@ function TemplateForm({
     });
   }
 
+  const dirty =
+    name !== initial.name ||
+    description !== initial.description ||
+    multiStep !== initial.multiStep ||
+    levelsKey(levels) !== levelsKey(initial.levels);
+  const canSave = !(
+    levels.length === 0 ||
+    (multiStep && levels.length < 2) ||
+    levels.some((l) => isFixedLevelKind(l.kind) && !l.employmentId)
+  );
+  useEffect(() => {
+    onStatusChange({ dirty, canSave });
+  }, [dirty, canSave, onStatusChange]);
+
   return (
     <form
-      action={action}
-      className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20"
+      id={formId}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(new FormData(e.currentTarget));
+      }}
+      className="space-y-4"
     >
       {template && <input type="hidden" name="templateId" value={template.id} />}
       {/* r293 phase 3 — JSON, not the old CSV of kinds: a level can now carry a named approver and a
@@ -525,16 +762,26 @@ function TemplateForm({
           shape (parseLevels), so the two unmounted CSV surfaces are unaffected. */}
       <input type="hidden" name="levels" value={JSON.stringify(levels)} />
 
-      <div className="text-sm font-semibold">{template ? labels.editTemplate : labels.addTemplate}</div>
-
       <label className="block space-y-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground">{labels.templateName}</span>
-        <input name="name" defaultValue={template?.name ?? ''} placeholder={labels.templateNamePlaceholder} required className={inputCls} />
+        <input
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={labels.templateNamePlaceholder}
+          required
+          className={inputCls}
+        />
       </label>
 
       <label className="block space-y-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground">{labels.templateDescription}</span>
-        <input name="description" defaultValue={template?.description ?? ''} className={inputCls} />
+        <input
+          name="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={inputCls}
+        />
       </label>
 
       <label className="flex items-center gap-2 text-sm">
@@ -557,25 +804,7 @@ function TemplateForm({
         employees={employees}
         endedEmploymentIds={endedEmploymentIds}
       />
-
-      <div className="flex items-center gap-2">
-        {/* A named-approver level with nobody named is refused by the service (it would be a step that can
-            never be decided and can never be dropped), so the button says so BEFORE the round trip. */}
-        <Button
-          type="submit"
-          size="sm"
-          disabled={
-            levels.length === 0 ||
-            (multiStep && levels.length < 2) ||
-            levels.some((l) => isFixedLevelKind(l.kind) && !l.employmentId)
-          }
-        >
-          {labels.save}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          {labels.cancel}
-        </Button>
-      </div>
+      {/* r304 — Save and Cancel are in the drawer's sticky footer (the Save button posts this form by id). */}
     </form>
   );
 }

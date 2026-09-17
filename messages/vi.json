@@ -9468,6 +9468,9 @@
     },
     "themeToggle": {
       "toggle": "Chuyển giao diện"
+    },
+    "drawer": {
+      "close": "Đóng"
     }
   },
   "kb": {
@@ -10559,6 +10562,13 @@
     "requireMultiStep": "Yêu cầu phê duyệt nhiều bước",
     "templatesHint": "Chuỗi phê duyệt có thể tái sử dụng, bạn xây dựng một lần và gán cho nhiều loại nghỉ phép và công ty.",
     "addTemplate": "Thêm mẫu",
+    "drawerEditTitle": "Sửa: {name}",
+    "templateUpdatedToast": "Đã cập nhật {name}",
+    "templateCreatedToast": "Đã tạo {name}",
+    "discardTitle": "Bỏ các thay đổi của bạn?",
+    "discardBody": "Bạn đã thay đổi mẫu này nhưng chưa lưu.",
+    "discardKeep": "Tiếp tục sửa",
+    "discardConfirm": "Bỏ",
     "editTemplate": "Sửa",
     "duplicateTemplate": "Nhân bản",
     "deleteTemplate": "Xóa",

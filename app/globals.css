@@ -171,6 +171,49 @@ body {
   }
 }
 
+/* r304 (85875e4b) — the shared right-side drawer (components/ui/drawer.tsx). The panel slides in from the
+   right and back out; the overlay fades with it. The component unmounts a closing drawer on the END of
+   `ui-drawer-panel-out` (that name is exported from the component as DRAWER_EXIT_ANIMATION, and
+   test/r304-approval-template-drawer.dom.test.tsx reads both back), so renaming the keyframes here without
+   the constant only costs the timer fallback, never a stuck modal. `both` keeps the panel off-screen for
+   the frames between the animation ending and React removing it.
+   REDUCED MOTION: no transform at all — `animation: none`, and the component unmounts at once instead of
+   waiting for an `animationend` that will never come. */
+@keyframes ui-drawer-panel-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes ui-drawer-panel-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes ui-drawer-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ui-drawer-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.ui-drawer-panel[data-state='open'] {
+  animation: ui-drawer-panel-in 240ms ease both;
+}
+.ui-drawer-panel[data-state='closed'] {
+  animation: ui-drawer-panel-out 240ms ease both;
+}
+.ui-drawer-overlay[data-state='open'] {
+  animation: ui-drawer-overlay-in 240ms ease both;
+}
+.ui-drawer-overlay[data-state='closed'] {
+  animation: ui-drawer-overlay-out 240ms ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-drawer-panel[data-state],
+  .ui-drawer-overlay[data-state] {
+    animation: none;
+  }
+}
+
 /* Approvals deep-link attention (item 8cb7b089): the dashboard calendar's "go to approval" arrows land
    on /approvals#approvals-leave(-cancellation) and the arrival island stamps this class on the target
    section for ~4.5s. The BASE signal is a STATIC outline — no animation — so it survives the global

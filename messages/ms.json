@@ -9468,6 +9468,9 @@
     },
     "themeToggle": {
       "toggle": "Tukar tema"
+    },
+    "drawer": {
+      "close": "Tutup"
     }
   },
   "kb": {
@@ -10559,6 +10562,13 @@
     "requireMultiStep": "Perlukan kelulusan berbilang peringkat",
     "templatesHint": "Rantaian kelulusan boleh guna semula yang anda bina sekali dan tetapkan kepada banyak jenis cuti dan syarikat.",
     "addTemplate": "Tambah templat",
+    "drawerEditTitle": "Edit: {name}",
+    "templateUpdatedToast": "{name} dikemas kini",
+    "templateCreatedToast": "{name} dicipta",
+    "discardTitle": "Buang perubahan anda?",
+    "discardBody": "Anda telah mengubah templat ini tetapi belum menyimpannya.",
+    "discardKeep": "Teruskan mengedit",
+    "discardConfirm": "Buang",
     "editTemplate": "Edit",
     "duplicateTemplate": "Salin",
     "deleteTemplate": "Padam",

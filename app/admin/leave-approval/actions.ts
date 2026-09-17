@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import type { SaveTemplateResult } from './template-manager';
 // e4238594 — the _redirects imports (ENTITLEMENTS / fail / okEntitlements) and getTranslations went with
 // the 4e9a4d59 wrappers below; this file redirects to its own PAGE only. Those helpers are still used
 // widely elsewhere under app/admin — nothing was removed from _redirects itself.
@@ -70,8 +71,28 @@ export async function saveLeaveEscalationPolicyAction(formData: FormData) {
 
 // ──────────────── 6fadb036 (R17): reusable templates + tenant default + bulk assignment ────────────────
 
-/** Create or update a reusable approval TEMPLATE. A templateId in the form switches to update. */
-export async function saveApprovalTemplateAction(formData: FormData) {
+/**
+ * Create or update a reusable approval TEMPLATE. A templateId in the form switches to update.
+ *
+ * r304 (board 85875e4b) — IT RETURNS ITS OUTCOME INSTEAD OF REDIRECTING, and it is still the ONE save path.
+ * The template form moved into a side drawer, and a redirect reloads the page: a refused save lost every
+ * unsaved edit and the reason arrived as a banner at the top of a page the administrator had scrolled away
+ * from. Returning `{ ok: false, error }` keeps the drawer open with the edits in it; `{ ok: true }` carries
+ * the id (a CREATE's row does not exist on the client yet, and focus has to land on it) and the name as
+ * stored, for the "<name> updated" confirmation the client words in the viewer's language. This reverses
+ * a6fe37fc Round 2's "no action changes signature" for THIS action only, and on purpose: there was one
+ * caller (ApprovalTemplateManager), it moved with the change, and keeping a redirecting twin would be two
+ * save paths that disagree about what a refusal does.
+ *
+ * AUTHORIZATION IS UNCHANGED, LINE FOR LINE: the same `getSession()`, the same two service calls with the
+ * same session and input. The service has no admin check of its own; the table's RLS policy does
+ * (`WITH CHECK (… AND app.is_admin())`, db/migrations/0170), and test/r304-approval-template-save-action
+ * .test.ts drives a non-admin session through this action to show it is still refused and writes nothing.
+ *
+ * THE REFUSAL IS THE SERVICE'S OWN MESSAGE — never a generic string and never `undefined` (the r303
+ * `fail(ENTITLEMENTS, <string>)` class). A thrown non-Error is stringified rather than dropped.
+ */
+export async function saveApprovalTemplateAction(formData: FormData): Promise<SaveTemplateResult> {
   const s = await getSession();
   const templateId = str(formData.get('templateId'));
   const input = {
@@ -80,12 +101,13 @@ export async function saveApprovalTemplateAction(formData: FormData) {
     levels: parseLevels(formData),
   };
   try {
-    if (templateId) await updateApprovalTemplate(s, templateId, input);
-    else await createApprovalTemplate(s, input);
+    const saved = templateId
+      ? await updateApprovalTemplate(s, templateId, input)
+      : await createApprovalTemplate(s, input);
+    return { ok: true, id: saved.id, name: saved.name, created: !templateId };
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    return { ok: false, error: e instanceof Error && e.message ? e.message : String(e) };
   }
-  redirect(`${PAGE}?toast=${encodeURIComponent(templateId ? 'Template updated' : 'Template created')}`);
 }
 
 /** Duplicate a template (copies name + " (copy)", description, steps; never the org-default flag). */
