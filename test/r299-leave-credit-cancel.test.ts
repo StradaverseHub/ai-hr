@@ -238,6 +238,40 @@ describe('Cancellation gives FIFO-split credits back exactly', () => {
   });
 });
 
+describe('A role-classified Replacement Leave type (production’s shape) is used and given back too', () => {
+  it('a type coded RL with role replacement consumes its credits on approval and restores them on cancellation', async () => {
+    // Production's replacement type is coded `RL` with `role = 'replacement'` (5ff7daff). Before 3fb1a611
+    // finalizeLeaveApproval selected no `role`, so leaveTypeIs fell back to the code and an approval on this
+    // type consumed NOTHING from the register — every credit stayed 'active' for the expiry sweep.
+    const [rl] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: b.tenantId, code: 'RL', name: 'Replacement Leave', role: 'replacement', paid: true, counting: 'working_days' })
+      .returning({ id: schema.leaveType.id });
+    const [A] = await credits([2], [45]);
+    // ensureReplacementLeaveType matched on the ROLE, so the credit sits on RL, not on an auto-created type.
+    const [ledgerRow] = await owner.db
+      .select({ leaveTypeId: schema.leaveLedger.leaveTypeId })
+      .from(schema.leaveLedger)
+      .where(eq(schema.leaveLedger.employmentId, subject.employmentId));
+    expect(ledgerRow.leaveTypeId).toBe(rl.id);
+
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: rl.id,
+      startDate: MON,
+      endDate: TUE,
+      today: TODAY,
+    });
+    await decideLeave(mgrCtx, { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    expect(await lots([A]), 'approval on a role-classified type must consume the register').toEqual([
+      { status: 'taken', taken: 2, takenBy: res.leaveRequestId },
+    ]);
+
+    await adminCancelLeave(admin, { leaveRequestId: res.leaveRequestId });
+    expect(await lots([A])).toEqual([{ status: 'active', taken: 0, takenBy: null }]);
+  });
+});
+
 describe('A credit that expired since the leave used it cannot come back', () => {
   it('refuses the cancellation on every path, naming the credit and its expiry date, and nothing moves', async () => {
     const [A] = await credits([2], [50]);
