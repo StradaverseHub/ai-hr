@@ -770,7 +770,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
       console.error(`leave-type cohort catch-up failed for leave type ${id}:`, e);
     }
   }
-  okEntitlements(t('entitlementUpdatedToast'), id);
+  // r299 render check — the key lives at admin.leave.entitlementUpdatedToast; `t` here is the `admin`
+  // namespace, so the bare key threw MISSING_MESSAGE on every earning / carry save and the toast showed the
+  // raw key path (pre-existing on main@60a40452, found by rendering the Annual Leave switch save).
+  okEntitlements(t('leave.entitlementUpdatedToast'), id);
 }
 
 
