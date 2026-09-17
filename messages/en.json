@@ -2082,7 +2082,7 @@
         "unavailable": "No working was loaded for this figure.",
         "itemsDoNotAddUp": "The records behind {figure} could not be listed so that they add up to it, so they are not shown here.",
         "addsUpTo": "Together: {total}.",
-        "poolFigures": "These are the {source} figures. {others} draw on the same balance.",
+        "poolFigures": "These are the {source} figures. The same balance is also used by {others}.",
         "eligibleNoTable": "No entitlement table has been set up for this leave type, so Full Entitlement is 0.00.",
         "eligibleNoMatch": "No entitlement table applies to this employee. Tables exist for this leave type, but none of them reaches this employee, so Full Entitlement is 0.00.",
         "eligibleNotRecorded": "Which entitlement table applies is not recorded for this date.",
