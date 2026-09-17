@@ -19,11 +19,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { availableLeaveBalance, decideLeave, leaveTypeApplySummary, requestLeave } from '../core/leave';
+import { accrueEarnedLeave, asOfForLeaveYear, availableLeaveBalance, decideLeave, isEarnedAccrualType, leaveTypeApplySummary, requestLeave } from '../core/leave';
 import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
 import { myLeaveDashboard, myUpcomingLeave, resolveSelectedLeaveYear } from '../core/my-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 const TODAY = todayInKualaLumpur();
@@ -144,6 +144,69 @@ describe('"You can apply for" IS the figure the Apply form checks — and Balanc
     // …and the old all-time read counts the unpaid days as reserved, so it disagrees with the guard too.
     const allTime = (await leaveBalances(emp.ctx, emp.employmentId)).find((r) => r.leaveTypeId === T)!;
     expect(allTime.available).not.toBe(guard);
+  });
+});
+
+describe('EARNED MONTHLY Annual Leave, mid-year: Earned so far is what is POSTED to today, never the year’s projection', () => {
+  it('Entitlement = the full year; Earned so far = credits posted up to today; Taken/Pending/Balance/You can apply for agree with the form', async () => {
+    // "Today" mid-year, derived from the clock: 15 June this year, or the real today if that is earlier. The
+    // accrual engine is run at exactly the date the Earned Accrual screen and the monthly cron use for the
+    // current year (asOfForLeaveYear → today), so the ledger holds credits up to this month and no later.
+    const MID = TODAY < `${YEAR}-06-15` ? TODAY : `${YEAR}-06-15`;
+    await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: `${YEAR}-01-01` });
+    await owner.db.update(schema.leaveType).set({ accrualMethod: 'earned_monthly' }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const [annual] = await owner.db
+      .select({ code: schema.leaveType.code, role: schema.leaveType.role })
+      .from(schema.leaveType)
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    expect(isEarnedAccrualType(annual), 'the seeded ANNUAL type is the Annual Leave type').toBe(true);
+    const emp = await hire(`${YEAR - 2}-01-01`);
+    const runAt = asOfForLeaveYear(YEAR, MID);
+    expect(runAt).toBe(MID);
+    await accrueEarnedLeave(adminCtx(b), { asOf: runAt, employmentIds: [emp.employmentId] });
+
+    const posted = await owner.db
+      .select({ days: schema.leaveLedger.days, effectiveOn: schema.leaveLedger.effectiveOn })
+      .from(schema.leaveLedger)
+      .where(eq(schema.leaveLedger.employmentId, emp.employmentId));
+    const accrued = posted.reduce((n, r) => n + Number(r.days), 0);
+    expect(accrued, 'the engine credited something by mid-year').toBeGreaterThan(0);
+    expect(accrued, 'and not the whole year').toBeLessThan(14);
+    expect(posted.every((r) => r.effectiveOn <= MID), 'no credit is dated after today').toBe(true);
+
+    // Approved leave LATER in the year (2 days, the debit dated on its start, as finalizeLeaveApproval writes
+    // it) and a pending request (1 day) — the booked days that made the build note's "asOf = today" wrong.
+    const [approved] = await owner.db
+      .insert(schema.leaveRequest)
+      .values({ tenantId: b.tenantId, employmentId: emp.employmentId, leaveTypeId: b.annualLeaveTypeId, startDate: `${YEAR}-11-02`, endDate: `${YEAR}-11-03`, days: '2.00', status: 'approved' })
+      .returning({ id: schema.leaveRequest.id });
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: emp.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-2.00',
+      sourceRequestId: approved.id,
+      effectiveOn: `${YEAR}-11-02`,
+    });
+    await owner.db
+      .insert(schema.leaveRequest)
+      .values({ tenantId: b.tenantId, employmentId: emp.employmentId, leaveTypeId: b.annualLeaveTypeId, startDate: `${YEAR}-11-20`, endDate: `${YEAR}-11-20`, days: '1.00', status: 'pending' });
+
+    const card = (await myLeaveDashboard(emp.ctx, emp.employmentId, { today: MID })).cards.find((c) => c.leaveTypeId === b.annualLeaveTypeId)!;
+    const atToday = await leaveEntitlementBreakdown(emp.ctx, emp.employmentId, b.annualLeaveTypeId, MID);
+    const guard = await withTenant(emp.ctx, (tx) => availableLeaveBalance(tx, emp.employmentId, b.annualLeaveTypeId));
+
+    expect(card.annualLeave, 'the ring card').toBe(true);
+    expect(card.entitlement, 'Entitlement is the FULL-YEAR figure').toBe(14);
+    expect(card.earnedSoFar, 'Earned so far = the credits posted up to today').toBe(accrued);
+    expect(card.earnedSoFar, '…the same figure a read AT TODAY gives').toBe(atToday!.currentYearEntitlement);
+    expect(card.earnedSoFar).not.toBe(card.entitlement);
+    expect(card.taken, 'approved leave later this year is Taken').toBe(2);
+    expect(card.pending).toBe(1);
+    expect(card.balance).toBe(accrued - 2);
+    expect(card.canApplyFor, 'You can apply for = the Apply form’s figure').toBe(guard);
+    expect(card.balance! - card.pending!).toBe(card.canApplyFor);
   });
 });
 
