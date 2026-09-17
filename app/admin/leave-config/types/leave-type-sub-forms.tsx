@@ -124,7 +124,13 @@ type BandField = keyof BandRow;
  * written. Each row now shows and posts exactly the From it was saved with; `checkRoundingBands` names an
  * overlap, a duplicate or a gap instead of the screen preventing them by construction.
  */
-const cellText = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? bandText(v) : '');
+const cellText = (v: unknown) => {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '';
+  // Widened to two decimals, never narrowed: a stored 0.245 (a hand-written row no save could produce) is
+  // shown as 0.245 so the table refuses it by name, instead of printing 0.25 and saving that on the next click.
+  const text = bandText(v);
+  return Number(text) === v ? text : String(v);
+};
 
 const rowsFromStored = (bands: RoundingBand[] | null | undefined): BandRow[] =>
   (Array.isArray(bands) ? bands : [])

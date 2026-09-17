@@ -2,8 +2,16 @@
  * Custom Rounding Table — replaces the fixed rounding methods (feedback 8fec719e, migration 0358).
  *
  * The rounding choice is now TWO: No Rounding, or Custom Rounding with a table the administrator writes
- * themselves over the DECIMAL PORTION of a calculated entitlement (From / Round To / Rounded Result).
- * Nearest 0.5 Day, Round Up and Round Down are gone as choices — each was a fixed table this one expresses.
+ * themselves over the DECIMAL PORTION of a calculated entitlement. Nearest 0.5 Day, Round Up and Round
+ * Down are gone as choices — each was a fixed table this one expresses.
+ *
+ * r303 (05db6aa7) — UPDATED, NOT LOOSENED. The columns are now From / To / Round To and a range includes BOTH
+ * its From and its To, at two decimals (it was from <= f < to at three, under the labels From / Round To /
+ * Rounded Result). Every fixture below is rewritten into that meaning with the SAME figures, and the three
+ * pins this item reverses are updated to pin the new decision: the 3dp NEAREST_HALF row (0.501) is now
+ * REFUSED as `decimals`, the touching SNAP_TO_HALF rows (0.50 in both) are now REFUSED as `overlap`, and a
+ * single-point row (From = To) is now LEGAL. Migration 0473's conversion and the old-vs-new equivalence
+ * live in test/leave-rounding-bands-0473.test.ts.
  *
  * §1 THE EVALUATOR'S ARITHMETIC. This changes how many days people are credited, so the assertions are
  *    NUMBERS, not successful saves. It includes the three retired methods rewritten as tables, because
@@ -23,7 +31,9 @@
  * §5 MIGRATION 0414'S CONVERSION TO TWO DECIMALS (4a1abc4a), executed from the ACTUAL file. Each row's
  *    From becomes the row above's To and every figure lands on 2dp. It is the one thing in this file that
  *    CHANGES a credited figure: the old 0.401 / 0.701 notches left a fraction of exactly 0.400 or 0.700
- *    matching no band at all, and those two holes close. Asserted, not described.
+ *    matching no band at all, and those two holes close. Asserted, not described. r303: that delta was
+ *    measured under the pre-r303 engine, so it is asserted against the verbatim copy of that engine
+ *    (test/helpers/rounding-bands-pre-r303.ts) rather than restated under rules it was never about.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -42,6 +52,7 @@ import {
   roundingBandErrors,
   type RoundingBand,
 } from '../core/leave-compute';
+import { preR303ApplyRoundingBands } from './helpers/rounding-bands-pre-r303';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -77,18 +88,32 @@ const ROUND_UP: RoundingBand[] = [{ from: 0, to: 1, result: 1 }];
 const ROUND_DOWN: RoundingBand[] = [{ from: 0, to: 1, result: 0 }];
 /**
  * Nearest 0.5 Day needs THREE rows, and finding that out is worth recording. Its up-branch CEILS to the
- * 0.5 grid, so a decimal of exactly 0.500 becomes 0.5 while 0.501 and above become a whole day — two
+ * 0.5 grid, so a decimal of exactly 0.50 becomes 0.5 while 0.51 and above become a whole day — two
  * different answers inside what looks like one range. The table expresses it, but only by saying so
  * explicitly, which is exactly the kind of thing a fixed method hides and a written table does not.
+ *
+ * r303 — with inclusive ranges the middle row is simply the single point 0.50 (it used to be the 3dp sliver
+ * 0.500–0.501, which is exactly what migration 0473 turns it into). NEAREST_HALF_PRE_R303 below is the old
+ * spelling, kept because the validator must now refuse it.
  */
 const NEAREST_HALF: RoundingBand[] = [
+  { from: 0, to: 0.49, result: 0 },
+  { from: 0.5, to: 0.5, result: 0.5 },
+  { from: 0.51, to: 0.99, result: 1 },
+];
+const NEAREST_HALF_PRE_R303: RoundingBand[] = [
   { from: 0, to: 0.5, result: 0 },
   { from: 0.5, to: 0.501, result: 0.5 },
   { from: 0.501, to: 1, result: 1 },
 ];
 
-/** The simpler shape most people mean by "snap to the half day": everything from 0.500 stays at 0.500. */
+/** The simpler shape most people mean by "snap to the half day": everything from 0.50 stays at 0.50. */
 const SNAP_TO_HALF: RoundingBand[] = [
+  { from: 0, to: 0.49, result: 0 },
+  { from: 0.5, to: 0.99, result: 0.5 },
+];
+/** …and its pre-r303 spelling, whose rows TOUCH at 0.50 — an overlap now that both ends are included. */
+const SNAP_TO_HALF_PRE_R303: RoundingBand[] = [
   { from: 0, to: 0.5, result: 0 },
   { from: 0.5, to: 1, result: 0.5 },
 ];
@@ -134,25 +159,61 @@ describe('§1 the band evaluator — the arithmetic, in numbers', () => {
     // Without the guard a first row of 0.000→0.500 ⇒ 0.500 would quietly hand half a day to everyone whose
     // entitlement came out exact — a table that reads as "round the stragglers up" inflating the tidy ones.
     const inflating: RoundingBand[] = [
-      { from: 0, to: 0.5, result: 0.5 },
-      { from: 0.5, to: 1, result: 1 },
+      { from: 0, to: 0.49, result: 0.5 },
+      { from: 0.5, to: 0.99, result: 1 },
     ];
     for (const whole of [0, 1, 11, 14]) expect(applyRoundingBands(whole, inflating)).toBe(whole);
     // …and it still moves a real decimal.
     expect(applyRoundingBands(11.2, inflating)).toBe(11.5);
   });
 
-  it('the last band closing at exactly 1.000 is INCLUSIVE, so nothing falls off the top', () => {
-    // A half-open top would leave a sliver at 1.000 unreachable, and "round up to the next whole day"
-    // could not be written as one row.
+  it('the last band is INCLUSIVE at its To, so nothing falls off the top', () => {
+    // r303 — every band is inclusive now, so a row ending at 0.99 covers the top decimal as surely as one
+    // ending at 1.00, and "round up to the next whole day" is still one row.
+    expect(applyRoundingBands(10.99, ROUND_UP)).toBe(11);
+    expect(applyRoundingBands(10.99, [{ from: 0, to: 0.99, result: 1 }])).toBe(11);
+    expect(applyRoundingBands(10.01, ROUND_UP)).toBe(11);
+    // …and a range includes its From and its To, not just the decimals between them.
+    const edges: RoundingBand[] = [
+      { from: 0, to: 0.24, result: 0 },
+      { from: 0.25, to: 0.49, result: 0.5 },
+    ];
+    expect(applyRoundingBands(10.24, edges)).toBe(10);
+    expect(applyRoundingBands(10.25, edges)).toBe(10.5);
+    expect(applyRoundingBands(10.49, edges)).toBe(10.5);
+    expect(applyRoundingBands(10.5, edges), 'no row covers 0.50').toBe(10.5);
+  });
+
+  it('r303 — a figure is worked out to TWO decimals before the table is applied', () => {
+    // "a figure can never fall between 0.24 and 0.25". 10.001 is 10.00 — a whole figure, never moved — and
+    // 10.999 is 11.00. Under the pre-r303 engine both were looked up at three decimals and became 11.
+    expect(applyRoundingBands(10.001, ROUND_UP)).toBe(10);
     expect(applyRoundingBands(10.999, ROUND_UP)).toBe(11);
-    expect(applyRoundingBands(10.001, ROUND_UP)).toBe(11);
+    expect(applyRoundingBands(10.246, [{ from: 0.25, to: 0.49, result: 0.5 }])).toBe(10.5);
+    // A decimal no row covers keeps its 2dp value, the ledger's own precision.
+    expect(applyRoundingBands(10.203, [{ from: 0.5, to: 1, result: 1 }])).toBe(10.2);
+  });
+
+  it('r303 — compared in whole HUNDREDTHS, so a binary tail cannot move a figure across a band edge', () => {
+    // 0.29 * 100 is 28.999999999999996 and 0.57 * 100 is 56.99999999999999 in IEEE754: a raw float `<=`
+    // against a To of 0.28 or 0.56 is exactly where a figure would slip a band.
+    const tight: RoundingBand[] = [
+      { from: 0, to: 0.28, result: 0 },
+      { from: 0.29, to: 0.56, result: 0.5 },
+      { from: 0.57, to: 0.99, result: 1 },
+    ];
+    for (const whole of [0, 1, 7, 10, 21]) {
+      expect(applyRoundingBands(whole + 0.28, tight), `${whole}.28`).toBe(whole);
+      expect(applyRoundingBands(whole + 0.29, tight), `${whole}.29`).toBe(whole + 0.5);
+      expect(applyRoundingBands(whole + 0.56, tight), `${whole}.56`).toBe(whole + 0.5);
+      expect(applyRoundingBands(whole + 0.57, tight), `${whole}.57`).toBe(whole + 1);
+    }
   });
 
   it('a DECIMAL A GAP DOES NOT COVER keeps its exact calculated value', () => {
     // The defined answer for "the table says nothing about this figure" is: do not touch it. Refusing to
     // round is always recoverable; inventing a rule is not.
-    const topHalfOnly: RoundingBand[] = [{ from: 0.5, to: 1, result: 1 }];
+    const topHalfOnly: RoundingBand[] = [{ from: 0.5, to: 0.99, result: 1 }];
     expect(applyRoundingBands(10.2, topHalfOnly)).toBe(10.2);
     expect(applyRoundingBands(10.7, topHalfOnly)).toBe(11);
   });
@@ -166,7 +227,7 @@ describe('§1 the band evaluator — the arithmetic, in numbers', () => {
 
   it('DEFENSIVE: a malformed table, a non-finite value or a non-array leaves the figure EXACTLY alone', () => {
     // These run inside cron sweeps over hand-written rows; a bad table must not abort a tenant's sweep.
-    for (const bad of [null, undefined, 'nope', [], [{ from: 0.5, to: 0.2, result: 0 }], [{ from: 0 }], 42]) {
+    for (const bad of [null, undefined, 'nope', [], [{ from: 0.5, to: 0.2, result: 0 }], [{ from: 0 }], 42, SNAP_TO_HALF_PRE_R303]) {
       expect(applyRoundingBands(10.7, bad), `bands ${JSON.stringify(bad)}`).toBe(10.7);
     }
     expect(Number.isNaN(applyRoundingBands(Number.NaN, ROUND_UP))).toBe(true);
@@ -191,8 +252,20 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
 
   it('a complete, disjoint table has NO problems at all', () => {
     expect(checkRoundingBands(NEAREST_HALF)).toEqual([]);
+    expect(checkRoundingBands(SNAP_TO_HALF)).toEqual([]);
     expect(checkRoundingBands(ROUND_UP)).toEqual([]);
     expect(isWellFormedRoundingBands(NEAREST_HALF)).toBe(true);
+  });
+
+  it('r303 REVERSES TWO PINS: the 3dp NEAREST_HALF is refused as decimals, the touching SNAP_TO_HALF as an overlap', () => {
+    // Before r303 both were complete, legal tables. A third decimal is now refused rather than rounded, and
+    // two rows that both include 0.50 are two answers for one figure.
+    expect(checkRoundingBands(NEAREST_HALF_PRE_R303)).toEqual([
+      { kind: 'decimals', index: 1 },
+      { kind: 'decimals', index: 2 },
+    ]);
+    expect(checkRoundingBands(SNAP_TO_HALF_PRE_R303)).toEqual([{ kind: 'overlap', index: 1 }]);
+    expect(isWellFormedRoundingBands(SNAP_TO_HALF_PRE_R303)).toBe(false);
   });
 
   it('an OVERLAP is reported against the later row and blocks the save', () => {
@@ -208,8 +281,8 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
 
   it('a DUPLICATE range is its own problem, not merely an overlap', () => {
     const dup: RoundingBand[] = [
-      { from: 0, to: 0.5, result: 0 },
-      { from: 0, to: 0.5, result: 1 },
+      { from: 0, to: 0.49, result: 0 },
+      { from: 0, to: 0.49, result: 1 },
       { from: 0.5, to: 1, result: 0.5 },
     ];
     expect(checkRoundingBands(dup)).toContainEqual({ kind: 'duplicate', index: 1 });
@@ -221,24 +294,62 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
       { from: 0, to: 0.3, result: 0 },
       { from: 0.7, to: 1, result: 1 },
     ];
-    expect(checkRoundingBands(gapped)).toEqual([{ kind: 'gap', from: 0.3, to: 0.7 }]);
+    // r303 — the gap is named by the decimals it leaves out, both ends included: 0.31 to 0.69.
+    expect(checkRoundingBands(gapped)).toEqual([{ kind: 'gap', from: 0.31, to: 0.69 }]);
     // A half-finished table must be SAVABLE, or an administrator cannot build one row at a time.
     expect(roundingBandErrors(gapped)).toEqual([]);
     expect(isWellFormedRoundingBands(gapped)).toBe(true);
   });
 
   it('an unclosed top or an unstarted bottom is a gap too', () => {
-    expect(checkRoundingBands([{ from: 0, to: 0.5, result: 0 }])).toEqual([{ kind: 'gap', from: 0.5, to: 1 }]);
-    expect(checkRoundingBands([{ from: 0.5, to: 1, result: 1 }])).toEqual([{ kind: 'gap', from: 0, to: 0.5 }]);
+    // r303 — the table is complete once it reaches 0.99 (no worked-out decimal is larger) and starts at 0.00.
+    expect(checkRoundingBands([{ from: 0, to: 0.5, result: 0 }])).toEqual([{ kind: 'gap', from: 0.51, to: 0.99 }]);
+    expect(checkRoundingBands([{ from: 0.5, to: 1, result: 1 }])).toEqual([{ kind: 'gap', from: 0, to: 0.49 }]);
+    expect(checkRoundingBands([{ from: 0, to: 0.98, result: 0 }])).toEqual([{ kind: 'gap', from: 0.99, to: 0.99 }]);
+    expect(checkRoundingBands([{ from: 0, to: 0.99, result: 0 }])).toEqual([]);
+    expect(checkRoundingBands([{ from: 0.01, to: 0.99, result: 0 }])).toEqual([{ kind: 'gap', from: 0, to: 0 }]);
   });
 
-  it('out-of-range bounds, inverted rows and non-numeric cells are each named', () => {
+  it('out-of-range bounds, inverted rows, blank cells and third decimals are EACH named', () => {
     expect(kinds([{ from: 0, to: 1.5, result: 0 }])).toEqual(['range']);
+    expect(kinds([{ from: 0, to: 1, result: -0.5 }])).toEqual(['range']);
     expect(kinds([{ from: 0.8, to: 0.2, result: 0 }])).toEqual(['order']);
-    expect(kinds([{ from: 0.5, to: 0.5, result: 0 }])).toEqual(['order']); // empty band matches nothing
-    expect(kinds([{ from: 0, to: 'x', result: 0 }])).toEqual(['shape']);
-    expect(kinds([{ from: 0, to: Number.NaN, result: 0 }])).toEqual(['shape']);
+    expect(kinds([{ from: 0, to: 'x', result: 0 }])).toEqual(['blank']);
+    expect(kinds([{ from: 0, to: Number.NaN, result: 0 }])).toEqual(['blank']);
+    expect(kinds([{ from: 0, to: 0.5 }])).toEqual(['blank']);
+    expect(kinds([null])).toEqual(['shape']);
     expect(kinds('not an array')).toEqual(['shape']);
+    // "at most two decimals — refuse, do not round": 0.245 is a problem, not 0.25.
+    expect(kinds([{ from: 0, to: 0.245, result: 0 }])).toEqual(['decimals']);
+    expect(kinds([{ from: 0, to: 0.5, result: 0.505 }])).toEqual(['decimals']);
+    // One row breaking three rules names all three, so the editor can show a message for each.
+    expect(kinds([{ from: 1.005, to: 0.5, result: 0 }])).toEqual(['decimals', 'range', 'order']);
+    // Float noise is not a third decimal.
+    expect(kinds([{ from: 0.1 + 0.2, to: 0.57, result: 0.29 }])).not.toContain('decimals');
+  });
+
+  it('r303 REVERSES A PIN: a single-point row (From = To) is LEGAL — it used to be an empty `order` band', () => {
+    // The reporter's rule is "From not above To". 0.50–0.50 covers exactly the decimal 0.50.
+    expect(roundingBandErrors([{ from: 0.5, to: 0.5, result: 0 }])).toEqual([]);
+    expect(kinds([{ from: 0.5, to: 0.5, result: 0 }])).toEqual(['gap', 'gap']);
+    expect(applyRoundingBands(3.5, [{ from: 0.5, to: 0.5, result: 1 }])).toBe(4);
+    expect(applyRoundingBands(3.51, [{ from: 0.5, to: 0.5, result: 1 }])).toBe(3.51);
+  });
+
+  it('r303 — an overlap is INCLUSIVE: sharing a single decimal is an overlap, the next hundredth is not', () => {
+    expect(checkRoundingBands([
+      { from: 0, to: 0.24, result: 0 },
+      { from: 0.24, to: 0.49, result: 0.5 },
+    ])).toContainEqual({ kind: 'overlap', index: 1 });
+    expect(roundingBandErrors([
+      { from: 0, to: 0.24, result: 0 },
+      { from: 0.25, to: 0.49, result: 0.5 },
+    ])).toEqual([]);
+    // A point row inside another row is an overlap too.
+    expect(checkRoundingBands([
+      { from: 0, to: 0.99, result: 0 },
+      { from: 0.5, to: 0.5, result: 1 },
+    ])).toEqual([{ kind: 'overlap', index: 1 }]);
   });
 
   it('coverage is only reported once the rows are individually sane', () => {
@@ -258,6 +369,39 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
         ],
       }),
     ).rejects.toBeInstanceOf(LeaveTypeRuleError);
+  });
+
+  it('r303 — the service names EACH problem in its own sentence, row by row', async () => {
+    const id = await annualId();
+    const attempt = setLeaveTypeRules(adminCtx(b), {
+      id,
+      roundingMethod: 'custom',
+      roundingBands: [
+        { from: 0, to: 0.24, result: 0 },
+        { from: 0.24, to: 0.49, result: 0.5 },
+        { from: 0.6, to: 0.555, result: 1 },
+        { from: 0.8, to: 0.7, result: 1.5 },
+        { from: 0.9, to: Number.NaN, result: 1 },
+      ],
+    });
+    await expect(attempt).rejects.toThrow(
+      'The rounding table was not saved. Row 3: use at most two decimal places. Row 3: From cannot be above To. ' +
+        'Row 4: keep From, To and Round To between 0.00 and 1.00. Row 4: From cannot be above To. ' +
+        'Row 5: fill in From, To and Round To. Row 2: this range overlaps another row (a range includes both its From and its To).',
+    );
+    // Nothing was written.
+    expect((await typeRow(id)).roundingBands).toBeNull();
+  });
+
+  it('r303 — a table is stored EXACTLY as typed, at two decimals, From included', async () => {
+    const id = await annualId();
+    const typed: RoundingBand[] = [
+      { from: 0.75, to: 0.99, result: 1 },
+      { from: 0, to: 0.24, result: 0 },
+      { from: 0.25, to: 0.74, result: 0.5 },
+    ];
+    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'custom', roundingBands: typed });
+    expect((await typeRow(id)).roundingBands).toEqual(typed);
   });
 
   it('…but ACCEPTS a gapped table, because the UI hints are UX and this is the guard', async () => {
@@ -298,10 +442,8 @@ describe('§2 the validator — overlaps and duplicates are refused, a gap only 
       .update(schema.leaveType)
       .set({
         roundingMethod: 'custom',
-        roundingBands: [
-          { from: 0, to: 0.6, result: 0 },
-          { from: 0.4, to: 1, result: 1 },
-        ],
+        // r303 — and the pre-r303 touching shape a stale writer could still produce is ignored the same way.
+        roundingBands: SNAP_TO_HALF_PRE_R303,
       })
       .where(eq(schema.leaveType.id, id));
     const pol = applyLeaveTypeRules({ days: 14, carryMax: 0 }, await typeRow(id))!;
@@ -487,9 +629,13 @@ describe('§5 migration 0414 — the table moves to 2dp and its rows are joined 
    * in this file that changes how many days somebody is credited.
    *
    * Executed from the ACTUAL file for the same reason §4 is: a conversion that stops matching what ships
-   * is a conversion only the test believes in. NO ENGINE CHANGE accompanies it — `applyRoundingBands` and
-   * `bandRound` are untouched, which is why the assertions below run the real evaluator over the
-   * converted rows.
+   * is a conversion only the test believes in. NO ENGINE CHANGE accompanied 0414, which is why its
+   * assertions ran the real evaluator over the converted rows.
+   *
+   * r303 — THAT EVALUATOR IS NO LONGER THE REAL ONE. r303 made ranges inclusive, and migration 0473 (which
+   * runs AFTER 0414 in the journal) rewrites 0414's output into the new meaning. So the delta 0414 made is
+   * asserted against `preR303ApplyRoundingBands`, the verbatim copy of the engine 0414 shipped under — the
+   * assertion is unchanged in what it claims, and it still runs over the rows the real 0414 file writes.
    */
   const CONVERT = resolve(here, '../db/migrations/0414_rounding_bands_two_decimals.sql');
 
@@ -539,15 +685,15 @@ describe('§5 migration 0414 — the table moves to 2dp and its rows are joined 
       .set({ roundingMethod: 'custom', roundingBands: STORED })
       .where(eq(schema.leaveType.id, id));
     // Before: the two holes. Nothing matched, so the value came back exactly as calculated.
-    expect(applyRoundingBands(10.4, STORED)).toBe(10.4);
-    expect(applyRoundingBands(10.7, STORED)).toBe(10.7);
+    expect(preR303ApplyRoundingBands(10.4, STORED)).toBe(10.4);
+    expect(preR303ApplyRoundingBands(10.7, STORED)).toBe(10.7);
     await runConvert();
     const after = (await bandsOf(id))!;
-    expect(applyRoundingBands(10.4, after)).toBe(10.5);
-    expect(applyRoundingBands(10.7, after)).toBe(11);
+    expect(preR303ApplyRoundingBands(10.4, after)).toBe(10.5);
+    expect(preR303ApplyRoundingBands(10.7, after)).toBe(11);
     // …and NOTHING ELSE MOVES. Only the two boundaries shifted, and only across the holes.
     for (const v of [10, 10.001, 10.39, 10.401, 10.5, 10.69, 10.701, 10.999]) {
-      expect(applyRoundingBands(v, after), `fraction of ${v}`).toBe(applyRoundingBands(v, STORED));
+      expect(preR303ApplyRoundingBands(v, after), `fraction of ${v}`).toBe(preR303ApplyRoundingBands(v, STORED));
     }
   });
 

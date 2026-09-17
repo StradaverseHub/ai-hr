@@ -40,10 +40,13 @@
  * types carry a table, all identical, and the only figures in them that are not multiples of 0.01 are 0.401
  * and 0.701 — "one notch above 0.400", typed because each row stopped just before its Round To and the next
  * row had to start SOMEWHERE. Those notches left two HOLES: a fraction of exactly 0.400 or 0.700 matched no
- * row at all and was left unrounded. The answer was to derive each row's From from the row above (see
- * `components/leave-type-panel.tsx`), not to keep a decimal place nobody wanted. The engine is untouched
- * and did not need touching: `bandRound` widens a stored 0.40 to 0.400, so the three-decimal comparison
- * reads exactly the same rule.
+ * row at all and was left unrounded. The answer was to derive each row's From from the row above, not to
+ * keep a decimal place nobody wanted.
+ *
+ * r303 (05db6aa7) moved the rest of the table onto this one precision: a range now includes BOTH its From
+ * and its To, From is typed again (the derivation made the reporter's own table untypeable), and the engine
+ * compares whole hundredths — so no band figure is read at three decimals anywhere any more. A third decimal
+ * typed into the table is refused by name, never tidied into a figure nobody typed.
  *
  * `decimals` survives as a PARAMETER — `dayPluralCategory` selects the plural at the precision a figure is
  * DISPLAYED in, so the number has to be nameable — but nothing now passes anything but the default.
