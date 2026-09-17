@@ -10,6 +10,8 @@
  *   3. CLOSED MONTH AT DECISION: the last approval of a chain is refused when the month closed after the request.
  *   4. ONE PENDING PER LEAVE: a second request is refused while one waits; a second pending one that already
  *      exists (from before this rule) is refused at approval instead of "approved" with 0 days back.
+ *   5. RLS: a cancellation's copied levels are readable exactly by who can read the cancellation — a delegate of
+ *      the manager, whom the parent table has never shown it to, reads none of them.
  *
  * Dates derive from todayInKualaLumpur() (three weeks out, a Monday..Friday) — never hard-coded.
  */
@@ -280,5 +282,27 @@ describe('4 · ONE PENDING CANCELLATION PER LEAVE', () => {
     expect(thuApproved).toHaveLength(1);
     // The approver can still clear it.
     expect((await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c2.id, decision: 'rejected' })).status).toBe('rejected');
+  });
+});
+
+describe('5 · RLS — a cancellation\'s levels are visible only with the cancellation', () => {
+  it('a delegate of the manager reads neither the cancellation nor its copied steps', async () => {
+    const id = await approvedWeekTwoLevels();
+    const c = await requestLeaveCancellation(subjectCtx, { leaveRequestId: id, cancelDates: [WED], today: TODAY });
+    const [deptS] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: b.companyId, name: 'Dept S' }).returning({ id: schema.department.id });
+    const hireIn = (name: string) =>
+      hireEmployee(adminCtx(b), { person: { fullName: name, primaryEmail: `r302cf_${randomUUID().slice(0, 8)}@t.local` }, companyId: b.companyId, departmentId: deptS.id, employmentType: 'full_time', hiredOn: '2024-01-01' });
+    const stand = await hireIn('Stand In');
+    const standSub = await hireIn('Stand In Report');
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId: standSub.employmentId, managerEmploymentId: stand.employmentId, lineType: 'administrative', validFrom: '2024-01-01' });
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId: manager.employmentId, managerEmploymentId: stand.employmentId, lineType: 'delegate', validFrom: '2024-01-01', validTo: null });
+    const standCtx = await ctxOf(stand, 'manager');
+    const parent = await withTenant(standCtx, (tx) => tx.select({ id: schema.leaveCancellationRequest.id }).from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.id, c.cancellationRequestId)));
+    const steps = await withTenant(standCtx, (tx) => tx.select({ id: schema.leaveCancellationStep.id }).from(schema.leaveCancellationStep).where(eq(schema.leaveCancellationStep.cancellationRequestId, c.cancellationRequestId)));
+    expect(parent).toEqual([]);
+    expect(steps).toEqual([]);
+    // Non-vacuous: the steps exist, and the manager (who can read the cancellation) reads them.
+    const mgrSteps = await withTenant(mgrCtx, (tx) => tx.select({ id: schema.leaveCancellationStep.id }).from(schema.leaveCancellationStep).where(eq(schema.leaveCancellationStep.cancellationRequestId, c.cancellationRequestId)));
+    expect(mgrSteps).toHaveLength(2);
   });
 });

@@ -1974,7 +1974,7 @@
       "cancellationNotFullDay": "半天假和按小时请的假在批准后无法取消。如需取消，请联系人力资源部。",
       "cancellationGrouped": "此休假属于紧急假或逐日审批的一部分，无法在此取消。如需取消，请联系人力资源部。",
       "cancellationUnpaidDays": "此休假包含无薪日，批准后无法取消。如需取消，请联系人力资源部。",
-      "cancellationAlreadyPending": "这些日期中已有一天的取消申请正在等待审批。",
+      "cancellationAlreadyPending": "此假期已有一项取消申请正在等待审批。",
       "cancellationNoLongerCancellable": "自申请取消以来此休假已发生变化，因此无法再取消。",
       "cancellationAdminOnly": "只有人力资源管理员才能代员工取消休假。",
       "cancellationAdminOwnLeave": "您无法在此取消自己的休假。请在\"我的休假\"中申请取消。",

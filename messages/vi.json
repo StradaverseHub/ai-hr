@@ -1974,7 +1974,7 @@
       "cancellationNotFullDay": "Không thể hủy nghỉ nửa ngày và nghỉ theo giờ sau khi đã được duyệt. Hãy liên hệ HR nếu cần hủy.",
       "cancellationGrouped": "Kỳ nghỉ này thuộc Nghỉ khẩn cấp hoặc được duyệt theo từng ngày, nên không thể hủy tại đây. Hãy liên hệ HR nếu cần hủy.",
       "cancellationUnpaidDays": "Kỳ nghỉ này có ngày nghỉ không lương, nên không thể hủy sau khi đã được duyệt. Hãy liên hệ HR nếu cần hủy.",
-      "cancellationAlreadyPending": "Đã có yêu cầu hủy cho một trong các ngày này đang chờ duyệt.",
+      "cancellationAlreadyPending": "Đã có yêu cầu hủy cho lần nghỉ phép này đang chờ duyệt.",
       "cancellationNoLongerCancellable": "Kỳ nghỉ này đã thay đổi kể từ khi yêu cầu hủy, nên không thể hủy nữa.",
       "cancellationAdminOnly": "Chỉ quản trị viên HR mới có thể hủy nghỉ phép thay cho nhân viên.",
       "cancellationAdminOwnLeave": "Bạn không thể hủy nghỉ phép của chính mình tại đây. Hãy yêu cầu hủy từ trang Nghỉ phép của tôi.",
