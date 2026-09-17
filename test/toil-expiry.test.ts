@@ -328,7 +328,17 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
  * statutory obligation. The sweep must fall back to the contractual ORP basis and say so.
  */
 describe('Expiry of a self-declared credit (296fc027)', () => {
-  it('values a NULL-day-type credit on the generic ORP basis and flags it for human reconciliation', async () => {
+  /**
+   * 3fb1a611 (r299) CHANGED WHAT THE REQUEST PATH RECORDS, so this case is split in two rather than loosened.
+   *
+   * It used to assert that an employee-request credit carries a NULL day type and is valued on the generic
+   * ORP basis. The request path now RESOLVES the day kind from the schedule (and refuses an ordinary working
+   * day), so a rest-day request is stamped 'rest_day' and a First-Schedule convert reconciles to the exact
+   * statutory cash like every other rest-day credit. The NULL-day-type fallback still exists — for a legacy
+   * row banked before this round, and for an OFF day (test/r299-leave-credit-money.test.ts) — and the second
+   * case below keeps pinning it on a legacy-shaped row.
+   */
+  async function selfDeclaredRestDayCredit() {
     const a = await entitledCtx(b);
     const e = await hireEmployee(a, {
       person: { fullName: 'Self Declared', primaryEmail: uniqEmail() },
@@ -340,7 +350,6 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     // BELOW the ceiling — the case where a fabricated day type would have produced a wrong statutory figure.
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 2000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
     await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true, employeeRequestEnabled: true }));
-
     const { requestId } = await submitReplacementLeaveRequest(a, {
       employmentId: e.employmentId,
       unit: 'day',
@@ -349,24 +358,49 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
       firstScheduleConsent: true,
     });
     await decideReplacementLeaveRequest(a, { requestId, decision: 'approved', decidedAt: APPROVED_ON });
-
     const [acc] = await owner.db
       .select()
       .from(schema.toilAccrual)
       .where(eq(schema.toilAccrual.employmentId, e.employmentId));
-    expect(acc.dayType).toBeNull();
+    return { a, acc };
+  }
+
+  const convertedPayload = async (accrualId: string) => {
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, accrualId), eq(schema.domainEvent.eventType, 'toil.converted')));
+    return ev.payload as Record<string, unknown>;
+  };
+
+  it('3fb1a611: a request on a rest day is STAMPED rest_day and converts at the exact statutory cash', async () => {
+    const { a, acc } = await selfDeclaredRestDayCredit();
+    expect(acc.dayType).toBe('rest_day');
+    expect(acc.workedDayKind).toBe('rest_day');
     // Floor protection still applies — an eligible employee's credit converts, it never lapses.
     expect(acc.expiryAction).toBe('convert_to_pay');
 
     const res = await runToilExpiry(a, { today: AFTER_EXPIRY });
     expect(res.converted).toBe(1);
     expect(await statusOf(acc.id)).toBe('converted_to_pay');
+    const payload = await convertedPayload(acc.id);
+    expect(payload.valuationBasis).toBe('statutory_exact');
+    // s.60(3)(b): more than half the normal hours on a rest day = 1 day ORP = 2000/26.
+    expect(payload.amountOwed).toBeCloseTo(76.92, 2);
+  });
 
-    const [ev] = await owner.db
-      .select({ payload: schema.domainEvent.payload })
-      .from(schema.domainEvent)
-      .where(and(eq(schema.domainEvent.aggregateId, acc.id), eq(schema.domainEvent.eventType, 'toil.converted')));
-    const payload = ev.payload as Record<string, unknown>;
+  it('values a NULL-day-type credit (a legacy self-declared row) on the generic ORP basis and flags it for human reconciliation', async () => {
+    const { a, acc } = await selfDeclaredRestDayCredit();
+    // The legacy shape: banked before 3fb1a611, when the request path recorded no day type at all.
+    await owner.db
+      .update(schema.toilAccrual)
+      .set({ dayType: null, workedDayKind: null })
+      .where(eq(schema.toilAccrual.id, acc.id));
+
+    const res = await runToilExpiry(a, { today: AFTER_EXPIRY });
+    expect(res.converted).toBe(1);
+    expect(await statusOf(acc.id)).toBe('converted_to_pay');
+    const payload = await convertedPayload(acc.id);
     // NOT 'statutory_exact': the day type it would need is not known.
     expect(payload.valuationBasis).toBe('generic_orp');
     expect(String(payload.valuationNote)).toMatch(/self-declared/i);
@@ -374,3 +408,4 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     expect(payload.amountOwed).toBeCloseTo(76.92, 2);
   });
 });
+

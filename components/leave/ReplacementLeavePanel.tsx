@@ -44,7 +44,7 @@ export type ReplacementCreditRow = {
   expiresOn: string;
   daysCredited: number;
   daysTaken: number;
-  status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed';
+  status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed' | 'reversed';
   remaining: number;
   requestedOn: string | null;
   approvedOn: string | null;
@@ -150,6 +150,8 @@ export function ReplacementLeavePanel({
     if (r.status === 'taken') return 'replacement.statusTaken';
     if (r.status === 'lapsed') return 'replacement.statusExpired';
     if (r.status === 'converted_to_pay') return 'replacement.statusConverted';
+    // 3fb1a611 (r299): HR reversed it on the Leave Credit screen — it never counted, and says so.
+    if (r.status === 'reversed') return 'replacement.statusReversed';
     // An ACTIVE row that has been partly consumed is neither "spent" nor untouched, and saying nothing about
     // it is what makes the arithmetic look wrong.
     if (r.daysTaken > 0) return 'replacement.statusPartlyUsed';

@@ -380,7 +380,13 @@ describe('Partial Leave Cancellation — gates', () => {
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
-  it('cannot cancel a REPLACEMENT (time-off-in-lieu) leave', async () => {
+  // 3fb1a611 (r299) — THIS PINNED A FLAT REFUSAL, and the refusal is gone: an approved Replacement Leave can
+  // now be given back, because the credit it used goes back to the register as well as the day to the ledger
+  // (core/toil.ts restoreReplacementLeaveTx). What is still refused is the one case that cannot be undone — a
+  // credit that expired since the leave used it — and that, the FIFO give-back and the manager decision are
+  // pinned in test/r299-leave-credit-cancel.test.ts against real register rows. Here the type has a ledger
+  // balance and NO register rows at all (the legacy ghost credit), which is cancellable: nothing to give back.
+  it('a REPLACEMENT (time-off-in-lieu) leave CAN be put up for cancellation (3fb1a611)', async () => {
     const [repl] = await owner.db
       .insert(schema.leaveType)
       .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
@@ -393,9 +399,12 @@ describe('Partial Leave Cancellation — gates', () => {
       endDate: '2026-08-12',
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
-    await expect(
-      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
-    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+    const out = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-11'],
+    });
+    expect(out.requestedDays).toBe(1);
   });
 
   it('a per-date-approval request (ADR-0068 single row) IS cancellable, but an interior-REJECTED date is not cancel-eligible', async () => {

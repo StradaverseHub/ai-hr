@@ -36,9 +36,8 @@ import { setRestDay } from '../core/roster';
 import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '../core/payroll';
 import { createPolicy } from '../core/payroll-policy';
 import { disburseNetAcrossCycles } from '../core/payroll-policy-config';
-// 1cf5b37c — ModuleNotEnabledError left this import with setToilPolicy's entitlement gate; the accrual
-// paths throw ToilDisabledError, which is what the inverted test asserts.
-import { isModuleEnabled } from '../core/entitlements';
+// 3fb1a611 (r299) — ModuleNotEnabledError is back: setToilPolicy is entitlement-gated again.
+import { isModuleEnabled, ModuleNotEnabledError } from '../core/entitlements';
 import {
   accrueToil,
   runToilExpiry,
@@ -158,37 +157,36 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     );
   });
 
-  // ⚠️ 1cf5b37c INVERTED THIS TEST. It used to assert that setToilPolicy REFUSES without the `toil`
-  // entitlement — a gate ADR-0077 slice 3 review r2 added on the argument that a customer should not
-  // configure a module they had not bought. That gate is what made Leave Config → Replacement Leave
-  // render every control disabled with no Save, which the reporter read as an unfinished placeholder.
-  // The owner approved letting the screen be configured ahead of purchase.
+  // ⚠️ 1cf5b37c INVERTED THIS TEST, and 3fb1a611 (r299) INVERTS IT BACK. 1cf5b37c let setToilPolicy write
+  // without the `toil` entitlement so a screen could be configured ahead of purchase; r281 (8a494721) found the
+  // cost — days of August configuration against a module the tenant does not have — and gated the screen away.
+  // The rules now live on the Leave Credit screen's Rules tab, itself gated on `toil`, so an ungated writer
+  // would be the one door left open behind a closed screen. The approved plan (3fb1a611 rev 3, gap 6) puts the
+  // service check back; this is the refusal half.
   //
-  // The SAFETY half of the original test is kept verbatim and is the reason this is not a regression:
-  // configuring still cannot bank a single day, because both accrual paths carry their own gate. If
-  // someone ever removes THOSE, this test fails and says why.
-  it('setToilPolicy is allowed without the entitlement, and configuring still accrues nothing', async () => {
+  // The SAFETY half is kept verbatim: a company policy written while entitled plus a lapsed module still
+  // cannot bank a day, and the wind-down sweep still runs.
+  it('setToilPolicy REFUSES without the entitlement, and a policy saved earlier still accrues nothing', async () => {
     const { employmentId } = await hireWithWorkedRestDay(5000); // a real worked rest day to try to bank
     const unentitled = await entitledCtx(b); // seedBase seeds NO toil row — not in the parity set
-    expect(isModuleEnabled(unentitled, 'toil')).toBe(false);
+    expect(isModuleEnabled(unentitled, 'toil'), 'the fixture must really be unentitled, or this proves nothing').toBe(false);
 
-    // The write is ALLOWED now, and it really writes.
-    await setToilPolicy(unentitled, policy(b.companyId));
-    const rows = await owner.db
-      .select({ id: schema.toilPolicy.id, enabled: schema.toilPolicy.enabled })
+    await expect(setToilPolicy(unentitled, policy(b.companyId))).rejects.toBeInstanceOf(ModuleNotEnabledError);
+    const none = await owner.db
+      .select({ id: schema.toilPolicy.id })
       .from(schema.toilPolicy)
       .where(eq(schema.toilPolicy.companyId, b.companyId));
-    expect(rows.length, 'the policy is stored so it is ready the day the add-on is bought').toBe(1);
-    expect(rows[0].enabled, 'including the enabled flag — it is configuration, not a capability').toBe(true);
+    expect(none, 'a refused save writes nothing').toHaveLength(0);
 
-    // …and it is INERT. This is the assertion that makes the relaxation safe: an enabled company policy
-    // plus no entitlement must still refuse to bank anything.
-    await expect(accrueToil(unentitled, { employmentId, workedDate: REST_DAY })).rejects.toBeInstanceOf(
-      ToilDisabledError,
-    );
+    // A policy saved while the module WAS on, and the module then lapsing: inert.
+    await setToilPolicy(await toilOnCtx(), policy(b.companyId));
+    await setModule(b.tenantId, 'toil', null);
+    const lapsed = await entitledCtx(b);
+    expect(isModuleEnabled(lapsed, 'toil')).toBe(false);
+    await expect(accrueToil(lapsed, { employmentId, workedDate: REST_DAY })).rejects.toBeInstanceOf(ToilDisabledError);
 
     // The wind-down surfaces stay open, exactly as before — settling banked days was never gated.
-    await expect(runToilExpiry(unentitled, { today: '2026-12-31' })).resolves.toBeDefined();
+    await expect(runToilExpiry(lapsed, { today: '2026-12-31' })).resolves.toBeDefined();
   });
 
   it('banks 1.0 day (hours_worked) for a non-First-Schedule employee (> ceiling) — no warning', async () => {

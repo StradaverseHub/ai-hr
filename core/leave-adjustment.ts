@@ -36,6 +36,7 @@ import {
   person,
 } from '../db/schema';
 import { countOrgCriteriaTargets, resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
+import { isReplacementLeaveType } from './ess-view';
 
 export class LeaveAdjustmentError extends Error {
   constructor(message: string) {
@@ -130,11 +131,22 @@ export async function applyLeaveAdjustmentBatch(
     // Leave types must exist and be visible to this session — RLS scopes the read, so an id from another
     // tenant simply does not come back and is refused here rather than silently skipped.
     const types = await tx
-      .select({ id: leaveType.id })
+      .select({ id: leaveType.id, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
       .where(inArray(leaveType.id, leaveTypeIds));
     if (types.length !== leaveTypeIds.length) {
       throw new LeaveAdjustmentError('One or more leave types could not be found.');
+    }
+    // 3fb1a611 (r299) — REPLACEMENT LEAVE IS NOT ADJUSTED HERE ANY MORE. An adjustment writes a leave_ledger row
+    // and nothing else, so on the replacement type it made a balance with no credit behind it: no date worked,
+    // no expiry, no place in the expiring-first order, nothing for the history to trace it to (the ghost credit
+    // consumeReplacementLeaveTx logs as `toil.consumption.shortfall`). Replacement Leave balances change on the
+    // Leave Credit screen, where every day is a credit. Refused whole, before anything is written. Adjustment
+    // rows already on file are history and are left exactly as they are.
+    if (types.some((t) => isReplacementLeaveType(t))) {
+      throw new LeaveAdjustmentError(
+        'Replacement Leave balances are changed on Leave Config › Leave Credit, so every day has a date worked, an expiry date and a history. Remove Replacement Leave from this adjustment.',
+      );
     }
 
     const targets =
