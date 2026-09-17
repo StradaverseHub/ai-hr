@@ -1,11 +1,8 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
-  leaveBalances,
-  leaveEntitlementBreakdown,
   leaveRequestDateBreakdown,
   leaveRequestsFor,
   myEmployment,
@@ -28,7 +25,26 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 // 5206539f — `leave.apply_on_behalf`, resolved by the SAME function requestLeave's own gate calls, so the
 // selector below and the refusal in the service can never answer differently.
 import { canApplyLeaveOnBehalf, todayInKualaLumpur } from '@/core/leave';
-import { essViewHasAnyVisibleRow, isReplacementLeaveType } from '@/core/ess-view';
+import { isReplacementLeaveType } from '@/core/ess-view';
+// r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
+// who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.
+import {
+  myLeaveDashboard,
+  myUpcomingLeave,
+  ownLeaveApprovalTrails,
+  ownLeaveCancellations,
+  ownLeaveRejectionReasons,
+} from '@/core/my-leave';
+import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
+import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
+import {
+  LEAVE_HISTORY_TABS,
+  approverKindLabelKey,
+  pendingApprovalLine,
+  resolveHistoryTab,
+  type LeaveHistoryTab,
+} from '@/lib/my-leave-history';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { Card, PageHeader } from '@/components/ui';
 // 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
 // vocabulary all LEFT this page with the HR-admin inquiry surface. They live on app/leave/tracker/page.tsx
@@ -50,27 +66,12 @@ import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-le
 // round changing Leave config settings against a cause that sits above Leave config.
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
 import { listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
-import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
-import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-// My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
-import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
-// Compact card history + slide-out detail panel for the self-service view (feedback 657962ec).
-import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
-// Restored old-Leave-page layout (feedback 56a0deb9): collapsible balance card + secondary-type groups.
-import { CollapsibleCardSection } from '@/components/collapsible-card-section';
-import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
-import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
+// My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
+import { LeaveHistoryCards, type LeaveHistoryEntry, type LeaveProgressStep } from '@/components/leave/leave-history-cards';
 // Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
-// as ONE balance at the placement HR chose for the GROUP. Independent of each member type's own placement.
-import { SharedLeaveGroupCards } from '@/components/leave/shared-leave-group-cards';
+// as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid.
 import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
-// deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
-// time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
-import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
-// r209 — whose breakdown explains a pooled row's figures. A borrower shows the POOL's numbers, so it must
-// show the pool's entitlement story too, or the row contradicts itself. See lib/shared-leave-balance.ts.
-import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { durationLabel } from '@/lib/leave-duration';
 // 46afcc48 — the shared-group context lines interpolate day figures, and a day figure is printed one way
 // in this repo (4a1abc4a). Interpolating a raw Number would print "10" beside the card's "9.00".
@@ -100,15 +101,10 @@ const REQ_STATUS = LEAVE_STATUS_PILL;
 // nothing before it could reach SQL; with no filter left to tamper with, they have no subject. The same
 // vocabularies still live where the reads use them (core/read.ts listLeaveRequestsPage, ADR-0048).
 
-// Restored old-Leave-page layout (feedback 56a0deb9): the collapsible Current Balance section persists its
-// open/closed choice in this cookie (SSR-read via cookies(), mirroring GRADES_OPEN_COOKIE on the leave
-// entitlements page). Cookie absent ⇒ CLOSED — the reporter wants the balance details collapsed by default.
-const BALANCE_OPEN_COOKIE = 'leave_balance_open';
-
-// Equal-height columns for the self-service breakdown + history pairing (feedback 657962ec): both columns
-// share this lg+ height cap and scroll WITHIN themselves, so neither stretches the row taller than the
-// other — they stay exactly side by side. On mobile the cards stack at natural height (no cap).
-const COLUMN_CAP = 'lg:max-h-[42rem]';
+// r302 (6c9802c9) — the "My balances" card (its collapsible section, its leave_balance_open cookie and its
+// As-at form), the "Other leave types" card and the two-column grid that paired it with the history are GONE.
+// The page is one column now: the Year and Apply Leave, the leave balance dashboard, Upcoming Leave, then My
+// Leave History across the full width. The "As at" date is replaced by the Year selector.
 
 // Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
 // availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
@@ -136,8 +132,10 @@ export default async function LeavePage({
     // Details listing that read them. Declaring a param nothing on this page reads would advertise a
     // filter that silently does nothing. Their PREFIX is unchanged over there, so every admin link
     // already saved keeps working against its new base path.
-    // R37 e5a158d3: as-at date for the (relocated) detailed leave-balance table's entitlement breakdown.
-    asOf?: string;
+    // r302 (6c9802c9) — the LEAVE YEAR the dashboard shows. Not `year`: that name is already the holiday
+    // warning banner's (see `warnHoliday` above). Narrowed to an offered year in core/my-leave.ts; anything
+    // else is the current year. It replaces R37's `asOf`, which went with the My balances card.
+    leaveYear?: string;
     // 2166ef79 — the date the Request Leave dialog OPENS ON. My Attendance offers "request leave instead"
     // on an absent day and sends the employee here with `?apply=1&start=YYYY-MM-DD`, so the absent date is
     // carried across rather than retyped. `apply=1` (a46fe0c0) already opens the dialog; this fills it in.
@@ -153,6 +151,8 @@ export default async function LeavePage({
     hFrom?: string;
     hTo?: string;
     hType?: string | string[];
+    // r302 — the history tab: pending | approved | rejected | cancelled (lib/my-leave-history.ts).
+    hTab?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -202,11 +202,6 @@ export default async function LeavePage({
   // NOTE FOR THE NEXT EDITOR: do not quote those guards' JSX literally in a comment on this file. Several
   // tests slice this page at the first occurrence of that opening guard, and a quoted copy above the real
   // one silently inverts the slice — which is how this very comment was first written, and how it failed.
-  // Feedback 56a0deb9 — collapsible balance section. SSR-read the persisted choice (cookie absent ⇒ closed,
-  // the reporter's default) so the first paint is already correct — no closed-then-restored flash.
-  const cookieStore = await cookies();
-  const balanceOpen = cookieStore.get(BALANCE_OPEN_COOKIE)?.value === '1';
-
   // Partial Leave Cancellation (ADR-0065 / R5 Build #2): the candidate dates for a row's Cancel-dates pop-up are
   // the row's REAL working dates (roster + holiday aware, resolved server-side in core/read.ts). r301 (83511d3b):
   // WHETHER the button appears and WHICH dates it offers are now decided by core/read.ts employeeCancelOffers —
@@ -349,16 +344,9 @@ export default async function LeavePage({
   // agree with each other" — applied to the one subject this form actually has.
   const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));
 
-  // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
-  // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
-  // per-type rows via deriveBalanceRow + a per-row EntitlementBreakdown side-sheet + ONE shared as-at-date
-  // GET form. Scoped to the viewer via the per-employment leaveBalances (NOT the all-employee pivot), so
-  // permissions/calculations are unchanged and identical to what /me showed. An invalid/empty ?asOf= ⇒ today.
-  // Feedback 8ec63139: the ESS half of this page (My Balances, the Requests section, Request Leave) is gone
-  // for an HR admin — this route is their employee-inquiry landing page, and their own leave duplicated the
-  // Approval Items surface. `ess` is the single gate: it suppresses the READS as well as the markup, so an
-  // admin page load no longer pays for balances/breakdowns nobody renders. Nothing about leave application,
-  // approval or balance calculation changes — only who is shown their own figures here.
+  // ── The leave balance dashboard (r302 · 6c9802c9) ─────────────────────────────────────────────────────
+  // Feedback 8ec63139: the ESS half of this page is self-service only; `ess` is the single gate and it suppresses
+  // the READS as well as the markup. (An administrator never gets here — the short page returns above.)
   const ess = !admin;
   // 296fc027 · may this employee ask for replacement leave? THREE questions in one read: the chargeable
   // add-on, the per-company employee-request switch, and this employee's own eligibility as of today. Only
@@ -377,132 +365,49 @@ export default async function LeavePage({
   // survive the very configuration it is explaining, and BY ROLE with the seeded code as the fallback
   // (`isReplacementLeaveType`), because production's own replacement type is coded `RL` (5ff7daff).
   const tenantHasReplacementLeave = leaveTypes.some(isReplacementLeaveType);
-  const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
-  // ec991c2a — THE SCREEN THIS ITEM WAS RAISED ABOUT, and the flag is written out even though `false` is
-  // the default. The reporter archived Annual Leave and kept seeing it in My Leave; a default that later
-  // flips meaning is how that comes back, so this call site states which answer it wants rather than
-  // inheriting one. The admin reads (Employee Balances, the Personnel leave card) opt IN instead; a guard
-  // in test/leave-archived-type-hidden.test.ts pins that this file is not one of them, so do not quote
-  // their opt-in literally in a comment here — the guard reads the source text.
-  const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale, { includeArchived: false }) : [];
-  const selfRequests = ess && me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
-  const selfBreakdowns = me
-    ? await Promise.all(
-        selfBalances.map((b) => leaveEntitlementBreakdown(session, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
-      )
-    : [];
-  const breakdownByType = new Map(selfBreakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
-  // leaveBalances already dropped visible_to_employee=false types; still filter the default-hidden placement
-  // (mirrors /me detailedBalances). Presentation only — no calc change.
-  const detailedBalances = selfBalances.filter((b) => b.placement !== 'hidden');
 
-  // ── "My Leave" primary summary cards (My Absence merge · a7cbd895) ───────────────────────────────────
-  // The clickable colour-coded PRIMARY-type cards that headed the /me Leave tab (6d78f373) now open the
-  // merged page, so the at-a-glance summary employees know moved with the tab. Same source (selfBalances +
-  // breakdownByType), same ESS gating (deriveBalanceRow / essViewHasAnyVisibleRow) — presentation only.
-  // Secondary types render again as their own grouped section (feedback 56a0deb9 reversed the R54 call to
-  // skip them): the reporter wants the old /me arrangement back, and with the detailed balance table now
-  // COLLAPSED by default the double-listing that motivated the skip is no longer prominent.
-  type SelfBalance = (typeof selfBalances)[number];
-  const buildCardPanel = (b: SelfBalance) => {
-    // r209 — the POOL's breakdown for a borrower (balanceStoryTypeId); identity for every other type.
-    const bd = breakdownByType.get(balanceStoryTypeId(b));
-    // 1f6fd6d8: the `entitlementCalcBreakdown` toggle named a section that no longer exists. The honest
-    // form of the question the three call sites were really asking is essViewHasAnyVisibleRow — a side-sheet
-    // whose every line HR has hidden is an empty panel, and an empty panel should not be offered.
-    if (!essViewHasAnyVisibleRow(b.essView) || !bd) return null;
-    return {
-      data: bd,
-      summary: { available: b.available },
-      // §5 Upcoming Approved Leave removed from the panel (feedback 11876072) — no upcoming list is built.
-      visual: { color: b.color, icon: b.icon, code: b.code },
-      asOf: breakdownAsOf,
-    };
-  };
-  // ── Replacement Leave: the per-credit register behind the card (feedback 00307068) ──────────────────
-  //
-  // Replacement Leave is not a yearly allowance — it is a stack of separately earned credits, each with its
-  // own approval and its own expiry — so its card opens a TABLE of those credits rather than the nine-line
-  // Leave Balance Summary every other type gets. `replacementLeaveLedger` has held exactly that data since
-  // 0113 and, until now, had no UI caller at all; this is the entry point it was missing.
-  //
-  // ONE EXTRA READ, AND ONLY WHEN IT IS RENDERED. Loaded only when the employee actually has a visible
-  // REPLACEMENT card (ESS surface + a primary-placed type whose code is REPLACEMENT), so an admin page load
-  // and every tenant without the module pay nothing for it. Nothing else on this page changes shape.
-  //
-  // 5ff7daff: matched BY ROLE, with the seeded code as the fallback. The code-only match was reading a
-  // tenant's catalogue against the code the SEED writes, and production's own replacement type is coded
-  // `RL` — so on the tenant that asked for this feature the customer's own card never matched, and the
-  // panel opened on an auto-created duplicate instead. Same fix, same precedence, as `leaveTypeIs`.
-  const replacementBalance = ess ? selfBalances.find((b) => b.placement === 'primary' && isReplacementLeaveType(b)) : undefined;
-  const replacementLedger = replacementBalance && me ? await replacementLeaveLedger(session, me.employmentId) : null;
-  // 5ff7daff — THE EMPLOYEE'S OWN PENDING CLAIMS. `listReplacementLeaveRequests` had no UI caller either,
-  // so once an employee pressed Submit nothing on My Leave acknowledged the request existed. Summed over
-  // `pending` rows only: an approved request has already become a credit on the ledger above, and counting
-  // it in both places would double it. Loaded on exactly the same condition as the ledger, so a page
-  // without a Replacement Leave card still pays nothing.
-  const replacementRequests = replacementBalance && me ? await listReplacementLeaveRequests(session, me.employmentId) : [];
+  // r302 — EVERY FIGURE ON THE DASHBOARD, PER LEAVE YEAR, from core/my-leave.ts: a pick off
+  // leaveEntitlementBreakdown for the chosen year's cycle, and — for the cycle in force today — "You can apply
+  // for" from leaveTypeApplySummary, the Apply popup's own figure (= the submit guard, test/r75). Hidden types
+  // never arrive; Primary types come before Secondary. The read is where the r209 pool story (whose breakdown a
+  // borrower tells) and the ec991c2a archived gate now live; this page computes no balance.
+  const dashboard = ess && me ? await myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale }) : null;
+  const leaveYearAsOf =
+    dashboard && dashboard.selectedYear !== dashboard.currentYear ? `${dashboard.selectedYear}-12-31` : today;
+
+  // ── Replacement Leave: the per-credit register behind its card (feedback 00307068) ─────────────────────
+  // Replacement Leave is a stack of separately earned credits, so its card opens a TABLE of those credits
+  // rather than the Leave Summary. ONE EXTRA READ, AND ONLY WHEN IT IS RENDERED: loaded only when the dashboard
+  // actually carries a Replacement Leave card (matched BY ROLE, the seeded code as the fallback — 5ff7daff).
+  const replacementCard = dashboard?.cards.find((c) => isReplacementLeaveType(c));
+  const replacementLedger = replacementCard && me ? await replacementLeaveLedger(session, me.employmentId) : null;
+  // 5ff7daff — the employee's own PENDING claims, summed over `pending` rows only (an approved request is
+  // already a credit on the ledger above, and counting it in both places would double it).
+  const replacementRequests = replacementCard && me ? await listReplacementLeaveRequests(session, me.employmentId) : [];
   const replacementPendingDays =
     Math.round(replacementRequests.filter((r) => r.status === 'pending').reduce((sum, r) => sum + r.totalDays, 0) * 100) / 100;
-
-  const primaryCards: LeaveCardEntry[] = selfBalances
-    .filter((b) => b.placement === 'primary')
-    .map((b) => ({
-      leaveTypeId: b.leaveTypeId,
-      leaveType: b.leaveType,
-      color: b.color,
-      icon: b.icon,
-      code: b.code,
-      // ESS-gated remaining figure (null when Available is HR-hidden ⇒ the card renders "—").
-      remaining: deriveBalanceRow(b, breakdownByType.get(b.leaveTypeId) ?? null).available,
-      panel: buildCardPanel(b),
-      // The credit table's envelope — plain serialisable data only (no Date objects, no closures), because
-      // this RSC hands it straight to a client component. The column explanations come from the SAME
-      // breakdown read every other card uses; for a REPLACEMENT type core/read resolves them over the five
-      // column keys instead of the nine summary keys, so heading and wording are always keyed alike.
-      replacement:
-        replacementLedger && isReplacementLeaveType(b)
-          ? {
-              rows: replacementLedger.rows,
-              leaveUnit: replacementLedger.leaveUnit,
-              explanations: breakdownByType.get(b.leaveTypeId)?.formulaExplanations ?? {},
-              pendingDays: replacementPendingDays,
-            }
-          : null,
-      // The card's own "waiting on your line manager" line. Undefined on every other type.
-      pendingInLieu: replacementLedger && isReplacementLeaveType(b) ? replacementPendingDays : undefined,
-    }));
-  // Canonical PRIMARY_CODES order first (Annual, Medical, Hospitalisation, Emergency, Replacement), then
-  // any other HR-promoted primaries alphabetically — same reading order the /me tab had.
-  const primaryRank = (code: string | null) => {
-    const i = code ? (PRIMARY_CODES as readonly string[]).indexOf(code.toUpperCase()) : -1;
-    return i === -1 ? PRIMARY_CODES.length : i;
-  };
-  primaryCards.sort((a, b) => primaryRank(a.code) - primaryRank(b.code) || a.leaveType.localeCompare(b.leaveType));
-
-  // ── "Other leave" secondary-type groups (restored · feedback 56a0deb9) ───────────────────────────────
-  // The pre-R54 grouped panels the /me Leave tab carried (6d78f373): SECONDARY-placement types bucketed
-  // into Family & Personal / Education / Other via lib/leave-groups, each row keeping its View Breakdown
-  // side-sheet link. Same source as the detailed table (selfBalances + breakdownByType) — no data change;
-  // empty groups are omitted, and an all-primary catalog omits the whole section (as on the old page).
-  const secondaryGroups = SECONDARY_GROUPS.map((group) => ({
-    group,
-    types: selfBalances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
-  })).filter((g) => g.types.length > 0);
+  const dashboardCards: MyLeaveDashboardCard[] = (dashboard?.cards ?? []).map((c) =>
+    replacementLedger && isReplacementLeaveType(c)
+      ? {
+          ...c,
+          replacement: {
+            rows: replacementLedger.rows,
+            leaveUnit: replacementLedger.leaveUnit,
+            explanations: c.breakdown?.formulaExplanations ?? {},
+            pendingDays: replacementPendingDays,
+          },
+          pendingInLieu: replacementPendingDays,
+        }
+      : c,
+  );
 
   // ── Shared leave groups, as ONE pooled balance each (feedback 46afcc48) ──────────────────────────────
-  //
-  // `sharedLeaveGroupBalances` returns only the groups HR has actually PLACED (Hidden groups never come
-  // back), each with the figure that is genuinely drawable — min(what is left under the shared ceiling,
-  // what the member types still hold) — NOT the raw ceiling. It also sums the member types WITHOUT regard
-  // to their visibility, which is the point of the request: hiding a member is a display decision and
-  // changes neither this figure nor what the group guard allows.
-  //
-  // ESS-only, like the cards and the balance table below it: an HR admin's own pooled balance does not
-  // belong on their employee-inquiry page (8ec63139), and the `ess` gate suppresses the READ as well.
+  // `sharedLeaveGroupBalances` returns only the groups HR has PLACED (Hidden groups never come back), each with
+  // the genuinely drawable figure. r302: placement is ORDER now — Primary groups first, then Secondary — drawn
+  // as tiles in the dashboard grid, for the chosen year (a group's cycle is the calendar year of `asOf`).
   const sharedGroupBalances =
-    ess && me ? await sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: breakdownAsOf }) : [];
-  // Pre-translate here (t() is server-side) so the card component stays a plain presentational function.
+    ess && me ? await sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: leaveYearAsOf }) : [];
+  // Pre-translate here (t() is server-side) so the tile stays a plain presentational element.
   const sharedGroupEntriesAt = (placement: 'primary' | 'secondary') =>
     sharedGroupBalances
       .filter((g) => g.placement === placement)
@@ -510,7 +415,7 @@ export default async function LeavePage({
         id: g.id,
         name: g.name,
         available: g.available,
-        // The ceiling is CONTEXT beside the figure, never the figure — see the component header.
+        // The ceiling is CONTEXT beside the figure, never the figure.
         limitLabel: tMe('sharedLeaveGroups.ofLimit', { limit: formatDays(g.totalLimitDays) }),
         capLabel:
           g.maxDaysPerApplication == null
@@ -547,23 +452,23 @@ export default async function LeavePage({
   // `uuid` column — and Postgres rejects a malformed literal with 22007 / 22P02 rather than returning
   // nothing. There is no error.tsx anywhere under app/, so that throw is an unhandled 500 that ANY
   // logged-in employee can reach by hand-editing the query string. A bad filter must degrade to "no
-  // filter", never to a crash. This is also just the convention this page already follows twice
-  // (breakdownAsOf below, and startDefault at the Request Leave trigger).
+  // filter", never to a crash. This is also just the convention this page already follows (startDefault at the
+  // Request Leave trigger; r302's `leaveYear` is narrowed the same way in core/my-leave.ts).
   const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const hTypeIds = hArr(sp.hType).filter((v) => UUID.test(v));
   const hFrom = sp.hFrom && ISO_DATE.test(sp.hFrom) ? sp.hFrom : undefined;
   const hTo = sp.hTo && ISO_DATE.test(sp.hTo) ? sp.hTo : undefined;
   const historyFiltered = hTypeIds.length > 0 || hFrom != null || hTo != null;
-  // The SYMMETRIC carrier. The filter panel already carries `asOf` so applying a filter cannot reset the
-  // as-at date; this is the same courtesy the other way round — the as-at GET forms (the one under the
-  // balance table and the one inside every EntitlementBreakdown side-sheet) post only `asOf`, so without
-  // these hidden inputs pressing Apply on a breakdown would silently clear the employee's history filter.
-  // `hType` REPEATS, which is why the shared hiddenParams prop takes an array rather than a single string.
+  // The SYMMETRIC carrier. The filter panel carries `leaveYear` so applying a filter cannot reset the year
+  // (r302 — it carried `asOf` until the As-at form went); this is the same courtesy the other way round — the
+  // Year form posts only `leaveYear`, so without these hidden inputs choosing a year would silently clear the
+  // employee's history filter. `hType` REPEATS, which is why this takes an array rather than a single string.
   const historyFilterParams: Record<string, string | string[]> = {
     ...(hTypeIds.length > 0 ? { hType: hTypeIds } : {}),
     ...(hFrom ? { hFrom } : {}),
     ...(hTo ? { hTo } : {}),
+    ...(sp.hTab ? { hTab: sp.hTab } : {}),
   };
   // Call A is UNFILTERED and is what the tick-list is built from — options taken from the filtered set would
   // vanish the moment a filter was applied. It also supplies the "of 14" half of the header count.
@@ -577,19 +482,45 @@ export default async function LeavePage({
     limit: 200,
     offset: 0,
   });
-  const historyShown = historyFiltered
-    ? await listLeaveRequestsPage(session, {
-        employmentIds: historyEmploymentIds,
-        leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
-        from: hFrom,
-        to: hTo,
-        sort: 'start',
-        dir: 'desc',
-        limit: 200,
-        offset: 0,
-      })
-    : historyAll;
+  // r302 (6c9802c9) — THE FOUR TABS: Pending, Approved, Rejected, Cancelled. Each is one status, narrowed IN
+  // SQL through the read's own `statuses` filter (validated against the enum there), together with the same
+  // type/date filter — so a tab's count and its rows can never disagree, and the 200-row cap is per tab rather
+  // than a page of mixed statuses filtered afterwards. The count reads ask for one row and keep the total.
+  const tabCounts = Object.fromEntries(
+    await Promise.all(
+      LEAVE_HISTORY_TABS.map(
+        async (tab) =>
+          [
+            tab,
+            (
+              await listLeaveRequestsPage(session, {
+                employmentIds: historyEmploymentIds,
+                statuses: [tab],
+                leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
+                from: hFrom,
+                to: hTo,
+                limit: 1,
+                offset: 0,
+              })
+            ).total,
+          ] as const,
+      ),
+    ),
+  ) as Record<LeaveHistoryTab, number>;
+  const historyTab = resolveHistoryTab(sp.hTab, tabCounts);
+  const historyShown = await listLeaveRequestsPage(session, {
+    employmentIds: historyEmploymentIds,
+    statuses: [historyTab],
+    leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
+    from: hFrom,
+    to: hTo,
+    sort: 'start',
+    dir: 'desc',
+    limit: 200,
+    offset: 0,
+  });
   const total = historyAll.total;
+  const filteredTotal = LEAVE_HISTORY_TABS.reduce((n, tab) => n + tabCounts[tab], 0);
   // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE. SQL
   // now produces exactly that order (sort 'start', dir 'desc'), so the JS re-sort that used to correct the
   // read's createdAt-desc default is gone rather than duplicated.
@@ -613,6 +544,156 @@ export default async function LeavePage({
     session,
     selfHistory.flatMap((r) => (r.pendingCancellationId ? [r.pendingCancellationId] : [])),
   );
+
+  // r302 (6c9802c9) — WHO: the names of the people who decide the viewer's OWN requests (migration 0472; person
+  // RLS hides them from an employee, and it is not widened), who cancelled a cancelled one, and a rejection's
+  // reason (the rejected event, read under RLS). Every id asked about here is the viewer's own; an id that is
+  // not simply comes back absent.
+  const [approvalTrails, cancellations, rejectionReasons, upcomingRows] = await Promise.all([
+    ownLeaveApprovalTrails(session, selfHistory.map((r) => r.id)),
+    ownLeaveCancellations(session, selfHistory.filter((r) => r.status === 'cancelled').map((r) => r.id)),
+    ownLeaveRejectionReasons(session, selfHistory.filter((r) => r.status === 'rejected').map((r) => r.id)),
+    // Upcoming Leave: approved + pending from today onwards, soonest first (the history read's own filters).
+    myUpcomingLeave(session, historyEmploymentIds, today),
+  ]);
+  const tApproval = await getTranslations('leaveApproval');
+  const fmtInstant = (d: Date | null | undefined): string | null => {
+    if (!d) return null;
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        timeZone: HR_LOCAL_TZ,
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(d);
+    } catch {
+      return d.toISOString();
+    }
+  };
+  const listNames = (names: string[]): string => {
+    try {
+      return new Intl.ListFormat(locale, { type: 'disjunction' }).format(names);
+    } catch {
+      return names.join(' / ');
+    }
+  };
+  // The approver KIND's own label (lib/my-leave-history.ts → `leaveApproval.*`). This replaces the old stage
+  // line that called every step which was not the direct manager's "HR review".
+  const kindLabel = (kind: string | null): string | null => {
+    const key = approverKindLabelKey(kind);
+    return key ? tApproval(key) : null;
+  };
+  /** The display status of a row: Pending Cancellation / Partially approved / the stored status. */
+  const displayStatus = (r: (typeof selfHistory)[number]) => {
+    const pendingCancel = r.status === 'approved' && r.pendingCancellationId != null;
+    const isPartial = r.status === 'approved' && r.hasRejectedDates;
+    return pendingCancel
+      ? { key: 'pendingCancellation', label: t('pendingCancellationStatus') }
+      : isPartial
+        ? { key: 'partial', label: tMe('leaveStatus.partiallyApproved') }
+        : { key: r.status, label: t(`status.${r.status}`) };
+  };
+  /** The row's Approver cell. */
+  const approverLineFor = (r: (typeof selfHistory)[number]): string | null => {
+    const trail = approvalTrails.get(r.id);
+    if (r.status === 'pending') {
+      const line = pendingApprovalLine(trail);
+      if (!line) return null;
+      if (line.names.length > 0) return t('myLeave.waitingForName', { name: listNames(line.names), level: line.level, of: line.of });
+      const role = kindLabel(line.kind);
+      return role
+        ? t('myLeave.waitingForRole', { role, level: line.level, of: line.of })
+        : t('myLeave.waitingForApproval', { level: line.level, of: line.of });
+    }
+    if (r.status === 'cancelled') {
+      const c = cancellations.get(r.id);
+      if (c?.automatic) return t('myLeave.cancelledAutomatically');
+      return c?.cancelledByName ? t('myLeave.cancelledBy', { name: c.cancelledByName }) : null;
+    }
+    const name = trail?.decidedByName;
+    if (!name) return null;
+    return r.status === 'rejected' ? t('myLeave.rejectedBy', { name }) : t('myLeave.approvedBy', { name });
+  };
+  /** The View panel's approval progress: Submitted → each level → the outcome, the current level highlighted. */
+  const approvalProgressFor = (r: (typeof selfHistory)[number]): LeaveProgressStep[] => {
+    const trail = approvalTrails.get(r.id);
+    const out: LeaveProgressStep[] = [
+      { label: t('myLeave.progressSubmitted'), detail: fmtInstant(r.appliedOn), state: 'done' },
+    ];
+    const levelLabel = (level: number, kind: string | null, names: string[]) => {
+      const role = kindLabel(kind);
+      if (role && names.length > 0) return t('myLeave.progressLevelNamed', { level, role, name: listNames(names) });
+      if (role) return t('myLeave.progressLevel', { level, role });
+      if (names.length > 0) return t('myLeave.progressLevelPerson', { level, name: listNames(names) });
+      return t('myLeave.progressLevelOnly', { level });
+    };
+    const steps = [...(trail?.steps ?? [])].sort((a, b) => a.stepIndex - b.stepIndex);
+    const firstPending = r.status === 'pending' ? steps.findIndex((st) => st.status === 'pending') : -1;
+    if (steps.length > 0) {
+      steps.forEach((st, i) => {
+        if (st.status === 'approved') {
+          out.push({
+            label: levelLabel(i + 1, st.kind, st.decidedByName ? [st.decidedByName] : []),
+            detail: st.decidedAt ? t('myLeave.progressApprovedAt', { date: fmtInstant(st.decidedAt)! }) : null,
+            state: 'done',
+          });
+        } else if (st.status === 'rejected') {
+          out.push({
+            label: levelLabel(i + 1, st.kind, st.decidedByName ? [st.decidedByName] : []),
+            detail: st.decidedAt ? t('myLeave.progressRejectedAt', { date: fmtInstant(st.decidedAt)! }) : null,
+            state: 'rejected',
+          });
+        } else {
+          const current = i === firstPending;
+          out.push({
+            label: levelLabel(i + 1, st.kind, [st.approverName, ...st.alternateNames].filter((n): n is string => !!n)),
+            detail: current ? t('myLeave.progressWaiting') : r.status === 'pending' ? t('myLeave.progressNotReached') : null,
+            state: current ? 'current' : 'upcoming',
+          });
+        }
+      });
+    } else if (r.status === 'pending') {
+      const line = pendingApprovalLine(trail);
+      out.push({ label: levelLabel(1, line?.kind ?? null, line?.names ?? []), detail: t('myLeave.progressWaiting'), state: 'current' });
+    } else if (trail?.decidedAt) {
+      out.push({
+        label: levelLabel(1, null, trail.decidedByName ? [trail.decidedByName] : []),
+        detail:
+          r.status === 'rejected'
+            ? t('myLeave.progressRejectedAt', { date: fmtInstant(trail.decidedAt)! })
+            : t('myLeave.progressApprovedAt', { date: fmtInstant(trail.decidedAt)! }),
+        state: r.status === 'rejected' ? 'rejected' : 'done',
+      });
+    }
+    if (r.status === 'pending') out.push({ label: t('myLeave.progressOutcomeApproved'), detail: null, state: 'upcoming' });
+    else if (r.status === 'approved') out.push({ label: t('myLeave.progressOutcomeApproved'), detail: fmtInstant(r.decidedAt), state: 'done' });
+    else if (r.status === 'rejected') out.push({ label: t('myLeave.progressOutcomeRejected'), detail: fmtInstant(r.decidedAt), state: 'rejected' });
+    else if (r.status === 'cancelled') {
+      out.push({ label: t('myLeave.progressOutcomeCancelled'), detail: fmtInstant(cancellations.get(r.id)?.cancelledAt), state: 'done' });
+    }
+    return out;
+  };
+  /** A cancelled request's who and when, and the cancellation's reason. */
+  const cancellationFor = (r: (typeof selfHistory)[number]): LeaveHistoryEntry['cancellation'] => {
+    const c = r.status === 'cancelled' ? cancellations.get(r.id) : undefined;
+    if (!c) return null;
+    const lines: string[] = [];
+    const at = fmtInstant(c.cancelledAt);
+    if (at) {
+      lines.push(
+        c.automatic
+          ? t('myLeave.cancelledAutomaticallyAt', { date: at })
+          : c.cancelledByName
+            ? t('myLeave.cancelledByAt', { name: c.cancelledByName, date: at })
+            : t('myLeave.cancelledAt', { date: at }),
+      );
+    }
+    const requested = fmtInstant(c.requestedAt);
+    if (requested) lines.push(t('myLeave.cancellationRequestedAt', { date: requested }));
+    return lines.length > 0 || c.reason ? { lines, reason: c.reason } : null;
+  };
 
   // ── Self-service history cards (feedback 657962ec) ───────────────────────────────────────────────────
   // Each of the viewer's OWN records becomes a plain, pre-translated entry for the LeaveHistoryCards client
@@ -694,6 +775,9 @@ export default async function LeavePage({
       startDate: r.startDate,
       endDate: r.endDate,
       days: Number(r.days),
+      // r302 — the date submitted (tenant-local) and the employee's own reason, for the row and for View.
+      appliedOn: todayInKualaLumpur(new Date(r.appliedOn)),
+      reason: r.reason ?? null,
       // fef49b9a — the paid/unpaid breakdown, derived ONCE by lib/leave-split.ts and pre-translated here
       // because LeaveHistoryCards is a client island that translates nothing. `unpaidTypeName` comes from
       // the tenant's OWN unpaid leave type (resolved above) rather than a hardcoded string, so a tenant
@@ -747,17 +831,15 @@ export default async function LeavePage({
             note: pendingCancellation.levels.length > 0 ? t('cancelProgress.sameChainNote') : null,
           }
         : null,
-      stageLabel:
-        r.status === 'pending' && r.stepCount > 0
-          ? r.currentStepKind === 'direct_manager'
-            ? tMe('stageManager')
-            : tMe('stageHr')
-          : null,
-      // WHO it is sitting with (feedback 567333b7), alongside the stage line that already said WHAT the
-      // stage is. Populated only for a direct-manager step — see the projection in core/read.ts on why the
-      // role-based kinds deliberately keep their label instead of naming or enumerating people.
-      approverName: r.status === 'pending' ? (r.currentApproverName ?? null) : null,
-      approverPersonId: r.status === 'pending' ? (r.currentApproverPersonId ?? null) : null,
+      // r302 (6c9802c9) — WHO it is waiting for and at which level ("Waiting for Marcus Manager · Level 2 of
+      // 2"), or who decided it; the step-by-step progress for View; a rejection's reason; a cancellation's who
+      // and when. This replaces 567333b7's stage line, which labelled every step that was not the direct
+      // manager's "HR review" and could name nobody to an employee (the name read came back null through
+      // person RLS — test/r302-my-leave-approver-names.test.ts). Names now come from migration 0472.
+      approverLine: approverLineFor(r),
+      approvalProgress: approvalProgressFor(r),
+      rejectionReason: r.status === 'rejected' ? (rejectionReasons.get(r.id) ?? null) : null,
+      cancellation: cancellationFor(r),
       // Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill in the panel.
       cancelPendingLabel: r.pendingCancellationId ? t('cancelPendingBadge') : null,
       documentHref: r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null,
@@ -829,11 +911,12 @@ export default async function LeavePage({
     deselectAll: t('filters.deselectAll'),
   };
   // The panel posts a GET form carrying only its OWN fields, so every foreign param this page reads has to
-  // ride along as a hidden input — otherwise applying a history filter would silently reset the as-at date
-  // on the balance breakdown and drop the holiday warning banner mid-read.
+  // ride along as a hidden input — otherwise applying a history filter would silently reset the leave year
+  // (r302; the as-at date until then), switch the history tab, and drop the holiday warning banner mid-read.
   const historyHiddenParams: [string, string][] = (
     [
-      ['asOf', sp.asOf],
+      ['leaveYear', sp.leaveYear],
+      ['hTab', sp.hTab],
       ['year', sp.year],
       ['state', sp.state],
       ['loaded', sp.loaded],
@@ -842,51 +925,36 @@ export default async function LeavePage({
   const historyClearHref =
     historyHiddenParams.length > 0 ? `/leave?${new URLSearchParams(historyHiddenParams).toString()}` : '/leave';
 
-  // The "Other leave" breakdown Card (restored · feedback 56a0deb9): the pre-R54 grouped panels, rebuilt
-  // from the SAME derivations that feed the detailed balance table (deriveBalanceRow remaining + ESS-gated
-  // EntitlementBreakdown side-sheet sharing the ?asOf= reload). Null when no secondary types exist — the
-  // section is omitted exactly as on the old /me page. Rendered in BOTH branches below: beside the history
-  // for the personal view (with the shared equal-height column cap · 657962ec), full-width above the table
-  // for admins (no cap).
-  const secondaryBreakdownCard = (className = '') =>
-    secondaryGroups.length > 0 ? (
-      <Card className={`p-5 ${className}`.trim()}>
-        <SecondaryLeaveGroups
-          heading={tMe('otherLeaveHeading')}
-          groups={secondaryGroups.map(({ group, types }) => ({
-            group,
-            label: tMe(`leaveGroups.${group}`),
-            types: types.map((b) => {
-              // r209 — the POOL's breakdown for a borrower; identity for every other type.
-              const bd = breakdownByType.get(balanceStoryTypeId(b));
-              const showBreakdown = essViewHasAnyVisibleRow(b.essView);
-              return {
-                leaveTypeId: b.leaveTypeId,
-                leaveType: b.leaveType,
-                color: b.color,
-                icon: b.icon,
-                code: b.code,
-                remaining: deriveBalanceRow(b, bd ?? null).available,
-                breakdown:
-                  showBreakdown && bd ? (
-                    <EntitlementBreakdown
-                      data={bd}
-                      summary={{ available: b.available }}
-                      visual={{ color: b.color, icon: b.icon, code: b.code }}
-                      asOf={breakdownAsOf}
-                      action="/leave"
-                      // 5f2e20fb — the side-sheet's own as-at form posts only asOf; carry the history
-                      // filter so re-dating a breakdown does not clear the list behind the panel.
-                      hiddenParams={historyFilterParams}
-                      applyEssConfig
-                    />
-                  ) : undefined,
-              };
-            }),
-          }))}
-        />
-      </Card>
-    ) : null;
+  // r302 — the tab links. Each keeps every other param this page reads (the year, the type/date filter, the
+  // banner) and sets only `hTab`, so switching tabs never resets anything else.
+  const historyTabs = LEAVE_HISTORY_TABS.map((tab) => {
+    const q = new URLSearchParams(historyHiddenParams.filter(([k]) => k !== 'hTab'));
+    for (const id of hTypeIds) q.append('hType', id);
+    if (hFrom) q.set('hFrom', hFrom);
+    if (hTo) q.set('hTo', hTo);
+    q.set('hTab', tab);
+    return { key: tab, label: t(`status.${tab}`), count: tabCounts[tab], href: `/leave?${q.toString()}`, active: tab === historyTab };
+  });
+  const HISTORY_EMPTY: Record<LeaveHistoryTab, string> = {
+    pending: t('myLeave.emptyPending'),
+    approved: t('myLeave.emptyApproved'),
+    rejected: t('myLeave.emptyRejected'),
+    cancelled: t('myLeave.emptyCancelled'),
+  };
+
+  // r302 — Upcoming Leave rows, pre-translated for the client island.
+  const upcoming: UpcomingLeaveRow[] = upcomingRows.map((r) => {
+    const st = displayStatus(r);
+    return {
+      id: r.id,
+      leaveType: r.leaveType,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      days: Number(r.days),
+      statusKey: st.key,
+      statusLabel: st.label,
+    };
+  });
 
   return (
     // Layout (feedback 026e16b9): the container cap goes to 100rem so this page — whose Employee Details
@@ -905,6 +973,38 @@ export default async function LeavePage({
           description={t('description')}
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              {/* r302 (6c9802c9) — THE YEAR, beside Apply Leave. A plain GET form (works without script): it
+                  posts `leaveYear` and carries the history filter and tab so choosing a year resets nothing
+                  else. The options are the current leave year and earlier years with records — never a future
+                  year. It replaces the "As at" date the My balances card had. */}
+              {dashboard && (
+                <form method="GET" action="/leave" className="flex items-center gap-1.5">
+                  {Object.entries(historyFilterParams).flatMap(([k, v]) =>
+                    (Array.isArray(v) ? v : [v]).map((one, i) => <input key={`${k}-${i}`} type="hidden" name={k} value={one} />),
+                  )}
+                  <label htmlFor="leave-year" className="text-xs text-muted-foreground">
+                    {t('myLeave.yearLabel')}
+                  </label>
+                  <select
+                    id="leave-year"
+                    name="leaveYear"
+                    defaultValue={String(dashboard.selectedYear)}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                  >
+                    {dashboard.years.map((y) => (
+                      <option key={y} value={String(y)}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
+                  >
+                    {t('myLeave.yearApply')}
+                  </button>
+                </form>
+              )}
               {/* Request Leave (feedback 48e69709): primary "+" trigger opening the apply form in a modal.
                   Feedback 8ec63139 narrowed it to the SELF-SERVICE viewer — on the HR-admin landing page it
                   was one of the three own-leave affordances the reporter asked to remove. The action, the
@@ -1008,146 +1108,55 @@ export default async function LeavePage({
         </div>
       )}
 
-      {/* "My Leave" primary summary cards — ported from the /me Leave tab (My Absence merge · a7cbd895).
-          Clicking a card opens THAT type's details in the right-side slide-out panel, exactly as on /me.
-          The `me-leave` tour anchor moves with the cards so the My Profile walkthrough still lands on them
-          (its step now routes here — see lib/module-tours.json). Empty ⇒ row omitted (e.g. not linked). */}
-      {/* Shared leave groups placed PRIMARY (46afcc48): the pooled balance now sits INSIDE the "My Leave
-          Balance" row as a non-clickable tile (passed as sharedGroups into <LeaveCards>), not in its own
-          "Shared leave balances" category — that is what "Primary" placement means on this screen and what
-          the reporter asked to see. Empty ⇒ omitted, which is every tenant on the day this ships (the
-          placement column defaults to Hidden). */}
-      {ess && primaryCards.length > 0 && (
+      {/* ── r302 (6c9802c9) · THE LEAVE BALANCE DASHBOARD ─────────────────────────────────────────────────
+          One card per leave type that applies to the employee — the Annual Leave type with its ring, every
+          other type a smaller card with the same figures, a type with no entitlement showing Taken only — plus
+          any shared leave group HR placed, all for the chosen leave year. It replaces the "My Leave Balance"
+          tiles, the collapsible "My balances" table (and its As-at form and cookie), the "Shared leave
+          balances" card and the "Other leave types" card. The `me-leave` tour anchor stays on this Card (the My
+          Profile walkthrough lands here) and the `leave-balance` anchor on the dashboard inside it. */}
+      {ess && dashboard && (
         <Card className="p-5" data-tour="me-leave">
-          <LeaveCards entries={primaryCards} sharedGroups={sharedGroupsPrimary} />
-        </Card>
-      )}
-
-      {/* Detailed leave-balance table — relocated from the /me Leave tab (R37 e5a158d3). Single balance
-          view (replaced the old all-employee pivot): the viewer's OWN dense Workday-style table with a
-          per-type EntitlementBreakdown side-sheet and ONE shared as-at-date GET form. Same source
-          (leaveBalances + leaveEntitlementBreakdown) + same deriveBalanceRow gating as /me, so figures,
-          breakdowns, calculations and visibility are unchanged. Feedback 56a0deb9: the section folds
-          behind its header (CollapsibleCardSection — CLOSED by default, cookie-persisted per browser) so
-          the page opens tidy; the data-tour anchor stays on the Card, whose summary bar remains visible
-          when closed, so the leave-balance tour step keeps a target either way. Feedback 8ec63139: the whole
-          section is self-service only — an HR admin's own balances do not belong on their inquiry page. */}
-      {ess && (
-      <Card className="overflow-hidden" data-tour="leave-balance">
-        <CollapsibleCardSection
-          title={t('myBalancesTitle')}
-          subtitle={t('balancesSubtitle')}
-          toggleLabel={t('balancesToggle')}
-          cookieKey={BALANCE_OPEN_COOKIE}
-          defaultOpen={balanceOpen}
-        >
-        {me == null || detailedBalances.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t('balancesEmpty')}</div>
-        ) : (
-          <div className="space-y-3 p-4">
-            {/* ONE shared as-at date GET form driving every row's breakdown (mirrors /me). Invalid/empty ⇒ today. */}
-            <form method="GET" action="/leave" className="flex flex-wrap items-end gap-2">
-              {/* 5f2e20fb — this form posts ONLY asOf, so the history filter rides along as hidden inputs
-                  or pressing Apply here would silently clear it. hType repeats, one input per ticked type. */}
-              {Object.entries(historyFilterParams).flatMap(([k, v]) =>
-                (Array.isArray(v) ? v : [v]).map((one, i) => (
-                  <input key={`${k}-${i}`} type="hidden" name={k} value={one} />
-                )),
-              )}
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {tMe('leaveBalanceTable.asAtDate')}
-                <input
-                  type="date"
-                  name="asOf"
-                  defaultValue={breakdownAsOf}
-                  className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
-                />
-              </label>
-              <button
-                type="submit"
-                className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
-              >
-                {tMe('leaveBalanceTable.apply')}
-              </button>
-            </form>
-            <LeaveBalanceTable
-              rows={detailedBalances.map((b) => {
-                // deriveBalanceRow applies the ESS available/taken gating; the breakdown side-sheet is offered only
-                // when HR has left at least one Leave Summary line visible (1f6fd6d8) — else the expander never mounts.
-                const showBreakdown = essViewHasAnyVisibleRow(b.essView);
-                // r209 — a BORROWER's row carries the pool's figures, so it tells the pool's entitlement
-                // story (balanceStoryTypeId). Its own breakdown describes a leave type that has no
-                // entitlement table by design, and printing that beside spendable days read as a fault.
-                const bd = breakdownByType.get(balanceStoryTypeId(b));
-                return {
-                  ...deriveBalanceRow(b, bd ?? null),
-                  detail:
-                    showBreakdown && bd ? (
-                      <EntitlementBreakdown
-                        data={bd}
-                        summary={{ available: b.available }}
-                        visual={{ color: b.color, icon: b.icon, code: b.code }}
-                        asOf={breakdownAsOf}
-                        action="/leave"
-                        // 5f2e20fb — same carrier as the balance-table breakdown above.
-                        hiddenParams={historyFilterParams}
-                        applyEssConfig
-                      />
-                    ) : undefined,
-                };
-              })}
+          <h2 className="text-sm font-semibold">{t('myLeave.dashboardTitle')}</h2>
+          <div className="mt-3" data-tour="leave-balance">
+            <MyLeaveDashboard
+              cards={dashboardCards}
+              sharedGroups={[...sharedGroupsPrimary, ...sharedGroupsSecondary]}
+              locale={locale}
             />
           </div>
-        )}
-        </CollapsibleCardSection>
-      </Card>
-      )}
-
-      {/* Shared leave groups placed SECONDARY (46afcc48): the same pooled balance, drawn lower down —
-          below the detailed balance table, above the "Other leave" / history pairing. Deliberately its own
-          full-width Card rather than a row inside SecondaryLeaveGroups: that component's rows are LEAVE
-          TYPES with a per-type breakdown side-sheet, and a group has no per-type breakdown to open, so
-          folding it in would put a row there that behaves unlike every other row in the list. */}
-      {ess && sharedGroupsSecondary.length > 0 && (
-        <Card className="p-5">
-          <SharedLeaveGroupCards heading={tMe('sharedLeaveGroups.heading')} entries={sharedGroupsSecondary} />
         </Card>
       )}
 
-      {/* Self-service view — compact card history (feedback 657962ec, replacing the 56a0deb9 list): the
-          "Other leave" breakdown beside the leave history, each in its own column on wide screens,
-          stacking on small ones. Each history record is now a clean card (type, dates, duration, status)
-          whose full detail + actions open in a slide-out panel — see LeaveHistoryCards. Both columns share
-          the COLUMN_CAP height on lg+ and scroll within themselves so they stay exactly side by side.
-          Rows, actions, gates and data are all unchanged. */}
+      {/* r302 — UPCOMING LEAVE: approved and pending leave from today onwards, soonest first. This reverses
+          11876072's removal of the side panel's upcoming list at the reporter's request — as a section of the
+          page; the Leave Details panel itself still has no upcoming list. */}
+      {ess && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('myLeave.upcomingTitle')}</h2>
+          <div className="mt-2">
+            <UpcomingLeave rows={upcoming} locale={locale} />
+          </div>
+        </Card>
+      )}
+
+      {/* r302 — MY LEAVE HISTORY, ACROSS THE FULL WIDTH, with its four tabs. The type/date filter (5f2e20fb)
+          stays; the tabs narrow by status on the server. Each row opens View — the same slide-out panel,
+          now with the reason, the date submitted, the approval progress with names, a rejection's reason and
+          a cancellation's who and when. Rows, actions, gates and the per-date outcome are unchanged. */}
       {!admin && (
-        <div className={`grid grid-cols-1 gap-6 ${secondaryGroups.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-          {secondaryBreakdownCard(`${COLUMN_CAP} lg:overflow-y-auto`)}
-          {/* 5f2e20fb LAYOUT TRAP: `overflow-hidden` used to sit on this Card, and FilterPanel's popover is
-              an absolutely positioned div rather than a portal — inside a clipping ancestor the whole panel
-              would have been cut off at the card edge. The clipping moved to the inner scrolling div, which
-              is the element that actually needs it (it is what scrolls); the card keeps its rounded corners
-              because nothing now paints outside them except the popover, which is the point. */}
-          <Card className={`flex flex-col ${COLUMN_CAP}`} data-tour="leave-requests">
-            <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {/* "Showing 3 of 14" while a filter is on, plain "14" once cleared. */}
-                  {historyFiltered
-                    ? t('filters.showingOf', { shown: selfHistory.length, total })
-                    : t('historyCount', { count: total })}
-                </span>
-                <FilterPanel
-                  action="/leave"
-                  fields={historyFilterFields}
-                  values={historyFilterValues}
-                  labels={historyFilterLabels}
-                  hidden={historyHiddenParams}
-                />
-              </div>
-              {/* Removable chips under the top row: it is always visible WHY the list is short, and one
-                  click puts it back. */}
-              <FilterChips
+        <Card className="flex flex-col" data-tour="leave-requests">
+          {/* 5f2e20fb LAYOUT TRAP: FilterPanel's popover is an absolutely positioned div rather than a portal,
+              so no ancestor of it may clip — the table scrolls sideways in its own wrapper instead. */}
+          <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">
+                {/* "Showing 3 of 14" while a filter is on, plain "14" once cleared. */}
+                {historyFiltered
+                  ? t('filters.showingOf', { shown: filteredTotal, total })
+                  : t('historyCount', { count: total })}
+              </h2>
+              <FilterPanel
                 action="/leave"
                 fields={historyFilterFields}
                 values={historyFilterValues}
@@ -1155,29 +1164,41 @@ export default async function LeavePage({
                 hidden={historyHiddenParams}
               />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {historyEntries.length === 0 ? (
-                historyFiltered ? (
-                  // NOT `requestsEmpty` — that sentence means "you have no leave records at all", which is a
-                  // different and, here, untrue statement.
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">{t('filters.emptyFiltered')}</p>
-                    <Link
-                      href={historyClearHref}
-                      className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    >
-                      {t('filters.clearAll')}
-                    </Link>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{t('requestsEmpty')}</p>
-                )
-              ) : (
-                <LeaveHistoryCards entries={historyEntries} locale={locale} />
-              )}
-            </div>
-          </Card>
-        </div>
+            {/* Removable chips under the top row: it is always visible WHY the list is short, and one
+                click puts it back. */}
+            <FilterChips
+              action="/leave"
+              fields={historyFilterFields}
+              values={historyFilterValues}
+              labels={historyFilterLabels}
+              hidden={historyHiddenParams}
+            />
+          </div>
+          <div className="p-4">
+            {total === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('requestsEmpty')}</p>
+            ) : historyFiltered && filteredTotal === 0 ? (
+              // NOT `requestsEmpty` — that sentence means "you have no leave records at all", which is a
+              // different and, here, untrue statement.
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">{t('filters.emptyFiltered')}</p>
+                <Link
+                  href={historyClearHref}
+                  className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {t('filters.clearAll')}
+                </Link>
+              </div>
+            ) : (
+              <LeaveHistoryCards
+                entries={historyEntries}
+                locale={locale}
+                tabs={historyTabs}
+                emptyLabel={HISTORY_EMPTY[historyTab]}
+              />
+            )}
+          </div>
+        </Card>
       )}
 
       {/* Feedback 8ec63139: the HR admin's own full-width "Other leave" breakdown card (56a0deb9) is gone —
