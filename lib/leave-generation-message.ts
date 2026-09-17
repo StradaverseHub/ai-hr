@@ -43,6 +43,9 @@ export function leaveGenerationMessages(
         parts.push(t('generateToastAccrualNothing', { date: acc.asOf ?? '' }));
       }
     }
+    if (acc.heldBackNextYearStarted > 0) {
+      parts.push(t('generateToastAccrualHeldBack', { count: acc.heldBackNextYearStarted, year, nextYear: year + 1 }));
+    }
     if (acc.notAnnualLeaveLines > 0) {
       parts.push(t('generateToastAccrualNotAnnualLeave', { count: acc.notAnnualLeaveLines }));
     }

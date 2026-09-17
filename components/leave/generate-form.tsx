@@ -724,6 +724,11 @@ export function GenerateForm({
                         </p>
                       </>
                     ))}
+                  {accrual.heldBackNextYearStarted > 0 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      {t('generateAccrualHeldBack', { count: accrual.heldBackNextYearStarted, year: preview.year, nextYear: preview.year + 1 })}
+                    </p>
+                  )}
                   {accrual.notAnnualLeaveLines > 0 && (
                     <p className="rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground">
                       {t('generateAccrualNotAnnualLeave', { count: accrual.notAnnualLeaveLines })}

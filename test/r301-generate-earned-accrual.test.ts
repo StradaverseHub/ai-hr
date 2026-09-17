@@ -190,6 +190,8 @@ describe('§1 the preview carries the earned figures and writes nothing', () => 
       annualLeaveLines: 2,
       notAnnualLeaveLines: 0,
       skippedFutureYear: false,
+      heldBackNextYearStarted: 0,
+      forfeits: 0,
       asOf: `${PAST}-12-31`,
       posted: 2,
       upToDate: 0,
@@ -280,6 +282,8 @@ describe('§2 the commit equals the preview', () => {
       upToDate: 0,
       days: 24,
       skippedFutureYear: false,
+      heldBackNextYearStarted: 0,
+      forfeits: 0,
       failed: false,
     });
   });
@@ -402,6 +406,8 @@ describe('§4 a FUTURE year posts no accrual and says so', () => {
         annualLeaveLines: 2,
         notAnnualLeaveLines: 0,
         skippedFutureYear: true,
+        heldBackNextYearStarted: 0,
+        forfeits: 0,
         asOf: null,
         posted: 0,
         upToDate: 0,
@@ -518,6 +524,9 @@ describe('§5 an accrual failure leaves the generation committed and is returned
 
 describe('§5b the Run Earned Accrual actions require an administrator', () => {
   it('preview and run call requireAdmin, not a bare session (the 4b0e76ae hole on openLeaveYearAction)', () => {
+    const reasonSrc = read('app/admin/leave-config/earned-accrual/actions.ts');
+    expect(reasonSrc, 'the preview the Run Earned Accrual screen actually calls').toContain('await requireAdmin()');
+    expect(reasonSrc).not.toContain('getSession(');
     const src = read('app/admin/actions.ts');
     for (const name of ['previewEarnedAccrualAction', 'runEarnedAccrualAction']) {
       const at = src.indexOf(`export async function ${name}(`);
@@ -530,6 +539,66 @@ describe('§5b the Run Earned Accrual actions require an administrator', () => {
 });
 
 // ── §6 ───────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('§5c parent hand-fix — what the accrual verifier found', () => {
+  it('a carry FORFEIT the accrual posts is counted in preview AND commit, not only the earned days', async () => {
+    const al = await earnedAnnual();
+    await owner.db
+      .update(schema.leaveType)
+      .set({ carryForwardEnabled: true, carryForwardMax: '2' as never })
+      .where(eq(schema.leaveType.id, al));
+    const a = await hire('Aina');
+    // A prior-year balance of 12, above the cap of 2: the first accrual of THIS cycle forfeits the excess.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId, employmentId: a.employmentId, leaveTypeId: al, entryType: 'accrual', days: '12.00', effectiveOn: `${PAST}-06-30`,
+    });
+    const preview = await previewLeaveGeneration(ctx(), everyone(YEAR));
+    const commit = await runLeaveGeneration(ctx(), everyone(YEAR));
+    expect(preview.accrual?.forfeits, 'the preview discloses the forfeit').toBe(1);
+    expect(commit.accrual?.forfeits).toBe(1);
+    expect(commit.forfeits, 'folded into the run total the toast, log and event report').toBe(preview.forfeits);
+    expect(commit.forfeits).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a PAST year does not top up a pair whose following year has already started, and says so', async () => {
+    const al = await earnedAnnual();
+    const a = await hire('Aina');
+    const c = await hire('Chen');
+    // Aina's CURRENT year has begun on the ledger (as the monthly cron would have made it); Chen's has not.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId, employmentId: a.employmentId, leaveTypeId: al, entryType: 'accrual', days: '1.00', effectiveOn: `${YEAR}-01-31`,
+    });
+    const before = await ledgerSum(al, a.employmentId);
+    const commit = await runLeaveGeneration(ctx(), everyone(PAST));
+    expect(commit.accrual?.heldBackNextYearStarted).toBe(1);
+    expect(await ledgerSum(al, a.employmentId), 'nothing added to a pair whose next year started').toBe(before);
+    expect((await ledgerSum(al, c.employmentId)) > 0, 'the other employee is still topped up').toBe(true);
+  });
+
+  it('the not-Annual-Leave count stays right when already-opened Annual Leave pairs are handed over', async () => {
+    const al = await earnedAnnual();
+    const sick = await mkType('SICK', 'Medical Leave');
+    await configure(sick, 14);
+    await setMethod(sick, 'earned_monthly');
+    await hire('Aina');
+    await hire('Chen');
+    await runLeaveGeneration(ctx(), everyone(PAST)); // opens Annual Leave for both
+    const second = await runLeaveGeneration(ctx(), everyone(PAST));
+    expect(second.lines.filter((l) => l.leaveTypeId === al).every((l) => l.outcome === 'already_open')).toBe(true);
+    expect(second.accrual?.notAnnualLeaveLines).toBe(2);
+  });
+
+  it('a 0-day earned Annual Leave entitlement is NOT "already up to date" and does not pass', async () => {
+    const al = b.annualLeaveTypeId;
+    await setMethod(al, 'earned_monthly');
+    await configure(al, 0);
+    const a = await hire('Aina');
+    const commit = await runLeaveGeneration(ctx(), everyone(PAST));
+    const line = commit.lines.find((l) => l.employmentId === a.employmentId && l.leaveTypeId === al);
+    expect(line?.earnedAccrual ?? null).toBeNull();
+    expect(commit.accrual?.upToDate ?? 0).toBe(0);
+  });
+});
 
 describe('§6 an earned type that is NOT Annual Leave is never accrued', () => {
   it('SICK on earned_monthly: counted as not-Annual-Leave, no row; Annual Leave beside it is accrued (positive control)', async () => {
@@ -695,6 +764,8 @@ const accrualOf = (over: Partial<NonNullable<LeaveGenerationResult['accrual']>>)
   annualLeaveLines: 2,
   notAnnualLeaveLines: 0,
   skippedFutureYear: false,
+  heldBackNextYearStarted: 0,
+  forfeits: 0,
   asOf: `${PAST}-12-31`,
   posted: 1,
   upToDate: 1,

@@ -36,6 +36,8 @@ const accrualRan: LeaveGenerationAccrual = {
   annualLeaveLines: 2,
   notAnnualLeaveLines: 0,
   skippedFutureYear: false,
+  heldBackNextYearStarted: 0,
+  forfeits: 0,
   asOf: '2026-09-17',
   posted: 1,
   upToDate: 1,

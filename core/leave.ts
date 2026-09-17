@@ -8377,7 +8377,6 @@ export async function accrueEarnedLeave(
         }
         group.count += 1;
         const pair: EarnedAccrualPair = { employmentId: e.employmentId, leaveTypeId: typeId, days: 0 };
-        pairs.push(pair);
         // 2D-3: cap what carries into the new cycle. Posted once per cycle, dated at the cycle start
         // (guarded by `forfeited`). Leave Year Type override (e1a51aea): the maps are keyed cs|emp|type —
         // this (emp, type)'s window.
@@ -8418,6 +8417,9 @@ export async function accrueEarnedLeave(
         // clamps here (or anywhere) — it is passed only so the shared helper can flag a below-minimum figure.
         const entitlement = composed.days;
         if (entitlement <= 0) continue;
+        // r301 (parent hand-fix) — recorded only once the pair has an entitlement to earn: a 0-day pair used to be
+        // listed first and so read "already up to date" (and Passed) on Generate Entitlement.
+        pairs.push(pair);
         // bc36c768 — THE SHARED KERNEL. This used to be four lines of period arithmetic written out here
         // and again inside projectExpectedEntitlement. One function now, called from both, because the two
         // must agree to the day or every profile edit posts an oscillating delta (see earnedToDateFor).

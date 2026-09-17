@@ -1,6 +1,6 @@
 'use server';
 
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import {
   accrueEarnedLeave,
   asOfForLeaveYear,
@@ -51,7 +51,7 @@ export async function previewEarnedAccrualWithReasonAction(scope: EarnedAccrualS
   earnedToDateTotal?: number;
   error?: string;
 }> {
-  const s = await getSession();
+  const s = await requireAdmin();
   try {
     const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
     const { breakdown, emptyReason, archivedHint, earnedToDateTotal } = await accrueEarnedLeave(s, {

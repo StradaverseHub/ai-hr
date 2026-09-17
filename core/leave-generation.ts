@@ -81,7 +81,7 @@
  * and should not grow for 26 rows. The completion summary and the downloadable log ship instead, which is
  * what the plan's build notes ask for in as many words.
  */
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, gt } from 'drizzle-orm';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -91,6 +91,7 @@ import {
   leaveGenerationRunItem,
   leaveType,
   person,
+  leaveLedger,
 } from '../db/schema';
 import {
   countTemplatesForLeaveType,
@@ -164,6 +165,15 @@ export type LeaveGenerationAccrual = {
   notAnnualLeaveLines: number;
   /** The year has not started. Nothing is accrued in advance: earned days are earned as the year goes by. */
   skippedFutureYear: boolean;
+  /**
+   * r301 (parent hand-fix) — PAST-year pairs NOT handed over because the FOLLOWING leave year has already started
+   * for them on the ledger. Adding the old year's days now would land after that year's carry forfeit was fixed and
+   * carry past the cap (r301 verifier, measured: carried 3 over a cap of 2).
+   */
+  heldBackNextYearStarted: number;
+  /** Carry forfeits the accrual posted (or would post). Also folded into the run's `forfeits`, which the toast, the
+   *  run log and the event report — the verifier found them posted and never mentioned. */
+  forfeits: number;
   /** The as-at date the accrual ran at (the generation's late edge); null when it did not run. */
   asOf: string | null;
   posted: number;
@@ -351,6 +361,26 @@ async function generate(
       .map((t) => t.id),
   );
 
+  // r301 (parent hand-fix) — for a PAST year, which (employee, earned Annual Leave type) pairs already have ANY ledger
+  // row dated after that year: their following year has started, so its carry has been (or is being) worked out on a
+  // balance that did not include the old year's missing days. Read before the year-open, like the lookup above.
+  const nextYearStarted = new Set<string>();
+  if (today > `${year}-12-31` && earnedAnnualTypeIds.size > 0 && targets.length > 0) {
+    const later = await withTenant(ctx, (tx) =>
+      tx
+        .selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
+        .from(leaveLedger)
+        .where(
+          and(
+            inArray(leaveLedger.employmentId, targets),
+            inArray(leaveLedger.leaveTypeId, [...earnedAnnualTypeIds]),
+            gt(leaveLedger.effectiveOn, `${year}-12-31`),
+          ),
+        ),
+    );
+    for (const r of later) nextYearStarted.add(`${r.employmentId}|${r.leaveTypeId}`);
+  }
+
   // ── ④/⑤ THE ENGINE. One call. `dryRun` is the ONLY difference between preview and commit. ───────────
   const res = await openLeaveYear(ctx, { year, leaveTypeIds, employmentIds: targets, dryRun });
   const engineRows = res.rows;
@@ -394,14 +424,17 @@ async function generate(
     (r) => r.outcome === 'already_open' && earnedAnnualTypeIds.has(r.leaveTypeId),
   );
   const annualLeaveLines = [...earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave), ...openAnnualLeaveLines];
+  const handedLines = annualLeaveLines.filter((r) => !nextYearStarted.has(`${r.employmentId}|${r.leaveTypeId}`));
   let accrual: LeaveGenerationAccrual | null = null;
   let accrued: EarnedAccrualResult['pairs'] = [];
   if (earnedLines.length > 0 || openAnnualLeaveLines.length > 0) {
     const skippedFutureYear = today < `${year}-01-01`;
     accrual = {
       annualLeaveLines: annualLeaveLines.length,
-      notAnnualLeaveLines: earnedLines.length - annualLeaveLines.length,
+      notAnnualLeaveLines: earnedLines.filter((r) => r.earnedMethodNotAnnualLeave).length,
       skippedFutureYear,
+      heldBackNextYearStarted: skippedFutureYear ? 0 : annualLeaveLines.length - handedLines.length,
+      forfeits: 0,
       asOf: null,
       posted: 0,
       upToDate: 0,
@@ -409,21 +442,27 @@ async function generate(
       byLeaveType: [],
       error: null,
     };
-    if (annualLeaveLines.length > 0 && !skippedFutureYear) {
+    if (handedLines.length > 0 && !skippedFutureYear) {
       accrual.asOf = asOfLate;
       try {
         const acc = await accrueEarnedLeave(ctx, {
           asOf: asOfLate,
-          leaveTypeIds: [...new Set(annualLeaveLines.map((r) => r.leaveTypeId))],
-          employmentIds: [...new Set(annualLeaveLines.map((r) => r.employmentId))],
+          leaveTypeIds: [...new Set(handedLines.map((r) => r.leaveTypeId))],
+          employmentIds: [...new Set(handedLines.map((r) => r.employmentId))],
           dryRun,
         });
-        accrued = acc.pairs;
-        const reachedPairs = acc.breakdown.reduce((n, g) => n + g.employeeCount, 0);
-        accrual.posted = acc.granted;
-        accrual.upToDate = reachedPairs - acc.granted;
-        accrual.days = round2(acc.breakdown.reduce((n, g) => n + g.entitlementGenerated, 0));
-        accrual.byLeaveType = summariseByLeaveType(acc);
+        // The engine scopes by employee LIST × type LIST, which can include a held-back pair when one employee has
+        // several types; keep only the pairs handed over.
+        const handed = new Set(handedLines.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+        accrued = acc.pairs.filter((p) => handed.has(`${p.employmentId}|${p.leaveTypeId}`));
+        // r301 (parent hand-fix) — counted from the PAIRS, not breakdown.employeeCount, which also counted pairs with
+        // no entitlement to earn.
+        accrual.posted = accrued.filter((p) => p.days > 0).length;
+        accrual.upToDate = accrued.filter((p) => p.days <= 0).length;
+        accrual.days = round2(accrued.reduce((n, p) => n + p.days, 0));
+        accrual.byLeaveType = summariseByLeaveType({ ...acc, pairs: accrued });
+        accrual.forfeits = acc.forfeits;
+        counts.forfeits += acc.forfeits;
       } catch (e) {
         accrual.error = (e as Error).message || 'Earned accrual failed.';
       }
