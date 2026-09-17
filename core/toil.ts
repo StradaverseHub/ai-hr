@@ -27,6 +27,8 @@ import {
   leaveLedger,
   leaveRequest,
   leaveType,
+  payrollBatch,
+  payrollInput,
   person,
   replacementLeaveRequest,
   replacementLeaveRequestDate,
@@ -752,7 +754,9 @@ export async function bankToilCreditTx(
   // columns that carry it. Still frozen onto the accrual below and never re-derived, so changing the
   // period later moves nothing already banked.
   const approvedOn = p.approvedOn ?? new Date();
-  const approvedOnDate = approvedOn.toISOString().slice(0, 10);
+  // r299 fix pass — a date from an instant goes through todayInKualaLumpur (CLAUDE.md §8): the UTC date froze
+  // an expiry one day early for any approval between midnight and 08:00 in Malaysia.
+  const approvedOnDate = todayInKualaLumpur(approvedOn);
   // 3fb1a611: HR may type the expiry on the Add Leave Credit form (validated by the caller); every other path
   // resolves it from the policy exactly as before.
   const expiresOn = p.expiresOnOverride ?? resolveExpiry(approvedOnDate, policy);
@@ -927,9 +931,6 @@ export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date:
  * on the existing ORP fallback, with the kind recorded beside it (`worked_day_kind`) so a person can
  * reconcile it. A working day never reaches here: it cannot earn a credit.
  */
-function valuationDayTypeFor(kind: ToilWorkedDayKind): 'rest_day' | 'holiday' | null {
-  return kind === 'rest_day' || kind === 'holiday' ? kind : null;
-}
 
 export async function accrueSelfDeclaredToilTx(
   tx: Tx,
@@ -967,10 +968,14 @@ export async function accrueSelfDeclaredToilTx(
     workedDate: p.workedDate,
     companyId: emp.companyId,
     country: emp.country,
-    // 3fb1a611: no longer NULL for every self-declared credit — the day kind is RESOLVED from the schedule
-    // now, not guessed. Rest day / public holiday are valued exactly on expiry; an off day stays NULL (see
-    // valuationDayTypeFor).
-    dayType: valuationDayTypeFor(kind),
+    // r299 fix pass (3fb1a611) — STILL NULL, deliberately. The day KIND is resolved and stored (worked_day_kind,
+    // below) so the screens and the gate can name it, but `day_type` is what the convert-to-pay valuation keys
+    // on, and its exact statutory branch prices the WHOLE `otMinutes` figure — which on this path is a
+    // declaration (days × 480 for a request in days), and which ignores how much of the credit was already
+    // used. Stamping it turned a part-used 1-day credit into a full day's statutory cash and a 3-day claim on
+    // one rest day into 384.76 where the remaining-days basis gives 230.76 (r299 verifier). The honest
+    // basis for a self-declared credit remains the ORP × remaining days fallback, as 296fc027 decided.
+    dayType: null,
     workedDayKind: kind,
     otMinutes: Math.max(0, Math.round(p.declaredMinutes)),
     declaredDays: p.declaredDays,
@@ -1090,13 +1095,18 @@ export async function consumeReplacementLeaveTx(
     const take = round2(Math.min(free, remaining));
     const newTaken = round2(alreadyTaken + take);
     const fully = newTaken >= credited - 1e-9; // float-safe: this accrual is now fully consumed
-    await tx
+    // r299 fix pass — guarded on the state just read, the mirror of reverseLeaveCredit's guard: an approval
+    // racing an HR reversal must not flip a REVERSED credit back to taken. A lot that changed underneath is
+    // skipped and the next lot (or the shortfall event) covers the leave.
+    const consumedRow = await tx
       .update(toilAccrual)
       .set({
         daysTaken: newTaken.toFixed(2),
         ...(fully ? { status: 'taken' as ToilAccrualStatus, takenByRequestId: p.requestId } : {}),
       })
-      .where(eq(toilAccrual.id, a.id));
+      .where(and(eq(toilAccrual.id, a.id), eq(toilAccrual.status, 'active'), eq(toilAccrual.daysTaken, a.daysTaken)))
+      .returning({ id: toilAccrual.id });
+    if (consumedRow.length !== 1) continue;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'toil-accrual',
@@ -1174,6 +1184,21 @@ export type RestoreReplacementResult = {
  * back at the request the `toil.consumed` events carry. Replacement leave could not be cancelled at all
  * before this round, so no replacement split exists without that field.
  */
+/**
+ * Has this employment ever held a Leave Credit that could have been used? A REVERSED credit cannot have been
+ * (reverseLeaveCredit refuses a used one), so it is excluded — which is also exactly the predicate of the partial
+ * toil_accrual_emp_date_uq index (tenant_id, employment_id, worked_date) WHERE status <> 'reversed', so this is
+ * one index probe rather than a scan.
+ */
+async function employmentHoldsCreditsTx(tx: Tx, tenantId: string, employmentId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: toilAccrual.id })
+    .from(toilAccrual)
+    .where(and(eq(toilAccrual.tenantId, tenantId), eq(toilAccrual.employmentId, employmentId), ne(toilAccrual.status, 'reversed')))
+    .limit(1);
+  return row != null;
+}
+
 async function consumptionRootRequestIdTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<string> {
   let current = requestId;
   // Bounded: a split chain is one hop per cancellation, and a cycle is impossible (a new row cannot be split
@@ -1227,6 +1252,13 @@ async function planReplacementLeaveRestore(
   ctx: SessionContext,
   p: { employmentId: string; requestId: string; need: number; asOf: string },
 ): Promise<{ root: string; plan: { accrualId: string; take: number }[]; byId: Map<string, RestoreLot> }> {
+  // r299 fix pass — AN EMPLOYEE WHO NEVER HELD A CREDIT HAS NOTHING TO GIVE BACK, so nothing below is read. The
+  // event reads that follow filter domain_event by event type and JSON payload, which no index serves, and since
+  // finalizeLeaveApproval reads the type's ROLE every cancellation of a role-classified Replacement Leave reaches
+  // here — including on a tenant without the module, where the register is empty.
+  if (!(await employmentHoldsCreditsTx(tx, ctx.tenantId, p.employmentId))) {
+    return { root: p.requestId, plan: [], byId: new Map() };
+  }
   const root = await consumptionRootRequestIdTx(tx, ctx, p.requestId);
 
   // 1 · what the root request took, per lot, in the order it took it.
@@ -1382,6 +1414,10 @@ export async function restoreReplacementLeaveTx(
 ): Promise<RestoreReplacementResult> {
   const need = round2(p.need);
   if (need <= 0) return { restored: 0, lotsRestored: 0, reactivated: 0, shortfall: 0 };
+  // r299 fix pass — no register, no shortfall to record: the leave was never paid for with credits.
+  if (!(await employmentHoldsCreditsTx(tx, ctx.tenantId, p.employmentId))) {
+    return { restored: 0, lotsRestored: 0, reactivated: 0, shortfall: need };
+  }
   const { root, plan, byId } = await planReplacementLeaveRestore(tx, ctx, { ...p, need });
 
   let restored = 0;
@@ -1489,6 +1525,52 @@ async function assertAdminForEmploymentTx(tx: Tx, employmentId: string, action: 
   }
 }
 
+/**
+ * r299 fix pass (3fb1a611) — HAS PAYROLL ALREADY TAKEN THIS DATE'S OVERTIME?
+ *
+ * A credit and that day's overtime pay are mutually exclusive, but payroll only honours that at PREFILL time
+ * (EXCLUDE_TOIL_BANKED_DAYS): `payroll_input.overtime_amount` is a per-batch aggregate with no per-day
+ * attribution, a processed run is not re-prefilled and a closed one cannot be written (see the note above
+ * EXCLUDE_TOIL_BANKED_DAYS in core/payroll.ts). So an HR credit added AFTER the overtime reached a run paid the
+ * day twice, and a reversal AFTER a run excluded it left the overtime unpaid — while the screens said the
+ * opposite (r299 verifier, measured). Rather than rewrite payroll-run state, the two HR actions REFUSE while a
+ * run holds that decision, and the promises on screen stay true.
+ *
+ * CONSERVATIVE BY DESIGN. A run "holds" the date when it belongs to the employee's company, is for the date's
+ * month or the next one (a cut-off schedule can carry late-month overtime into the next period), and is either
+ * past draft or a draft already carrying overtime for this employee. That can refuse a date whose overtime
+ * actually falls in the other period — the price of never paying a day twice or not at all. Returns the
+ * earliest such run, or null.
+ */
+async function payrollRunHoldingOvertimeTx(
+  tx: Tx,
+  p: { employmentId: string; companyId: string; workedDate: string },
+): Promise<{ payPeriod: string; status: string } | null> {
+  const [y, m] = p.workedDate.slice(0, 7).split('-').map(Number);
+  const month = p.workedDate.slice(0, 7);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const runs = await tx
+    .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, overtime: payrollInput.overtimeAmount })
+    .from(payrollBatch)
+    .leftJoin(payrollInput, and(eq(payrollInput.batchId, payrollBatch.id), eq(payrollInput.employmentId, p.employmentId)))
+    .where(and(eq(payrollBatch.companyId, p.companyId), inArray(payrollBatch.payPeriod, [month, next])))
+    .orderBy(asc(payrollBatch.payPeriod), asc(payrollBatch.id));
+  const hit = runs.find((r) => r.status !== 'draft' || Number(r.overtime ?? 0) !== 0);
+  return hit ? { payPeriod: hit.payPeriod, status: hit.status } : null;
+}
+
+/**
+ * r299 fix pass — HR may not add or reverse a Leave Credit on THEIR OWN record. Cancelling leave (core/leave.ts)
+ * and approvals already refuse the self case; a credit is worse, because for an employee within the First
+ * Schedule it becomes cash on expiry and the HR form ticks the consent box. Refused in the service, whatever
+ * RLS would allow.
+ */
+function assertNotOwnRecord(ctx: SessionContext, employeePersonId: string | null | undefined, action: string): void {
+  if (ctx.personId && employeePersonId && ctx.personId === employeePersonId) {
+    throw new ToilSweepForbiddenError(`You cannot ${action} on your own record. Another HR administrator must do it.`);
+  }
+}
+
 /** Recorded overtime on one attendance day (0 when there is no row). */
 async function overtimeMinutesOnTx(tx: Tx, employmentId: string, date: string): Promise<number> {
   const [att] = await tx
@@ -1529,15 +1611,16 @@ export async function previewLeaveCredit(
   return withTenant(ctx, async (tx) => {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const [emp] = await tx
-      .select({ companyId: employment.companyId, country: company.country })
+      .select({ companyId: employment.companyId, country: company.country, personId: employment.personId })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
-    const approvedOnDate = (p.approvedOn ?? new Date()).toISOString().slice(0, 10);
+    const approvedOnDate = todayInKualaLumpur(p.approvedOn ?? new Date());
     const [dupe] = await tx
       .select({ id: toilAccrual.id })
       .from(toilAccrual)
@@ -1625,21 +1708,42 @@ export async function grantLeaveCredit(
   return withTenant(ctx, async (tx) => {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const [emp] = await tx
-      .select({ companyId: employment.companyId, country: company.country })
+      .select({
+        companyId: employment.companyId,
+        country: company.country,
+        personId: employment.personId,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!emp) throw new LeaveCreditError('That employee could not be found.');
+    assertNotOwnRecord(ctx, emp.personId, 'add a Leave Credit');
+    // r299 fix pass — a credit is for a day the employee WORKED for this employment.
+    if (p.workedDate < emp.hiredOn || (emp.terminatedOn != null && p.workedDate > emp.terminatedOn)) {
+      throw new LeaveCreditError(`The date worked must fall within this employee's service (${emp.hiredOn} onwards${emp.terminatedOn ? `, until ${emp.terminatedOn}` : ''}).`);
+    }
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
     const overtime = await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
+    if (overtime > 0) {
+      const run = await payrollRunHoldingOvertimeTx(tx, { employmentId: p.employmentId, companyId: emp.companyId, workedDate: p.workedDate });
+      if (run) {
+        throw new LeaveCreditError(
+          `The ${run.status} payroll for ${run.payPeriod} already includes overtime for this employee, and ${p.workedDate} has overtime recorded. Adding a credit now would pay that day twice — as overtime and as leave. Add the credit before that overtime is brought into payroll, or correct that payroll first.`,
+        );
+      }
+    }
     const result = await bankToilCreditTx(tx, ctx, {
       employmentId: p.employmentId,
       workedDate: p.workedDate,
       companyId: emp.companyId,
       country: emp.country,
-      dayType: valuationDayTypeFor(kind),
+      // r299 fix pass — NULL for the same reason as the request path: the valuation must not price HR's typed
+      // credit from the day's overtime minutes (0.5 day with 8h overtime was valued as a full day's cash).
+      dayType: null,
       workedDayKind: kind,
       // The measured overtime when the day has any (what a statutory convert-to-pay should be valued from);
       // otherwise the declared credit in standard-day minutes, the request path's convention.
@@ -1703,6 +1807,12 @@ export async function reverseLeaveCredit(
     const [acc] = await tx.select().from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
     if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
     await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
+    const [owner] = await tx
+      .select({ personId: employment.personId, companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, acc.employmentId))
+      .limit(1);
+    assertNotOwnRecord(ctx, owner?.personId, 'reverse a Leave Credit');
     if (acc.status === 'reversed') throw new LeaveCreditError('That Leave Credit has already been reversed.');
     if (acc.status === 'taken' || (acc.status === 'active' && Number(acc.daysTaken) > 0)) {
       throw new LeaveCreditError(
@@ -1713,6 +1823,16 @@ export async function reverseLeaveCredit(
     if (acc.status === 'converted_to_pay')
       throw new LeaveCreditError(`That Leave Credit was paid out when it expired on ${acc.expiresOn} and cannot be reversed.`);
     if (acc.expiresOn < today) throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
+    // r299 fix pass — a reversal only puts the overtime back if payroll has not already worked that date out
+    // without it. See payrollRunHoldingOvertimeTx.
+    if (owner && (await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0) {
+      const run = await payrollRunHoldingOvertimeTx(tx, { employmentId: acc.employmentId, companyId: owner.companyId, workedDate: acc.workedDate });
+      if (run) {
+        throw new LeaveCreditError(
+          `The ${run.status} payroll for ${run.payPeriod} has already worked out this employee's overtime without ${acc.workedDate}. Reversing the credit now would leave that overtime unpaid. Correct that payroll first.`,
+        );
+      }
+    }
 
     const days = round2(Number(acc.daysCredited));
     // The ledger row the credit wrote tells us which leave type it sits on; fall back to the tenant's
