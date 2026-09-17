@@ -1,0 +1,151 @@
+<meta charset="utf-8"><title>05db6aa7 — Custom rounding table</title>
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#7c2d12;margin-top:7px}
+  .tabs2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .tb{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px;color:var(--mf);background:#fff}
+  .tb.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .btn.dis{background:#e6e7ef;color:#9a9ba8}
+/* ---- this mockup ---- */
+
+.rg{display:grid;grid-template-columns:1fr 1fr 1fr 90px;gap:6px 8px;align-items:center;margin:6px 0}
+.rg .h{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+.cell{border:1px solid var(--border);border-radius:7px;background:#fff;padding:6px 9px;font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg);line-height:16px}
+.cell.lock{background:var(--muted);color:var(--mf)}
+.rm{font-size:11px;color:#b91c1c;font-weight:600}
+.lock{font-size:10.5px;color:var(--mf)}
+.errmsg{background:var(--badbg);border:1px solid #fca5a5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#7f1d1d;margin-top:8px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Leave type &gt; What they are entitled to &gt; Earning Method &gt; Rounding method: Custom rounding</h2>
+  <p class="q">The same table, today and after the change.</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">TODAY</span>
+      <div class="rg">
+<span class="h">From</span>
+<span class="h">Round To</span>
+<span class="h">Rounded Result</span>
+<span></span>
+<span class="cell lock">0.00</span>
+<span class="cell">0.25</span>
+<span class="cell">0.00</span>
+<span class="lock">From filled in</span>
+<span class="cell lock">0.25</span>
+<span class="cell">0.50</span>
+<span class="cell">0.50</span>
+<span class="lock">locked</span>
+<span class="cell lock">0.50</span>
+<span class="cell">0.75</span>
+<span class="cell">0.50</span>
+<span class="lock">locked</span>
+<span class="cell lock">0.75</span>
+<span class="cell">1.00</span>
+<span class="cell">1.00</span>
+<span class="lock">locked</span>
+</div>
+      <p class="note">"Round To" is really where a range ends, each range stops just short of it, and From cannot be typed. Your table can only be entered in this back-to-front way.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <div class="rg">
+<span class="h">From</span>
+<span class="h">To</span>
+<span class="h">Round To</span>
+<span></span>
+<span class="cell">0.00</span>
+<span class="cell">0.24</span>
+<span class="cell">0.00</span>
+<span class="rm">Remove</span>
+<span class="cell">0.25</span>
+<span class="cell">0.49</span>
+<span class="cell">0.50</span>
+<span class="rm">Remove</span>
+<span class="cell">0.50</span>
+<span class="cell">0.74</span>
+<span class="cell">0.50</span>
+<span class="rm">Remove</span>
+<span class="cell">0.75</span>
+<span class="cell">0.99</span>
+<span class="cell">1.00</span>
+<span class="rm">Remove</span>
+</div>
+      <span class="btn ghost" style="font-size:11px">+ Add row</span>
+      <p class="note">Every cell can be typed. A range includes both its From and its To.</p>
+      <div class="errmsg">Example check: "0.25 to 0.49 overlaps 0.40 to 0.60. Two ranges cannot cover the same figure."</div>
+    </div>
+  </div>
+</div>

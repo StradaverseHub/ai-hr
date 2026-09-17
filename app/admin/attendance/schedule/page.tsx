@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
-import { listAttendanceRules, type AttendanceRuleView } from '@/core/attendance-rule';
+import { ensureStandardRule, listAttendanceRules, type AttendanceRuleView } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
 import { ClientTabs } from '@/components/personnel-tabs';
 import {
@@ -21,7 +21,20 @@ import {
   theadCls,
   thCls,
 } from '@/components/ui';
-import { WorkScheduleForm } from '../../attendance-policy/schedule/work-schedule-form';
+import { ScheduleGroupCard, ScheduleGroupEditorPanel } from '../../attendance-policy/schedule-group-card';
+import {
+  CompanyPolicyCard,
+  CompanyPolicyEditPanel,
+  CompanyPolicyViewPanel,
+} from '../../attendance-policy/company-policy-card';
+import { WorkScheduleOvertimeCard } from '../../attendance-policy/work-schedule-overtime-card';
+import { policyLastUpdated } from '../../attendance-policy/policy-last-updated';
+import {
+  SCHEDULE_PANEL_ANCHOR,
+  groupEditorHref,
+  resolveSchedulePanel,
+  schedulePanelKey,
+} from '../../attendance-policy/schedule-panel';
 import { SCHEDULE_TAB_KEYS, type ScheduleTabKey } from './tabs';
 import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from './actions';
 
@@ -63,9 +76,9 @@ import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } fr
  * THE ORIGINAL REASONING IS NOT DISCARDED; IT IS SATISFIED A DIFFERENT WAY. Nothing here is a second
  * form over a table:
  *
- *   · THE GENERAL TAB renders app/admin/attendance-policy/schedule/work-schedule-form.tsx, which IS the Work Schedule page's
- *     editor — the same component, the same field names, the same `setAttendancePolicyAction`. One
- *     writer, two mounts, so the two screens cannot store different rows and cannot drift.
+ *   · THE GENERAL TAB renders app/admin/attendance-policy/schedule/work-schedule-form.tsx — the company
+ *     working-week editor itself, the same field names, the same `setAttendancePolicyAction`. Since r301
+ *     it is the form's only mount (the Work Schedule page became a redirect to this tab).
  *   · THE ATTENDANCE AND OVERTIME TABS post to ./actions.ts, which re-reads the stored Schedule Group,
  *     carries every column forward verbatim and overlays ONLY the fields the tab renders, then writes
  *     through the SAME `updateAttendanceRule` the rule editor calls. Posting to it cannot change a
@@ -85,11 +98,32 @@ import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } fr
  * continuous-ladder validation guards, and are money.
  *
  * THE CUTOVER HAPPENED (the a6fe37fc playbook, completed). r263 built alongside; the "Schedule Group" and
- * "Work Schedule" nav rows are gone as of this round. Both ROUTES survive as the owning editors for what
- * did not move, they keep their lib/permissions.ts registration under the `attendancePolicyConfig`
- * screenKey (a permission identity — renaming or removing it would silently revoke grants), and this
- * screen links to both. Those links are the only way in now, so they are pinned by
- * test/schedule-config-screen.test.ts.
+ * "Work Schedule" nav rows went in r287, and in r301 (6d091cc0) their SCREENS followed them in here — see
+ * the r301 note below. Both routes keep their lib/permissions.ts registration under the
+ * `attendancePolicyConfig` screenKey (a permission identity — renaming or removing it would silently revoke
+ * grants) as requireAdmin() redirect stubs.
+ *
+ * ══ 6d091cc0 (r301) — THE GENERAL TAB IS THE ONE SCHEDULE SETUP PAGE ═══════════════════════════════════
+ * The reporter asked for Schedule Group and Work Schedule & Overtime Configuration to be managed on this tab
+ * instead of behind two links that took them away. So the General tab is now five cards, in the approved
+ * order: Shifts available · Schedule Group · Company Policy Settings · Work Schedule & Overtime Rates · Not
+ * configured here. The three middle cards live under app/admin/attendance-policy/ (the attendance pack's
+ * route surface — test/attendance-pack-drift.test.ts) and are MOVES of what the two old pages rendered, with
+ * the same reads and the same writers:
+ *
+ *   · Schedule Group — the list, with Delete now behind a confirmation. Add / Edit open the UNCHANGED
+ *     rules/rule-form.tsx as a panel on this page (`?editGroup=<id|new>`; `?group=` was already taken by the
+ *     Attendance / Overtime tabs' selector, which is why it is not that).
+ *   · Company Policy Settings — one row per company (attendance_policy is one row per company). View opens a
+ *     read-only panel (`?viewPolicy=`), Edit opens that company's WorkScheduleForm (`?policy=`). No Delete.
+ *     Last updated is read off the audit ledger, whose events an HR admin can read (verified under RLS).
+ *   · Work Schedule & Overtime Rates — backup-shift coverage, the tenant overtime rates and the registered
+ *     devices with Revoke.
+ *
+ * At most ONE panel is open; every panel parameter is read by VALUE against what exists for this viewer
+ * (app/admin/attendance-policy/schedule-panel.ts). The tab shell is KEYED on the open panel, because the shell
+ * keeps its active tab in client state: a soft navigation from the Attendance tab's "Edit this Schedule Group"
+ * would otherwise re-render with the panel open on a HIDDEN General tab.
  *
  * ⚠️ r277 (e5ff7189 / d91aee93 stage 1) — ATTENDANCE AND OVERTIME ARE NO LONGER EMPTY, AND THE REASON IS
  * THE OPPOSITE OF "we filled a tab in". Both tabs now render settings that ALREADY EXIST and have existed
@@ -118,7 +152,7 @@ import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } fr
 export default async function ScheduleConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; group?: string; error?: string }>;
+  searchParams: Promise<{ tab?: string; group?: string; error?: string; editGroup?: string; policy?: string; viewPolicy?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.scheduleConfig');
@@ -132,7 +166,7 @@ export default async function ScheduleConfigPage({
   // Deep-link / reload survival: the shell reflects its tab into `?tab=`, so honour it on the way back in.
   // Read by VALUE against the closed key list — an unknown value falls back to General rather than
   // rendering a tab that does not exist.
-  const defaultTab: ScheduleTabKey = (SCHEDULE_TAB_KEYS as readonly string[]).includes(sp.tab ?? '')
+  const requestedTab: ScheduleTabKey = (SCHEDULE_TAB_KEYS as readonly string[]).includes(sp.tab ?? '')
     ? (sp.tab as ScheduleTabKey)
     : 'general';
 
@@ -143,17 +177,21 @@ export default async function ScheduleConfigPage({
   // EVERY company's working week on this card, not just the ones their grant reaches. The r263 risk note
   // originally claimed the reverse ("a narrow scope sees only their companies"); it was wrong.
   //
-  // Deliberately left as-is for this round rather than quietly tightened: /admin/attendance-policy/schedule
-  // — the screen this card reads from and links to — uses the byte-identical requireAdmin() → listCompanies
-  // → getScopeIds pattern over the SAME attendance_policy rows (its :46-52), so the same admin already sees
-  // the same list there. Read-only, no writes, RLS unchanged. Narrowing one screen and not the other would
-  // make two views of one table disagree; when this is tightened, tighten BOTH to `allowedCompanies`
-  // (lib/scope.ts scopedSession returns it alongside `allowedCount` for exactly this).
+  // Deliberately left as-is rather than quietly tightened: /admin/attendance-policy/schedule used the
+  // byte-identical requireAdmin() → listCompanies → getScopeIds pattern over the SAME attendance_policy rows,
+  // and since r301 (6d091cc0) that page IS this tab — Company Policy Settings, the devices table and the
+  // backup-coverage count all read `visible`. RLS still gates every write per company. When this is tightened,
+  // tighten it here once, to `allowedCompanies` (lib/scope.ts scopedSession returns it alongside `allowedCount`).
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   const visible = companies.filter((c) => scopeIds.includes(c.id));
-  const [policies, shifts, rules] = await Promise.all([
-    listAttendancePolicies(s, visible.map((c) => c.id)),
+  // r301 — the Schedule Group LIST lives on this page now, so the runtime complement of migration 0203 moved
+  // with it: make sure the tenant's un-deletable Standard group exists (idempotent; appends an event only when it
+  // creates the row) BEFORE listing, exactly as /admin/attendance-policy did.
+  await ensureStandardRule(s);
+  const visibleIds = visible.map((c) => c.id);
+  const [policies, shifts, rules, lastUpdated] = await Promise.all([
+    listAttendancePolicies(s, visibleIds),
     listShiftsForTenant(s),
     // r277 — the Schedule Groups. TENANT-WIDE, not company-scoped (6da67ab7 / migration 0319 removed that
     // axis), so unlike the working-week card above this list is not narrowed by the company switcher and
@@ -161,8 +199,17 @@ export default async function ScheduleConfigPage({
     // Ordered Standard-first then by name by listAttendanceRules itself — one ordering shared with the
     // group screen, so the two cannot disagree about which group is "first".
     listAttendanceRules(s),
+    // r301 — Company Policy Settings' "Last updated", off the audit ledger (no updated_at column exists).
+    policyLastUpdated(s, visibleIds),
   ]);
-  const companyName = new Map(visible.map((c) => [c.id, c.name]));
+
+  /**
+   * r301 — THE OPEN PANEL, if any, resolved against the groups and companies that exist for this viewer. A
+   * panel lives on General, so an open panel also decides the tab: a `?tab=` left in the URL by the shell's
+   * replaceState must not land the reader on a tab that hides the editor they just asked for.
+   */
+  const panel = resolveSchedulePanel(sp, rules.map((r) => r.id), visibleIds);
+  const defaultTab: ScheduleTabKey = panel ? 'general' : requestedTab;
 
   /**
    * r277 — WHICH GROUP THE ATTENDANCE AND OVERTIME TABS ARE SHOWING.
@@ -192,6 +239,21 @@ export default async function ScheduleConfigPage({
   /** "09:00:00" → "09:00". The DB stores `time`, which round-trips with seconds nobody reads. */
   const hhmm = (v: string | null | undefined) => (v ? v.slice(0, 5) : '—');
 
+  /**
+   * r301 — the one open panel's content. A refusal that re-opens a panel is shown INSIDE it (the rule form has its
+   * own banner), and the page-level banner below stays quiet so the same message is not printed twice.
+   */
+  const panelCompany = panel && panel.kind !== 'group' ? visible.find((c) => c.id === panel.companyId) : undefined;
+  const panelPolicy = panelCompany ? policies.find((p) => p.companyId === panelCompany.id) : undefined;
+  const panelNode =
+    panel?.kind === 'group' ? (
+      <ScheduleGroupEditorPanel s={s} rules={rules} ruleId={panel.ruleId} error={sp.error} />
+    ) : panel?.kind === 'policy-edit' && panelCompany && panelPolicy ? (
+      <CompanyPolicyEditPanel company={panelCompany} policy={panelPolicy} error={sp.error} />
+    ) : panel?.kind === 'policy-view' && panelCompany && panelPolicy ? (
+      <CompanyPolicyViewPanel company={panelCompany} policy={panelPolicy} error={sp.error} />
+    ) : null;
+
   const general = (
     <>
       {/* ── Which shifts are available ─────────────────────────────────────────────────────────────
@@ -200,7 +262,7 @@ export default async function ScheduleConfigPage({
           list the shift library itself renders). Rest is DERIVED, never stored: a weekday in none of
           weekly_pattern / half_pattern / off_pattern is a Rest day, which is what the four-way row
           (b8aa3466, migration 0429) means. */}
-      <Card>
+      <Card id="shifts-available" className="scroll-mt-6">
         <SectionHeader title={t('shiftsTitle')} count={shifts.length} subtitle={t('shiftsHint')} />
         {shifts.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">{t('shiftsEmpty')}</p>
@@ -260,89 +322,67 @@ export default async function ScheduleConfigPage({
             </table>
           </div>
         )}
-        {/* 870b79e2 — TWO links, because this table has two owners. Each shift's hours and pattern are
-            edited in the shift library; the lateness / early-out / overtime rules every one of these
-            shifts follows live on its SCHEDULE GROUP, which is the screen the reporter could not find
-            while the rail called it "Overtime Pattern". The General tab is where they arrive, so the
-            pointer belongs here as well as on the two tabs that render the group's settings. */}
+        {/* 870b79e2 put TWO links here — the shift library and the Schedule Groups screen. 6d091cc0 (r301)
+            removed the second: the Schedule Groups are the next card on this tab, not a page away. The shift
+            library keeps its link, because shifts are still edited on their own screen. */}
         <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-border px-4 py-3">
           <Link href="/admin/attendance" className="text-sm text-primary hover:underline">
             {t('shiftLibraryLink')}
           </Link>
-          <Link href="/admin/attendance-policy" className="text-sm text-primary hover:underline">
-            {t('groupLibraryLink')}
-          </Link>
         </div>
       </Card>
 
-      {/* ── Rest days, off days and working-hour limits, per company ───────────────────────────────
-          e4471e3c (r287) — EDITABLE HERE NOW, and it is the same editor, not a copy of it.
-
-          attendance_policy is the schedule for a day with NO shift assigned (core/attendance.ts
-          scheduleFor's last fallback), and its working-days list is ALSO read for every employee by
-          absence derivation and by roster generation — so it governs the working pattern even where a
-          shift exists. `isDefault` marks a company with no row of its own: those figures are the code
-          defaults, not something anybody chose, and the card says so.
-
-          Until this round the tab showed these values and pointed at "Work Schedule" to change them. The
-          reporter asked for that sub-menu to be consolidated into this screen, so the editor MOVED into
-          app/admin/attendance-policy/schedule/work-schedule-form.tsx and is rendered here and on its own page, posting the same
-          field names to the same server action. One writer, two mounts — see that file for why a
-          hand-drawn form over the fields this tab happened to display would have wiped four settings it
-          does not show. */}
-      <Card>
-        <SectionHeader title={t('weekTitle')} count={visible.length} subtitle={t('weekHint')} />
-        {visible.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('weekEmpty')}</p>}
-      </Card>
-      {visible.map((c) => {
-        const p = policies.find((x) => x.companyId === c.id);
-        return p ? (
-          <WorkScheduleForm key={c.id} company={{ id: c.id, name: companyName.get(c.id) ?? c.id }} policy={p} returnTo="schedule-tab" />
-        ) : null;
-      })}
-      <Card>
-        {/* What is LEFT on the Work Schedule page, which survives as the owning editor for it: the tenant
-            overtime RATES (a statutory ruleset, not attendance_policy), the registered clocking devices
-            and the backup-shift coverage card. None of those is a schedule setting, so none of them moved
-            — and with the menu row gone this link is how an administrator reaches them. */}
-        <div className="px-4 py-3">
-          <Link href="/admin/attendance-policy/schedule" className="text-sm text-primary hover:underline">
-            {t('workScheduleLink')}
-          </Link>
+      {/* ── r301 (6d091cc0) — the three consolidated cards, then the gaps card, in the approved order.
+          Each is a MOVE of what /admin/attendance-policy and /admin/attendance-policy/schedule rendered, with
+          the same reads and writers; see the r301 note in the header and each card's own file. When a panel
+          is open the cards and the panel sit side by side on a very wide screen (the approved mockup); on
+          anything narrower the panel comes first, so the editor the reader just opened is not below four
+          cards. The side-by-side threshold is 1900px, not Tailwind's 2xl (1536px): rendered at 1600px the
+          left column was ~540px and the Schedule Group row actions (Deactivate, Delete) scrolled out of view
+          behind the table's horizontal scroll. ─────────────────────────────────────────────────────── */}
+      <div className={panelNode ? 'grid items-start gap-6 min-[1900px]:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]' : 'space-y-6'}>
+        <div className="min-w-0 space-y-6">
+          <ScheduleGroupCard rules={rules} />
+          <CompanyPolicyCard companies={visible} policies={policies} lastUpdated={lastUpdated} />
+          <WorkScheduleOvertimeCard s={s} companies={visible} />
+          {/* ── The four gaps, named ───────────────────────────────────────────────────────────────────
+              THIS CARD IS A DELIVERABLE, not an apology. The approved plan promises: "where a setting
+              genuinely does not exist yet we will say so rather than draw a box that does nothing". Each
+              entry below is one of those, with the reason and — where the thing IS governed, just not from
+              here — where it is governed from. Delete an entry only when its storage actually ships. */}
+          <Card id="not-configured-here" className="scroll-mt-6">
+            <SectionHeader title={t('gapsTitle')} subtitle={t('gapsHint')} />
+            <dl className="divide-y divide-border">
+              <div className="px-4 py-3">
+                <dt className="text-sm font-medium">{t('gapRotationTitle')}</dt>
+                <dd className="mt-1 text-sm text-muted-foreground">{t('gapRotationBody')}</dd>
+              </div>
+              <div className="px-4 py-3">
+                <dt className="text-sm font-medium">{t('gapRosterTitle')}</dt>
+                <dd className="mt-1 text-sm text-muted-foreground">
+                  {t('gapRosterBody')}{' '}
+                  <Link href="/roster" className="text-primary hover:underline">
+                    {t('rosterLink')}
+                  </Link>
+                </dd>
+              </div>
+              <div className="px-4 py-3">
+                <dt className="text-sm font-medium">{t('gapDayTypesTitle')}</dt>
+                <dd className="mt-1 text-sm text-muted-foreground">{t('gapDayTypesBody')}</dd>
+              </div>
+              <div className="px-4 py-3">
+                <dt className="text-sm font-medium">{t('gapOtCapTitle')}</dt>
+                <dd className="mt-1 text-sm text-muted-foreground">{t('gapOtCapBody')}</dd>
+              </div>
+            </dl>
+          </Card>
         </div>
-      </Card>
-
-      {/* ── The four gaps, named ───────────────────────────────────────────────────────────────────
-          THIS CARD IS A DELIVERABLE, not an apology. The approved plan promises: "where a setting
-          genuinely does not exist yet we will say so rather than draw a box that does nothing". Each
-          entry below is one of those, with the reason and — where the thing IS governed, just not from
-          here — where it is governed from. Delete an entry only when its storage actually ships. */}
-      <Card>
-        <SectionHeader title={t('gapsTitle')} subtitle={t('gapsHint')} />
-        <dl className="divide-y divide-border">
-          <div className="px-4 py-3">
-            <dt className="text-sm font-medium">{t('gapRotationTitle')}</dt>
-            <dd className="mt-1 text-sm text-muted-foreground">{t('gapRotationBody')}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-sm font-medium">{t('gapRosterTitle')}</dt>
-            <dd className="mt-1 text-sm text-muted-foreground">
-              {t('gapRosterBody')}{' '}
-              <Link href="/roster" className="text-primary hover:underline">
-                {t('rosterLink')}
-              </Link>
-            </dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-sm font-medium">{t('gapDayTypesTitle')}</dt>
-            <dd className="mt-1 text-sm text-muted-foreground">{t('gapDayTypesBody')}</dd>
-          </div>
-          <div className="px-4 py-3">
-            <dt className="text-sm font-medium">{t('gapOtCapTitle')}</dt>
-            <dd className="mt-1 text-sm text-muted-foreground">{t('gapOtCapBody')}</dd>
-          </div>
-        </dl>
-      </Card>
+        {panelNode && (
+          <section id={SCHEDULE_PANEL_ANCHOR} className="order-first min-w-0 scroll-mt-6 space-y-6 min-[1900px]:order-none">
+            {panelNode}
+          </section>
+        )}
+      </div>
     </>
   );
 
@@ -389,10 +429,11 @@ export default async function ScheduleConfigPage({
   );
 
   /** "Edit this Schedule Group" — the link every card on this screen ends in, pointing at the ONE editor
-   *  that owns these values. Same shape as the General tab's three cards. */
+   *  that owns these values. r301: that editor is the panel on the General tab now (`?editGroup=`), so the
+   *  link opens it there; the tab shell is keyed on the panel, so it switches to General to show it. */
   const groupEditLink = selectedGroup && (
     <div className="border-t border-border px-4 py-3">
-      <Link href={`/admin/attendance-policy/rules/${selectedGroup.id}`} className="text-sm text-primary hover:underline">
+      <Link href={groupEditorHref(selectedGroup.id)} className="text-sm text-primary hover:underline">
         {t('groupLink')}
       </Link>
     </div>
@@ -667,8 +708,13 @@ export default async function ScheduleConfigPage({
       <PageHeader title={t('pageTitle')} description={t('pageSubtitle')} />
       {/* r287 — the tabs WRITE now, so a refusal has to land somewhere the operator can read it. The
           save actions redirect back to the tab they were made on carrying ?error=. */}
-      <ErrorBanner message={sp.error} />
+      {/* r301 — …except while a panel is open: then the refusal belongs to the panel and is shown there. */}
+      <ErrorBanner message={panelNode ? undefined : sp.error} />
+      {/* r301 — KEYED ON THE OPEN PANEL. The shell holds its active tab in client state and a soft navigation
+          keeps that state, so opening a panel from another tab (the Attendance / Overtime "Edit this Schedule
+          Group" link) would otherwise leave the reader on that tab with the editor open on a hidden General. */}
       <ClientTabs<ScheduleTabKey>
+        key={schedulePanelKey(panel)}
         ariaLabel={t('tabsAria')}
         defaultTab={defaultTab}
         emptyLabel={t('notBuiltYet')}

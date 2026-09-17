@@ -13,14 +13,26 @@ import {
   type AttendanceRuleInput,
   type OtRowInput,
 } from '@/core/attendance-rule';
+import { NEW_GROUP, SCHEDULE, groupEditorPath } from './schedule-panel';
 
 /**
  * 88e94371 · Server actions for the "Lateness, Early Out & Overtime Settings" rule library. Writes are
  * admin-gated at the DB layer (attendance_rule RLS WITH CHECK app.is_admin() since 6da67ab7 / migration
  * 0319 made the library tenant-wide); the pages are gated by requireAdmin(). The OT rows post as one JSON
  * array (the client island's hidden field), mirroring the shift-form break-periods pattern.
+ *
+ * 6d091cc0 (r301) — EVERY RETURN ADDRESS MOVED, AND NOTHING ELSE DID. The Schedule Group list and its editor
+ * are on Attendance › Schedule › General now: the list is a card, the editor a panel opened by `?editGroup=`.
+ * So a save, a status toggle and a delete land on the plain Schedule path (the General tab is the default
+ * tab), a refusal re-opens the panel it came from with `&error=` (the form reads it), and Duplicate opens the
+ * COPY's panel — the same "land on the copy" choice ad52212d made, at its new address. The field parsing, the
+ * `bool` / marker contracts and the service calls below are untouched. /admin/attendance-policy and its
+ * rules/new + rules/[ruleId] pages are redirects to those addresses (bookmarks keep working).
  */
-const LIST = '/admin/attendance-policy';
+const LIST = SCHEDULE;
+/** The editor panel for one group (or Add New), carrying a refusal the form shows in its own banner. */
+const editorWithError = (ruleId: string, e: unknown) =>
+  `${groupEditorPath(ruleId)}&error=${encodeURIComponent((e as Error).message)}`;
 const num = (fd: FormData, key: string): number => Math.trunc(Number(fd.get(key) ?? 0)) || 0;
 /** True only when the field is present AND carries a value.
  *
@@ -115,7 +127,7 @@ export async function createAttendanceRuleAction(fd: FormData) {
   try {
     created = await createAttendanceRule(s, ruleFields(fd));
   } catch (e) {
-    redirect(`${LIST}/rules/new?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(editorWithError(NEW_GROUP, e));
   }
   // 870b79e2 — the group's shifts are written AFTER the rule exists, because shift.rule_id needs an id to
   // point at. A failure here surfaces on the new rule's OWN edit form: the rule was created, so sending
@@ -125,7 +137,7 @@ export async function createAttendanceRuleAction(fd: FormData) {
     try {
       await setRuleShifts(s, { ruleId: created.id, shiftIds });
     } catch (e) {
-      redirect(`${LIST}/rules/${created.id}?error=${encodeURIComponent((e as Error).message)}`);
+      redirect(editorWithError(created.id, e));
     }
   }
   revalidatePath(LIST);
@@ -142,14 +154,15 @@ export async function updateAttendanceRuleAction(fd: FormData) {
     const shiftIds = allowedShiftIds(fd);
     if (shiftIds) await setRuleShifts(s, { ruleId, shiftIds });
   } catch (e) {
-    redirect(`${LIST}/rules/${ruleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(editorWithError(ruleId, e));
   }
   revalidatePath(LIST);
   redirect(LIST);
 }
 
 /**
- * ad52212d round 2 — DUPLICATE. Lands the operator on the copy's own edit form, not back on the list: the
+ * ad52212d round 2 — DUPLICATE. Lands the operator on the copy's own edit form (r301: the copy's editor panel on
+ * the Schedule General tab), not back on the list: the
  * reason to duplicate a pattern is to change the two or three bands that differ, and dropping them on the
  * list would make them hunt for the row they just created. Same choice, and the same reasoning, as
  * copyShiftAction next door.
@@ -163,7 +176,7 @@ export async function copyAttendanceRuleAction(fd: FormData) {
     redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(LIST);
-  redirect(`${LIST}/rules/${copied.id}`);
+  redirect(groupEditorPath(copied.id));
 }
 
 /**

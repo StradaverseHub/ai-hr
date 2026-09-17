@@ -89,6 +89,8 @@ const line = (i: number, outcome: (typeof OUTCOMES)[number]): LeaveGenerationRes
   forfeit: 0,
   belowStatutoryFloor: false,
   earnedMethodNotAnnualLeave: false,
+  // r301 (e5018593) — the accrual reached none of these lines; the reached arm is pinned below.
+  earnedAccrual: null,
 });
 
 const result: LeaveGenerationResult = {
@@ -102,6 +104,7 @@ const result: LeaveGenerationResult = {
   forfeits: 0,
   lines: OUTCOMES.map((o, i) => line(i, o)),
   decidedBy: [{ employmentId: 'e0', ruleName: 'Executives, Peninsular', templateName: 'Executive', alsoMatched: 2 }],
+  accrual: null,
 };
 
 const preview = vi.fn(async () => result);
@@ -178,7 +181,9 @@ describe('93249794 · the validation table resolves every COMPUTED message key',
     await waitFor(() => expect(preview).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: 'Validation & Preview' }));
 
-    const table = await screen.findByRole('table');
+    // r301 (e5018593) — step ④ now also renders "Entitlement to grant" (and, with an earned line, "Earned
+    // Annual Leave to add") as tables, so the issues table is found by its own accessible name.
+    const table = await screen.findByRole('table', { name: messages.admin.leave.generateIssuesAria });
     const body = within(table).getAllByRole('row').slice(1); // drop the header
     // `granted` is not a failure and is filtered out of the table, as is `already_open`; the other five are.
     expect(body).toHaveLength(OUTCOMES.length - 2);
@@ -254,7 +259,7 @@ describe('r299 (3de1453a) · an earned_method line says whether anything will ev
       mount();
       await waitFor(() => expect(preview).toHaveBeenCalled());
       await user.click(screen.getByRole('button', { name: 'Validation & Preview' }));
-      const table = await screen.findByRole('table');
+      const table = await screen.findByRole('table', { name: L.generateIssuesAria });
       const reason = (employee: string) => {
         const row = within(table).getAllByRole('row').find((r) => r.textContent?.includes(employee));
         return row?.querySelectorAll('td')[2]?.textContent;

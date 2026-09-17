@@ -68,6 +68,8 @@ const emptyResult = (selected: number): LeaveGenerationResult => ({
   forfeits: 0,
   lines: [],
   decidedBy: [],
+  // r301 (e5018593) — no earned line in this fixture, so no earned Annual Leave half.
+  accrual: null,
 });
 
 /** Every payload the component has asked the server about, in order. */

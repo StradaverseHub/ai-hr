@@ -8305,7 +8305,24 @@ export type EarnedAccrualResult = {
    *  the idempotency case (reason (c)): the accrual is already posted, and a re-run adds nothing. Without
    *  it a screen cannot tell that apart from "these employees have earned nothing yet". */
   earnedToDateTotal: number;
+  /**
+   * r301 (e5018593) — EVERY (employment, leave type) PAIR THIS RUN COUNTED, with what it topped up.
+   *
+   * Accumulated at exactly the line that counts a pair into its breakdown group, so it is the breakdown
+   * unrolled rather than a second opinion about it: `pairs.length === Σ breakdown.employeeCount`, the pairs
+   * with `days > 0` number `granted`, and their days sum to `Σ breakdown.entitlementGenerated`. `days` is
+   * the top-up posted (or, on a dry run, that would be posted); 0 means the pair was reached and is already
+   * up to date. A pair NOT in this list was not reached at all (no earned policy resolved for that
+   * employee at `asOf`, a frozen balance, an inactive country pack).
+   *
+   * It exists for Generate Entitlement, which must say per employee whether the accrual it triggered
+   * reached them — a question the grouped breakdown cannot answer. Empty on every empty-result exit.
+   */
+  pairs: EarnedAccrualPair[];
 };
+
+/** r301 (e5018593) — one pair `accrueEarnedLeave` counted. See `EarnedAccrualResult.pairs`. */
+export type EarnedAccrualPair = { employmentId: string; leaveTypeId: string; days: number };
 
 /**
  * feedback cf9dcb98 — "*Annual Leave" and "Annual Leave" are the same name to the person reading the
@@ -8337,6 +8354,33 @@ export function asOfForLeaveYear(year: number, today: string): string {
   return today; // current year → to-date
 }
 
+/**
+ * r301 (e5018593, parent hand-fix) — which (employment, leave type) pairs already hold ANY ledger row dated AFTER
+ * `after`. A read the generation module needs and may not write itself (test/leave-generation.test.ts D forbids it
+ * from touching the ledger at all): a PAST-year Generate uses it to hold back pairs whose following year has begun,
+ * because the old year's missing days would land after that year's carry forfeit was fixed. Keys are
+ * `${employmentId}|${leaveTypeId}`.
+ */
+export async function pairsWithLedgerRowsAfter(
+  ctx: SessionContext,
+  p: { employmentIds: string[]; leaveTypeIds: string[]; after: string },
+): Promise<Set<string>> {
+  if (p.employmentIds.length === 0 || p.leaveTypeIds.length === 0) return new Set();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, p.employmentIds),
+          inArray(leaveLedger.leaveTypeId, p.leaveTypeIds),
+          gt(leaveLedger.effectiveOn, p.after),
+        ),
+      );
+    return new Set(rows.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+  });
+}
+
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
  *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
@@ -8349,7 +8393,16 @@ export function asOfForLeaveYear(year: number, today: string): string {
  *  ({companyIds, gradeIds, leaveTypeIds}) and a `dryRun` flag, and returns a GROUPED breakdown accumulated
  *  in the SAME pass as the commit. When `dryRun` is set NOTHING is written (no ledger inserts, no event) —
  *  the returned breakdown/counters are exactly what a real run would produce, so the HR preview can never
- *  lie. Absent scope filters ⇒ "all" on that axis (byte-identical to the cron's unscoped run). */
+ *  lie. Absent scope filters ⇒ "all" on that axis (byte-identical to the cron's unscoped run).
+ *
+ *  r301 (e5018593) — `employmentIds`, the EMPLOYEE axis, for Generate Entitlement, which accrues earned
+ *  Annual Leave for exactly the employees it just generated for. ⚠️ IT IS THE ONE AXIS WHERE EMPTY DOES NOT
+ *  MEAN "ALL". The other three read `[]` as no restriction because a person built that scope on a form and
+ *  an empty picker means "every company". This one is built by a caller from a result set, and an empty
+ *  result set means NOBODY — reading it as everyone is the trap core/leave-generation.ts documents at its
+ *  own empty-target guard, where it once granted the whole tenant off criteria that matched no one. So:
+ *  ABSENT (`undefined`) ⇒ unscoped, exactly as the manual screen and the monthly cron call it today;
+ *  PRESENT AND EMPTY ⇒ no employment at all, reported as `no_employment_in_scope`. */
 export async function accrueEarnedLeave(
   ctx: SessionContext,
   p: {
@@ -8357,12 +8410,17 @@ export async function accrueEarnedLeave(
     companyIds?: string[];
     gradeIds?: string[];
     leaveTypeIds?: string[];
+    /** r301 — `undefined` ⇒ every employment; `[]` ⇒ NONE. See the header. */
+    employmentIds?: string[];
     dryRun?: boolean;
   },
 ): Promise<EarnedAccrualResult> {
   const scopeCompanyIds = (p.companyIds ?? []).filter(Boolean);
   const scopeGradeIds = (p.gradeIds ?? []).filter(Boolean);
   const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  // r301 — `null` is "no employee restriction"; an array, EMPTY INCLUDED, is the restriction. Filtering out
+  // blanks can empty a list that was not empty, and that too must stay "nobody", never become "everyone".
+  const scopeEmpIds: string[] | null = p.employmentIds === undefined ? null : p.employmentIds.filter(Boolean);
   const dryRun = p.dryRun === true;
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
@@ -8411,6 +8469,7 @@ export async function accrueEarnedLeave(
       emptyReason,
       archivedHint: await archivedHintFor(scopedNames),
       earnedToDateTotal: 0,
+      pairs: [],
     });
 
     // r299 (3de1453a) — WHICH TYPES THIS SWEEP TOUCHES AT ALL: ANNUAL LEAVE, AND NOTHING ELSE.
@@ -8585,6 +8644,8 @@ export async function accrueEarnedLeave(
           // Scope filters (feedback 2c7c6385). Empty axis ⇒ all (matches countEmployeesInScope).
           scopeCompanyIds.length ? inArray(employment.companyId, scopeCompanyIds) : undefined,
           scopeGradeIds.length ? inArray(employment.gradeId, scopeGradeIds) : undefined,
+          // r301 — the employee axis. An EMPTY list is `false`, never omitted: see this function's header.
+          scopeEmpIds === null ? undefined : scopeEmpIds.length ? inArray(employment.id, scopeEmpIds) : sql`false`,
         ),
       );
     if (emps.length === 0) {
@@ -8604,6 +8665,15 @@ export async function accrueEarnedLeave(
           .select({ name: jobGrade.name })
           .from(jobGrade)
           .where(inArray(jobGrade.id, scopeGradeIds));
+        scopeNames.push(...rows.map((r) => r.name));
+      }
+      // r301 — and the employees asked for, by name, for the same reason. Nothing to read for an empty list.
+      if (scopeEmpIds?.length) {
+        const rows = await tx
+          .select({ name: person.fullName })
+          .from(employment)
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(inArray(employment.id, scopeEmpIds));
         scopeNames.push(...rows.map((r) => r.name));
       }
       return emptyResult(
@@ -8762,6 +8832,8 @@ export async function accrueEarnedLeave(
     let skipNoEntitlement = 0;
     let skipFrozen = 0;
     let earnedToDateTotal = 0;
+    // r301 — the breakdown, unrolled per pair. Pushed beside `group.count += 1` and nowhere else.
+    const pairs: EarnedAccrualPair[] = [];
     for (const e of emps) {
       const pack = packFor(e.country);
       if (!pack) {
@@ -8826,6 +8898,7 @@ export async function accrueEarnedLeave(
           groupBy.set(groupKey, group);
         }
         group.count += 1;
+        const pair: EarnedAccrualPair = { employmentId: e.employmentId, leaveTypeId: typeId, days: 0 };
         // 2D-3: cap what carries into the new cycle. Posted once per cycle, dated at the cycle start
         // (guarded by `forfeited`). Leave Year Type override (e1a51aea): the maps are keyed cs|emp|type —
         // this (emp, type)'s window.
@@ -8866,6 +8939,9 @@ export async function accrueEarnedLeave(
         // clamps here (or anywhere) — it is passed only so the shared helper can flag a below-minimum figure.
         const entitlement = composed.days;
         if (entitlement <= 0) continue;
+        // r301 (parent hand-fix) — recorded only once the pair has an entitlement to earn: a 0-day pair used to be
+        // listed first and so read "already up to date" (and Passed) on Generate Entitlement.
+        pairs.push(pair);
         // bc36c768 — THE SHARED KERNEL. This used to be four lines of period arithmetic written out here
         // and again inside projectExpectedEntitlement. One function now, called from both, because the two
         // must agree to the day or every profile edit posts an oscillating delta (see earnedToDateFor).
@@ -8923,6 +8999,7 @@ export async function accrueEarnedLeave(
           }
           granted += 1;
           group.entitlementGenerated = Math.round((group.entitlementGenerated + toGrant) * 100) / 100;
+          pair.days = toGrant;
         }
       }
     }
@@ -8970,6 +9047,10 @@ export async function accrueEarnedLeave(
           companyIds: scopeCompanyIds,
           gradeIds: scopeGradeIds,
           leaveTypeIds: scopeTypeIds,
+          // r301 — so a run Generate Entitlement triggered for named employees does not read, in the audit
+          // log, as an unscoped sweep of everyone. `[]` ⇒ unscoped, as on the axes above (an EMPTY employee
+          // scope never reaches this line: it has no employments and returns at exit 3).
+          employmentIds: scopeEmpIds ?? [],
         },
       });
     }
@@ -9007,7 +9088,7 @@ export async function accrueEarnedLeave(
       }
       archivedHint = await archivedHintFor(scopedTypeNames);
     }
-    return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal };
+    return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal, pairs };
   });
 }
 

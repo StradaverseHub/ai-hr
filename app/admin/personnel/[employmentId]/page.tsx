@@ -4564,9 +4564,11 @@ export default async function EmployeePage({
         )}
       </form>
       {/* The General-tab precedent the plan quotes back to the reporter: show the setting, and send them to
-          the screen that OWNS it rather than growing a second editor for it here. */}
+          the screen that OWNS it rather than growing a second editor for it here. 6d091cc0 (r301): the Schedule
+          Groups are a card on Attendance › Schedule › General now, so the link goes straight to that card
+          rather than through the /admin/attendance-policy redirect. */}
       <div className="border-t border-border px-4 py-3 text-xs">
-        <Link href="/admin/attendance-policy" className="text-primary hover:underline">
+        <Link href="/admin/attendance/schedule#schedule-groups" className="text-primary hover:underline">
           {t('scheduleGroupManage')}
         </Link>
       </div>

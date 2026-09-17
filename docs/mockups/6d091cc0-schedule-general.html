@@ -1,0 +1,153 @@
+<meta charset="utf-8"><title>6d091cc0 — Schedule General tab</title>
+<style>
+/* Shared chrome for the Leave config > Entitlements mockups (5527ce8f, 995387c6, 65e4073a).
+   Tokens follow docs/mockups/ee6b7c69-entitlement-tables-embedded.html, which is the house style
+   for this screen area. Everything inline at render time — scripts/mockup/render.ts blocks any
+   external request and fails loudly, so this file is CONCATENATED into each mockup, never linked. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+/* ---- mockup framing (not part of the product) ---- */
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.box{border:1px solid var(--border);border-radius:11px;padding:13px}
+.box.bad{border-color:#fca5a5;background:var(--badbg)}
+.box.good{border-color:#86efac;background:var(--goodbg)}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.note{font-size:11.5px;color:var(--mf);margin-top:10px}
+.hole{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:9px;padding:9px 11px;
+      font-size:12px;color:#7c2d12;margin-top:10px}
+
+/* ---- the product's own chrome, as the screen actually draws it ---- */
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.tabs{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 12px;
+     font-size:11.5px;color:var(--mf)}
+.tab.on{background:color-mix(in srgb,var(--primary) 10%,white);
+        border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+.panel{border:1px solid var(--border);border-radius:11px;background:#fff;margin-bottom:10px}
+.ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+.ph .count{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;
+           font-size:10px;font-weight:700}
+.pb{padding:12px}
+.explain{border:1px solid color-mix(in srgb,var(--primary) 30%,white);
+         background:color-mix(in srgb,var(--primary) 5%,white);border-radius:8px;
+         padding:7px 10px;font-size:11px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 8px;background:var(--muted)}
+td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     display:block;margin-bottom:3px}
+.inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+     padding:5px 9px;font-size:11.5px}
+.inp.ro{background:var(--muted);color:var(--mf)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.chip.ok{background:#dcfce7;color:#166534}
+.chip.no{background:#fee2e2;color:#991b1b}
+.chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+.gone{position:relative;opacity:.42}
+.gone::after{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(220,38,38,.13) 7px,rgba(220,38,38,.13) 14px);
+  border-radius:11px;pointer-events:none}
+.rmv{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;padding:1px 8px;
+     font-size:10px;font-weight:700;margin-left:6px}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#7c2d12;margin-top:7px}
+  .tabs2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .tb{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px;color:var(--mf);background:#fff}
+  .tb.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .btn.dis{background:#e6e7ef;color:#9a9ba8}
+/* ---- this mockup ---- */
+
+.acts{font-size:11px;color:var(--primary);font-weight:600;white-space:nowrap}
+.acts .del{color:#b91c1c}
+.ph .right{margin-left:auto}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.pill.sv{background:#dcfce7;color:#166534}.pill.df{background:#f0f1f7;color:#63636f}.pill.ac{background:#e0e7ff;color:#3730a3}
+.side{border:1px solid color-mix(in srgb,var(--primary) 35%,white);border-radius:12px;background:#fff;padding:12px;box-shadow:0 8px 24px rgba(20,20,40,.08)}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:4px 8px;font-size:12px;margin:8px 0}
+.kv .k{color:var(--mf)}
+.muted{color:#9a9ba8}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Attendance &gt; Schedule &gt; General &mdash; one setup page, no links away</h2>
+  <p class="q">Cards in order. Names below are examples; figures are left blank on purpose.</p>
+  <div class="tabs2"><span class="tb on">General</span><span class="tb">Holiday</span><span class="tb">Overtime</span><span class="tb">Attendance</span><span class="tb">Request</span><span class="tb">Notification</span></div>
+
+  <div class="panel"><div class="ph">Shifts available <span class="count">&ndash;</span></div><div class="pb" style="padding:0">
+    <table><tr><th>Code</th><th>Shift</th><th>Hours</th><th>Full days</th><th>Half days</th><th>Off days</th><th>Rest days</th></tr>
+    <tr><td>D1</td><td>Day shift</td><td class="muted">hh:mm &ndash; hh:mm</td><td>Mon&ndash;Fri</td><td>Sat</td><td>&mdash;</td><td>Sun</td></tr></table>
+  </div></div>
+
+  <div class="two">
+    <div>
+      <div class="panel"><div class="ph">Schedule Group <span class="right btn" style="padding:3px 10px;font-size:11px">+ Add New</span></div><div class="pb" style="padding:0">
+        <table><tr><th>Rule name</th><th>Default</th><th>Status</th><th>Action</th></tr>
+        <tr><td>Standard</td><td><span class="pill ac">Default</span></td><td><span class="pill sv">Active</span></td><td class="acts">Edit &middot; Duplicate</td></tr>
+        <tr><td>Office staff</td><td></td><td><span class="pill sv">Active</span></td><td class="acts">Edit &middot; Duplicate &middot; Deactivate &middot; <span class="del">Delete</span></td></tr>
+        <tr><td>Warehouse shifts</td><td></td><td><span class="pill sv">Active</span></td><td class="acts">Edit &middot; Duplicate &middot; Deactivate &middot; <span class="del">Delete</span></td></tr></table>
+      </div></div>
+
+      <div class="panel"><div class="ph">Company Policy Settings</div><div class="pb" style="padding:0">
+        <table><tr><th>Company</th><th>Setting</th><th>Working hours</th><th>Last updated</th><th>Action</th></tr>
+        <tr><td>Company A Sdn Bhd</td><td><span class="pill sv">Saved</span></td><td class="muted">hh:mm &ndash; hh:mm, Mon&ndash;Fri</td><td class="muted">dd/mm/yyyy</td><td class="acts">View &middot; Edit</td></tr>
+        <tr><td>Company B Sdn Bhd</td><td><span class="pill df">Using defaults</span></td><td class="muted">hh:mm &ndash; hh:mm, Mon&ndash;Fri</td><td class="muted">&mdash;</td><td class="acts">View &middot; Edit</td></tr></table>
+        <p class="note" style="padding:0 12px 10px">No Delete: removing a company's setting would silently reset it to the defaults and switch off the registered-device requirement.</p>
+      </div></div>
+
+      <div class="panel"><div class="ph">Work Schedule &amp; Overtime Rates</div><div class="pb">
+        <div class="g3">
+          <div class="box"><b style="font-size:12px">Overtime rates</b><div class="note" style="margin-top:4px">Rest day, public holiday and ordinary-day rates, managed here.</div><span class="acts">Edit</span></div>
+          <div class="box"><b style="font-size:12px">Registered devices</b><div class="note" style="margin-top:4px">Devices allowed for web clocking.</div><span class="acts">View &middot; Revoke</span></div>
+          <div class="box"><b style="font-size:12px">Backup-shift coverage</b><div class="note" style="margin-top:4px">Employees with no backup shift.</div><span class="acts">View</span></div>
+        </div>
+      </div></div>
+    </div>
+
+    <div>
+      <div class="side">
+        <b style="font-size:13px">Edit Schedule Group &mdash; Office staff</b>
+        <div class="note" style="margin-top:2px">Opens on this page. Saving returns you to the list above.</div>
+        <div class="g2" style="margin-top:10px"><div><span class="lbl">Rule name</span><span class="inp">Office staff</span></div><div><span class="lbl">Status</span><span class="inp">Active</span></div></div>
+        <span class="lbl">Shifts allowed</span><span class="inp">D1 Day shift, D2 Late shift</span>
+        <div class="g2" style="margin-top:8px"><div><span class="lbl">Lateness</span><span class="inp ghost muted">Grace, deduction</span></div><div><span class="lbl">Early out</span><span class="inp muted">Grace, deduction</span></div></div>
+        <span class="lbl" style="margin-top:8px">Overtime bands</span><span class="inp muted">Same settings as today</span>
+        <div style="margin-top:10px"><span class="btn">Save</span> <span class="btn ghost">Cancel</span></div>
+      </div>
+      <div class="side" style="margin-top:12px">
+        <b style="font-size:13px">View &mdash; Company A Sdn Bhd</b>
+        <div class="kv">
+          <span class="k">Work start / end</span><span class="muted">hh:mm &ndash; hh:mm</span>
+          <span class="k">Break</span><span class="muted">&ndash; minutes</span>
+          <span class="k">Late after</span><span class="muted">hh:mm</span>
+          <span class="k">Half-day before</span><span class="muted">hh:mm</span>
+          <span class="k">Working days</span><span>Mon&ndash;Fri full, Sat half</span>
+          <span class="k">Registered device</span><span>Required for web clocking</span>
+        </div>
+        <span class="btn ghost">Edit this company</span>
+      </div>
+    </div>
+  </div>
+</div>

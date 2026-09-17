@@ -34,6 +34,13 @@
  *     renders the company work-schedule form. Those are the two things the reporter asked to stop seeing
  *     underneath the list they came to read.
  *
+ *  D. 6d091cc0 (r301) — /admin/attendance-policy and /admin/attendance-policy/schedule are requireAdmin()
+ *     redirect stubs now; their content is three cards on Attendance › Schedule › General. So the width and
+ *     "moving is not deleting" pins FOLLOWED the content to the card files rather than being dropped: the
+ *     Schedule Group list is still separate from the work-schedule/overtime/devices blocks (each its own card),
+ *     every moved block is still rendered, the cards carry no page-level cap of their own on a full-width
+ *     screen, and the one-column rule form keeps its reading width.
+ *
  * Limits: a className composed through cn() or a variable escapes a source check like this one — the
  * manual render walk is the backstop for those.
  */
@@ -62,7 +69,9 @@ const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.t
 // that still renders exactly the same table.
 const WIDE_LIST_SCREENS = [
   'app/admin/attendance/page.tsx',
-  'app/admin/attendance-policy/page.tsx',
+  // 6d091cc0 (r301) — 'app/admin/attendance-policy/page.tsx' STOOD HERE. It is a redirect stub now and renders
+  // no width at all; the list it held is the Schedule Group card on the Schedule screen below (which IS in this
+  // list), and the card itself is pinned cap-free in WIDE_SCREEN_CARDS.
   'app/admin/holidays/page.tsx',
   'app/admin/attendance-allowance/page.tsx',
   'app/admin/locations/page.tsx',
@@ -82,8 +91,29 @@ const WIDE_LIST_SCREENS = [
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
 const NARROW_FORM_SCREENS = [
+  // r301 — still one column, and still capped: it renders as a panel on the Schedule screen now, where the cap
+  // keeps the ladder table at the width it was designed for on a wide monitor.
   'app/admin/attendance-policy/rules/rule-form.tsx',
-  'app/admin/attendance-policy/schedule/page.tsx',
+  // 6d091cc0 (r301) — 'app/admin/attendance-policy/schedule/page.tsx' STOOD HERE. It is a redirect stub; the
+  // stack of paired time inputs it capped is the Company Policy Settings Edit panel (a card inside the panel
+  // column), and the rest of that page is the Work Schedule & Overtime Rates card.
+];
+
+/**
+ * 6d091cc0 (r301) — the cards the two retired pages became. They render INSIDE the full-width Schedule screen,
+ * so the property that must not drift is that none of them re-introduces a page-level cap of its own (which
+ * would re-create, one card at a time, the empty-margin complaint af7a8eb4 fixed).
+ */
+const WIDE_SCREEN_CARDS = [
+  'app/admin/attendance-policy/schedule-group-card.tsx',
+  'app/admin/attendance-policy/company-policy-card.tsx',
+  'app/admin/attendance-policy/work-schedule-overtime-card.tsx',
+];
+
+/** The two retired pages: guarded redirect stubs, each to the General-tab card holding its content. */
+const REDIRECT_STUBS: [string, string][] = [
+  ['app/admin/attendance-policy/page.tsx', 'SCHEDULE_GROUPS_ANCHOR'],
+  ['app/admin/attendance-policy/schedule/page.tsx', 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
 ];
 
 // 6340aecb — the one form page that is full width ON PURPOSE (see B above). It gets the SAME pair of
@@ -107,6 +137,18 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(NARROW_FORM_SCREENS)('%s keeps its reading-width cap', (file) => {
     const capped = classNameLiterals(read(file)).filter(capsPage);
     expect(capped.length, `${file} is a one-column FORM page and must stay capped, not stretch edge to edge`).toBeGreaterThan(0);
+  });
+
+  it.each(WIDE_SCREEN_CARDS)('%s (r301 card on the full-width Schedule screen) carries no page-level cap', (file) => {
+    const offending = classNameLiterals(read(file)).filter(capsPage);
+    expect(offending, `${file} re-introduces a page-level width cap: ${offending.join(' | ')}`).toEqual([]);
+  });
+
+  it.each(REDIRECT_STUBS)('%s renders nothing of its own any more — it redirects to its card (r301)', (file, anchor) => {
+    const src = read(file);
+    expect(src).toContain('await requireAdmin();');
+    expect(src).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
+    expect(classNameLiterals(src), 'a redirect stub has no markup, so no width to get wrong').toEqual([]);
   });
 
   it.each(WIDE_FORM_SCREENS)('%s is full width on purpose (6340aecb, request point 3)', (file) => {
@@ -162,35 +204,49 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   });
 
   it('the rule list no longer renders the company work schedule', () => {
-    const src = read('app/admin/attendance-policy/page.tsx');
+    // 6d091cc0 (r301) — the list is the Schedule Group CARD now (its old page is a redirect stub, pinned above).
+    // The separation af7a8eb4 made is kept at the new home: the list card does not render the company work
+    // schedule, the overtime rates or the devices — those are their own cards beside it.
+    const src = read('app/admin/attendance-policy/schedule-group-card.tsx');
     expect(src).not.toContain('setAttendancePolicyAction');
+    expect(src).not.toContain('WorkScheduleForm');
     expect(src).not.toContain('StatutoryComponentForm');
     expect(src).not.toContain('revokeDeviceAction');
-    // …and it links to where they went.
-    expect(src).toContain('/admin/attendance-policy/schedule');
+    // …and the screen it sits on renders where they went, in the approved card order.
+    const page = read('app/admin/attendance/schedule/page.tsx');
+    const at = ['<ScheduleGroupCard', '<CompanyPolicyCard', '<WorkScheduleOvertimeCard'].map((m) => page.indexOf(m));
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
   it('the relocated schedule page still carries every moved block — moving is not deleting', () => {
-    const src = read('app/admin/attendance-policy/schedule/page.tsx');
-    expect(src).toContain('requireAdmin()');
-    expect(src).toContain('StatutoryComponentForm'); // overtime rates
-    expect(src).toContain('revokeDeviceAction'); // registered devices
-    expect(src).toContain('employmentsWithoutBackupShift'); // backup-shift coverage card
+    /**
+     * 6d091cc0 (r301) — MOVED AGAIN, AND THE ASSERTION FOLLOWED IT AGAIN.
+     *
+     * This case pinned /admin/attendance-policy/schedule/page.tsx. The reporter asked for Work Schedule &
+     * Overtime Configuration to be managed on Attendance › Schedule › General, so that page is a redirect stub
+     * and its blocks are the Work Schedule & Overtime Rates card and the Company Policy Settings card, both
+     * mounted by the Schedule page (which calls requireAdmin() itself). Each block is looked for in the file
+     * that now renders it, and the mount is checked too — a card nobody renders is a deletion.
+     */
+    const page = read('app/admin/attendance/schedule/page.tsx');
+    expect(page).toContain('requireAdmin()');
+    expect(page, 'the Schedule page mounts the overtime/devices/coverage card').toContain('<WorkScheduleOvertimeCard');
+    expect(page, 'and the company policy card').toContain('<CompanyPolicyCard');
+    expect(page, 'and the policy editor panel').toContain('<CompanyPolicyEditPanel');
+    const card = read('app/admin/attendance-policy/work-schedule-overtime-card.tsx');
+    expect(card).toContain('StatutoryComponentForm'); // overtime rates
+    expect(card).toContain('revokeDeviceAction'); // registered devices
+    expect(card).toContain('employmentsWithoutBackupShift'); // backup-shift coverage card
     /**
      * e4471e3c (r287) — THE WORK-SCHEDULE FORM MOVED INTO A COMPONENT, SO THE ASSERTION FOLLOWED IT.
-     *
-     * This case used to look for `setAttendancePolicyAction` in the page source. The reporter asked for
-     * the Work Schedule sub-menu to be consolidated into Attendance > Schedule, so the per-company
-     * working-week editor now has to render on BOTH screens — and rather than draw a second form (which
-     * would have silently wiped the four settings the Schedule tab does not display, because that action
-     * is a full-row writer), the editor moved into ONE component that both screens mount.
-     *
-     * Following the block is the point of this case: "moving is not deleting" is exactly as true of a
-     * move into a component as of a move into another route, and re-pointing the assertion is what keeps
-     * it from either failing on a legitimate refactor or passing over a genuine deletion. Both halves are
-     * checked — this page still renders the editor, and the editor still posts to the same action.
+     * r301 — and it is mounted by the Company Policy Settings Edit panel. Both halves are checked: the panel
+     * still renders the editor, and the editor still posts to the same action with the same day-type fields.
      */
-    expect(src, 'the page still renders the company work-schedule editor').toContain('<WorkScheduleForm');
+    expect(
+      read('app/admin/attendance-policy/company-policy-card.tsx'),
+      'the Edit panel renders the company work-schedule editor',
+    ).toContain('<WorkScheduleForm');
     const form = read('app/admin/attendance-policy/schedule/work-schedule-form.tsx');
     expect(form, 'and that editor is still the setAttendancePolicyAction form').toContain('setAttendancePolicyAction');
     expect(form, 'still posting the per-weekday day-type selects the action decodes').toContain('dayType_');
@@ -204,14 +260,21 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     expect(actions).toContain('${BASE}/${shiftId}');
     // Copy lands on the copy's own edit page.
     expect(actions).toContain('${BASE}/${copied.id}');
-    // Saving a company work schedule / revoking a device returns to the schedule page.
-    expect(read('app/admin/actions.ts')).toContain("const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule'");
-    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain(
-      "const LIST = '/admin/attendance-policy/schedule'",
+    // 6d091cc0 (r301) — saving a company work schedule, revoking a device and publishing the overtime rates all
+    // return to the Schedule screen now, as a PLAIN path: every one of those writers appends `?error=` (or
+    // `?toast=`) by concatenation, and the statutory action refuses a return path carrying ? or #. The General
+    // tab is the default tab, so the plain path is where the card is. (The `?tab=general` this used to carry
+    // for the policy save is the defect r301 fixed — it swallowed every refusal.) Behaviour, not just source:
+    // test/r301-schedule-general.test.ts runs each of these actions and reads where it redirected.
+    expect(read('app/admin/attendance-policy/schedule-panel.ts')).toContain(
+      "export const SCHEDULE = '/admin/attendance/schedule';",
     );
-    expect(read('app/admin/attendance-policy/schedule/page.tsx')).toContain(
-      "const SELF = '/admin/attendance-policy/schedule'",
-    );
+    const admin = read('app/admin/actions.ts');
+    expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/schedule';");
+    expect(admin).toContain('const backTo = SCHEDULE_TAB;');
+    expect(admin, 'no query string on the policy return path').not.toContain('SCHEDULE_TAB}?tab=');
+    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = SCHEDULE;');
+    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={SCHEDULE}');
   });
 });
 
