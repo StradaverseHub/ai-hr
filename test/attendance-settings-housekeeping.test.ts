@@ -275,7 +275,9 @@ describe('ad52212d round 2 — deleting an overtime pattern NAMES what is using 
 });
 
 describe('ad52212d round 2 — the list wiring (a contract that spans two files)', () => {
-  const PAGE = 'app/admin/attendance-policy/page.tsx';
+  // 6d091cc0 (r301) — the list MOVED from /admin/attendance-policy/page.tsx (a redirect stub now) to the Schedule
+  // Group card on Attendance › Schedule › General. The contract followed it; nothing about it was relaxed.
+  const PAGE = 'app/admin/attendance-policy/schedule-group-card.tsx';
   const ACTIONS = 'app/admin/attendance-policy/rule-actions.ts';
 
   it('the Overtime Pattern list offers Duplicate and an Activate/Deactivate toggle', () => {
@@ -306,7 +308,12 @@ describe('ad52212d round 2 — the list wiring (a contract that spans two files)
   it('Duplicate lands on the copy’s own edit form, like the shift library next door', () => {
     // The reason to duplicate is to change the two or three bands that differ; the list would make the
     // operator hunt for the row they just created.
-    expect(read(ACTIONS)).toContain('redirect(`${LIST}/rules/${copied.id}`)');
+    // r301 — the copy's edit form is its editor PANEL on the Schedule General tab (`?editGroup=<copy id>`), and
+    // the panel address is built in one place. test/r301-schedule-general.test.ts runs the action and opens it.
+    expect(read(ACTIONS)).toContain('redirect(groupEditorPath(copied.id))');
+    expect(read('app/admin/attendance-policy/schedule-panel.ts')).toContain(
+      'export const groupEditorPath = (ruleId: string) => `${SCHEDULE}?editGroup=${encodeURIComponent(ruleId)}`;',
+    );
   });
 
   it('ALREADY BUILT, NOT REBUILT: the Shift list already has all four actions', () => {

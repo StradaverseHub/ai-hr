@@ -197,8 +197,9 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       ).toBe(0);
       expect(
         fs.existsSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx')),
-        `${href} lost its page. Retiring a menu row must never delete a screen — that route is still the ` +
-          `owning editor for everything r287 did NOT move, starting with the deduction switch.`,
+        `${href} lost its page. Retiring a menu row must never delete a screen's address — since r301 ` +
+          `(6d091cc0) the route is a requireAdmin() redirect to the Schedule General-tab card that holds its ` +
+          `content, and bookmarks, the module gate and the permission screenKey all ride that page.`,
       ).toBe(true);
     }
   });
