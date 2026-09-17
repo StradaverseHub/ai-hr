@@ -97,6 +97,9 @@ const card = (): MyLeaveDashboardCard =>
     pending: 2,
     balance: 9.5,
     canApplyFor: 7.5,
+    // r303 integration: fields the My Leave fix pass added to the card (the ring's third arc; the later-rows line).
+    remaining: 7.5,
+    balanceIncludesLater: null,
     expiringSoon: null,
     hasEntitlement: true,
     takenOnly: false,
