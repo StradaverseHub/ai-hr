@@ -9092,8 +9092,7 @@
         "granted": "Đã thêm tín dụng nghỉ phép {days} ngày.",
         "grantedOvertime": "{hours} giờ làm thêm được ghi nhận ngày {date} sẽ không được trả thêm nữa.",
         "reversed": "Đã hủy bỏ tín dụng nghỉ phép {days} ngày.",
-        "reversedOvertime": "{hours} giờ làm thêm được ghi nhận ngày {date} được trả lại.",
-        "refreshDraftOvertime": "Bảng lương nháp kỳ {period} đã có giờ làm thêm của nhân viên này: hãy chạy lại bước điền sẵn giờ làm thêm để phản ánh thay đổi này."
+        "reversedOvertime": "{hours} giờ làm thêm được ghi nhận ngày {date} được trả lại."
       },
       "add": {
         "title": "Thêm tín dụng nghỉ phép",

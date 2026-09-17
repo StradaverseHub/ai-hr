@@ -326,7 +326,9 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
   // 3fb1a611 (r299) — THIS USED TO PIN A REFUSAL ("no TOIL-register inverse"). The inverse exists now
   // (core/toil.ts restoreReplacementLeaveTx), so an approved Replacement Leave cancels and its credit goes back.
   // This fixture has a ledger debit and NO register rows (the legacy ghost credit), so the day comes back to
-  // the ledger and the register logs a shortfall instead of inventing a credit. The give-back into real
+  // the ledger and nothing is invented in the register. r300 — and NOTHING IS LOGGED EITHER: an employee who never
+  // held a credit has no register to keep in step (core/toil.ts employmentHoldsCreditsTx gates consumption and
+  // give-back alike), which is also what keeps a tenant without Leave Credit byte-for-byte on main's behaviour. The give-back into real
   // credits — FIFO-split, and refused after expiry — is pinned in test/r299-leave-credit-cancel.test.ts.
   it('cancels an APPROVED replacement leave and gives the day back (3fb1a611)', async () => {
     const rt = await replacementType();
@@ -359,8 +361,7 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
       .select({ payload: schema.domainEvent.payload })
       .from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.eventType, 'toil.restore.shortfall'), eq(schema.domainEvent.aggregateId, row.id)));
-    expect(shortfall).toHaveLength(1);
-    expect((shortfall[0].payload as { shortfall: number }).shortfall).toBe(1);
+    expect(shortfall, 'no register was ever used for this employee, so there is no bookkeeping gap to flag').toHaveLength(0);
   });
 
   it('cancels a PENDING replacement leave cleanly (register never consumed)', async () => {

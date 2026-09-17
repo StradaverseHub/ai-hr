@@ -186,6 +186,18 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
     )
     .limit(1);
 
+  // r300 (3fb1a611) — FIRST INSTALL is judged across EVERY scope, not the requested one. `existing` above keys on
+  // the requested company scope, so a company-scoped activation after a tenant-wide install (or a tenant-wide one
+  // after a one-company trial) read as "first install" and switched off a policy HR had turned on while owning the
+  // module (r300 verifier, both orders measured). An activator's first-install behaviour must mean "this tenant has
+  // never had this module in any form".
+  const [anyScope] = await tx
+    .select({ id: tenantModule.id })
+    .from(tenantModule)
+    .where(and(eq(tenantModule.tenantId, req.tenantId), eq(tenantModule.moduleCode, req.moduleCode)))
+    .limit(1);
+  const firstInstall = !anyScope;
+
   if (existing) {
     await tx.update(tenantModule).set({ status: 'active' }).where(eq(tenantModule.id, existing.id));
   } else {
@@ -208,11 +220,11 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   // Tenant-level ONCE. `tenant_setting` is keyed by (tenant, key), so running this per company would
   // repeat one insert and report the repeats as skips — a false "already present" in the audit event.
   for (const activator of tenantLevel) {
-    outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null, firstInstall: !existing }));
+    outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null, firstInstall }));
   }
   for (const activator of perCompany) {
     for (const target of targets) {
-      outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: target.id, firstInstall: !existing }));
+      outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: target.id, firstInstall }));
     }
   }
   const merged = mergeOutcomes(outcomes);

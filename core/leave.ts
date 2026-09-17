@@ -44,6 +44,7 @@ import { leaveCreditRegisterLive } from './leave-credit-live';
 import {
   assertReplacementLeaveRestorableTx,
   consumeReplacementLeaveTx,
+  employmentHoldsCreditsTx,
   replacementExpiringSoonTx,
   ReplacementLeaveRestoreBlockedError,
   restoreReplacementLeaveTx,
@@ -4898,7 +4899,10 @@ async function finalizeLeaveApproval(
   // later expiry/close re-debits the full credit (negative balance + spurious convert-to-pay). The flag
   // gates accrual/UI, not this consume-on-approve invariant — consumeReplacementLeaveTx is a safe no-op
   // when there is no active accrual to decrement.
-  if (leaveTypeIs(lt, 'replacement')) {
+  // r300 (3fb1a611) — ONLY WHERE THE REGISTER IS IN USE. Reading the role (above) made production's RL type
+  // reach this branch for the first time; for an employee who never held a credit there is nothing to consume and
+  // no reason to refuse a per-date approval that main let through, so the branch is exactly main's no-op for them.
+  if (leaveTypeIs(lt, 'replacement') && (await employmentHoldsCreditsTx(tx, ctx.tenantId, req.employmentId))) {
     // ADR-0068 §4E guard: a partial (per-date) debit must never reach REPLACEMENT — §4C excludes REPLACEMENT
     // from per-date approval, so daysOverride is always undefined here. Assert it so a future regression that
     // wires per-date approval to a REPLACEMENT type fails loudly instead of under-consuming the TOIL register.

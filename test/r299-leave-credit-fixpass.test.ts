@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import {
@@ -255,7 +255,7 @@ describe('fix pass · an expired credit is valued on what is LEFT of it, never o
   });
 });
 
-describe('fix pass · HR may not add or reverse a credit once payroll has settled that date’s overtime', () => {
+describe('r300 · HR may not add or reverse a credit on a date with overtime once payroll for that month has been started', () => {
   const settle = (batchId: string) =>
     owner.db.update(schema.payrollBatch).set({ status: 'processed' }).where(eq(schema.payrollBatch.id, batchId));
 
@@ -269,7 +269,7 @@ describe('fix pass · HR may not add or reverse a credit once payroll has settle
       employmentId: e.employmentId, workedDate: D1, days: 1, reason: 'Late claim', firstScheduleConsent: true, today: TODAY,
     }).then(() => null, (err: Error) => err);
     expect(refused).toBeInstanceOf(LeaveCreditError);
-    expect(refused!.message).toMatch(/already been processed/);
+    expect(refused!.message).toMatch(/payroll for that month has already been started/);
     expect(await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, e.employmentId))).toHaveLength(0);
 
     // CONTROL — the same add on a day with NO overtime is not a payroll question and goes through.
@@ -277,7 +277,7 @@ describe('fix pass · HR may not add or reverse a credit once payroll has settle
     const ok = await grantLeaveCredit(ctx, {
       employmentId: other.employmentId, workedDate: firstWeekdayOf(7), days: 1, reason: 'Cover', firstScheduleConsent: true, today: TODAY,
     });
-    expect(ok.draftPayrollToRefresh).toBeNull();
+    expect(ok.overtimeSuppressedMinutes).toBe(0);
   });
 
   it('REVERSE is refused once a run has been processed without that overtime', async () => {
@@ -294,25 +294,85 @@ describe('fix pass · HR may not add or reverse a credit once payroll has settle
       (err: Error) => err,
     );
     expect(refused).toBeInstanceOf(LeaveCreditError);
-    expect(refused!.message).toMatch(/leave that overtime unpaid/);
+    expect(refused!.message).toMatch(/could leave that overtime unpaid/);
     const [row] = await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.id, g.accrualId));
     expect(row.status).toBe('active');
   });
 
-  it('a DRAFT already carrying the overtime allows the add and names the period whose prefill must be re-run', async () => {
+  // r300 — THE r299 DRAFT ALLOWANCE WAS WRONG, measured by the verifier: a re-run prefill never zeroes a stale
+  // overtime figure (a draft whose only overtime is the credited day kept paying it), and a reversal after a prefill
+  // had no draft to name. A draft refuses exactly like a processed run; deleting it is HR's remedy.
+  it('a DRAFT run refuses the add too — and once the draft is deleted the add goes through', async () => {
     const e = await hire(3000);
     await workRestDay(e.employmentId, D1);
-    await workRestDay(e.employmentId, D2);
     await setToilPolicy(ctx, policy());
     const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: PERIOD });
     await prefillOvertimeFromAttendance(ctx, { batchId });
-    expect(await otAmountOf(batchId, e.employmentId)).toBeCloseTo(TWO_REST_DAYS, 2);
+    const add = () =>
+      grantLeaveCredit(ctx, { employmentId: e.employmentId, workedDate: D1, days: 1, reason: 'Stock take', firstScheduleConsent: true, today: TODAY });
+    const refused = await add().then(() => null, (err: Error) => err);
+    expect(refused).toBeInstanceOf(LeaveCreditError);
+    expect(refused!.message).toMatch(/delete it, add the credit/);
+    await owner.db.delete(schema.payrollInput).where(eq(schema.payrollInput.batchId, batchId));
+    await owner.db.delete(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect((await add()).overtimeSuppressedMinutes).toBe(480);
+  });
+
+  it('REVERSE is refused against a DRAFT run as well — a prefilled draft would otherwise leave the overtime unpaid', async () => {
+    const e = await hire(3000);
+    await workRestDay(e.employmentId, D1);
+    await setToilPolicy(ctx, policy());
     const g = await grantLeaveCredit(ctx, {
-      employmentId: e.employmentId, workedDate: D1, days: 1, reason: 'Stock take', firstScheduleConsent: true, today: TODAY,
+      employmentId: e.employmentId, workedDate: D1, days: 1, reason: 'Entered in error', firstScheduleConsent: true, today: TODAY,
     });
-    expect(g.draftPayrollToRefresh).toBe(PERIOD);
+    const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: PERIOD });
     await prefillOvertimeFromAttendance(ctx, { batchId });
-    expect(await otAmountOf(batchId, e.employmentId), 're-running the prefill takes the credited day out').toBeCloseTo(ONE_REST_DAY, 2);
+    const refused = await reverseLeaveCredit(ctx, { accrualId: g.accrualId, reason: 'Wrong', today: TODAY }).then(() => null, (err: Error) => err);
+    expect(refused).toBeInstanceOf(LeaveCreditError);
+    expect(refused!.message).toMatch(/delete it, reverse the credit/);
+  });
+
+  it('a run in ANOTHER company refuses too — even for an admin who cannot see that company’s payroll', async () => {
+    // Overtime follows the company that employed the person on the day, and a transferred employee's old company is
+    // not the one on their record — so the check is tenant-wide, and it goes through a SECURITY DEFINER function
+    // because payroll_batch RLS hides a sister company's runs from a company-scoped admin.
+    const e = await hire(3000);
+    await workRestDay(e.employmentId, D1);
+    await setToilPolicy(ctx, policy());
+    const [sister] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Sister Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const [pp] = await owner.db
+      .insert(schema.payPeriod)
+      .values({ tenantId: b.tenantId, companyId: sister.id, period: PERIOD, status: 'open' })
+      .returning({ id: schema.payPeriod.id });
+    await owner.db.insert(schema.payrollBatch).values({
+      tenantId: b.tenantId, companyId: sister.id, payPeriodId: pp.id, payPeriod: PERIOD, batchDate: `${PERIOD}-25`, status: 'draft',
+    });
+    const refused = await grantLeaveCredit(ctx, {
+      employmentId: e.employmentId, workedDate: D1, days: 1, reason: 'Transfer', firstScheduleConsent: true, today: TODAY,
+    }).then(() => null, (err: Error) => err);
+    expect(refused).toBeInstanceOf(LeaveCreditError);
+
+    // The function, asked by an admin scoped to the EMPLOYEE's company only: RLS hides the sister run, the
+    // function still answers yes — and it answers nothing but yes/no.
+    const scopedPerson = await hire(8000, 'Company-A HR');
+    const uid = await createAppUser(b.tenantId, scopedPerson.personId, 'manager');
+    const scopedCtx: SessionContext = {
+      tenantId: b.tenantId,
+      userId: uid,
+      personId: scopedPerson.personId,
+      grants: [{ role: 'hr_admin', companyId: b.companyId }],
+      entitlements: ctx.entitlements,
+    };
+    const seen = await withTenant(scopedCtx, async (tx) => {
+      const rows = await tx.select({ id: schema.payrollBatch.id }).from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId, sister.id));
+      const res = await tx.execute(sql`SELECT app.payroll_run_exists_for_periods(ARRAY[${PERIOD}]::text[]) AS started`);
+      return { rows: rows.length, started: (res as unknown as { started: boolean }[])[0]?.started };
+    });
+    expect(seen.rows, 'RLS hides the sister company’s run from this admin').toBe(0);
+    expect(seen.started, 'the function still sees it').toBe(true);
   });
 });
 

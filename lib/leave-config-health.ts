@@ -380,7 +380,14 @@ export function leaveTypeConfigHealth(p: {
    */
   const leaveCreditTables = leaveType.daysFromLeaveCreditOnly ? liveTemplates.map((t) => t.name) : [];
   if (leaveType.daysFromLeaveCreditOnly) {
+    // r300 integration — the replacement is of the TABLE findings only. A stranded earned method (r299,
+    // earned_method_not_annual_leave) is not a statement about tables, and clearing it would let a replacement type
+    // on Monthly Accrual read Ready while no engine will ever grant it a day (r300 verifier, measured).
+    const stranded = findings.includes('earned_method_not_annual_leave');
+    const unconfigured = findings.includes('no_earning_method');
     findings.length = 0;
+    if (unconfigured) findings.push('no_earning_method');
+    if (stranded) findings.push('earned_method_not_annual_leave');
     if (leaveCreditTables.length > 0) findings.push('replacement_leave_has_entitlement_table');
   }
 

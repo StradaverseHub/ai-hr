@@ -481,6 +481,19 @@ describe('D8 · Expiring soon exists only with the module', () => {
 // ─────────────────────────────── D9 · Leave Balance Health ───────────────────────────────
 
 describe('D9 · Leave Balance Health — the pure derivation, both arms', () => {
+  // r300 integration — the Leave Credit replacement of findings must not swallow r299's stranded-method finding.
+  it('a replacement-role type on an EARNED method with the module on stays BLOCKED, not Ready', () => {
+    const h = leaveTypeConfigHealth({
+      leaveType: {
+        id: 'lt-rl2', name: 'Replacement Leave', accrualMethod: 'earned_monthly', accrualUnconfigured: false,
+        daysFromLeaveCreditOnly: true, defaultEntitlementTemplateLineageId: null, archived: false, earnedMethodNotAnnualLeave: true,
+      },
+      templates: [], rules: [], grades: [], today: '2026-09-17',
+    });
+    expect(h.findings).toEqual(['earned_method_not_annual_leave']);
+    expect(h.status).toBe('blocked');
+  });
+
   const type = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
     id: 'lt-rl',
     name: 'Replacement Leave',

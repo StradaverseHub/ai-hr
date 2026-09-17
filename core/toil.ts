@@ -1073,6 +1073,14 @@ export async function consumeReplacementLeaveTx(
   let fullyConsumed = 0;
   let partiallyConsumed = 0;
   if (remaining <= 0) return { allocated: 0, fullyConsumed: 0, partiallyConsumed: 0, shortfall: 0 };
+  // r300 (3fb1a611) — AN EMPLOYEE WHO NEVER HELD A CREDIT HAS NO REGISTER TO KEEP IN STEP, so nothing is read,
+  // written or flagged: the shortfall event below exists for a register that COULD NOT cover the leave, not for
+  // one that was never used. Since finalizeLeaveApproval reads the type's role, every Replacement Leave approval
+  // on a role-classified type reaches here — on a tenant without Leave Credit that is every one of them, and
+  // main never ran this at all for such a type. The same probe gates restoreReplacementLeaveTx.
+  if (!(await employmentHoldsCreditsTx(tx, ctx.tenantId, p.employmentId))) {
+    return { allocated: 0, fullyConsumed: 0, partiallyConsumed: 0, shortfall: remaining };
+  }
 
   const active = await tx
     .select({
@@ -1190,7 +1198,7 @@ export type RestoreReplacementResult = {
  * toil_accrual_emp_date_uq index (tenant_id, employment_id, worked_date) WHERE status <> 'reversed', so this is
  * one index probe rather than a scan.
  */
-async function employmentHoldsCreditsTx(tx: Tx, tenantId: string, employmentId: string): Promise<boolean> {
+export async function employmentHoldsCreditsTx(tx: Tx, tenantId: string, employmentId: string): Promise<boolean> {
   const [row] = await tx
     .select({ id: toilAccrual.id })
     .from(toilAccrual)
@@ -1526,42 +1534,30 @@ async function assertAdminForEmploymentTx(tx: Tx, employmentId: string, action: 
 }
 
 /**
- * r299 fix pass (3fb1a611) — HAS PAYROLL ALREADY TAKEN THIS DATE'S OVERTIME?
+ * r300 (3fb1a611) — HAS PAYROLL BEEN STARTED, ANYWHERE IN THE TENANT, FOR THE DATE'S MONTH OR THE NEXT?
  *
- * A credit and that day's overtime pay are mutually exclusive, but payroll only honours that at PREFILL time
- * (EXCLUDE_TOIL_BANKED_DAYS): `payroll_input.overtime_amount` is a per-batch aggregate with no per-day
- * attribution, a processed run is not re-prefilled and a closed one cannot be written (see the note above
- * EXCLUDE_TOIL_BANKED_DAYS in core/payroll.ts). So an HR credit added AFTER the overtime reached a run paid the
- * day twice, and a reversal AFTER a run excluded it left the overtime unpaid — while the screens said the
- * opposite (r299 verifier, measured). Rather than rewrite payroll-run state, the two HR actions REFUSE while a
- * run holds that decision, and the promises on screen stay true.
+ * A credit and that day's overtime pay are mutually exclusive, but payroll honours that only at PREFILL time:
+ * `payroll_input.overtime_amount` is a per-batch aggregate with no per-day attribution, a re-run prefill updates
+ * only employees who still have overtime rows (it never zeroes a stale figure), a processed run is not
+ * re-prefilled and a closed one cannot be written. The r300 verifier measured every shape of the r299 draft
+ * allowance paying the day twice (add after a prefill) or not at all (reverse after one), and a transferred
+ * employee's OLD company paying overtime the new company then suppressed. So HR's add and reverse are REFUSED on
+ * a date with recorded overtime once any run exists for the date's month or the next (a cut-off schedule can
+ * carry late-month overtime forward) — draft included, any company. Conservative by design: it can refuse a
+ * sister company's employee, and HR's remedy is to act before payroll starts or delete a draft first.
  *
- * CONSERVATIVE BY DESIGN. A run is considered when it belongs to the employee's company and is for the date's
- * month or the next one (a cut-off schedule can carry late-month overtime into the next period). That can refuse
- * a date whose overtime actually falls in the other period — the price of never paying a day twice or not at all.
- *
- *   `settled`  a run PAST DRAFT (processed / closed): its overtime cannot be re-prefilled, so the action is
- *              REFUSED.
- *   `draft`    a DRAFT already carrying overtime for this employee: allowed, because a draft is not money yet
- *              and re-running its overtime prefill makes it right — the same rule as any attendance change
- *              after a prefill — but the period is returned so the screen tells HR to re-run it.
+ * Asked through app.payroll_run_exists_for_periods (migration 0470, SECURITY DEFINER): payroll_batch RLS shows a
+ * run only to an admin for its company, so asking under RLS would let a company-scoped admin miss a sister
+ * company's run. The function answers yes/no for the caller's tenant and reveals nothing else.
  */
-async function payrollRunsHoldingOvertimeTx(
-  tx: Tx,
-  p: { employmentId: string; companyId: string; workedDate: string },
-): Promise<{ settled: { payPeriod: string; status: string } | null; draft: string | null }> {
-  const [y, m] = p.workedDate.slice(0, 7).split('-').map(Number);
-  const month = p.workedDate.slice(0, 7);
+async function payrollStartedForDateTx(tx: Tx, workedDate: string): Promise<boolean> {
+  const [y, m] = workedDate.slice(0, 7).split('-').map(Number);
+  const month = workedDate.slice(0, 7);
   const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-  const runs = await tx
-    .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, overtime: payrollInput.overtimeAmount })
-    .from(payrollBatch)
-    .leftJoin(payrollInput, and(eq(payrollInput.batchId, payrollBatch.id), eq(payrollInput.employmentId, p.employmentId)))
-    .where(and(eq(payrollBatch.companyId, p.companyId), inArray(payrollBatch.payPeriod, [month, next])))
-    .orderBy(asc(payrollBatch.payPeriod), asc(payrollBatch.id));
-  const settled = runs.find((r) => r.status !== 'draft');
-  const draft = runs.find((r) => r.status === 'draft' && Number(r.overtime ?? 0) !== 0);
-  return { settled: settled ? { payPeriod: settled.payPeriod, status: settled.status } : null, draft: draft?.payPeriod ?? null };
+  const res = await tx.execute(
+    sql`SELECT app.payroll_run_exists_for_periods(ARRAY[${month}, ${next}]::text[]) AS started`,
+  );
+  return (res as unknown as { started: boolean }[])[0]?.started === true;
 }
 
 /**
@@ -1656,9 +1652,6 @@ export type GrantLeaveCreditResult = AccrueToilResult & {
   workedDayKind: ToilWorkedDayKind;
   /** ⚠️ MONEY: the overtime minutes on the worked date whose pay this credit has just suppressed (0 if none). */
   overtimeSuppressedMinutes: number;
-  /** r299 fix pass — a DRAFT run (YYYY-MM) that already carries this employee's overtime and must have its overtime
-   *  prefill re-run for the credit to take effect; null when none. */
-  draftPayrollToRefresh: string | null;
 };
 
 /**
@@ -1736,15 +1729,10 @@ export async function grantLeaveCredit(
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
     if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
     const overtime = await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
-    let draftPayrollToRefresh: string | null = null;
-    if (overtime > 0) {
-      const runs = await payrollRunsHoldingOvertimeTx(tx, { employmentId: p.employmentId, companyId: emp.companyId, workedDate: p.workedDate });
-      if (runs.settled) {
-        throw new LeaveCreditError(
-          `The payroll for ${runs.settled.payPeriod} has already been ${runs.settled.status}, and ${p.workedDate} has overtime recorded. Adding a credit now would pay that day twice — as overtime and as leave. Correct that payroll first.`,
-        );
-      }
-      draftPayrollToRefresh = runs.draft;
+    if (overtime > 0 && (await payrollStartedForDateTx(tx, p.workedDate))) {
+      throw new LeaveCreditError(
+        `${p.workedDate} has overtime recorded, and payroll for that month has already been started. A credit for a day with overtime can only be added before its payroll is started, or it could pay the day twice — as overtime and as leave. If that payroll is still a draft, delete it, add the credit, then start the payroll again.`,
+      );
     }
     const result = await bankToilCreditTx(tx, ctx, {
       employmentId: p.employmentId,
@@ -1769,7 +1757,7 @@ export async function grantLeaveCredit(
       remarks: p.remarks,
       expiresOnOverride: expiresOn,
     });
-    return { ...result, workedDayKind: kind, overtimeSuppressedMinutes: overtime, draftPayrollToRefresh };
+    return { ...result, workedDayKind: kind, overtimeSuppressedMinutes: overtime };
   });
 }
 
@@ -1781,8 +1769,6 @@ export type ReverseLeaveCreditResult = {
   reversalLedgerEntryId: string;
   /** ⚠️ MONEY: overtime minutes on the worked date that are payable again (0 if none was recorded). */
   overtimeRestoredMinutes: number;
-  /** r299 fix pass — a DRAFT run (YYYY-MM) whose overtime prefill must be re-run to pay it; null when none. */
-  draftPayrollToRefresh: string | null;
 };
 
 /**
@@ -1820,7 +1806,7 @@ export async function reverseLeaveCredit(
     if (!acc) throw new LeaveCreditError('That Leave Credit could not be found.');
     await assertAdminForEmploymentTx(tx, acc.employmentId, 'reverse a Leave Credit');
     const [owner] = await tx
-      .select({ personId: employment.personId, companyId: employment.companyId })
+      .select({ personId: employment.personId })
       .from(employment)
       .where(eq(employment.id, acc.employmentId))
       .limit(1);
@@ -1837,15 +1823,10 @@ export async function reverseLeaveCredit(
     if (acc.expiresOn < today) throw new LeaveCreditError(`That Leave Credit expired on ${acc.expiresOn} and cannot be reversed.`);
     // r299 fix pass — a reversal only puts the overtime back if payroll has not already worked that date out
     // without it. See payrollRunHoldingOvertimeTx.
-    let draftPayrollToRefresh: string | null = null;
-    if (owner && (await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0) {
-      const runs = await payrollRunsHoldingOvertimeTx(tx, { employmentId: acc.employmentId, companyId: owner.companyId, workedDate: acc.workedDate });
-      if (runs.settled) {
-        throw new LeaveCreditError(
-          `The payroll for ${runs.settled.payPeriod} has already been ${runs.settled.status} without the overtime for ${acc.workedDate}. Reversing the credit now would leave that overtime unpaid. Correct that payroll first.`,
-        );
-      }
-      draftPayrollToRefresh = runs.draft;
+    if ((await overtimeMinutesOnTx(tx, acc.employmentId, acc.workedDate)) > 0 && (await payrollStartedForDateTx(tx, acc.workedDate))) {
+      throw new LeaveCreditError(
+        `${acc.workedDate} has overtime recorded, and payroll for that month has already been started without it. Reversing the credit now could leave that overtime unpaid. If that payroll is still a draft, delete it, reverse the credit, then start the payroll again.`,
+      );
     }
 
     const days = round2(Number(acc.daysCredited));
@@ -1909,7 +1890,6 @@ export async function reverseLeaveCredit(
       daysReversed: days,
       reversalLedgerEntryId: debit.id,
       overtimeRestoredMinutes: overtime,
-      draftPayrollToRefresh,
     };
   });
 }
