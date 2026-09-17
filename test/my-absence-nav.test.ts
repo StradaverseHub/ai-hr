@@ -152,7 +152,7 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
     // it is waiting for and at which level, labelled by the step's KIND — and the step-by-step progress.
     expect(leavePage.includes("tMe('stageManager')")).toBe(false);
     expect(leavePage.includes('approverLine: approverLineFor(r)')).toBe(true);
-    expect(leavePage.includes("t('myLeave.waitingForRole', { role, level: line.level, of: line.of })")).toBe(true);
+    expect(read('lib/my-leave-history.ts').includes("t('myLeave.waitingForRole', { role, level: line.level, of: line.of })")).toBe(true);
   });
 
   it('keeps the pre-existing /leave capabilities intact (balances, apply, edit/cancel history)', () => {

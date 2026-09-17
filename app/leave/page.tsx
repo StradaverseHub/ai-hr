@@ -38,9 +38,12 @@ import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/
 import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
 import {
   LEAVE_HISTORY_TABS,
+  approvalProgress,
   approverKindLabelKey,
-  pendingApprovalLine,
+  approverLine,
+  cancellationLines,
   resolveHistoryTab,
+  type HistoryLineDeps,
   type LeaveHistoryTab,
 } from '@/lib/my-leave-history';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
@@ -67,7 +70,7 @@ import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-av
 import { listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 // My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
-import { LeaveHistoryCards, type LeaveHistoryEntry, type LeaveProgressStep } from '@/components/leave/leave-history-cards';
+import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
 // Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
 // as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid.
 import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
@@ -594,105 +597,14 @@ export default async function LeavePage({
         ? { key: 'partial', label: tMe('leaveStatus.partiallyApproved') }
         : { key: r.status, label: t(`status.${r.status}`) };
   };
-  /** The row's Approver cell. */
-  const approverLineFor = (r: (typeof selfHistory)[number]): string | null => {
-    const trail = approvalTrails.get(r.id);
-    if (r.status === 'pending') {
-      const line = pendingApprovalLine(trail);
-      if (!line) return null;
-      if (line.names.length > 0) return t('myLeave.waitingForName', { name: listNames(line.names), level: line.level, of: line.of });
-      const role = kindLabel(line.kind);
-      return role
-        ? t('myLeave.waitingForRole', { role, level: line.level, of: line.of })
-        : t('myLeave.waitingForApproval', { level: line.level, of: line.of });
-    }
-    if (r.status === 'cancelled') {
-      const c = cancellations.get(r.id);
-      if (c?.automatic) return t('myLeave.cancelledAutomatically');
-      return c?.cancelledByName ? t('myLeave.cancelledBy', { name: c.cancelledByName }) : null;
-    }
-    const name = trail?.decidedByName;
-    if (!name) return null;
-    return r.status === 'rejected' ? t('myLeave.rejectedBy', { name }) : t('myLeave.approvedBy', { name });
-  };
-  /** The View panel's approval progress: Submitted → each level → the outcome, the current level highlighted. */
-  const approvalProgressFor = (r: (typeof selfHistory)[number]): LeaveProgressStep[] => {
-    const trail = approvalTrails.get(r.id);
-    const out: LeaveProgressStep[] = [
-      { label: t('myLeave.progressSubmitted'), detail: fmtInstant(r.appliedOn), state: 'done' },
-    ];
-    const levelLabel = (level: number, kind: string | null, names: string[]) => {
-      const role = kindLabel(kind);
-      if (role && names.length > 0) return t('myLeave.progressLevelNamed', { level, role, name: listNames(names) });
-      if (role) return t('myLeave.progressLevel', { level, role });
-      if (names.length > 0) return t('myLeave.progressLevelPerson', { level, name: listNames(names) });
-      return t('myLeave.progressLevelOnly', { level });
-    };
-    const steps = [...(trail?.steps ?? [])].sort((a, b) => a.stepIndex - b.stepIndex);
-    const firstPending = r.status === 'pending' ? steps.findIndex((st) => st.status === 'pending') : -1;
-    if (steps.length > 0) {
-      steps.forEach((st, i) => {
-        if (st.status === 'approved') {
-          out.push({
-            label: levelLabel(i + 1, st.kind, st.decidedByName ? [st.decidedByName] : []),
-            detail: st.decidedAt ? t('myLeave.progressApprovedAt', { date: fmtInstant(st.decidedAt)! }) : null,
-            state: 'done',
-          });
-        } else if (st.status === 'rejected') {
-          out.push({
-            label: levelLabel(i + 1, st.kind, st.decidedByName ? [st.decidedByName] : []),
-            detail: st.decidedAt ? t('myLeave.progressRejectedAt', { date: fmtInstant(st.decidedAt)! }) : null,
-            state: 'rejected',
-          });
-        } else {
-          const current = i === firstPending;
-          out.push({
-            label: levelLabel(i + 1, st.kind, [st.approverName, ...st.alternateNames].filter((n): n is string => !!n)),
-            detail: current ? t('myLeave.progressWaiting') : r.status === 'pending' ? t('myLeave.progressNotReached') : null,
-            state: current ? 'current' : 'upcoming',
-          });
-        }
-      });
-    } else if (r.status === 'pending') {
-      const line = pendingApprovalLine(trail);
-      out.push({ label: levelLabel(1, line?.kind ?? null, line?.names ?? []), detail: t('myLeave.progressWaiting'), state: 'current' });
-    } else if (trail?.decidedAt) {
-      out.push({
-        label: levelLabel(1, null, trail.decidedByName ? [trail.decidedByName] : []),
-        detail:
-          r.status === 'rejected'
-            ? t('myLeave.progressRejectedAt', { date: fmtInstant(trail.decidedAt)! })
-            : t('myLeave.progressApprovedAt', { date: fmtInstant(trail.decidedAt)! }),
-        state: r.status === 'rejected' ? 'rejected' : 'done',
-      });
-    }
-    if (r.status === 'pending') out.push({ label: t('myLeave.progressOutcomeApproved'), detail: null, state: 'upcoming' });
-    else if (r.status === 'approved') out.push({ label: t('myLeave.progressOutcomeApproved'), detail: fmtInstant(r.decidedAt), state: 'done' });
-    else if (r.status === 'rejected') out.push({ label: t('myLeave.progressOutcomeRejected'), detail: fmtInstant(r.decidedAt), state: 'rejected' });
-    else if (r.status === 'cancelled') {
-      out.push({ label: t('myLeave.progressOutcomeCancelled'), detail: fmtInstant(cancellations.get(r.id)?.cancelledAt), state: 'done' });
-    }
-    return out;
-  };
-  /** A cancelled request's who and when, and the cancellation's reason. */
-  const cancellationFor = (r: (typeof selfHistory)[number]): LeaveHistoryEntry['cancellation'] => {
-    const c = r.status === 'cancelled' ? cancellations.get(r.id) : undefined;
-    if (!c) return null;
-    const lines: string[] = [];
-    const at = fmtInstant(c.cancelledAt);
-    if (at) {
-      lines.push(
-        c.automatic
-          ? t('myLeave.cancelledAutomaticallyAt', { date: at })
-          : c.cancelledByName
-            ? t('myLeave.cancelledByAt', { name: c.cancelledByName, date: at })
-            : t('myLeave.cancelledAt', { date: at }),
-      );
-    }
-    const requested = fmtInstant(c.requestedAt);
-    if (requested) lines.push(t('myLeave.cancellationRequestedAt', { date: requested }));
-    return lines.length > 0 || c.reason ? { lines, reason: c.reason } : null;
-  };
+  // The row's Approver cell, the View panel's approval progress and a cancellation's who/when — pure functions
+  // in lib/my-leave-history.ts over this request's translator, so they are tested against the six catalogues.
+  const lineDeps: HistoryLineDeps = { t: (key, values) => t(key, values), kindLabel, fmtInstant, listNames };
+  const approverLineFor = (r: (typeof selfHistory)[number]) =>
+    approverLine(r, approvalTrails.get(r.id), cancellations.get(r.id), lineDeps);
+  const approvalProgressFor = (r: (typeof selfHistory)[number]) =>
+    approvalProgress(r, approvalTrails.get(r.id), cancellations.get(r.id), lineDeps);
+  const cancellationFor = (r: (typeof selfHistory)[number]) => cancellationLines(r, cancellations.get(r.id), lineDeps);
 
   // ── Self-service history cards (feedback 657962ec) ───────────────────────────────────────────────────
   // Each of the viewer's OWN records becomes a plain, pre-translated entry for the LeaveHistoryCards client
