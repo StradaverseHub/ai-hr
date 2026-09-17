@@ -68,6 +68,12 @@ const PLACEHOLDER = DAY_DASH;
 const PANEL_STATUS_COPY: Partial<Record<EntitlementStatus, { title: string; body: string }>> = {
   not_generated: { title: 'statusNotGeneratedTitle', body: 'statusNotGeneratedBody' },
   earned_accrual: { title: 'statusEarnedAccrualTitle', body: 'statusEarnedAccrualBody' },
+  // r299 (3de1453a) — an earned method on a type that is not Annual Leave. It may NOT borrow `earned_accrual`'s
+  // copy: that copy promises days "as each accrual run posts them", and no run posts anything for this type.
+  earned_method_not_annual_leave: {
+    title: 'statusEarnedMethodNotAnnualLeaveTitle',
+    body: 'statusEarnedMethodNotAnnualLeaveBody',
+  },
   zero_entitlement: { title: 'statusZeroEntitlementTitle', body: 'statusZeroEntitlementBody' },
   earning_method_missing: { title: 'statusEarningMethodMissingTitle', body: 'statusEarningMethodMissingBody' },
   // r209 — the three states 31e39d74 could not distinguish, and the reason it could not: `not_configured`

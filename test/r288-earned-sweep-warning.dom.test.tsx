@@ -9,7 +9,9 @@
  *   §B  THE ARM A VACUOUS GUARD WOULD HIDE IN — Monthly/Daily are ENABLED on Annual Leave, and switching the
  *       switch on enables them live, before anything is saved (one save);
  *   §C  on every other type Monthly/Daily are LISTED BUT DISABLED, with the reporter's entitlement sentence;
- *   §D  a STRANDED earned method (stored before the rule) is shown with its note and re-posted VERBATIM;
+ *   §D  a STRANDED earned method (stored before the rule) is shown with its note and re-posted VERBATIM — and,
+ *       since the r299 fix pass, a LEGACY one (`earned_quarterly`) on a type that is not Annual Leave can be
+ *       replaced by None on the select, while Annual Leave on a legacy method keeps the read-only branch;
  *   §E  the switch is held on where the save would be refused, and posts nothing where it is locked;
  *   §F  all six catalogues.
  *
@@ -196,10 +198,73 @@ describe('§D a STRANDED earned method is shown, noted, and re-posted VERBATIM �
     expect(posted(view.container)).toContain('method=earned_monthly');
   });
 
-  it('a LEGACY stored method on the read-only branch is stranded too', () => {
-    const view = mount({ accrualMethod: 'earned_quarterly' }, facts({ annualSwitch: 'other_role' }));
-    expect(screen.getByTestId('earning-stranded')).toBeInTheDocument();
-    expect(posted(view.container)).toContain('method=earned_quarterly');
+  // r299 fix pass (3de1453a) — THIS CASE USED TO READ "a LEGACY stored method on the READ-ONLY branch is stranded
+  // too", and the read-only branch was the defect: the stranded note tells HR to change the method to None, and
+  // a type stored on `earned_quarterly` rendered a span with nothing to change it with. It now renders on the
+  // select — still stranded, still re-posted verbatim until HR chooses, and now replaceable.
+  it.each(['other_role', 'off'] as const)(
+    'a LEGACY stored earned method (%s) is stranded, named, re-posted verbatim — and replaceable by None',
+    async (annualSwitch) => {
+      const user = userEvent.setup();
+      const view = mount({ accrualMethod: 'earned_quarterly' }, facts({ annualSwitch }));
+      expect(screen.getByTestId('earning-stranded')).toBeInTheDocument();
+      expect(posted(view.container)).toContain('method=earned_quarterly');
+      // The select, not the read-only span, and not the legacy note that says "shown here read-only".
+      expect(methodSelect().value).toBe('legacy');
+      expect(optionOf('legacy').textContent).toBe(en.admin.leave.earnedMethodQuarterly);
+      expect(view.container.textContent).not.toContain(S.earningLegacyMethodNote);
+      // WHAT THIS TYPE MAY USE: None. The stored earned method and the other two are listed but not choosable,
+      // and Not configured stays a placeholder for a type that IS unconfigured (the known branch's rule).
+      const offered = [...methodSelect().options].map((o) => [o.value, o.disabled]);
+      expect(offered).toEqual([
+        ['legacy', true],
+        ['none', false],
+        ['monthly', true],
+        ['daily', true],
+      ]);
+      // THE FIX THE NOTE NAMES, APPLIED.
+      await user.selectOptions(methodSelect(), 'none');
+      expect(screen.queryByTestId('earning-stranded')).toBeNull();
+      expect(screen.getByTestId('earning-entitlement-based')).toBeInTheDocument();
+      expect(posted(view.container)).toContain('method=grant_on_hire_prorated');
+      expect(posted(view.container)).not.toContain('method=earned_quarterly');
+    },
+  );
+
+  it('an UNCONFIGURED type holding a legacy earned method offers Not configured, selected, beside None', () => {
+    const view = mount(
+      { accrualMethod: 'earned_quarterly', accrualUnconfigured: '2026-01-01T00:00:00.000Z' },
+      facts({ annualSwitch: 'other_role' }),
+    );
+    expect(methodSelect().value).toBe('');
+    expect([...methodSelect().options].map((o) => [o.value, o.disabled])).toEqual([
+      ['', false],
+      ['legacy', true],
+      ['none', false],
+      ['monthly', true],
+      ['daily', true],
+    ]);
+    // Exactly what the known branch posts on its placeholder: the method field empty, the marker untouched.
+    expect(posted(view.container)).toContain('method=');
+  });
+
+  it.each(['on', 'by_code'] as const)(
+    'ANNUAL LEAVE (%s) on a legacy method keeps the read-only branch exactly as before',
+    (annualSwitch) => {
+      const view = mount({ accrualMethod: 'earned_quarterly' }, facts({ annualSwitch }));
+      expect(screen.queryByRole('combobox', { name: S.earningMethodLabel })).toBeNull();
+      expect(view.container.textContent).toContain('earned_quarterly');
+      expect(view.container.textContent).toContain(S.earningLegacyMethodNote);
+      expect(posted(view.container)).toContain('method=earned_quarterly');
+      expect(screen.queryByTestId('earning-stranded')).toBeNull();
+    },
+  );
+
+  it('an unknown stored value that is NOT an earned method stays read-only on any type', () => {
+    const view = mount({ accrualMethod: 'hand_crafted_value' }, facts({ annualSwitch: 'other_role' }));
+    expect(screen.queryByRole('combobox', { name: S.earningMethodLabel })).toBeNull();
+    expect(view.container.textContent).toContain(S.earningLegacyMethodNote);
+    expect(posted(view.container)).toContain('method=hand_crafted_value');
   });
 
   it('choosing None clears the stranded note and posts the change', async () => {
@@ -258,5 +323,11 @@ describe('§F all six catalogues render real sentences', () => {
     expect(within(other).getByTestId('annual-leave-switch').textContent, `${loc}: lost the tenant's name`).toContain(THEIR_ANNUAL);
     expect(within(stranded).getByTestId('earning-stranded').textContent, `${loc}: lost this type's name`).toContain(THIS_TYPE);
     for (const v of views) v.unmount();
+    // r299 fix pass — the replaceable LEGACY method names itself from the catalogue, never as a raw key path.
+    const legacy = mount({ accrualMethod: 'earned_quarterly' }, facts({ annualSwitch: 'other_role' }), loc, messages as Record<string, unknown>);
+    const legacyLabel = (messages as unknown as { admin: { leave: { earnedMethodQuarterly: string } } }).admin.leave.earnedMethodQuarterly;
+    expect(legacy.container.querySelector('option[value="legacy"]')?.textContent, `${loc}: legacy option`).toBe(legacyLabel);
+    expect(legacyLabel, `${loc}: legacy label`).not.toMatch(/MISSING_MESSAGE|admin\.leave/);
+    legacy.unmount();
   });
 });

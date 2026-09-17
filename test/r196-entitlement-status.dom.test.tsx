@@ -53,6 +53,8 @@ const ALL_STATUSES: EntitlementStatus[] = [
   'granted',
   'not_generated',
   'earned_accrual',
+  // r299 (3de1453a) — a stranded earned method on a type that is not Annual Leave; its own copy, rendered here.
+  'earned_method_not_annual_leave',
   'zero_entitlement',
   'earning_method_missing',
   // r209 — the three states that split `not_configured` apart and named the max-balance clamp. Added here
@@ -150,7 +152,7 @@ const looksUnresolved = (text: string) =>
   /MISSING_MESSAGE/.test(text) ||
   /leave\.breakdown\./.test(text) ||
   /me\.leaveBalanceTable\./.test(text) ||
-  /\bstatus(NotGenerated|EarnedAccrual|ZeroEntitlement|EarningMethodMissing|Generated|NotConfigured)/.test(text);
+  /\bstatus(NotGenerated|EarnedAccrual|EarnedMethodNotAnnualLeave|ZeroEntitlement|EarningMethodMissing|Generated|NotConfigured)/.test(text);
 
 describe('31e39d74: the not-yet-generated notice resolves in every locale', () => {
   for (const locale of LOCALES) {

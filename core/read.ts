@@ -34,6 +34,9 @@ import {
   PROFILE_RECALC_REASON_PREFIX,
   earnedCycleStart,
   isEarnedMethod,
+  // r299 (3de1453a) — Earned Accrual covers Annual Leave only, so an earned method on any other type is
+  // STRANDED; the breakdown's status says so, decided here with the engine's own predicate.
+  isEarnedAccrualType,
   // 31e39d74 — the bc36c768 not-configured marker, read (never written) so the breakdown can SAY that a
   // type grants nothing because no earning method was chosen, instead of showing the 0.00 that causes.
   isAccrualUnconfigured,
@@ -3320,6 +3323,12 @@ export function leaveEntitlementBreakdown(
       // the same shape of mistake. Both are decided HERE off the policy this function already resolved,
       // which is the same policy the engine composes — no second definition, no extra query.
       earnedMethod: earned,
+      // r299 (3de1453a) — THE SAME TWO PREDICATES EVERY ENGINE SKIPS A STRANDED TYPE ON (accrueEarnedLeave's
+      // filter, the profile recalculation's guard, Leave Balance Health's finding): an earned method on a type
+      // that is not Annual Leave gets no days from anything, so it must not read "Accrues through the year".
+      // `type` carries `role` and `code`, which is all `isEarnedAccrualType` reads. False for Annual Leave, so
+      // its status is exactly what it was.
+      earnedMethodNotAnnualLeave: earned && !isEarnedAccrualType(type),
       entitlementDays: policy?.days ?? 0,
       hasAccrualRowInCycle,
     });

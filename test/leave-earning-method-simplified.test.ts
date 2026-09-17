@@ -807,7 +807,11 @@ describe('bc36c768 · setLeaveTypeRules is the ONLY path that can write an earni
     // dropping the marker to avoid writing the method would make Rounding Method unsaveable for that type.
     expect(form).toContain('<input type="hidden" name="earningRendered" value="1" />');
     const marker = form.indexOf('name="earningRendered"');
-    const branch = form.indexOf('unknownStoredMethod ? (');
+    // r299 (3de1453a): the read-only branch is `legacyReadOnly` — an unknown stored method EXCEPT a legacy earned
+    // method on a type that is not Annual Leave, which is replaceable on the select (test/r288-earned-sweep-
+    // warning.dom.test.tsx §D). Found, then ordered: a missing branch must not pass as "after the marker".
+    const branch = form.indexOf('legacyReadOnly ? (');
+    expect(branch).toBeGreaterThan(-1);
     expect(marker).toBeLessThan(branch); // rendered before the branch ⇒ posted on both sides of it
   });
 

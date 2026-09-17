@@ -94,8 +94,17 @@ export type EntitlementStatus =
   | 'not_generated'
   /** A table applies and the method is `earned_monthly` / `earned_quarterly` / `earned_daily`: a year-open
    *  logs `earned_method` and grants nothing, now and always. The days arrive through the accrual sweep,
-   *  so the figure is "none accrued yet", NOT "waiting for someone to press Generate Entitlement". */
+   *  so the figure is "none accrued yet", NOT "waiting for someone to press Generate Entitlement".
+   *  r299 (3de1453a): ANNUAL LEAVE ONLY — the sweep covers nothing else; see the next state. */
   | 'earned_accrual'
+  /** r299 (3de1453a) — A STRANDED EARNED METHOD. The method is one of the `earned_*` family, but the leave type
+   *  is NOT Annual Leave (`isEarnedAccrualType`), and Earned Accrual now covers Annual Leave only. EVERY engine
+   *  skips it: the year-open logs `earned_method`, `accrueEarnedLeave` declines it (`type_not_swept`), the hire
+   *  grant skips an earned method, and the profile recalculation skips a stranded one. So no days will be
+   *  added, and `earned_accrual`'s "days appear as each accrual run posts them" would be a promise nothing
+   *  keeps. The stored method is HR's own setting and is never rewritten; the remedy is HR changing it on the
+   *  leave type's Earning Method step. Leave Balance Health raises the same fact (`earned_method_not_annual_leave`). */
+  | 'earned_method_not_annual_leave'
   /** A table applies but resolves 0 days for this employee's length of service (no band covers them, or the
    *  band that does is configured at zero). `openLeaveYear` skips it as `no_entitlement` and will do so on
    *  every future run — the fix is in the table's service bands, not in a sweep. */
@@ -146,6 +155,11 @@ export function resolveEntitlementStatus(p: {
    *  days come from `accrueEarnedLeave` and NEVER from a year-open. Read from the SAME resolved policy the
    *  breakdown's own `monthlyAccruedToDate` uses, so the caption and the figure cannot disagree. */
   earnedMethod: boolean;
+  /** r299 (3de1453a) — `isEarnedMethod(policy.method) && !isEarnedAccrualType(leaveType)`, DECIDED BY THE CALLER
+   *  ON THE SERVER with the engine's own two predicates (this module cannot import core/leave.ts: a client
+   *  island imports it). True ⇒ the earned method is stranded on a type Earned Accrual does not cover. Always
+   *  false for Annual Leave, which is what keeps every Annual Leave status byte-identical to before. */
+  earnedMethodNotAnnualLeave: boolean;
   /** The whole-year days the winning band resolves to for this employee (`policy.days`) — the same number
    *  the breakdown prints as Eligible, and the same one `openLeaveYear`'s `days <= 0` guard tests. */
   entitlementDays: number;
@@ -161,6 +175,13 @@ export function resolveEntitlementStatus(p: {
   }
   // Ranked above everything below, including `granted`; see the header for why the order is the point.
   if (p.accrualUnconfigured) return 'earning_method_missing';
+  // r299 (3de1453a) — A STRANDED EARNED METHOD, ranked directly under `earning_method_missing` and for the same
+  // reason: it is a setting HR can go and fix, and nothing below it is true of the type. No engine grants it,
+  // so there is no grant for a zero cap to clamp (`capped_by_max_balance`), no run that will post a day
+  // (`earned_accrual`), and a row already in the cycle — posted by the sweep before Earned Accrual narrowed
+  // to Annual Leave — is not "the answer": nothing will be added to it (`granted`). Unconfigured outranks it
+  // because the engine's not-configured gate reads first and ignores the method column entirely.
+  if (p.earnedMethodNotAnnualLeave) return 'earned_method_not_annual_leave';
   // r209 — ABOVE `granted`, and that placement is the whole of this branch. A cap of zero does not stop the
   // grant happening; `openLeaveYear` posts the accrual row and `applyMaxBalance` clamps it to 0.00. So the
   // ledger HAS a row, `hasAccrualRowInCycle` is true, and the honest-looking answer below would be
@@ -203,6 +224,7 @@ export const ENTITLEMENT_STATUS_LABEL_KEY: Record<EntitlementStatus, string> = {
   granted: 'statusGenerated',
   not_generated: 'statusNotGenerated',
   earned_accrual: 'statusEarnedAccrual',
+  earned_method_not_annual_leave: 'statusEarnedMethodNotAnnualLeave',
   zero_entitlement: 'statusZeroEntitlement',
   earning_method_missing: 'statusEarningMethodMissing',
   no_entitlement_table: 'statusNoEntitlementTable',
@@ -216,6 +238,7 @@ export const ENTITLEMENT_STATUS_LABEL_KEY: Record<EntitlementStatus, string> = {
 export const ENTITLEMENT_STATUS_TIP_KEY: Partial<Record<EntitlementStatus, string>> = {
   not_generated: 'statusNotGeneratedTip',
   earned_accrual: 'statusEarnedAccrualTip',
+  earned_method_not_annual_leave: 'statusEarnedMethodNotAnnualLeaveTip',
   zero_entitlement: 'statusZeroEntitlementTip',
   earning_method_missing: 'statusEarningMethodMissingTip',
   no_entitlement_table: 'statusNoEntitlementTableTip',

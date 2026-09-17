@@ -256,9 +256,13 @@ function RoundingBandsEditor({
 
 /* ── Earning method + rounding (TAB 3) ─────────────────────────────────────────────────────────── */
 
-type EarningChoice = '' | 'none' | 'monthly' | 'daily';
+/** r299 (3de1453a) — `legacy` is the STORED legacy earned method (a stranded `earned_quarterly`) held as the
+ *  select's own value on a type that is not Annual Leave, so it is re-posted verbatim until HR picks
+ *  something else. It maps to no fixed engine value; `methodToStore` reads the stored one. */
+type EarningChoice = '' | 'none' | 'monthly' | 'daily' | 'legacy';
 /** A stored value outside this set (a legacy 'earned_quarterly', or anything a hand-crafted POST once
- *  put there) takes the READ-ONLY branch rather than being silently collapsed onto a choice nobody made. */
+ *  put there) takes the READ-ONLY branch rather than being silently collapsed onto a choice nobody made —
+ *  except, since r299, a legacy EARNED method on a type that is not Annual Leave (see `legacyReplaceable`). */
 const KNOWN_EARNING_METHODS = ['', 'grant_on_hire_prorated', 'earned_monthly', 'earned_daily'];
 const isKnownEarningMethod = (m?: string | null) => KNOWN_EARNING_METHODS.includes(m ?? '');
 const earningChoiceOf = (m?: string, unconfigured?: boolean): EarningChoice =>
@@ -338,8 +342,27 @@ export function EarningMethodForm({
   const storedMethod = rules.accrualMethod ?? '';
   const unknownStoredMethod = !isKnownEarningMethod(storedMethod);
   const unconfigured = rules.accrualUnconfigured != null;
+  /**
+   * r299 (3de1453a) — A LEGACY EARNED METHOD ON A TYPE THAT IS NOT ANNUAL LEAVE MUST BE REPLACEABLE HERE.
+   *
+   * The stranded note and Leave Balance Health both tell HR to change such a type's earning method to None.
+   * On the read-only branch below there was nothing to change it WITH, so a type stored on `earned_quarterly`
+   * (retired from the dropdown in bc36c768) could be told the fix and never apply it. On a type the SERVER
+   * says is not Annual Leave (`annualSwitch` off / other_role), a stored method in the engine's earned family
+   * that the dropdown cannot name renders on the select instead: held as `legacy` (re-posted verbatim, so a
+   * rounding-only save rewrites nothing), with None beside it — the choice the note names. Everything else
+   * about the read-only branch is unchanged, including Annual Leave on a legacy method (its method is valid
+   * there and the sweep honours it) and any unknown value that is not an earned method.
+   */
+  const legacyReplaceable =
+    unknownStoredMethod &&
+    sweep.earnedMethods.includes(storedMethod) &&
+    sweep.annualSwitch !== 'on' &&
+    sweep.annualSwitch !== 'by_code';
+  const legacyReadOnly = unknownStoredMethod && !legacyReplaceable;
   const [choice, setChoice] = useState<EarningChoice>(
-    earningChoiceOf(rules.accrualMethod ?? undefined, unconfigured),
+    // An unconfigured type starts on the Not configured placeholder, exactly as the known branch does.
+    legacyReplaceable && !unconfigured ? 'legacy' : earningChoiceOf(rules.accrualMethod ?? undefined, unconfigured),
   );
   const [accrualDay, setAccrualDay] = useState<string>(
     rules.accrualDay == null ? '' : String(rules.accrualDay),
@@ -359,7 +382,7 @@ export function EarningMethodForm({
   const [annualOn, setAnnualOn] = useState<boolean>(sweep.annualSwitch === 'on' || sweep.annualSwitch === 'by_code');
   /** The value the hidden `method` input posts on whichever branch is rendered — the literal that WOULD BE
    *  STORED, so a legacy `earned_quarterly` on the read-only branch is judged exactly like Monthly Accrual. */
-  const methodToStore = unknownStoredMethod ? storedMethod : earningMethodOf(choice);
+  const methodToStore = legacyReadOnly || choice === 'legacy' ? storedMethod : earningMethodOf(choice);
   const methodIsEarned = sweep.earnedMethods.includes(methodToStore);
   /** Held ON exactly where the save would otherwise be refused: switching a recorded Annual Leave off while
    *  an earned method stays stored ("change its earning method first"), or switching off after choosing a
@@ -445,7 +468,7 @@ export function EarningMethodForm({
       {/* Tri-state marker: names the HALF of the rule row this form renders. The carry half is a separate
           form, and without this marker an earning-only save would clear its configuration. */}
       <input type="hidden" name="earningRendered" value="1" />
-      {unknownStoredMethod ? (
+      {legacyReadOnly ? (
         <>
           {/* BELT AND BRACES: re-post a method this editor cannot render VERBATIM, so an unrelated save
               of the ROUNDING half is not a silent downgrade of the earning method to the lump path. */}
@@ -462,7 +485,7 @@ export function EarningMethodForm({
           {/* the mapped engine value — the select speaks the reporter's vocabulary. r299: on a type that is
               not annual leave this re-posts a stored earned method VERBATIM until the administrator picks
               something else, which is how a stranded method is kept rather than rewritten. */}
-          <input type="hidden" name="method" value={earningMethodOf(choice)} />
+          <input type="hidden" name="method" value={methodToStore} />
           <Field label={t('subStep.earningMethodLabel')}>
             <select
               value={choice}
@@ -474,6 +497,14 @@ export function EarningMethodForm({
                   someone who opens the dropdown and thinks better of it must be able to leave the type
                   unconfigured rather than be forced into a choice by the UI. */}
               {choice === '' && <option value="">{t('subStep.earningNotConfigured')}</option>}
+              {/* r299 — the stored legacy earned method, named, on a type that is not Annual Leave. Listed so
+                  the select shows what is stored; disabled like Monthly and Daily, because only Annual Leave
+                  may choose an earned method — once HR moves off it, it is not offered back. */}
+              {legacyReplaceable && (
+                <option value="legacy" disabled={!annualOn}>
+                  {storedMethod === 'earned_quarterly' ? t('earnedMethodQuarterly') : storedMethod}
+                </option>
+              )}
               <option value="none">{t('subStep.earningNone')}</option>
               {/* r299 — LISTED, and disabled unless the switch is on: the reporter's mockup greys them
                   rather than hiding them, so the administrator can see what the switch unlocks. */}

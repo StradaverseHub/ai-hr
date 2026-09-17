@@ -18,6 +18,11 @@
  *   §3  the SERVICES: every refusal, the one-save switch-on, unarchive, create, and the audit event.
  *   §4  LEAVE BALANCE HEALTH: the stranded-method finding, pure and through the real page loader.
  *   §5  the screens DERIVE — source shape, because the derivations live inline in `page.tsx` defaults.
+ *   §6  FIX PASS — a STRANDED type READS as stranded: the balance status (/me, /leave, Personnel) and the
+ *       Generate Entitlement label, each pinned BOTH WAYS — the stranded type gets the new reading, and Annual
+ *       Leave on the very same method gets exactly the old one.
+ *   §7  FIX PASS — a stranded LEGACY method (`earned_quarterly`) can be replaced: the service accepts None and
+ *       Not configured from it (the form half is test/r288-earned-sweep-warning.dom.test.tsx §D).
  *
  * The RENDERED halves are test/r293-earned-accrual-picker.dom.test.tsx (the picker) and
  * test/r288-earned-sweep-warning.dom.test.tsx (the switch and the earning method), both rewritten for this
@@ -38,8 +43,17 @@ import {
   reprojectEntitlementForEmployment,
   annualLeaveSwitchState,
   isEarnedAccrualType,
+  openLeaveYear,
   STANDING_LEAVE_CODES,
 } from '../core/leave';
+import { leaveEntitlementBreakdown } from '../core/read';
+import { leaveGenerationRunCsv, previewLeaveGeneration, runLeaveGeneration } from '../core/leave-generation';
+import {
+  ENTITLEMENT_STATUS_LABEL_KEY,
+  ENTITLEMENT_STATUS_TIP_KEY,
+  entitlementStatusNeedsNotice,
+  resolveEntitlementStatus,
+} from '../lib/entitlement-status';
 import {
   archiveLeaveType,
   createLeaveType,
@@ -621,5 +635,227 @@ describe('§5 the screens derive from the predicate — they do not restate it',
     expect(body).toContain('const types = activeTypes.filter((t) => isEarnedAccrualType(t));');
     expect(codeOf(body)).not.toContain('STANDING_LEAVE_CODES');
     expect(body).toContain('role: leaveType.role, name: leaveType.name, yearCycleOverride');
+  });
+});
+
+describe('§6 FIX PASS — a stranded type READS as stranded, and Annual Leave reads exactly as before', () => {
+  // The facts of a type with a table in force and an earned method, before any accrual row.
+  const earnedFacts = (over: Partial<Parameters<typeof resolveEntitlementStatus>[0]> = {}) => ({
+    hasTemplateInForce: true,
+    leaveTypeHasTemplates: true,
+    maxBalanceDays: null as number | null,
+    accrualUnconfigured: false,
+    earnedMethod: true,
+    earnedMethodNotAnnualLeave: false,
+    entitlementDays: 12,
+    hasAccrualRowInCycle: false,
+    ...over,
+  });
+
+  it('PURE — stranded ⇒ its own status whatever the ledger, cap or days say; Annual Leave ⇒ the old answers', () => {
+    for (const hasAccrualRowInCycle of [false, true]) {
+      for (const maxBalanceDays of [null, 0, 30]) {
+        for (const entitlementDays of [0, 12]) {
+          const label = `row=${hasAccrualRowInCycle}/cap=${maxBalanceDays}/days=${entitlementDays}`;
+          expect(
+            resolveEntitlementStatus(earnedFacts({ earnedMethodNotAnnualLeave: true, hasAccrualRowInCycle, maxBalanceDays, entitlementDays })),
+            label,
+          ).toBe('earned_method_not_annual_leave');
+        }
+      }
+    }
+    // ANNUAL LEAVE ON THE SAME METHOD — the answers it always had.
+    expect(resolveEntitlementStatus(earnedFacts())).toBe('earned_accrual');
+    expect(resolveEntitlementStatus(earnedFacts({ hasAccrualRowInCycle: true }))).toBe('granted');
+    expect(resolveEntitlementStatus(earnedFacts({ maxBalanceDays: 0 }))).toBe('capped_by_max_balance');
+    // Unconfigured still outranks it (the engine's gate ignores the method), and so does an unresolved table.
+    expect(resolveEntitlementStatus(earnedFacts({ earnedMethodNotAnnualLeave: true, accrualUnconfigured: true }))).toBe('earning_method_missing');
+    expect(resolveEntitlementStatus(earnedFacts({ earnedMethodNotAnnualLeave: true, hasTemplateInForce: false }))).toBe('no_eligibility_match');
+    // It is ANNOUNCED, with its own label and tip — never `earned_accrual`'s.
+    expect(entitlementStatusNeedsNotice('earned_method_not_annual_leave')).toBe(true);
+    expect(ENTITLEMENT_STATUS_LABEL_KEY.earned_method_not_annual_leave).toBe('statusEarnedMethodNotAnnualLeave');
+    expect(ENTITLEMENT_STATUS_TIP_KEY.earned_method_not_annual_leave).toBe('statusEarnedMethodNotAnnualLeaveTip');
+    expect(ENTITLEMENT_STATUS_LABEL_KEY.earned_accrual).toBe('statusEarnedAccrual');
+    expect(ENTITLEMENT_STATUS_TIP_KEY.earned_accrual).toBe('statusEarnedAccrualTip');
+  });
+
+  for (const method of ['earned_monthly', 'earned_quarterly'] as const) {
+    it(`THE BALANCE READ (${method}) — SICK is stranded; Annual Leave on the same method is earned_accrual, then granted`, async () => {
+      const sick = await mkType('SICK', 'Medical Leave');
+      for (const id of [sick, b.annualLeaveTypeId]) {
+        await setMethod(id, method);
+        await configure(id);
+      }
+      const { employmentId } = await hire();
+
+      const sickBd = await leaveEntitlementBreakdown(ctx(), employmentId, sick, MID);
+      const annualBd = await leaveEntitlementBreakdown(ctx(), employmentId, b.annualLeaveTypeId, MID);
+      expect(sickBd!.entitlementStatus).toBe('earned_method_not_annual_leave');
+      expect(annualBd!.entitlementStatus).toBe('earned_accrual');
+
+      // A row the OLD sweep posted before Earned Accrual narrowed: the SICK figure is not "the answer", because
+      // nothing will add to it; the same row on Annual Leave is `granted`, exactly as before.
+      for (const leaveTypeId of [sick, b.annualLeaveTypeId]) {
+        await owner.db.insert(schema.leaveLedger).values({
+          tenantId: b.tenantId,
+          employmentId,
+          leaveTypeId,
+          entryType: 'accrual',
+          days: '1.00',
+          effectiveOn: JAN,
+        });
+      }
+      expect((await leaveEntitlementBreakdown(ctx(), employmentId, sick, MID))!.entitlementStatus).toBe(
+        'earned_method_not_annual_leave',
+      );
+      expect((await leaveEntitlementBreakdown(ctx(), employmentId, b.annualLeaveTypeId, MID))!.entitlementStatus).toBe('granted');
+    });
+  }
+
+  it('THE BALANCE READ asks the ROLE — the same SICK-coded row switched on as Annual Leave is no longer stranded', async () => {
+    await setArchived(b.annualLeaveTypeId, true);
+    const typeId = await mkType('SICK', 'Medical Leave');
+    await setMethod(typeId, 'earned_monthly');
+    await configure(typeId);
+    const { employmentId } = await hire();
+    expect((await leaveEntitlementBreakdown(ctx(), employmentId, typeId, MID))!.entitlementStatus).toBe(
+      'earned_method_not_annual_leave',
+    );
+    await owner.db.update(schema.leaveType).set({ role: 'annual' }).where(eq(schema.leaveType.id, typeId));
+    expect((await leaveEntitlementBreakdown(ctx(), employmentId, typeId, MID))!.entitlementStatus).toBe('earned_accrual');
+  });
+
+  it('GENERATE ENTITLEMENT — the stranded line is flagged, Annual Leave is not; the STORED outcome is unchanged', async () => {
+    const sick = await mkType('SICK', 'Medical Leave');
+    for (const id of [sick, b.annualLeaveTypeId]) {
+      await setMethod(id, 'earned_monthly');
+      await configure(id);
+    }
+    const { employmentId } = await hire();
+
+    const engine = await openLeaveYear(ctx(), { year: YEAR, employmentIds: [employmentId], dryRun: true });
+    const lineFor = (rows: { leaveTypeId: string; outcome: string; earnedMethodNotAnnualLeave: boolean }[], id: string) =>
+      rows.filter((r) => r.leaveTypeId === id).map((r) => ({ outcome: r.outcome, flag: r.earnedMethodNotAnnualLeave }));
+    expect(lineFor(engine.rows, sick)).toEqual([{ outcome: 'earned_method', flag: true }]);
+    expect(lineFor(engine.rows, b.annualLeaveTypeId)).toEqual([{ outcome: 'earned_method', flag: false }]);
+    // Every non-earned line carries false — the flag is a property of the earned branch only.
+    expect(engine.rows.filter((r) => r.outcome !== 'earned_method').every((r) => r.earnedMethodNotAnnualLeave === false)).toBe(true);
+
+    // The screen's preview carries the flag through to the line it labels.
+    const req = { year: YEAR, targetMode: 'individual' as const, employmentIds: [employmentId] };
+    const preview = await previewLeaveGeneration(ctx(), req);
+    expect(lineFor(preview.lines, sick)).toEqual([{ outcome: 'earned_method', flag: true }]);
+    expect(lineFor(preview.lines, b.annualLeaveTypeId)).toEqual([{ outcome: 'earned_method', flag: false }]);
+
+    // NOT A NEW STORED VALUE: the processing log keeps the engine's outcome verbatim for both.
+    const run = await runLeaveGeneration(ctx(), req);
+    const stored = await owner.db
+      .select({ leaveTypeId: schema.leaveGenerationRunItem.leaveTypeId, outcome: schema.leaveGenerationRunItem.outcome })
+      .from(schema.leaveGenerationRunItem)
+      .where(eq(schema.leaveGenerationRunItem.runId, run.runId!))
+      .orderBy(asc(schema.leaveGenerationRunItem.leaveTypeId));
+    expect(stored.filter((r) => r.leaveTypeId === sick).map((r) => r.outcome)).toEqual(['earned_method']);
+    expect(stored.filter((r) => r.leaveTypeId === b.annualLeaveTypeId).map((r) => r.outcome)).toEqual(['earned_method']);
+    const csv = await leaveGenerationRunCsv(ctx(), { runId: run.runId! });
+    expect(csv.content).not.toContain('not_annual');
+  });
+
+  it('COPY — the five new strings exist in all six catalogues, translated, with the body placeholder kept', () => {
+    const en = JSON.parse(read('messages/en.json'));
+    const pick = (m: Record<string, any>) => ({
+      label: m.me.leaveBalanceTable.statusEarnedMethodNotAnnualLeave,
+      tip: m.me.leaveBalanceTable.statusEarnedMethodNotAnnualLeaveTip,
+      title: m.leave.breakdown.statusEarnedMethodNotAnnualLeaveTitle,
+      body: m.leave.breakdown.statusEarnedMethodNotAnnualLeaveBody,
+      gen: m.admin.leave.generateOutcomeEarnedMethodNotAnnualLeave,
+    });
+    const base = pick(en);
+    // ANNUAL LEAVE'S OWN STRINGS ARE UNTOUCHED, byte for byte.
+    expect(en.me.leaveBalanceTable.statusEarnedAccrual).toBe('Accrues through the year');
+    expect(en.admin.leave.generateOutcome_earned_method).toBe(
+      'Earned monthly, so it accrues through the year instead of being granted now',
+    );
+    // …and the stranded copy never borrows the accruing promise.
+    for (const v of Object.values(base)) {
+      expect(v).not.toContain('accrues through the year');
+      expect(v).not.toContain('as each accrual run posts them');
+    }
+    expect(base.tip).toContain('Earning Method step');
+    expect(base.body).toContain('{typeName}');
+    for (const loc of ['ms', 'ta', 'th', 'vi', 'zh']) {
+      const got = pick(JSON.parse(read(`messages/${loc}.json`)));
+      for (const k of Object.keys(base) as (keyof typeof base)[]) {
+        expect(typeof got[k], `${loc} ${k}`).toBe('string');
+        expect(got[k], `${loc} ${k} is the English string`).not.toBe(base[k]);
+      }
+      expect(got.body, `${loc} body lost {typeName}`).toContain('{typeName}');
+    }
+  });
+
+  it('SOURCE — every screen reads the SERVER’s decision; no client component restates the predicate', () => {
+    const readSrc = read('core/read.ts');
+    expect(readSrc).toContain('earnedMethodNotAnnualLeave: earned && !isEarnedAccrualType(type),');
+    const engine = read('core/leave.ts');
+    expect(engine).toContain("rows.push(logRow(e.employmentId, t.id, 'earned_method', !isEarnedAccrualType(t)));");
+    const form = read('components/leave/generate-form.tsx');
+    expect(form).toContain('{l.earnedMethodNotAnnualLeave');
+    expect(form).toContain("? t('generateOutcomeEarnedMethodNotAnnualLeave')");
+    for (const rel of [
+      'components/leave/generate-form.tsx',
+      'components/leave/LeaveDetailsPanel.tsx',
+      'components/leave/leave-balance-table.tsx',
+      'lib/entitlement-status.ts',
+    ]) {
+      const code = codeOf(read(rel));
+      expect(code, rel).not.toContain('isEarnedAccrualType');
+      expect(code, rel).not.toMatch(/'earned_(monthly|quarterly|daily)'/);
+    }
+  });
+});
+
+describe('§7 FIX PASS — a stranded LEGACY method can be replaced, and is still never rewritten unasked', () => {
+  const refusal = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (e) {
+      return e;
+    }
+    throw new Error('expected the save to be refused, and it was accepted');
+  };
+
+  it('earned_quarterly on SICK: re-posted unchanged it saves; None is ACCEPTED; another earned method is refused', async () => {
+    const sick = await mkType('SICK', 'Medical Leave');
+    await setMethod(sick, 'earned_quarterly');
+    // The select's `legacy` choice re-posts the stored value verbatim on a rounding-only save.
+    await setLeaveTypeRules(ctx(), { id: sick, accrualMethod: 'earned_quarterly', accrualDay: null, roundingMethod: null });
+    expect((await rowOf(sick)).accrualMethod).toBe('earned_quarterly');
+    // A CHANGE to an earned method is still refused on a type that is not Annual Leave.
+    const e = await refusal(setLeaveTypeRules(ctx(), { id: sick, accrualMethod: 'earned_monthly', accrualDay: 1 }));
+    expect(e).toBeInstanceOf(LeaveTypeRuleError);
+    expect((await rowOf(sick)).accrualMethod).toBe('earned_quarterly');
+    // THE FIX THE NOTE AND THE HEALTH FINDING NAME — None — goes through.
+    await setLeaveTypeRules(ctx(), { id: sick, accrualMethod: 'grant_on_hire_prorated', accrualDay: null, roundingMethod: null });
+    expect((await rowOf(sick)).accrualMethod).toBe('grant_on_hire_prorated');
+    // …and the balance read stops calling it stranded.
+    await configure(sick);
+    const { employmentId } = await hire();
+    expect((await leaveEntitlementBreakdown(ctx(), employmentId, sick, MID))!.entitlementStatus).not.toBe(
+      'earned_method_not_annual_leave',
+    );
+  });
+
+  it('an UNCONFIGURED type holding earned_quarterly: the Not configured placeholder’s save (method empty) is accepted and keeps the marker', async () => {
+    const sick = await mkType('SICK', 'Medical Leave');
+    await owner.db
+      .update(schema.leaveType)
+      .set({ accrualMethod: 'earned_quarterly' as never, accrualUnconfigured: new Date() })
+      .where(eq(schema.leaveType.id, sick));
+    await setLeaveTypeRules(ctx(), { id: sick, accrualMethod: null, accrualDay: null, roundingMethod: null });
+    const [row] = await owner.db
+      .select({ accrualMethod: schema.leaveType.accrualMethod, accrualUnconfigured: schema.leaveType.accrualUnconfigured })
+      .from(schema.leaveType)
+      .where(eq(schema.leaveType.id, sick));
+    expect(row.accrualMethod).toBeNull();
+    expect(row.accrualUnconfigured).not.toBeNull();
   });
 });

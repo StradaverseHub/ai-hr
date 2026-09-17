@@ -6653,6 +6653,19 @@ export type LeaveYearGrantRow = {
   forfeit: number;
   /** fa3f4ccb: advisory only — the resolved figure is under the statutory minimum for the type. */
   belowStatutoryFloor: boolean;
+  /**
+   * r299 (3de1453a) — true only on an `earned_method` line whose leave type is NOT Annual Leave
+   * (`!isEarnedAccrualType`): a STRANDED earned method. The branch is the same one — the year-open skips an
+   * earned method either way — but the two are opposite facts for the operator. On Annual Leave the days come
+   * from Run Earned Accrual; on any other type nothing adds them, because Earned Accrual covers Annual Leave
+   * only. So the SCREEN'S LABEL branches on this, decided here beside the engine's own predicates.
+   *
+   * ⚠️ NOT A NEW OUTCOME, AND NOT STORED. `outcome` is persisted verbatim into
+   * `leave_generation_run_item.outcome` (free text, no CHECK — 0400) and into the downloadable log, and the
+   * engine branch has not changed, so it keeps its value: a stranded line logged before this flag existed and
+   * one logged after it read the same. The flag rides the preview line only.
+   */
+  earnedMethodNotAnnualLeave: boolean;
 };
 
 export type OpenLeaveYearResult = {
@@ -6800,6 +6813,9 @@ export async function openLeaveYear(
       .select({
         id: leaveType.id,
         code: leaveType.code,
+        // r299 (3de1453a) — read so the `earned_method` line can say whether this type is Annual Leave
+        // (`isEarnedAccrualType` asks the role first). Nothing about the grant reads it.
+        role: leaveType.role,
         yearCycleOverride: leaveType.yearCycleOverride,
         ...leaveTypeRuleColumns,
       })
@@ -7015,7 +7031,9 @@ export async function openLeaveYear(
             : fullYearDays;
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) {
-          rows.push(logRow(e.employmentId, t.id, 'earned_method'));
+          // r299 (3de1453a): the SAME skip for every type; the flag only tells the screen whether a run of
+          // Earned Accrual will add the days (Annual Leave) or nothing will (any other type — stranded).
+          rows.push(logRow(e.employmentId, t.id, 'earned_method', !isEarnedAccrualType(t)));
           continue;
         }
         if (days <= 0) {
@@ -7119,6 +7137,7 @@ export async function openLeaveYear(
           carry,
           forfeit,
           belowStatutoryFloor,
+          earnedMethodNotAnnualLeave: false,
         });
       }
     }
@@ -7145,8 +7164,13 @@ export async function openLeaveYear(
 }
 
 /** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
-function logRow(employmentId: string, leaveTypeId: string, outcome: LeaveYearGrantOutcome): LeaveYearGrantRow {
-  return { employmentId, leaveTypeId, outcome, days: 0, carry: 0, forfeit: 0, belowStatutoryFloor: false };
+function logRow(
+  employmentId: string,
+  leaveTypeId: string,
+  outcome: LeaveYearGrantOutcome,
+  earnedMethodNotAnnualLeave = false,
+): LeaveYearGrantRow {
+  return { employmentId, leaveTypeId, outcome, days: 0, carry: 0, forfeit: 0, belowStatutoryFloor: false, earnedMethodNotAnnualLeave };
 }
 
 // ── Earned accrual (ADR-0040 / 2D-1) ──────────────────────────────────────────────────────────────

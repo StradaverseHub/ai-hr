@@ -117,6 +117,10 @@ export type LeaveGenerationLine = {
   carry: number;
   forfeit: number;
   belowStatutoryFloor: boolean;
+  /** r299 (3de1453a) — the engine's own `LeaveYearGrantRow.earnedMethodNotAnnualLeave`, passed through: an
+   *  `earned_method` line on a type that is not Annual Leave. The screen labels it; it is NOT stored (the
+   *  run item keeps the engine's `outcome` verbatim, and has no column for this). */
+  earnedMethodNotAnnualLeave: boolean;
 };
 
 export type LeaveGenerationResult = {
