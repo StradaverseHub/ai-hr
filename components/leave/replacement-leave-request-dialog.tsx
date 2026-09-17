@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Plus, Trash2 } from 'lucide-react';
@@ -13,12 +13,18 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type ReplacementLeaveTypeOption = { id: string; label: string };
 
 type Row = { key: number; workedDate: string; days: string; fromTime: string; toTime: string };
+type DayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
 
 const STD_DAY_MINUTES = 480;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * "+ Replacement Leave Request" — the employee's own claim for time already worked (296fc027 Step 2).
+ * "+ Leave Credit request" — the employee's own claim for time already worked (296fc027 Step 2; presented as a
+ * Leave Credit request since 3fb1a611, r299, which is what the reporter calls it).
+ *
+ * 3fb1a611 — EACH DATE WORKED SAYS WHAT KIND OF DAY IT IS (rest day / off day / public holiday), read from the
+ * employee's own schedule through `dayKindAction`, and an ordinary working day is flagged before submit. The
+ * chip is a courtesy; the service refuses a working day at submission and again at approval.
  *
  * IT SITS BESIDE "+ Request Leave" AND IS NOT THE SAME THING, which is the distinction the whole feature
  * turns on. Request Leave asks to TAKE time. This asks to be CREDITED for time already worked. They look
@@ -45,9 +51,12 @@ export function ReplacementLeaveRequestDialog({
   submitAction,
   today,
   requiresFirstScheduleConsent,
+  dayKindAction,
 }: {
   types: ReplacementLeaveTypeOption[];
   submitAction: Action;
+  /** 3fb1a611 — resolves the kind of day a date is for the signed-in employee. Optional: omitted ⇒ no chip. */
+  dayKindAction?: (workedDate: string) => Promise<DayKind | null>;
   /** Today in the tenant's zone, resolved on the server — the max selectable worked date. */
   today: string;
   /**
@@ -62,6 +71,21 @@ export function ReplacementLeaveRequestDialog({
   const [open, setOpen] = useState(false);
   const [unit, setUnit] = useState<'day' | 'hour'>('day');
   const [rows, setRows] = useState<Row[]>([{ key: 1, workedDate: '', days: '1', fromTime: '', toTime: '' }]);
+
+  // 3fb1a611 — the kind of each distinct date typed, fetched once per date.
+  const [kinds, setKinds] = useState<Record<string, DayKind | null>>({});
+  const datesKey = rows.map((r) => r.workedDate).join('|');
+  useEffect(() => {
+    if (!dayKindAction) return;
+    for (const d of new Set(datesKey.split('|').filter(Boolean))) {
+      if (d in kinds) continue;
+      // Marked as asked (null) at once, so a re-render while the answer is in flight does not ask again.
+      setKinds((prev) => (d in prev ? prev : { ...prev, [d]: null }));
+      void dayKindAction(d).then((k) => setKinds((prev) => ({ ...prev, [d]: k })));
+    }
+  }, [datesKey, dayKindAction, kinds]);
+  const kindLabel = (k: DayKind) =>
+    k === 'rest_day' ? t('dayKind.restDay') : k === 'off_day' ? t('dayKind.offDay') : k === 'holiday' ? t('dayKind.holiday') : t('dayKind.workday');
 
   const addRow = () =>
     setRows((r) => [...r, { key: (r[r.length - 1]?.key ?? 0) + 1, workedDate: '', days: '1', fromTime: '', toTime: '' }]);
@@ -160,6 +184,20 @@ export function ReplacementLeaveRequestDialog({
                         onChange={(e) => patch(r.key, 'workedDate', e.target.value)}
                         className={inputCls}
                       />
+                      {r.workedDate && kinds[r.workedDate] && (
+                        <span
+                          className={
+                            kinds[r.workedDate] === 'workday'
+                              ? 'mt-1 inline-block text-[11px] font-medium text-destructive'
+                              : 'mt-1 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary'
+                          }
+                          data-testid="leave-credit-day-kind"
+                        >
+                          {kinds[r.workedDate] === 'workday'
+                            ? t('workingDayRefused')
+                            : kindLabel(kinds[r.workedDate] as DayKind)}
+                        </span>
+                      )}
                     </div>
                     {unit === 'hour' ? (
                       <>
@@ -245,6 +283,9 @@ export function ReplacementLeaveRequestDialog({
             <Field label={t('reason')}>
               <input name="reason" className={inputCls} />
             </Field>
+
+            {/* 3fb1a611 — the rule, stated before submit (the approved mockup's note under the reason). */}
+            <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{t('eligibleDaysNote')}</p>
 
             {/* The statutory-floor agreement. Rendered only when the server says this employee is within
                 the First Schedule and their company allows banking — and enforced server-side regardless,

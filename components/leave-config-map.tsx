@@ -111,6 +111,14 @@ export type LeaveConfigScreenId =
    */
   | 'earnedAccrual'
   | 'adjustments'
+  /**
+   * 3fb1a611 (r299) — `leaveCredit` (`/admin/leave-config/leave-credit`), its OWN ROW directly after Leave
+   * Adjustments: every Replacement Leave credit (earned through a request, added by HR, used, reversed,
+   * expired) with its history, plus the Rules tab that took the replacement-leave policy off Company rules.
+   * A group of one screen — its Credits and Rules tabs are `?tab=` on that one page, not map items, because
+   * both are the same guarded route.
+   */
+  | 'leaveCredit'
   | 'importLeaveData'
   | 'entitlementArchive'
   | 'ledgerArchive'
@@ -177,6 +185,8 @@ export type LeaveConfigGroupId =
   // through the same helper every other Leave Config page does.
   | 'balanceHealth'
   | 'adjustments'
+  // 3fb1a611 (r299) — a one-screen row directly after Leave Adjustments (see the screen id's note above).
+  | 'leaveCredit'
   | 'generate'
   // r281 (09386e29) — a one-screen row, like `generate` above it: Run earned accrual is an execution of
   // its own rather than a section of the generator, and the group exists so its page reads its heading
@@ -194,6 +204,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
+  | 'leaveCredit'
   | 'leaveGenerate'
   | 'leaveEarnedAccrual'
   | 'leaveApprovalWorkflow'
@@ -242,6 +253,11 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
     ],
   },
+  // 3fb1a611 (r299) — LEAVE CREDIT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS. Its row is
+  // gated on the `toil` module in the sidebar (MODULE_OF_HREF); this group exists so the page reads its
+  // heading and description through `leaveConfigPageHeader` like every other Leave Config page, and so the
+  // row↔group agreement stays one for one.
+  { id: 'leaveCredit', navKey: 'leaveCredit', items: [{ id: 'leaveCredit', href: '/admin/leave-config/leave-credit' }] },
   { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },
   // r281 (09386e29) — ONE SCREEN, ITS OWN ROW, IMMEDIATELY AFTER GENERATE ENTITLEMENT. The tab row draws
   // nothing for a group of one, so this entry buys the same two things the Balance Health group buys: the
@@ -363,6 +379,7 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
   balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
+  leaveCredit: ['admin.leaveConfigLeaveCredit', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
   earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],
   approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],

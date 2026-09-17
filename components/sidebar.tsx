@@ -215,6 +215,12 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // Without this line the row would advertise a module the tenant has not bought. The per-user
   // assistant_grant is a separate, second gate — this one only decides whether the row is offered.
   ['/assistant', 'assistant'] as const,
+  // 3fb1a611 (r299) — the THIRD hand-written entry. Leave Config › Leave Credit is the paid `toil` add-on
+  // living inside the CORE leave pack's node, so no pack descriptor maps it to its module: leave is core and
+  // absent from this map, and there is no toil pack. Without this line the row would advertise a module the
+  // tenant has not bought. test/r299-leave-credit-screens.test.ts pins the pair (this entry and `toil` in
+  // lib/nav-entitlements.ts MODULE_CODES_WITH_NAV).
+  ['/admin/leave-config/leave-credit', 'toil'] as const,
 ]);
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children

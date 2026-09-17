@@ -12,7 +12,13 @@ import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import Link from 'next/link';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { LEAVE_CONFIG_RECORDS_HREF, LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
+import { isReplacementLeaveType } from '@/core/ess-view';
+import {
+  LEAVE_CONFIG_RECORDS_HREF,
+  LeaveConfigMap,
+  leaveConfigPageHeader,
+  leaveConfigScreenHref,
+} from '@/components/leave-config-map';
 import {
   applyLeaveAdjustmentAction,
   previewLeaveAdjustmentAction,
@@ -61,6 +67,7 @@ export default async function LeaveConfigAdjustmentsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const tRecords = await getTranslations('admin.leaveConfigRecords');
+  const tNav = await getTranslations('nav');
   // r127's lesson, applied verbatim: all three label sets ALREADY SHIP in six locales, so they are read
   // where they live — the eight org axes under `admin.profileOptions.category`, the employment types
   // under `people.wizard.employmentType`, the ~20 axis names under `admin.leave.adjustmentsCriteria`.
@@ -112,6 +119,8 @@ export default async function LeaveConfigAdjustmentsPage({
     listEmployees(s, companyIds),
   ]);
 
+  const hasReplacementType = types.some((x) => isReplacementLeaveType(x));
+
   const criteriaSections = buildOrgCriteriaSections(
     { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
@@ -133,6 +142,18 @@ export default async function LeaveConfigAdjustmentsPage({
         <SectionHeader title={t('adjustmentsTitle')} />
         <div className="space-y-2 px-4 pt-3">
           <p className="text-xs text-muted-foreground">{t('adjustmentsHelp')}</p>
+          {/* 3fb1a611 (r299) — Replacement Leave is not adjusted here. The service refuses it (an adjustment
+              makes a balance with no credit behind it: no date worked, no expiry, no history), and the picker
+              below leaves it out, so this sentence is the only place it is named — pointing to where it IS
+              changed. Existing replacement adjustment rows are history and are untouched. */}
+          {hasReplacementType && (
+            <p className="text-xs text-muted-foreground" data-testid="adjustments-replacement-note">
+              {t('adjustmentsReplacementNote')}{' '}
+              <Link href={leaveConfigScreenHref('leaveCredit')} className="font-medium text-primary hover:underline">
+                {tNav('leaveCredit')} →
+              </Link>
+            </p>
+          )}
         </div>
         <div className="px-4 pb-4 pt-2">
           {/* F42 — the flow, MOUNTED. Its own chrome (step names, buttons, warnings) is read INSIDE
@@ -143,7 +164,8 @@ export default async function LeaveConfigAdjustmentsPage({
             action={applyLeaveAdjustmentAction}
             previewAction={previewLeaveAdjustmentAction}
             today={todayInKualaLumpur()}
-            leaveTypes={types.map((x) => ({ value: x.id, label: x.name }))}
+            // 3fb1a611 (r299): every type EXCEPT Replacement Leave — see the note above the form.
+            leaveTypes={types.filter((x) => !isReplacementLeaveType(x)).map((x) => ({ value: x.id, label: x.name }))}
             criteriaSections={criteriaSections}
             /* r288 — THREE PLAIN FIELDS, NO FUNCTIONS AND NO PRE-JOINED SENTENCES. r123/r124 took tabs
                down in production by handing a client component a server closure, and

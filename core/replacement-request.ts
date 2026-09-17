@@ -260,6 +260,16 @@ async function resolvePolicyForTx(tx: Tx, employmentId: string) {
   return { companyId: emp.companyId, country: emp.country, policy: policy ?? null };
 }
 
+/**
+ * 3fb1a611 (r299) · the kind of day one date is for one employment — what the Leave Credit request form shows
+ * beside each date worked ("Rest day", "Off day", "Public holiday", or that an ordinary working day cannot
+ * earn a credit). Read-only, RLS-scoped (an employee can resolve their own schedule), and NOT the control:
+ * submission and approval re-resolve it and refuse a working day.
+ */
+export function workedDayKindForEmployment(ctx: SessionContext, employmentId: string, date: string) {
+  return withTenant(ctx, (tx) => resolveWorkedDayKindTx(tx, employmentId, date));
+}
+
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };
 
 /**

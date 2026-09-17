@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
 /**
- * a6fe37fc ROUND 5 (cutover) — redirect stub. Replacement-leave CONFIGURATION lives on Company rules
- * (`/admin/leave-config/company-rules`) now, and this address exists only so no saved link 404s.
+ * a6fe37fc ROUND 5 (cutover) — redirect stub. Replacement-leave CONFIGURATION lived on Company rules
+ * (`/admin/leave-config/company-rules`) and, since 3fb1a611 (r299), lives on Leave Config › Leave Credit's
+ * Rules tab (`/admin/leave-config/leave-credit?tab=rules`); this address exists only so no saved link 404s.
  *
  * The page that stood here (645e67c4 → 296fc027) was the per-company replacement-leave policy editor:
  * what a credit is earned from, how long it lasts, what happens when it expires, and the eligibility
@@ -38,11 +39,14 @@ export default async function ReplacementLeaveConfigRedirect({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const usp = new URLSearchParams();
+  // 3fb1a611 (r299) — the policy moved AGAIN, to Leave Config › Leave Credit's Rules tab; Company rules no
+  // longer draws it at all. One hop from here, not two: a stub pointing at a page that no longer holds the
+  // setting would land the administrator somewhere with nothing to find.
+  const usp = new URLSearchParams({ tab: 'rules' });
   for (const [k, v] of Object.entries(sp)) {
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/leave-config/company-rules${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/leave-config/leave-credit?${qs}`);
 }

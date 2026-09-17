@@ -42,6 +42,10 @@ export const MODULE_CODES_WITH_NAV = [
   // components/sidebar.tsx and its MODULE_OF_HREF entry is written by hand there. Listed here for the
   // same reason as the rest — without it the rail would advertise a module the tenant has not bought.
   'system_explorer',
+  // 3fb1a611 (r299) — `toil`, the Leave Credit add-on. Like system_explorer it contributes no pack of its own:
+  // its one row (Leave Config › Leave Credit) sits in the core leave pack's node and is mapped to `toil` by
+  // hand in components/sidebar.tsx MODULE_OF_HREF.
+  'toil',
 ] as const;
 
 /** Module codes whose nav rows are always shown, whatever the snapshot says. */
