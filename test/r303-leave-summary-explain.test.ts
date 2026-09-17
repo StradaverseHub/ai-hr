@@ -38,6 +38,7 @@ import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { createEligibilityRule, createEntitlementTemplate } from '../core/entitlement-template';
 import { grantLeaveCredit, reverseLeaveCredit, runToilExpiry, setToilPolicy } from '../core/toil';
 import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import type { EntitlementBreakdownData } from '../components/leave/EntitlementBreakdown';
 import {
   LEAVE_SUMMARY_EXPLAIN_KEYS,
   LEAVE_SUMMARY_LINE_KEYS,
@@ -141,7 +142,7 @@ const hrRead = async (employmentId: string, leaveTypeId: string, asOf: string, c
  * THE SUM-GUARD. Every itemised line reaches its figure EXACTLY, and the rendered sentences therefore never fall
  * back to "could not be listed". Asserted on every fixture in this file.
  */
-function expectSumGuard(bd: LeaveEntitlementBreakdown, available = bd.totalAvailable) {
+function expectSumGuard(bd: LeaveEntitlementBreakdown | EntitlementBreakdownData, available = bd.totalAvailable) {
   const d = bd.derivation!;
   expect(d.entitlement.days, 'Full Entitlement').toBe(bd.eligibleDays);
   expect(sum(d.earned.credits), 'Earned to Date = Σ credits').toBe(bd.currentYearEntitlement);
@@ -358,6 +359,18 @@ describe('r303 — Earned to Date: method, leave year, rounding, the join-year r
     expect(bd.derivation!.earned.credits).toEqual([{ effectiveOn: '2026-04-15', days: 9, kind: 'grant' }]);
     const lines = expectSumGuard(bd);
     expect(keysOf(lines, 'ytdEntitled')).toContain('joinMonthsRemaining');
+  });
+
+  it('an earned method on an a2c Annual type in the hire year names NO join-year rule (the engines disagree there)', async () => {
+    await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 20, validFrom: '2026-01-01' });
+    await setMethod(b.annualLeaveTypeId, 'earned_monthly');
+    await updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: 'a2c', asOf: '2026-07-23' });
+    const emp = await hire('2026-01-06');
+    const bd = await hrRead(emp.employmentId, b.annualLeaveTypeId, '2026-07-23');
+    expect(bd.derivation!.earned.method).toBe('earned_monthly');
+    expect(bd.derivation!.earned.joinYear).toBeNull();
+    const lines = expectSumGuard(bd);
+    expect(keysOf(lines, 'ytdEntitled').some((k) => k.startsWith('join'))).toBe(false);
   });
 
   it('a non-Annual type is granted in full in the join year', async () => {

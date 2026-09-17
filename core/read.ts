@@ -3660,8 +3660,17 @@ export function leaveEntitlementBreakdown(
               : roundingMethod === 'custom' && policy.roundingBands == null
                 ? 'custom_no_table'
                 : roundingMethod,
+          // An EARNED method on an a2c ANNUAL type in its hire year is the one combination where the engines
+          // disagree today (projectExpectedEntitlement's bc36c768 note: the accrual engine credits slices, the
+          // a2c kernel projects the up-front figure). There is no single join-year rule to name, so none is
+          // named; the credits listed below are still exactly what was posted.
           joinYear:
-            joinedThisLeaveYear && policy != null
+            joinedThisLeaveYear &&
+            policy != null &&
+            !(
+              isEarnedMethod(policy.method) &&
+              hireYearGrantShape({ typeCode: type.code, yearCycleOverride: override, hiredOn: emp.hiredOn }) === 'a2c_up_front'
+            )
               ? isEarnedMethod(policy.method)
                 ? {
                     hiredOn: emp.hiredOn,
