@@ -84,7 +84,8 @@ export type ResolvedPolicy = {
  * INCLUDED.
  *
  * THE UNIT IS THE DECIMAL PORTION, NOT THE WHOLE VALUE. A band is matched against the decimal part of the
- * figure worked out to 2dp, and the whole-day part is added back untouched. That is what makes ONE table
+ * figure (a third decimal is placed by its first two: 0.00–0.24 covers 0.240–0.249), and the whole-day
+ * part is added back untouched. That is what makes ONE table
  * usable at every entitlement size: the reporter writes the table once for 0.00–0.99 and it shapes 1.17,
  * 10.17 and 21.17 identically, which is exactly how the three fixed methods it replaces behaved.
  *
@@ -95,7 +96,8 @@ export type ResolvedPolicy = {
  * ⚠️ UNTIL r303 `to` WAS EXCLUSIVE (from <= f < to, a row ending at 1.000 inclusive) and the three columns
  * were labelled From / Round To / Rounded Result, so the column called "Round To" was really the END of the
  * range. Migration 0473 rewrote every stored table into this meaning with identical results for every 2dp
- * figure; its header and test/leave-rounding-bands-0473.test.ts are the record of how.
+ * figure, and for every figure on a table whose bounds were whole hundredths; its header and
+ * test/leave-rounding-bands-0473.test.ts are the record of how.
  */
 export type RoundingBand = { from: number; to: number; result: number };
 
@@ -503,8 +505,8 @@ export type RoundingBandProblem =
   /** the decimals from..to (both included, 2dp) that no row covers. WARNING only — see the header. */
   | { kind: 'gap'; from: number; to: number };
 
-/** A figure as a whole number of HUNDREDTHS. Every band comparison is made on these integers, never on
- *  the raw floats: 0.29 * 100 is 28.999999999999996 in IEEE754, and a raw `<=` against it is how a figure
+/** A band figure as a whole number of HUNDREDTHS. Every band comparison is made on integers, never on the
+ *  raw floats: 0.29 * 100 is 28.999999999999996 in IEEE754, and a raw `<=` against it is how a figure
  *  quietly moves into the neighbouring band. Only meaningful for a value `hasAtMostTwoDecimals` accepts. */
 const toHundredths = (n: number) => Math.round(n * 100);
 
@@ -581,42 +583,48 @@ export function isWellFormedRoundingBands(bands: unknown): bands is RoundingBand
 
 /**
  * 8fec719e — evaluate a custom rounding table against a calculated entitlement. r303 (05db6aa7) — with
- * the bounds INCLUSIVE at both ends and every comparison made in integer hundredths:
+ * the bounds INCLUSIVE at both ends, every comparison made in integer THOUSANDTHS:
  *
- *     v2    = round2(value)            the figure worked out to two decimals FIRST, the ledger's own rule
- *     whole = floor(v2)
- *     fh    = round((v2 − whole) × 100)   the decimal portion as a whole number of hundredths, 0..99
- *     hit   = the band with round(from × 100) <= fh <= round(to × 100)
+ *     whole = floor(value)
+ *     fk    = round((value − whole) × 1000)   the decimal portion in thousandths, 0..1000 — exactly the f the
+ *                                              pre-r303 engine computed (it snapped f to three places too)
+ *     hit   = the band with  round(from × 100) × 10  <=  fk  <=  round(to × 100) × 10 + 9
+ *             (a band whose To is 0.99 also takes fk = 1000: the old top row was inclusive at 1.000)
  *     out   = round2(whole + hit.result)
  *
- * Working the figure out to 2dp before the lookup is what makes the plan's promise true by construction:
- * a figure can never fall between 0.24 and 0.25. Every engine caller already hands in a 2dp figure except
- * the full-grant path, whose configured template days are not limited to two decimals by the service
- * (test/leave-rounding-bands-0473.test.ts §4 lists the callers and pins what a 3dp figure does).
+ * A FIGURE WITH A THIRD DECIMAL IS PLACED BY ITS FIRST TWO. A row To of 0.24 covers 0.240 up to 0.249, so a
+ * figure can still never fall between 0.24 and 0.25, and nothing is rounded before the lookup — rounding
+ * first would move a 3dp figure across a band edge (14.397 into 0.40–0.69) that the old engine never
+ * moved. For a 2dp figure this is exactly from <= decimal <= to. For ANY figure on a table whose stored
+ * bounds were whole hundredths, it is exactly the pre-r303 engine on that table before migration 0473
+ * rewrote it (to' × 1000 + 9 = to × 1000 − 1, so fk <= to' × 1000 + 9 ⇔ fk < to × 1000). Every engine caller
+ * hands in a 2dp figure except the full grant of a template's configured days, which the service does not
+ * limit to two decimals; test/leave-rounding-bands-0473.test.ts §4 runs every 3dp figure through that path.
  *
- * A WHOLE VALUE IS NEVER MOVED. fh === 0 returns immediately, before any lookup. Every method this
+ * A WHOLE VALUE IS NEVER MOVED. fk === 0 returns immediately, before any lookup. Every method this
  * replaces behaved that way (ceil, floor and the nearest-half branch all leave 11.0 at 11.0), and without
  * the guard a first band of 0.00→0.50 ⇒ 0.50 would quietly hand out half a day to everyone whose
  * entitlement came out whole — a table that looks like "round the stragglers up" silently inflating the
  * exact figures.
  *
- * DEFENSIVE, like every other resolver here: a malformed table or a non-finite value leaves the value
- * EXACTLY as calculated, and a decimal no row covers (a gap) keeps its 2dp value. Refusing to round is
- * always recoverable; rounding on a table nobody could validate is not.
+ * DEFENSIVE, like every other resolver here: a malformed table, an unmatched decimal (a gap) or a
+ * non-finite value all leave the value EXACTLY as calculated. Refusing to round is always recoverable;
+ * rounding on a table nobody could validate is not.
  */
 export function applyRoundingBands(value: number, bands: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return value;
   if (!isWellFormedRoundingBands(bands)) return value;
-  const v2 = round2dp(value);
-  const whole = Math.floor(v2);
-  const fh = Math.round((v2 - whole) * 100);
-  if (fh === 0) return v2;
+  const whole = Math.floor(value);
+  const fk = Math.round((value - whole) * 1000);
+  if (fk === 0) return round2dp(value);
   for (const b of bands) {
-    if (toHundredths(b.from) <= fh && fh <= toHundredths(b.to)) {
-      return round2dp(whole + toHundredths(b.result) / 100);
+    const fromH = toHundredths(b.from);
+    const toH = toHundredths(b.to);
+    if (fromH * 10 <= fk && (fk <= toH * 10 + 9 || (toH === 99 && fk === 1000))) {
+      return round2dp(whole + b.result);
     }
   }
-  return v2;
+  return value;
 }
 
 /**

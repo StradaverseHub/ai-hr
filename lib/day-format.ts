@@ -44,9 +44,10 @@
  * keep a decimal place nobody wanted.
  *
  * r303 (05db6aa7) moved the rest of the table onto this one precision: a range now includes BOTH its From
- * and its To, From is typed again (the derivation made the reporter's own table untypeable), and the engine
- * compares whole hundredths — so no band figure is read at three decimals anywhere any more. A third decimal
- * typed into the table is refused by name, never tidied into a figure nobody typed.
+ * and its To, From is typed again (the derivation made the reporter's own table untypeable), and every band
+ * figure is a whole number of hundredths. A third decimal typed into the table is refused by name, never
+ * tidied into a figure nobody typed. (A calculated FIGURE with a third decimal is still placed by its first
+ * two — 0.00–0.24 covers 0.240–0.249 — see `applyRoundingBands`.)
  *
  * `decimals` survives as a PARAMETER — `dayPluralCategory` selects the plural at the precision a figure is
  * DISPLAYED in, so the number has to be nameable — but nothing now passes anything but the default.

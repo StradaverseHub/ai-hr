@@ -19,8 +19,9 @@
  *    half-up and named; the summary counts; not one ledger row.
  * §3 THE REPORTER'S TABLE, AS TYPED — the eleven figures, through the real service and the real engine.
  * §4 THE "INPUTS ARE ALREADY 2dp" PREMISE, CHECKED RATHER THAN ASSUMED. It holds for every caller except the
- *    full grant of a configured template figure, which the service lets carry a third decimal. That caller
- *    is exercised here with a 3dp figure, and what changes for it is pinned.
+ *    full grant of a configured template figure, which the service lets carry a third decimal. Every 3dp
+ *    figure is run through that caller and must land exactly where the pre-r303 engine put it; the only
+ *    exceptions are named tables whose stored bounds themselves had a third decimal.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -454,7 +455,7 @@ describe("§3 the reporter's table works exactly as typed", () => {
   });
 });
 
-describe('§4 the "every input is already 2dp" premise, checked per caller', () => {
+describe('§4 the "every input is already 2dp" premise is false for one caller — and its 3dp figures do not move', () => {
   /**
    * applyRoundingBands is reached only through applyRounding('custom'), from five places:
    *   core/org.ts            hire grant           hireYearGrantDays(...)  — a2c and ANNUAL pro-rating round2; any
@@ -464,10 +465,14 @@ describe('§4 the "every input is already 2dp" premise, checked per caller', () 
    *   core/leave.ts          projectExpected…     a2c / earned / ANNUAL joiner round2; else `days` RAW
    *   leave-type-sub-forms   worked example       14 ÷ 12 rounded to 2dp
    * RAW is a template band's configured days, and validateServiceBands does not limit its decimals. So a
-   * third decimal CAN reach the engine on the full-grant path. The engine now works every figure out to
-   * 2dp before the lookup — the plan's "a figure can never fall between 0.24 and 0.25" — so for such a
-   * figure the new result is the OLD engine's result for the 2dp figure, and it differs from the old
-   * engine's result on the raw figure only where the 2dp tidy crosses a band edge.
+   * third decimal CAN reach the engine on the full-grant path.
+   *
+   * THE PLAN'S STRONGER PROMISE DECIDES WHAT HAPPENS TO IT: "Tables you have already saved keep giving
+   * exactly the same results". The engine therefore rounds NOTHING before the lookup: it reads the decimal
+   * in thousandths, exactly as the old engine did, and a row covers its From…To hundredths including every
+   * third decimal inside them (0.24 covers 0.240–0.249). An earlier build of r303 worked the figure out to
+   * 2dp first, which moved 14.397 on production's table from 14.00 to 14.50; the test below is the one that
+   * fails on that engine.
    */
   const CALL_SITES: [string, RegExp, number][] = [
     ['core/org.ts', /applyRounding\(grantRaw, /g, 1],
@@ -511,30 +516,65 @@ describe('§4 the "every input is already 2dp" premise, checked per caller', () 
     expect(hireYearGrantDays({ days: composed.days, typeCode: 'SICK', yearCycleOverride: null, hiredOn: '2026-03-01' })).toBe(14.397);
   });
 
-  it('for EVERY 3dp figure: new(converted) === old(the 2dp figure), and a change from old(raw) only crosses a band edge', async () => {
-    const ids = await storeTables({ PRODUCTION_X: PRODUCTION });
+  it('for EVERY 3dp figure through the full-grant path: new engine on the migrated table === pre-r303 engine on the stored table', async () => {
+    const ids = await storeTables(EXACT_SHAPES);
     await runMigration();
-    const converted = (await bandsById(ids)).PRODUCTION_X;
-    const moved: string[] = [];
-    for (const whole of WHOLE_PARTS) {
-      for (let k = 0; k < 1000; k++) {
-        const v = (whole * 1000 + k) / 1000;
-        // The same composition the hire grant and the year-open use for a non-annual type.
-        const raw = hireYearGrantDays({ days: v, typeCode: 'SICK', yearCycleOverride: null, hiredOn: '2026-03-01' });
-        const now = applyRounding(raw, 'custom', null, converted);
-        expect(now, `${v}`).toBe(preR303ApplyRoundingBands(round2(raw), PRODUCTION));
-        const before = preR303ApplyRoundingBands(raw, PRODUCTION);
-        if (now !== before) {
-          moved.push(`${whole}+${k}`);
-          // Only a 3dp decimal that tidies UP onto 0.40 or 0.70 moves, and it moves by exactly one band step.
-          expect([395, 396, 397, 398, 399, 695, 696, 697, 698, 699], `${v}`).toContain(k);
-          expect(round2(now - before), `${v}`).toBe(0.5);
-        }
+    const converted = await bandsById(ids);
+    /** A stored bound as the old engine read it, in thousandths. */
+    const thousandths = (x: number) => Math.round(x * 1000);
+    const hasThirdDecimalBound = (t: RoundingBand[]) =>
+      t.some((r) => thousandths(r.from) % 10 !== 0 || thousandths(r.to) % 10 !== 0);
+    // THE ONLY EXCEPTIONS, NAMED: tables whose STORED BOUNDS themselves carry a third decimal (as the old
+    // engine read them). No two-decimal row can reproduce a bound of 0.401, so a 3dp figure inside that
+    // bound's own hundredth (0.401–0.409) may change row. 0.5005 is not on this list — the old engine read it
+    // as 0.500 — and -0.0005 read as 0.
+    const EXCEPTIONS = ['COVERS_NOTHING', 'HALF_THOUSANDTH_UP', 'NEAREST_HALF', 'PRODUCTION_PRE_0414', 'THREE_DP'];
+    const codes = Object.keys(EXACT_SHAPES);
+    expect(codes.filter((c) => hasThirdDecimalBound(EXACT_SHAPES[c]!)).sort()).toEqual(EXCEPTIONS);
+    const exact = codes.filter((c) => !EXCEPTIONS.includes(c));
+    // Production's table and well over three other shapes are held to exact equality.
+    expect(exact).toEqual(expect.arrayContaining(['PRODUCTION', 'ROUND_UP', 'SNAP_TO_HALF', 'GAPPED', 'MIDDLE_ONLY', 'UNORDERED']));
+
+    /** The same composition the hire grant and the year-open use for a type that is not Annual Leave. */
+    const fullGrant = (days: number) => hireYearGrantDays({ days, typeCode: 'SICK', yearCycleOverride: null, hiredOn: '2026-03-01' });
+    const figures = (denominator: number, from: number, to: number) =>
+      WHOLE_PARTS.flatMap((w) => Array.from({ length: to - from + 1 }, (_, i) => (w * denominator + from + i) / denominator));
+    const every3dp = figures(1000, 0, 999);
+    expect(every3dp).toHaveLength(3000);
+    // The top edge at four decimals, where the decimal rounds to 1.000 and only a row ending at 0.99 (1.00
+    // before) may take it.
+    const topEdge = figures(10000, 9990, 9999);
+
+    for (const code of exact) {
+      const oldTable = EXACT_SHAPES[code]!;
+      for (const v of [...every3dp, ...topEdge]) {
+        const raw = fullGrant(v);
+        expect(raw).toBe(v);
+        expect(applyRounding(raw, 'custom', null, converted[code]), `${code} at ${v}`).toBe(preR303ApplyRoundingBands(raw, oldTable));
       }
     }
-    // It is not vacuous: 14.397-style figures really do move.
-    expect(moved).toContain('7+397');
-    expect(applyRounding(14.397, 'custom', null, converted)).toBe(14.5);
+
+    for (const code of EXCEPTIONS) {
+      const oldTable = EXACT_SHAPES[code]!;
+      const notches = oldTable
+        .flatMap((r) => [thousandths(r.from), thousandths(r.to)])
+        .filter((k) => k % 10 !== 0)
+        .map((k) => [k, Math.ceil(k / 10) * 10 - 1] as const);
+      let moved = 0;
+      for (const v of every3dp) {
+        const raw = fullGrant(v);
+        const now = applyRounding(raw, 'custom', null, converted[code]);
+        if (now === preR303ApplyRoundingBands(raw, oldTable)) continue;
+        moved += 1;
+        const fk = Math.round((raw - Math.floor(raw)) * 1000);
+        expect(notches.some(([lo, hi]) => fk >= lo && fk <= hi), `${code} at ${v}: fk ${fk} outside every 3dp-bound notch`).toBe(true);
+      }
+      // Each named exception really is one (otherwise it belongs in the exact list above).
+      expect(moved, `${code} has a figure that changes row`).toBeGreaterThan(0);
+    }
+
+    // The figure that exposed the 2dp-first engine: 14.397 days on production's table is 14.00, before and after.
+    expect(applyRounding(fullGrant(14.397), 'custom', null, converted.PRODUCTION)).toBe(14);
     expect(preR303ApplyRoundingBands(14.397, PRODUCTION)).toBe(14);
   });
 });

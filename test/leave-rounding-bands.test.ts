@@ -168,6 +168,10 @@ describe('§1 the band evaluator — the arithmetic, in numbers', () => {
   });
 
   it('the last band is INCLUSIVE at its To, so nothing falls off the top', () => {
+    // A half-open top would leave a sliver at 1.000 unreachable, and "round up to the next whole day"
+    // could not be written as one row.
+    expect(applyRoundingBands(10.999, ROUND_UP)).toBe(11);
+    expect(applyRoundingBands(10.001, ROUND_UP)).toBe(11);
     // r303 — every band is inclusive now, so a row ending at 0.99 covers the top decimal as surely as one
     // ending at 1.00, and "round up to the next whole day" is still one row.
     expect(applyRoundingBands(10.99, ROUND_UP)).toBe(11);
@@ -184,17 +188,43 @@ describe('§1 the band evaluator — the arithmetic, in numbers', () => {
     expect(applyRoundingBands(10.5, edges), 'no row covers 0.50').toBe(10.5);
   });
 
-  it('r303 — a figure is worked out to TWO decimals before the table is applied', () => {
-    // "a figure can never fall between 0.24 and 0.25". 10.001 is 10.00 — a whole figure, never moved — and
-    // 10.999 is 11.00. Under the pre-r303 engine both were looked up at three decimals and became 11.
-    expect(applyRoundingBands(10.001, ROUND_UP)).toBe(10);
-    expect(applyRoundingBands(10.999, ROUND_UP)).toBe(11);
-    expect(applyRoundingBands(10.246, [{ from: 0.25, to: 0.49, result: 0.5 }])).toBe(10.5);
-    // A decimal no row covers keeps its 2dp value, the ledger's own precision.
-    expect(applyRoundingBands(10.203, [{ from: 0.5, to: 1, result: 1 }])).toBe(10.2);
+  it('r303 — a THIRD decimal is placed by its FIRST TWO, exactly where the pre-r303 engine put it', () => {
+    // Nothing is rounded before the lookup: a To of 0.24 covers 0.240–0.249, so a figure can never fall
+    // between 0.24 and 0.25 and a 3dp figure never crosses into the next row. The same figures on the table
+    // as it was stored before migration 0473 (half-open, 0.00–0.25 / 0.25–0.50) come out identical.
+    const edges: RoundingBand[] = [
+      { from: 0, to: 0.24, result: 0 },
+      { from: 0.25, to: 0.49, result: 0.5 },
+    ];
+    const edgesPreR303: RoundingBand[] = [
+      { from: 0, to: 0.25, result: 0 },
+      { from: 0.25, to: 0.5, result: 0.5 },
+    ];
+    const cases: [number, number][] = [
+      [10.001, 10],
+      [10.24, 10],
+      [10.245, 10],
+      [10.249, 10],
+      [10.25, 10.5],
+      [10.251, 10.5],
+      [10.499, 10.5],
+      // No row covers 0.500: the value is returned EXACTLY as calculated, third decimal and all.
+      [10.503, 10.503],
+    ];
+    for (const [v, want] of cases) {
+      expect(applyRoundingBands(v, edges), `${v}`).toBe(want);
+      expect(preR303ApplyRoundingBands(v, edgesPreR303), `${v} pre-r303`).toBe(want);
+    }
+    // A decimal that rounds to 1.000 (10.9996) is taken by a row ending at 0.99, as the old row ending at
+    // 1.000 took it — and by nothing lower.
+    expect(applyRoundingBands(10.9996, [{ from: 0.5, to: 0.99, result: 1 }])).toBe(11);
+    expect(preR303ApplyRoundingBands(10.9996, [{ from: 0.5, to: 1, result: 1 }])).toBe(11);
+    expect(applyRoundingBands(10.9996, [{ from: 0.5, to: 0.98, result: 1 }])).toBe(10.9996);
+    // A decimal no row covers keeps its exact value, a third decimal included.
+    expect(applyRoundingBands(10.203, [{ from: 0.5, to: 1, result: 1 }])).toBe(10.203);
   });
 
-  it('r303 — compared in whole HUNDREDTHS, so a binary tail cannot move a figure across a band edge', () => {
+  it('r303 — compared in whole numbers (thousandths against hundredths), so a binary tail cannot move a figure across a band edge', () => {
     // 0.29 * 100 is 28.999999999999996 and 0.57 * 100 is 56.99999999999999 in IEEE754: a raw float `<=`
     // against a To of 0.28 or 0.56 is exactly where a figure would slip a band.
     const tight: RoundingBand[] = [

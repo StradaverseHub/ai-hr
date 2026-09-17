@@ -9,8 +9,10 @@
 -- exactly 1.000 was inclusive), compared at three decimals, and the screen labelled the columns From /
 -- Round To / Rounded Result — so the column called "Round To" was really where the range ENDED. The
 -- reporter approved the table the way they think about it: From / To / Round To, BOTH ENDS INCLUDED,
--- two decimals, typed as written. The engine (core/leave-compute.ts `applyRoundingBands`) now works the
--- figure out to 2dp and matches  from <= f <= to  in integer hundredths.
+-- two decimals, typed as written. The engine (core/leave-compute.ts `applyRoundingBands`) still reads the
+-- decimal portion in THOUSANDTHS fk, exactly as before, and a row now covers
+--     round(from × 100) × 10  <=  fk  <=  round(to × 100) × 10 + 9      (a To of 0.99 also takes fk = 1000)
+-- i.e. from <= f <= to for a 2dp figure, and a figure with a third decimal is placed by its first two.
 --
 -- ── THE TRAP THIS MIGRATION EXISTS FOR ──────────────────────────────────────────────────────────────
 -- Switching to inclusive bounds WITHOUT converting the data makes every stored table whose rows touch
@@ -30,23 +32,29 @@
 -- (before -> after), every table left alone, and a one-line summary with the counts.
 --
 -- ── THE RULE, AND WHY IT IS EXACT ───────────────────────────────────────────────────────────────────
--- Every figure reaching the engine is at 2dp, so its decimal portion f is one of 0.00 … 0.99 (0.00 is a
--- whole figure and is never looked up). The old engine snapped each stored bound to thousandths first
--- (`Math.round(x * 1000) / 1000`), so with F and U the stored from/to in THOUSANDTHS the set of 2dp
--- decimals an old row covers is exactly
+-- Both engines read a figure's decimal portion as fk = round((value − floor(value)) × 1000), 0..1000 (0 is a
+-- whole figure and is never looked up). The old engine also snapped each stored bound to thousandths
+-- (`Math.round(x * 1000) / 1000`). With F and U the old stored from/to in THOUSANDTHS, an old row covered
 --
---     { f : F <= 1000·f < U }  =  { f : ceil(F / 10) <= 100·f <= ceil(U / 10) − 1 }        (f in hundredths)
+--     F <= fk < U                     (U = 1000 inclusive)
 --
--- so the new row is  from := ceil(F/10)/100,  to := (ceil(U/10) − 1)/100,  result unchanged. A row ending
--- at 1.00 becomes 0.99, which loses nothing: no 2dp decimal portion is larger than 0.99. A row whose new
--- from is above its new to covered NO 2dp decimal under the old rule either and is DROPPED; a table whose
--- every row is dropped becomes [] (not NULL — a NULL would change hasAnyLeaveTypeRule's answer for the
--- type, and [] resolves to no rounding exactly as the old table did for 2dp figures). Rows keep their
--- order and any extra keys they carried. Everything is computed in numeric, never float, except one
--- place stated below.
+-- and the new row  from := ceil(F/10)/100,  to := (ceil(U/10) − 1)/100,  result unchanged,  covers
 --
--- Old tables did not overlap (the old validator refused a half-open overlap), so the new rows' 2dp sets
--- are disjoint and the converted table is well-formed under the new inclusive rules.
+--     10·ceil(F/10) <= fk <= 10·ceil(U/10) − 1     (a To of 0.99 also takes fk = 1000)
+--
+-- When F and U are whole hundredths — every bound 0414 wrote and every bound the writer has stored since —
+-- the two are the SAME SET for every fk, so every figure lands exactly where it did, a third decimal
+-- included (14.397 on production's table is 14.00 before and after). When a stored bound itself has a
+-- third decimal (0.401), no two-decimal row can reproduce it; the conversion is still exact for every 2dp
+-- figure, and only a figure whose third decimal falls inside that bound's own hundredth (0.401–0.409) can
+-- change row. A row ending at 1.00 becomes 0.99, which loses nothing: 0.99 covers fk 990..999 and 1000. A
+-- row whose new from is above its new to covered NO 2dp decimal under the old rule either and is DROPPED; a
+-- table whose every row is dropped becomes [] (not NULL — a NULL would change hasAnyLeaveTypeRule's answer
+-- for the type, and [] resolves to no rounding). Rows keep their order and any extra keys they carried.
+-- Everything is computed in numeric, never float, except one place stated below.
+--
+-- Old tables did not overlap (the old validator refused a half-open overlap), so the new rows' hundredth
+-- ranges are disjoint and the converted table is well-formed under the new inclusive rules.
 --
 -- ── THE TWO CORNERS WHERE "EXACT" NEEDED MORE THAN ARITHMETIC ───────────────────────────────────────
 -- 1. A STORED BOUND ON AN EXACT HALF-THOUSANDTH (0.4005). The old engine rounded it with IEEE-754
@@ -86,7 +94,7 @@
 --
 -- Guarded by test/leave-rounding-bands-0473.test.ts, which runs THIS FILE against stored tables and
 -- compares a verbatim copy of the pre-r303 engine on the old table with the new engine on the converted
--- one, for every 2dp decimal 0.00-0.99 and whole parts 0, 1 and 7.
+-- one, for every 2dp decimal 0.00-0.99 and every 3dp decimal 0.000-0.999 at whole parts 0, 1 and 7.
 DO $$
 DECLARE
   t record;
