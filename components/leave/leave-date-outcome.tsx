@@ -23,10 +23,20 @@ export function LeaveDateOutcome({
     approved: string;
     rejected: string;
     pending: string;
+    /** r302 — a date given back by an approved cancellation reads 'cancelled' (the split moves its row). */
+    cancelled: string;
     reason: string;
   };
 }) {
   if (dates.length === 0) return null;
+  // r302 — the date in the viewer's own format, not the ISO string (the rest of the history formats dates).
+  const shortDate = (iso: string) => {
+    try {
+      return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+    } catch {
+      return iso;
+    }
+  };
   const weekday = (iso: string) => {
     try {
       return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(`${iso}T00:00:00`));
@@ -40,6 +50,8 @@ export function LeaveDateOutcome({
         return { text: labels.approved, cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' };
       case 'rejected':
         return { text: labels.rejected, cls: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' };
+      case 'cancelled':
+        return { text: labels.cancelled, cls: 'bg-muted text-muted-foreground' };
       default:
         return { text: labels.pending, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' };
     }
@@ -55,7 +67,7 @@ export function LeaveDateOutcome({
           return (
             <li key={d.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-border pt-1.5 first:border-0 first:pt-0">
               <span className="tabular-nums text-muted-foreground">
-                {d.leaveDate} <span className="text-muted-foreground/70">{weekday(d.leaveDate)}</span>
+                {shortDate(d.leaveDate)} <span className="text-muted-foreground/70">{weekday(d.leaveDate)}</span>
               </span>
               <span className="flex flex-col items-end gap-0.5">
                 <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${p.cls}`}>

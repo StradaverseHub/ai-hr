@@ -3049,6 +3049,7 @@
       "approved": "Đã duyệt",
       "rejected": "Đã từ chối",
       "pending": "Đang chờ",
+      "cancelled": "Đã hủy",
       "reason": "Lý do"
     },
     "myLeaveHeading": "Số dư phép của tôi",

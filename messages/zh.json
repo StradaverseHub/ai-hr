@@ -3049,6 +3049,7 @@
       "approved": "已批准",
       "rejected": "已驳回",
       "pending": "待处理",
+      "cancelled": "已取消",
       "reason": "原因"
     },
     "myLeaveHeading": "我的假期余额",

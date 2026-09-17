@@ -3049,6 +3049,7 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "pending": "Pending",
+      "cancelled": "Cancelled",
       "reason": "Reason"
     },
     "myLeaveHeading": "My Leave Balance",

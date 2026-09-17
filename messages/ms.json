@@ -3049,6 +3049,7 @@
       "approved": "Diluluskan",
       "rejected": "Ditolak",
       "pending": "Menunggu",
+      "cancelled": "Dibatalkan",
       "reason": "Sebab"
     },
     "myLeaveHeading": "Baki Cuti Saya",

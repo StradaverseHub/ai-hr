@@ -3049,6 +3049,7 @@
       "approved": "อนุมัติแล้ว",
       "rejected": "ปฏิเสธแล้ว",
       "pending": "รอดำเนินการ",
+      "cancelled": "ยกเลิกแล้ว",
       "reason": "เหตุผล"
     },
     "myLeaveHeading": "ยอดวันลาของฉัน",

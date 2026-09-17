@@ -780,6 +780,7 @@ export default async function LeavePage({
               approved: tMe('dateBreakdown.approved'),
               rejected: tMe('dateBreakdown.rejected'),
               pending: tMe('dateBreakdown.pending'),
+              cancelled: tMe('dateBreakdown.cancelled'),
               reason: tMe('dateBreakdown.reason'),
             }}
           />
