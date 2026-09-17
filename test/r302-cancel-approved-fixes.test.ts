@@ -66,7 +66,7 @@ const hire = (name: string) =>
     employmentType: 'full_time',
     hiredOn: '2024-01-01',
   });
-const ctxOf = async (emp: { personId: string }, role: string): Promise<SessionContext> => ({
+const ctxOf = async (emp: { personId: string }, role: 'employee' | 'manager' | 'hr_admin'): Promise<SessionContext> => ({
   tenantId: b.tenantId,
   userId: await createAppUser(b.tenantId, emp.personId, role),
   personId: emp.personId,
