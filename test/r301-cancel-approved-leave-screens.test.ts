@@ -157,7 +157,7 @@ describe('THE BUTTON, THE STATUS AND THE LEVEL — on the server, through one pr
     expect(planned.match(/employeeCancellableDates\(/g)?.length).toBe(2);
     expect(planned).not.toContain('working.filter((d) => d > today)');
     const offers = readSrc.slice(readSrc.indexOf('export function employeeCancelOffers('));
-    expect(offers).toContain('employeeCancellableDates(r, r.workingDates ?? [], setting, today)');
+    expect(offers).toContain('employeeCancellableDates(r, working, setting, today)');
   });
 
   it('/approvals shows the level a cancellation is waiting at, and Pending Cancellation', () => {

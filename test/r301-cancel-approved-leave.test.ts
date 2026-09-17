@@ -33,6 +33,7 @@ import {
   cancelDateRefusal,
   decideLeave,
   decideLeaveCancellation,
+  decideLeaveDate,
   employeeCancellableDates,
   requestLeave,
   requestLeaveCancellation,
@@ -209,6 +210,25 @@ describe('SWITCHED OFF — no cancel option, the service refuses, HR can still c
     expect(out.restoredDays).toBe(5);
     expect(await leaveStatus(id)).toBe('cancelled');
     expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBeCloseTo(before + 5, 2);
+  });
+
+  it('/leave and the tracker offer the same dates — a per-date request’s interior rejected day on neither', async () => {
+    await owner.db
+      .update(schema.leaveType)
+      .set({ counting: 'working_days', perDateApproval: true })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: MON,
+      endDate: WED,
+      today: TODAY,
+    });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: MON, decision: 'approved' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: TUE, decision: 'rejected', rejectReason: 'cover' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: WED, decision: 'approved' });
+    expect(await offerOnLeavePage(res.leaveRequestId)).toEqual([MON, WED]);
+    expect(await offerOnTracker(res.leaveRequestId)).toEqual([MON, WED]);
   });
 
   it('switching it off leaves the three settings dormant; switching back on restores them', async () => {

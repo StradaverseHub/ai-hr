@@ -432,8 +432,12 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     // in this grid is NOT met. It is the one card that is about the others, which is why the reporter
     // placed it below Advance Notice and above Duplicate Leave Applications rather than at the end; that
     // position is asserted separately below.
+    //
+    // r301 (83511d3b) adds the TWELFTH: Cancel Approved Leave — whether, how early and with whose approval an
+    // employee may cancel leave of this type after it was approved. It is last on the tab (after the apply
+    // message), where the approved plan and its mockup place it.
     const cards = rules.split('break-inside-avoid').length - 1;
-    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(11);
+    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(12);
   });
 
   it('each rule card is a single surface — no padded box nested inside a padded box', () => {

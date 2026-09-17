@@ -1662,10 +1662,25 @@ export function employeeCancelOffers(
       .from(leaveType)
       .where(inArray(leaveType.id, typeIds));
     const settingByType = new Map(types.map((t) => [t.id, cancelApprovedSettingOf(t)]));
+    // A per-date-approval request (ADR-0068) offers only its APPROVED dates — the rule requestLeaveCancellation
+    // applies and plannedAbsences already mirrors — so /leave never lists an interior rejected date the
+    // service would refuse as invalid.
+    const dateRows = await tx
+      .select({ leaveRequestId: leaveRequestDate.leaveRequestId, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+      .from(leaveRequestDate)
+      .where(inArray(leaveRequestDate.leaveRequestId, rows.map((r) => r.id)));
+    const approvedDatesByReq = new Map<string, Set<string>>();
+    for (const d of dateRows) {
+      const set = approvedDatesByReq.get(d.leaveRequestId) ?? new Set<string>();
+      if (d.status === 'approved') set.add(d.leaveDate);
+      approvedDatesByReq.set(d.leaveRequestId, set);
+    }
     for (const r of rows) {
       // A type this read cannot see reads as NOT allowed (cancelApprovedSettingOf(null)) — fail closed.
       const setting = settingByType.get(r.leaveTypeId) ?? cancelApprovedSettingOf(null);
-      out.set(r.id, employeeCancellableDates(r, r.workingDates ?? [], setting, today));
+      const approved = approvedDatesByReq.get(r.id);
+      const working = (r.workingDates ?? []).filter((d) => !approved || approved.has(d));
+      out.set(r.id, employeeCancellableDates(r, working, setting, today));
     }
     return out;
   });
