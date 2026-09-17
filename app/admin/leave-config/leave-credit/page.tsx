@@ -70,6 +70,8 @@ export default async function LeaveConfigLeaveCreditPage({
     reversed?: string;
     otBackDate?: string;
     otBackMinutes?: string;
+    /** r299 fix pass — a draft payroll (YYYY-MM) whose overtime prefill must be re-run. */
+    otRefresh?: string;
     processed?: string;
     converted?: string;
     lapsed?: string;
@@ -224,13 +226,25 @@ export default async function LeaveConfigLeaveCreditPage({
           {sp.granted !== undefined &&
             banner(
               t('banner.granted', { days: formatDays(Number(sp.granted)) }),
-              sp.otDate ? t('banner.grantedOvertime', { hours: hoursOf(sp.otMinutes), date: fmtDate(sp.otDate) }) : undefined,
+              sp.otDate
+                ? [
+                    t('banner.grantedOvertime', { hours: hoursOf(sp.otMinutes), date: fmtDate(sp.otDate) }),
+                    sp.otRefresh ? t('banner.refreshDraftOvertime', { period: sp.otRefresh }) : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                : undefined,
             )}
           {sp.reversed !== undefined &&
             banner(
               t('banner.reversed', { days: formatDays(Number(sp.reversed)) }),
               sp.otBackDate
-                ? t('banner.reversedOvertime', { hours: hoursOf(sp.otBackMinutes), date: fmtDate(sp.otBackDate) })
+                ? [
+                    t('banner.reversedOvertime', { hours: hoursOf(sp.otBackMinutes), date: fmtDate(sp.otBackDate) }),
+                    sp.otRefresh ? t('banner.refreshDraftOvertime', { period: sp.otRefresh }) : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                 : undefined,
             )}
           {sp.processed !== undefined &&

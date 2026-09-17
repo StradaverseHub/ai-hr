@@ -9077,7 +9077,8 @@
         "granted": "Kredit Cuti sebanyak {days} hari ditambah.",
         "grantedOvertime": "{hours} jam kerja lebih masa yang direkodkan pada {date} tidak akan dibayar juga.",
         "reversed": "Kredit Cuti sebanyak {days} hari dibatalkan.",
-        "reversedOvertime": "{hours} jam kerja lebih masa yang direkodkan pada {date} boleh dibayar semula."
+        "reversedOvertime": "{hours} jam kerja lebih masa yang direkodkan pada {date} boleh dibayar semula.",
+        "refreshDraftOvertime": "Draf gaji untuk {period} sudah membawa kerja lebih masa pekerja ini: jalankan semula pra-isian kerja lebih masanya supaya perubahan ini diambil kira."
       },
       "add": {
         "title": "Tambah Kredit Cuti",

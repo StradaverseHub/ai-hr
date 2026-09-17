@@ -9077,7 +9077,8 @@
         "granted": "已添加 {days} 天假期额度。",
         "grantedOvertime": "{date} 记录的 {hours} 小时加班将不再另行支付。",
         "reversed": "已冲销 {days} 天假期额度。",
-        "reversedOvertime": "{date} 记录的 {hours} 小时加班重新可付薪。"
+        "reversedOvertime": "{date} 记录的 {hours} 小时加班重新可付薪。",
+        "refreshDraftOvertime": "{period} 的草稿薪资已包含该员工的加班：请重新运行其加班预填，使此变更生效。"
       },
       "add": {
         "title": "添加假期额度",

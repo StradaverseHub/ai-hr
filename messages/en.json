@@ -9077,7 +9077,8 @@
         "granted": "Leave Credit of {days} day(s) added.",
         "grantedOvertime": "The {hours} hour(s) of overtime recorded on {date} will not also be paid.",
         "reversed": "Leave Credit of {days} day(s) reversed.",
-        "reversedOvertime": "The {hours} hour(s) of overtime recorded on {date} are payable again."
+        "reversedOvertime": "The {hours} hour(s) of overtime recorded on {date} are payable again.",
+        "refreshDraftOvertime": "The draft payroll for {period} already carries this employee's overtime: re-run its overtime prefill so it reflects this."
       },
       "add": {
         "title": "Add Leave Credit",

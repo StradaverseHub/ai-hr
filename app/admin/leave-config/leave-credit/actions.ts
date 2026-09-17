@@ -73,6 +73,7 @@ export async function grantLeaveCreditAction(formData: FormData) {
     q.set('otDate', workedDate);
     q.set('otMinutes', String(granted.overtimeSuppressedMinutes));
   }
+  if (granted.draftPayrollToRefresh) q.set('otRefresh', granted.draftPayrollToRefresh);
   redirect(`${PAGE}?${q.toString()}`);
 }
 
@@ -95,5 +96,6 @@ export async function reverseLeaveCreditAction(formData: FormData) {
     q.set('otBackDate', out.workedDate);
     q.set('otBackMinutes', String(out.overtimeRestoredMinutes));
   }
+  if (out.draftPayrollToRefresh) q.set('otRefresh', out.draftPayrollToRefresh);
   redirect(`${PAGE}?${q.toString()}`);
 }
