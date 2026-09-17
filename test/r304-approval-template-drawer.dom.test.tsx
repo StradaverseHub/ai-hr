@@ -57,6 +57,7 @@ beforeEach(() => {
   toastError.mockClear();
 });
 
+const commonSave = (loc: Locale) => (CATALOGUES[loc] as unknown as { common: { save: string } }).common.save;
 const la = (loc: Locale) => (CATALOGUES[loc] as unknown as { leaveApproval: Record<string, string> }).leaveApproval;
 
 /** The label bag exactly as app/admin/leave-config/approval-chains/page.tsx builds it, read from a catalogue. */
@@ -71,7 +72,7 @@ function labelsFor(loc: Locale): TemplateManagerLabels {
     'deselectAll', 'panelNoneMeansAll', 'panelPickAtLeastOne', 'noEligibilityRules', 'ruleNotAssignable',
     'legacyGradeScope', 'ruleScopeUnknown', 'conditions', 'addCondition', 'conditionOperator', 'conditionValue',
     'opGreaterThan', 'opLessThan', 'opBetween', 'leaveDuration', 'valueDays', 'noTemplates', 'noAssignments',
-    'unassign', 'unassignConfirm', 'rolesGatedNote', 'save', 'cancel', 'chain', 'empty', 'manager', 'departmentHead',
+    'unassign', 'unassignConfirm', 'rolesGatedNote', 'cancel', 'chain', 'empty', 'manager', 'departmentHead',
     'businessUnitHead', 'hr', 'hrManager', 'payroll', 'customRole', 'managerManager', 'specificEmployee', 'add',
     'moveUp', 'moveDown', 'remove', 'dragToReorder', 'badgeDynamic', 'badgeFixed', 'flowStart', 'flowEnd', 'addLevel',
     'fixedWarning', 'fixedApproverEnded', 'fixedApproverMissing', 'modeTitle', 'modeSequential',
@@ -83,7 +84,9 @@ function labelsFor(loc: Locale): TemplateManagerLabels {
     out[k] = m[k];
   }
   return {
-    ...(out as Omit<TemplateManagerLabels, 'templateCol' | 'leaveTypeCol' | 'companyCol' | 'levelTemplate' | 'hints' | 'employeeSearch'>),
+    ...(out as Omit<TemplateManagerLabels, 'save' | 'templateCol' | 'leaveTypeCol' | 'companyCol' | 'levelTemplate' | 'hints' | 'employeeSearch'>),
+    // r304 fix 3 — the drawer's button is the plain common "Save" (the plan and mockup), not "Save chain".
+    save: commonSave(loc),
     templateCol: m.templateCol,
     leaveTypeCol: m.leaveType,
     companyCol: m.company,
@@ -254,10 +257,11 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     expect(form.querySelector('input[name="templateId"]')?.getAttribute('value')).toBe(SENIOR.id);
 
     // Cancel and Save are in the footer, OUTSIDE the scrolling body; Save posts the form by id.
-    const save = within(footer).getByRole('button', { name: L.save });
+    const save = within(footer).getByRole('button', { name: commonSave(loc) });
     expect(save.getAttribute('type')).toBe('submit');
     expect(save.getAttribute('form')).toBe(form.id);
     expect(within(footer).getByRole('button', { name: L.cancel })).toBeTruthy();
+    expect(within(footer).queryByRole('button', { name: L.save }), 'the footer still says "Save chain"').toBeNull();
     expect(body.contains(save)).toBe(false);
     expect(body.className).toContain('overflow-y-auto');
     expect(footer.className).toContain('shrink-0');
@@ -325,8 +329,8 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     expect(dialog.isConnected).toBe(true);
     expect(dialog.getAttribute('data-state')).toBe('open');
     expect(nameInput.value).toBe(`${SENIOR.name} v2`);
-    // "Keep editing" hands the keyboard back to where the close was asked from.
-    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    // "Keep editing" puts the keyboard back inside the drawer, on its first field, whatever asked to close.
+    await waitFor(() => expect(document.activeElement).toBe(nameInput));
 
     await userEvent.click(within(dialog).getByRole('button', { name: closeLabel(loc) }));
     confirm = screen.getByRole('alertdialog', { name: L.discardTitle });
@@ -338,6 +342,33 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     // Reopening starts from the saved values, never from the discarded edit.
     await userEvent.click(edit);
     expect((within(screen.getByRole('dialog')).getByLabelText(L.templateName) as HTMLInputElement).value).toBe(SENIOR.name);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  it('"Keep editing" after a click on the dimmed list puts keyboard focus back INSIDE the drawer, on its first field', async () => {
+    const { errors, save } = mount(loc);
+    await userEvent.click(editButtonOf(loc, SENIOR.name));
+    await settle();
+    const dialog = screen.getByRole('dialog');
+    const nameInput = within(dialog).getByLabelText(L.templateName) as HTMLInputElement;
+    await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: L.levelN.replace('{n}', '1') }), 'hr_manager');
+
+    // The close attempt comes from OUTSIDE the drawer. A real browser moves focus to <body> on a mousedown
+    // over the non-focusable overlay (Radix's trap ignores a focusout with no relatedTarget); jsdom's
+    // user-event leaves it where it was, so the test does what the browser does.
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.click(overlayEl()!);
+    const confirm = screen.getByRole('alertdialog', { name: L.discardTitle });
+    await userEvent.click(within(confirm).getByRole('button', { name: L.discardKeep }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(dialog.getAttribute('data-state')).toBe('open');
+    await waitFor(() => expect(document.activeElement).toBe(nameInput));
+    // …and it stays there: the focus return is not undone a tick later.
+    await settle();
+    expect(document.activeElement).toBe(nameInput);
+    expect(save).not.toHaveBeenCalled();
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
@@ -354,7 +385,7 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     await userEvent.type(descInput, 'Heads first');
     await userEvent.click(within(dialog).getByLabelText(L.requireMultiStep));
 
-    await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave(loc) }));
 
     const alert = await within(dialog).findByRole('alert');
     expect(alert.textContent).toBe(refusal);
@@ -388,7 +419,7 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     await userEvent.click(edit);
     const dialog = screen.getByRole('dialog');
     await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
-    await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave(loc) }));
 
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(fill(L.templateUpdatedToast, 'Senior Staff v2')));
     expect(String(toastSuccess.mock.calls[0][0])).not.toContain('{');
@@ -409,7 +440,7 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     await userEvent.click(add);
     const dialog = screen.getByRole('dialog', { name: L.addTemplate });
     await userEvent.type(within(dialog).getByLabelText(L.templateName), NIGHT.name);
-    await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave(loc) }));
 
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(fill(L.templateCreatedToast, NIGHT.name)));
     expect(save.mock.calls[0][0].get('templateId')).toBeNull();
@@ -489,7 +520,7 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     const save: SaveMock = vi.fn(async () => ({ ok: true as const, id: SENIOR.id, name: SENIOR.name, created: false }));
     mount('en', save);
     await userEvent.click(editButtonOf('en', SENIOR.name));
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: L.save }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: commonSave('en') }));
     await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(true));
     expect(rowOf(STANDARD.name).hasAttribute('data-saved')).toBe(false);
     await waitFor(() => expect(rowOf(SENIOR.name).hasAttribute('data-saved')).toBe(false), { timeout: 4000 });
@@ -501,7 +532,7 @@ describe('r304 · closing, dirtiness and the one-drawer rule (en)', () => {
     await userEvent.click(editButtonOf('en', SENIOR.name));
     const dialog = screen.getByRole('dialog');
     await userEvent.type(within(dialog).getByLabelText(L.templateName), ' v2');
-    await userEvent.click(within(dialog).getByRole('button', { name: L.save }));
+    await userEvent.click(within(dialog).getByRole('button', { name: commonSave('en') }));
     await waitFor(() => expect(dialog.getAttribute('data-state')).toBe('closed'));
     expect(dialog.isConnected, 'the drawer finished closing before Escape — this case would prove nothing').toBe(true);
     // Escape: Radix does not report a close for a dialog that is already closed.
@@ -609,8 +640,27 @@ describe('r304 · the drawer slides out rather than vanishing', () => {
     mount('en');
     await userEvent.click(editButtonOf('en', SENIOR.name));
     const cls = screen.getByRole('dialog').className.split(/\s+/);
-    // Full screen below md; clamp(36rem, 40vw, 48rem) from md up; pinned to the right edge.
-    expect(cls).toEqual(expect.arrayContaining(['w-full', 'md:w-[clamp(36rem,40vw,48rem)]', 'fixed', 'inset-y-0', 'right-0']));
+    // Full screen on a phone AND a tablet (below lg, 1024px — the approved plan: "full screen on a phone or
+    // tablet"); clamp(36rem, 40vw, 48rem) from lg up; pinned to the right edge.
+    expect(cls).toEqual(expect.arrayContaining(['w-full', 'max-w-full', 'lg:w-[clamp(36rem,40vw,48rem)]', 'fixed', 'inset-y-0', 'right-0']));
+    expect(cls.filter((c) => /^(sm|md):(w|max-w)-/.test(c)), 'the panel narrows below lg, i.e. on a tablet').toEqual([]);
+  });
+});
+
+describe('r304 · the drawer says "Save", not "Save chain"', () => {
+  it('the page hands the template manager common.save; the escalation editor keeps leaveApproval.save', () => {
+    const page = readFileSync(join(__dirname, '../app/admin/leave-config/approval-chains/page.tsx'), 'utf8');
+    expect(page).toContain("const tc = await getTranslations('common');");
+    const templateLabels = page.slice(page.indexOf('const templateLabels: TemplateManagerLabels = {'));
+    const templateBlock = templateLabels.slice(0, templateLabels.indexOf('\n  };'));
+    expect(templateBlock).toContain("save: tc('save'),");
+    expect(templateBlock).not.toContain("save: t('save'),");
+    const escalation = page.slice(page.indexOf('const escalationLabels: EscalationLabels = {'));
+    expect(escalation.slice(0, escalation.indexOf('\n  };'))).toContain("save: t('save'),");
+    for (const loc of LOCALES) {
+      expect(commonSave(loc), loc).toBeTruthy();
+      expect(commonSave(loc), `${loc}: common.save is the same words as "Save chain"`).not.toBe(la(loc).save);
+    }
   });
 });
 

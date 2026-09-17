@@ -117,6 +117,7 @@ export type TemplateManagerLabels = StepListLabels & {
   unassign: string;
   unassignConfirm: string;
   rolesGatedNote: string;
+  /** r304 — the template drawer's Save: the plain common "Save", not the escalation editor's "Save chain". */
   save: string;
   cancel: string;
 };
@@ -203,8 +204,8 @@ export function ApprovalTemplateManager({
   const pendingFocus = useRef<string | null>(null);
   const drawerSettled = useRef(true);
   const [closedTick, setClosedTick] = useState(0);
-  /** Where the keyboard was when a close was asked for — "Keep editing" puts it back there. */
-  const beforeConfirm = useRef<HTMLElement | null>(null);
+  /** Set by "Discard", so the confirm's focus return does not pull focus into a drawer that is closing. */
+  const discarding = useRef(false);
 
   const stepLabels = stepLabelBag(labels);
   const employeeName = (id: string) => {
@@ -249,8 +250,7 @@ export function ApprovalTemplateManager({
       closeDrawer();
       return;
     }
-    const active = document.activeElement;
-    beforeConfirm.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    discarding.current = false;
     setConfirmDiscard(true);
   }
 
@@ -455,19 +455,28 @@ export function ApprovalTemplateManager({
           cancelLabel={t('discardKeep')}
           confirmLabel={t('discardConfirm')}
           onConfirm={() => {
-            beforeConfirm.current = null;
+            discarding.current = true;
             closeDrawer();
           }}
           onCancel={() => setConfirmDiscard(false)}
           onCloseAutoFocus={(event) => {
-            // "Keep editing": back to the field or button the close was asked from. "Discard": the drawer
-            // is closing and returns focus itself.
-            const back = beforeConfirm.current;
-            beforeConfirm.current = null;
-            if (back?.isConnected) {
-              event.preventDefault();
-              back.focus();
+            // "Discard": the drawer is closing and returns focus to the row itself.
+            if (discarding.current) {
+              discarding.current = false;
+              return;
             }
+            // "Keep editing": back INSIDE the drawer, on its first field, whatever asked to close — X, Cancel,
+            // Escape, or a click on the dimmed list (which leaves nothing focused; the confirm has no trigger
+            // to return to, so without this the keyboard would be left on <body>). The drawer content itself
+            // is the floor when the form has nothing focusable.
+            const form = document.getElementById(TEMPLATE_FORM_ID);
+            const target =
+              form?.querySelector<HTMLElement>(
+                'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+              ) ?? form?.closest<HTMLElement>('[role="dialog"]');
+            if (!target) return;
+            event.preventDefault();
+            target.focus();
           }}
         />
       )}

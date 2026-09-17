@@ -40,11 +40,13 @@ export const DRAWER_EXIT_ANIMATION = 'ui-drawer-panel-out';
 /** The longest a closed drawer stays mounted when no `animationend` arrives (the animation is 240ms). */
 export const DRAWER_EXIT_FALLBACK_MS = 400;
 
+/* Full screen on a phone AND a tablet: the breakpoint is `lg` (1024px), not `md`, because a tablet held
+   upright is 768-834px wide and the approved plan (85875e4b) says "full screen on a phone or tablet". */
 const WIDTHS = {
-  /** Full screen below `md`; about 40% of a desktop, never narrower than 36rem or wider than 48rem. */
-  default: 'md:w-[clamp(36rem,40vw,48rem)]',
-  /** Full screen below `md`; a reading-width sheet from `md` up. */
-  narrow: 'md:w-[28rem]',
+  /** Full screen below `lg`; about 40% of a desktop, never narrower than 36rem or wider than 48rem. */
+  default: 'lg:w-[clamp(36rem,40vw,48rem)]',
+  /** Full screen below `lg`; a reading-width sheet from `lg` up. */
+  narrow: 'lg:w-[28rem]',
 } as const;
 
 export type DrawerWidth = keyof typeof WIDTHS;

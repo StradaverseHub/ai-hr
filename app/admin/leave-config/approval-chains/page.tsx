@@ -103,6 +103,9 @@ export default async function LeaveConfigApprovalChainsPage({
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('leaveApproval');
   const tr = await getTranslations('admin.leaveConfigApprovalChains');
+  // r304 fix 3 — the template drawer's footer says the plain common "Save" (the approved plan and mockup:
+  // "Cancel" and "Save"). "Save chain" stays where it still is: the escalation editor below.
+  const tc = await getTranslations('common');
   const { error, previewEmployment, previewLeaveType } = await searchParams;
 
   const all = await listCompanies(s);
@@ -267,7 +270,7 @@ export default async function LeaveConfigApprovalChainsPage({
     unassign: t('unassign'),
     unassignConfirm: t('unassignConfirm'),
     rolesGatedNote: t('rolesGatedNote'),
-    save: t('save'),
+    save: tc('save'),
     cancel: t('cancel'),
     chain: t('chain'),
     empty: t('empty'),
