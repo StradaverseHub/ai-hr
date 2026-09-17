@@ -43,13 +43,14 @@
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { company, domainEvent, employment, leaveLedger, leaveType } from '../db/schema';
+// Leave services through the pack facade (ADR-0080 D9), never the pack's implementation modules directly.
 import {
   earnedCycleStart,
   isEarnedAccrualType,
   leaveCycleEnd,
   leaveTypeApplySummary,
   resolveLeaveYearCycle,
-} from './leave';
+} from '../packs/leave/service';
 import { leaveBalances, leaveEntitlementBreakdown, listLeaveRequestsPage, type LeaveEntitlementBreakdown } from './read';
 import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '../lib/leave-groups';
