@@ -63,6 +63,8 @@ export type MyLeaveCard = {
   code: string | null;
   color: string | null;
   icon: string | null;
+  /** leave_type.role — what the type IS (65f466e2), so a screen can ask the role rather than a code. */
+  role: string | null;
   placement: 'primary' | 'secondary';
   /** `isEarnedAccrualType` — the "This is our Annual Leave" type. Only this card gets the ring. */
   annualLeave: boolean;
@@ -197,6 +199,7 @@ export async function myLeaveDashboard(
         code: b.code,
         color: b.color,
         icon: b.icon,
+        role: b.role,
         placement: b.placement === 'primary' ? 'primary' : 'secondary',
         annualLeave: isEarnedAccrualType(b),
         cycleStart,
