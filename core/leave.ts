@@ -37,10 +37,10 @@ import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
 // year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
 // the helper returns the same calendar-year pair this function has always built.
 import { sharedGroupCycleWindow } from '../lib/leave-groups';
-// 3fb1a611 (r299) — the register INVERSE arrived: an approved Replacement Leave can now be cancelled, because
-// the credit it used is given back to the register as well as the day to the ledger (restoreReplacementLeaveTx).
 // 3fb1a611 fix pass — Leave Credit's r299 changes apply only while the tenant has the paid `toil` module.
 import { leaveCreditRegisterLive } from './leave-credit-live';
+// 3fb1a611 (r299) — the register INVERSE arrived: an approved Replacement Leave can now be cancelled, because
+// the credit it used is given back to the register as well as the day to the ledger (restoreReplacementLeaveTx).
 import {
   assertReplacementLeaveRestorableTx,
   consumeReplacementLeaveTx,
