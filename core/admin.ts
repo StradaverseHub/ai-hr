@@ -45,6 +45,8 @@ import {
   EMERGENCY_LEAVE_CODE,
   STATUTORY_APPLY_ROLES,
   isStatutoryApplyType,
+  // r301 (83511d3b) — role-first identity, for the Replacement Leave auto-approve refusal.
+  leaveTypeIs,
   type AccrualConfig,
   type DayTypeInclusion,
   type LeaveDurationType,
@@ -758,6 +760,10 @@ export async function createLeaveType(
         description,
         paid: p.paid ?? true,
         leaveUnit,
+        // r301 (83511d3b, migration 0471) — a type created from now on starts with employee cancellation of
+        // approved leave SWITCHED OFF, as the reporter asked. The column default already says false; written
+        // out here so this writer's intent does not depend on a default somebody may one day change.
+        employeeCancelApproved: false,
         ...(active ? {} : { archivedAt: sql`now()` }),
       })
       .returning({ id: leaveType.id })
@@ -3350,9 +3356,45 @@ export async function updateLeaveType(
     isAnnualLeave?: boolean;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
+    /**
+     * r301 (board 83511d3b, migration 0471) — the Cancel Approved Leave card. ONE tri-state for the four
+     * columns (the card posts `cancelApproved=1`): all undefined ⇒ untouched. `employeeCancelApproved` is the
+     * switch; the three sub-settings are written only when given, and the card gives them only while the
+     * switch is on — so switching it off leaves them DORMANT rather than cleared, and switching back on
+     * restores what HR had set (the rounding-table containment on this same table is the precedent).
+     * Validated here rather than by CHECK constraints (§6): the notice is a whole number of days 0–365, and
+     * Replacement Leave refuses automatic approval (see cancelApprovedSettingOf in core/leave.ts for why).
+     */
+    employeeCancelApproved?: boolean;
+    cancelNoticeDays?: number;
+    cancelAutoApprove?: boolean;
+    cancelNotify?: boolean;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
+  // r301 (83511d3b) — Cancel Approved Leave: its OWN tri-state, one marker for the whole card.
+  const touchCancelApproved =
+    p.employeeCancelApproved !== undefined ||
+    p.cancelNoticeDays !== undefined ||
+    p.cancelAutoApprove !== undefined ||
+    p.cancelNotify !== undefined;
+  if (
+    p.cancelNoticeDays !== undefined &&
+    (!Number.isInteger(p.cancelNoticeDays) || p.cancelNoticeDays < 0 || p.cancelNoticeDays > 365)
+  ) {
+    throw new Error('“Allow cancellation up to … day(s) before each leave day” must be a whole number from 0 to 365.');
+  }
+  // Declared, not inferred — one shape, not a union per key (the TS2590 note on requestRuleSet below).
+  const cancelApprovedSet: {
+    employeeCancelApproved?: boolean;
+    cancelNoticeDays?: number;
+    cancelAutoApprove?: boolean;
+    cancelNotify?: boolean;
+  } = {};
+  if (p.employeeCancelApproved !== undefined) cancelApprovedSet.employeeCancelApproved = p.employeeCancelApproved;
+  if (p.cancelNoticeDays !== undefined) cancelApprovedSet.cancelNoticeDays = p.cancelNoticeDays;
+  if (p.cancelAutoApprove !== undefined) cancelApprovedSet.cancelAutoApprove = p.cancelAutoApprove;
+  if (p.cancelNotify !== undefined) cancelApprovedSet.cancelNotify = p.cancelNotify;
   const touchAnnualLeave = p.isAnnualLeave !== undefined;
   const reason = normalizeReason(p.reason);
   // Edit Leave Type Code (a7194511): normalize the optional new code exactly like createLeaveType (uppercase,
@@ -3839,10 +3881,23 @@ export async function updateLeaveType(
         // r299 (3de1453a): the stored earning method is what "switch off while an earned method is stored"
         // is refused on — this service does not write the method, so the stored value IS the after-value.
         accrualMethod: leaveType.accrualMethod,
+        // r301 (83511d3b): the Cancel Approved Leave card, for the before/after audit diff.
+        employeeCancelApproved: leaveType.employeeCancelApproved,
+        cancelNoticeDays: leaveType.cancelNoticeDays,
+        cancelAutoApprove: leaveType.cancelAutoApprove,
+        cancelNotify: leaveType.cancelNotify,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // r301 (83511d3b) — Replacement Leave is never approved automatically: giving it back returns its credit to
+    // the register, which migration 0469's RLS lets only an approver write, and an automatic approval runs in
+    // the employee's own session. Refused at save, with the reason, rather than stored and quietly ignored.
+    if (p.cancelAutoApprove === true && before && leaveTypeIs(before, 'replacement')) {
+      throw new Error(
+        'Replacement Leave cancellations always need approval — giving the leave back returns its credit, which only an approver can do. Choose “Requires the approver’s re-approval”.',
+      );
+    }
     // r299 (3de1453a) — the Annual Leave switch, decided (and refused) before anything is written.
     if (touchAnnualLeave && !before) throw new LeaveTypeRuleError('Leave type not found.');
     const annualSwitch = before
@@ -4024,6 +4079,8 @@ export async function updateLeaveType(
         ...placementVisibilitySet,
         // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
         ...roleSet,
+        // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
+        ...cancelApprovedSet,
       })
       .where(eq(leaveType.id, p.id))
       // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
@@ -4126,6 +4183,15 @@ export async function updateLeaveType(
           ...(touchDescription ? { description: before?.description ?? null } : {}),
           // r299 (3de1453a): the role the Annual Leave switch saw, recorded whenever the switch was posted.
           ...(touchAnnualLeave ? { role: annualSwitch.roleBefore } : {}),
+          // r301 (83511d3b): the whole card, whenever it saved.
+          ...(touchCancelApproved
+            ? {
+                employeeCancelApproved: before?.employeeCancelApproved ?? null,
+                cancelNoticeDays: before?.cancelNoticeDays ?? null,
+                cancelAutoApprove: before?.cancelAutoApprove ?? null,
+                cancelNotify: before?.cancelNotify ?? null,
+              }
+            : {}),
         },
         after: {
           name,
@@ -4197,6 +4263,14 @@ export async function updateLeaveType(
           ...(touchPlacement ? { essPlacement: placementColSet.essPlacement ?? null, visibleToEmployee: placementVisibilitySet.visibleToEmployee ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
           ...(touchAnnualLeave ? { role: annualSwitch.roleAfter } : {}),
+          ...(touchCancelApproved
+            ? {
+                employeeCancelApproved: p.employeeCancelApproved ?? before?.employeeCancelApproved ?? null,
+                cancelNoticeDays: p.cancelNoticeDays ?? before?.cancelNoticeDays ?? null,
+                cancelAutoApprove: p.cancelAutoApprove ?? before?.cancelAutoApprove ?? null,
+                cancelNotify: p.cancelNotify ?? before?.cancelNotify ?? null,
+              }
+            : {}),
         },
         ...(reason ? { reason } : {}),
       },

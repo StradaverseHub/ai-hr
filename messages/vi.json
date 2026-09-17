@@ -1876,10 +1876,10 @@
       "attachment": "Tệp đính kèm"
     },
     "cancelDatesToggle": "Hủy ngày",
-    "cancelDatesHint": "Đánh dấu (các) ngày bạn muốn trả lại. Chỉ những ngày chưa bắt đầu mới có thể hủy.",
+    "cancelDatesHint": "Đánh dấu (các) ngày bạn muốn trả lại. Chỉ những ngày vẫn còn có thể hủy mới được liệt kê.",
     "cancelPendingBadge": "Chờ hủy",
     "cancelSubmit": "Yêu cầu hủy",
-    "cancelRequestedToast": "Đã gửi yêu cầu hủy — đang chờ quyết định của quản lý.",
+    "cancelRequestedToast": "Đã gửi yêu cầu hủy — đang chờ duyệt.",
     "cancelDatesButton": "Hủy ngày",
     "cancelDialogTitle": "Hủy ngày nghỉ phép",
     "cancelDialogDismiss": "Đóng",
@@ -1966,7 +1966,20 @@
       "cancellationCreditExpired": "tín dụng cho ngày làm việc {workedDate} đã hết hạn vào {expiresOn}",
       "cancellationCreditPaidOut": "tín dụng cho ngày làm việc {workedDate} đã được trả thành tiền khi hết hạn vào {expiresOn}",
       "cancellationCreditReversed": "tín dụng cho ngày làm việc {workedDate} đã bị hủy bỏ",
-      "cancellationCreditUnreadable": "không đọc được đầy đủ bản ghi tín dụng đã dùng, nên quản trị viên HR phải hủy"
+      "cancellationCreditUnreadable": "không đọc được đầy đủ bản ghi tín dụng đã dùng, nên quản trị viên HR phải hủy",
+      "cancellationTooClose": "Ngày {date} quá gần để hủy. {typeName} chỉ có thể hủy trước mỗi ngày nghỉ ít nhất {days} ngày.",
+      "cancellationTypeOff": "Nhân viên không thể hủy {typeName} sau khi đã được duyệt. Hãy liên hệ HR nếu cần hủy.",
+      "cancellationNotYours": "Chỉ nhân viên có kỳ nghỉ này mới có thể yêu cầu hủy.",
+      "cancellationNotApproved": "Chỉ nghỉ phép đã được duyệt mới có thể hủy theo cách này. Nghỉ phép còn chờ duyệt có thể rút lại.",
+      "cancellationNotFullDay": "Không thể hủy nghỉ nửa ngày và nghỉ theo giờ sau khi đã được duyệt. Hãy liên hệ HR nếu cần hủy.",
+      "cancellationGrouped": "Kỳ nghỉ này thuộc Nghỉ khẩn cấp hoặc được duyệt theo từng ngày, nên không thể hủy tại đây. Hãy liên hệ HR nếu cần hủy.",
+      "cancellationUnpaidDays": "Kỳ nghỉ này có ngày nghỉ không lương, nên không thể hủy sau khi đã được duyệt. Hãy liên hệ HR nếu cần hủy.",
+      "cancellationAlreadyPending": "Đã có yêu cầu hủy cho lần nghỉ phép này đang chờ duyệt.",
+      "cancellationNoLongerCancellable": "Kỳ nghỉ này đã thay đổi kể từ khi yêu cầu hủy, nên không thể hủy nữa.",
+      "cancellationAdminOnly": "Chỉ quản trị viên HR mới có thể hủy nghỉ phép thay cho nhân viên.",
+      "cancellationAdminOwnLeave": "Bạn không thể hủy nghỉ phép của chính mình tại đây. Hãy yêu cầu hủy từ trang Nghỉ phép của tôi.",
+      "cancellationAlreadyFinal": "Kỳ nghỉ này đã bị từ chối hoặc đã hủy, nên không có gì để hủy.",
+      "cancellationAlreadyApproved": "Kỳ nghỉ này đã được duyệt. Hãy dùng Hủy ngày để yêu cầu hủy."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -2206,7 +2219,19 @@
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
-    "unpaidPortionLabel": "Nghỉ không lương"
+    "unpaidPortionLabel": "Nghỉ không lương",
+    "cancelAutoApprovedToast": "Đã hủy nghỉ phép — các ngày đã được hoàn lại vào số dư của bạn.",
+    "pendingCancellationStatus": "Chờ hủy",
+    "cancelProgress": {
+      "requested": "Đã yêu cầu hủy · {date}",
+      "waiting": "Đang chờ duyệt",
+      "levelApproved": "Cấp {level} · đã duyệt",
+      "levelWaiting": "Cấp {level} · đang chờ duyệt",
+      "levelUpcoming": "Cấp {level} · chưa tới",
+      "cancelled": "Đã hủy · các ngày được hoàn lại vào số dư của bạn",
+      "dates": "Các ngày cần hủy: {dates}",
+      "sameChainNote": "Cùng các cấp duyệt, theo cùng thứ tự, như đơn xin nghỉ ban đầu."
+    }
   },
   "leaveTracker": {
     "title": "Theo dõi nghỉ phép của nhóm",
@@ -7460,7 +7485,21 @@
       "generateRunsHeading": "Năm nghỉ phép {year}",
       "generateRunsLine": "{selected} đã chọn · {passed} đạt · {failed} không đạt · {granted} bản ghi được cấp · {forfeits} lần hủy",
       "generateRunsDownload": "Tải nhật ký",
-      "generateReviewEmployees": "Nhân viên lần chạy này sẽ xử lý"
+      "generateReviewEmployees": "Nhân viên lần chạy này sẽ xử lý",
+      "cancelApprovedSectionTitle": "Hủy nghỉ phép đã duyệt",
+      "cancelApprovedSectionHelp": "Nhân viên có được yêu cầu hủy loại nghỉ phép này sau khi đã được duyệt hay không.",
+      "cancelApprovedAllowLabel": "Cho phép nhân viên hủy nghỉ phép đã duyệt này",
+      "cancelApprovedOffNote": "Nhân viên sẽ không thấy tùy chọn hủy đối với nghỉ phép đã duyệt thuộc loại này. HR vẫn có thể hủy thay cho họ.",
+      "cancelApprovedNoticeBefore": "Cho phép hủy trước tối thiểu",
+      "cancelApprovedNoticeAfter": "ngày so với mỗi ngày nghỉ",
+      "cancelApprovedNoticeHelp": "Tính cho từng ngày nghỉ được hủy. 0 nghĩa là bất kỳ ngày nào chưa bắt đầu.",
+      "cancelApprovedApprovalLabel": "Phê duyệt",
+      "cancelApprovedApprovalReapprove": "Cần người duyệt phê duyệt lại",
+      "cancelApprovedApprovalAuto": "Tự động phê duyệt",
+      "cancelApprovedApprovalHelp": "Phê duyệt lại đi qua cùng các cấp duyệt, theo cùng thứ tự, như đơn xin nghỉ ban đầu. Tự động phê duyệt sẽ hủy nghỉ phép và hoàn lại ngày nghỉ ngay lập tức.",
+      "cancelApprovedReplacementNote": "Việc hủy Nghỉ bù luôn cần người duyệt phê duyệt lại, vì trả lại ngày nghỉ cũng trả lại tín chỉ của nó.",
+      "cancelApprovedNotifyLabel": "Thông báo cho người duyệt và HR khi có yêu cầu hủy",
+      "cancelApprovedNotifyHelp": "Thông báo hiển thị ở chuông thông báo. Hệ thống không gửi email."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

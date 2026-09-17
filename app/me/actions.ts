@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { myEmployment, listEligibleLeaveTypesFor } from '@/core/read';
+import { myEmployment, listEligibleLeaveTypesFor, pickName } from '@/core/read';
 import {
   addLeaveAttachment,
   requestLeave,
@@ -38,6 +38,7 @@ import {
   LeaveCancellationNotAllowedError,
   ReplacementCreditCancellationBlockedError,
   LeaveCancellationTooLateError,
+  LeaveCancellationTooCloseError,
   LeaveCancellationDateInvalidError,
   LeaveCancellationPeriodClosedError,
   type LeaveDurationType,
@@ -275,13 +276,17 @@ export async function myRequestLeaveCancellation(formData: FormData) {
   const leaveRequestId = String(formData.get('leaveRequestId'));
   const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  let result: Awaited<ReturnType<typeof requestLeaveCancellation>> | undefined;
   try {
-    await requestLeaveCancellation(s, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
+    result = await requestLeaveCancellation(s, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
   revalidatePath('/leave');
   revalidatePath('/approvals');
+  // r301 (83511d3b) — a leave type set to approve cancellations automatically has ALREADY cancelled the days;
+  // "waiting for approval" would be untrue, so it gets its own toast.
+  if (result?.status === 'approved') redirect('/leave?toast=cancellationApproved');
   redirect('/leave?toast=cancellationRequested');
 }
 
@@ -431,6 +436,14 @@ export async function localizeLeaveError(
   if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });
   // Partial Leave Cancellation (ADR-0065): localize the cancellation gate errors.
   if (e instanceof LeaveCancellationTooLateError) return t('cancellationTooLate', { date: e.date ?? '' });
+  // r301 (83511d3b) — the leave type's notice period, counted per leave date. The type is named in the
+  // reader's language when HR gave it one (the same pickName every other leave surface resolves through).
+  if (e instanceof LeaveCancellationTooCloseError)
+    return t('cancellationTooClose', {
+      date: e.date,
+      days: e.noticeDays,
+      typeName: pickName(e.leaveTypeName, e.leaveTypeI18n, await getLocale()),
+    });
   if (e instanceof LeaveCancellationDateInvalidError) return t('cancelDateInvalid', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationPeriodClosedError) return t('cancellationPeriodClosed', { date: e.date ?? '' });
   // 3fb1a611 (r299) — a Replacement Leave whose credit has expired (or been paid out, or reversed) since the
@@ -448,7 +461,40 @@ export async function localizeLeaveError(
     );
     return t('cancellationCreditBlocked', { credits: [...new Set(parts)].join('; ') });
   }
-  if (e instanceof LeaveCancellationNotAllowedError) return t('cancellationNotAllowed');
+  // r301 (83511d3b) — EACH refusal says why. This used to be one sentence for every case ("This leave date
+  // can't be cancelled."), which the reporter could not act on. Spelled out as literal keys (not a computed
+  // `cancellationRefused.${code}`) so the i18n coverage guard can see every one of them.
+  if (e instanceof LeaveCancellationNotAllowedError) {
+    const typeName = e.leaveTypeName ? pickName(e.leaveTypeName, e.leaveTypeI18n ?? null, await getLocale()) : name;
+    switch (e.refusal) {
+      case 'type_off':
+        return t('cancellationTypeOff', { typeName });
+      case 'not_yours':
+        return t('cancellationNotYours');
+      case 'not_approved':
+        return t('cancellationNotApproved');
+      case 'not_full_day':
+        return t('cancellationNotFullDay');
+      case 'grouped':
+        return t('cancellationGrouped');
+      case 'unpaid_days':
+        return t('cancellationUnpaidDays');
+      case 'already_pending':
+        return t('cancellationAlreadyPending');
+      case 'no_longer_cancellable':
+        return t('cancellationNoLongerCancellable');
+      case 'admin_only':
+        return t('cancellationAdminOnly');
+      case 'admin_own_leave':
+        return t('cancellationAdminOwnLeave');
+      case 'already_final':
+        return t('cancellationAlreadyFinal');
+      case 'already_approved':
+        return t('cancellationAlreadyApproved');
+      default:
+        return t('cancellationNotAllowed');
+    }
+  }
   // ADR-0069: the requestLeave pre-check throws this when the balance is frozen for encashment (resignation
   // approved). The DB trigger's own message stays English (defense-in-depth, documented in ADR-0069) — only
   // this friendly UX pre-check is translated.

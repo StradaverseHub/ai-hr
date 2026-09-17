@@ -453,6 +453,11 @@ export default async function LeaveConfigTypesPage({
                 maxNegativeBalance: lt.maxNegativeBalance == null ? null : Number(lt.maxNegativeBalance),
                 balanceSourceTypeId: lt.balanceSourceTypeId ?? null,
                 allowUnpaidLeave: lt.allowUnpaidLeave ?? false,
+                // r301 (83511d3b) — the Cancel Approved Leave card.
+                employeeCancelApproved: lt.employeeCancelApproved ?? false,
+                cancelNoticeDays: lt.cancelNoticeDays ?? 0,
+                cancelAutoApprove: lt.cancelAutoApprove ?? false,
+                cancelNotify: lt.cancelNotify ?? false,
                 sendToPayroll: lt.sendToPayroll ?? false,
                 rules: {
                   accrualMethod: lt.accrualMethod ?? null,

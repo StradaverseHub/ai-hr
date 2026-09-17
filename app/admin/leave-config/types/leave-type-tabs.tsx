@@ -169,6 +169,11 @@ export type LeaveTypeTabsData = {
   maxNegativeBalance: number | null;
   balanceSourceTypeId: string | null;
   allowUnpaidLeave: boolean;
+  /** r301 (83511d3b, migration 0471) — the Cancel Approved Leave card on tab 4. */
+  employeeCancelApproved: boolean;
+  cancelNoticeDays: number;
+  cancelAutoApprove: boolean;
+  cancelNotify: boolean;
   /** IA §3.1 F39 — arrives on tab 1 from the Payroll impact screen, which keeps its own copy this round. */
   sendToPayroll: boolean;
   rules: LeaveTypeRules;
@@ -296,6 +301,10 @@ export function LeaveTypeTabs({
     maxNegativeBalance,
     balanceSourceTypeId,
     allowUnpaidLeave,
+    employeeCancelApproved,
+    cancelNoticeDays,
+    cancelAutoApprove,
+    cancelNotify,
     sendToPayroll,
     rules,
   } = type;
@@ -311,6 +320,11 @@ export function LeaveTypeTabs({
 
   const [activeTab, setActiveTab] = useState<TabKey>(openTab ?? 'identity');
   const [applyNoticeEnabled, setApplyNoticeEnabled] = useState<boolean>(!!customMessages?.applyNotice);
+  // r301 (83511d3b) — the Cancel Approved Leave switch: its three settings are shown only while it is ticked.
+  const [cancelApprovedOn, setCancelApprovedOn] = useState<boolean>(employeeCancelApproved);
+  // Role first, seeded code as the fallback — the same reading core/leave.ts leaveTypeIs gives the service.
+  const isEmergencyType = role ? role === 'emergency' : code === 'EMERGENCY';
+  const isReplacementType = role ? role === 'replacement' : code === 'REPLACEMENT';
   /**
    * r258 fix pass — THE RENAME TOGGLE, RESTORED. The first draft of this screen rendered the identity
    * form always-open and said in a comment that this was "presentation only". It is not: on the old panel
@@ -1415,6 +1429,83 @@ export function LeaveTypeTabs({
                   </form>
                   <p className="text-xs text-muted-foreground">{t('applyNoticeHelp')}</p>
                 </div>
+
+                {/* r301 (board 83511d3b) — Cancel Approved Leave. `cancelApproved=1`, its own Save like every card
+                    here. Hidden for Emergency Leave, as backdating and advance notice are: the service reads
+                    today's behaviour for it whatever is stored (cancelApprovedSettingOf). The three settings
+                    under the switch post ONLY while it is ticked, so switching it off leaves them as they were
+                    (dormant) and switching it back on restores them. */}
+                {!isEmergencyType && (
+                  <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
+                    <span className="text-xs font-medium text-muted-foreground">{t('cancelApprovedSectionTitle')}</span>
+                    <p className="text-xs text-muted-foreground">{t('cancelApprovedSectionHelp')}</p>
+                    <form action={updateTypeAction} className="space-y-2">
+                      <input type="hidden" name="id" value={id} />
+                      {/* preserve the name — this form does not edit it */}
+                      <input type="hidden" name="name" value={name} />
+                      {/* marker: tells the action to touch the four cancel-approved columns (tri-state guard) */}
+                      <input type="hidden" name="cancelApproved" value="1" />
+                      <label className="flex items-center gap-2 text-xs text-foreground">
+                        <input
+                          type="checkbox"
+                          name="employeeCancelApproved"
+                          checked={cancelApprovedOn}
+                          onChange={(e) => setCancelApprovedOn(e.target.checked)}
+                          className="size-3.5 rounded border-border"
+                        />
+                        {t('cancelApprovedAllowLabel')}
+                      </label>
+                      {cancelApprovedOn ? (
+                        <div className="space-y-2 border-l-2 border-border pl-3">
+                          <label className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+                            {t('cancelApprovedNoticeBefore')}
+                            <input
+                              name="cancelNoticeDays"
+                              type="number"
+                              min="0"
+                              max="365"
+                              step="1"
+                              defaultValue={cancelNoticeDays}
+                              className={`${inputCls} w-20`}
+                            />
+                            {t('cancelApprovedNoticeAfter')}
+                          </label>
+                          <p className="text-xs text-muted-foreground">{t('cancelApprovedNoticeHelp')}</p>
+                          <Field label={t('cancelApprovedApprovalLabel')}>
+                            <select
+                              name="cancelApproval"
+                              defaultValue={cancelAutoApprove && !isReplacementType ? 'auto' : 'reapproval'}
+                              className={`${inputCls} w-full`}
+                            >
+                              <option value="reapproval">{t('cancelApprovedApprovalReapprove')}</option>
+                              {/* Replacement Leave refuses automatic approval (core/admin.ts updateLeaveType) —
+                                  said here instead of offered and then refused after Save. */}
+                              {!isReplacementType && <option value="auto">{t('cancelApprovedApprovalAuto')}</option>}
+                            </select>
+                          </Field>
+                          <p className="text-xs text-muted-foreground">
+                            {isReplacementType ? t('cancelApprovedReplacementNote') : t('cancelApprovedApprovalHelp')}
+                          </p>
+                          <label className="flex items-center gap-2 text-xs text-foreground">
+                            <input
+                              type="checkbox"
+                              name="cancelNotify"
+                              defaultChecked={cancelNotify}
+                              className="size-3.5 rounded border-border"
+                            />
+                            {t('cancelApprovedNotifyLabel')}
+                          </label>
+                          <p className="text-xs text-muted-foreground">{t('cancelApprovedNotifyHelp')}</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{t('cancelApprovedOffNote')}</p>
+                      )}
+                      <Button type="submit" size="sm">
+                        {t('save')}
+                      </Button>
+                    </form>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

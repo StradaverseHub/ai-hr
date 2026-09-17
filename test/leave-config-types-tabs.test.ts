@@ -165,6 +165,8 @@ const MARKERS = [
   'duplicatePolicy',
   'dayTypeInclusion',
   'applyNotice',
+  // r301 (83511d3b) — Cancel Approved Leave. A NEW card with its own marker, not a merge into a neighbour.
+  'cancelApproved',
   // TAB 5 — who approves it
   'partialApproval',
 ] as const;
@@ -174,7 +176,7 @@ describe('a6fe37fc R2 · rule 1 — every sub-form keeps its tri-state marker an
     expect(newScreen).toContain(`<input type="hidden" name="${marker}" value="1" />`);
   });
 
-  it('renders 28 markers and no more — nothing was merged into a neighbour (r299 added annualLeaveRendered)', () => {
+  it('renders 29 markers and no more — nothing was merged into a neighbour (r299 added annualLeaveRendered, r301 cancelApproved)', () => {
     const count = [...newScreen.matchAll(/name="[a-zA-Z]+" value="1"/g)].length;
     expect(count, 'a marker was added, dropped or merged').toBe(MARKERS.length);
   });
@@ -309,6 +311,13 @@ const MARKER_FIELDS: Record<(typeof MARKERS)[number], PostedField[]> = {
   duplicatePolicy: [posted('duplicatePolicyValue')],
   dayTypeInclusion: [postedPerKey('dayType_')],
   applyNotice: [posted('enableApplyNotice'), posted('customMessageApplyNotice')],
+  // r301 (83511d3b) — the switch, and the three settings the card posts only while the switch is ticked.
+  cancelApproved: [
+    posted('employeeCancelApproved'),
+    posted('cancelNoticeDays'),
+    posted('cancelApproval'),
+    posted('cancelNotify'),
+  ],
   partialApproval: [posted('perDateApproval')],
 };
 

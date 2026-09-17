@@ -22,7 +22,11 @@ const ALL_TABLES = [
   // "recent adjustments" list reads a batch whose ledger rows are gone. This is the ADR-0071 leak
   // the comment below records, and it is why the list is edited whenever a leave table is added.
   'leave_adjustment_batch',
-  'leave_request', 'leave_request_date', 'leave_cancellation_request', 'app_user', 'role_assignment', 'domain_event',
+  'leave_request', 'leave_request_date', 'leave_cancellation_request',
+  // r301 (83511d3b) — a cancellation's copied approval chain (migration 0471). Listed explicitly per the
+  // convention above: a leaked pending step would put a phantom level in front of a later file's decision.
+  'leave_cancellation_step',
+  'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   // 6d671f44 — Create New Employee drafts (migration 0337). Listed explicitly rather than left to the
   // TRUNCATE ... CASCADE from `tenant`: the ADR-0071 note below is what happens when a table is only
@@ -283,7 +287,11 @@ export async function seedBase(): Promise<Base> {
     // opts ANNUAL OUT of the submit-time balance gate (true) to preserve those tests unchanged; tests that
     // specifically exercise the balance gate create their own type and set the flag explicitly. The
     // approval-time guard (finalizeLeaveApproval) is unaffected by this flag and still fires as before.
-    .values({ tenantId, code: 'ANNUAL', name: 'Annual Leave', paid: true, allowNegativeBalance: true })
+    // r301 (83511d3b, migration 0471): `employeeCancelApproved: true` for the same reason — the fixture is a
+    // leave type that EXISTED before 0471, and every such type reads true (today's behaviour). The column
+    // DEFAULT is false (types created from now on start switched off), so leaving it out would switch
+    // cancellation off for every test that gives back approved Annual Leave. Tests of the switch itself set it.
+    .values({ tenantId, code: 'ANNUAL', name: 'Annual Leave', paid: true, allowNegativeBalance: true, employeeCancelApproved: true })
     .returning({ id: schema.leaveType.id });
   // No default leave_policy here: policies now genuinely override the statutory floor
   // (max(floor, policy) at grant), so the base tenant stays floor-only and tests that

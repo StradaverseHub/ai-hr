@@ -61,6 +61,8 @@ describe('ADR-0080 rung 6: leave pack registration', () => {
       'leave_request_date',
       'leave_approval_step',
       'leave_cancellation_request',
+      // r301 (83511d3b) — a cancellation's copied approval chain. UPDATED, not loosened: one table added.
+      'leave_cancellation_step',
       'leave_approval_policy',
       'leave_approval_template',
       'toil_policy',

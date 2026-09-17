@@ -7,7 +7,7 @@
 import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { appendEvent, actorOf } from '../db/events';
+import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
@@ -43,6 +43,9 @@ import { leaveCreditRegisterLive } from './leave-credit-live';
 // the credit it used is given back to the register as well as the day to the ledger (restoreReplacementLeaveTx).
 import {
   assertReplacementLeaveRestorableTx,
+  // r301 (83511d3b) — the split lineage walk (leave-request.split → splitFromRequestId). Named for the credit
+  // consumption it was written for; a cancellation uses the same walk to find the request holding the chain.
+  consumptionRootRequestIdTx,
   consumeReplacementLeaveTx,
   employmentHoldsCreditsTx,
   replacementExpiringSoonTx,
@@ -209,6 +212,8 @@ import {
   jobGrade,
   leaveApprovalStep,
   leaveCancellationRequest,
+  // r301 (83511d3b, migration 0471) — a cancellation's copy of the original request's approval chain.
+  leaveCancellationStep,
   leaveEncashmentSnapshot,
   leaveEntitlementRecalcAudit,
   leaveLedger,
@@ -588,10 +593,80 @@ export class LeaveOnBehalfNotAllowedError extends Error {
 // After a leave is approved, the employee can give back a SUBSET of the approved dates. The gates below are
 // hard service-layer rejections (typed so the UI can localize and so the affordance can be hidden, not just
 // throw). None of these persist anything — they run BEFORE any write.
+/**
+ * r301 (board 83511d3b) — WHY a cancellation was refused, carried on the refusal so the screen can say
+ * exactly that instead of one sentence for every case (app/me/actions.ts localizeLeaveError maps each to its
+ * own message). The English `reason` is unchanged and still what the error's `message` says; the code is
+ * additive. A refusal raised without one falls back to the generic sentence, as every refusal did before.
+ */
+export type LeaveCancellationRefusal =
+  /** The caller is not the employee whose leave it is. */
+  | 'not_yours'
+  /** The leave is not (or no longer) approved. */
+  | 'not_approved'
+  /** Half-day or hourly leave — only full-day leave is given back date by date. */
+  | 'not_full_day'
+  /** An Emergency Leave or per-date-approval child row. */
+  | 'grouped'
+  /** r301 — the leave type does not allow employees to cancel approved leave. */
+  | 'type_off'
+  /** A leave with unpaid days (Allow Unpaid Leave, a7fab30b) — its split cannot be given back safely. */
+  | 'unpaid_days'
+  /** Another cancellation of the same date(s) is already waiting for a decision. */
+  | 'already_pending'
+  /** Decision time: the leave changed while the cancellation waited. */
+  | 'no_longer_cancellable'
+  /** adminCancelLeave: the caller is not an HR administrator. */
+  | 'admin_only'
+  /** adminCancelLeave: an HR administrator's own leave goes through the employee flow. */
+  | 'admin_own_leave'
+  /** adminCancelLeave / cancelOwnLeave: the leave is already rejected or cancelled. */
+  | 'already_final'
+  /** cancelOwnLeave: an approved leave is withdrawn through "Cancel dates", not the pending withdraw. */
+  | 'already_approved';
+
 export class LeaveCancellationNotAllowedError extends Error {
-  constructor(reason?: string) {
+  readonly refusal?: LeaveCancellationRefusal;
+  /** The leave type's display name (and its per-locale names), for the refusals whose message names it. */
+  readonly leaveTypeName?: string;
+  readonly leaveTypeI18n?: Record<string, { name: string }> | null;
+  constructor(
+    reason?: string,
+    refusal?: LeaveCancellationRefusal,
+    leaveTypeName?: string,
+    leaveTypeI18n?: Record<string, { name: string }> | null,
+  ) {
     super(reason ? `Leave date(s) cannot be cancelled: ${reason}` : 'Leave date(s) cannot be cancelled.');
     this.name = 'LeaveCancellationNotAllowedError';
+    this.refusal = refusal;
+    this.leaveTypeName = leaveTypeName;
+    this.leaveTypeI18n = leaveTypeI18n;
+  }
+}
+/**
+ * r301 (board 83511d3b) — a leave DATE is closer than the leave type's notice period. Counted per date, in
+ * calendar days from the tenant-local today (cancelDateRefusal), so a started leave's later dates can still be
+ * given back when each is far enough away. A date on or before today is LeaveCancellationTooLateError instead.
+ */
+export class LeaveCancellationTooCloseError extends Error {
+  readonly date: string;
+  readonly noticeDays: number;
+  readonly leaveTypeName: string;
+  readonly leaveTypeI18n: Record<string, { name: string }> | null;
+  constructor(
+    date: string,
+    noticeDays: number,
+    leaveTypeName: string,
+    leaveTypeI18n: Record<string, { name: string }> | null = null,
+  ) {
+    super(
+      `Leave on ${date} is too close to cancel: ${leaveTypeName} can be cancelled up to ${noticeDays} day(s) before each leave day.`,
+    );
+    this.name = 'LeaveCancellationTooCloseError';
+    this.date = date;
+    this.noticeDays = noticeDays;
+    this.leaveTypeName = leaveTypeName;
+    this.leaveTypeI18n = leaveTypeI18n;
   }
 }
 /**
@@ -4472,6 +4547,9 @@ export async function getLeaveAttachment(
   });
 }
 
+/** r301 (83511d3b) — the two leave decisions an approval step can belong to, as delegation task types. */
+type LeaveDecisionTaskType = 'leave.application' | 'leave.cancellation';
+
 /** Only HR (hr_admin / super_admin) may clear an hr_admin step; an HR admin still cannot decide their
  *  own request (mirrors assertCanDecide's self-ban). */
 async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId: string, label: string) {
@@ -4522,6 +4600,13 @@ async function assertCanDecideLeaveStep(
   approverEmploymentId?: string | null,
   /** r293 phase 4 — the step's OWN alternates snapshot (the raw jsonb column). */
   approverAlternates?: unknown,
+  /**
+   * r301 (83511d3b) — WHICH DECISION this step belongs to, for the delegation scope. A leave request's steps
+   * are 'leave.application' (the default, so every existing caller is unchanged); a cancellation's copied
+   * steps are 'leave.cancellation', so a stand-in delegated for cancellations only clears cancellation
+   * steps — the same scope a single-level cancellation has always been decided under.
+   */
+  taskType: LeaveDecisionTaskType = 'leave.application',
 ) {
   const alternates = sanitizeApprovalLevels(Array.isArray(approverAlternates) ? approverAlternates : []);
   const approvers: ApprovalApprover[] = [
@@ -4531,7 +4616,7 @@ async function assertCanDecideLeaveStep(
   const refusals: unknown[] = [];
   for (const approver of approvers) {
     try {
-      await assertCanDecideAsApprover(tx, ctx, subjectEmploymentId, approver.kind, label, approver.employmentId);
+      await assertCanDecideAsApprover(tx, ctx, subjectEmploymentId, approver.kind, label, approver.employmentId, taskType);
       return;
     } catch (e) {
       refusals.push(e);
@@ -4549,6 +4634,8 @@ async function assertCanDecideAsApprover(
   kind: string,
   label: string,
   approverEmploymentId?: string | null,
+  /** r301 — see assertCanDecideLeaveStep. Defaults to the leave-application scope every step had before. */
+  taskType: LeaveDecisionTaskType = 'leave.application',
 ) {
   const roles = ctx.roles ?? [];
   const isSuper = roles.includes('super_admin');
@@ -4572,7 +4659,7 @@ async function assertCanDecideAsApprover(
   switch (kind) {
     case 'direct_manager':
       // The direct-manager chain step is a leave APPLICATION decision — a scoped delegation must cover it.
-      return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf('leave.application'));
+      return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf(taskType));
     case 'manager_manager': {
       // r293 phase 2 — THE SECOND HOP, and it mirrors direct_manager by RE-ASKING THE SAME QUESTION ONE
       // LEVEL UP rather than by re-implementing the reporting-line walk. `assertCanDecide` answers "may
@@ -4617,7 +4704,7 @@ async function assertCanDecideAsApprover(
       if (ctx.personId != null && mgrPerson?.personId === ctx.personId) {
         throw new Error(`Only the manager's manager or HR can decide this ${label}`);
       }
-      return assertCanDecide(tx, ctx, mgr.managerEmploymentId, label, scopeOf('leave.application'));
+      return assertCanDecide(tx, ctx, mgr.managerEmploymentId, label, scopeOf(taskType));
     }
     // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
     // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
@@ -4688,7 +4775,7 @@ async function assertCanDecideAsApprover(
       // above still applies to the delegate.
       if (ctx.personId != null) {
         const res = await tx.execute(
-          sql`SELECT app.can_decide_via_delegation_from(app.subject_head(${subjectEmploymentId}, ${kind}), ${subjectEmploymentId}, 'leave', 'leave.application') AS ok`,
+          sql`SELECT app.can_decide_via_delegation_from(app.subject_head(${subjectEmploymentId}, ${kind}), ${subjectEmploymentId}, 'leave', ${taskType}) AS ok`,
         );
         if ((res as unknown as { ok: boolean }[])[0]?.ok) return;
       }
@@ -4981,6 +5068,69 @@ async function finalizeLeaveRejection(
   });
 }
 
+/**
+ * r301 (board 83511d3b) — THE STEP-ADVANCE RULE, extracted out of decideLeave so a cancellation of approved
+ * leave walks the ORIGINAL request's levels by the same rule, not by a copy of it.
+ *
+ * Given a chain's step rows (ordered by step_index), it decides the CURRENT step — the lowest-index pending
+ * one — and says what happens next. Unchanged from decideLeave's inline version:
+ *   · the current step is authorised through assertCanDecideLeaveStep (the per-kind decider gate, the
+ *     any-one alternates, the self-approval ban on every kind, HR admins able to clear any step so a departed
+ *     approver never strands a chain) — under the caller's delegation `taskType`;
+ *   · the decision is written onto that step (by the caller's writer: the two chains live in two tables);
+ *   · a rejection at ANY level is terminal; an approval advances to the next pending step, and only the LAST
+ *     one is final.
+ * Returns null when there is no chain to walk (no rows, or none pending) — the caller's single-step path,
+ * exactly as before. It writes nothing but the step: finalising the request is the caller's business.
+ */
+type ChainStepRow = {
+  id: string;
+  stepIndex: number;
+  approverKind: string;
+  approverEmploymentId: string | null;
+  approverAlternates: unknown;
+  status: string;
+};
+type ChainStepOutcome<S extends ChainStepRow> =
+  | { outcome: 'rejected'; current: S }
+  | { outcome: 'advanced'; current: S; next: S }
+  | { outcome: 'final'; current: S };
+
+async function decideCurrentChainStep<S extends ChainStepRow>(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    steps: readonly S[];
+    subjectEmploymentId: string;
+    label: string;
+    taskType: LeaveDecisionTaskType;
+    decision: 'approved' | 'rejected';
+    writeStepDecision: (stepId: string) => Promise<void>;
+  },
+): Promise<ChainStepOutcome<S> | null> {
+  const current = p.steps.find((s) => s.status === 'pending');
+  if (p.steps.length === 0 || !current) return null;
+  // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind. r293 added
+  // manager_manager (a second hop up the reporting line) and specific_employee (the one FIXED kind);
+  // each kind's resolver lives in assertCanDecideLeaveStep, and the step's OWN `approverEmploymentId`
+  // — the snapshot, not the template — is what a fixed step routes on.
+  await assertCanDecideLeaveStep(
+    tx,
+    ctx,
+    p.subjectEmploymentId,
+    current.approverKind,
+    p.label,
+    current.approverEmploymentId,
+    current.approverAlternates,
+    p.taskType,
+  );
+  await p.writeStepDecision(current.id);
+  if (p.decision === 'rejected') return { outcome: 'rejected', current };
+  const next = p.steps.find((s) => s.stepIndex > current.stepIndex && s.status === 'pending');
+  if (next) return { outcome: 'advanced', current, next };
+  return { outcome: 'final', current };
+}
+
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
  *  finalizes when the last step clears; a rejection at any step is terminal. Without a chain it is a
  *  single approval (the original behavior). */
@@ -5009,34 +5159,32 @@ export async function decideLeave(
       .from(leaveApprovalStep)
       .where(eq(leaveApprovalStep.leaveRequestId, req.id))
       .orderBy(asc(leaveApprovalStep.stepIndex));
-    const current = steps.find((s) => s.status === 'pending');
 
-    // Multi-step chain: decide the current step.
-    if (steps.length > 0 && current) {
-      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind. r293 added
-      // manager_manager (a second hop up the reporting line) and specific_employee (the one FIXED kind);
-      // each kind's resolver lives in assertCanDecideLeaveStep, and the step's OWN `approverEmploymentId`
-      // — the snapshot, not the template — is what a fixed step routes on.
-      await assertCanDecideLeaveStep(
-        tx,
-        ctx,
-        req.employmentId,
-        current.approverKind,
-        'leave request',
-        current.approverEmploymentId,
-        current.approverAlternates,
-      );
-      await tx
-        .update(leaveApprovalStep)
-        .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
-        .where(eq(leaveApprovalStep.id, current.id));
-      if (p.decision === 'rejected') {
+    // Multi-step chain: decide the current step. r301 — the rule for WHICH step, WHO may clear it and WHAT
+    // happens next lives in decideCurrentChainStep, shared with decideLeaveCancellation's copied chain, so
+    // a cancellation walks its levels by this exact rule rather than a second copy of it.
+    const stepOutcome = await decideCurrentChainStep(tx, ctx, {
+      steps,
+      subjectEmploymentId: req.employmentId,
+      label: 'leave request',
+      taskType: 'leave.application',
+      decision: p.decision,
+      writeStepDecision: async (stepId) => {
+        await tx
+          .update(leaveApprovalStep)
+          .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
+          .where(eq(leaveApprovalStep.id, stepId));
+      },
+    });
+    if (stepOutcome) {
+      const { current } = stepOutcome;
+      if (stepOutcome.outcome === 'rejected') {
         // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
         await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason });
         return { status: 'rejected' as const };
       }
-      const next = steps.find((s) => s.stepIndex > current.stepIndex && s.status === 'pending');
-      if (next) {
+      if (stepOutcome.outcome === 'advanced') {
+        const { next } = stepOutcome;
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'leave-request',
@@ -5461,11 +5609,147 @@ async function cancelDatePeriodClosed(tx: Tx, employmentId: string, cancelDate: 
   return !!closed;
 }
 
+// ═════════════════════ Cancel Approved Leave — the leave type's own rule (r301, board 83511d3b) ═════════════════════
+// Until r301 every leave type let an employee ask to cancel approved leave, with the same rule (dates strictly
+// after today), always to the manager alone. Migration 0471 gives each type its own rule and gives a
+// cancellation the ORIGINAL request's approval chain. Everything below is read through ONE resolver,
+// cancelApprovedSettingOf, and ONE date predicate, cancelDateRefusal — the service gate and both screens that
+// offer the "Cancel dates" button (/leave and the Team Leave Tracker) go through the same two, so a button is
+// never offered for a date the service refuses, nor hidden for one it accepts.
+
+/** One leave type's rule for an employee cancelling APPROVED leave of that type (migration 0471). */
+export type CancelApprovedSetting = {
+  /** May the employee ask at all. */
+  allowed: boolean;
+  /** Calendar days before EACH leave date the request must be made. 0 ⇒ strictly after today (the old rule). */
+  noticeDays: number;
+  /** Approved by the system straight away, instead of re-approved through the original request's chain. */
+  autoApprove: boolean;
+  /** Tell the current approver + HR admins (in-app) when a cancellation is requested. */
+  notify: boolean;
+};
+
+/** Today's behaviour, as a setting: what every leave type read before 0471, and what Emergency Leave reads. */
+export const CANCEL_APPROVED_UNCHANGED: CancelApprovedSetting = Object.freeze({
+  allowed: true,
+  noticeDays: 0,
+  autoApprove: false,
+  notify: false,
+});
+
+/** The leave_type columns cancelApprovedSettingOf reads, as a select map (plus the identity it needs). */
+export const cancelApprovedTypeColumns = {
+  code: leaveType.code,
+  role: leaveType.role,
+  name: leaveType.name,
+  i18n: leaveType.i18n,
+  employeeCancelApproved: leaveType.employeeCancelApproved,
+  cancelNoticeDays: leaveType.cancelNoticeDays,
+  cancelAutoApprove: leaveType.cancelAutoApprove,
+  cancelNotify: leaveType.cancelNotify,
+} as const;
+
+/**
+ * THE ONE READING of a leave type's Cancel Approved Leave card.
+ *
+ *  · Emergency Leave reads today's behaviour whatever its columns say. Its card is hidden (as backdating and
+ *    advance notice are), because an EL submission is already split into Annual + Unpaid children, which the
+ *    grouped-row gate refuses anyway; a stored value HR cannot see must not change what happens.
+ *  · Replacement Leave is never approved automatically. Giving it back returns the credit to the register
+ *    (restoreReplacementLeaveTx), and migration 0469's RLS refuses a register write made under the employee's
+ *    own session — which is exactly the session an automatic approval runs in. updateLeaveType refuses the
+ *    setting for the type; this is the second half of the same rule, for a type that became Replacement
+ *    Leave after the setting was saved.
+ *  · A missing type (never expected: the leave row has an FK to it) reads as NOT allowed — fail closed.
+ */
+export function cancelApprovedSettingOf(
+  lt:
+    | {
+        role?: string | null;
+        code?: string | null;
+        employeeCancelApproved?: boolean | null;
+        cancelNoticeDays?: number | null;
+        cancelAutoApprove?: boolean | null;
+        cancelNotify?: boolean | null;
+      }
+    | null
+    | undefined,
+): CancelApprovedSetting {
+  if (lt == null) return { allowed: false, noticeDays: 0, autoApprove: false, notify: false };
+  if (leaveTypeIs(lt, 'emergency')) return { ...CANCEL_APPROVED_UNCHANGED };
+  const notice = Number(lt.cancelNoticeDays ?? 0);
+  return {
+    allowed: lt.employeeCancelApproved === true,
+    noticeDays: Number.isInteger(notice) && notice > 0 ? notice : 0,
+    autoApprove: lt.cancelAutoApprove === true && !leaveTypeIs(lt, 'replacement'),
+    notify: lt.cancelNotify === true,
+  };
+}
+
+/** Whole calendar days from `from` to `to` (both tenant-local yyyy-mm-dd; UTC midnight arithmetic, no DST). */
+function calendarDaysFrom(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * Why ONE leave date cannot be given back today, or null when it can. Counted PER DATE, so the later days of
+ * a leave that has already started stay cancellable while each is far enough away.
+ *   'started'   — the date is today or earlier (the rule that has always applied; tenant-local today).
+ *   'too_close' — fewer than `noticeDays` calendar days from today to the date. 0 adds nothing to 'started'.
+ */
+export function cancelDateRefusal(date: string, today: string, noticeDays: number): 'started' | 'too_close' | null {
+  if (date <= today) return 'started';
+  if (noticeDays > 0 && calendarDaysFrom(today, date) < noticeDays) return 'too_close';
+  return null;
+}
+
+/**
+ * THE BUTTON PREDICATE, shared by /leave and the Team Leave Tracker (computed on the server in both).
+ *
+ * null ⇒ offer NO cancel affordance for this row: not approved full-day leave, an Emergency-Leave or per-date
+ * child, a cancellation already pending, the type's switch off, or a leave with unpaid days (refused at
+ * request time since r301). An array ⇒ offer it, with exactly the dates the service would accept on the
+ * date rules; an EMPTY array keeps today's disabled "nothing left to cancel" button. The closed-payroll check
+ * is a per-date database read and stays in the service, where it refuses with its own message.
+ */
+export function employeeCancellableDates(
+  row: {
+    status: string;
+    durationType: string | null;
+    parentGroupId: string | null;
+    isCancellationSplit?: boolean | null;
+    pendingCancellationId?: string | null;
+    unpaidDays?: string | number | null;
+  },
+  workingDates: readonly string[],
+  setting: CancelApprovedSetting,
+  today: string,
+): string[] | null {
+  if (row.status !== 'approved' || row.durationType !== 'full_day') return null;
+  if (row.parentGroupId != null && !row.isCancellationSplit) return null;
+  if (row.pendingCancellationId) return null;
+  if (!setting.allowed) return null;
+  if (Number(row.unpaidDays ?? 0) > 0) return null;
+  return workingDates.filter((d) => cancelDateRefusal(d, today, setting.noticeDays) === null);
+}
+
 /**
  * Employee-initiated request to cancel a SUBSET of an approved leave's dates. Runs every §2 gate + the §6
  * subject check + the §3 pending-overlap guard, then inserts a pending leave_cancellation_request and
  * appends `leave-cancellation.requested`. No ledger / leave_request change here — the give-back happens only
- * on manager approval (decideLeaveCancellation).
+ * on approval (decideLeaveCancellation).
+ *
+ * r301 (board 83511d3b) — and now, the leave type's own rule:
+ *   · the type must allow it (employee_cancel_approved); HR's adminCancelLeave never reads this switch;
+ *   · each date must be at least cancel_notice_days away (cancelDateRefusal);
+ *   · a leave with unpaid days is refused HERE, where the decision used to refuse it only after it had
+ *     waited for an approver;
+ *   · re-approval COPIES the original request's approval chain into leave_cancellation_step (a split
+ *     survivor is traced back through leave-request.split to the request that holds the steps); no steps ⇒
+ *     the single-level decision a cancellation always had;
+ *   · automatic approval runs decideLeaveCancellation's approve body (applyLeaveCancellationApprovalTx)
+ *     inside THIS transaction as a system decision — never through assertCanDecide, whose self-approval ban
+ *     is about a person deciding their own request and stays exactly as it is.
  */
 export async function requestLeaveCancellation(
   ctx: SessionContext,
@@ -5475,7 +5759,18 @@ export async function requestLeaveCancellation(
 ) {
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    // r301 hand-fix (verifier defect 1) — LOCK THE LEAVE ROW. Everything below reads this row and the pending
+    // cancellations on it to decide what may be given back, and an automatic approval then splits it in this
+    // same transaction. Unlocked, two requests at the same moment (two tabs, or a crafted POST) each saw the
+    // leave as it was before the other: both approved, the same day came back twice and the approved rows
+    // overlapped. Locked, the second waits, re-reads the row the first one split, and is refused. The order is
+    // leave row, then cancellation row — the same as decideLeaveCancellation and adminCancelLeave.
+    const [req] = await tx
+      .select()
+      .from(leaveRequest)
+      .where(eq(leaveRequest.id, p.leaveRequestId))
+      .limit(1)
+      .for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
 
     // §6(1): subject-only. RLS is symmetric (a manager can SEE a subordinate's leave) so the "employee-
@@ -5483,29 +5778,54 @@ export async function requestLeaveCancellation(
     // and require the caller is that person.
     const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
-      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave');
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
 
     // §2 gates against the request itself.
-    if (req.status !== 'approved') throw new LeaveCancellationNotAllowedError('the leave is not approved');
+    if (req.status !== 'approved') throw new LeaveCancellationNotAllowedError('the leave is not approved', 'not_approved');
     if (req.durationType !== 'full_day') {
-      throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled');
+      throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled', 'not_full_day');
     }
     if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId))) {
       // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group), but
       // ADMITS a surviving row of a prior CANCELLATION split so the employee can give back more days later
       // (R5 Build #2 — iterative cancellation; ADR-0065). A cancellation-split group is detected by a
       // 'cancelled' sibling; an EL / per-date group never has one.
-      throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled');
+      throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled', 'grouped');
     }
     const [lt] = await tx
-      // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
-      // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
-      // 3fb1a611: `role` too — leaveTypeIs resolves the role first and only then falls back to the code.
-      .select({ code: leaveType.code, role: leaveType.role, dayTypeInclusion: leaveType.dayTypeInclusion })
+      .select({
+        // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
+        // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
+        dayTypeInclusion: leaveType.dayTypeInclusion,
+        // 3fb1a611: `role` too — leaveTypeIs resolves the role first and only then falls back to the code.
+        // r301: the Cancel Approved Leave card, name + translations for the refusal that names the type.
+        ...cancelApprovedTypeColumns,
+      })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
+    // r301 — THE LEAVE TYPE'S OWN RULE, asked before anything about dates: an employee whose type does not
+    // allow it is told so, rather than told that some date is wrong.
+    const setting = cancelApprovedSettingOf(lt);
+    const typeName = lt?.name ?? 'Leave';
+    const typeI18n = (lt?.i18n ?? null) as Record<string, { name: string }> | null;
+    if (!setting.allowed) {
+      throw new LeaveCancellationNotAllowedError(
+        `${typeName} does not allow employees to cancel approved leave`,
+        'type_off',
+        typeName,
+        typeI18n,
+      );
+    }
+    // r301 — Allow Unpaid Leave (a7fab30b): a part-unpaid request cannot go through the give-back SPLIT (see
+    // applyLeaveCancellationApprovalTx for why). This refusal used to exist ONLY at decision time, so the
+    // employee's request was accepted, waited for an approver, and was then refused under their approver's
+    // button. Refused here as well now, where the employee can read why; the decision keeps its own copy for
+    // a request that predates this check.
+    if (Number(req.unpaidDays ?? 0) > 0) {
+      throw new LeaveCancellationNotAllowedError('leave with unpaid days cannot be partially cancelled', 'unpaid_days');
+    }
     // 3fb1a611 (r299) — THIS WAS A FLAT REFUSAL ("replacement (time-off-in-lieu) leave cannot be cancelled"),
     // and it was right while there was no inverse of consumeReplacementLeaveTx: giving the DAY back without the
     // CREDIT leaves a balance with no credit behind it. The inverse exists now, so the refusal narrows to the
@@ -5529,30 +5849,37 @@ export async function requestLeaveCancellation(
       workingDates = workingDates.filter((d) => approvedSet.has(d));
     }
     const workingSet = new Set(workingDates);
-    // Per-date future check: each cancelDate must be strictly after `today` (MYT — resolved at the top of this
-    // function, injectable for tests). R5 Build #2 Fix B: was a UTC clock, wrong near KL midnight.
+    // Per-date checks: each cancelDate must be a working date of this leave, strictly after `today` (MYT —
+    // resolved at the top of this function, injectable for tests; R5 Build #2 Fix B), r301: at least the
+    // type's notice period away, and outside a closed payroll month.
     const cancelDates = [...new Set(p.cancelDates.map((d) => d.trim()))].sort();
     if (cancelDates.length === 0) throw new LeaveCancellationDateInvalidError();
     for (const d of cancelDates) {
       if (!workingSet.has(d)) throw new LeaveCancellationDateInvalidError(d); // outside span or non-working day
-      if (d <= today) throw new LeaveCancellationTooLateError(d); // per-date future gate
+      const refusal = cancelDateRefusal(d, today, setting.noticeDays);
+      if (refusal === 'started') throw new LeaveCancellationTooLateError(d); // per-date future gate
+      if (refusal === 'too_close') throw new LeaveCancellationTooCloseError(d, setting.noticeDays, typeName, typeI18n);
       if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
     }
 
-    // §3: another PENDING cancellation request on the same leave may already target one of these dates.
-    // Reject the overlap so two pending requests can't both approve and double-restore.
-    const pendings = await tx
-      .select({ cancelDates: leaveCancellationRequest.cancelDates })
+    // §3: ONE pending cancellation per leave row. r301 hand-fix (verifier defect 4): this used to refuse only
+    // an OVERLAPPING second request. A non-overlapping one was accepted, and whichever was approved first split
+    // the row, so the other's dates were no longer on it: its approval then "succeeded" giving back 0 days and
+    // told the employee the leave was cancelled. The screen already hides Cancel while one is pending; the
+    // service now says the same. (A request that predates this is refused at decision — see
+    // applyLeaveCancellationApprovalTx.)
+    const [pending] = await tx
+      .select({ id: leaveCancellationRequest.id })
       .from(leaveCancellationRequest)
       .where(
         and(
           eq(leaveCancellationRequest.leaveRequestId, req.id),
           eq(leaveCancellationRequest.status, 'pending'),
         ),
-      );
-    const pendingSet = new Set(pendings.flatMap((r) => (r.cancelDates as string[]) ?? []));
-    if (cancelDates.some((d) => pendingSet.has(d))) {
-      throw new LeaveCancellationNotAllowedError('a pending cancellation already covers one of these dates');
+      )
+      .limit(1);
+    if (pending) {
+      throw new LeaveCancellationNotAllowedError('a cancellation of this leave is already waiting for approval', 'already_pending');
     }
 
     // requestedDays = the WEIGHTED total of the cancel dates (Feedback 31474452 4e) — each is a working date
@@ -5592,6 +5919,45 @@ export async function requestLeaveCancellation(
         status: 'pending',
       })
       .returning({ id: leaveCancellationRequest.id });
+
+    // r301 — SAME APPROVAL CHAIN. Copy the ORIGINAL request's steps onto the cancellation, in order, with the
+    // same kind, the same named approver and the same alternates, all pending. The original's own rows cannot
+    // be walked again (they are already decided), and a copy — like leave_approval_step itself — cannot be
+    // changed under the cancellation by a later template edit. A survivor of an earlier partial cancellation
+    // is a NEW row with no steps of its own: consumptionRootRequestIdTx follows its leave-request.split
+    // lineage (splitFromRequestId, 3fb1a611) back to the request that was approved, which holds them.
+    // An automatic approval copies nothing: there is nobody to walk.
+    type CopiedStep = { stepIndex: number; approverKind: string; approverEmploymentId: string | null; approverAlternates: unknown };
+    let copiedSteps: CopiedStep[] = [];
+    if (!setting.autoApprove) {
+      const root = await consumptionRootRequestIdTx(tx, ctx, req.id);
+      copiedSteps = await tx
+        .select({
+          stepIndex: leaveApprovalStep.stepIndex,
+          approverKind: leaveApprovalStep.approverKind,
+          approverEmploymentId: leaveApprovalStep.approverEmploymentId,
+          approverAlternates: leaveApprovalStep.approverAlternates,
+        })
+        .from(leaveApprovalStep)
+        .where(eq(leaveApprovalStep.leaveRequestId, root))
+        .orderBy(asc(leaveApprovalStep.stepIndex));
+      if (copiedSteps.length > 0) {
+        await tx.insert(leaveCancellationStep).values(
+          copiedSteps.map((s) => ({
+            tenantId: ctx.tenantId,
+            cancellationRequestId: row.id,
+            subjectEmploymentId: req.employmentId,
+            stepIndex: s.stepIndex,
+            approverKind: s.approverKind,
+            approverEmploymentId: s.approverEmploymentId,
+            // NULL, not [], exactly as generateApprovalSteps writes it (r293 phase 4).
+            approverAlternates: s.approverAlternates ?? null,
+          })),
+        );
+      }
+    }
+
+    const firstStep = copiedSteps[0];
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-cancellation-request',
@@ -5599,32 +5965,101 @@ export async function requestLeaveCancellation(
       eventType: 'leave-cancellation.requested',
       actor: actorOf(ctx),
       subjectEmploymentId: req.employmentId,
-      payload: { leaveRequestId: req.id, cancelDates, requestedDays },
+      payload: {
+        leaveRequestId: req.id,
+        cancelDates,
+        requestedDays,
+        // r301 — the display facts and the routing SNAPSHOT the notification reads (renderers are
+        // payload-only, and dispatch can run later than this): whether HR asked to be told, whether it was
+        // approved automatically, and who the first level is — never re-resolved from the chain afterwards.
+        leaveTypeName: typeName,
+        autoApproved: setting.autoApprove,
+        notify: setting.notify,
+        stepCount: copiedSteps.length,
+        firstStep: firstStep
+          ? {
+              kind: firstStep.approverKind,
+              employmentId: firstStep.approverEmploymentId,
+              alternates: firstStep.approverAlternates ?? null,
+            }
+          : null,
+      },
     });
-    return { cancellationRequestId: row.id, requestedDays };
+
+    if (setting.autoApprove) {
+      // r301 — AUTO-APPROVE: the approve body decideLeaveCancellation runs, in this transaction, recorded as a
+      // SYSTEM decision. The closed-payroll month was already refused per date above, in the same transaction.
+      const approved = await applyLeaveCancellationApprovalTx(tx, ctx, {
+        cr: { id: row.id, leaveRequestId: req.id, cancelDates },
+        deciderEmploymentId: null,
+        actor: { type: 'system' },
+        autoApproved: true,
+      });
+      return { cancellationRequestId: row.id, requestedDays, status: 'approved' as const, restoredDays: approved.restoredDays };
+    }
+    return { cancellationRequestId: row.id, requestedDays, status: 'pending' as const };
   });
 }
 
 /**
- * Manager decision on a cancellation request (single step). Reject ⇒ flip to 'rejected', nothing else. Approve
- * ⇒ in one transaction: split the approved span into contiguous sibling rows (each with its own debit), flip
- * the cancelled segment(s) to 'cancelled' and reverse their debit, and append events on BOTH aggregates.
+ * Decision on a cancellation request.
+ *
+ * r301 (board 83511d3b) — the decision walks the cancellation's COPY of the original request's approval chain
+ * (leave_cancellation_step), level by level, through decideCurrentChainStep: the same step-advance rule and the
+ * same per-kind decider gate decideLeave uses, under the 'leave.cancellation' delegation scope. A rejection at
+ * any level is terminal and leaves the leave exactly as it was (approved); an approval advances, and only the
+ * last level applies the cancellation. No steps (a single-level chain) ⇒ today's single decision: the
+ * subject's current administrative manager, an admin, or their delegate (assertCanDecide).
+ *
+ * Reject ⇒ flip to 'rejected', nothing else. Approve ⇒ applyLeaveCancellationApprovalTx.
  */
 export async function decideLeaveCancellation(
   ctx: SessionContext,
   p: { cancellationRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
+    // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
+    // pressing Approve at once used to both read 'pending'; the second now waits and reads the first's outcome.
+    const [peek] = await tx
+      .select({ leaveRequestId: leaveCancellationRequest.leaveRequestId })
+      .from(leaveCancellationRequest)
+      .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
+      .limit(1);
+    if (!peek) throw new Error('cancellation request not found (or not visible)');
+    await tx.select({ id: leaveRequest.id }).from(leaveRequest).where(eq(leaveRequest.id, peek.leaveRequestId)).for('update');
     const [cr] = await tx
       .select()
       .from(leaveCancellationRequest)
       .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!cr) throw new Error('cancellation request not found (or not visible)');
     if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
 
-    // Self-approval ban + manager/admin authorization — service-layer (RLS is symmetric, §6(2)).
-    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation', scopeOf('leave.cancellation'));
+    const steps = await tx
+      .select()
+      .from(leaveCancellationStep)
+      .where(eq(leaveCancellationStep.cancellationRequestId, cr.id))
+      .orderBy(asc(leaveCancellationStep.stepIndex));
+    const stepOutcome = await decideCurrentChainStep(tx, ctx, {
+      steps,
+      subjectEmploymentId: cr.employmentId,
+      label: 'leave cancellation',
+      taskType: 'leave.cancellation',
+      decision: p.decision,
+      writeStepDecision: async (stepId) => {
+        await tx
+          .update(leaveCancellationStep)
+          .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
+          .where(eq(leaveCancellationStep.id, stepId));
+      },
+    });
+    // Single-level chain: self-approval ban + manager/admin authorization — service-layer (RLS is symmetric,
+    // §6(2)). Exactly the gate every cancellation was decided under before r301.
+    if (!stepOutcome) {
+      await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation', scopeOf('leave.cancellation'));
+    }
 
     if (p.decision === 'rejected') {
       await tx
@@ -5638,236 +6073,382 @@ export async function decideLeaveCancellation(
         eventType: 'leave-cancellation.rejected',
         actor: actorOf(ctx),
         subjectEmploymentId: cr.employmentId,
-        payload: { leaveRequestId: cr.leaveRequestId, cancelDates: cr.cancelDates },
+        payload: {
+          leaveRequestId: cr.leaveRequestId,
+          cancelDates: cr.cancelDates,
+          // r301 — which level said no, and the type's name for the employee's notification.
+          ...(stepOutcome ? { step: stepOutcome.current.stepIndex, kind: stepOutcome.current.approverKind } : {}),
+          leaveTypeName: await leaveTypeNameForRequest(tx, cr.leaveRequestId),
+        },
       });
       return { status: 'rejected' as const };
     }
 
-    // ── Approved ──────────────────────────────────────────────────────────────────────────────────────
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1);
-    if (!req) throw new Error('leave request not found');
-    // Re-assert the request is still a cancellable approved row. A prior cancellation may have split it (giving
-    // it a parentGroupId) — that survivor is STILL cancellable (R5 Build #2 — iterative cancellation), so admit
-    // a cancellation-split group here as well; only genuine EL / per-date children stay blocked.
-    if (
-      req.status !== 'approved' ||
-      (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId)))
-    ) {
-      throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state');
-    }
-    // Allow Unpaid Leave (a7fab30b): a part-unpaid request cannot go through the give-back SPLIT. This path
-    // works by reversing the whole-span debit and re-debiting each surviving segment — which only balances
-    // because sum(segment days) === req.days. On a part-unpaid request the original debit was smaller than
-    // req.days, and there is no fact on the row saying WHICH dates were the unpaid ones, so any split would
-    // restore days the employee was never charged for. Refused rather than silently mis-restored; whole-request
-    // cancellation (which reverses the actual net ledger movement) still works and is the correct route.
-    if (Number(req.unpaidDays ?? 0) > 0) {
-      throw new LeaveCancellationNotAllowedError('leave with unpaid days cannot be partially cancelled');
+    if (stepOutcome?.outcome === 'advanced') {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-cancellation-request',
+        aggregateId: cr.id,
+        eventType: 'leave-cancellation.step.approved',
+        actor: actorOf(ctx),
+        subjectEmploymentId: cr.employmentId,
+        payload: {
+          leaveRequestId: cr.leaveRequestId,
+          step: stepOutcome.current.stepIndex,
+          kind: stepOutcome.current.approverKind,
+          nextKind: stepOutcome.next.approverKind,
+        },
+      });
+      return { status: 'pending' as const, advancedTo: stepOutcome.next.approverKind };
     }
 
-    const cancelDates = (cr.cancelDates as string[]) ?? [];
-    const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
-    // Day Type Inclusion (feedback ef6d7146): resolve the type's re-inclusion vector so the give-back split
-    // spans exactly the day types the original debit counted. Without this a re-included rest/PH date would be
-    // absent from workingDates, so sum(segment days) < req.days and the whole-span reversal below would
-    // over-restore. undefined ⇒ byte-identical legacy split.
-    const [decLt] = await tx
-      // 3fb1a611: role + code as well — the register give-back below is keyed on leaveTypeIs(decLt, 'replacement').
-      .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code })
-      .from(leaveType)
-      .where(eq(leaveType.id, req.leaveTypeId))
-      .limit(1);
-    const decIncl = normalizeDayTypeInclusion(decLt?.dayTypeInclusion);
-    // Feedback 31474452 (4e): resolve the CURRENT schedule/toggle config (as today — a pre-existing property,
-    // not a new behaviour) and thread each working date's real WEIGHT through the split, so a cancelled Half
-    // date gives back exactly the configured amount (0.5 OFF / 1.0 ON) instead of always 1.
-    const sched = await resolveSchedule(tx, req.employmentId);
-    const workingDates = eachDate(req.startDate, req.endDate)
-      .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
-      .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
-    const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
+    const approved = await applyLeaveCancellationApprovalTx(tx, ctx, {
+      cr,
+      deciderEmploymentId: p.deciderEmploymentId ?? null,
+      actor: actorOf(ctx),
+    });
+    // Spelled out rather than spread: a spread is not normalised into the union the other returns form, and
+    // callers read `restoredDays` off the result without first narrowing on `status`.
+    return {
+      status: 'approved' as const,
+      restoredDays: approved.restoredDays,
+      remainingDays: approved.remainingDays,
+      remainingDates: approved.remainingDates,
+    };
+  });
+}
 
-    // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
-    // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
-    // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
-    // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
-    const parentGroupId = randomUUID();
-    // Balance Deduction Source (cdf9ca48): the reversal and the per-segment re-debits below must land on the
-    // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
-    // and leave the borrowed one permanently short. Resolved once for the whole split.
-    const cancelBalanceTypeId = await resolveBalanceSourceTypeId(tx, req.leaveTypeId);
-    // 1) Reverse the original whole-span debit (inverse of finalizeLeaveApproval's single debit).
+/** r301 — the leave type's display name behind a leave request, for a decision event's notification. */
+async function leaveTypeNameForRequest(tx: Tx, leaveRequestId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ name: leaveType.name })
+    .from(leaveRequest)
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .where(eq(leaveRequest.id, leaveRequestId))
+    .limit(1);
+  return row?.name ?? null;
+}
+
+/**
+ * THE APPROVE BODY of a cancellation — extracted from decideLeaveCancellation (r301) so an automatic approval
+ * performs exactly it, not a second copy. Callers: decideLeaveCancellation once the last level approves (or
+ * the single-level decision), and requestLeaveCancellation's auto-approve, as a `system` actor.
+ *
+ * In one transaction: split the approved span into contiguous sibling rows (each with its own debit), flip the
+ * cancelled segment(s) to 'cancelled' and reverse their debit, give a Replacement Leave's credit back to the
+ * register, mark the cancellation approved, and append events on BOTH aggregates — every one of them carrying
+ * `p.actor`, so an automatic approval is recorded as the system's and a manual one as the approver's.
+ */
+async function applyLeaveCancellationApprovalTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    cr: { id: string; leaveRequestId: string; cancelDates: unknown };
+    deciderEmploymentId: string | null;
+    actor: Actor;
+    /** r301 — set when the leave type approves cancellations automatically; stamped on the approved event. */
+    autoApproved?: boolean;
+  },
+): Promise<{ restoredDays: number; remainingDays: number; remainingDates: string[] }> {
+  const { cr } = p;
+  // r301 hand-fix (verifier defect 1): locked — both callers already hold it; taking it here keeps this body
+  // safe for any future caller that does not.
+  const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1).for('update');
+  if (!req) throw new Error('leave request not found');
+  // Re-assert the request is still a cancellable approved row. A prior cancellation may have split it (giving
+  // it a parentGroupId) — that survivor is STILL cancellable (R5 Build #2 — iterative cancellation), so admit
+  // a cancellation-split group here as well; only genuine EL / per-date children stay blocked.
+  if (
+    req.status !== 'approved' ||
+    (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId)))
+  ) {
+    throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
+  }
+  // Allow Unpaid Leave (a7fab30b): a part-unpaid request cannot go through the give-back SPLIT. This path
+  // works by reversing the whole-span debit and re-debiting each surviving segment — which only balances
+  // because sum(segment days) === req.days. On a part-unpaid request the original debit was smaller than
+  // req.days, and there is no fact on the row saying WHICH dates were the unpaid ones, so any split would
+  // restore days the employee was never charged for. Refused rather than silently mis-restored; whole-request
+  // cancellation (which reverses the actual net ledger movement) still works and is the correct route.
+  // r301: requestLeaveCancellation now refuses this at request time too; this copy stays for a request that
+  // was already pending when that check shipped.
+  if (Number(req.unpaidDays ?? 0) > 0) {
+    throw new LeaveCancellationNotAllowedError('leave with unpaid days cannot be partially cancelled', 'unpaid_days');
+  }
+
+  const cancelDates = (cr.cancelDates as string[]) ?? [];
+  const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
+  // Day Type Inclusion (feedback ef6d7146): resolve the type's re-inclusion vector so the give-back split
+  // spans exactly the day types the original debit counted. Without this a re-included rest/PH date would be
+  // absent from workingDates, so sum(segment days) < req.days and the whole-span reversal below would
+  // over-restore. undefined ⇒ byte-identical legacy split.
+  const [decLt] = await tx
+    // 3fb1a611: role + code as well — the register give-back below is keyed on leaveTypeIs(decLt, 'replacement').
+    // r301: name, for the employee's notification.
+    .select({ dayTypeInclusion: leaveType.dayTypeInclusion, role: leaveType.role, code: leaveType.code, name: leaveType.name })
+    .from(leaveType)
+    .where(eq(leaveType.id, req.leaveTypeId))
+    .limit(1);
+  const decIncl = normalizeDayTypeInclusion(decLt?.dayTypeInclusion);
+  // Feedback 31474452 (4e): resolve the CURRENT schedule/toggle config (as today — a pre-existing property,
+  // not a new behaviour) and thread each working date's real WEIGHT through the split, so a cancelled Half
+  // date gives back exactly the configured amount (0.5 OFF / 1.0 ON) instead of always 1.
+  const sched = await resolveSchedule(tx, req.employmentId);
+  // r301 hand-fix (verifier defect 2) — A PER-DATE-APPROVED LEAVE SPLITS OVER ITS APPROVED DATES ONLY. This used
+  // to split the whole span, so a date the approver REJECTED became part of a surviving row with no per-date
+  // rows of its own — i.e. approved leave (approvedLeaveDates expands such a row's span) that /leave then
+  // offered for cancellation, giving back a day that was never charged. requestLeaveCancellation and the /leave
+  // read already offer only the approved dates; the split now agrees with them.
+  const dateRows = await tx
+    .select({ id: leaveRequestDate.id, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+    .from(leaveRequestDate)
+    .where(eq(leaveRequestDate.leaveRequestId, req.id));
+  const approvedDateSet = dateRows.length > 0 ? new Set(dateRows.filter((d) => d.status === 'approved').map((d) => d.leaveDate)) : null;
+  const workingDates = eachDate(req.startDate, req.endDate)
+    .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
+    .filter((d) => !approvedDateSet || approvedDateSet.has(d))
+    .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
+  // r301 hand-fix (verifier defect 4) — EVERY DATE ASKED FOR MUST STILL BE ON THIS ROW. A cancellation decided
+  // after another one split the row (a second pending request from before the one-pending rule, or the row
+  // changed some other way) used to be approved with 0 days given back and a notification saying the leave was
+  // cancelled. Refused instead; the approver can reject it and the employee asks again on the leave as it is now.
+  const cancellableNow = new Set(workingDates.map((w) => w.date));
+  if (cancelDates.length === 0 || cancelDates.some((d) => !cancellableNow.has(d))) {
+    throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state', 'no_longer_cancellable');
+  }
+  // r301 hand-fix (verifier defect 3) — A CLOSED PAYROLL MONTH IS ASKED AT THE DECISION TOO. The request only
+  // checked it when the employee asked; with a chain of approvers the month can close in between, and the last
+  // approval then gave days back inside a payslip that is final. Same rule, same error as the request's.
+  for (const d of cancelDates) {
+    if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
+  }
+  const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
+
+  // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
+  // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
+  // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
+  // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
+  const parentGroupId = randomUUID();
+  // Balance Deduction Source (cdf9ca48): the reversal and the per-segment re-debits below must land on the
+  // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
+  // and leave the borrowed one permanently short. Resolved once for the whole split.
+  const cancelBalanceTypeId = await resolveBalanceSourceTypeId(tx, req.leaveTypeId);
+  // 1) Reverse what this row was ACTUALLY charged (inverse of finalizeLeaveApproval's single debit, or of a
+  //    previous split's re-debit). r301 hand-fix (verifier defect 2): this reversed `req.days`, which on a
+  //    per-date-approved leave still counts the rejected dates the debit never included — 5 reversed against a
+  //    4-day debit, balanced only while the rejected day sat inside a survivor. The net ledger sum sourced to the
+  //    row is what adminCancelLeave reverses for the same reason; for every other leave it equals -req.days.
+  const [netRow] = await tx
+    .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+    .from(leaveLedger)
+    .where(eq(leaveLedger.sourceRequestId, req.id));
+  const chargedDays = round2(-Number(netRow?.net ?? 0));
+  if (chargedDays > 0) {
     await tx.insert(leaveLedger).values({
       tenantId: ctx.tenantId,
       employmentId: req.employmentId,
       leaveTypeId: cancelBalanceTypeId,
       entryType: 'debit',
-      days: Number(req.days).toFixed(2), // positive = reversal of the original negative debit
+      days: chargedDays.toFixed(2), // positive = reversal of the original negative debit
       sourceRequestId: req.id,
       effectiveOn: req.startDate, // same cycle/carry window as the original debit (window-consistent, §1 caveat)
     });
+  }
 
-    const cancelledRowIds: string[] = [];
-    const remainingDates: string[] = [];
-    // R5 Build #2: surviving NEW sibling rows (i>0, approved). The attachment(s) live on the reused segment[0]
-    // row only; when segment[0] is itself cancelled (the employee gave back the FIRST date), a survivor that is
-    // NOT segment[0] would show no MC. So we copy the original attachment(s) onto these survivors after the loop.
-    const survivingNewRowIds: string[] = [];
-    let restoredDays = 0;
-    let remainingDays = 0;
+  const cancelledRowIds: string[] = [];
+  const remainingDates: string[] = [];
+  // R5 Build #2: surviving NEW sibling rows (i>0, approved). The attachment(s) live on the reused segment[0]
+  // row only; when segment[0] is itself cancelled (the employee gave back the FIRST date), a survivor that is
+  // NOT segment[0] would show no MC. So we copy the original attachment(s) onto these survivors after the loop.
+  const survivingNewRowIds: string[] = [];
+  let restoredDays = 0;
+  let remainingDays = 0;
 
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      const isCancelled = cancelledSegmentIndexes.includes(i);
-      const segDays = seg.days;
-      let rowId: string;
-      if (i === 0) {
-        // Reuse the original row for the first segment (preserve its attachments / approval-step FKs).
-        rowId = req.id;
-        await tx
-          .update(leaveRequest)
-          .set({
-            startDate: seg.from,
-            endDate: seg.to,
-            days: segDays.toFixed(2),
-            parentGroupId,
-            status: isCancelled ? 'cancelled' : 'approved',
-          })
-          .where(eq(leaveRequest.id, req.id));
-      } else {
-        const [created] = await tx
-          .insert(leaveRequest)
-          .values({
-            tenantId: ctx.tenantId,
-            employmentId: req.employmentId,
-            leaveTypeId: req.leaveTypeId,
-            startDate: seg.from,
-            endDate: seg.to,
-            days: segDays.toFixed(2),
-            durationType: 'full_day',
-            status: isCancelled ? 'cancelled' : 'approved',
-            reason: req.reason,
-            parentGroupId,
-            decidedByEmploymentId: req.decidedByEmploymentId,
-            decidedAt: req.decidedAt,
-          })
-          .returning({ id: leaveRequest.id });
-        rowId = created.id;
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'leave-request',
-          aggregateId: rowId,
-          eventType: 'leave-request.split',
-          actor: actorOf(ctx),
-          subjectEmploymentId: req.employmentId,
-          // 3fb1a611: `splitFromRequestId` — the row this segment was cut from. A Replacement Leave's credit
-          // consumption is recorded against the request that was APPROVED; a later cancellation of this new
-          // segment follows this link back to it (core/toil.ts consumptionRootRequestIdTx). Additive.
-          payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays, splitFromRequestId: req.id },
-        });
-      }
-
-      // Each segment gets its OWN debit sourced to its own row (mirrors the EL per-row sourcing). A cancelled
-      // segment is NOT debited (its days were restored by the whole-span reversal above), so the net effect is
-      // exactly: balance up + taken down by the cancelled days, survivors unchanged.
-      if (!isCancelled) {
-        await tx.insert(leaveLedger).values({
-          tenantId: ctx.tenantId,
-          employmentId: req.employmentId,
-          leaveTypeId: cancelBalanceTypeId,
-          entryType: 'debit',
-          days: (-segDays).toFixed(2),
-          sourceRequestId: rowId,
-          effectiveOn: seg.from,
-        });
-        remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
-        remainingDays += segDays;
-        if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
-      } else {
-        cancelledRowIds.push(rowId);
-        restoredDays += segDays;
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'leave-request',
-          aggregateId: rowId,
-          eventType: 'leave-request.cancelled',
-          actor: actorOf(ctx),
-          subjectEmploymentId: req.employmentId,
-          payload: { cancelDate: seg.from, restoredDays: segDays, parentGroupId },
-        });
-      }
-    }
-
-    // R5 Build #2: copy the original request's attachment(s) onto surviving NEW sibling rows so the MC stays
-    // visible on whichever survivor the employee holds — including when they gave back the FIRST date (segment[0]
-    // is reused for that cancelled date, so its survivors are all new rows). The attachment rows live on req.id;
-    // duplicating the (small) MC bytes onto each survivor keeps getLeaveAttachment(survivorId) truthful without a
-    // schema change. Only runs when there IS at least one attachment AND at least one new-row survivor.
-    if (survivingNewRowIds.length > 0) {
-      const atts = await tx
-        .select({
-          content: leaveRequestAttachment.content,
-          fileName: leaveRequestAttachment.fileName,
-          mimeType: leaveRequestAttachment.mimeType,
-          sizeBytes: leaveRequestAttachment.sizeBytes,
-          uploadedByUserId: leaveRequestAttachment.uploadedByUserId,
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const isCancelled = cancelledSegmentIndexes.includes(i);
+    const segDays = seg.days;
+    let rowId: string;
+    if (i === 0) {
+      // Reuse the original row for the first segment (preserve its attachments / approval-step FKs).
+      rowId = req.id;
+      await tx
+        .update(leaveRequest)
+        .set({
+          startDate: seg.from,
+          endDate: seg.to,
+          days: segDays.toFixed(2),
+          parentGroupId,
+          status: isCancelled ? 'cancelled' : 'approved',
         })
-        .from(leaveRequestAttachment)
-        .where(eq(leaveRequestAttachment.leaveRequestId, req.id));
-      if (atts.length > 0) {
-        await tx.insert(leaveRequestAttachment).values(
-          survivingNewRowIds.flatMap((survivorId) =>
-            atts.map((a) => ({
-              tenantId: ctx.tenantId,
-              leaveRequestId: survivorId,
-              employmentId: req.employmentId,
-              content: a.content as Buffer,
-              fileName: a.fileName,
-              mimeType: a.mimeType,
-              sizeBytes: a.sizeBytes,
-              uploadedByUserId: a.uploadedByUserId,
-            })),
-          ),
-        );
-      }
-    }
-
-    // 3fb1a611 (r299) — GIVE THE CREDIT BACK TO THE REGISTER, not only the day to the ledger. The reversal and
-    // re-debits above restore `restoredDays` to leave_ledger (the balance authority); for Replacement Leave that
-    // balance is backed credit by credit in toil_accrual, and a ledger-only restore is exactly the ghost credit
-    // the old flat refusal existed to prevent. Reverse FIFO; refuses (rolling this whole approval back, so the
-    // leave stays approved) when a credit has expired since it was used, naming it.
-    if (leaveTypeIs(decLt, 'replacement') && restoredDays > 0) {
-      try {
-        await restoreReplacementLeaveTx(tx, ctx, {
+        .where(eq(leaveRequest.id, req.id));
+    } else {
+      const [created] = await tx
+        .insert(leaveRequest)
+        .values({
+          tenantId: ctx.tenantId,
           employmentId: req.employmentId,
-          requestId: req.id,
-          need: round2(restoredDays),
-          effectiveOn: req.startDate,
-          asOf: todayInKualaLumpur(),
-        });
-      } catch (e) {
-        if (e instanceof ReplacementLeaveRestoreBlockedError)
-          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
-        throw e;
+          leaveTypeId: req.leaveTypeId,
+          startDate: seg.from,
+          endDate: seg.to,
+          days: segDays.toFixed(2),
+          durationType: 'full_day',
+          status: isCancelled ? 'cancelled' : 'approved',
+          reason: req.reason,
+          parentGroupId,
+          decidedByEmploymentId: req.decidedByEmploymentId,
+          decidedAt: req.decidedAt,
+        })
+        .returning({ id: leaveRequest.id });
+      rowId = created.id;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-request',
+        aggregateId: rowId,
+        eventType: 'leave-request.split',
+        actor: p.actor,
+        subjectEmploymentId: req.employmentId,
+        // 3fb1a611: `splitFromRequestId` — the row this segment was cut from. A Replacement Leave's credit
+        // consumption is recorded against the request that was APPROVED; a later cancellation of this new
+        // segment follows this link back to it (core/toil.ts consumptionRootRequestIdTx). Additive.
+        // r301: the same link is how a later cancellation of this segment finds the approval chain to copy.
+        payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays, splitFromRequestId: req.id },
+      });
+    }
+
+    // r301 hand-fix (verifier defect 2) — THE PER-DATE ROWS MOVE WITH THEIR DATES. Each date's approval record
+    // (approved, and any rejected date inside this segment's span) now belongs to the segment row that holds the
+    // date, and a cancelled segment's dates read 'cancelled'. Left on the original row, its dates outside the
+    // new span kept counting as that row's approved leave (approvedLeaveDates, unpaid-leave payroll) beside the
+    // survivor that now also carries them, and a survivor without rows read its whole span as approved.
+    if (dateRows.length > 0) {
+      const inSegment = dateRows.filter((d) => d.leaveDate >= seg.from && d.leaveDate <= seg.to).map((d) => d.id);
+      if (inSegment.length > 0) {
+        await tx
+          .update(leaveRequestDate)
+          .set({ leaveRequestId: rowId })
+          .where(inArray(leaveRequestDate.id, inSegment));
+        if (isCancelled) {
+          await tx
+            .update(leaveRequestDate)
+            .set({ status: 'cancelled' })
+            .where(and(inArray(leaveRequestDate.id, inSegment), eq(leaveRequestDate.status, 'approved')));
+        }
       }
     }
 
-    await tx
-      .update(leaveCancellationRequest)
-      .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
-      .where(eq(leaveCancellationRequest.id, cr.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-cancellation-request',
-      aggregateId: cr.id,
-      eventType: 'leave-cancellation.approved',
-      actor: actorOf(ctx),
-      subjectEmploymentId: req.employmentId,
-      payload: { leaveRequestId: req.id, parentGroupId, cancelledRowIds, restoredDays, remainingDays, remainingDates },
-    });
-    return { status: 'approved' as const, restoredDays, remainingDays, remainingDates };
+    // Each segment gets its OWN debit sourced to its own row (mirrors the EL per-row sourcing). A cancelled
+    // segment is NOT debited (its days were restored by the whole-span reversal above), so the net effect is
+    // exactly: balance up + taken down by the cancelled days, survivors unchanged.
+    if (!isCancelled) {
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: req.employmentId,
+        leaveTypeId: cancelBalanceTypeId,
+        entryType: 'debit',
+        days: (-segDays).toFixed(2),
+        sourceRequestId: rowId,
+        effectiveOn: seg.from,
+      });
+      remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
+      remainingDays += segDays;
+      if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
+    } else {
+      cancelledRowIds.push(rowId);
+      restoredDays += segDays;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-request',
+        aggregateId: rowId,
+        eventType: 'leave-request.cancelled',
+        actor: p.actor,
+        subjectEmploymentId: req.employmentId,
+        payload: { cancelDate: seg.from, restoredDays: segDays, parentGroupId },
+      });
+    }
+  }
+
+  // R5 Build #2: copy the original request's attachment(s) onto surviving NEW sibling rows so the MC stays
+  // visible on whichever survivor the employee holds — including when they gave back the FIRST date (segment[0]
+  // is reused for that cancelled date, so its survivors are all new rows). The attachment rows live on req.id;
+  // duplicating the (small) MC bytes onto each survivor keeps getLeaveAttachment(survivorId) truthful without a
+  // schema change. Only runs when there IS at least one attachment AND at least one new-row survivor.
+  if (survivingNewRowIds.length > 0) {
+    const atts = await tx
+      .select({
+        content: leaveRequestAttachment.content,
+        fileName: leaveRequestAttachment.fileName,
+        mimeType: leaveRequestAttachment.mimeType,
+        sizeBytes: leaveRequestAttachment.sizeBytes,
+        uploadedByUserId: leaveRequestAttachment.uploadedByUserId,
+      })
+      .from(leaveRequestAttachment)
+      .where(eq(leaveRequestAttachment.leaveRequestId, req.id));
+    if (atts.length > 0) {
+      await tx.insert(leaveRequestAttachment).values(
+        survivingNewRowIds.flatMap((survivorId) =>
+          atts.map((a) => ({
+            tenantId: ctx.tenantId,
+            leaveRequestId: survivorId,
+            employmentId: req.employmentId,
+            content: a.content as Buffer,
+            fileName: a.fileName,
+            mimeType: a.mimeType,
+            sizeBytes: a.sizeBytes,
+            uploadedByUserId: a.uploadedByUserId,
+          })),
+        ),
+      );
+    }
+  }
+
+  // 3fb1a611 (r299) — GIVE THE CREDIT BACK TO THE REGISTER, not only the day to the ledger. The reversal and
+  // re-debits above restore `restoredDays` to leave_ledger (the balance authority); for Replacement Leave that
+  // balance is backed credit by credit in toil_accrual, and a ledger-only restore is exactly the ghost credit
+  // the old flat refusal existed to prevent. Reverse FIFO; refuses (rolling this whole approval back, so the
+  // leave stays approved) when a credit has expired since it was used, naming it.
+  if (leaveTypeIs(decLt, 'replacement') && restoredDays > 0) {
+    try {
+      await restoreReplacementLeaveTx(tx, ctx, {
+        employmentId: req.employmentId,
+        requestId: req.id,
+        need: round2(restoredDays),
+        effectiveOn: req.startDate,
+        asOf: todayInKualaLumpur(),
+      });
+    } catch (e) {
+      if (e instanceof ReplacementLeaveRestoreBlockedError)
+        throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
+      throw e;
+    }
+  }
+
+  await tx
+    .update(leaveCancellationRequest)
+    .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId, decidedAt: sql`now()` })
+    .where(eq(leaveCancellationRequest.id, cr.id));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-cancellation-request',
+    aggregateId: cr.id,
+    eventType: 'leave-cancellation.approved',
+    actor: p.actor,
+    subjectEmploymentId: req.employmentId,
+    payload: {
+      leaveRequestId: req.id,
+      parentGroupId,
+      cancelledRowIds,
+      restoredDays,
+      remainingDays,
+      remainingDates,
+      // r301 — the display facts the employee's notification reads (renderers are payload-only).
+      cancelDates,
+      leaveTypeName: decLt?.name ?? null,
+      // r301 — an automatic approval says so, with the system as the actor above, in the audit trail itself.
+      ...(p.autoApproved ? { autoApproved: true, reason: 'auto-approved by leave type setting' } : {}),
+    },
   });
+  return { restoredDays, remainingDays, remainingDates };
 }
 
 /**
@@ -5891,11 +6472,13 @@ export async function adminCancelLeave(
   return withTenant(ctx, async (tx) => {
     // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
     if (!isAdmin(ctx)) {
-      throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee');
+      throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee', 'admin_only');
     }
     const isSuper = ctx.roles?.includes('super_admin') ?? false;
 
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    // r301 hand-fix — locked, in the same order as the employee's cancellation paths (leave row, then any
+    // cancellation on it), so an HR cancellation and an employee's automatic one cannot both act on a stale row.
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
 
     // Self-ban: an HR admin's own leave goes through the normal employee flow, not this on-behalf power
@@ -5903,14 +6486,14 @@ export async function adminCancelLeave(
     if (!isSuper) {
       const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
       if (ctx.personId && ctx.personId === subjectPersonId) {
-        throw new LeaveCancellationNotAllowedError('an HR administrator cannot cancel their own leave here');
+        throw new LeaveCancellationNotAllowedError('an HR administrator cannot cancel their own leave here', 'admin_own_leave');
       }
     }
 
     // Status gate: only pending | approved are cancellable. Already-cancelled / rejected → refuse, naming the
     // current status (localizeLeaveError maps the typed error to the localized cancellationNotAllowed message).
     if (req.status !== 'pending' && req.status !== 'approved') {
-      throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`);
+      throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     const previousStatus = req.status as 'pending' | 'approved';
 
@@ -6444,20 +7027,19 @@ export async function cancelOwnLeave(
     // Subject-only (creator). Enforced in code (RLS is symmetric).
     const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
-      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave');
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
 
     // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
+    // r301 (83511d3b): each refusal carries its reason, so the screen can say which.
     if (req.status !== 'pending') {
-      throw new LeaveCancellationNotAllowedError(
-        req.status === 'approved'
-          ? 'approved leave must be cancelled through the give-back flow'
-          : `the leave is already ${req.status}`,
-      );
+      throw req.status === 'approved'
+        ? new LeaveCancellationNotAllowedError('approved leave must be cancelled through the give-back flow', 'already_approved')
+        : new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     // v1: plain single-request rows only (an EL child would strand its sibling).
     if (req.parentGroupId != null) {
-      throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here');
+      throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
     const [lt] = await tx

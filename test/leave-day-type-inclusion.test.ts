@@ -102,6 +102,9 @@ async function workingDaysType(dayTypeInclusion: Record<string, boolean> | null 
       paid: true,
       counting: 'working_days',
       dayTypeInclusion,
+      // r301 (83511d3b): a type inserted after migration 0471 starts with employee cancellation of approved
+      // leave OFF; the partial-cancellation case below is about weights, so it states the switch it needs.
+      employeeCancelApproved: true,
     })
     .returning({ id: schema.leaveType.id });
   return row.id;

@@ -1683,6 +1683,30 @@ export const leaveType = pgTable('leave_type', {
    * a default with no version in force on the date it is resolving at.
    */
   defaultEntitlementTemplateLineageId: uuid('default_entitlement_template_lineage_id'),
+  /**
+   * r301 (board 83511d3b, migration 0471) — CANCEL APPROVED LEAVE, the leave type's own rule for an
+   * employee asking to cancel leave of this type AFTER it was approved. Read in exactly one place,
+   * `cancelApprovedSettingOf` (core/leave.ts), which both the service gate and the two screens that offer
+   * the "Cancel dates" button go through, so a button can never be offered for a request the service refuses.
+   *
+   *   employeeCancelApproved — may the employee ask at all. EVERY ROW THAT EXISTED AT 0471 READS true
+   *     (today's behaviour); the column DEFAULT is false, so every type created from then on — by HR, by
+   *     tenant provisioning, by the TOIL auto-created Replacement Leave type — starts switched OFF, which is
+   *     what the reporter asked for. HR's on-behalf cancellation (adminCancelLeave) never reads it.
+   *   cancelNoticeDays — calendar days, counted per leave DATE being cancelled from the tenant-local today.
+   *     0 ⇒ today's rule (strictly after today). Whole number ≥ 0, validated in updateLeaveType (no CHECK:
+   *     it would fire on every leave_type UPDATE, §6).
+   *   cancelAutoApprove — false ⇒ the original request's approvers re-approve, level by level
+   *     (leave_cancellation_step); true ⇒ approved by the system inside the request's own transaction.
+   *   cancelNotify — tell the current approver + HR admins (in-app only) when a cancellation is requested.
+   *
+   * Emergency Leave ignores all four (cancelApprovedSettingOf returns today's behaviour for it) and the card
+   * is hidden for it, exactly as the backdating and advance-notice rules are.
+   */
+  employeeCancelApproved: boolean('employee_cancel_approved').notNull().default(false),
+  cancelNoticeDays: integer('cancel_notice_days').notNull().default(0),
+  cancelAutoApprove: boolean('cancel_auto_approve').notNull().default(false),
+  cancelNotify: boolean('cancel_notify').notNull().default(false),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -2396,6 +2420,34 @@ export const leaveCancellationRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('leave_cancellation_request_request_idx').on(t.leaveRequestId)],
+);
+
+// r301 (board 83511d3b, migration 0471) — a cancellation's OWN copy of the approval chain. Mirrors
+// leave_approval_step column for column; written once, when the cancellation is requested, by COPYING the
+// original request's steps (a split survivor is traced back to the request that holds them). Walked by
+// decideLeaveCancellation through the SAME step-advance helper decideLeave uses. No rows ⇒ a single-level
+// chain, decided as a cancellation always was. RLS is leave_approval_step's policy verbatim.
+export const leaveCancellationStep = pgTable(
+  'leave_cancellation_step',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    cancellationRequestId: uuid('cancellation_request_id')
+      .notNull()
+      .references(() => leaveCancellationRequest.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    stepIndex: integer('step_index').notNull(),
+    approverKind: text('approver_kind').notNull(),
+    approverEmploymentId: uuid('approver_employment_id').references(() => employment.id),
+    approverAlternates: jsonb('approver_alternates'),
+    status: leaveRequestStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('leave_cancellation_step_request_idx').on(t.cancellationRequestId, t.stepIndex)],
 );
 
 // Wave 2 (ADR-0039 2B-2 + ADR-0071): the configurable approval chain, now a SCOPED RULE MATRIX. `levels` is

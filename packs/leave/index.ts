@@ -450,6 +450,8 @@ export const leavePack: ModulePack = {
     { table: 'leave_request_date', note: 'per-date breakdown + per-date approval outcome of a request' },
     { table: 'leave_approval_step', note: 'the resolved approval chain + per-step decisions for a request' },
     { table: 'leave_cancellation_request', note: 'post-approval cancellation requests + decisions' },
+    // r301 (83511d3b, migration 0471) — the cancellation's own copy of the original request's approval chain.
+    { table: 'leave_cancellation_step', note: 'the approval chain a cancellation of approved leave walks, copied from the original request' },
     { table: 'leave_approval_policy', note: 'per-type/grade approval-chain policy (levels, escalation)' },
     { table: 'leave_approval_template', note: 'reusable approval-workflow templates + assignments' },
     { table: 'toil_policy', note: 'time-off-in-lieu policy: accrual basis, expiry action, eligibility' },

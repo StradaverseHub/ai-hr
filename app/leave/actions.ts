@@ -296,17 +296,21 @@ export async function requestLeaveCancellationAction(formData: FormData) {
   const leaveRequestId = String(formData.get('leaveRequestId'));
   const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  let result: Awaited<ReturnType<typeof requestLeaveCancellation>> | undefined;
   try {
     // R5 Build #2 (Fix B): pass MYT "today" so the per-date "hasn't started yet" gate uses Malaysia time
     // (mirrors requestLeaveAction). Import already present at the top of this file.
-    await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
+    result = await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
   } catch (e) {
+    // r301 (83511d3b): every refusal now says exactly why — localizeLeaveError maps each one to its own message.
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
   revalidatePath('/leave');
   revalidatePath('/approvals');
   revalidatePath('/'); // the dashboard's Team Away Today count
   revalidatePath('/leave/tracker'); // a00c4f64 — the calendar itself lives here now
+  // r301 (83511d3b) — approved automatically by the leave type setting: the days are already back.
+  if (result?.status === 'approved') redirect('/leave?toast=cancellationApproved');
   redirect('/leave?toast=cancellationRequested');
 }
 

@@ -1876,10 +1876,10 @@
       "attachment": "เอกสารแนบ"
     },
     "cancelDatesToggle": "ยกเลิกวันที่",
-    "cancelDatesHint": "ติ๊กวันที่คุณต้องการคืน เฉพาะวันที่ยังไม่เริ่มเท่านั้นที่ยกเลิกได้",
+    "cancelDatesHint": "ติ๊กวันที่คุณต้องการคืน แสดงเฉพาะวันที่ยังยกเลิกได้เท่านั้น",
     "cancelPendingBadge": "รอยกเลิก",
     "cancelSubmit": "ขอยกเลิก",
-    "cancelRequestedToast": "ส่งคำขอยกเลิกแล้ว — รอการตัดสินใจจากผู้จัดการของคุณ",
+    "cancelRequestedToast": "ส่งคำขอยกเลิกแล้ว — รอการอนุมัติ",
     "cancelDatesButton": "ยกเลิกวันที่",
     "cancelDialogTitle": "ยกเลิกวันลา",
     "cancelDialogDismiss": "ปิด",
@@ -1966,7 +1966,20 @@
       "cancellationCreditExpired": "เครดิตของวันที่ทำงาน {workedDate} หมดอายุเมื่อ {expiresOn}",
       "cancellationCreditPaidOut": "เครดิตของวันที่ทำงาน {workedDate} ถูกจ่ายเป็นเงินเมื่อหมดอายุ {expiresOn}",
       "cancellationCreditReversed": "เครดิตของวันที่ทำงาน {workedDate} ถูกยกเลิกรายการแล้ว",
-      "cancellationCreditUnreadable": "ไม่สามารถอ่านบันทึกเครดิตที่ใช้ได้ครบถ้วน ผู้ดูแล HR ต้องเป็นผู้ยกเลิก"
+      "cancellationCreditUnreadable": "ไม่สามารถอ่านบันทึกเครดิตที่ใช้ได้ครบถ้วน ผู้ดูแล HR ต้องเป็นผู้ยกเลิก",
+      "cancellationTooClose": "{date} ใกล้เกินไปที่จะยกเลิก {typeName} ต้องยกเลิกล่วงหน้าอย่างน้อย {days} วันก่อนวันลาแต่ละวัน",
+      "cancellationTypeOff": "พนักงานไม่สามารถยกเลิก{typeName}ได้หลังจากได้รับอนุมัติแล้ว โปรดติดต่อ HR หากจำเป็นต้องยกเลิก",
+      "cancellationNotYours": "เฉพาะพนักงานเจ้าของการลานี้เท่านั้นที่ขอยกเลิกได้",
+      "cancellationNotApproved": "ยกเลิกด้วยวิธีนี้ได้เฉพาะการลาที่อนุมัติแล้วเท่านั้น การลาที่ยังรออนุมัติสามารถถอนคำขอได้",
+      "cancellationNotFullDay": "ไม่สามารถยกเลิกการลาครึ่งวันและการลารายชั่วโมงหลังจากได้รับอนุมัติแล้ว โปรดติดต่อ HR หากจำเป็นต้องยกเลิก",
+      "cancellationGrouped": "การลานี้เป็นส่วนหนึ่งของการลาฉุกเฉินหรือการอนุมัติรายวัน จึงยกเลิกที่นี่ไม่ได้ โปรดติดต่อ HR หากจำเป็นต้องยกเลิก",
+      "cancellationUnpaidDays": "การลานี้มีวันที่ไม่ได้รับค่าจ้าง จึงยกเลิกหลังจากได้รับอนุมัติไม่ได้ โปรดติดต่อ HR หากจำเป็นต้องยกเลิก",
+      "cancellationAlreadyPending": "มีคำขอยกเลิกสำหรับการลานี้รอการอนุมัติอยู่แล้ว",
+      "cancellationNoLongerCancellable": "การลานี้มีการเปลี่ยนแปลงตั้งแต่มีการขอยกเลิก จึงยกเลิกไม่ได้อีกต่อไป",
+      "cancellationAdminOnly": "เฉพาะผู้ดูแลระบบ HR เท่านั้นที่ยกเลิกการลาแทนพนักงานได้",
+      "cancellationAdminOwnLeave": "คุณไม่สามารถยกเลิกการลาของตัวเองที่นี่ได้ โปรดขอยกเลิกจากหน้าการลาของฉัน",
+      "cancellationAlreadyFinal": "การลานี้ถูกปฏิเสธหรือยกเลิกไปแล้ว จึงไม่มีอะไรให้ยกเลิก",
+      "cancellationAlreadyApproved": "การลานี้ได้รับอนุมัติแล้ว ใช้ยกเลิกวันที่เพื่อขอยกเลิก"
     },
     "documentLabel": "เอกสารประกอบ",
     "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",
@@ -2206,7 +2219,19 @@
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
-    "unpaidPortionLabel": "ลาไม่รับค่าจ้าง"
+    "unpaidPortionLabel": "ลาไม่รับค่าจ้าง",
+    "cancelAutoApprovedToast": "ยกเลิกการลาแล้ว — วันลาคืนเข้ายอดคงเหลือของคุณแล้ว",
+    "pendingCancellationStatus": "รอการยกเลิก",
+    "cancelProgress": {
+      "requested": "ขอยกเลิกแล้ว · {date}",
+      "waiting": "รอการอนุมัติ",
+      "levelApproved": "ระดับ {level} · อนุมัติแล้ว",
+      "levelWaiting": "ระดับ {level} · รอการอนุมัติ",
+      "levelUpcoming": "ระดับ {level} · ยังไม่ถึง",
+      "cancelled": "ยกเลิกแล้ว · วันลาคืนเข้ายอดคงเหลือของคุณ",
+      "dates": "วันที่จะยกเลิก: {dates}",
+      "sameChainNote": "ระดับการอนุมัติเดียวกัน ตามลำดับเดียวกันกับคำขอลาเดิม"
+    }
   },
   "leaveTracker": {
     "title": "ตัวติดตามการลาของทีม",
@@ -7460,7 +7485,21 @@
       "generateRunsHeading": "ปีการลา {year}",
       "generateRunsLine": "เลือก {selected} · ผ่าน {passed} · ไม่ผ่าน {failed} · ให้แล้ว {granted} รายการ · ริบ {forfeits} ครั้ง",
       "generateRunsDownload": "ดาวน์โหลดบันทึก",
-      "generateReviewEmployees": "พนักงานที่การทำงานนี้จะครอบคลุม"
+      "generateReviewEmployees": "พนักงานที่การทำงานนี้จะครอบคลุม",
+      "cancelApprovedSectionTitle": "ยกเลิกการลาที่อนุมัติแล้ว",
+      "cancelApprovedSectionHelp": "พนักงานสามารถขอยกเลิกการลาประเภทนี้หลังจากได้รับอนุมัติแล้วหรือไม่",
+      "cancelApprovedAllowLabel": "อนุญาตให้พนักงานยกเลิกการลาที่อนุมัติแล้วนี้",
+      "cancelApprovedOffNote": "พนักงานจะไม่เห็นตัวเลือกยกเลิกสำหรับการลาประเภทนี้ที่อนุมัติแล้ว HR ยังคงยกเลิกแทนพนักงานได้",
+      "cancelApprovedNoticeBefore": "อนุญาตให้ยกเลิกล่วงหน้าอย่างน้อย",
+      "cancelApprovedNoticeAfter": "วันก่อนวันลาแต่ละวัน",
+      "cancelApprovedNoticeHelp": "นับสำหรับวันลาแต่ละวันที่ถูกยกเลิก 0 หมายถึงวันใดก็ได้ที่ยังไม่เริ่ม",
+      "cancelApprovedApprovalLabel": "การอนุมัติ",
+      "cancelApprovedApprovalReapprove": "ต้องให้ผู้อนุมัติอนุมัติอีกครั้ง",
+      "cancelApprovedApprovalAuto": "อนุมัติอัตโนมัติ",
+      "cancelApprovedApprovalHelp": "การอนุมัติอีกครั้งจะผ่านระดับการอนุมัติเดียวกัน ตามลำดับเดียวกันกับคำขอลาเดิม การอนุมัติอัตโนมัติจะยกเลิกการลาและคืนวันลาทันที",
+      "cancelApprovedReplacementNote": "การยกเลิกการลาชดเชยต้องให้ผู้อนุมัติอนุมัติอีกครั้งเสมอ เพราะการคืนวันลาจะคืนเครดิตของวันลานั้นด้วย",
+      "cancelApprovedNotifyLabel": "แจ้งผู้อนุมัติและ HR เมื่อมีการขอยกเลิก",
+      "cancelApprovedNotifyHelp": "การแจ้งเตือนจะแสดงที่กระดิ่งการแจ้งเตือน ระบบไม่ส่งอีเมล"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",

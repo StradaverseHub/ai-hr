@@ -253,7 +253,9 @@ describe('Partial Leave Cancellation — happy path', () => {
     // Use an UNPAID type so the payroll unpaid-days check is meaningful.
     const [upl] = await owner.db
       .insert(schema.leaveType)
-      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid', paid: false, counting: 'working_days' })
+      // r301 (83511d3b): `employeeCancelApproved: true` — a type inserted after migration 0471 starts with employee
+      // cancellation of approved leave OFF; this case is about the downstream consumers, not the switch.
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid', paid: false, counting: 'working_days', employeeCancelApproved: true })
       .returning({ id: schema.leaveType.id });
     await grantAnnual('20.00', upl.id);
     const res = await requestLeave(subjectCtx, {
@@ -389,7 +391,8 @@ describe('Partial Leave Cancellation — gates', () => {
   it('a REPLACEMENT (time-off-in-lieu) leave CAN be put up for cancellation (3fb1a611)', async () => {
     const [repl] = await owner.db
       .insert(schema.leaveType)
-      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
+      // r301 (83511d3b): switch ON explicitly — see the UNPAID fixture above.
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days', employeeCancelApproved: true })
       .returning({ id: schema.leaveType.id });
     await grantAnnual('10.00', repl.id);
     const res = await requestLeave(subjectCtx, {
