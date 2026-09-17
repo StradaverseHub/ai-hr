@@ -8,7 +8,7 @@
  *      no problem and no gap;
  *   §C every rule gets its OWN message (blank, decimals, range, order, overlap, duplicate) and a gap is a
  *      warning naming the uncovered decimals, both ends included;
- *   §D a third decimal is REFUSED, never tidied: "0.245" stays "0.245" on blur, "0.5" still widens to "0.50";
+ *   §D a third decimal is REFUSED, never tidied: "0.245" is posted as typed on blur and named as a problem;
  *   §E the worked example beside the table reads the table in its new meaning.
  *
  * Why rendered rather than grepped: every one of these is live `useState` inside a client island, and a
@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider, useTranslations } from 'next-intl';
 
@@ -217,23 +217,26 @@ describe('§C every rule has its own message, and a gap warns with the uncovered
 });
 
 describe('§D a third decimal is refused, never tidied', () => {
-  it('"0.245" stays "0.245" on blur and draws the decimals message; "0.5" widens to "0.50"', async () => {
+  it('"0.245" is NOT tidied to 0.25 on blur: it is posted as typed and draws the decimals message', async () => {
+    // ⚠️ Asserted on what the form POSTS (the component's state), not only on the box: React leaves a
+    // controlled type="number" box alone when the new text is numerically equal, so a harmless widening
+    // ("0.5" → "0.50") never shows in the DOM, while a NARROWING ("0.245" → "0.25") changes the posted table.
     const S = en.admin.leave.subStep;
     const user = userEvent.setup();
     const view = mount(custom([{ from: 0, to: 0.99, result: 0 }]));
     const to = cells(S.roundingBandTo)[0]!;
     await user.clear(to);
     await user.type(to, '0.245');
-    fireEvent.blur(to);
+    await user.tab(); // a real focus move — React's onBlur listens for focusout
     expect(cells(S.roundingBandTo)[0]!.value).toBe('0.245');
-    expect(text(view.container)).toContain(S.roundingBandDecimals);
     expect(posted(view.container)).toEqual([{ from: 0, to: 0.245, result: 0 }]);
-
+    expect(text(view.container)).toContain(S.roundingBandDecimals);
+    // A two-decimal figure is still accepted as the same number.
     const result = cells(S.roundingBandResult)[0]!;
     await user.clear(result);
     await user.type(result, '0.5');
-    fireEvent.blur(result);
-    expect(cells(S.roundingBandResult)[0]!.value).toBe('0.50');
+    await user.tab();
+    expect(posted(view.container)).toEqual([{ from: 0, to: 0.245, result: 0.5 }]);
   });
 
   it('a stored third decimal (a hand-written row) is SHOWN as stored, so the next save cannot quietly round it', () => {

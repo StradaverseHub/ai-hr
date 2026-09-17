@@ -168,9 +168,9 @@ function RoundingBandsEditor({
   const patch = (i: number, field: BandField, v: string) =>
     setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v } : r)));
 
-  /** WIDEN, NEVER NARROW. "0.5" becomes "0.50" on blur; "0.245" stays "0.245" so the table refuses it by name
-   *  (r303: "at most two decimals — refuse, do not round"). The shared tidier alone would print it as 0.25
-   *  and save a figure nobody typed. */
+  /** WIDEN, NEVER NARROW. "0.5" is tidied to "0.50"; "0.245" stays "0.245" so the table refuses it by name
+   *  (r303: "at most two decimals — refuse, do not round"). The shared tidier alone would turn it into 0.25
+   *  and post a figure nobody typed. */
   const tidyCell =
     (i: number, field: BandField) => (e: { currentTarget: { value: string } }) => {
       const typed = e.currentTarget.value;
