@@ -169,20 +169,19 @@ export default async function MePage({
   const employments = await myEmployments(s);
   /**
    * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE for the page. My Profile is a CORE
-   * screen, and four things on it are the Payroll pack's, so for a tenant without Payroll each is neither
+   * screen, and three cards on it are the Payroll pack's, so for a tenant without Payroll each is neither
    * READ nor drawn — gating only the render would leave the reads that core/module-gate.ts names as
    * stopping core/loans.ts from being bound:
    *   • My payslips          ← myPayslips               (payslip + payroll_batch, through core/read.ts)
    *   • Personal tax relief  ← myTaxReliefEmploymentIds + myTaxRelief (payslip.statutory.lp; its
    *                            "manage" link is /me/tax-relief, whose writes core/tax-relief.ts refuses)
    *   • My loans             ← listLoansForEmployment    (core/loans.ts)
-   *   • Tax statement (EA)   ← myEmploymentIdsAll + myPayslips — on the DOCUMENTS tab, not Payroll
    * Basic Salary stays: it is the compensation row (core/comp.ts is spine, packs/payroll/index.ts), so
    * the Payroll tab is never empty and keeps its place, and `?tab=payroll` / `?tab=pay` still land on it.
    *
    * Tenant-wide, no companyId — core/module-gate.ts's COMPANY SCOPE paragraph. The QUIET form, because
-   * this is what to draw (core/entitlements.ts): an unreadable snapshot hides the four cards, it does not
-   * take the page down.
+   * this is what to draw (core/entitlements.ts): an unreadable snapshot hides the three cards, it does not
+   * take the page down. The EA statement is NOT one of them — see where its rows are read.
    */
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
   // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
@@ -257,9 +256,13 @@ export default async function MePage({
 
   // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
   // employments incl. terminated ones (leavers must reach their prior employer's EA).
-  // r298 — Payroll-owned: neither read runs for a tenant without Payroll, and the EA card is not drawn.
-  const eaEmployments = payrollOn ? await myEmploymentIdsAll(s) : [];
-  const eaPayslips = payrollOn ? await myPayslips(s, eaEmployments.map((e) => e.employmentId)) : [];
+  // r298 — deliberately NOT gated on Payroll, unlike the three Payroll-tab cards. The EA is a STATUTORY
+  // document built from payslips that already exist: a company that ran payroll and later dropped the module
+  // still owes its employees — leavers included — the Borang EA they file their taxes with, and
+  // /me/ea/[employmentId]/pdf does not depend on the module. So the reads always run (core/read.ts, which no
+  // binding plan touches) and the card below is drawn when Payroll is on OR there is a statement to give.
+  const eaEmployments = await myEmploymentIdsAll(s);
+  const eaPayslips = await myPayslips(s, eaEmployments.map((e) => e.employmentId));
   const employmentIdByCompany = new Map(eaEmployments.map((e) => [e.company, e.employmentId]));
   const eaRowMap = new Map<string, { employmentId: string; company: string; year: string }>();
   for (const ps of eaPayslips) {
@@ -958,8 +961,10 @@ export default async function MePage({
   // What is here is the set of documents produced FOR the employee.
   const documentsPanel = (
     <>
-      {/* r298 — the EA statement is derived from payslips: absent (and unread) for a tenant without Payroll. */}
-      {payrollOn && (
+      {/* r298 — without Payroll the card is drawn only when a statement exists (a company that ran payroll
+          and then dropped it), and only the PDF link is offered: /payroll/reports/ea sits behind the Payroll
+          layout. A company that never ran payroll sees no EA card at all. */}
+      {(payrollOn || eaRows.length > 0) && (
       <Card className="p-5">
         <SectionHeader title={t('taxStatementEa')} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('taxStatementDescription')}</p>
@@ -978,9 +983,11 @@ export default async function MePage({
                   {r.company} · <span className="text-muted-foreground">{t('yearOfAssessment', { year: r.year })}</span>
                 </span>
                 <span className="flex items-center gap-3">
-                  <Link href={`/payroll/reports/ea/${r.employmentId}?year=${r.year}`} className="text-primary hover:underline">
-                    {t('viewDownload')}
-                  </Link>
+                  {payrollOn && (
+                    <Link href={`/payroll/reports/ea/${r.employmentId}?year=${r.year}`} className="text-primary hover:underline">
+                      {t('viewDownload')}
+                    </Link>
+                  )}
                   <Link href={`/me/ea/${r.employmentId}/pdf?year=${r.year}`} className="text-primary hover:underline">
                     {t('eaDownloadPdf')}
                   </Link>

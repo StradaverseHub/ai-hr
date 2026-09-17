@@ -41,8 +41,11 @@ record an administrator sees:
 | **Family** | Family & Dependents Information |
 | **Documents** | Tax statement (EA) · Review outcome · Resignation |
 
-**A company that has not bought Payroll** does not see My payslips, Personal tax relief (TP1), My loans or the
-Tax statement (EA): all four come from payroll runs, so there is nothing to show and the cards are left out.
+**A company that has not bought Payroll** does not see My payslips, Personal tax relief (TP1) or My loans: all
+three belong to the Payroll module, so the cards are left out. The **Tax statement (EA)** is different: it is a
+statutory document built from payslips that already exist, so a company that ran payroll and later stopped
+still gives its employees (leavers included) their EA as a PDF. A company that never ran payroll has no
+statement, and no EA card is shown.
 The Payroll tab stays, with Basic Salary on it, because the salary record belongs to the employee's
 employment and not to the Payroll module.
 

@@ -383,7 +383,7 @@ describe('r298 — Organization: the Default Payroll Cycle form follows the Payr
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 // MY PROFILE
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
-describe('r298 — My Profile: payslips, TP1, loans and the EA statement follow the Payroll module', () => {
+describe('r298 — My Profile: payslips, TP1 and loans follow the Payroll module; the EA statement follows the statements', () => {
   /** One employee with a CLOSED (released) payslip carrying applied TP1, and one loan. */
   async function seedMe() {
     const e = await hire('Siti Aminah', '900202026666');
@@ -454,7 +454,7 @@ describe('r298 — My Profile: payslips, TP1, loans and the EA statement follow 
     expect(tabs.defaultTab).toBe('payroll');
   });
 
-  it('Payroll OFF — none of the four is drawn and NONE of their reads runs', async () => {
+  it('Payroll OFF — payslips, TP1 and loans are neither drawn nor read; an EA statement that exists is still offered as a PDF', async () => {
     const { e, userId, payslipId } = await seedMe();
     await setModule(base.tenantId, 'payroll', null);
     session.s = await essCtx(userId, e.personId);
@@ -462,18 +462,25 @@ describe('r298 — My Profile: payslips, TP1, loans and the EA statement follow 
 
     const tree = await render('payroll');
     const titles = sectionTitles(tree);
-    for (const title of PAYROLL_TITLES) {
+    for (const title of PAYROLL_TITLES.filter((x) => x !== 'taxStatementEa')) {
       expect(titles, `${title} is drawn for a tenant WITHOUT Payroll`).not.toContain(title);
     }
     expect(hrefs(tree).some((h) => h.startsWith('/me/payslip/') || h.includes(payslipId))).toBe(false);
-    expect(hrefs(tree).some((h) => h.startsWith('/me/ea/') || h.startsWith('/payroll/'))).toBe(false);
     expect(hrefs(tree), 'the TP1 card’s manage link goes with it').not.toContain('/me/tax-relief');
     expect(strings(tree)).not.toContain('loanTypeName.personal');
 
+    // r298 fix pass — the EA is a STATUTORY document built from payslips that already exist. A company that ran
+    // payroll and then dropped the module still owes its employees (leavers included) the statement they file
+    // their taxes with, so the card stays while there is a statement to give — PDF only, because
+    // /payroll/reports/ea sits behind the Payroll layout.
+    expect(titles, 'an existing EA statement is still offered without Payroll').toContain('taxStatementEa');
+    expect(hrefs(tree), 'the EA PDF stays reachable').toContain(`/me/ea/${e.employmentId}/pdf?year=${thisYear}`);
+    expect(hrefs(tree).some((h) => h.startsWith('/payroll/')), 'no link into a Payroll route').toBe(false);
+
     expect(vi.mocked(myTaxReliefEmploymentIds), 'myTaxReliefEmploymentIds ran without Payroll').not.toHaveBeenCalled();
     expect(vi.mocked(myTaxRelief), 'myTaxRelief ran without Payroll').not.toHaveBeenCalled();
-    expect(vi.mocked(myPayslips), 'myPayslips ran without Payroll').not.toHaveBeenCalled();
-    expect(vi.mocked(myEmploymentIdsAll), 'myEmploymentIdsAll ran without Payroll').not.toHaveBeenCalled();
+    expect(vi.mocked(myPayslips), 'myPayslips ran for the Payroll tab without Payroll — only the EA rows may read').toHaveBeenCalledTimes(1);
+    expect(vi.mocked(myEmploymentIdsAll), 'the EA rows are read whatever the module').toHaveBeenCalledWith(session.s);
     expect(vi.mocked(listLoansForEmployment), 'listLoansForEmployment ran without Payroll').not.toHaveBeenCalled();
 
     // CORE stays: Basic Salary keeps the Payroll tab non-empty, so the tab is NOT dropped and both the
@@ -484,6 +491,22 @@ describe('r298 — My Profile: payslips, TP1, loans and the EA statement follow 
     expect(tabs.defaultTab).toBe('payroll');
     expect(tabsOf(await render('pay')).defaultTab, 'the legacy ?tab=pay still lands on Payroll').toBe('payroll');
     // The Documents tab keeps its core cards (review outcome, resignation).
+    expect(sectionTitles(tree)).toContain('resignationTitle');
+  });
+
+  it('Payroll OFF and payroll never run — no EA card at all, so the Documents tab advertises nothing', async () => {
+    const e = await hire('Nurul Huda', '910303037777');
+    const userId = await createAppUser(base.tenantId, e.personId, 'employee');
+    await setModule(base.tenantId, 'payroll', null);
+    session.s = await essCtx(userId, e.personId);
+    vi.clearAllMocks();
+
+    const tree = await render();
+    const titles = sectionTitles(tree);
+    for (const title of PAYROLL_TITLES) {
+      expect(titles, `${title} is drawn for a tenant that never ran payroll`).not.toContain(title);
+    }
+    expect(hrefs(tree).some((h) => h.startsWith('/me/ea/') || h.startsWith('/payroll/'))).toBe(false);
     expect(sectionTitles(tree)).toContain('resignationTitle');
   });
 });

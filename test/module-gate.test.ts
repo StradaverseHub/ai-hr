@@ -341,17 +341,22 @@ describe('r292 — every optional pack route segment carries a layout guard', ()
 //                                TP1_ITEMS, TP1_REBATES), none of which opens a transaction.
 //   BOUND  core/back-pay.ts    — no consumer at all outside app/payroll/back-pay/** and the facade.
 //
-//   LEFT   core/pay-components.ts  — app/admin/personnel/[employmentId] (PERSONNEL, core) reads it
-//                                    unconditionally, and core/attendance-allowance.ts (the ATTENDANCE
-//                                    pack) writes through it.
-//   LEFT   core/cp38.ts           — same Personnel page reads `listCp38` unconditionally.
+//   LEFT   core/pay-components.ts  — app/admin/personnel/[employmentId] (PERSONNEL, core) reads it,
+//                                    and the ATTENDANCE pack reaches it (see the attendance-allowance
+//                                    case below, and core/module-gate.ts's r298 correction of WHERE).
+//   LEFT   core/cp38.ts           — same Personnel page reads `listCp38`.
 //   LEFT   core/loans.ts          — app/me/page.tsx (ESS, core) reads `listLoansForEmployment`.
 //   LEFT   core/payroll-cycle.ts  — app/admin/organization/[companyId] (core, and the surface r292
 //                                    named) reads `listPayrollCycles`; core/admin.ts seeds the cycle
 //                                    catalogue on company creation.
 //
-// Binding any of those four takes a core screen away from a tenant that declined NOTHING, which is
-// strictly worse than the hole. The tests below pin BOTH halves: the two bindings refuse and work, and
+// r294 left all four because those core screens read them UNCONDITIONALLY, so binding any of them took
+// a core screen away from a tenant that declined NOTHING. r298 (board ceb1c560) removed that reason for
+// the three screen reads: each screen now asks isModuleEnabledOrFalse(s, 'payroll') first and neither
+// reads nor draws the section without Payroll (test/r298-payroll-sections-gate.test.ts, which also shows
+// the three screens rendering with cp38/loans/payroll-cycle bound). Binding them is still a SEPARATE
+// change with its own blast radius (company creation's seeder, the pack facade, every other consumer), so
+// they stay unbound here and the tests below still pin BOTH halves: the two bindings refuse and work, and
 // the four non-bindings still answer for a tenant with every optional module off.
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -444,11 +449,11 @@ describe('r294 — the four files left unbound still serve their CORE surfaces w
     await declineEverySellableModule(b.tenantId);
     const ctx = await entitledCtx(b);
 
-    // app/admin/personnel/[employmentId]/page.tsx:432-435 — unconditional for any admin.
+    // app/admin/personnel/[employmentId]/page.tsx — for any admin, gated on Payroll since r298.
     await expect(listPayComponents(ctx)).resolves.toBeDefined(); // core/pay-components.ts
     await expect(listEmploymentPayComponents(ctx, employmentId)).resolves.toBeDefined(); // core/pay-components.ts
     await expect(listCp38(ctx, { employmentId })).resolves.toBeDefined(); // core/cp38.ts
-    // app/me/page.tsx:185 — the ESS profile, unconditional.
+    // app/me/page.tsx — the ESS profile, gated on Payroll since r298.
     await expect(listLoansForEmployment(ctx, employmentId)).resolves.toBeDefined(); // core/loans.ts
     // app/admin/organization/[companyId]/page.tsx:82 — the surface r292 named by name.
     await expect(listPayrollCycles(ctx, b.companyId, { activeOnly: true })).resolves.toHaveLength(1); // core/payroll-cycle.ts
