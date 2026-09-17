@@ -118,7 +118,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { leaveConfigHealthAll, type LeaveConfigHealth } from '../lib/leave-config-health';
 // r299 (3de1453a) — the health derivation's `earnedMethodNotAnnualLeave` is decided by the engine's own
 // predicates, here as on the two screens, so this report cannot call a stranded type healthy.
-import { isEarnedAccrualType, isEarnedMethod } from '../core/leave';
+import { isEarnedAccrualType, isEarnedMethod } from '../packs/leave/service';
 import {
   criteriaSectionsFor,
   englishCriteriaLabels,

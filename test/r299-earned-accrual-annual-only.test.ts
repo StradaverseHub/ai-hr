@@ -465,6 +465,47 @@ describe('§3 the services', () => {
     expect((await rowOf(mat)).role).toBe('maternity');
   });
 
+  it('CONCURRENT switch-ons on two types leave exactly ONE active Annual Leave, every time', async () => {
+    // r299 fix pass — the verifier measured two active Annual Leave types in 9 of 10 concurrent attempts
+    // before the advisory lock. The conflicting row is a DIFFERENT row, so only serialising the check works.
+    await setArchived(b.annualLeaveTypeId, true);
+    const one = await mkType('AL1', 'Annual Leave One');
+    const two = await mkType('AL2', 'Annual Leave Two');
+    for (let round = 0; round < 5; round++) {
+      await owner.db.update(schema.leaveType).set({ role: null }).where(eq(schema.leaveType.id, one));
+      await owner.db.update(schema.leaveType).set({ role: null }).where(eq(schema.leaveType.id, two));
+      const results = await Promise.allSettled([
+        updateLeaveType(ctx(), { id: one, name: 'Annual Leave One', isAnnualLeave: true }),
+        setLeaveTypeRules(ctx(), { id: two, isAnnualLeave: true }),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled'), `round ${round}: exactly one save wins`).toHaveLength(1);
+      const roles = [(await rowOf(one)).role, (await rowOf(two)).role].filter((r) => r === 'annual');
+      expect(roles, `round ${round}: exactly one active Annual Leave`).toHaveLength(1);
+    }
+  });
+
+  it('an ANNUAL-coded type that CARRIES the role cannot be switched OFF either — the code would keep it Annual Leave', async () => {
+    await owner.db.update(schema.leaveType).set({ role: 'annual' }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const e = await refusal(setLeaveTypeRules(ctx(), { id: b.annualLeaveTypeId, isAnnualLeave: false }));
+    expect(e).toBeInstanceOf(LeaveTypeRuleError);
+    expect((e as Error).message).toContain('by its code');
+    expect((await rowOf(b.annualLeaveTypeId)).role).toBe('annual');
+  });
+
+  it('switching ON is refused while employees are blocked from applying — the statutory promise must be true on day one', async () => {
+    await setArchived(b.annualLeaveTypeId, true);
+    const al = await mkType('AL', '*Annual Leave');
+    await owner.db.update(schema.leaveType).set({ employeeCanApply: false }).where(eq(schema.leaveType.id, al));
+    const e = await refusal(updateLeaveType(ctx(), { id: al, name: '*Annual Leave', isAnnualLeave: true }));
+    expect(e).toBeInstanceOf(LeaveTypeRuleError);
+    expect((e as Error).message).toContain('blocked from applying');
+    expect((await rowOf(al)).role).toBeNull();
+    // CONTROL — allow applications and the same save goes through.
+    await owner.db.update(schema.leaveType).set({ employeeCanApply: true }).where(eq(schema.leaveType.id, al));
+    await updateLeaveType(ctx(), { id: al, name: '*Annual Leave', isAnnualLeave: true });
+    expect((await rowOf(al)).role).toBe('annual');
+  });
+
   it('an unclassified ANNUAL-coded type cannot be switched OFF — there is no role to clear', async () => {
     const e = await refusal(setLeaveTypeRules(ctx(), { id: b.annualLeaveTypeId, isAnnualLeave: false }));
     expect(e).toBeInstanceOf(LeaveTypeRuleError);

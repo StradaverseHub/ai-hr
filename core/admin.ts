@@ -731,6 +731,7 @@ export async function createLeaveType(
     // code fallback. Rows sharing the SAME code are left to the partial unique code index below, so a
     // duplicate code still reads as a duplicate code rather than as this.
     if (active && isEarnedAccrualType({ role: null, code })) {
+      await lockAnnualLeaveWriters(tx, ctx.tenantId);
       const others = (
         await tx
           .select({ name: leaveType.name, code: leaveType.code, role: leaveType.role })
@@ -3019,7 +3020,23 @@ const CUSTOM_MESSAGE_MAX_LEN = 500;
  * earned sweep itself uses — so "only one active Annual Leave" means one row the SWEEP would treat as
  * Annual Leave, not one row carrying a particular role string. `role` and `code` must both be selected.
  */
-async function otherActiveAnnualLeaveNames(tx: Tx, excludeId: string | null): Promise<string[]> {
+/**
+ * r299 fix pass — ONE WRITER OF "WHICH TYPE IS ANNUAL LEAVE" AT A TIME, PER TENANT.
+ *
+ * Every door to an active Annual Leave (the switch on either service, unarchive, create with the ANNUAL
+ * code) reads the other active rows and then writes. Two concurrent saves each read "none" and each wrote,
+ * leaving TWO active Annual Leave types — measured 9 of 10 attempts by the r299 verifier — and Earned
+ * Accrual would then post days to both. A row lock cannot help: the conflicting row is a DIFFERENT row.
+ * So the check is serialised by a transaction-scoped advisory lock (the core/claims.ts lockClaimLimit
+ * precedent), taken before the read; under READ COMMITTED the second writer's read then sees the first
+ * writer's committed role and is refused. Released at COMMIT/ROLLBACK, never by hand.
+ */
+async function lockAnnualLeaveWriters(tx: Tx, tenantId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`annual-leave-writers:${tenantId}`}, 0))`);
+}
+
+async function otherActiveAnnualLeaveNames(tx: Tx, tenantId: string, excludeId: string | null): Promise<string[]> {
+  await lockAnnualLeaveWriters(tx, tenantId);
   const rows = await tx
     .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role })
     .from(leaveType)
@@ -3060,6 +3077,7 @@ async function otherActiveAnnualLeaveNames(tx: Tx, excludeId: string | null): Pr
  */
 async function resolveAnnualLeaveSwitch(
   tx: Tx,
+  tenantId: string,
   row: { id: string; name: string; code: string; role: string | null },
   isAnnualLeave: boolean | undefined,
   accrualMethodAfter: string | null | undefined,
@@ -3074,10 +3092,25 @@ async function resolveAnnualLeaveSwitch(
         `${row.name} is already recorded as a different kind of leave (${roleBefore}), so it cannot also be your Annual Leave.`,
       );
     }
-    const others = await otherActiveAnnualLeaveNames(tx, row.id);
+    const others = await otherActiveAnnualLeaveNames(tx, tenantId, row.id);
     if (others.length > 0) {
       throw new LeaveTypeRuleError(
         `${others.join(', ')} is already your Annual Leave. Only one active leave type can be your Annual Leave — switch off “This is our Annual Leave” on ${others.join(', ')} first.`,
+      );
+    }
+    // r299 fix pass — the plan tells the reporter that marking a type as Annual Leave means "employees can
+    // never be blocked from applying for it". That is enforced when the switch is ALREADY on (the statutory
+    // can-apply lock asks the role); a type whose applications were blocked BEFORE switching on would keep
+    // refusing employees while its tab showed the box ticked and locked. Refuse rather than silently flip a
+    // second setting: HR allows applications first, then switches this on.
+    const [applyRow] = await tx
+      .select({ employeeCanApply: leaveType.employeeCanApply })
+      .from(leaveType)
+      .where(eq(leaveType.id, row.id))
+      .limit(1);
+    if (applyRow?.employeeCanApply === false) {
+      throw new LeaveTypeRuleError(
+        `Employees are currently blocked from applying for ${row.name}. Annual Leave is a statutory entitlement that employees must always be able to apply for — allow applications for ${row.name} first, then switch on “This is our Annual Leave”.`,
       );
     }
     return { roleSet: { role: 'annual' as const }, roleBefore, roleAfter: 'annual' };
@@ -3089,6 +3122,14 @@ async function resolveAnnualLeaveSwitch(
       );
     }
     return unchanged;
+  }
+  // r299 fix pass — clearing the role of an ANNUAL-coded type is the same silent no-op as the unclassified
+  // case above: the code fallback keeps it Annual Leave and the switch comes back on. Every tenant whose
+  // seeded ANNUAL received its role from migration 0387 has exactly this shape.
+  if (isEarnedAccrualType({ role: null, code: row.code })) {
+    throw new LeaveTypeRuleError(
+      `${row.name} is recognised as Annual Leave by its code ${row.code}, so “This is our Annual Leave” cannot be switched off on it.`,
+    );
   }
   if (isEarnedMethod(accrualMethodAfter)) {
     throw new LeaveTypeRuleError(
@@ -3805,7 +3846,7 @@ export async function updateLeaveType(
     // r299 (3de1453a) — the Annual Leave switch, decided (and refused) before anything is written.
     if (touchAnnualLeave && !before) throw new LeaveTypeRuleError('Leave type not found.');
     const annualSwitch = before
-      ? await resolveAnnualLeaveSwitch(tx, { id: p.id, name: before.name, code: before.code, role: before.role }, p.isAnnualLeave, before.accrualMethod)
+      ? await resolveAnnualLeaveSwitch(tx, ctx.tenantId, { id: p.id, name: before.name, code: before.code, role: before.role }, p.isAnnualLeave, before.accrualMethod)
       : { roleSet: {}, roleBefore: null, roleAfter: null };
     const roleSet: { role?: LeaveTypeRole | null } = annualSwitch.roleSet;
     // Balance Deduction Source (cdf9ca48) — refuse a configuration that has no well-defined answer, AT SAVE,
@@ -4383,6 +4424,7 @@ export async function setLeaveTypeRules(
     const methodAfter = 'accrualMethod' in set ? (set.accrualMethod as string | null) : before.accrualMethod;
     const annualSwitch = await resolveAnnualLeaveSwitch(
       tx,
+      ctx.tenantId,
       { id: p.id, name: identity.name, code: identity.code, role: identity.role },
       p.isAnnualLeave,
       methodAfter,
@@ -4473,7 +4515,7 @@ export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived:
         .where(eq(leaveType.id, p.id))
         .limit(1);
       if (row && row.archivedAt != null && isEarnedAccrualType(row)) {
-        const others = await otherActiveAnnualLeaveNames(tx, p.id);
+        const others = await otherActiveAnnualLeaveNames(tx, ctx.tenantId, p.id);
         if (others.length > 0) {
           throw new LeaveTypeRuleError(
             `${row.name} is Annual Leave, and ${others.join(', ')} is already your active Annual Leave. Only one active leave type can be your Annual Leave, so ${row.name} cannot be restored while ${others.join(', ')} is active.`,
