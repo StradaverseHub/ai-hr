@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCancelLeave, cancelOwnLeave, decideLeave, decideLeaveCancellation, requestLeave, requestLeaveCancellation } from '../core/leave';
@@ -266,8 +266,8 @@ describe('0472 · the OWNER reads the names of the people who decide their reque
       WHERE n.nspname = 'app' AND p.proname IN ('own_leave_request_approvals', 'own_leave_request_cancellations')
       ORDER BY p.proname`);
     expect(meta.map((m) => ({ ...(m as Record<string, unknown>) }))).toEqual([
-      { proname: 'own_leave_request_approvals', prosecdef: true, proconfig: ['search_path=public'], app_exec: true, public_exec: false },
-      { proname: 'own_leave_request_cancellations', prosecdef: true, proconfig: ['search_path=public'], app_exec: true, public_exec: false },
+      { proname: 'own_leave_request_approvals', prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+      { proname: 'own_leave_request_cancellations', prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
     ]);
   });
 });
@@ -294,11 +294,11 @@ describe('the View panel’s rejection reason and cancellation detail', () => {
     expect(c.cancelledAt).toBeInstanceOf(Date);
   });
 
-  it('cancelled by HR on the employee’s behalf: HR’s name and the reason on record', async () => {
+  it('cancelled by HR on the employee’s behalf: HR’s name, and NEVER HR’s free-text reason (an internal note)', async () => {
     const w = await world(['direct_manager']);
     const id = await w.apply(w.emp);
     await adminCancelLeave(w.hr.ctx, { leaveRequestId: id, reason: 'Duplicate application', cancelledByEmploymentId: w.hr.employmentId });
-    expect((await ownLeaveCancellations(w.emp.ctx, [id])).get(id)).toMatchObject({ cancelledByName: 'Hana HR', reason: 'Duplicate application' });
+    expect((await ownLeaveCancellations(w.emp.ctx, [id])).get(id)).toMatchObject({ cancelledByName: 'Hana HR', reason: null });
     expect((await ownLeaveCancellations(w.colleague.ctx, [id])).size).toBe(0);
     expect((await ownLeaveCancellations(w.mgr.ctx, [id])).size).toBe(0);
   });
@@ -321,5 +321,26 @@ describe('the View panel’s rejection reason and cancellation detail', () => {
     expect(c.cancelledAt).toBeInstanceOf(Date);
     // A request that is not cancelled has no cancellation row at all.
     expect((await ownLeaveCancellations(w.emp.ctx, [id])).has(id)).toBe(id === cancelledRow.id);
+  });
+});
+
+describe('SECURITY DEFINER search_path — a caller cannot shadow a table the ownership check reads', () => {
+  it('a TEMP app_user table naming a colleague’s person does not reveal that colleague’s approver', async () => {
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    const attacker = await person('Adam Attacker', 'employee');
+    const victim = await person('Vera Victim', 'employee');
+    const mgr = await person('Secret Manager Name', 'manager');
+    await setReportingLine(adminCtx(b), { subordinateEmploymentId: victim.employmentId, managerEmploymentId: mgr.employmentId, lineType: 'administrative', validFrom: '2024-01-01' });
+    await owner.db.insert(schema.leaveLedger).values({ tenantId: b.tenantId, employmentId: victim.employmentId, leaveTypeId: b.annualLeaveTypeId, entryType: 'accrual', days: '30.00', effectiveOn: TODAY });
+    const { leaveRequestId: victimReq } = await requestLeave(victim.ctx, { employmentId: victim.employmentId, leaveTypeId: b.annualLeaveTypeId, startDate: MON, endDate: MON, today: TODAY });
+    // Non-vacuous: the owner is told the name.
+    const own = await withTenant(victim.ctx, (tx) => tx.execute(sql`SELECT approver_name FROM app.own_leave_request_approvals(${`{${victimReq}}`}::uuid[])`));
+    expect((own as unknown as { approver_name: string | null }[]).map((r) => r.approver_name)).toContain('Secret Manager Name');
+    const shadowed = await withTenant(attacker.ctx, async (tx) => {
+      await tx.execute(sql`CREATE TEMP TABLE app_user (id uuid, tenant_id uuid, person_id uuid) ON COMMIT DROP`);
+      await tx.execute(sql`INSERT INTO pg_temp.app_user VALUES (${attacker.ctx.userId}::uuid, ${b.tenantId}::uuid, ${victim.personId}::uuid)`);
+      return tx.execute(sql`SELECT approver_name FROM app.own_leave_request_approvals(${`{${victimReq}}`}::uuid[])`);
+    });
+    expect(shadowed as unknown as unknown[]).toEqual([]);
   });
 });

@@ -25,7 +25,8 @@
 --     for an owned request whose status is 'cancelled': when it was cancelled, the display name of who
 --     cancelled it (the employee, the HR administrator, or the approver who approved the employee's
 --     cancellation request), whether the system approved it automatically, when the cancellation was asked
---     for, and the reason on record.
+--     for, and the EMPLOYEE'S OWN reason from their cancellation request. HR's free-text reason on an
+--     on-behalf cancellation is never returned: it was written as an internal note (verifier, r302).
 --
 -- OWNERSHIP: employment.person_id of the request = app_user.person_id of app.current_user_id(), everything
 -- constrained to app.current_tenant_id(). Anything else — a colleague's request, a report's request viewed by
@@ -41,6 +42,10 @@
 --   business_unit_head
 --   specific_employee  the step's own approver_employment_id snapshot (0467)
 --   anything else      NULL (a role, not a person)
+--
+-- search_path = pg_catalog, public, pg_temp AND every relation schema-qualified (migration 0312's rule for
+-- SECURITY DEFINER): with `search_path = public` alone Postgres still searches pg_temp FIRST, and an app-role
+-- session that created a temp `app_user` table was answered with a colleague's approver (verifier, r302).
 --
 -- EXECUTE: revoked from PUBLIC (a new function is executable by PUBLIC by default) and granted to ai_hr_app.
 -- No helper function is created: a helper that takes an employment id and returns a name would be exactly the
@@ -63,15 +68,15 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
     decided_by_name text,
     decided_at timestamptz
   )
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
   WITH owned AS (
     SELECT lr.id, lr.employment_id, lr.status::text AS status, lr.decided_by_employment_id, lr.decided_at
-    FROM leave_request lr
-    JOIN employment e ON e.id = lr.employment_id AND e.tenant_id = lr.tenant_id
+    FROM public.leave_request lr
+    JOIN public.employment e ON e.id = lr.employment_id AND e.tenant_id = lr.tenant_id
     WHERE lr.id = ANY(p_leave_request_ids)
       AND lr.tenant_id = app.current_tenant_id()
       AND EXISTS (
-        SELECT 1 FROM app_user u
+        SELECT 1 FROM public.app_user u
         WHERE u.id = app.current_user_id() AND u.tenant_id = lr.tenant_id AND u.person_id = e.person_id
       )
   ),
@@ -79,7 +84,7 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
     SELECT s.id, s.leave_request_id, s.subject_employment_id, s.step_index, s.approver_kind,
            s.approver_employment_id, s.approver_alternates, s.status::text AS status,
            s.decided_by_employment_id, s.decided_at, o.status AS request_status
-    FROM leave_approval_step s
+    FROM public.leave_approval_step s
     JOIN owned o ON o.id = s.leave_request_id
     WHERE s.tenant_id = app.current_tenant_id()
   ),
@@ -106,22 +111,22 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
   resolved AS (
     SELECT ap.step_id, ap.ord,
       (SELECT p.full_name
-         FROM employment ae
-         JOIN person p ON p.id = ae.person_id AND p.tenant_id = ae.tenant_id
+         FROM public.employment ae
+         JOIN public.person p ON p.id = ae.person_id AND p.tenant_id = ae.tenant_id
         WHERE ae.tenant_id = app.current_tenant_id()
           AND ae.id = CASE ap.kind
             WHEN 'specific_employee' THEN ap.emp_id
             WHEN 'direct_manager' THEN (
-              SELECT rl.manager_employment_id FROM reporting_line rl
+              SELECT rl.manager_employment_id FROM public.reporting_line rl
               WHERE rl.subordinate_employment_id = ap.subject AND rl.line_type = 'administrative'
                 AND rl.tenant_id = app.current_tenant_id()
                 AND rl.valid_from <= current_date AND (rl.valid_to IS NULL OR rl.valid_to > current_date)
                 AND rl.superseded_at IS NULL
               ORDER BY rl.valid_from DESC LIMIT 1)
             WHEN 'manager_manager' THEN (
-              SELECT rl2.manager_employment_id FROM reporting_line rl2
+              SELECT rl2.manager_employment_id FROM public.reporting_line rl2
               WHERE rl2.subordinate_employment_id = (
-                  SELECT rl.manager_employment_id FROM reporting_line rl
+                  SELECT rl.manager_employment_id FROM public.reporting_line rl
                   WHERE rl.subordinate_employment_id = ap.subject AND rl.line_type = 'administrative'
                     AND rl.tenant_id = app.current_tenant_id()
                     AND rl.valid_from <= current_date AND (rl.valid_to IS NULL OR rl.valid_to > current_date)
@@ -144,9 +149,9 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
   SELECT o.id, NULL::integer, NULL::text,
          CASE WHEN o.status = 'pending' AND NOT EXISTS (SELECT 1 FROM steps st WHERE st.leave_request_id = o.id)
            THEN (SELECT p.full_name
-                   FROM reporting_line rl
-                   JOIN employment me ON me.id = rl.manager_employment_id AND me.tenant_id = rl.tenant_id
-                   JOIN person p ON p.id = me.person_id AND p.tenant_id = me.tenant_id
+                   FROM public.reporting_line rl
+                   JOIN public.employment me ON me.id = rl.manager_employment_id AND me.tenant_id = rl.tenant_id
+                   JOIN public.person p ON p.id = me.person_id AND p.tenant_id = me.tenant_id
                   WHERE rl.subordinate_employment_id = o.employment_id AND rl.line_type = 'administrative'
                     AND rl.tenant_id = app.current_tenant_id()
                     AND rl.valid_from <= current_date AND (rl.valid_to IS NULL OR rl.valid_to > current_date)
@@ -155,7 +160,7 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
          END,
          NULL::text[],
          o.status,
-         (SELECT p.full_name FROM employment de JOIN person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
+         (SELECT p.full_name FROM public.employment de JOIN public.person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
            WHERE de.id = o.decided_by_employment_id AND de.tenant_id = app.current_tenant_id()),
          o.decided_at
   FROM owned o
@@ -164,7 +169,7 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_approvals(p_leave_request_ids u
          (SELECT r.name FROM resolved r WHERE r.step_id = st.id AND r.ord = 0),
          (SELECT array_agg(r.name ORDER BY r.ord) FROM resolved r WHERE r.step_id = st.id AND r.ord > 0 AND r.name IS NOT NULL),
          st.status,
-         (SELECT p.full_name FROM employment de JOIN person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
+         (SELECT p.full_name FROM public.employment de JOIN public.person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
            WHERE de.id = st.decided_by_employment_id AND de.tenant_id = app.current_tenant_id()),
          st.decided_at
   FROM steps st;
@@ -183,16 +188,16 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_cancellations(p_leave_request_i
     requested_at timestamptz,
     reason text
   )
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
   WITH owned AS (
     SELECT lr.id
-    FROM leave_request lr
-    JOIN employment e ON e.id = lr.employment_id AND e.tenant_id = lr.tenant_id
+    FROM public.leave_request lr
+    JOIN public.employment e ON e.id = lr.employment_id AND e.tenant_id = lr.tenant_id
     WHERE lr.id = ANY(p_leave_request_ids)
       AND lr.tenant_id = app.current_tenant_id()
       AND lr.status = 'cancelled'
       AND EXISTS (
-        SELECT 1 FROM app_user u
+        SELECT 1 FROM public.app_user u
         WHERE u.id = app.current_user_id() AND u.tenant_id = lr.tenant_id AND u.person_id = e.person_id
       )
   ),
@@ -203,7 +208,7 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_cancellations(p_leave_request_i
     FROM owned o
     CROSS JOIN LATERAL (
       SELECT d.event_type, d.actor_type, d.actor_id, d.payload, d.occurred_at
-      FROM domain_event d
+      FROM public.domain_event d
       WHERE d.tenant_id = app.current_tenant_id()
         AND d.aggregate_id = o.id
         AND d.event_type IN ('leave-request.self-cancelled', 'leave-request.admin-cancelled', 'leave-request.cancelled')
@@ -217,8 +222,8 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_cancellations(p_leave_request_i
     FROM ev
     CROSS JOIN LATERAL (
       SELECT lcr.reason, lcr.created_at, lcr.decided_by_employment_id
-      FROM domain_event a
-      JOIN leave_cancellation_request lcr ON lcr.id = a.aggregate_id AND lcr.tenant_id = a.tenant_id
+      FROM public.domain_event a
+      JOIN public.leave_cancellation_request lcr ON lcr.id = a.aggregate_id AND lcr.tenant_id = a.tenant_id
       WHERE ev.event_type = 'leave-request.cancelled'
         AND a.tenant_id = app.current_tenant_id()
         AND a.event_type = 'leave-cancellation.approved'
@@ -233,21 +238,23 @@ CREATE OR REPLACE FUNCTION app.own_leave_request_cancellations(p_leave_request_i
            CASE
              WHEN ev.event_type = 'leave-request.admin-cancelled'
               AND (ev.payload ->> 'cancelledByEmploymentId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-               THEN (SELECT p.full_name FROM employment de JOIN person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
+               THEN (SELECT p.full_name FROM public.employment de JOIN public.person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
                       WHERE de.id = (ev.payload ->> 'cancelledByEmploymentId')::uuid AND de.tenant_id = app.current_tenant_id())
              WHEN ev.event_type = 'leave-request.cancelled'
-               THEN (SELECT p.full_name FROM employment de JOIN person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
+               THEN (SELECT p.full_name FROM public.employment de JOIN public.person p ON p.id = de.person_id AND p.tenant_id = de.tenant_id
                       WHERE de.id = cr.decided_by_employment_id AND de.tenant_id = app.current_tenant_id())
            END,
            CASE WHEN ev.actor_type = 'user'
-             THEN (SELECT p.full_name FROM app_user au JOIN person p ON p.id = au.person_id AND p.tenant_id = au.tenant_id
+             THEN (SELECT p.full_name FROM public.app_user au JOIN public.person p ON p.id = au.person_id AND p.tenant_id = au.tenant_id
                     WHERE au.id = ev.actor_id AND au.tenant_id = app.current_tenant_id())
            END
          ),
          COALESCE(ev.actor_type = 'system', false),
          cr.created_at,
+         -- Only the EMPLOYEE'S OWN words: the reason they gave on their cancellation request. HR's reason on an
+         -- on-behalf cancellation is an internal note written without being told the employee would read it
+         -- (the dialog says only "Reason (optional)"; the notification never carried it) — never returned.
          CASE
-           WHEN ev.event_type = 'leave-request.admin-cancelled' THEN NULLIF(btrim(ev.payload ->> 'reason'), '')
            WHEN ev.event_type = 'leave-request.cancelled' THEN NULLIF(btrim(cr.reason), '')
          END
   FROM owned o
