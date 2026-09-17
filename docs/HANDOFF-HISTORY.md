@@ -1,3 +1,60 @@
+## r302 (2026-09-17) — Cancel Approved Leave, and the balance defects the verifier found under it. `main@bbc024e9`, **migration 0471**.
+
+Closed and DEPLOYED: `83511d3b`. Gate: **903 files — equal to the suite file count — 13,717 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `gate:shadow` **PASS 387/387**. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` bbc024e9. The deploy log's 0471 NOTICE: **all 19 existing production leave types keep employee cancellation ON** (no notice, re-approval, no notification).
+
+### WHAT SHIPPED
+
+A Cancel Approved Leave card per leave type (allow / notice days per leave date / approved automatically /
+notify), a cancellation that walks a COPY of the original request's approval chain (leave_cancellation_step,
+split survivors traced through splitFromRequestId), automatic approval through the same approve body as a
+system actor, employee notifications for approved/rejected, and a specific sentence for every refusal.
+
+### THE VERIFIER FOUND FOUR BALANCE DEFECTS THE BUILDER'S TESTS DID NOT — ALL HAND-FIXED, EACH RE-DERIVED RED
+
+1. **Race (new exposure with auto-approve):** two requests at the same moment (two tabs or a crafted POST) each
+   read the leave unlocked: the same day came back twice (+2 for one day) and approved rows overlapped (7 days on a
+   5-day leave). The leave row is now locked `FOR UPDATE` for the whole request; the order is leave row → cancellation
+   row in `requestLeaveCancellation`, `decideLeaveCancellation` and `adminCancelLeave`, so the three cannot deadlock.
+2. **Per-date-approved leave with a rejected day:** the split ignored `leave_request_date`, reversed `req.days`
+   (5) against a 4-day debit, and turned the rejected Tuesday into an approved survivor with no per-date rows —
+   which /leave then offered, ending ONE DAY ABOVE the starting balance. The split now runs over the APPROVED dates,
+   reverses the NET ledger sourced to the row (what `adminCancelLeave` already did), and **moves each
+   `leave_request_date` row onto the split row whose span holds the date**, cancelled ones set to `cancelled`.
+   Also fixes a main-era defect this exposed: after any split of a per-date leave, the ORIGINAL row kept every
+   date row, so `approvedLeaveDates` and unpaid-leave payroll counted the moved-out dates on it as well.
+3. **Closed payroll month at decision:** only the request checked it; a chain could outlast the month's close
+   and the last approval gave days back inside a final payslip. Asked again in the approve body.
+4. **Second pending cancellation:** a non-overlapping second request was accepted; whichever was approved first
+   split the row and the other was "approved" with 0 days back and a notification saying the leave was cancelled.
+   **Decision: one pending cancellation per leave row** (the screen already hid Cancel while one waits; refusal
+   copy now says "a cancellation of this leave", six locales), and a cancellation whose dates are no longer on the
+   row is refused at approval (`no_longer_cancellable`) — the approver can still reject it.
+5. **`leave_cancellation_step` RLS is the PARENT cancellation's** (0471 edited before it was ever applied): it
+   had copied `leave_approval_step`'s delegation branch, so a delegate could read the levels of a cancellation the
+   parent table hides from them. Delegates cannot see or decide cancellations at all (0132, unchanged).
+
+### DECISIONS the ticket did not settle
+
+- Existing types read switched ON (column added DEFAULT true, default then moved to false — no UPDATE); every
+  creator of a leave type writes OFF, including newly provisioned tenants' Annual and Medical.
+- A leave approved through a multi-level chain now needs every level to cancel (the plan: "the same approval
+  chain"); cancellations already pending at release have no steps and stay single-level.
+- A manager level of the copied chain goes to whoever is the subject's manager NOW; a named approver stays that
+  person; HR can clear any level (so one HR admin can clear manager → HR alone, as with leave approvals).
+- Notice is counted in calendar days per leave date; 0 keeps "strictly after today".
+
+### NOT DONE / KNOWN
+
+- Split survivors created before r299 carry no `splitFromRequestId`: cancelling one copies no chain and the
+  manager decides alone (today's behaviour, not stuck).
+- Automatic approval is allowed in a PROCESSED but not closed payroll month (only `closed` refuses, as everywhere).
+- HR cancelling on the employee's behalf rejects the pending cancellation but leaves its copied steps `pending`
+  (untidy rows, no screen reads them).
+- The employee's own session can UPDATE its cancellation's step rows at the database level, exactly as it can
+  `leave_approval_step`; no action does. A tighter write policy for both is a separate change.
+- A manager can still approve a cancellation after the leave date has passed (the started-date rule is checked
+  when the employee asks, as on main).
+
 ## r301 (2026-09-17) — Generate Entitlement reaches earned Annual Leave; Schedule setup on one tab. `main@789730f5`, **no migration**.
 
 Closed and DEPLOYED: `e5018593`, `6d091cc0`. Gate: **898 files — equal to the suite file count — 13,652 tests, 0
