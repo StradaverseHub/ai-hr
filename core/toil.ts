@@ -1136,10 +1136,19 @@ export async function consumeReplacementLeaveTx(
  * was paid out, or was reversed since the leave used it. Typed so core/leave.ts can re-type it onto
  * `LeaveCancellationNotAllowedError` and the reason reaches the person cancelling.
  */
+export type RestoreBlock = {
+  /** The credit's date worked (null when the credit itself could not be read). */
+  workedDate: string | null;
+  expiresOn: string | null;
+  state: 'expired' | 'paid_out' | 'reversed' | 'missing' | 'unreadable';
+};
 export class ReplacementLeaveRestoreBlockedError extends Error {
-  constructor(msg: string) {
+  /** Every credit that blocks the give-back, so a screen can name each one in the reader's language. */
+  readonly blocked: RestoreBlock[];
+  constructor(msg: string, blocked: RestoreBlock[] = []) {
     super(msg);
     this.name = 'ReplacementLeaveRestoreBlockedError';
+    this.blocked = blocked;
   }
 }
 
@@ -1266,6 +1275,7 @@ async function planReplacementLeaveRestore(
       `this replacement leave cannot be given back: the record of which credits it used could not be read in full (${unaccounted
         .map((r) => r.workedDate)
         .join(', ')}). An HR administrator can cancel it.`,
+      unaccounted.map((r) => ({ workedDate: r.workedDate, expiresOn: null, state: 'unreadable' as const })),
     );
   }
 
@@ -1304,27 +1314,35 @@ async function planReplacementLeaveRestore(
     // manual admin action). Re-crediting an expired lot for a First-Schedule employee would hand the next
     // sweep a day to convert to CASH — a cancellation silently creating a payroll liability.
     const blocked: string[] = [];
+    const blocks: RestoreBlock[] = [];
     for (const step of plan) {
       const row = byId.get(step.accrualId);
       if (!row) {
         blocked.push('a credit behind this leave no longer exists');
+        blocks.push({ workedDate: null, expiresOn: null, state: 'missing' });
         continue;
       }
       if (row.status === 'lapsed' || row.status === 'converted_to_pay') {
         blocked.push(
           `the credit earned on ${row.workedDate} ${row.status === 'lapsed' ? 'expired' : 'was paid out when it expired'} on ${row.expiresOn}`,
         );
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: row.status === 'lapsed' ? 'expired' : 'paid_out' });
         continue;
       }
       if (row.status === 'reversed') {
         blocked.push(`the credit earned on ${row.workedDate} has been reversed`);
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: 'reversed' });
         continue;
       }
-      if (row.expiresOn < p.asOf) blocked.push(`the credit earned on ${row.workedDate} expired on ${row.expiresOn}`);
+      if (row.expiresOn < p.asOf) {
+        blocked.push(`the credit earned on ${row.workedDate} expired on ${row.expiresOn}`);
+        blocks.push({ workedDate: row.workedDate, expiresOn: row.expiresOn, state: 'expired' });
+      }
     }
     if (blocked.length > 0) {
       throw new ReplacementLeaveRestoreBlockedError(
         `this replacement leave cannot be given back: ${[...new Set(blocked)].join('; ')}`,
+        blocks,
       );
     }
   }

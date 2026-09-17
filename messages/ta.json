@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} ஒரு விடுப்பு ஆண்டுக்கு {maxDays} நாட்களாக வரம்பிடப்பட்டுள்ளது. {yearStart} முதல் {yearEnd} வரை ஏற்கனவே {usedDays} நாட்கள் விண்ணப்பிக்கப்பட்டுள்ளன, எனவே {days} நாட்களுக்கான இந்த விண்ணப்பத்தைச் சமர்ப்பிக்க முடியாது.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "இந்த மாற்று விடுப்பை ரத்து செய்ய முடியாது: {credits}. காலாவதியான வரவைத் திருப்பித் தர முடியாது.",
+      "cancellationCreditExpired": "{workedDate} அன்று வேலை செய்த நாளுக்கான வரவு {expiresOn} அன்று காலாவதியானது",
+      "cancellationCreditPaidOut": "{workedDate} அன்று வேலை செய்த நாளுக்கான வரவு {expiresOn} அன்று காலாவதியானபோது பணமாக்கப்பட்டது",
+      "cancellationCreditReversed": "{workedDate} அன்று வேலை செய்த நாளுக்கான வரவு திரும்பப்பெறப்பட்டது",
+      "cancellationCreditUnreadable": "எந்த வரவுகள் பயன்படுத்தப்பட்டன என்ற பதிவை முழுமையாகப் படிக்க முடியவில்லை, எனவே HR நிர்வாகி ரத்து செய்ய வேண்டும்"
     },
     "documentLabel": "ஆதரவு ஆவணம்",
     "documentHint": "சில விடுப்பு வகைகளுக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்). அனுமதிக்கப்படும் வகைகளும் அளவு வரம்புகளும் தேர்ந்தெடுத்த விடுப்பு வகையைப் பொறுத்தது.",

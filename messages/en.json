@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "This Replacement Leave can't be cancelled: {credits}. A credit that has expired can't be given back.",
+      "cancellationCreditExpired": "the credit for the day worked on {workedDate} expired on {expiresOn}",
+      "cancellationCreditPaidOut": "the credit for the day worked on {workedDate} was paid out when it expired on {expiresOn}",
+      "cancellationCreditReversed": "the credit for the day worked on {workedDate} has been reversed",
+      "cancellationCreditUnreadable": "the record of which credits it used could not be read in full, so an HR administrator must cancel it"
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",

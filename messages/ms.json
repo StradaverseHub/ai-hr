@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} dihadkan kepada {maxDays} hari setiap tahun cuti. {usedDays} hari telah pun dipohon antara {yearStart} dan {yearEnd}, jadi permohonan {days} hari ini tidak boleh dihantar.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "Cuti Ganti ini tidak boleh dibatalkan: {credits}. Kredit yang telah luput tidak boleh dipulangkan.",
+      "cancellationCreditExpired": "kredit bagi hari bekerja {workedDate} telah luput pada {expiresOn}",
+      "cancellationCreditPaidOut": "kredit bagi hari bekerja {workedDate} telah dibayar apabila luput pada {expiresOn}",
+      "cancellationCreditReversed": "kredit bagi hari bekerja {workedDate} telah dibatalkan",
+      "cancellationCreditUnreadable": "rekod kredit yang digunakan tidak dapat dibaca sepenuhnya, jadi pentadbir HR perlu membatalkannya"
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",

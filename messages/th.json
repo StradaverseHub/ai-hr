@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} จำกัดไม่เกิน {maxDays} วันต่อปีการลา มีการยื่นขอไปแล้ว {usedDays} วัน ระหว่าง {yearStart} ถึง {yearEnd} จึงไม่สามารถยื่นคำขอ {days} วันนี้ได้",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "ไม่สามารถยกเลิกวันลาทดแทนนี้ได้: {credits} เครดิตที่หมดอายุแล้วไม่สามารถคืนได้",
+      "cancellationCreditExpired": "เครดิตของวันที่ทำงาน {workedDate} หมดอายุเมื่อ {expiresOn}",
+      "cancellationCreditPaidOut": "เครดิตของวันที่ทำงาน {workedDate} ถูกจ่ายเป็นเงินเมื่อหมดอายุ {expiresOn}",
+      "cancellationCreditReversed": "เครดิตของวันที่ทำงาน {workedDate} ถูกยกเลิกรายการแล้ว",
+      "cancellationCreditUnreadable": "ไม่สามารถอ่านบันทึกเครดิตที่ใช้ได้ครบถ้วน ผู้ดูแล HR ต้องเป็นผู้ยกเลิก"
     },
     "documentLabel": "เอกสารประกอบ",
     "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",

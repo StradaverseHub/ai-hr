@@ -45,6 +45,7 @@ import {
   replacementExpiringSoonTx,
   ReplacementLeaveRestoreBlockedError,
   restoreReplacementLeaveTx,
+  type RestoreBlock,
 } from './toil';
 import {
   holidayDatesFor,
@@ -588,6 +589,21 @@ export class LeaveCancellationNotAllowedError extends Error {
   constructor(reason?: string) {
     super(reason ? `Leave date(s) cannot be cancelled: ${reason}` : 'Leave date(s) cannot be cancelled.');
     this.name = 'LeaveCancellationNotAllowedError';
+  }
+}
+/**
+ * 3fb1a611 (r299) — a Replacement Leave cannot be cancelled because a credit it used can no longer take the
+ * day back (expired, paid out, reversed). A `LeaveCancellationNotAllowedError`, so every existing handler still
+ * treats it as a refusal; it carries the blocking credits so the screen can NAME them in the reader's language
+ * instead of the generic "can't be cancelled" (app/me/actions.ts localizeLeaveError). The plan's promise is that
+ * the screen says the credit has expired, not merely that something went wrong.
+ */
+export class ReplacementCreditCancellationBlockedError extends LeaveCancellationNotAllowedError {
+  readonly credits: RestoreBlock[];
+  constructor(reason: string, credits: RestoreBlock[]) {
+    super(reason);
+    this.name = 'ReplacementCreditCancellationBlockedError';
+    this.credits = credits;
   }
 }
 /** A requested cancel date is on/before "today" (tenant working-day frame) — too late to give back. */
@@ -5547,7 +5563,8 @@ export async function requestLeaveCancellation(
           asOf: today,
         });
       } catch (e) {
-        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
         throw e;
       }
     }
@@ -5818,7 +5835,8 @@ export async function decideLeaveCancellation(
           asOf: todayInKualaLumpur(),
         });
       } catch (e) {
-        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
         throw e;
       }
     }
@@ -5946,7 +5964,8 @@ export async function adminCancelLeave(
           asOf: todayInKualaLumpur(),
         });
       } catch (e) {
-        if (e instanceof ReplacementLeaveRestoreBlockedError) throw new LeaveCancellationNotAllowedError(e.message);
+        if (e instanceof ReplacementLeaveRestoreBlockedError)
+          throw new ReplacementCreditCancellationBlockedError(e.message, e.blocked);
         throw e;
       }
     }

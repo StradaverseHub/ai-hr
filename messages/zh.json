@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "此补休假无法取消：{credits}。已到期的额度无法退回。",
+      "cancellationCreditExpired": "{workedDate} 工作日的额度已于 {expiresOn} 到期",
+      "cancellationCreditPaidOut": "{workedDate} 工作日的额度已于 {expiresOn} 到期时折现",
+      "cancellationCreditReversed": "{workedDate} 工作日的额度已被冲销",
+      "cancellationCreditUnreadable": "无法完整读取其所用额度的记录，需由人事管理员取消"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",

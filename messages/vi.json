@@ -1961,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "Không thể hủy đơn Nghỉ bù này: {credits}. Tín dụng đã hết hạn không thể hoàn lại.",
+      "cancellationCreditExpired": "tín dụng cho ngày làm việc {workedDate} đã hết hạn vào {expiresOn}",
+      "cancellationCreditPaidOut": "tín dụng cho ngày làm việc {workedDate} đã được trả thành tiền khi hết hạn vào {expiresOn}",
+      "cancellationCreditReversed": "tín dụng cho ngày làm việc {workedDate} đã bị hủy bỏ",
+      "cancellationCreditUnreadable": "không đọc được đầy đủ bản ghi tín dụng đã dùng, nên quản trị viên HR phải hủy"
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",

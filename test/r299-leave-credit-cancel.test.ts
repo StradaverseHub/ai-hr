@@ -15,7 +15,32 @@
  * Dates come from todayInKualaLumpur(): credits are for rest days last month; the leave is taken in a week at
  * least two weeks ahead, so every cancellation date is in the future.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import en from '../messages/en.json';
+
+// app/me/actions.ts's framework edges, faked the way test/r266-benefit-scheme-vocabulary.test.ts fakes them, so the
+// refusal can be read as the SENTENCE the employee sees (a real translator over the English catalogue).
+vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => null) }));
+vi.mock('next/navigation', () => ({
+  redirect: (p: string): never => {
+    throw new Error(`NEXT_REDIRECT:${p}`);
+  },
+  notFound: vi.fn(() => undefined),
+}));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
+vi.mock('next-intl/server', () => ({
+  getLocale: async () => 'en',
+  getTranslations: async (ns: string) => (key: string, vals?: Record<string, unknown>) => {
+    const node = `${ns}.${key}`
+      .split('.')
+      .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), en);
+    if (typeof node !== 'string') throw new Error(`MISSING_MESSAGE: ${ns}.${key}`);
+    return node.replace(/\{(\w+)\}/g, (_, name) => {
+      if (!vals || !(name in vals)) throw new Error(`FORMATTING_ERROR: ${ns}.${key} needs {${name}}`);
+      return String(vals[name]);
+    });
+  },
+}));
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as schema from '../db/schema';
@@ -35,6 +60,8 @@ import {
   requestLeaveCancellation,
 } from '../core/leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { localizeLeaveError } from '../app/me/actions';
+import { ReplacementCreditCancellationBlockedError } from '../core/leave';
 import { grantLeaveCredit, setToilPolicy } from '../core/toil';
 
 let b: Base;
@@ -287,6 +314,16 @@ describe('A credit that expired since the leave used it cannot come back', () =>
     const asked = requestLeaveCancellation(subjectCtx, { leaveRequestId: leaveId, cancelDates: [TUE], today: TODAY });
     await expect(asked).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
     await expect(asked).rejects.toThrow(new RegExp(`credit earned on ${credit.workedDate} expired on ${expiredOn}`));
+    // …and THE SCREEN SAYS SO: the typed error carries the credit, and the localized sentence names it rather
+    // than the generic "This leave date can't be cancelled."
+    const err = await asked.catch((e) => e);
+    expect(err).toBeInstanceOf(ReplacementCreditCancellationBlockedError);
+    expect((err as ReplacementCreditCancellationBlockedError).credits).toEqual([
+      { workedDate: credit.workedDate, expiresOn: expiredOn, state: 'expired' },
+    ]);
+    const shown = await localizeLeaveError(err);
+    expect(shown).toContain(`the credit for the day worked on ${credit.workedDate} expired on ${expiredOn}`);
+    expect(shown).not.toBe(en.leave.errors.cancellationNotAllowed);
 
     const hr = adminCancelLeave(admin, { leaveRequestId: leaveId });
     await expect(hr).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
