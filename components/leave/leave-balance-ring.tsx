@@ -1,16 +1,25 @@
 /**
  * r302 (board 6c9802c9) — the Annual Leave ring. Plain inline SVG, no chart dependency.
  *
- * WHAT THE ARCS ARE. Around the circle, in order: what has been TAKEN, what is PENDING approval, what REMAINS
- * of the balance once pending is set aside, and — muted — the part of the year's entitlement NOT EARNED YET.
- * Arc lengths are proportions only; no arc length is ever printed. Every number the employee reads comes from
- * the card's own figures (core/my-leave.ts, picked off leaveEntitlementBreakdown / leaveTypeApplySummary), and
- * the ring is decorative beside them: the legend that accompanies it IS the text equivalent, and the SVG also
- * carries a one-sentence `aria-label` built by the caller from those same printed figures.
+ * WHAT THE ARCS ARE. Around the circle, in order: what has been TAKEN, what is PENDING approval, what is LEFT TO
+ * USE — "You can apply for" in the current leave year, the year's remaining available for an earlier one — and,
+ * muted, the part of the year's entitlement NOT EARNED YET when there is any. The big number in the middle is the
+ * Balance, which is not an arc.
  *
- * A NULL FIGURE DRAWS NO ARC. When HR hides a figure from employees (ESS view) its arc is absent rather than
- * reconstructed from the others — the caller does not draw the ring at all in that case (see
- * `ringDrawable`), because an arc proportion is itself a disclosure of the hidden number.
+ * THE LEGEND IS THE RING (r302 fix pass, verifier defect 5). The legend used to carry a green "Balance 7.00" while
+ * the green arc drew Balance − Pending, so Balance 7 / Pending 7 showed a green legend entry over no green arc at
+ * all. Now `ringSegments` is the ONE list both are drawn from: each legend entry is labelled exactly as its arc
+ * (the arc's own <title>) and shows exactly the arc's value; arc lengths are proportional to those values and
+ * the values sum to the ring's total. test/r302fp-my-leave-fixpass.dom.test.tsx measures it.
+ *
+ * Every figure except Not earned yet is the card's own, verbatim (core/my-leave.ts, picked off
+ * leaveEntitlementBreakdown / leaveTypeApplySummary). Not earned yet is the one figure the ring derives —
+ * Entitlement less Earned so far, to 2dp — and it is printed beside its arc precisely so the arc is not an
+ * unexplained number. The SVG also carries a one-sentence `aria-label` built by the caller.
+ *
+ * A NULL FIGURE DRAWS NO RING, AND NEITHER DOES A NEGATIVE ONE. When HR hides a figure from employees (ESS view)
+ * its arc would disclose it by proportion; an overdrawn "You can apply for" cannot be drawn as a length. In both
+ * cases the caller draws the ordinary card instead (see `ringDrawable`), which prints every figure in full.
  *
  * Server-safe: no hooks, no 'use client'. Rendered from the client dashboard island.
  */
@@ -21,43 +30,55 @@ export type RingFigures = {
   taken: number | null;
   pending: number | null;
   balance: number | null;
+  /** The third arc: You can apply for (current year) or the year's remaining available (an earlier year). */
+  remaining: number | null;
 };
-
-/** The ring is drawn only when every figure its arcs are proportioned from is visible. */
-export function ringDrawable(f: RingFigures): boolean {
-  return f.entitlement != null && f.earnedSoFar != null && f.taken != null && f.pending != null && f.balance != null;
-}
 
 export const RING_COLORS = {
   taken: '#6366f1',
   pending: '#f59e0b',
-  remaining: '#22c55e',
+  available: '#22c55e',
   unearned: '#d6d7e0',
   track: '#eef0f6',
 } as const;
 
-export type RingSegment = { key: keyof typeof RING_COLORS; value: number };
+export type RingSegmentKey = 'taken' | 'pending' | 'available' | 'unearned';
+export type RingSegment = { key: RingSegmentKey; value: number };
 
-/** The arc proportions, in drawing order. Negative inputs draw nothing (an overdrawn balance has no arc). */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The ring is drawn only when every figure is visible and no arc figure is negative. */
+export function ringDrawable(f: RingFigures): boolean {
+  if (f.entitlement == null || f.earnedSoFar == null || f.taken == null || f.pending == null || f.balance == null || f.remaining == null) {
+    return false;
+  }
+  return [f.taken, f.pending, f.remaining].every((n) => Number.isFinite(n) && n >= 0);
+}
+
+/**
+ * The arcs AND the legend, in drawing order: Taken, Pending, the available arc, then Not earned yet only when the
+ * year's entitlement is not all earned. A zero entry is listed (the legend says 0.00) and draws no arc.
+ */
 export function ringSegments(f: RingFigures): RingSegment[] {
   if (!ringDrawable(f)) return [];
-  const pos = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0);
+  const unearned = round2(f.entitlement! - f.earnedSoFar!);
   return [
-    { key: 'taken', value: pos(f.taken!) },
-    { key: 'pending', value: pos(f.pending!) },
-    { key: 'remaining', value: pos(f.balance! - Math.max(0, f.pending!)) },
-    { key: 'unearned', value: pos(f.entitlement! - f.earnedSoFar!) },
+    { key: 'taken', value: f.taken! },
+    { key: 'pending', value: f.pending! },
+    { key: 'available', value: f.remaining! },
+    ...(unearned > 0 ? [{ key: 'unearned' as const, value: unearned }] : []),
   ];
 }
 
 export function LeaveBalanceRing({
-  figures,
+  segments,
   label,
   centre,
   centreCaption,
   size = 168,
 }: {
-  figures: RingFigures;
+  /** `ringSegments` with each entry's legend label and printed value — the same list the legend renders. */
+  segments: (RingSegment & { label: string; display: string })[];
   /** One sentence naming the figures, for screen readers (pre-formatted by the caller). */
   label: string;
   /** The printed Balance, pre-formatted. */
@@ -68,8 +89,7 @@ export function LeaveBalanceRing({
   const r = 42;
   const stroke = 11;
   const c = 2 * Math.PI * r;
-  const segments = ringSegments(figures);
-  const total = segments.reduce((n, s) => n + s.value, 0);
+  const total = segments.reduce((n, s) => n + Math.max(0, s.value), 0);
   let offset = 0;
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }} data-testid="leave-balance-ring">
@@ -93,7 +113,9 @@ export function LeaveBalanceRing({
                 strokeDasharray={`${len} ${c - len}`}
                 strokeDashoffset={-offset}
                 transform="rotate(-90 50 50)"
-              />
+              >
+                <title>{`${s.label} ${s.display}`}</title>
+              </circle>
             );
             offset += len;
             return el;

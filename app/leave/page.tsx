@@ -32,16 +32,18 @@ import {
   myUpcomingLeave,
   ownLeaveApprovalTrails,
   ownLeaveCancellations,
-  ownLeaveRejectionReasons,
+  ownLeaveRejections,
 } from '@/core/my-leave';
 import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
 import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
 import {
   LEAVE_HISTORY_TABS,
+  applicationDateOutcomeRows,
   approvalProgress,
   approverKindLabelKey,
   approverLine,
   cancellationLines,
+  isPartiallyApproved,
   resolveHistoryTab,
   type HistoryLineDeps,
   type LeaveHistoryTab,
@@ -551,12 +553,14 @@ export default async function LeavePage({
   // RLS hides them from an employee, and it is not widened), who cancelled a cancelled one, and a rejection's
   // reason (the rejected event, read under RLS). Every id asked about here is the viewer's own; an id that is
   // not simply comes back absent.
-  const [approvalTrails, cancellations, rejectionReasons, upcomingRows] = await Promise.all([
-    ownLeaveApprovalTrails(session, selfHistory.map((r) => r.id)),
+  // Upcoming Leave: approved + pending from today onwards, soonest first (the history read's own filters).
+  const upcomingRows = await myUpcomingLeave(session, historyEmploymentIds, today);
+  const [approvalTrails, cancellations, rejections] = await Promise.all([
+    // r302 fix pass — Upcoming rows too: a split survivor there is "Partially approved" by its application's
+    // outcome (defects 3/4: a split row reads its ROOT request's trail and per-date outcome).
+    ownLeaveApprovalTrails(session, [...selfHistory.map((r) => r.id), ...upcomingRows.map((r) => r.id)]),
     ownLeaveCancellations(session, selfHistory.filter((r) => r.status === 'cancelled').map((r) => r.id)),
-    ownLeaveRejectionReasons(session, selfHistory.filter((r) => r.status === 'rejected').map((r) => r.id)),
-    // Upcoming Leave: approved + pending from today onwards, soonest first (the history read's own filters).
-    myUpcomingLeave(session, historyEmploymentIds, today),
+    ownLeaveRejections(session, selfHistory.filter((r) => r.status === 'rejected').map((r) => r.id)),
   ]);
   const tApproval = await getTranslations('leaveApproval');
   const fmtInstant = (d: Date | null | undefined): string | null => {
@@ -590,7 +594,7 @@ export default async function LeavePage({
   /** The display status of a row: Pending Cancellation / Partially approved / the stored status. */
   const displayStatus = (r: (typeof selfHistory)[number]) => {
     const pendingCancel = r.status === 'approved' && r.pendingCancellationId != null;
-    const isPartial = r.status === 'approved' && r.hasRejectedDates;
+    const isPartial = isPartiallyApproved(r, approvalTrails.get(r.id));
     return pendingCancel
       ? { key: 'pendingCancellation', label: t('pendingCancellationStatus') }
       : isPartial
@@ -614,8 +618,13 @@ export default async function LeavePage({
   // services still re-assert subject/status authoritatively. Presentation-only: no data or permission change.
   const historyEntries: LeaveHistoryEntry[] = selfHistory.map((r) => {
     // "Partially approved" display badge (R17 600be8ac ask #4): display-derived; DB status stays 'approved'.
-    const isPartial = r.status === 'approved' && r.hasRejectedDates;
-    const dateRows = requestDateBreakdowns.get(r.id) ?? [];
+    // r302 fix pass (verifier defect 4): also when the APPLICATION's approval rejected a date — a row split off by
+    // a partial cancellation no longer holds the rejected date's own record, so it reads its root's outcome.
+    const trail = approvalTrails.get(r.id);
+    const isPartial = isPartiallyApproved(r, trail);
+    const rejection = r.status === 'rejected' ? rejections.get(r.id) : undefined;
+    const applicationOutcome = trail?.perDateOutcome ?? null;
+    const dateRows = applicationOutcome ? applicationDateOutcomeRows(applicationOutcome) : (requestDateBreakdowns.get(r.id) ?? []);
     // Session labelling: half-day/hourly rows get the ADR-0048 duration label (hourly shows its stored
     // hours + 0129 time window, slice-guarded for the Postgres seconds); full-day rows read "Full day".
     const sessionSuffix = durationLabel(t, r.durationType, r.hours);
@@ -687,7 +696,9 @@ export default async function LeavePage({
       endDate: r.endDate,
       days: Number(r.days),
       // r302 — the date submitted (tenant-local) and the employee's own reason, for the row and for View.
-      appliedOn: todayInKualaLumpur(new Date(r.appliedOn)),
+      // r302 fix pass: a row split off by a partial cancellation was created by the split, so its application's
+      // submission is its root request's (the trail's `submittedAt`), matching the approval progress in View.
+      appliedOn: todayInKualaLumpur(trail?.submittedAt ?? new Date(r.appliedOn)),
       reason: r.reason ?? null,
       // fef49b9a — the paid/unpaid breakdown, derived ONCE by lib/leave-split.ts and pre-translated here
       // because LeaveHistoryCards is a client island that translates nothing. `unpaidTypeName` comes from
@@ -749,7 +760,10 @@ export default async function LeavePage({
       // person RLS — test/r302-my-leave-approver-names.test.ts). Names now come from migration 0472.
       approverLine: approverLineFor(r),
       approvalProgress: approvalProgressFor(r),
-      rejectionReason: r.status === 'rejected' ? (rejectionReasons.get(r.id) ?? null) : null,
+      rejectionReason: rejection?.reason ?? null,
+      // r302 fix pass (verifier defect 7): a per-date rejection's dates and reasons, formatted in the viewer's
+      // locale by the island — never the event's audit string of raw ISO dates.
+      rejectedDates: rejection && rejection.dates.length > 0 ? rejection.dates : null,
       cancellation: cancellationFor(r),
       // Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill in the panel.
       cancelPendingLabel: r.pendingCancellationId ? t('cancelPendingBadge') : null,

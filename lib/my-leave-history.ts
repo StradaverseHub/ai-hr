@@ -114,12 +114,22 @@ export type HistoryLineDeps = {
 /** The subset of a leave request row these lines read. */
 export type HistoryRowInput = { status: string; appliedOn: Date; decidedAt: Date | null };
 
+/** core/my-leave.ts OwnPerDateOutcome, structurally. */
+export type PerDateOutcomeInput = { approved: readonly string[]; rejected: readonly { date: string; reason: string | null }[] };
+
 /** core/my-leave.ts OwnApprovalTrail, structurally. */
 export type ApprovalTrailFull = {
   status: string;
   decidedByName: string | null;
   decidedAt: Date | null;
   singleLevelApproverName: string | null;
+  /** r302 fix pass — 'root': a split row reading its root request's approval; 'unrecorded': a split row whose
+   *  lineage was never recorded (only its own decider is known). Absent ⇒ 'own'. */
+  lineage?: 'own' | 'root' | 'unrecorded';
+  /** 'root' lineage: when the application was submitted. */
+  submittedAt?: Date | null;
+  /** The application's mixed per-date outcome, from its root's approval event. */
+  perDateOutcome?: PerDateOutcomeInput | null;
   steps: readonly {
     stepIndex: number;
     kind: string;
@@ -178,6 +188,12 @@ export function approverLine(
 /**
  * The View panel's approval progress: Submitted → each level (its kind, the person, the decision and its time)
  * → the outcome. The level a pending request waits at is `current` — the one the panel highlights.
+ *
+ * r302 fix pass (verifier defect 3) — a row split off by a partial cancellation is given its ROOT request's trail
+ * (core/my-leave.ts ownLeaveApprovalTrails), so its chain, its decision and its Submitted time are the
+ * application's. A split row whose lineage was never recorded shows only "Approved by <name>" from its own
+ * decision, with no level numbering and no Submitted time (the row's own creation is the split, not the
+ * application): never a partial chain presented as the chain.
  */
 export function approvalProgress(
   row: HistoryRowInput,
@@ -185,7 +201,24 @@ export function approvalProgress(
   cancellation: CancellationInput | null | undefined,
   { t, kindLabel, fmtInstant, listNames }: HistoryLineDeps,
 ): ProgressStepLine[] {
-  const out: ProgressStepLine[] = [{ label: t('myLeave.progressSubmitted'), detail: fmtInstant(row.appliedOn), state: 'done' }];
+  if (trail?.lineage === 'unrecorded') {
+    const lines: ProgressStepLine[] = [];
+    if (trail.decidedByName && (row.status === 'approved' || row.status === 'cancelled')) {
+      const at = fmtInstant(trail.decidedAt);
+      lines.push({
+        label: t('myLeave.approvedBy', { name: trail.decidedByName }),
+        detail: at ? t('myLeave.progressApprovedAt', { date: at }) : null,
+        state: 'done',
+      });
+    }
+    if (row.status === 'cancelled') {
+      lines.push({ label: t('myLeave.progressOutcomeCancelled'), detail: fmtInstant(cancellation?.cancelledAt), state: 'done' });
+    }
+    return lines;
+  }
+  const out: ProgressStepLine[] = [
+    { label: t('myLeave.progressSubmitted'), detail: fmtInstant(trail?.submittedAt ?? row.appliedOn), state: 'done' },
+  ];
   const levelLabel = (level: number, kind: string | null, names: string[]) => {
     const role = kindLabel(kind);
     if (role && names.length > 0) return t('myLeave.progressLevelNamed', { level, role, name: listNames(names) });
@@ -254,4 +287,35 @@ export function cancellationLines(
   const requested = fmtInstant(c.requestedAt);
   if (requested) lines.push(t('myLeave.cancellationRequestedAt', { date: requested }));
   return lines.length > 0 || c.reason ? { lines, reason: c.reason } : null;
+}
+
+// ── The application's per-date outcome (r302 fix pass, verifier defect 4) ─────────────────────────────────────
+//
+// A per-date leave with a date rejected is "Partially approved". Giving back an approved date splits the request
+// into rows and moves each date's record to the row that holds the date, so the rejected date — and with it the
+// badge and the reason — stayed on whichever row kept its span (often the cancelled original) and vanished from
+// the survivors. Every row of one application now reads the application's outcome from its root's approval event.
+
+/** "Partially approved": an approved row whose own dates include a rejected one, or whose application's approval
+ *  rejected a date. */
+export function isPartiallyApproved(
+  row: { status: string; hasRejectedDates?: boolean | null },
+  trail: Pick<ApprovalTrailFull, 'perDateOutcome'> | null | undefined,
+): boolean {
+  return row.status === 'approved' && (row.hasRejectedDates === true || (trail?.perDateOutcome?.rejected.length ?? 0) > 0);
+}
+
+/** The application's per-date outcome as rows for the date breakdown (components/leave/leave-date-outcome.tsx),
+ *  ascending by date. */
+export function applicationDateOutcomeRows(outcome: PerDateOutcomeInput): {
+  id: string;
+  leaveDate: string;
+  days: string;
+  status: 'approved' | 'rejected';
+  rejectReason: string | null;
+}[] {
+  return [
+    ...outcome.approved.map((d) => ({ id: `approved:${d}`, leaveDate: d, days: '', status: 'approved' as const, rejectReason: null })),
+    ...outcome.rejected.map((r) => ({ id: `rejected:${r.date}`, leaveDate: r.date, days: '', status: 'rejected' as const, rejectReason: r.reason })),
+  ].sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
 }

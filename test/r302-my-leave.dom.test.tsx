@@ -106,6 +106,8 @@ const card = (over: Partial<MyLeaveDashboardCard> = {}): MyLeaveDashboardCard =>
   pending: 2,
   balance: 7.5,
   canApplyFor: 5.5,
+  remaining: 5.5,
+  balanceIncludesLater: null,
   expiringSoon: null,
   hasEntitlement: true,
   takenOnly: false,
@@ -128,6 +130,7 @@ const medical = card({
   pending: 0,
   balance: 13,
   canApplyFor: 13,
+  remaining: 13,
   breakdown: breakdown({ leaveTypeId: 'lt-sick', leaveType: 'Medical Leave' }),
 });
 const unpaid = card({
@@ -143,6 +146,7 @@ const unpaid = card({
   pending: null,
   balance: null,
   canApplyFor: null,
+  remaining: null,
   hasEntitlement: false,
   takenOnly: true,
   entitlementStatus: 'no_entitlement_table',
@@ -160,17 +164,23 @@ describe('THE DASHBOARD, in every locale', () => {
     const ring = rings[0];
     expect(within(ring).getByText('Annual Leave')).toBeTruthy();
     expect(within(ring).getAllByTestId('leave-balance-ring')).toHaveLength(1);
-    // The legend is the text equivalent: every figure is printed, with its label.
+    // The legend is the text equivalent: every figure is printed, with its label. UPDATED BY the r302 fix pass
+    // (verifier defect 5): the legend is the ring's arcs — Taken, Pending approval, You can apply for, Not earned
+    // yet — and Balance is the big number in the middle, labelled Balance (no longer a green legend row keyed to
+    // an arc that drew Balance − Pending). test/r302fp-my-leave-fixpass.dom.test.tsx measures arcs against it.
     for (const [label, value] of [
       [L.entitlement, 14],
       [L.earnedSoFar, 10.5],
       [L.taken, 3],
       [L.pendingApproval, 2],
-      [L.balance, 7.5],
+      [L.canApplyFor, 5.5],
+      [L.notEarnedYet, 3.5],
     ] as const) {
       const dt = within(ring).getByText(label, { selector: 'dt' });
       expect(dt.parentElement!.querySelector('dd')!.textContent).toBe(formatDays(value));
     }
+    const centre = within(within(ring).getByTestId('leave-balance-ring')).getByText(formatDays(7.5));
+    expect(centre.parentElement!.textContent).toContain(L.balance);
     // "You can apply for" prints the card's figure verbatim (the Apply popup's, on the server).
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(L.canApplyFor);
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(formatDays(5.5));
@@ -199,7 +209,7 @@ describe('THE DASHBOARD, in every locale', () => {
   });
 
   it('a figure HR hid prints an em dash, and the ring is not drawn from the others', () => {
-    const hidden = card({ balance: null, canApplyFor: null });
+    const hidden = card({ balance: null, canApplyFor: null, remaining: null });
     expect(ringDrawable(hidden)).toBe(false);
     mount('en', <MyLeaveDashboard cards={[hidden]} locale="en" />);
     expect(screen.queryByTestId('leave-balance-ring')).toBeNull();
@@ -221,20 +231,26 @@ describe('THE DASHBOARD, in every locale', () => {
 });
 
 describe('THE RING draws what the figures say, and nothing for a hidden figure', () => {
-  it('arcs for taken, pending, remaining (balance less pending) and not-yet-earned; zero arcs are not drawn', () => {
-    expect(ringSegments({ entitlement: 14, earnedSoFar: 10.5, taken: 3, pending: 2, balance: 7.5 })).toEqual([
+  // UPDATED BY the r302 fix pass (verifier defect 5): the third arc is the card's own "You can apply for" (an
+  // earlier year's remaining available), not Balance − Pending worked out here; Not earned yet is listed only when
+  // there is any; and an overdrawn figure is not drawn as a zero arc beside a legend that says −2 — the ring is not
+  // drawn at all (the card prints the figures instead).
+  it('arcs for taken, pending, you can apply for and not-yet-earned; zero arcs are not drawn', () => {
+    expect(ringSegments({ entitlement: 14, earnedSoFar: 10.5, taken: 3, pending: 2, balance: 7.5, remaining: 5.5 })).toEqual([
       { key: 'taken', value: 3 },
       { key: 'pending', value: 2 },
-      { key: 'remaining', value: 5.5 },
+      { key: 'available', value: 5.5 },
       { key: 'unearned', value: 3.5 },
     ]);
+    const full = { entitlement: 14, earnedSoFar: 14, taken: 0, pending: 0, balance: 14, remaining: 14 };
     const { container } = render(
-      <LeaveBalanceRing figures={{ entitlement: 14, earnedSoFar: 14, taken: 0, pending: 0, balance: 14 }} label="x" centre="14.00" centreCaption="Balance" />,
+      <LeaveBalanceRing segments={ringSegments(full).map((s) => ({ ...s, label: s.key, display: formatDays(s.value) }))} label="x" centre="14.00" centreCaption="Balance" />,
     );
-    expect([...container.querySelectorAll('circle[data-segment]')].map((c) => c.getAttribute('data-segment'))).toEqual(['remaining']);
-    // An overdrawn balance draws no remaining arc rather than a negative one.
-    expect(ringSegments({ entitlement: 14, earnedSoFar: 14, taken: 16, pending: 0, balance: -2 }).find((s) => s.key === 'remaining')!.value).toBe(0);
-    expect(ringSegments({ entitlement: 14, earnedSoFar: 14, taken: 1, pending: null, balance: 13 })).toEqual([]);
+    expect([...container.querySelectorAll('circle[data-segment]')].map((c) => c.getAttribute('data-segment'))).toEqual(['available']);
+    // An overdrawn "You can apply for" is not an arc at all: no ring.
+    expect(ringDrawable({ entitlement: 14, earnedSoFar: 14, taken: 16, pending: 0, balance: -2, remaining: -2 })).toBe(false);
+    expect(ringSegments({ entitlement: 14, earnedSoFar: 14, taken: 16, pending: 0, balance: -2, remaining: -2 })).toEqual([]);
+    expect(ringSegments({ entitlement: 14, earnedSoFar: 14, taken: 1, pending: null, balance: 13, remaining: 13 })).toEqual([]);
   });
 });
 

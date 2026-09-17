@@ -102,6 +102,12 @@ export type LeaveHistoryEntry = {
   approvalProgress: LeaveProgressStep[] | null;
   /** r302 — the whole-request rejection reason (the `leave-request.rejected` event), pre-trimmed. */
   rejectionReason: string | null;
+  /**
+   * r302 fix pass (verifier defect 7) — a PER-DATE rejection: each rejected date (ISO yyyy-mm-dd, formatted here
+   * in the viewer's locale like every other date in the history) with its own reason. Replaces the audit string
+   * of raw ISO dates the event also carries. Absent or null for a whole-request rejection.
+   */
+  rejectedDates?: { date: string; reason: string | null }[] | null;
   /** r302 — who cancelled the request and when (and the cancellation's reason), pre-translated lines. */
   cancellation: { lines: string[]; reason: string | null } | null;
   /** Pre-translated ADR-0065 pending-cancellation pill; null when none. */
@@ -369,7 +375,23 @@ export function LeaveHistoryCards({
                       '—'
                     ),
                   )}
-                  {selected.rejectionReason && field(t('myLeave.rejectionReason'), selected.rejectionReason)}
+                  {(selected.rejectionReason || (selected.rejectedDates?.length ?? 0) > 0) &&
+                    field(
+                      t('myLeave.rejectionReason'),
+                      <>
+                        {selected.rejectionReason && <span className="block">{selected.rejectionReason}</span>}
+                        {selected.rejectedDates && selected.rejectedDates.length > 0 && (
+                          <ul className="space-y-0.5">
+                            {selected.rejectedDates.map((d) => (
+                              <li key={d.date}>
+                                <span className="tabular-nums">{fmtDate(d.date)}</span>
+                                {d.reason ? ` · ${d.reason}` : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>,
+                    )}
                   {selected.cancellation &&
                     field(
                       t('myLeave.cancellation'),
