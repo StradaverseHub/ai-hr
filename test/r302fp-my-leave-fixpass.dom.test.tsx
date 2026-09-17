@@ -3,6 +3,8 @@
  * agree (D2), the "includes later leave years" line (D1) and a per-date rejection's localized date list (D7).
  * Every arm is mounted under the SHIPPING catalogues with next-intl's onError collected.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -319,5 +321,20 @@ describe('D7 · a per-date rejection lists each date in the viewer’s locale wi
     expect(items.map((li) => li.textContent)).toEqual([`${fmt('2026-10-05')} · Short staffed`, `${fmt('2026-10-06')} · Audit week`]);
     expect(field.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(errors, errors.join('\n')).toEqual([]);
+  });
+});
+
+// ── The page hands the islands the fixed data (the RSC is not rendered in a test) ───────────────────────────
+
+describe('app/leave/page.tsx wires the fix pass into the history it builds', () => {
+  const page = readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+  it('D4: "Partially approved" and the date breakdown come from the application; D3: Applied is the application’s; D7: dates, not the audit string', () => {
+    expect(page, 'the status badge reads the application outcome').toContain('isPartiallyApproved(r, approvalTrails.get(r.id))');
+    expect(page, 'the history row too').toContain('const isPartial = isPartiallyApproved(r, trail);');
+    expect(page, 'the View breakdown is the application’s outcome when there is one').toContain('applicationDateOutcomeRows(applicationOutcome)');
+    expect(page, 'a split row’s Applied / Submitted is its application’s').toContain('trail?.submittedAt ?? new Date(r.appliedOn)');
+    expect(page, 'a per-date rejection passes its dates to the island').toContain('rejectedDates: rejection && rejection.dates.length > 0 ? rejection.dates : null');
+    expect(page, 'the pre-joined ISO reason read is not used on the page').not.toContain('ownLeaveRejectionReasons(');
+    expect(page, 'Upcoming rows are asked about too, so their badge agrees').toContain('...upcomingRows.map((r) => r.id)');
   });
 });
