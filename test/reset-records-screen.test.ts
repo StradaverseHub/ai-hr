@@ -285,6 +285,10 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       '/admin/leave-config/types',
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
+      // 3fb1a611 (r299) — UPDATED, NOT LOOSENED, for the same reason as the r281 note below: a later, unrelated
+      // item gave Leave Credit a row directly after Leave Adjustments. The Reset records sub-screen is still
+      // owned by the Leave Adjustments row alone.
+      '/admin/leave-config/leave-credit',
       '/admin/leave-config/generate',
       // r281 (09386e29) — UPDATED, NOT LOOSENED, and for the third time for the same reason. A later,
       // unrelated item gave Run earned accrual a row of its own, directly after Generate Entitlement (it

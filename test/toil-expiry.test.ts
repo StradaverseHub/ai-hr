@@ -209,7 +209,14 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
      * — they cannot distinguish "reachable" from "reachable only by a test". Reading the page is the
      * same ratchet this suite already applies to migrations and to the operator form.
      */
-    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8');
+    // 3fb1a611 (r299) — RE-POINTED, NOT RELAXED. /admin/toil is a redirect stub; the ledger summary and both
+    // sweeps are on Leave Config › Leave Credit's Credits tab now, which is therefore the page this reads. The
+    // mechanism is renamed (`showSettlement`/`outstanding` → `showCredits`/`windDown`) and the property is
+    // asserted exactly as before: an outstanding liability keeps the settlement reachable with the module off.
+    expect(fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8')).toContain(
+      'redirect(`/admin/leave-config/leave-credit',
+    );
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/page.tsx'), 'utf8');
 
     // 1. The ledger read is UNCONDITIONAL — an admin can always see what is outstanding.
     expect(src, 'the replacement-leave summary must not be gated on the module').toContain(
@@ -220,19 +227,19 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     );
 
     // 2. Settlement is shown when the module is on OR a banked credit is still outstanding.
-    expect(src).toContain('const showSettlement = moduleOn || outstanding;');
-    expect(src).toContain('const outstanding = summary.activeAccruals > 0;');
+    expect(src).toContain('const showCredits = moduleOn || windDown;');
+    expect(src).toContain('const windDown = !moduleOn && summary.activeAccruals > 0;');
 
     // 3. …and BOTH settle actions live inside that block, not inside a module-only one.
-    const guard = src.indexOf('{showSettlement && visible.length > 0 && (');
-    expect(guard, 'the settlement card must be guarded by showSettlement').toBeGreaterThan(-1);
+    const guard = src.indexOf('{!showCredits ? (');
+    expect(guard, 'the Credits tab (and its settlement card) must be guarded by showCredits').toBeGreaterThan(-1);
     const card = src.slice(guard);
     expect(card).toContain('action={runToilExpiryAction}');
     expect(card).toContain('action={closeReplacementLeaveYearAction}');
     // The wind-down region must contain no module-only gate of its own — that would restore the hole
     // one level down, which is precisely how the original fix came to be illusory.
-    const cardEnd = card.indexOf('{t(\'footnote\')}');
-    expect(card.slice(0, cardEnd)).not.toMatch(/\{\s*moduleOn\s*&&/);
+    expect(card).not.toMatch(/\{\s*moduleOn\s*&&/);
+    expect(card).not.toMatch(/\{\s*moduleOn\s*\?/);
 
     // 4. THE OTHER SIDE OF THE SPLIT, which the wind-down argument does NOT extend to (review r2).
     //    Ungating the ledger and the two sweeps is about settling days already banked. The per-company
@@ -257,10 +264,11 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    an outstanding liability could not see the settings that govern HOW it settles. `toil` is in no
     //    parity set, so every existing tenant lands in this branch at the flip. What the entitlement
     //    withholds is the write, and that is what these assert.
-    const cfg = fs.readFileSync(
-      path.resolve(__dirname, '..', 'app/admin/leave-config/company-rules/page.tsx'),
-      'utf8',
-    );
+    //    3fb1a611 (r299) — the editor moved AGAIN, to Leave Credit's Rules tab: the form component and the
+    //    route that mounts it are read together as "the configuration page".
+    const cfg =
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules-tab.tsx'), 'utf8') +
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules/page.tsx'), 'utf8');
     // The sweeps must NOT have followed the form onto the configuration screen — that would re-gate a
     // statutory settlement behind a page that is read-only without the module.
     //

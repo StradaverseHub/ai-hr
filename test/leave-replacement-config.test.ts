@@ -42,14 +42,22 @@ const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 /**
- * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 296fc027's screen was ABSORBED: a replacement
- * leave policy is a COMPANY rule, not a property of a leave type, so it now shares Company rules
- * (`/admin/leave-config/company-rules`) with the half-day deduction, the encashment policy and the
- * shared leave groups (IA §2.0.3). `/admin/leave/replacement` is a redirect stub. Every property this
- * file guards — the four policy controls, the eligibility criteria, the company filter that must not
- * touch the global scope cookie — is about the EDITOR, not the address, so it follows the editor.
+ * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 296fc027's screen was ABSORBED into Company rules.
+ *
+ * 3fb1a611 (r299) — RE-POINTED AGAIN, NOT DELETED, and both halves of 296fc027's split moved:
+ *   · the EDITOR left Company rules entirely for Leave Config › Leave Credit's Rules tab
+ *     (`app/admin/leave-config/leave-credit/rules-tab.tsx`, mounted by that page) — PAGE_REL below;
+ *   · the LEDGER summary and the two settlement sweeps left /admin/toil (a redirect stub now) for the same
+ *     page's Credits tab — CREDIT_PAGE_REL below, which is also where the guard, the gate and the WIND-DOWN
+ *     argument now live.
+ * Every property this file guards is about the editor or the sweeps, not the address, so it follows them.
+ * What 296fc027 bought by splitting the screens — configuration gated on the module, settlement not — is
+ * preserved on ONE screen: the Rules tab and Add require `toil`; the sweeps stay reachable in a wind-down view.
  */
-const PAGE_REL = 'app/admin/leave-config/company-rules/page.tsx';
+const PAGE_REL = 'app/admin/leave-config/leave-credit/rules-tab.tsx';
+const RULES_PAGE_REL = 'app/admin/leave-config/leave-credit/rules/page.tsx';
+const CREDIT_PAGE_REL = 'app/admin/leave-config/leave-credit/page.tsx';
+const COMPANY_RULES_REL = 'app/admin/leave-config/company-rules/page.tsx';
 const TOIL_REL = 'app/admin/toil/page.tsx';
 const PICKER_REL = 'components/replacement-eligibility-picker.tsx';
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -62,21 +70,27 @@ const getPath = (obj: Dict, dotted: string): unknown =>
 describe('296fc027 · Replacement Leave configuration page', () => {
   // ── The two guarantees carried over from the placeholder test ──────────────────────────────────────
   it('is still guarded by requireAdmin and still registered in the permission map', () => {
-    expect(read(PAGE_REL)).toContain('requireAdmin()');
-    expect(REGISTERED_ROUTES.has('/admin/leave-config/company-rules')).toBe(true);
+    // 3fb1a611 — the form is a component; the Rules tab's PAGE mounts it and carries the guard and the route.
+    expect(read(RULES_PAGE_REL)).toContain('requireAdmin()');
+    expect(read(RULES_PAGE_REL)).toContain('<LeaveCreditRulesTab');
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/leave-credit/rules')).toBe(true);
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/leave-credit')).toBe(true);
     // The old address is a stub with no guard, which is why it left the registry with its page.
     expect(REGISTERED_ROUTES.has('/admin/leave/replacement')).toBe(false);
     const stub = read('app/admin/leave/replacement/page.tsx');
     expect(stub).toContain('redirect(');
-    expect(stub).toContain('/admin/leave-config/company-rules');
+    expect(stub).toContain('/admin/leave-config/leave-credit/rules');
   });
 
-  it('BOTH routes stay registered — the move split one screen in two, it did not retire either', () => {
-    // 296fc027 split CONFIGURATION from the ledger + settlement sweeps and gated them differently on
-    // purpose. a6fe37fc moved the configuration half again, to Company rules; /admin/toil is untouched
-    // and must stay reachable when the `toil` entitlement lapses.
-    expect(REGISTERED_ROUTES.has('/admin/leave-config/company-rules')).toBe(true);
-    expect(REGISTERED_ROUTES.has('/admin/toil')).toBe(true);
+  it('3fb1a611 — the two halves 296fc027 split are the two TABS of one row, and the split in GATING survives', () => {
+    // 296fc027 split CONFIGURATION from the ledger + settlement sweeps and gated them differently on purpose.
+    // 3fb1a611 puts both under Leave Credit ("one screen per fact") and keeps the difference: the Rules tab
+    // draws its form only when the module is on; the Credits tab (sweeps) also opens in a wind-down view.
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/leave-credit')).toBe(true);
+    expect(REGISTERED_ROUTES.has('/admin/leave-config/leave-credit/rules')).toBe(true);
+    expect(REGISTERED_ROUTES.has('/admin/toil'), '/admin/toil is a redirect stub now').toBe(false);
+    expect(read(RULES_PAGE_REL)).toContain('{moduleOn ? (');
+    expect(read(CREDIT_PAGE_REL)).toContain('const windDown = !moduleOn && summary.activeAccruals > 0;');
   });
 
   it('the leave fly-out still carries the replacement entry, after Payroll Related', () => {
@@ -122,6 +136,7 @@ describe('296fc027 · Replacement Leave configuration page', () => {
 
   it('the page no longer marks itself as an active tab — there is no strip to be active in', () => {
     expect(read(PAGE_REL)).not.toContain('LeaveTabs');
+    expect(read(RULES_PAGE_REL)).not.toContain('LeaveTabs');
   });
 
   // ── The guarantee that INVERTS: it is no longer a placeholder ──────────────────────────────────────
@@ -129,6 +144,16 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     const src = read(PAGE_REL);
     expect(src).toContain('<form action={setToilPolicyAction}');
     expect(src).toContain('listToilPolicies');
+  });
+
+  it('3fb1a611 — Company rules carries NONE of it any more (moved, not re-gated)', () => {
+    // The setting the reporter asked to remove from Company rules (8a494721) stays removed from Company rules.
+    // Checked against CODE with comments stripped: the page's header explains where the section went, by name.
+    const src = read(COMPANY_RULES_REL).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(src).not.toContain('setToilPolicyAction');
+    expect(src).not.toContain('<ReplacementEligibilityPicker');
+    expect(src).not.toContain('listToilPolicies');
+    expect(src).not.toContain('accrualLive');
   });
 
   it('carries every one of the four new settings the request names', () => {
@@ -140,23 +165,24 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(src).toContain('name="expiryUnit"');
     expect(src).toContain('name="expiryDays"');
     expect(src).toContain('name="expiryMonths"');
-    // Replacement Leave From, with its three values.
-    expect(src).toContain('name="replacementLeaveFrom"');
-    for (const v of ['working_hours', 'overtime', 'working_hours_and_overtime']) {
-      expect(src).toContain(`value="${v}"`);
-    }
+    // 3fb1a611 — Replacement Leave From is NOT on the Rules tab (see the next case for why that is safe).
+    expect(src).not.toContain('name="replacementLeaveFrom"');
     // The eligibility picker.
     expect(src).toContain('<ReplacementEligibilityPicker');
   });
 
-  it('SAYS ON SCREEN that Replacement Leave From is recorded only', () => {
-    // The request is explicit that this setting changes nothing today and that the page must say so, or
-    // an admin will configure it and expect overtime to start being validated against it. Assert both
-    // that the page renders the note and that the note actually makes the claim.
-    expect(read(PAGE_REL)).toContain("tr('leaveFromRecordedOnly')");
-    const note = String(getPath(load('en'), 'admin.replacementLeave.leaveFromRecordedOnly'));
-    expect(note).toMatch(/recorded only/i);
-    expect(note).toMatch(/changes nothing today/i);
+  // 3fb1a611 (r299) — `SAYS ON SCREEN that Replacement Leave From is recorded only` STOOD HERE. The screen said
+  // so because the setting changed nothing; the approved plan (gap 6) drops the control instead of captioning
+  // it. UPDATED, NOT DELETED: the property that mattered — an administrator is never misled by this setting,
+  // and a stored value is never silently changed — is asserted in its new form.
+  it('3fb1a611 — Replacement Leave From is off the screen, and a save no longer resets what is stored', () => {
+    expect(read(PAGE_REL)).not.toContain("tr('leaveFromRecordedOnly')");
+    expect(read(PAGE_REL)).not.toContain('name="replacementLeaveFrom"');
+    // Absent from the form ⇒ undefined in the action ⇒ not written by setToilPolicy's upsert.
+    expect(read('app/admin/actions.ts')).toContain("replacementLeaveFrom: fd.has('replacementLeaveFrom')");
+    expect(read('core/toil.ts')).toContain(
+      '...(p.replacementLeaveFrom !== undefined ? { replacementLeaveFrom: p.replacementLeaveFrom } : {}),',
+    );
   });
 
   // 1cf5b37c INVERTED THIS TEST, and the inversion was the item. It used to assert that every control
@@ -174,14 +200,17 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   //
   // THREE HALVES, ASSERTED SEPARATELY, because each can be undone on its own:
   it('r281 — the whole replacement section is gated on the entitlement, not just a banner above it', () => {
-    const src = read(PAGE_REL);
-    expect(src, 'the entitlement must still be read').toContain('isModuleEnabledOrFalse');
-    // The gate is on the SECTION. `{!accrualLive && (` was the banner-only spelling and must not survive:
-    // a page carrying both is a page that still draws the form under a notice.
-    expect(src, 'the section is drawn only when the module is live').toContain('{accrualLive &&');
-    expect(src, 'the banner-only gate must not survive the section gate').not.toContain('{!accrualLive && (');
+    // 3fb1a611 — RE-POINTED. The section is the Rules tab of Leave Credit now; its PAGE reads the entitlement
+    // and only mounts the form when the module is on. The service refuses too (setToilPolicy is gated again).
+    const page = read(RULES_PAGE_REL);
+    expect(page, 'the entitlement must still be read').toContain("isModuleEnabledOrFalse(s, 'toil')");
+    expect(page, 'the form is mounted only with the module').toMatch(
+      /\{moduleOn \? \(\s*<LeaveCreditRulesTab/,
+    );
+    expect(read('core/toil.ts')).toContain("assertModuleEnabled(ctx, 'toil');");
     // Nothing is DISABLED, which is 1cf5b37c's surviving half: for the tenant that HAS the module the
     // screen is fully editable, exactly as that round made it. Gated is not disabled.
+    const src = read(PAGE_REL);
     expect(src, 'no control may be disabled by the entitlement').not.toContain('disabled={!');
     expect(src, 'Save renders unconditionally within the section').not.toContain('&& <button className={btnPrimary}>');
   });
@@ -194,6 +223,7 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     // a lapsed module is absent from it rather than present-and-expired.
     const src = read(PAGE_REL);
     expect(src).not.toContain("tr('moduleOff')");
+    expect(read(COMPANY_RULES_REL)).not.toContain("tr('moduleOff')");
     for (const loc of LOCALES) {
       expect(
         getPath(load(loc), 'admin.replacementLeave.moduleOff'),
@@ -225,39 +255,44 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   });
 
   it('no longer cross-links to the legacy Time Off In Lieu page', () => {
-    const src = read(PAGE_REL);
+    const src = read(PAGE_REL) + read(CREDIT_PAGE_REL);
     // The reporter asked for this submenu to be self-contained. The link the OTHER way still exists and
     // is asserted below — removing it would strand an admin on the legacy page.
     expect(src).not.toContain('href="/admin/toil"');
   });
 
   // ── The half of the move that is easiest to undo by accident ───────────────────────────────────────
-  it('the Time Off In Lieu page KEEPS the ledger and both settlement sweeps', () => {
-    const src = read(TOIL_REL);
+  // 3fb1a611 — THE LEDGER AND THE SWEEPS MOVED to Leave Credit's Credits tab; /admin/toil redirects there.
+  it('the Leave Credit page KEEPS the ledger and both settlement sweeps (moved from Time Off In Lieu)', () => {
+    const src = read(CREDIT_PAGE_REL);
     expect(src).toContain('replacementLeaveSummary');
     expect(src).toContain('runToilExpiryAction');
     expect(src).toContain('closeReplacementLeaveYearAction');
+    expect(read(TOIL_REL)).toContain("redirect(`/admin/leave-config/leave-credit");
   });
 
-  it('the Time Off In Lieu page NO LONGER carries the policy editor', () => {
-    const src = read(TOIL_REL);
-    expect(src).not.toContain('setToilPolicyAction');
-    expect(src).not.toContain('name="accrualBasis"');
-    expect(src).not.toContain('name="allowFirstScheduleEligible"');
+  it('neither the Leave Credit page body nor the /admin/toil stub carries the policy editor itself', () => {
+    for (const rel of [TOIL_REL, CREDIT_PAGE_REL]) {
+      const src = read(rel);
+      expect(src).not.toContain('setToilPolicyAction');
+      expect(src).not.toContain('name="accrualBasis"');
+      expect(src).not.toContain('name="allowFirstScheduleEligible"');
+    }
   });
 
-  it('the WIND-DOWN ARGUMENT survives intact on the Time Off In Lieu page', () => {
+  it('the WIND-DOWN ARGUMENT survives intact, on the page that now holds the sweeps', () => {
     // The two sweeps are deliberately NOT entitlement-gated: a lapsed module must not strand a settlement
     // the employer already owes, and for a First-Schedule-eligible employee that debt is statutory. The
     // page is their only caller (there is no cron), so if this reasoning is deleted the next editor has
     // no way to know that re-gating the UI silently re-gates the obligation.
-    const src = read(TOIL_REL);
+    const src = read(CREDIT_PAGE_REL);
     expect(src).toMatch(/wind-down|wind down/i);
     expect(src).toMatch(/statutory/i);
     expect(src).toMatch(/not entitlement-gated/i);
-    // showSettlement is the mechanism: an outstanding liability keeps the settlement card reachable even
-    // with the module off.
-    expect(src).toContain('const showSettlement = moduleOn || outstanding');
+    // windDown is the mechanism (3fb1a611; it was showSettlement on /admin/toil): an outstanding liability
+    // keeps the Credits tab — movements, summary, sweeps — reachable even with the module off.
+    expect(src).toContain('const windDown = !moduleOn && summary.activeAccruals > 0;');
+    expect(src).toContain('const showCredits = moduleOn || windDown;');
   });
 
   // 1cf5b37c MADE THIS ONE-DIRECTIONAL, deliberately. The reporter asked for the Leave Config submenu
@@ -266,12 +301,12 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   // still has to be told where configuration went, which is the half that stops a move reading as a
   // deletion. Asserting the removal here as well as in the 1cf5b37c block above is deliberate — this is
   // the test that would otherwise be "fixed" by putting the link back.
-  it('the legacy page still links HERE, and this page no longer links back', () => {
-    // The link moved WITH the screen (a6fe37fc Round 5). Left at the old address it would still arrive,
-    // through the stub — but a link whose whole job is to say "configuration is over there" should name
-    // where it actually is.
-    expect(read(TOIL_REL)).toContain('href="/admin/leave-config/company-rules"');
+  it('the legacy page still sends the administrator HERE, and this page no longer links back', () => {
+    // The link moved WITH the screen (a6fe37fc Round 5). 3fb1a611 — the legacy page does more than link now:
+    // it IS a redirect to the screen that holds both its ledger and the configuration.
+    expect(read(TOIL_REL)).toContain("redirect(`/admin/leave-config/leave-credit");
     expect(read(PAGE_REL)).not.toContain('href="/admin/toil"');
+    expect(read(CREDIT_PAGE_REL)).not.toContain('href="/admin/toil"');
   });
 
   // ── 20e759a0 · the company filter's two easiest mistakes ───────────────────────────────────────────
@@ -279,7 +314,8 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   // and the save round-trip). These two are source assertions because what they guard is a swap a tidy-up
   // would make on sight, and neither swap changes a type, breaks a build, or fails any behavioural test.
   it('narrows this page WITHOUT touching the global company-scope cookie', () => {
-    const src = read(PAGE_REL);
+    // 3fb1a611 — the filter is in the Rules tab; the outer bound (`getScopeIds`) is read by the page.
+    const src = read(PAGE_REL) + read(RULES_PAGE_REL);
     // The selection is a URL parameter. `getScopeIds` is still read — it stays the OUTER bound — but the
     // page must never WRITE `company_scope`, which would silently re-scope Roster, Payroll and the rest.
     expect(src).toContain('resolveCompanyFilter');
@@ -326,6 +362,11 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     const keys = [
       // 645e67c4 — moved out of admin.leaveTabs with the strip's retirement.
       'nav.leaveReplacement',
+      // 3fb1a611 — the screen that holds the editor and the sweeps now.
+      'nav.leaveCredit',
+      'admin.leaveConfigMap.item.leaveCreditRules',
+      'admin.leaveCredit.rulesIntro',
+      'admin.leaveCredit.windDown',
       'admin.replacementLeave.enabledLabel',
       'admin.replacementLeave.employeeRequestLabel',
       'admin.replacementLeave.employeeRequestHint',

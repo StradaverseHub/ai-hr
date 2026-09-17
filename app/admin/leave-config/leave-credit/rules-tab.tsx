@@ -13,8 +13,8 @@ import { ReplacementEligibilityPicker } from '@/components/replacement-eligibili
 import { setToilPolicyAction } from '../../actions';
 
 /**
- * 3fb1a611 (r299) · THE RULES TAB of Leave Config › Leave Credit — who can earn a credit, how it is earned
- * and how long it lasts, per company.
+ * 3fb1a611 (r299) · THE RULES TAB of Leave Config › Leave Credit (`/admin/leave-config/leave-credit/rules`,
+ * mounted by that route's page) — who can earn a credit, how it is earned and how long it lasts, per company.
  *
  * MOVED, NOT COPIED, from Company rules (F38 there), which no longer draws it at all. The form is the same
  * absolute-set form posting the same `setToilPolicyAction` with the same field names and the same `?company=`
@@ -91,7 +91,7 @@ export async function LeaveCreditRulesTab({
     // whose ICU variable was not supplied (FORMATTING_ERROR at render — caught only by render-verify).
     selectedCountTemplate: tr.raw('pickerSelectedCount') as string,
   };
-  const companyHref = (v: string) => `${pageHref}?tab=rules&company=${encodeURIComponent(v)}`;
+  const companyHref = (v: string) => `${pageHref}?company=${encodeURIComponent(v)}`;
   const companyOptions = [
     { value: ALL_COMPANIES, label: tr('companyFilterAll'), href: companyHref(ALL_COMPANIES) },
     ...visible.map((c) => ({ value: c.id, label: c.name, href: companyHref(c.id) })),

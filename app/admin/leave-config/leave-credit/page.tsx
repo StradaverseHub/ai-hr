@@ -19,7 +19,6 @@ import { LeaveCreditAddDialog } from '@/components/leave/leave-credit-add-dialog
 import { LeaveCreditReverseDialog } from '@/components/leave/leave-credit-reverse-dialog';
 import { closeReplacementLeaveYearAction, runToilExpiryAction } from '../../actions';
 import { grantLeaveCreditAction, previewLeaveCreditAction, reverseLeaveCreditAction } from './actions';
-import { LeaveCreditRulesTab } from './rules-tab';
 
 /** Not exported: Next refuses unknown exports from a page module. */
 const PAGE = '/admin/leave-config/leave-credit';
@@ -37,18 +36,21 @@ const PAGE = '/admin/leave-config/leave-credit';
  * Its RUNNING-TOTAL ORDER is per employee, `effective_on`, then `created_at`, then `id` — stated on screen too,
  * because a line dated earlier than lines already recorded changes Before and After for every later line.
  *
- * TWO TABS, `?tab=credits` (default) and `?tab=rules`:
- *   · Credits — filters (employee, movement, date range), the movements, + Add Leave Credit, Reverse, and the
- *     ledger summary + the two settlement sweeps that used to be /admin/toil (a redirect stub now);
- *   · Rules — the replacement-leave policy form, MOVED off Company rules entirely (rules-tab.tsx).
+ * THE CREDITS TAB of the Leave Credit row (the Rules tab is its own route, `./rules/page.tsx`, drawn by the
+ * row's tab strip in components/leave-config-map.tsx): filters (employee, movement, date range), the
+ * movements, + Add Leave Credit, Reverse, and the ledger summary + the two settlement sweeps that used to be
+ * /admin/toil (a redirect stub now).
  *
- * ⚠️ GATED ON `toil`, WITH ONE DELIBERATE EXCEPTION. The row is hidden without the module (sidebar) and this
- * page shows only a notice. BUT the settlement sweeps must never be gated through the UI — core/toil.ts
- * `runToilExpiry` explains why at length: a tenant whose module lapses still owes the credits already banked,
- * and for a First-Schedule employee that debt converts to cash. So when the module is off AND credits are
- * still outstanding, the page opens a WIND-DOWN view: the movements, the summary, the sweeps and Reverse —
- * no Add, no Rules. Those three services are ungated (admin-only) by design; adding a credit and saving the
- * rules refuse in the service without the module regardless of what this page renders.
+ * ⚠️ GATED ON `toil`, WITH ONE DELIBERATE EXCEPTION — THE WIND-DOWN ARGUMENT, carried over from /admin/toil
+ * (now a redirect stub) and not to be tidied away. The row is hidden without the module (sidebar) and this
+ * page shows only a notice. BUT the two settlement sweeps are deliberately not entitlement-gated, and must
+ * never be re-gated through the UI either: a tenant whose module lapses (trial end, downgrade, non-payment)
+ * still owes the credits already banked, and for a First-Schedule employee that debt is statutory — unused
+ * credit must convert to pay, never lapse (core/toil.ts `runToilExpiry`). This page is the sweeps' only
+ * caller (there is no cron), so hiding them would strand the obligation. So when the module is off AND credits
+ * are still outstanding, the page opens a WIND-DOWN view: the movements, the summary, the sweeps and Reverse —
+ * no Add (and the Rules tab shows only the notice). Those services are admin-only by design; adding a credit
+ * and saving the rules refuse in the service without the module regardless of what this page renders.
  *
  * SERVER COMPONENT. The Add and Reverse dialogs are client islands fed plain data and the server actions
  * only — no translator and no closure crosses the boundary (test/server-client-boundary.test.ts).
@@ -57,15 +59,11 @@ export default async function LeaveConfigLeaveCreditPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    tab?: string;
     employee?: string;
     movement?: string;
     from?: string;
     to?: string;
-    company?: string;
     error?: string;
-    saved?: string;
-    warning?: string;
     granted?: string;
     otDate?: string;
     otMinutes?: string;
@@ -87,7 +85,6 @@ export default async function LeaveConfigLeaveCreditPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leaveCredit');
   const tToil = await getTranslations('admin.toilPolicy');
-  const tr = await getTranslations('admin.replacementLeave');
   const locale = await getLocale();
   const sp = await searchParams;
   const header = await leaveConfigPageHeader('leaveCredit');
@@ -102,29 +99,9 @@ export default async function LeaveConfigLeaveCreditPage({
   // decides whether a tenant without the module still gets the wind-down view.
   const summary = await replacementLeaveSummary(s, visibleIds);
   const windDown = !moduleOn && summary.activeAccruals > 0;
-  const tab = moduleOn && sp.tab === 'rules' ? 'rules' : 'credits';
+  const showCredits = moduleOn || windDown;
 
-  const tabCls = (active: boolean) =>
-    `flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
-      active
-        ? 'border-transparent bg-accent font-semibold text-accent-foreground'
-        : 'border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-    }`;
-
-  if (!moduleOn && !windDown) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title={header.title} description={header.description} />
-        <LeaveConfigMap current="leaveCredit" />
-        <Card className="p-4" data-testid="leave-credit-module-off">
-          <h2 className="text-sm font-semibold text-foreground">{t('moduleOffTitle')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('moduleOffBody')}</p>
-        </Card>
-      </div>
-    );
-  }
-
-  const employees = await listEmployees(s, visibleIds);
+  const employees = showCredits ? await listEmployees(s, visibleIds) : [];
   const employeeOptions = employees
     .map((e) => ({ id: e.employmentId, label: e.employeeCode ? `${e.employeeCode} — ${e.name}` : e.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -188,9 +165,8 @@ export default async function LeaveConfigLeaveCreditPage({
     : undefined;
   const isoOrUndefined = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
   const employeeFilter = employees.some((e) => e.employmentId === sp.employee) ? sp.employee : undefined;
-  const movements =
-    tab === 'credits'
-      ? await listLeaveCreditMovements(s, {
+  const movements = showCredits
+    ? await listLeaveCreditMovements(s, {
           companyIds: visibleIds,
           employmentId: employeeFilter,
           movement: movementFilter,
@@ -198,7 +174,7 @@ export default async function LeaveConfigLeaveCreditPage({
           to: isoOrUndefined(sp.to),
           today,
         })
-      : null;
+    : null;
 
   const banner = (text: string, extra?: string) => (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -223,61 +199,26 @@ export default async function LeaveConfigLeaveCreditPage({
           ) : undefined
         }
       />
+      {/* The row's tab strip (Credits · Rules), drawn by the map — this page draws no strip of its own. */}
       <LeaveConfigMap current="leaveCredit" />
-
-      {/* The page's own two tabs. Plain links on one route, the look of the row tab strip. */}
-      <nav aria-label={t('tabsLabel')} data-testid="leave-credit-tabs">
-        <ol className="flex flex-wrap items-center gap-1.5">
-          <li>
-            {tab === 'credits' ? (
-              <span aria-current="page" className={tabCls(true)}>
-                {t('tabCredits')}
-              </span>
-            ) : (
-              <Link href={PAGE} className={tabCls(false)}>
-                {t('tabCredits')}
-              </Link>
-            )}
-          </li>
-          {moduleOn && (
-            <li>
-              {tab === 'rules' ? (
-                <span aria-current="page" className={tabCls(true)}>
-                  {t('tabRules')}
-                </span>
-              ) : (
-                <Link href={`${PAGE}?tab=rules`} className={tabCls(false)}>
-                  {t('tabRules')}
-                </Link>
-              )}
-            </li>
-          )}
-        </ol>
-      </nav>
 
       <ErrorBanner message={sp.error} />
 
-      {windDown && (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-          data-testid="leave-credit-wind-down"
-        >
-          {t('windDown', { accruals: summary.activeAccruals })}
-        </div>
-      )}
-
-      {tab === 'rules' ? (
-        <>
-          {sp.saved !== undefined && banner(tr('savedBanner'))}
-          {sp.warning && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-              {sp.warning}
-            </div>
-          )}
-          <LeaveCreditRulesTab s={s} visible={visible} company={sp.company} pageHref={PAGE} />
-        </>
+      {!showCredits ? (
+        <Card className="p-4" data-testid="leave-credit-module-off">
+          <h2 className="text-sm font-semibold text-foreground">{t('moduleOffTitle')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('moduleOffBody')}</p>
+        </Card>
       ) : (
         <>
+          {windDown && (
+            <div
+              className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+              data-testid="leave-credit-wind-down"
+            >
+              {t('windDown', { accruals: summary.activeAccruals })}
+            </div>
+          )}
           {/* ⚠️ MONEY, SAID OUT LOUD. Adding a credit took that day's overtime out of payroll; reversing one
               put it back. The banner names the date and the hours either way. */}
           {sp.granted !== undefined &&

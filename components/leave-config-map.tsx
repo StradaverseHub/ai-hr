@@ -112,13 +112,15 @@ export type LeaveConfigScreenId =
   | 'earnedAccrual'
   | 'adjustments'
   /**
-   * 3fb1a611 (r299) — `leaveCredit` (`/admin/leave-config/leave-credit`), its OWN ROW directly after Leave
-   * Adjustments: every Replacement Leave credit (earned through a request, added by HR, used, reversed,
-   * expired) with its history, plus the Rules tab that took the replacement-leave policy off Company rules.
-   * A group of one screen — its Credits and Rules tabs are `?tab=` on that one page, not map items, because
-   * both are the same guarded route.
+   * 3fb1a611 (r299) — `leaveCredit` (`/admin/leave-config/leave-credit`) and `leaveCreditRules`
+   * (`/admin/leave-config/leave-credit/rules`): the Credits and Rules TABS of the Leave Credit row, directly
+   * after Leave Adjustments. Credits lists every Replacement Leave credit movement (earned through a request,
+   * added by HR, used, reversed, expired) with its history; Rules is the replacement-leave policy that left
+   * Company rules. Two routes, the house shape for a row with tabs (Leave Adjustments' two are the precedent),
+   * so the tab row is this component's and no page draws a strip of its own.
    */
   | 'leaveCredit'
+  | 'leaveCreditRules'
   | 'importLeaveData'
   | 'entitlementArchive'
   | 'ledgerArchive'
@@ -253,11 +255,16 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
     ],
   },
-  // 3fb1a611 (r299) — LEAVE CREDIT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS. Its row is
-  // gated on the `toil` module in the sidebar (MODULE_OF_HREF); this group exists so the page reads its
-  // heading and description through `leaveConfigPageHeader` like every other Leave Config page, and so the
-  // row↔group agreement stays one for one.
-  { id: 'leaveCredit', navKey: 'leaveCredit', items: [{ id: 'leaveCredit', href: '/admin/leave-config/leave-credit' }] },
+  // 3fb1a611 (r299) — LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and
+  // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.
+  {
+    id: 'leaveCredit',
+    navKey: 'leaveCredit',
+    items: [
+      { id: 'leaveCredit', href: '/admin/leave-config/leave-credit' },
+      { id: 'leaveCreditRules', href: '/admin/leave-config/leave-credit/rules' },
+    ],
+  },
   { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },
   // r281 (09386e29) — ONE SCREEN, ITS OWN ROW, IMMEDIATELY AFTER GENERATE ENTITLEMENT. The tab row draws
   // nothing for a group of one, so this entry buys the same two things the Balance Health group buys: the

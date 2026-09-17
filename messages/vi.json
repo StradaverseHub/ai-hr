@@ -8847,7 +8847,8 @@
         "importLeaveData": "Nhập dữ liệu nghỉ phép",
         "entitlementArchive": "Bản ghi cấu hình",
         "ledgerArchive": "Bản ghi số dư",
-        "leaveCredit": "Tín dụng nghỉ phép"
+        "leaveCredit": "Tín dụng",
+        "leaveCreditRules": "Quy tắc"
       }
     },
     "leaveConfigRecords": {
@@ -9002,9 +9003,6 @@
       "pageDescription": "Tín dụng có được khi làm việc vào ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ, và Nghỉ bù sử dụng tín dụng đó."
     },
     "leaveCredit": {
-      "tabsLabel": "Các mục Tín dụng nghỉ phép",
-      "tabCredits": "Tín dụng",
-      "tabRules": "Quy tắc",
       "addButton": "+ Thêm tín dụng nghỉ phép",
       "moduleOffTitle": "Tín dụng nghỉ phép chưa được bật cho tài khoản này",
       "moduleOffBody": "Tín dụng nghỉ phép là tiện ích trả phí. Việc bật tính năng được sắp xếp riêng; trước đó không thể nhận, thêm hoặc cấu hình tín dụng tại đây.",

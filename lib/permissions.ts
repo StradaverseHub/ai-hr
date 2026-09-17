@@ -499,6 +499,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // `toilPolicy` column below, whose only route (/admin/toil) is a redirect stub to this page now — no
       // role loses access: both were requireAdmin, and screen keys are not persisted anywhere.
       '/admin/leave-config/leave-credit',
+      // …and its Rules tab, the replacement-leave policy form that left Company rules (same guard, same key).
+      '/admin/leave-config/leave-credit/rules',
       '/admin/leave-config/import',
       // 7f69bd71 — THE RESET RECORDS SUB-SCREEN: the two read-only registers as sub-tabs of one page
       // (`?record=configuration` / `?record=balances`), reached from the foot of Leave Adjustments. Same

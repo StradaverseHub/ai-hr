@@ -8847,7 +8847,8 @@
         "importLeaveData": "Import data cuti",
         "entitlementArchive": "Rekod konfigurasi",
         "ledgerArchive": "Rekod baki",
-        "leaveCredit": "Kredit Cuti"
+        "leaveCredit": "Kredit",
+        "leaveCreditRules": "Peraturan"
       }
     },
     "leaveConfigRecords": {
@@ -9002,9 +9003,6 @@
       "pageDescription": "Kredit yang diperoleh dengan bekerja pada hari rehat, hari cuti atau cuti umum, dan Cuti Ganti yang menggunakannya."
     },
     "leaveCredit": {
-      "tabsLabel": "Bahagian Kredit Cuti",
-      "tabCredits": "Kredit",
-      "tabRules": "Peraturan",
       "addButton": "+ Tambah Kredit Cuti",
       "moduleOffTitle": "Kredit Cuti tidak diaktifkan untuk akaun ini",
       "moduleOffBody": "Kredit Cuti ialah tambahan berbayar. Pengaktifannya diuruskan secara berasingan; sehingga itu tiada kredit boleh diperoleh, ditambah atau dikonfigurasi di sini.",

@@ -179,8 +179,8 @@ const TOIL_POLICY = '/admin/leave-config/leave-credit';
 //
 // 3fb1a611 (r299) — REPOINTED AGAIN, at Leave Credit's Rules tab. The replacement-leave policy left Company
 // rules entirely (not re-gated there); the three banners moved with the form, so `?saved=` / `?warning=` /
-// `?error=` land on the screen the change was made on. The `tab=rules` is added where the URL is built.
-const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit';
+// `?error=` land on the screen the change was made on.
+const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';
 const LOCATIONS = '/admin/locations';
 
 export async function createCompanyAction(formData: FormData) {
@@ -1956,7 +1956,7 @@ export async function setToilPolicyAction(fd: FormData) {
   const s = await getSession();
   const companyId = String(fd.get('companyId') ?? '');
   const back = (params: string) =>
-    `${LEAVE_REPLACEMENT}?tab=rules&${params}${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`;
+    `${LEAVE_REPLACEMENT}?${params}${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`;
   let warning: string | undefined;
   try {
     // 296fc027 — the eligibility criteria, read the way every other multi-select criteria form in this

@@ -95,7 +95,9 @@ describe('r219: every reason says something, in every locale, to both audiences'
       const offText = screen.getByRole('status').textContent ?? '';
       expect(offText, `${locale} enable switch`).toContain(p.enabledLabel);
       expect(offText, `${locale} menu path`).toContain(nav.leaveConfig);
-      expect(offText, `${locale} screen name`).toContain(nav.leaveReplacement);
+      // 3fb1a611 (r299) — the switches are on Leave Config › Leave Credit (Rules tab) now, and the sentence
+      // names that screen by the sidebar row's own label.
+      expect(offText, `${locale} screen name`).toContain(nav.leaveCredit);
       // …and NOT the other switch. r219 split these two states apart precisely so each sentence points at
       // ONE control; naming both again would restore the "one of these is off" guess it replaced.
       expect(offText, `${locale} not_enabled names the wrong switch too`).not.toContain(p.employeeRequestLabel);

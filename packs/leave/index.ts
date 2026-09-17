@@ -300,8 +300,14 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // `toil` by hand (there is no toil pack to derive it from) and lib/nav-entitlements.ts lists `toil` so the
     // rail can hide it. The page repeats the check itself — a hidden row is not a gate.
     //
-    // NO `ownedSubpaths`: one screen; its Credits and Rules tabs are `?tab=` on the same address.
-    { href: '/admin/leave-config/leave-credit', labelKey: 'leaveCredit', icon: CalendarClock },
+    // `ownedSubpaths` carries the Rules tab (its own address), so the row stays lit on it. Highlighting only;
+    // it must agree with components/leave-config-map.tsx's `leaveCredit` group (test/r266-leave-config-rows).
+    {
+      href: '/admin/leave-config/leave-credit',
+      labelKey: 'leaveCredit',
+      icon: CalendarClock,
+      ownedSubpaths: ['/admin/leave-config/leave-credit/rules'],
+    },
     // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
     // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts
     // in the same commit), so this row must name the new one: test/leave-flyout-nav.test.ts requires every

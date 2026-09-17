@@ -132,8 +132,13 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     expect(src).toContain('<CorrectionDialog');
   });
 
-  it('/admin/toil is left alone — a short summary gains nothing from full width', () => {
-    expect(classNameLiterals(read('app/admin/toil/page.tsx')).some(capsPage)).toBe(true);
+  // 3fb1a611 (r299) — `/admin/toil is left alone — a short summary gains nothing from full width` STOOD HERE.
+  // The page is a redirect stub to Leave Config › Leave Credit now and renders nothing, so there is no width to
+  // leave alone; its summary and sweeps are cards on that screen, which follows the Leave Config layout.
+  it('/admin/toil renders nothing of its own any more — it redirects to Leave Credit', () => {
+    const src = read('app/admin/toil/page.tsx');
+    expect(src).toContain("redirect(`/admin/leave-config/leave-credit");
+    expect(classNameLiterals(src)).toEqual([]);
   });
 
   it('the shift list no longer renders the create/edit form', () => {

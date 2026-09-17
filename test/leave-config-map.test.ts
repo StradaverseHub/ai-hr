@@ -167,6 +167,10 @@ describe('a6fe37fc — the leave configuration map', () => {
       'entitlements',
       'balanceHealth',
       'adjustments',
+      // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: `leaveCredit` sits immediately after `adjustments`, because
+      // its row does — it is the adjustment screen FOR Replacement Leave (Leave Adjustments refuses that type
+      // now and points here). Two tabs, Credits and Rules, each its own route (asserted below).
+      'leaveCredit',
       'generate',
       'earnedAccrual',
       'approval',
@@ -185,6 +189,9 @@ describe('a6fe37fc — the leave configuration map', () => {
     // r279 — one screen, so no tab row is drawn for it (`LeaveConfigMap` returns null below two items).
     expect(byGroup.balanceHealth).toEqual<LeaveConfigScreenId[]>(['balanceHealth']);
     expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'importLeaveData']);
+    // 3fb1a611 (r299) — two tabs: Credits (the movements, Add, Reverse, sweeps) and Rules (the policy that left
+    // Company rules). A row with tabs is drawn by this component, never by a page.
+    expect(byGroup.leaveCredit).toEqual<LeaveConfigScreenId[]>(['leaveCredit', 'leaveCreditRules']);
     expect(byGroup.generate).toEqual<LeaveConfigScreenId[]>(['generateEntitlement']);
     // r281 — one screen, so no tab row is drawn for it. A SECOND TAB of `generate` would have been the
     // wrong shape and is the whole point of the item: it would put the two operations back on one screen.

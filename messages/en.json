@@ -8847,7 +8847,8 @@
         "importLeaveData": "Import leave data",
         "entitlementArchive": "Configuration record",
         "ledgerArchive": "Balance record",
-        "leaveCredit": "Leave Credit"
+        "leaveCredit": "Credits",
+        "leaveCreditRules": "Rules"
       }
     },
     "leaveConfigRecords": {
@@ -9002,9 +9003,6 @@
       "pageDescription": "Credits earned by working a rest day, off day or public holiday, and the Replacement Leave that uses them."
     },
     "leaveCredit": {
-      "tabsLabel": "Leave Credit sections",
-      "tabCredits": "Credits",
-      "tabRules": "Rules",
       "addButton": "+ Add Leave Credit",
       "moduleOffTitle": "Leave Credit is not switched on for this account",
       "moduleOffBody": "Leave Credit is a paid add-on. Turning it on is arranged separately; until then no credit can be earned, added or configured here.",

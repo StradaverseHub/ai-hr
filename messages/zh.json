@@ -8847,7 +8847,8 @@
         "importLeaveData": "导入休假数据",
         "entitlementArchive": "配置记录",
         "ledgerArchive": "余额记录",
-        "leaveCredit": "假期额度"
+        "leaveCredit": "额度",
+        "leaveCreditRules": "规则"
       }
     },
     "leaveConfigRecords": {
@@ -9002,9 +9003,6 @@
       "pageDescription": "在休息日、休假日或公共假期工作所获得的额度，以及使用这些额度的补休假。"
     },
     "leaveCredit": {
-      "tabsLabel": "假期额度分区",
-      "tabCredits": "额度",
-      "tabRules": "规则",
       "addButton": "+ 添加假期额度",
       "moduleOffTitle": "此账户未开通假期额度",
       "moduleOffBody": "假期额度是付费附加功能，开通需另行安排；在此之前，此处无法获得、添加或配置任何额度。",
