@@ -41,6 +41,11 @@ record an administrator sees:
 | **Family** | Family & Dependents Information |
 | **Documents** | Tax statement (EA) · Review outcome · Resignation |
 
+**A company that has not bought Payroll** does not see My payslips, Personal tax relief (TP1), My loans or the
+Tax statement (EA): all four come from payroll runs, so there is nothing to show and the cards are left out.
+The Payroll tab stays, with Basic Salary on it, because the salary record belongs to the employee's
+employment and not to the Payroll module.
+
 The first card on each of the first five tabs carries the **same name HR sees**, letter for letter, because
 it is the same catalogue entry. The rest are the employee's own lists — payslips, tax relief, loans, EA
 statements, the resignation form — which have no Personnel counterpart at all, so there is no second name
