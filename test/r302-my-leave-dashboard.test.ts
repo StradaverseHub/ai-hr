@@ -227,13 +227,20 @@ describe('the ring, the order, the hidden types, the Taken-only card', () => {
 
   it('Hidden types are absent; Primary types come before Secondary ones', async () => {
     const emp = await hire('2019-03-01');
+    // Two ways a type resolves to Hidden: HR's switch (visible_to_employee = false — leaveBalances already drops
+    // it) and a code-keyed DEFAULT with no HR choice (UNPAID_MEDICAL — leaveBalances keeps it with placement
+    // 'hidden', and only the dashboard's own filter removes it). Both must be absent.
     const hidden = await type({ name: 'AAA Hidden', visibleToEmployee: false });
+    const hiddenByDefault = await type({ name: 'AAA Unpaid medical', code: 'UNPAID_MEDICAL', visibleToEmployee: null });
     const secondary = await type({ name: 'AAA Secondary', essPlacement: 'secondary' });
     const primary = await type({ name: 'ZZZ Primary', essPlacement: 'primary' });
-    for (const t of [hidden, secondary, primary]) await ledger(emp.employmentId, t, 'accrual', 1, `${YEAR}-01-01`);
+    for (const t of [hidden, hiddenByDefault, secondary, primary]) await ledger(emp.employmentId, t, 'accrual', 1, `${YEAR}-01-01`);
     const d = await myLeaveDashboard(emp.ctx, emp.employmentId, { today: TODAY });
     const ids = d.cards.map((c) => c.leaveTypeId);
     expect(ids).not.toContain(hidden);
+    expect(ids).not.toContain(hiddenByDefault);
+    // (sanity: the read under the dashboard does return it, marked hidden — so the absence above is the filter)
+    expect((await leaveBalances(emp.ctx, emp.employmentId)).find((r) => r.leaveTypeId === hiddenByDefault)?.placement).toBe('hidden');
     expect(ids.indexOf(primary)).toBeGreaterThan(-1);
     expect(ids.indexOf(primary), 'Primary before Secondary, whatever the names say').toBeLessThan(ids.indexOf(secondary));
     const firstSecondary = d.cards.findIndex((c) => c.placement === 'secondary');
