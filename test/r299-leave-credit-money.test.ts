@@ -247,13 +247,13 @@ describe('HR Add Leave Credit suppresses the worked day’s overtime; a reversal
       today: TODAY,
     });
 
-    const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: PERIOD });
-    await prefillOvertimeFromAttendance(ctx, { batchId });
-    expect(await otAmountOf(batchId, e.employmentId), 'suppressed while the credit stands').toBeCloseTo(ONE_REST_DAY, 2);
-
+    // r300 — the reversal happens BEFORE payroll for the month is started: once any run exists, reversing a credit
+    // on a date with overtime is refused (a prefilled run would not pay the day back — see
+    // test/r299-leave-credit-fixpass.test.ts). The property pinned here is unchanged: reversed ⇒ both reads pay it.
     const reversed = await reverseLeaveCredit(ctx, { accrualId: granted.accrualId, reason: 'Entered twice', today: TODAY });
     expect(reversed.overtimeRestoredMinutes).toBe(480);
 
+    const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: PERIOD });
     await prefillOvertimeFromAttendance(ctx, { batchId });
     // READ 1 — both rest days are paid again.
     expect(await otAmountOf(batchId, e.employmentId)).toBeCloseTo(TWO_REST_DAYS, 2);
