@@ -463,6 +463,7 @@ export default async function EmployeeBalancesPage({
                             action="/leave/employee-balances"
                             hiddenParams={panelHiddenParams}
                             triggerLabel={tInq('explainAction')}
+                            hrExplanation={r.hrExplanation}
                             triggerClassName="whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
                           />
                         ) : (

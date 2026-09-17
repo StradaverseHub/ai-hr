@@ -357,8 +357,10 @@ export default async function EmployeePage({
   // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
   // gets a null breakdown (rendered as nothing) rather than a leak. Invalid/empty asOf falls back to today.
   const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
+  // r303 (31492f74): `derivation: true` — the Leave card's Explain panel here is an HR mount and prints the
+  // per-line working.
   const breakdowns = await Promise.all(
-    balances.map((b) => leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf)),
+    balances.map((b) => leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf, undefined, { derivation: true })),
   );
   const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
   // 4da751c6 — same asOf as the breakdowns, so the scheme and the days it explains can never be read at
@@ -2679,6 +2681,8 @@ export default async function EmployeePage({
                   asOf={breakdownAsOf}
                   action={`/admin/personnel/${employmentId}`}
                   hiddenParams={from ? { from } : {}}
+                  // r303 (31492f74): HR's per-line sentences, naming the pool when this row's figures are one.
+                  hrExplanation={{ sharedBalance: b.sharedBalance ?? null }}
                 />
               )}
             </div>

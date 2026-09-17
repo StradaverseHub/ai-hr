@@ -72,6 +72,9 @@ export type EmployeeBalanceRow = {
   available: number;
   /** r242 — display-only per-type theming (639fdf77) for the panel header. Already on the balance row. */
   visual: { color: string | null; icon: string | null; code: string | null };
+  /** r303 (31492f74) — the HR explanation switch for the Explain panel, carrying whose pool the row's figures
+   *  are (`sharedBalance` off the same balance row). Always set: this screen is HR's. */
+  hrExplanation: { sharedBalance: SharedLeaveBalanceInfo | null };
 };
 
 export async function employeeBalanceRows(
@@ -99,8 +102,10 @@ export async function employeeBalanceRows(
   // days across 55 employments — an admin screen that stopped showing those days would be a worse defect
   // than the one this item fixes.
   const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf });
+  // r303 (31492f74): `derivation: true` — this is an HR screen, and its Explain panel prints the per-line working.
+  // Same read, same date; the working rides on the very `bd` every figure in the row comes from.
   const breakdowns = await Promise.all(
-    balances.map((b) => leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)),
+    balances.map((b) => leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale, { derivation: true })),
   );
   const byType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
 
@@ -135,6 +140,7 @@ export async function employeeBalanceRows(
         breakdown: bd,
         available: b.available,
         visual: { color: b.color, icon: b.icon, code: b.code },
+        hrExplanation: { sharedBalance: row.sharedBalance },
       };
     })
     .filter((r) => (typeIds.length ? typeIds.includes(r.leaveTypeId) : true))

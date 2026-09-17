@@ -21,17 +21,25 @@
  * ESS gating (65dec703): on /me (`applyEssConfig`) each section/field is gated against the leave type's
  * resolved ess-view config (missing key ⇒ visible); admin/HR pass it false and see everything.
  * Visual (639fdf77): the header shows the per-type icon + colour chip.
+ *
+ * r303 (31492f74) — HR'S SENTENCES. On the two HR mounts (`hrExplanation` set) each of the nine rows loses its
+ * info icon and gains the sentences lib/leave-summary-explain.ts renders from the breakdown's `derivation`: how
+ * THIS employee's figure was reached, not what the line means in general. An HR-authored explanation (Leave
+ * Entitlement Formula Management) still shows, as a plain paragraph under the generated sentences. Without the
+ * prop — every employee mount — the panel renders exactly what it rendered before r303 (pinned byte for byte by
+ * test/r303-leave-summary-explain.dom.test.tsx against markup captured on the base).
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Info, X } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
 // 4a1abc4a: every day figure in this column goes through the ONE shared formatter, so the panel and the
 // balance grid behind it cannot print the same number two ways.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
-import type { EntitlementBreakdownData } from './EntitlementBreakdown';
+import type { EntitlementBreakdownData, HrLeaveSummaryExplanation } from './EntitlementBreakdown';
+import { explainLeaveSummary, type ExplainArg, type ExplainStep, type LeaveSummaryLineKey } from '@/lib/leave-summary-explain';
 import {
   entitlementStatusNeedsNotice,
   ELIGIBILITY_AXIS_LABEL_KEY,
@@ -120,6 +128,7 @@ export function LeaveDetailsPanel({
   hideAsOfForm = false,
   triggerLabel,
   triggerClassName,
+  hrExplanation,
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
@@ -175,8 +184,15 @@ export function LeaveDetailsPanel({
    */
   triggerLabel?: string;
   triggerClassName?: string;
+  /**
+   * r303 (31492f74) — HR MOUNTS ONLY. Replaces each row's info icon with sentences written from this employee's
+   * own records (see the header). A plain object built on the server — no closure crosses the boundary (r123).
+   * Omit it and nothing about this panel changes.
+   */
+  hrExplanation?: HrLeaveSummaryExplanation;
 }) {
   const t = useTranslations('leave.breakdown');
+  const locale = useLocale();
   /**
    * r212 — THE CRITERIA AXIS NAMES, READ FROM WHERE THEY ALREADY LIVE.
    *
@@ -218,6 +234,52 @@ export function LeaveDetailsPanel({
     });
 
   const panel: PanelData = { breakdown: data, summary };
+  // r303 — HR's per-line sentences, or null on every employee mount. Rendered from the figures this panel already
+  // shows plus the breakdown's own derivation; nothing is looked up or recomputed here.
+  const explained = hrExplanation
+    ? explainLeaveSummary(data, { available: summary.available, sharedBalance: hrExplanation.sharedBalance })
+    : null;
+  // Typed step arguments → display strings. Day figures go through the ONE shared formatter (4a1abc4a).
+  const explainValues = (args?: Record<string, ExplainArg>) => {
+    const out: Record<string, string | number> = {};
+    for (const [k, a] of Object.entries(args ?? {})) {
+      if ('days' in a) out[k] = fmtDays(a.days);
+      else if ('signedDays' in a) out[k] = a.signedDays > 0 ? `+${fmtDays(a.signedDays)}` : fmtDays(a.signedDays);
+      else if ('date' in a) out[k] = a.date;
+      else if ('text' in a) out[k] = a.text;
+      else if ('count' in a) out[k] = a.count;
+      else if ('choice' in a) out[k] = a.choice;
+      else out[k] = new Intl.ListFormat(locale, { type: 'conjunction' }).format(a.list);
+    }
+    return out;
+  };
+  const explainText = (s: ExplainStep) => t(`explain.${s.key}`, explainValues(s.args));
+  // Consecutive `item` steps are one list under the sentence before them (a credit, an adjustment, a request).
+  const renderExplanation = (steps: ExplainStep[]) => {
+    const out: ReactNode[] = [];
+    let items: ExplainStep[] = [];
+    const flush = (at: number) => {
+      if (items.length === 0) return;
+      out.push(
+        <ul key={`list-${at}`} className="space-y-0.5 pl-3 tabular-nums">
+          {items.map((it, i) => (
+            <li key={i}>{explainText(it)}</li>
+          ))}
+        </ul>,
+      );
+      items = [];
+    };
+    steps.forEach((step, i) => {
+      if (step.item) {
+        items.push(step);
+        return;
+      }
+      flush(i);
+      out.push(<p key={i}>{explainText(step)}</p>);
+    });
+    flush(steps.length);
+    return out;
+  };
   // ESS gate: shown when config is not applied (admin) OR the key is not explicitly false (missing ⇒ visible).
   const show = (key?: string) => !applyEssConfig || key == null || data.essView?.[key as keyof typeof data.essView] !== false;
 
@@ -274,7 +336,8 @@ export function LeaveDetailsPanel({
                   {/* §1 Leave Summary (877f2f37): a STATIC hover tooltip on the row — fixed plain-English copy,
                       no HR config. Suppressed when HR authored a custom explanation for this row (2bc2f2a3:
                       one icon per row — the HR content supersedes the generic copy). */}
-                  {f.tooltipKey && !hasExpl && (
+                  {/* r303: on the HR mounts the generated sentences below replace the icon. */}
+                  {!explained && f.tooltipKey && !hasExpl && (
                     <span
                       title={t(f.tooltipKey)}
                       aria-label={t(f.tooltipKey)}
@@ -285,7 +348,7 @@ export function LeaveDetailsPanel({
                   )}
                   {/* HR explanation (2bc2f2a3): hover/focus shows the tooltip, tap/click toggles it (touch),
                       Escape dismisses. Description and Formula render on separate lines. */}
-                  {hasExpl && (
+                  {!explained && hasExpl && (
                     <span className="relative shrink-0">
                       <button
                         type="button"
@@ -338,6 +401,29 @@ export function LeaveDetailsPanel({
                   ("Expires: 31/08/2026"), rather than as a row of its own that a reader has to connect back. */}
               {note && f.noteLabelKey && (
                 <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: note })}</p>
+              )}
+              {/* r303 — HR only: how THIS employee's figure was reached, then HR's own explanation (if written)
+                  as a plain paragraph. No icon, no hover: the reader asked "why this number", so it is on the page. */}
+              {explained && (
+                <div data-testid={`leave-explain-${f.key}`} className="mt-1 space-y-1 pl-3 text-xs text-muted-foreground">
+                  {renderExplanation(explained[f.key as LeaveSummaryLineKey] ?? [])}
+                  {hasExpl && (
+                    <p data-testid={`leave-explain-hr-${f.key}`} className="border-l-2 border-border pl-2">
+                      {explanation!.description && (
+                        <span className="block">
+                          <span className="font-medium text-foreground">{t('explanationDescription')}: </span>
+                          {explanation!.description}
+                        </span>
+                      )}
+                      {explanation!.formula && (
+                        <span className="block">
+                          <span className="font-medium text-foreground">{t('explanationFormula')}: </span>
+                          {explanation!.formula}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           );
