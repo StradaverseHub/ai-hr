@@ -114,23 +114,29 @@ const bandText = (v: number) => formatDays(v);
 
 /** The band editor holds figures as STRINGS deliberately: a controlled number input backed by a number
  *  cannot be typed into, because "0.7" passes through "0." and `Number('0.')` is 0. */
-type BandRow = { to: string; result: string };
+type BandRow = { from: string; to: string; result: string };
+type BandField = keyof BandRow;
 
-/** Row i's From is DERIVED — row 0 starts at 0.00, every later row where the row above stopped — so the
- *  table joins up by construction and an internal gap is unreachable from this screen. */
-const fromText = (rows: BandRow[], i: number): string => (i === 0 ? bandText(0) : rows[i - 1].to);
+/**
+ * r303 (05db6aa7) — FROM IS TYPED, LIKE TO. Until r303 row i's From was DERIVED (row 0 at 0.00, every later
+ * row where the row above stopped), read-only, and the stored From was discarded on load. That made the
+ * reporter's table — 0.00–0.24, 0.25–0.49, 0.50–0.74, 0.75–0.99, both ends included — impossible to enter as
+ * written. Each row now shows and posts exactly the From it was saved with; `checkRoundingBands` names an
+ * overlap, a duplicate or a gap instead of the screen preventing them by construction.
+ */
+const cellText = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? bandText(v) : '');
 
 const rowsFromStored = (bands: RoundingBand[] | null | undefined): BandRow[] =>
   (Array.isArray(bands) ? bands : [])
     .filter((b) => b != null && typeof b === 'object')
-    .map((b) => ({ to: bandText(Number(b.to) || 0), result: bandText(Number(b.result) || 0) }));
+    .map((b) => ({ from: cellText(b.from), to: cellText(b.to), result: cellText(b.result) }));
 
-/** A BLANK or half-typed cell becomes NaN — which `checkRoundingBands` calls a broken row — rather than
+/** A BLANK or half-typed cell becomes NaN — which `checkRoundingBands` calls a blank cell — rather than
  *  `Number('')`'s silent 0, which would post a rule nobody typed. */
 const bandNum = (s: string) => (s.trim() === '' ? Number.NaN : Number(s));
 
 const rowsToBands = (rows: BandRow[]): RoundingBand[] =>
-  rows.map((r, i) => ({ from: bandNum(fromText(rows, i)), to: bandNum(r.to), result: bandNum(r.result) }));
+  rows.map((r) => ({ from: bandNum(r.from), to: bandNum(r.to), result: bandNum(r.result) }));
 
 /**
  * The Custom Rounding table. THE WARNINGS COME FROM THE SERVICE'S OWN VALIDATOR — `checkRoundingBands`
@@ -153,16 +159,36 @@ function RoundingBandsEditor({
   const gaps = problems.filter((p): p is Extract<RoundingBandProblem, { kind: 'gap' }> => p.kind === 'gap');
   const has = (kind: RoundingBandProblem['kind']) => problems.some((p) => p.kind === kind);
 
-  const patch = (i: number, field: 'to' | 'result', v: string) =>
+  const patch = (i: number, field: BandField, v: string) =>
     setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v } : r)));
 
+  /** WIDEN, NEVER NARROW. "0.5" becomes "0.50" on blur; "0.245" stays "0.245" so the table refuses it by name
+   *  (r303: "at most two decimals — refuse, do not round"). The shared tidier alone would print it as 0.25
+   *  and save a figure nobody typed. */
   const tidyCell =
-    (i: number, field: 'to' | 'result') => (e: { currentTarget: { value: string } }) => {
+    (i: number, field: BandField) => (e: { currentTarget: { value: string } }) => {
+      const typed = e.currentTarget.value;
       const next = normalizeDayText(e.currentTarget.value);
-      if (next !== e.currentTarget.value) patch(i, field, next);
+      if (next !== typed && Number(next) === Number(typed)) patch(i, field, next);
     };
 
-  const addRow = () => setRows([...rows, { to: '', result: '' }]);
+  const addRow = () => setRows([...rows, { from: '', to: '', result: '' }]);
+
+  const numberCell = (i: number, field: BandField, value: string, label: string) => (
+    <td className={cell}>
+      <input
+        type="number"
+        min="0"
+        max="1"
+        step="0.01"
+        value={value}
+        onChange={(e) => patch(i, field, e.target.value)}
+        onBlur={tidyCell(i, field)}
+        aria-label={label}
+        className={cn(inputCls, 'w-24')}
+      />
+    </td>
+  );
 
   return (
     <div className="space-y-2 rounded-lg border border-border p-2">
@@ -182,43 +208,10 @@ function RoundingBandsEditor({
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} className={badRows.has(i) ? 'bg-destructive/10' : undefined}>
-                <td className={cell}>
-                  {/* DERIVED, not typed. `readOnly` rather than `disabled`: still reachable, still read
-                      out, it simply has no answer of its own. No `name` — the table posts as JSON. */}
-                  <input
-                    type="text"
-                    readOnly
-                    value={fromText(rows, i)}
-                    aria-label={t('subStep.roundingBandFrom')}
-                    className={cn(inputCls, 'w-24 bg-muted/40 text-muted-foreground')}
-                  />
-                </td>
-                <td className={cell}>
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={r.to}
-                    onChange={(e) => patch(i, 'to', e.target.value)}
-                    onBlur={tidyCell(i, 'to')}
-                    aria-label={t('subStep.roundingBandTo')}
-                    className={cn(inputCls, 'w-24')}
-                  />
-                </td>
-                <td className={cell}>
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={r.result}
-                    onChange={(e) => patch(i, 'result', e.target.value)}
-                    onBlur={tidyCell(i, 'result')}
-                    aria-label={t('subStep.roundingBandResult')}
-                    className={cn(inputCls, 'w-24')}
-                  />
-                </td>
+                {/* From, To and Round To are all typed; no `name` on any of them — the table posts as JSON. */}
+                {numberCell(i, 'from', r.from, t('subStep.roundingBandFrom'))}
+                {numberCell(i, 'to', r.to, t('subStep.roundingBandTo'))}
+                {numberCell(i, 'result', r.result, t('subStep.roundingBandResult'))}
                 <td className={cell}>
                   <Button
                     type="button"
@@ -238,10 +231,12 @@ function RoundingBandsEditor({
       <Button type="button" size="sm" variant="secondary" onClick={addRow}>
         {t('subStep.roundingBandAddRow')}
       </Button>
-      {/* Errors first, then the gap warning: an overlapping table is refused, an incomplete one is not. */}
-      {(has('shape') || has('range') || has('order')) && (
-        <p className="text-xs text-destructive">{t('subStep.roundingBandRowInvalid')}</p>
-      )}
+      {/* Errors first, ONE MESSAGE PER PROBLEM (r303), then the gap warning: an overlapping table is refused,
+          an incomplete one is not. */}
+      {(has('shape') || has('blank')) && <p className="text-xs text-destructive">{t('subStep.roundingBandBlank')}</p>}
+      {has('decimals') && <p className="text-xs text-destructive">{t('subStep.roundingBandDecimals')}</p>}
+      {has('range') && <p className="text-xs text-destructive">{t('subStep.roundingBandRange')}</p>}
+      {has('order') && <p className="text-xs text-destructive">{t('subStep.roundingBandOrder')}</p>}
       {has('overlap') && <p className="text-xs text-destructive">{t('subStep.roundingBandOverlap')}</p>}
       {has('duplicate') && <p className="text-xs text-destructive">{t('subStep.roundingBandDuplicate')}</p>}
       {gaps.map((g, i) => (

@@ -2710,6 +2710,13 @@
       "when": 1781862571000,
       "tag": "0471_cancel_approved_leave",
       "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1781862573000,
+      "tag": "0473_rounding_bands_inclusive_ranges",
+      "breakpoints": true
     }
   ]
 }

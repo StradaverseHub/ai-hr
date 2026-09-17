@@ -67,6 +67,7 @@ import {
   isUserRoundingMethod,
   roundingBandErrors,
   type RoundingBand,
+  type RoundingBandProblem,
   // 8fec719e — the same engagement test applyLeaveTypeRules uses, so the writer can refuse to leave a type
   // "unruled" by a rounding change (see the guard in setLeaveTypeRules).
   hasAnyLeaveTypeRule,
@@ -4367,16 +4368,23 @@ export async function setLeaveTypeRules(
   if (p.roundingBands !== undefined && p.roundingBands !== null && p.roundingBands.length > 0) {
     const problems = roundingBandErrors(p.roundingBands);
     if (problems.length > 0) {
-      const kinds = [...new Set(problems.map((x) => x.kind))];
-      const rows = [...new Set(problems.map((x) => (x.kind === 'gap' ? 0 : x.index + 1)))].join(', ');
-      throw new LeaveTypeRuleError(
-        `The rounding table is not usable (${kinds.join(', ')}) at row ${rows}. ` +
-          // 4a1abc4a — kept in step with the client string `roundingBandRowInvalid`. This one is thrown by
-          // the service and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad
-          // table), so it was still telling them to change From — the field this round made derived and
-          // read-only — and still quoting three decimals the boxes no longer accept.
-          'Every row needs a Round To above where the row before it stopped, and both figures must be between 0.00 and 1.00.',
+      // r303 (05db6aa7) — ONE SENTENCE PER PROBLEM, in the same words as the editor's own messages
+      // (subStep.roundingBandBlank / Decimals / Range / Order / Overlap / Duplicate). Thrown by the service
+      // and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad table), so it
+      // must describe the table as the screen now labels it: From and To both typed, both INCLUDED.
+      const say: Record<Exclude<RoundingBandProblem['kind'], 'gap'>, string> = {
+        shape: 'fill in From, To and Round To',
+        blank: 'fill in From, To and Round To',
+        decimals: 'use at most two decimal places',
+        range: 'keep From, To and Round To between 0.00 and 1.00',
+        order: 'From cannot be above To',
+        duplicate: 'this range is entered twice',
+        overlap: 'this range overlaps another row (a range includes both its From and its To)',
+      };
+      const sentences = problems.map((x) =>
+        x.kind === 'gap' ? '' : `Row ${x.index + 1}: ${say[x.kind]}.`,
       );
+      throw new LeaveTypeRuleError(`The rounding table was not saved. ${sentences.filter(Boolean).join(' ')}`);
     }
   }
   // Feedback 9f5164d8 — the reporter's four validation rules, all of which reduce to a bound on ONE number.
@@ -4437,10 +4445,13 @@ export async function setLeaveTypeRules(
       ? p.roundingBands === undefined
         ? undefined
         : null
-      : p.roundingBands.map((b) => ({
-          from: Math.round(b.from * 1000) / 1000,
-          to: Math.round(b.to * 1000) / 1000,
-          result: Math.round(b.result * 1000) / 1000,
+      : // r303 (05db6aa7) — stored EXACTLY AS TYPED, at two decimals. The check above has already refused
+        // anything with a third decimal, so this only strips binary-float noise; it can never round a
+        // figure somebody typed into a different one.
+        p.roundingBands.map((b) => ({
+          from: Math.round(b.from * 100) / 100,
+          to: Math.round(b.to * 100) / 100,
+          result: Math.round(b.result * 100) / 100,
         })),
   );
   put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));
