@@ -298,11 +298,11 @@ export function EarnedAccrualCard({
           /* r299 (3de1453a) — ⚠️ LIST, DO NOT REMOVE — BUT NOW DO DISABLE. r293 wrote "mark, do not remove
              and do not disable". The "do not remove" half stands: dropping a row would hide the very type
              someone came looking for. The "do not disable" half is REVERSED, on purpose and on the
-             reporter's explicit instruction — "Only Annual Leave (*Annual Leave) is subject to the Earned
-             Accrual concept. All other leave types are managed based on entitlement and should not be
-             included in the Earned Accrual process." A tickable row the process must never include is an
+             reporter's explicit instruction (board 3de1453a: only annual leave is subject to the Earned
+             Accrual concept; all other leave types are managed based on entitlement and are not included
+             in the Earned Accrual process). A tickable row the process must never include is an
              invitation to include it. So every other type is listed, greyed, cannot be ticked, and is
-             tagged Entitlement-based; Annual Leave is tagged Earned accrual. The ENGINE remains the control
+             tagged Entitlement-based; the annual leave type is tagged Earned accrual. The ENGINE remains the control
              — a crafted scope naming a non-Annual id still returns `type_not_swept` and writes nothing —
              so this is the courtesy, not the guard. LEAVE-TYPE picker only; company and grade pass neither. */
           optionNote={(o) =>
@@ -331,7 +331,7 @@ export function EarnedAccrualCard({
       {/* r299 (3de1453a) — THE REPORTER'S SENTENCE, IN THE REPORTER'S WORDS, with the tenant's own Annual
           Leave name(s) in the brackets. It replaces r293's "covers only these leave types" paragraph and is
           drawn whatever is selected, because "All leave types" must say out loud that it means Annual
-          Leave only. When no active type is Annual Leave the sentence says so and names the switch that
+          Leave only. When no active type is annual leave the sentence says so and names the switch that
           fixes it — on release day that is the reporting account's state until they switch it on. */}
       <p data-testid="earned-annual-only" className="max-w-2xl rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
         {sweptLeaveTypeNames.length

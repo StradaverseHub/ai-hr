@@ -460,7 +460,7 @@ export function EarningMethodForm({
       ) : (
         <>
           {/* the mapped engine value — the select speaks the reporter's vocabulary. r299: on a type that is
-              not Annual Leave this re-posts a stored earned method VERBATIM until the administrator picks
+              not annual leave this re-posts a stored earned method VERBATIM until the administrator picks
               something else, which is how a stranded method is kept rather than rewritten. */}
           <input type="hidden" name="method" value={earningMethodOf(choice)} />
           <Field label={t('subStep.earningMethodLabel')}>
@@ -475,7 +475,7 @@ export function EarningMethodForm({
                   unconfigured rather than be forced into a choice by the UI. */}
               {choice === '' && <option value="">{t('subStep.earningNotConfigured')}</option>}
               <option value="none">{t('subStep.earningNone')}</option>
-              {/* r299 — LISTED, and disabled unless this is Annual Leave: the reporter's mockup greys them
+              {/* r299 — LISTED, and disabled unless the switch is on: the reporter's mockup greys them
                   rather than hiding them, so the administrator can see what the switch unlocks. */}
               <option value="monthly" disabled={!annualOn}>
                 {t('subStep.earningByMonth')}
