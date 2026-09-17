@@ -24,6 +24,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { setRestDay } from '../core/roster';
 import { setLeaveTypeRules, updateLeaveType } from '../core/admin';
 import {
   POLICY_RECALC_REASON_PREFIX,
@@ -44,7 +45,6 @@ import {
   type ExplainStep,
   type LeaveSummaryLineKey,
 } from '../lib/leave-summary-explain';
-import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   adminCtx,
   closeAll,
@@ -529,19 +529,19 @@ describe('r303 — Replacement Leave with Leave Credit: credits, an expired cred
     });
     const emp = await hire('2024-01-01');
     await setCompensation(adminCtx(b), { employmentId: emp.employmentId, basicSalary: 8000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
-    const TODAY = todayInKualaLumpur();
-    const JAN = `${TODAY.slice(0, 4)}-01-01`;
-    const back = (n: number) => {
-      const d = new Date(Date.parse(`${TODAY}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
-      return d < JAN ? JAN : d;
-    };
+    // Every Leave Credit service takes an injected `today`, so the fixture is a fixed, past, mid-year date and
+    // never straddles a leave-year boundary the clock happens to be near.
+    const TODAY = '2026-06-15';
+    const back = (n: number) => new Date(Date.parse(`${TODAY}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    // A Leave Credit can only be earned on a rest day, off day or public holiday.
+    for (const n of [1, 2, 3]) await setRestDay(adminCtx(b), { employmentId: emp.employmentId, shiftDate: back(n) });
     const toReverse = await grantLeaveCredit(admin, { employmentId: emp.employmentId, workedDate: back(3), days: 1, reason: 'Entered twice', today: TODAY });
     await grantLeaveCredit(admin, {
       employmentId: emp.employmentId,
       workedDate: back(2),
       days: 0.5,
       reason: 'Half-day cover',
-      expiresOn: back(1) < TODAY ? back(1) : TODAY,
+      expiresOn: back(1),
       today: TODAY,
     });
     await grantLeaveCredit(admin, { employmentId: emp.employmentId, workedDate: back(1), days: 2, reason: 'Special approval', today: TODAY });
@@ -557,9 +557,10 @@ describe('r303 — Replacement Leave with Leave Credit: credits, an expired cred
     expect(d.earned.credits.every((c) => c.kind === 'leave_credit')).toBe(true);
     expect(sum(d.earned.credits)).toBe(3.5);
     // The reversal and the expiry are debits with no leave application — listed under Taken, named.
-    const kinds = d.taken.other.map((o) => o.kind).sort();
-    expect(kinds).toEqual(['credit_reversed', ...(kinds.includes('credit_expired') ? ['credit_expired'] : [])].sort());
-    expect(d.taken.other.find((o) => o.kind === 'credit_reversed')!.days).toBe(1);
+    expect(d.taken.other.map((o) => ({ kind: o.kind, days: o.days })).sort((x, y) => String(x.kind).localeCompare(String(y.kind)))).toEqual([
+      { kind: 'credit_expired', days: 0.5 },
+      { kind: 'credit_reversed', days: 1 },
+    ]);
     expect(d.taken.leaveDays).toBe(0);
     // Independent read: every in_lieu_accrual row of the window is a listed credit.
     const raw = await ledgerWindow(emp.employmentId, rl.id, bd.cycleStart, bd.asOf);
