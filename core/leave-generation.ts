@@ -44,6 +44,11 @@
  * `db.transaction()` takes a second pooled connection and cannot see the outer transaction's uncommitted
  * writes. So a run is: resolve the target set · run the engine · write the log.
  *
+ * r301 (e5018593) MADE IT FOUR: resolve · year-open · EARNED ACCRUAL · log. The accrual is a second engine
+ * (`accrueEarnedLeave`) aimed at the earned Annual Leave pairs the year-open skipped, in its own transaction
+ * after the year-open has committed, and a failure there is returned on the result rather than thrown — the
+ * same "the ledger is the truth" ordering stated below, one step further along. See the block in `generate`.
+ *
  * ⚠️ THE ORDERING IS DELIBERATE AND ITS FAILURE MODE IS STATED. The grant commits BEFORE the log is
  * written, so a crash between them leaves entitlement granted and unlogged. That is the right way round:
  * the LEDGER is the truth about what an employee has, the log is a record about what an operator did, and
@@ -346,6 +351,10 @@ async function generate(
   // • WHO: the employees and Annual Leave types of the `earned_method` lines whose r299 flag is false, and
   //   nobody else. The employee list is passed as `employmentIds`, where EMPTY MEANS NOBODY — and it is
   //   never empty here anyway, because the call is skipped when there is no such line.
+  // • ⚠️ WHO IT DOES NOT REACH, STATED SO NOBODY READS IT AS COVERED: a pair that already has ANY accrual row
+  //   inside this leave year (a prior Run Earned Accrual, the monthly cron, a hire grant) is `already_open` to
+  //   the year-open, not `earned_method`, so it is not handed over here and whatever it has earned since is
+  //   left to the cron and the manual screen. It counts as passed, exactly as before this round.
   // • WHEN: at `asOfLate`, the late edge the selection already used — today for the current year, 31
   //   December for a past one (`asOfForLeaveYear`).
   // • ⚠️ NEVER A FUTURE YEAR. `asOfForLeaveYear` maps a future year to its 31 December, which was a decision
