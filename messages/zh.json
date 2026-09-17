@@ -326,7 +326,8 @@
     "controlTowerReadiness": "档案完备性",
     "controlTowerActions": "智能体操作",
     "sectionHome": "首页",
-    "schedule": "排班"
+    "schedule": "排班",
+    "leaveCredit": "假期额度"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1960,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "此补休假无法取消：{credits}。已到期的额度无法退回。",
+      "cancellationCreditExpired": "{workedDate} 工作日的额度已于 {expiresOn} 到期",
+      "cancellationCreditPaidOut": "{workedDate} 工作日的额度已于 {expiresOn} 到期时折现",
+      "cancellationCreditReversed": "{workedDate} 工作日的额度已被冲销",
+      "cancellationCreditUnreadable": "无法完整读取其所用额度的记录，需由人事管理员取消"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1985,7 +1991,8 @@
         "pendingApproval": "待批准",
         "broughtForwardForfeited": "结转作废",
         "availableBalance": "可用余额",
-        "available": "可用余额"
+        "available": "可用余额",
+        "expiringSoon": "即将到期"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
@@ -2027,7 +2034,8 @@
         "pendingHint": "等待直属经理批准",
         "approvedLabel": "替代假",
         "approvedHint": "已批准，可以使用",
-        "cardPending": "{days} 待批"
+        "cardPending": "{days} 待批",
+        "statusReversed": "已冲销"
       },
       "statusNotGeneratedTitle": "已配置，但尚未生成",
       "statusNotGeneratedBody": "本休假年度此假期类型已有适用的额度表。额度尚未生成，因此下方数字并非您应得的额度。请运行“生成额度”以发放。若之后数字仍无变化，此余额可能因套现而被冻结，或此公司所属的国家配套未启用。",
@@ -7266,6 +7274,7 @@
       "negativeBalanceNeedsLimitHelp": "这些假期类型已设置为允许负余额，但未设置上限。它们的行为与目前完全相同——审批仍会拒绝低于零的余额——因为新权限只有在您输入限制后才会生效。请逐一处理：需要时输入数值，或将开关改回“否”。",
       "adjustmentsTitle": "进行调整",
       "adjustmentsHelp": "一次操作即可为一组员工增加或扣减假期天数。选择假期类型，选择适用对象，然后输入调整。此处的所有操作都记录为一个动作，并可整体撤销。",
+      "adjustmentsReplacementNote": "补休假不在此调整：每一天都是带有工作日期、到期日和历史记录的额度。请在以下页面添加或冲销额度：",
       "adjustmentsStepTypes": "休假类型",
       "adjustmentsStepWho": "员工选择",
       "adjustmentsStepWhat": "调整详情",
@@ -8735,6 +8744,7 @@
       "healthNoRuleInForce": "有 {tables} 张额度表，没有生效的福利方案，也未指定默认表，因此没有员工能对应到其中任何一张。",
       "healthConfiguredVsActual": "已配置：{tables} 张生效的额度表中共 {configured} 天。其中没有任何一张能触及任何员工，因为没有生效的福利方案指定它们，也没有设定默认表 — 因此权益运行不会依据此配置发放任何天数。员工记录上已有的天数来自更早的配置或由人工录入。",
       "healthTableWithoutRule": "没有福利方案指定：{tables}。在有方案指定它们、或其中一张成为此假期类型的默认表之前，没有人会获得它们。",
+      "healthReplacementLeaveHasEntitlementTable": "假期额度已开通，此假期类型的每一天都应来自假期额度。一张生效中的额度表仍在添加无人挣得的天数：{tables}。请删除该表。",
       "healthRuleExpired": "福利方案已过期，因此不涵盖任何人：{rules}",
       "healthRuleExpiring": "福利方案即将到期：{rules}",
       "healthGradesWithoutTable": "不属于任何额度表的职级：{grades}",
@@ -8856,7 +8866,9 @@
         "adjustments": "调整余额",
         "importLeaveData": "导入休假数据",
         "entitlementArchive": "配置记录",
-        "ledgerArchive": "余额记录"
+        "ledgerArchive": "余额记录",
+        "leaveCredit": "额度",
+        "leaveCreditRules": "规则"
       }
     },
     "leaveConfigRecords": {
@@ -9006,6 +9018,112 @@
       "gapDayTypesBody": "仅部分实现。五种日期类型是固定的，其中两种——公司假期与停工日——只做记录，尚未生效。非工作日与休息日被视为同一种非工作日。使用这些类型的设置属于休假计算，而非排班。",
       "gapOtCapTitle": "每月加班时数上限",
       "gapOtCapBody": "存储在薪资政策中，而非排班设置中，并在“薪资”下编辑。在该处显示，以确保同一数值只有一个归属。"
+    },
+    "leaveConfigLeaveCredit": {
+      "pageDescription": "在休息日、休假日或公共假期工作所获得的额度，以及使用这些额度的补休假。"
+    },
+    "leaveCredit": {
+      "addButton": "+ 添加假期额度",
+      "moduleOffTitle": "此账户未开通假期额度",
+      "moduleOffBody": "假期额度是付费附加功能，开通需另行安排；在此之前，此处无法获得、添加或配置任何额度。",
+      "windDown": "此账户未开通假期额度，因此无法获得或添加新额度，也无法修改规则。仍有 {accruals} 笔额度未结清：列于下方，仍可到期处理、折现或冲销。",
+      "filterEmployee": "员工",
+      "filterAllEmployees": "全部员工",
+      "filterMovement": "变动",
+      "filterAllMovements": "全部变动",
+      "filterFrom": "从",
+      "filterTo": "至",
+      "filterApply": "应用",
+      "filterClear": "清除",
+      "col": {
+        "date": "日期",
+        "employee": "员工",
+        "movement": "变动",
+        "dateWorked": "工作日期",
+        "before": "变动前",
+        "amount": "数量",
+        "after": "变动后",
+        "expires": "到期",
+        "reason": "原因",
+        "by": "操作人",
+        "status": "状态",
+        "action": "操作"
+      },
+      "movement": {
+        "earnedRequest": "获得 — 申请",
+        "earnedRoster": "获得 — 排班",
+        "earnedAttendance": "获得 — 考勤",
+        "earnedOther": "获得",
+        "addedHr": "由人事添加",
+        "used": "已使用 — 补休假",
+        "returned": "退回 — 假期已取消",
+        "reversed": "已冲销",
+        "expired": "已到期",
+        "paidOut": "到期折现",
+        "other": "其他调整"
+      },
+      "dayKind": {
+        "workday": "工作日",
+        "restDay": "休息日",
+        "offDay": "休假日",
+        "holiday": "公共假期"
+      },
+      "status": {
+        "available": "可用",
+        "used": "已使用",
+        "reversed": "已冲销",
+        "expired": "已到期",
+        "paidOut": "已折现"
+      },
+      "bySystem": "系统",
+      "empty": "没有符合筛选条件的假期额度变动。",
+      "truncated": "显示 {matched} 条变动中最近的 {shown} 条。请缩小筛选范围以查看更早的记录。",
+      "reverseFootnote": "冲销绝不删除任何记录。原记录保持不变并标记为已冲销，旁边会新增一条冲销记录。已被使用的额度不能冲销；请先取消使用该额度的假期。",
+      "orderFootnote": "变动前与变动后为该员工补休假的累计余额，按日期顺序、再按记录先后计算。日期早于已记录行的新记录，会改变其后每一行的变动前与变动后。列表按最新在前显示。",
+      "reverse": {
+        "button": "冲销",
+        "title": "冲销此假期额度",
+        "body": "额度记录保留并标记为已冲销，同时新增一条冲销记录。若该工作日期记录了加班，该加班将重新可付薪。",
+        "reason": "原因",
+        "confirm": "冲销额度",
+        "cancel": "取消"
+      },
+      "banner": {
+        "granted": "已添加 {days} 天假期额度。",
+        "grantedOvertime": "{date} 记录的 {hours} 小时加班将不再另行支付。",
+        "reversed": "已冲销 {days} 天假期额度。",
+        "reversedOvertime": "{date} 记录的 {hours} 小时加班重新可付薪。"
+      },
+      "add": {
+        "title": "添加假期额度",
+        "description": "适用于员工已工作但未提交申请、且管理层同意由人事记入额度的日子。",
+        "employee": "员工",
+        "employeePlaceholder": "按姓名或员工编号搜索",
+        "search": "搜索…",
+        "noResults": "没有匹配的员工",
+        "leaveType": "假期类型",
+        "leaveTypeValue": "补休假",
+        "dateWorked": "工作日期",
+        "credit": "额度（天）",
+        "expiry": "到期日期",
+        "expiryHint": "按您的规则自动填写，可修改；不得早于工作日期。",
+        "reason": "原因",
+        "reasonPlaceholder": "必填",
+        "remarks": "备注",
+        "remarksPlaceholder": "选填",
+        "submit": "添加额度",
+        "cancel": "取消",
+        "checking": "正在检查日期…",
+        "dayKind": "对该员工而言是{kind}。",
+        "workingDay": "这是该员工的普通工作日。只有休息日、休假日或公共假期才能获得假期额度。",
+        "overtime": "该员工在此日期已记录 {hours} 小时加班。一旦记入额度，该加班将不再另行支付，因为这一天改以假期补偿。",
+        "alreadyCredited": "该员工在此日期已有假期额度。",
+        "policyOff": "该员工所在公司已关闭假期额度。请先在“规则”标签页中开启。",
+        "firstScheduleConsent": "该员工属于第一附表范围，适用法定加班工资。记入额度须有其已记录的同意，以假期代替该工资；未使用的额度到期时将折现支付。",
+        "firstScheduleConsentLabel": "员工已同意以假期代替法定加班工资。",
+        "firstScheduleBlocked": "该员工属于第一附表范围，其公司不允许以假期额度代替法定加班工资。请先在“规则”标签页中修改。"
+      },
+      "rulesIntro": "按公司设置谁可获得假期额度、如何获得以及额度有效期。此处的修改适用于之后发放的额度；已发放的额度保留原到期日。"
     }
   },
   "topbar": {
@@ -11768,9 +11886,9 @@
     "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "replacementRequest": {
-    "trigger": "+ Replacement Leave Request",
-    "title": "Replacement leave request",
-    "description": "Claim replacement leave for days you have already worked. Your line manager approves it, and the credit appears on your balance once they do.",
+    "trigger": "+ 假期额度申请",
+    "title": "假期额度申请",
+    "description": "为您在休息日、休假日或公共假期工作的日子申请额度。在经理批准之前不会记入任何额度。",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -11787,8 +11905,8 @@
     "totalHours": "{hours} hour(s)",
     "reason": "Reason",
     "cancel": "Cancel",
-    "submit": "Submit request",
-    "submittedToast": "Replacement leave request submitted.",
+    "submit": "提交给经理",
+    "submittedToast": "假期额度申请已提交给您的经理。",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
     "unavailable": {
       "moduleOffTitle": "补休不在此账户的套餐内",
@@ -11810,7 +11928,15 @@
       "title": "此处适用加班保护规则",
       "body": "您的工资等于或低于法定加班工资上限，因此每一次申请都会请您确认：同意将这些天的时间折算为假期，而不领取法定加班工资。未使用的额度在到期时会折算成工资发放，而不会作废。",
       "bodyAdmin": "该员工的工资等于或低于法定加班工资上限，因此每一次申请都会请其确认：同意将这些天的时间折算为假期，而不领取法定加班工资。未使用的额度在到期时会折算成工资发放，而不会作废。"
-    }
+    },
+    "eligibleDaysNote": "只有休息日、休假日或公共假期才能获得额度。在经理批准之前不会记入任何额度。",
+    "dayKind": {
+      "workday": "工作日",
+      "restDay": "休息日",
+      "offDay": "休假日",
+      "holiday": "公共假期"
+    },
+    "workingDayRefused": "普通工作日不能获得额度。"
   },
   "notices": {
     "pageTitle": "公告栏",

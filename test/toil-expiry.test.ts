@@ -209,7 +209,14 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
      * — they cannot distinguish "reachable" from "reachable only by a test". Reading the page is the
      * same ratchet this suite already applies to migrations and to the operator form.
      */
-    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8');
+    // 3fb1a611 (r299) — RE-POINTED, NOT RELAXED. /admin/toil is a redirect stub; the ledger summary and both
+    // sweeps are on Leave Config › Leave Credit's Credits tab now, which is therefore the page this reads. The
+    // mechanism is renamed (`showSettlement`/`outstanding` → `showCredits`/`windDown`) and the property is
+    // asserted exactly as before: an outstanding liability keeps the settlement reachable with the module off.
+    expect(fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8')).toContain(
+      'redirect(`/admin/leave-config/leave-credit',
+    );
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/page.tsx'), 'utf8');
 
     // 1. The ledger read is UNCONDITIONAL — an admin can always see what is outstanding.
     expect(src, 'the replacement-leave summary must not be gated on the module').toContain(
@@ -220,19 +227,19 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     );
 
     // 2. Settlement is shown when the module is on OR a banked credit is still outstanding.
-    expect(src).toContain('const showSettlement = moduleOn || outstanding;');
-    expect(src).toContain('const outstanding = summary.activeAccruals > 0;');
+    expect(src).toContain('const showCredits = moduleOn || windDown;');
+    expect(src).toContain('const windDown = !moduleOn && summary.activeAccruals > 0;');
 
     // 3. …and BOTH settle actions live inside that block, not inside a module-only one.
-    const guard = src.indexOf('{showSettlement && visible.length > 0 && (');
-    expect(guard, 'the settlement card must be guarded by showSettlement').toBeGreaterThan(-1);
+    const guard = src.indexOf('{!showCredits ? (');
+    expect(guard, 'the Credits tab (and its settlement card) must be guarded by showCredits').toBeGreaterThan(-1);
     const card = src.slice(guard);
     expect(card).toContain('action={runToilExpiryAction}');
     expect(card).toContain('action={closeReplacementLeaveYearAction}');
     // The wind-down region must contain no module-only gate of its own — that would restore the hole
     // one level down, which is precisely how the original fix came to be illusory.
-    const cardEnd = card.indexOf('{t(\'footnote\')}');
-    expect(card.slice(0, cardEnd)).not.toMatch(/\{\s*moduleOn\s*&&/);
+    expect(card).not.toMatch(/\{\s*moduleOn\s*&&/);
+    expect(card).not.toMatch(/\{\s*moduleOn\s*\?/);
 
     // 4. THE OTHER SIDE OF THE SPLIT, which the wind-down argument does NOT extend to (review r2).
     //    Ungating the ledger and the two sweeps is about settling days already banked. The per-company
@@ -257,10 +264,11 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    an outstanding liability could not see the settings that govern HOW it settles. `toil` is in no
     //    parity set, so every existing tenant lands in this branch at the flip. What the entitlement
     //    withholds is the write, and that is what these assert.
-    const cfg = fs.readFileSync(
-      path.resolve(__dirname, '..', 'app/admin/leave-config/company-rules/page.tsx'),
-      'utf8',
-    );
+    //    3fb1a611 (r299) — the editor moved AGAIN, to Leave Credit's Rules tab: the form component and the
+    //    route that mounts it are read together as "the configuration page".
+    const cfg =
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules-tab.tsx'), 'utf8') +
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules/page.tsx'), 'utf8');
     // The sweeps must NOT have followed the form onto the configuration screen — that would re-gate a
     // statutory settlement behind a page that is read-only without the module.
     //
@@ -328,7 +336,15 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
  * statutory obligation. The sweep must fall back to the contractual ORP basis and say so.
  */
 describe('Expiry of a self-declared credit (296fc027)', () => {
-  it('values a NULL-day-type credit on the generic ORP basis and flags it for human reconciliation', async () => {
+  /**
+   * 3fb1a611 (r299) split this case in two. The build first stamped a rest-day request's `day_type` and valued
+   * its expiry at the exact statutory cash; the r299 verifier measured that over-valuing (the statutory branch
+   * prices the whole declared minutes and ignores the part already used — 3 days on one rest day paid 384.76
+   * against 230.76), so the r299 FIX PASS reverted it. The request path now RESOLVES and stores the day KIND
+   * (`worked_day_kind`, for the gate and the screens) but still records NO valuation `day_type`, so it keeps
+   * the ORP × remaining-days basis 296fc027 decided. Both cases below pin that, on a new and a legacy row.
+   */
+  async function selfDeclaredRestDayCredit() {
     const a = await entitledCtx(b);
     const e = await hireEmployee(a, {
       person: { fullName: 'Self Declared', primaryEmail: uniqEmail() },
@@ -340,7 +356,6 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     // BELOW the ceiling — the case where a fabricated day type would have produced a wrong statutory figure.
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 2000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
     await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true, employeeRequestEnabled: true }));
-
     const { requestId } = await submitReplacementLeaveRequest(a, {
       employmentId: e.employmentId,
       unit: 'day',
@@ -349,24 +364,49 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
       firstScheduleConsent: true,
     });
     await decideReplacementLeaveRequest(a, { requestId, decision: 'approved', decidedAt: APPROVED_ON });
-
     const [acc] = await owner.db
       .select()
       .from(schema.toilAccrual)
       .where(eq(schema.toilAccrual.employmentId, e.employmentId));
-    expect(acc.dayType).toBeNull();
+    return { a, acc };
+  }
+
+  const convertedPayload = async (accrualId: string) => {
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, accrualId), eq(schema.domainEvent.eventType, 'toil.converted')));
+    return ev.payload as Record<string, unknown>;
+  };
+
+  it('r299: a request on a rest day records the day KIND, no valuation day type, and converts on the ORP basis', async () => {
+    const { a, acc } = await selfDeclaredRestDayCredit();
+    expect(acc.dayType, 'no valuation day type on a self-declared credit').toBeNull();
+    expect(acc.workedDayKind).toBe('rest_day');
     // Floor protection still applies — an eligible employee's credit converts, it never lapses.
     expect(acc.expiryAction).toBe('convert_to_pay');
 
     const res = await runToilExpiry(a, { today: AFTER_EXPIRY });
     expect(res.converted).toBe(1);
     expect(await statusOf(acc.id)).toBe('converted_to_pay');
+    const payload = await convertedPayload(acc.id);
+    expect(payload.valuationBasis).toBe('generic_orp');
+    // ORP × remaining days = 2000/26 × 1 day.
+    expect(payload.amountOwed).toBeCloseTo(76.92, 2);
+  });
 
-    const [ev] = await owner.db
-      .select({ payload: schema.domainEvent.payload })
-      .from(schema.domainEvent)
-      .where(and(eq(schema.domainEvent.aggregateId, acc.id), eq(schema.domainEvent.eventType, 'toil.converted')));
-    const payload = ev.payload as Record<string, unknown>;
+  it('values a NULL-day-type credit (a legacy self-declared row) on the generic ORP basis and flags it for human reconciliation', async () => {
+    const { a, acc } = await selfDeclaredRestDayCredit();
+    // The legacy shape: banked before 3fb1a611, when the request path recorded no day type at all.
+    await owner.db
+      .update(schema.toilAccrual)
+      .set({ dayType: null, workedDayKind: null })
+      .where(eq(schema.toilAccrual.id, acc.id));
+
+    const res = await runToilExpiry(a, { today: AFTER_EXPIRY });
+    expect(res.converted).toBe(1);
+    expect(await statusOf(acc.id)).toBe('converted_to_pay');
+    const payload = await convertedPayload(acc.id);
     // NOT 'statutory_exact': the day type it would need is not known.
     expect(payload.valuationBasis).toBe('generic_orp');
     expect(String(payload.valuationNote)).toMatch(/self-declared/i);
@@ -374,3 +414,4 @@ describe('Expiry of a self-declared credit (296fc027)', () => {
     expect(payload.amountOwed).toBeCloseTo(76.92, 2);
   });
 });
+

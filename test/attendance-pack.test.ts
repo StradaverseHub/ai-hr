@@ -212,8 +212,25 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     },
   ] as const;
   const retiredHrefs: string[] = RETIRED.map((r) => r.href);
+
+  /**
+   * 3fb1a611 (r299) — rows whose SCREEN WAS FOLDED INTO ANOTHER SCREEN: the page became a redirect stub and
+   * its content lives at `into`. A FOURTH list, deliberately not RETIRED, whose obligation is "the page
+   * survives and stays registered" — exactly what a folded screen must NOT do (a stub is not a guarded page,
+   * so test/function-access.test.ts refuses it as a registered route). The obligation here is the folded
+   * version of the same promise: the row is gone, the old address still resolves (a redirect to `into`), and
+   * `into` is a registered route — so folding can never strand the content either.
+   */
+  const FOLDED = [
+    {
+      href: '/admin/toil',
+      into: '/admin/leave-config/leave-credit',
+      why: 'Time off in lieu — its ledger summary and both settlement sweeps are on Leave Config › Leave Credit, beside every credit movement they settle (one screen per fact). That screen is gated on the toil module and opens a read-only wind-down view when the module lapses with credits outstanding.',
+    },
+  ] as const;
+  const foldedHrefs: string[] = FOLDED.map((r) => r.href);
   /** Every href that is no longer expected in this pack's nav, whatever the reason. */
-  const goneHrefs = [...movedOutHrefs, ...retiredHrefs];
+  const goneHrefs = [...movedOutHrefs, ...retiredHrefs, ...foldedHrefs];
 
   /**
    * The My Attendance node's rows, in order — stated ONCE and asserted from two cases below, which used
@@ -302,7 +319,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/admin/attendance/schedule-assignment', // Schedule Assignment
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
-      '/admin/toil', // Time off in lieu
+      // 3fb1a611 (r299) — '/admin/toil' (Time off in lieu) STOOD HERE and is gone: RETIRED above.
     ]);
     // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
     // third (0bb0e303 rev2) — the reporter's order: clock in and out, look at your record, file a request.
@@ -311,7 +328,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
-    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length);
+    expect(flattened).toHaveLength(
+      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length,
+    );
     /**
      * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
      * purpose: Records for every employee in the self-service node, and the admin-gated Employee
@@ -391,6 +410,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
           `identity — removing the route revokes whatever stored role configuration references it, ` +
           `silently. ${row.why}`,
       ).toBe(true);
+    }
+  });
+
+  it('3fb1a611: a FOLDED row is gone from the nav, its old address redirects, and its destination is registered', () => {
+    for (const row of FOLDED) {
+      expect(flattened.filter((c) => c.href === row.href), `${row.href} still has a nav row. ${row.why}`).toHaveLength(0);
+      const page = fs.readFileSync(path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx'), 'utf8');
+      expect(page, `${row.href} must redirect to ${row.into}. ${row.why}`).toContain(`redirect(\`${row.into}`);
+      expect(REGISTERED_ROUTES.has(row.href), `${row.href} is a stub and must not stay registered`).toBe(false);
+      expect(REGISTERED_ROUTES.has(row.into), `${row.into} must be a registered route. ${row.why}`).toBe(true);
     }
   });
 
@@ -491,11 +520,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // requireAdmin, which is what actually protects them and is asserted in
     // test/attendance-menu-relocation.test.ts — and that coverage matters MORE now, not less: with no menu
     // row at all, the page guard is the only thing standing between a deep link and the screen.
+    // 3fb1a611 (r299) — '/admin/toil' left this list with its row (RETIRED above).
     for (const href of [
       '/admin/attendance',
       '/admin/attendance-allowance',
       '/admin/locations',
-      '/admin/toil',
     ]) {
       expect(gate(href), `${href} stays adminOnly`).toEqual({ adminOnly: true, managerUp: undefined });
     }
@@ -638,8 +667,8 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/admin/attendance/schedule-assignment': 'Schedule Assignment',
       '/admin/attendance-allowance': 'Attendance allowance',
       '/admin/locations': 'Clocking location',
-      // Plain words, not the TOIL abbreviation — and the same words the screen's own title uses.
-      '/admin/toil': 'Time off in lieu',
+      // 3fb1a611 (r299) — '/admin/toil': 'Time off in lieu' STOOD HERE: the row is RETIRED (a redirect stub to
+      // Leave Config › Leave Credit). `nav.timeOffInLieu` stays in the catalogues, unrendered.
     });
     // …and no two rows share a name, which is the other half of what made the menu unreadable.
     expect(new Set(Object.values(labels)).size).toBe(adminRows.length);

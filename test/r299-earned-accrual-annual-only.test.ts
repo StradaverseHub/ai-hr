@@ -547,6 +547,8 @@ describe('§4 Leave Balance Health — the stranded method is a BLOCKING finding
     defaultEntitlementTemplateLineageId: null,
     archived: false,
     earnedMethodNotAnnualLeave: true,
+    // r300 integration — Leave Credit's flag (build/r299-credit) is required too; false leaves this derivation unchanged.
+    daysFromLeaveCreditOnly: false,
     ...over,
   });
   const TABLE = [{ lineageId: 'l1', leaveTypeId: 'lt-sick', name: 'MC', validFrom: JAN, validTo: null, serviceBands: [{ days: 14 }] }];

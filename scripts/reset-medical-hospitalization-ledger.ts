@@ -34,8 +34,9 @@
  *  3. NOTHING ANYBODY TOOK IS AT STAKE. Measured on production 2026-08-07: ZERO `debit` rows on both
  *     types, zero approved leave requests (one rejected and one cancelled SICK request, neither of which
  *     touches the ledger), zero rows in `leave_encashment_snapshot`, zero in `leave_generation_run_item`,
- *     and zero `toil_accrual.ledger_entry_id` references — the only foreign key that points at
- *     `leave_ledger` at all. THE SCRIPT RE-CHECKS EVERY ONE OF THESE AT RUN TIME AND REFUSES IF ANY HAS
+ *     and zero `toil_accrual.ledger_entry_id` references — at the time the only foreign key that points at
+ *     `leave_ledger` at all (migration 0469 added two more on the same table, reversal and settlement, and the
+ *     run-time guard counts all three). THE SCRIPT RE-CHECKS EVERY ONE OF THESE AT RUN TIME AND REFUSES IF ANY HAS
  *     CHANGED (see `guardOrRefuse`). The measurement is a fact about a day, not a licence.
  *
  *  4. IT IS RECOVERABLE. Every row is copied into `leave_ledger_reset_archive` (migration 0416),
@@ -244,8 +245,9 @@ export async function runReset(
   const approvedRequests = Number(approvedRow?.n ?? 0);
 
   const [toilRow] = (await owner.db.execute(
+    // 3fb1a611 (migration 0469): three foreign keys into leave_ledger now — credit, reversal, settlement.
     sql`select count(*)::int as n from toil_accrual ta
-        join leave_ledger ll on ll.id = ta.ledger_entry_id
+        join leave_ledger ll on ll.id in (ta.ledger_entry_id, ta.reversal_ledger_entry_id, ta.settled_ledger_entry_id)
         where ll.tenant_id = ${TENANT_ID}::uuid and ll.leave_type_id = any(${uuidArray(LEAVE_TYPE_IDS)})`,
   )) as unknown as { n: number }[];
   const toilRefs = Number(toilRow?.n ?? 0);

@@ -36,6 +36,7 @@ import {
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
+  ReplacementCreditCancellationBlockedError,
   LeaveCancellationTooLateError,
   LeaveCancellationDateInvalidError,
   LeaveCancellationPeriodClosedError,
@@ -432,6 +433,21 @@ export async function localizeLeaveError(
   if (e instanceof LeaveCancellationTooLateError) return t('cancellationTooLate', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationDateInvalidError) return t('cancelDateInvalid', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationPeriodClosedError) return t('cancellationPeriodClosed', { date: e.date ?? '' });
+  // 3fb1a611 (r299) — a Replacement Leave whose credit has expired (or been paid out, or reversed) since the
+  // leave used it. Checked BEFORE the generic refusal it extends: the plan promises the screen SAYS the credit
+  // has expired, naming it, rather than the bare "can't be cancelled".
+  if (e instanceof ReplacementCreditCancellationBlockedError) {
+    const parts = e.credits.map((c) =>
+      c.state === 'expired'
+        ? t('cancellationCreditExpired', { workedDate: c.workedDate ?? '', expiresOn: c.expiresOn ?? '' })
+        : c.state === 'paid_out'
+          ? t('cancellationCreditPaidOut', { workedDate: c.workedDate ?? '', expiresOn: c.expiresOn ?? '' })
+          : c.state === 'reversed'
+            ? t('cancellationCreditReversed', { workedDate: c.workedDate ?? '' })
+            : t('cancellationCreditUnreadable'),
+    );
+    return t('cancellationCreditBlocked', { credits: [...new Set(parts)].join('; ') });
+  }
   if (e instanceof LeaveCancellationNotAllowedError) return t('cancellationNotAllowed');
   // ADR-0069: the requestLeave pre-check throws this when the balance is frozen for encashment (resignation
   // approved). The DB trigger's own message stays English (defense-in-depth, documented in ADR-0069) — only

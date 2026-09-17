@@ -184,8 +184,12 @@ describe('The credit is granted on APPROVAL, and expires from that date (296fc02
       // the roster election which has to fall back to the worked day.
       expect(a.requestedOn).toBe(TODAY);
       expect(a.source).toBe('employee_request');
-      // Self-declared: no attendance row was consulted, so the day type is NULL rather than guessed.
+      // Self-declared: no attendance row was consulted. 3fb1a611 (r299) — the day KIND is RESOLVED from the
+      // employee's schedule (never guessed) and an ordinary working day is refused; both worked dates are
+      // Saturdays, a rest day under the seeded company's working week. The valuation `day_type` stays NULL
+      // (r299 fix pass — see test/toil-expiry.test.ts).
       expect(a.dayType).toBeNull();
+      expect(a.workedDayKind).toBe('rest_day');
     }
     expect(await replacementBalance(employmentId)).toBe(2);
   });

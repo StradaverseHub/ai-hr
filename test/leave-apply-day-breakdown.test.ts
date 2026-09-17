@@ -386,7 +386,9 @@ describe('leaveApplySummaryAction: ESS gating vs the on-behalf escape hatch', ()
 
     const s = await leaveApplySummaryAction({ employmentId: e.employmentId, leaveTypeId: annualId });
     // 082fa566: Available rides along with the other three, and on the on-behalf path none of them is gated.
-    expect(s).toEqual({ pending: 0, taken: 0, balance: 10, available: 10 });
+    // 3fb1a611 (r299): `expiringSoon` rides along too — null, because Annual Leave has no per-credit expiry
+    // (only Replacement Leave carries a figure; test/r299-leave-credit-history.test.ts pins that one).
+    expect(s).toEqual({ pending: 0, taken: 0, balance: 10, available: 10, expiringSoon: null });
   });
 
   it('returns null (never throws) with no leave type', async () => {

@@ -3428,7 +3428,9 @@ export type ReplacementLeaveLedger = {
     expiresOn: string;
     daysCredited: number;
     daysTaken: number;
-    status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed';
+    // 3fb1a611 (r299): 'reversed' — HR reversed an unused credit on the Leave Credit screen. The row stays (a
+    // reversal never deletes) and counts toward nothing below: it was never banked.
+    status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed' | 'reversed';
     remaining: number;
     // ── 00307068 additions. Kept ADDITIVE: test/replacement-leave-controls.test.ts asserts against the
     // shape above and every field it names is untouched.

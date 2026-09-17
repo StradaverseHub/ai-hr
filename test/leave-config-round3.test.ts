@@ -108,7 +108,25 @@ const SCREENS_BUILT = {
     route: '/admin/leave-config/types',
     mapId: 'leaveTypes',
   },
+  // 3fb1a611 (r299) — LEAVE CREDIT'S TWO TABS, the tenth and eleventh, for the same reason as the eighth and
+  // ninth: the replacement policy editor this file guards (F38) moved off Company rules onto the Rules tab,
+  // and the ledger + sweeps moved onto the Credits tab, so the assertions follow them. Registering both pages
+  // holds them to this file's per-screen rules — a declared route on leaveConfig, a guard in the page body, a
+  // map mount with its own id, no server action declared in the page. The form itself is the colocated
+  // `rules-tab.tsx` (RULES_TAB below), which the Rules page mounts.
+  leaveCredit: {
+    file: 'app/admin/leave-config/leave-credit/page.tsx',
+    route: '/admin/leave-config/leave-credit',
+    mapId: 'leaveCredit',
+  },
+  leaveCreditRules: {
+    file: 'app/admin/leave-config/leave-credit/rules/page.tsx',
+    route: '/admin/leave-config/leave-credit/rules',
+    mapId: 'leaveCreditRules',
+  },
 } as const;
+/** 3fb1a611 (r299) — the Rules tab of Leave Credit: where setToilPolicyAction's form lives now. */
+const RULES_TAB = 'app/admin/leave-config/leave-credit/rules-tab.tsx';
 
 type ScreenKey = keyof typeof SCREENS_BUILT;
 const KEYS = Object.keys(SCREENS_BUILT) as ScreenKey[];
@@ -139,7 +157,9 @@ const CUTOVER: Record<string, { to: string; cutOver: boolean }> = {
   leaveTypes: { to: '/admin/leave-config/types', cutOver: true },
   templates: { to: '/admin/leave-config/entitlement-tables', cutOver: true },
   payroll: { to: '/admin/leave-config/company-rules', cutOver: true },
-  replacement: { to: '/admin/leave-config/company-rules', cutOver: true },
+  // 3fb1a611 (r299) — re-pointed ONE HOP: the replacement policy moved again, off Company rules onto Leave
+  // Config › Leave Credit's Rules tab, and the stub aims straight there.
+  replacement: { to: '/admin/leave-config/leave-credit/rules', cutOver: true },
   generate: { to: '/admin/leave-config/generate', cutOver: true },
   adjustments: { to: '/admin/leave-config/adjustments', cutOver: true },
   import: { to: '/admin/leave-config/import', cutOver: true },
@@ -271,11 +291,15 @@ describe('a6fe37fc R3 · the seven routes are registered, and the menu stays whe
     // key. Updated rather than loosened: the property is still "one string, one source".
     expect(src.companyRules).toContain("leaveConfigPageHeader('companyRules')");
     // `replacementLeave` and `payrollImpact` are the ids with no map entry now: their screens were
-    // ABSORBED into this one, and two entries reaching one screen is what this component exists to stop.
-    // The ids themselves survive — Company rules renders them as its section headings.
+    // ABSORBED, and two entries reaching one screen is what this component exists to stop.
     if (CUTOVER.replacement.cutOver) expect(ids).not.toContain('replacementLeave');
     if (CUTOVER.payroll.cutOver) expect(ids).not.toContain('payrollImpact');
-    expect(src.companyRules).toContain("leaveConfigScreenTitle('replacementLeave')");
+    // 3fb1a611 (r299) — UPDATED, NOT LOOSENED. Company rules used to render `replacementLeave` as a section
+    // heading; the section left for Leave Credit's Rules tab, so the heading must be GONE from Company rules
+    // (a heading left behind would announce a setting the page no longer holds). The Rules tab heads each
+    // card with the company, under the Leave Credit row's own title.
+    expect(src.companyRules).not.toContain("leaveConfigScreenTitle('replacementLeave')");
+    expect(ids).toContain('leaveCredit');
     // …and `payrollImpact`, the OTHER id whose screen this one absorbed. Both outlived their map entries
     // so the administrator finds the words they knew each setting by.
     expect(src.companyRules).toContain("leaveConfigScreenTitle('payrollImpact')");
@@ -316,7 +340,9 @@ const MOUNTS: [string, ScreenKey, string][] = [
   ['F4/F26 the half-day company picker', 'specialSetting', '<HalfDayCompanyPicker'],
   // r281 (cdd7500b) — the shared groups are on the leave TYPE screen now, at page level; mount follows.
   ['F3 the shared leave group manager', 'leaveTypesScreen', '<LeaveSharedGroupConfig'],
-  ['F38 the replacement eligibility picker', 'companyRules', '<ReplacementEligibilityPicker'],
+  // 3fb1a611 (r299) — the replacement policy is on Leave Credit's Rules tab now: the page mounts the tab, and
+  // the tab mounts the eligibility picker (asserted in the company-filter case below, against RULES_TAB).
+  ['F38 the replacement policy Rules tab', 'leaveCreditRules', '<LeaveCreditRulesTab'],
 ];
 
 /**
@@ -331,7 +357,8 @@ const MOUNTS: [string, ScreenKey, string][] = [
 const POSTED_FROM: Record<string, string> = {
   setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
   setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
-  setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+  // 3fb1a611 (r299) — off Company rules, onto Leave Credit's Rules tab.
+  setToilPolicyAction: RULES_TAB,
   createLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
   updateLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
   deleteLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
@@ -510,7 +537,10 @@ const ACTION_FIELDS: Record<string, { mountedIn?: string[]; fields: PostedField[
       posted('expiryUnit'),
       posted('expiryDays'),
       posted('expiryMonths'),
-      posted('replacementLeaveFrom'),
+      // 3fb1a611 (r299) — `posted('replacementLeaveFrom')` STOOD HERE. The Rules tab dropped the control (nothing
+      // reads the value), and that is safe ONLY because the action no longer reads it absolute-set: it passes
+      // `undefined` when the field is absent and setToilPolicy keeps the stored value. Both halves are pinned
+      // in the case 'replacementLeaveFrom is TRI-STATE now' below, so dropping the field cannot silently reset.
       posted('allowFirstScheduleEligible'),
       posted('autoAccrueOnApproval'),
       posted('carryForwardAtYearEnd'),
@@ -592,8 +622,8 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
       // reporter asked for it under leave types; the reason it left that screen was that it sat INSIDE
       // the per-type workspace, so the mount POINT — not the screen — is what changed on the way back.
       'listLeaveSharedGroups(': 'app/admin/leave-config/types/page.tsx',
-      // F38, from Replacement leave. Stays on Company rules.
-      setToilPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+      // F38, from Replacement leave → Company rules → Leave Config › Leave Credit's Rules tab (3fb1a611, r299).
+      setToilPolicyAction: RULES_TAB,
     };
     const modulePages = readdirSync(resolve(here, '..', 'app/admin/leave-config'), { withFileTypes: true })
       .filter((e) => e.isDirectory())
@@ -611,18 +641,36 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
   it('the replacement section keeps its company filter, and keeps it OUT of the global scope cookie', () => {
     // 20e759a0: nine companies stacked is 180 controls. And `getScopeIds` is GLOBAL — narrowing this page
     // by writing the company_scope cookie would silently re-scope Roster, Payroll and everything else.
-    expect(src.companyRules).toContain('resolveCompanyFilter(company, visibleIds)');
-    expect(src.companyRules).toContain('<CompanyFilterSelect');
-    expect(src.companyRules).toContain("const PAGE = '/admin/leave-config/company-rules'");
+    // 3fb1a611 (r299) — RE-POINTED at the Rules tab, which carries the section now; Company rules carries
+    // none of it (the filter only ever narrowed this section).
+    const rules = read(RULES_TAB);
+    expect(rules).toContain('resolveCompanyFilter(company, visibleIds)');
+    expect(rules).toContain('<CompanyFilterSelect');
+    expect(rules).toContain('<ReplacementEligibilityPicker');
+    expect(src.leaveCreditRules).toContain("const PAGE = '/admin/leave-config/leave-credit/rules'");
+    expect(src.companyRules).not.toContain('<CompanyFilterSelect');
+    expect(src.companyRules).not.toContain('resolveCompanyFilter(');
     // The eligibility criterion still offers the FULL in-scope list: "who may SUBMIT" is a different
     // question from "which company am I configuring", and narrowing it would drop companies on save.
-    expect(src.companyRules).toContain('companyIds: visible.map((c) => ({ id: c.id, name: c.name }))');
+    expect(rules).toContain('companyIds: visible.map((c) => ({ id: c.id, name: c.name }))');
+  });
+
+  it('3fb1a611 — replacementLeaveFrom is TRI-STATE now: not posted, not reset', () => {
+    // The Rules tab no longer draws "Replacement leave from" (nothing reads it). An absolute-set action would
+    // write the default over the stored value on every save; this one passes undefined when the field is
+    // absent, and setToilPolicy only writes the column when it is given one.
+    expect(read(RULES_TAB)).not.toContain('name="replacementLeaveFrom"');
+    expect(actionsSrc).toContain("replacementLeaveFrom: fd.has('replacementLeaveFrom')");
+    expect(read('core/toil.ts')).toContain(
+      '...(p.replacementLeaveFrom !== undefined ? { replacementLeaveFrom: p.replacementLeaveFrom } : {}),',
+    );
   });
 
   it('the picker template crosses the boundary RAW, or next-intl throws at render', () => {
     // `tr('pickerSelectedCount')` throws FORMATTING_ERROR — the ICU variable is supplied on the client as
     // the selection changes. Caught by render-verify, not by tsc, the build or the suite.
-    expect(src.companyRules).toContain("tr.raw('pickerSelectedCount')");
+    // 3fb1a611 (r299) — re-pointed with the pickers, onto the Rules tab.
+    expect(read(RULES_TAB)).toContain("tr.raw('pickerSelectedCount')");
   });
 
   it('F4/F26 the half-day picker offers the adminOnly WRITE scope, never the page-wide company list', () => {
@@ -695,18 +743,22 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     // qualifying save for months and silently dropped, because the screen it landed on never read the
     // param. Building the absorbing screen to read all three a round EARLY is what stopped that
     // happening a second time at exactly this cutover; this case is what stops it happening a third.
-    expect(src.companyRules).toContain('const { error, warning, saved, company } = await searchParams;');
-    expect(src.companyRules).toContain('<ErrorBanner message={error} />');
-    expect(src.companyRules).toContain("tr('savedBanner')");
-    expect(src.companyRules).toContain('{warning}');
+    // 3fb1a611 (r299) — RE-POINTED AGAIN, with the form: the three banners live on Leave Credit's Rules tab
+    // now, and LEAVE_REPLACEMENT names that route. Company rules keeps only its own error banner (the
+    // encashment form's).
+    expect(src.leaveCreditRules).toContain('const { error, saved, warning, company } = await searchParams;');
+    expect(src.leaveCreditRules).toContain('<ErrorBanner message={error} />');
+    expect(src.leaveCreditRules).toContain("tr('savedBanner')");
+    expect(src.leaveCreditRules).toContain('{warning}');
+    expect(src.companyRules).not.toContain("tr('savedBanner')");
     // The constant, and the helper that builds the return URL from it. Both halves are asserted because
     // either one alone could be repointed while the other still named the old screen.
     expect(
       actionsSrc,
-      'LEAVE_REPLACEMENT must name Company rules — otherwise the banking-risk warning lands on a stub ' +
+      'LEAVE_REPLACEMENT must name Leave Credit — otherwise the banking-risk warning lands on a stub ' +
         'and reaches the administrator only after a bounce, or not at all if the stub ever stops ' +
         'forwarding the query string',
-    ).toContain("const LEAVE_REPLACEMENT = '/admin/leave-config/company-rules';");
+    ).toContain("const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';");
     expect(/const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc)).toBe(true);
     // The old screen is a stub now — it reads no params at all, which is why the constant HAD to move.
     expect(OLD.replacement).not.toContain('const { error, warning, saved, company } = await searchParams;');
@@ -829,7 +881,8 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
     leaveTypes: 'app/admin/leave-config/company-rules/page.tsx',
     templates: 'app/admin/leave-config/entitlement-tables/page.tsx',
     payroll: 'app/admin/leave-config/company-rules/page.tsx',
-    replacement: 'app/admin/leave-config/company-rules/page.tsx',
+    // 3fb1a611 (r299) — the replacement policy arrived at Leave Credit's Rules tab.
+    replacement: RULES_TAB,
     generate: 'app/admin/leave-config/generate/page.tsx',
     adjustments: 'app/admin/leave-config/adjustments/page.tsx',
     import: 'app/admin/leave-config/import/page.tsx',

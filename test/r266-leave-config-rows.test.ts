@@ -116,7 +116,8 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // r281 — SEVEN: Run earned accrual took a row and a group in the same commit, exactly as Balance
     // Health did, so the two lists moved together and no exception was needed anywhere in this file.
     // r281 (a73d1e14) — EIGHT: Special Setting took a row and a group in the same commit too.
-    expect(ROWS).toHaveLength(8);
+    // 3fb1a611 (r299) — NINE: Leave Credit took a row and a group in the same commit, like each before it.
+    expect(ROWS).toHaveLength(9);
   });
 
   it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
@@ -175,6 +176,9 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
+      // 3fb1a611 (r299) — its row is directly after Leave Adjustments; its two tabs follow Adjustments' two.
+      '/admin/leave-config/leave-credit',
+      '/admin/leave-config/leave-credit/rules',
       '/admin/leave-config/generate',
       // r281 — its row is directly after Generate Entitlement, so its screen is directly after it here.
       '/admin/leave-config/earned-accrual',
@@ -235,9 +239,12 @@ describe('§B · no Leave Config page renders the nine-screen pill row', () => {
     // 7f69bd71 — two, not three: the Configuration record and the Balance record left their rows for
     // the Reset records sub-screen (test/reset-records-screen.test.ts).
     const withTabs = LEAVE_CONFIG_MAP.filter((g) => g.items.length > 1).map((g) => [g.id, g.items.length]);
+    // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit is the third row with tabs (Credits · Rules), each
+    // its own route, drawn by the map like the two above — so no page draws a strip of its own.
     expect(withTabs).toEqual([
       ['entitlements', 2],
       ['adjustments', 2],
+      ['leaveCredit', 2],
     ]);
   });
 });
@@ -252,7 +259,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     // r281 (09386e29) — nine: `earnedAccrual` is the one screen of its own row and resolves through
       // this helper exactly like every other, which is the whole reason it was given a group.
       // r281 (a73d1e14) — ten, with `specialSetting`.
-      expect(ids).toHaveLength(10);
+      // 3fb1a611 (r299) — twelve, with Leave Credit's two tabs.
+      expect(ids).toHaveLength(12);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -296,6 +304,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // rather than borrowing the Entitlements sentence.
       balanceHealth: 'admin.leaveConfigBalanceHealth.pageDescription',
       adjustments: 'admin.leaveConfigAdjustments.pageDescription',
+      // 3fb1a611 (r299) — its own namespace, the house shape.
+      leaveCredit: 'admin.leaveConfigLeaveCredit.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
         // r281 (09386e29) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`),
         // so the row that TOPS UP earned entitlement describes itself in its own words instead of
@@ -465,9 +475,12 @@ describe('§D · the moves, and what deliberately did not move', () => {
     expect(companyRules, 'the shared-group card must not survive on Company rules too').not.toContain(
       '<LeaveSharedGroupConfig',
     );
-    // Company rules keeps the two sections the reporter did not ask to move.
+    // Company rules keeps the section the reporter did not ask to move.
     expect(companyRules).toContain('setLeaveEncashmentPolicyAction');
-    expect(companyRules).toContain('setToilPolicyAction');
+    // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: the replacement-leave policy (F38) left too, for Leave Config ›
+    // Leave Credit's Rules tab (test/leave-replacement-config.test.ts follows the editor there). Asserted
+    // ABSENT, so a copy left behind — two editors for one policy — fails here.
+    expect(companyRules).not.toContain('setToilPolicyAction');
   });
 
   it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs (plus the named sub-screen)', () => {

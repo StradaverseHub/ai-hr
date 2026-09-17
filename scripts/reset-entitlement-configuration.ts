@@ -79,7 +79,8 @@
  * ── REFUSALS — fail closed: nothing written, the counts printed ─────────────────────────────────────
  *   · any to-be-deleted accrual carrying a source_request_id (an accrual sourced from a leave request is
  *     not "generated from configuration"; production shows none, and if one appears a human decides);
- *   · any toil_accrual referencing a to-be-deleted ledger row (the only foreign key into leave_ledger);
+ *   · any toil_accrual referencing a to-be-deleted ledger row (toil_accrual holds the foreign keys into
+ *     leave_ledger — the credit, and since migration 0469 its reversal and expiry settlement);
  *   · any leave_encashment_snapshot row for the tenant (ADR-0069 freezes those balances with a DB trigger,
  *     `leave_ledger_frozen_guard`; refusing here turns a trigger error into a sentence — the parent decides);
  *   · the capture tag already used in the target archive (a re-run is a NEW record, never an interleave);
@@ -514,8 +515,10 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond, sql`${leaveLedger.sourceRequestId} is not null`));
   const requestSourcedAccruals = Number(sourcedRow?.n ?? 0);
   const [toilRow] = (await owner.db.execute(
+    // 3fb1a611 (migration 0469): toil_accrual now holds THREE foreign keys into leave_ledger — the credit, its
+    // reversal and its expiry settlement. A reference through any of them blocks the delete.
     sql`select count(*)::int as n from toil_accrual ta
-        join leave_ledger ll on ll.id = ta.ledger_entry_id
+        join leave_ledger ll on ll.id in (ta.ledger_entry_id, ta.reversal_ledger_entry_id, ta.settled_ledger_entry_id)
         where ll.tenant_id = ${tenantId}::uuid and ${scopeSqlLl}`,
   )) as unknown as { n: number }[];
   const toilReferences = Number(toilRow?.n ?? 0);
@@ -571,6 +574,10 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       archived: x.archivedAt != null,
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
+      // 3fb1a611 (r299 fix pass) — FALSE, deliberately: this report is about ENTITLEMENT configuration and the
+      // after-check below reads `no_entitlement_table` as "the tables are gone". The Leave Credit judgement
+      // (which replaces that finding on a replacement type) is the Balance Health screen's, not this script's.
+      daysFromLeaveCreditOnly: false,
       defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
       earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
     })),
@@ -780,6 +787,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           archived: x.archivedAt != null,
           accrualMethod: x.accrualMethod ?? null,
           accrualUnconfigured: x.accrualUnconfigured != null,
+          daysFromLeaveCreditOnly: false, // 3fb1a611 fix pass — see the census above
           defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
           earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
         })),

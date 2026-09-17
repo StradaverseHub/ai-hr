@@ -64,7 +64,8 @@ export function ReplacementAvailabilityNotice({
   const tNav = useTranslations('nav');
   const controls = {
     config: tNav('leaveConfig'),
-    screen: tNav('leaveReplacement'),
+    // 3fb1a611 (r299) — the replacement-leave switches live on Leave Config › Leave Credit (Rules tab) now.
+    screen: tNav('leaveCredit'),
     enableSwitch: tPolicy('enabledLabel'),
     requestSwitch: tPolicy('employeeRequestLabel'),
     allowSwitch: tPolicy('allowEligibleLabel'),

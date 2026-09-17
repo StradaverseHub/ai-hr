@@ -326,7 +326,8 @@
     "controlTowerReadiness": "Kesediaan rekod",
     "controlTowerActions": "Tindakan ejen",
     "sectionHome": "Utama",
-    "schedule": "Jadual"
+    "schedule": "Jadual",
+    "leaveCredit": "Kredit Cuti"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1960,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} dihadkan kepada {maxDays} hari setiap tahun cuti. {usedDays} hari telah pun dipohon antara {yearStart} dan {yearEnd}, jadi permohonan {days} hari ini tidak boleh dihantar.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "Cuti Ganti ini tidak boleh dibatalkan: {credits}. Kredit yang telah luput tidak boleh dipulangkan.",
+      "cancellationCreditExpired": "kredit bagi hari bekerja {workedDate} telah luput pada {expiresOn}",
+      "cancellationCreditPaidOut": "kredit bagi hari bekerja {workedDate} telah dibayar apabila luput pada {expiresOn}",
+      "cancellationCreditReversed": "kredit bagi hari bekerja {workedDate} telah dibatalkan",
+      "cancellationCreditUnreadable": "rekod kredit yang digunakan tidak dapat dibaca sepenuhnya, jadi pentadbir HR perlu membatalkannya"
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -1985,7 +1991,8 @@
         "pendingApproval": "Menunggu kelulusan",
         "broughtForwardForfeited": "Bawa hadapan dilucuthak",
         "availableBalance": "Baki tersedia",
-        "available": "Baki Tersedia"
+        "available": "Baki Tersedia",
+        "expiringSoon": "Akan luput"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
@@ -2027,7 +2034,8 @@
         "pendingHint": "Menunggu kelulusan penyelia anda",
         "approvedLabel": "Cuti Gantian",
         "approvedHint": "Diluluskan dan boleh digunakan",
-        "cardPending": "{days} dalam proses"
+        "cardPending": "{days} dalam proses",
+        "statusReversed": "Dibatalkan"
       },
       "statusNotGeneratedTitle": "Telah dikonfigurasi, tetapi belum dijana",
       "statusNotGeneratedBody": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini. Kelayakan belum dijana, jadi angka di bawah bukan jumlah kelayakan anda. Jalankan Jana Kelayakan untuk memberikannya. Jika angka tidak berubah selepas itu, baki ini mungkin dibekukan untuk penunaian, atau pakej negara bagi syarikat ini mungkin tidak aktif.",
@@ -7266,6 +7274,7 @@
       "negativeBalanceNeedsLimitHelp": "Jenis cuti ini ditetapkan untuk membenarkan baki negatif tetapi tiada had maksimum. Ia berkelakuan sama seperti hari ini — kelulusan masih menolak baki di bawah sifar — kerana kebenaran baharu hanya berkuat kuasa setelah anda memasukkan had. Semak satu per satu: masukkan angka jika itu yang dimaksudkan, atau tetapkan semula suis kepada Tidak.",
       "adjustmentsTitle": "Buat pelarasan",
       "adjustmentsHelp": "Tambah atau tolak hari cuti untuk sekumpulan pekerja dalam satu tindakan. Pilih jenis cuti, pilih siapa yang terlibat, kemudian masukkan pelarasan. Semua yang anda lakukan di sini direkodkan sebagai satu tindakan dan boleh dibalikkan sebagai satu unit.",
+      "adjustmentsReplacementNote": "Cuti Ganti tidak dilaraskan di sini: setiap harinya ialah kredit dengan tarikh bekerja, tarikh luput dan sejarah. Tambah atau batalkan kredit di",
       "adjustmentsStepTypes": "Jenis cuti",
       "adjustmentsStepWho": "Pemilihan Pekerja",
       "adjustmentsStepWhat": "Butiran Pelarasan",
@@ -8735,6 +8744,7 @@
       "healthNoRuleInForce": "{tables} jadual kelayakan, tiada skim faedah berkuat kuasa dan tiada jadual lalai dinamakan, jadi tiada pekerja terpakai kepada mana-mana daripadanya.",
       "healthConfiguredVsActual": "Dikonfigurasikan: {configured} hari merentas {tables} jadual kelayakan yang berkuat kuasa. Tiada satu pun sampai kepada sesiapa, kerana tiada skim faedah berkuat kuasa menamakannya dan tiada jadual lalai ditetapkan - jadi larian kelayakan tidak memberikan apa-apa daripada konfigurasi ini. Hari yang sudah ada pada rekod pekerja datang daripada konfigurasi terdahulu atau dimasukkan secara manual.",
       "healthTableWithoutRule": "Tiada skim faedah menamakan: {tables}. Tiada sesiapa menerimanya sehingga satu skim menamakannya, atau salah satu daripadanya menjadi jadual lalai jenis cuti ini.",
+      "healthReplacementLeaveHasEntitlementTable": "Kredit Cuti diaktifkan, jadi setiap hari jenis cuti ini sepatutnya datang daripada Kredit Cuti. Jadual kelayakan yang berkuat kuasa masih menambah hari yang tidak diperoleh sesiapa: {tables}. Alih keluar jadual itu.",
       "healthRuleExpired": "Skim faedah telah tamat tempoh, jadi ia tidak merangkumi sesiapa: {rules}",
       "healthRuleExpiring": "Skim faedah akan tamat tidak lama lagi: {rules}",
       "healthGradesWithoutTable": "Gred jawatan yang tidak tergolong dalam mana-mana jadual kelayakan: {grades}",
@@ -8856,7 +8866,9 @@
         "adjustments": "Laraskan baki",
         "importLeaveData": "Import data cuti",
         "entitlementArchive": "Rekod konfigurasi",
-        "ledgerArchive": "Rekod baki"
+        "ledgerArchive": "Rekod baki",
+        "leaveCredit": "Kredit",
+        "leaveCreditRules": "Peraturan"
       }
     },
     "leaveConfigRecords": {
@@ -9006,6 +9018,112 @@
       "gapDayTypesBody": "Hanya sebahagiannya wujud. Lima jenis hari adalah tetap, dan dua daripadanya — cuti syarikat dan hari tutup operasi — direkodkan tetapi belum digunakan. Hari off dan hari rehat dianggap sebagai satu hari bukan bekerja. Tetapan yang menggunakannya milik pengiraan cuti, bukan jadual.",
       "gapOtCapTitle": "Had jam kerja lebih masa bulanan",
       "gapOtCapBody": "Disimpan pada polisi penggajian, bukan pada jadual, dan disunting di bawah Penggajian. Dipaparkan di sana supaya satu angka mempunyai satu pemilik."
+    },
+    "leaveConfigLeaveCredit": {
+      "pageDescription": "Kredit yang diperoleh dengan bekerja pada hari rehat, hari cuti atau cuti umum, dan Cuti Ganti yang menggunakannya."
+    },
+    "leaveCredit": {
+      "addButton": "+ Tambah Kredit Cuti",
+      "moduleOffTitle": "Kredit Cuti tidak diaktifkan untuk akaun ini",
+      "moduleOffBody": "Kredit Cuti ialah tambahan berbayar. Pengaktifannya diuruskan secara berasingan; sehingga itu tiada kredit boleh diperoleh, ditambah atau dikonfigurasi di sini.",
+      "windDown": "Kredit Cuti tidak diaktifkan untuk akaun ini, jadi tiada kredit baharu boleh diperoleh atau ditambah dan peraturan tidak boleh diubah. {accruals} kredit masih belum selesai: ia disenaraikan di bawah dan masih boleh dilupuskan, dibayar atau dibatalkan.",
+      "filterEmployee": "Pekerja",
+      "filterAllEmployees": "Semua pekerja",
+      "filterMovement": "Pergerakan",
+      "filterAllMovements": "Semua pergerakan",
+      "filterFrom": "Dari",
+      "filterTo": "Hingga",
+      "filterApply": "Guna",
+      "filterClear": "Kosongkan",
+      "col": {
+        "date": "Tarikh",
+        "employee": "Pekerja",
+        "movement": "Pergerakan",
+        "dateWorked": "Tarikh bekerja",
+        "before": "Sebelum",
+        "amount": "Jumlah",
+        "after": "Selepas",
+        "expires": "Luput",
+        "reason": "Sebab",
+        "by": "Oleh",
+        "status": "Status",
+        "action": "Tindakan"
+      },
+      "movement": {
+        "earnedRequest": "Diperoleh — permohonan",
+        "earnedRoster": "Diperoleh — jadual tugas",
+        "earnedAttendance": "Diperoleh — kehadiran",
+        "earnedOther": "Diperoleh",
+        "addedHr": "Ditambah oleh HR",
+        "used": "Digunakan — Cuti Ganti",
+        "returned": "Dipulangkan — cuti dibatalkan",
+        "reversed": "Dibatalkan",
+        "expired": "Luput",
+        "paidOut": "Dibayar semasa luput",
+        "other": "Pelarasan lain"
+      },
+      "dayKind": {
+        "workday": "Hari bekerja",
+        "restDay": "Hari rehat",
+        "offDay": "Hari cuti",
+        "holiday": "Cuti umum"
+      },
+      "status": {
+        "available": "Tersedia",
+        "used": "Digunakan",
+        "reversed": "Dibatalkan",
+        "expired": "Luput",
+        "paidOut": "Dibayar"
+      },
+      "bySystem": "Sistem",
+      "empty": "Tiada pergerakan Kredit Cuti yang sepadan dengan penapis ini.",
+      "truncated": "Memaparkan {shown} pergerakan terkini daripada {matched}. Kecilkan penapis untuk melihat yang lebih lama.",
+      "reverseFootnote": "Pembatalan tidak pernah memadam sebarang baris. Baris asal kekal seperti sedia ada, ditandakan Dibatalkan, dan baris pembatalan ditambah di sebelahnya. Kredit yang telah digunakan tidak boleh dibatalkan; batalkan cuti yang menggunakannya terlebih dahulu.",
+      "orderFootnote": "Sebelum dan Selepas ialah baki berjalan Cuti Ganti pekerja, dikira mengikut tarikh dan kemudian mengikut urutan baris direkodkan. Baris bertarikh lebih awal daripada baris yang sudah direkodkan akan mengubah Sebelum dan Selepas bagi setiap baris kemudian. Senarai memaparkan yang terbaharu dahulu.",
+      "reverse": {
+        "button": "Batalkan",
+        "title": "Batalkan Kredit Cuti ini",
+        "body": "Baris kredit kekal, ditandakan Dibatalkan, dan baris pembatalan ditambah. Jika kerja lebih masa direkodkan pada tarikh bekerja, ia boleh dibayar semula.",
+        "reason": "Sebab",
+        "confirm": "Batalkan kredit",
+        "cancel": "Batal"
+      },
+      "banner": {
+        "granted": "Kredit Cuti sebanyak {days} hari ditambah.",
+        "grantedOvertime": "{hours} jam kerja lebih masa yang direkodkan pada {date} tidak akan dibayar juga.",
+        "reversed": "Kredit Cuti sebanyak {days} hari dibatalkan.",
+        "reversedOvertime": "{hours} jam kerja lebih masa yang direkodkan pada {date} boleh dibayar semula."
+      },
+      "add": {
+        "title": "Tambah Kredit Cuti",
+        "description": "Untuk hari pekerja bekerja tetapi tidak menghantar permohonan, dan pengurusan bersetuju HR harus mengkreditkannya.",
+        "employee": "Pekerja",
+        "employeePlaceholder": "Cari mengikut nama atau ID Pekerja",
+        "search": "Cari…",
+        "noResults": "Tiada pekerja sepadan",
+        "leaveType": "Jenis cuti",
+        "leaveTypeValue": "Cuti Ganti",
+        "dateWorked": "Tarikh bekerja",
+        "credit": "Jumlah kredit (hari)",
+        "expiry": "Tarikh luput",
+        "expiryHint": "Diisi daripada peraturan anda; anda boleh mengubahnya. Ia tidak boleh lebih awal daripada tarikh bekerja.",
+        "reason": "Sebab",
+        "reasonPlaceholder": "Wajib",
+        "remarks": "Catatan",
+        "remarksPlaceholder": "Pilihan",
+        "submit": "Tambah kredit",
+        "cancel": "Batal",
+        "checking": "Menyemak tarikh…",
+        "dayKind": "{kind} bagi pekerja ini.",
+        "workingDay": "Ini hari bekerja biasa bagi pekerja ini. Hanya hari rehat, hari cuti atau cuti umum boleh memperoleh Kredit Cuti.",
+        "overtime": "Tarikh ini sudah mempunyai {hours} jam kerja lebih masa yang direkodkan untuk pekerja ini. Setelah dikreditkan, kerja lebih masa itu tidak akan dibayar juga, kerana hari itu diberikan semula sebagai cuti.",
+        "alreadyCredited": "Pekerja ini sudah mempunyai Kredit Cuti untuk tarikh ini.",
+        "policyOff": "Kredit Cuti dimatikan untuk syarikat pekerja ini. Hidupkannya dalam tab Peraturan terlebih dahulu.",
+        "firstScheduleConsent": "Pekerja ini berada dalam Jadual Pertama, jadi bayaran kerja lebih masa berkanun terpakai. Kredit memerlukan persetujuan mereka yang direkodkan untuk mengambil cuti sebagai ganti bayaran itu, dan sebarang kredit yang tidak digunakan akan dibayar apabila luput.",
+        "firstScheduleConsentLabel": "Pekerja telah bersetuju mengambil hari ini sebagai cuti sebagai ganti bayaran kerja lebih masa berkanun.",
+        "firstScheduleBlocked": "Pekerja ini berada dalam Jadual Pertama dan syarikatnya tidak membenarkan Kredit Cuti sebagai ganti bayaran kerja lebih masa berkanun. Ubah dalam tab Peraturan terlebih dahulu."
+      },
+      "rulesIntro": "Siapa boleh memperoleh Kredit Cuti, cara ia diperoleh dan tempoh kredit bertahan, mengikut syarikat. Perubahan di sini terpakai kepada kredit yang diberikan selepasnya; kredit yang sudah diberikan mengekalkan tarikh luputnya."
     }
   },
   "topbar": {
@@ -11768,9 +11886,9 @@
     "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
   },
   "replacementRequest": {
-    "trigger": "+ Replacement Leave Request",
-    "title": "Replacement leave request",
-    "description": "Claim replacement leave for days you have already worked. Your line manager approves it, and the credit appears on your balance once they do.",
+    "trigger": "+ Permohonan Kredit Cuti",
+    "title": "Permohonan Kredit Cuti",
+    "description": "Mohon kredit bagi hari rehat, hari cuti atau cuti umum yang anda bekerja. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -11787,8 +11905,8 @@
     "totalHours": "{hours} hour(s)",
     "reason": "Reason",
     "cancel": "Cancel",
-    "submit": "Submit request",
-    "submittedToast": "Replacement leave request submitted.",
+    "submit": "Hantar kepada pengurus",
+    "submittedToast": "Permohonan Kredit Cuti dihantar kepada pengurus anda.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
     "unavailable": {
       "moduleOffTitle": "Cuti gantian bukan sebahagian daripada pelan ini",
@@ -11810,7 +11928,15 @@
       "title": "Peraturan perlindungan kerja lebih masa terpakai di sini",
       "body": "Gaji anda berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi setiap permohonan meminta persetujuan anda untuk menyimpan masa itu sebagai cuti dan bukannya menerima wang kerja lebih masa berkanun bagi hari-hari tersebut. Kredit yang tidak digunakan akan dibayar apabila tamat tempoh dan bukannya luput begitu sahaja.",
       "bodyAdmin": "Gaji pekerja ini berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi setiap permohonan meminta persetujuannya untuk menyimpan masa itu sebagai cuti dan bukannya menerima wang kerja lebih masa berkanun bagi hari-hari tersebut. Kredit yang tidak digunakan akan dibayar apabila tamat tempoh dan bukannya luput begitu sahaja."
-    }
+    },
+    "eligibleDaysNote": "Hanya hari rehat, hari cuti atau cuti umum boleh memperoleh kredit. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",
+    "dayKind": {
+      "workday": "Hari bekerja",
+      "restDay": "Hari rehat",
+      "offDay": "Hari cuti",
+      "holiday": "Cuti umum"
+    },
+    "workingDayRefused": "Hari bekerja biasa tidak boleh memperoleh kredit."
   },
   "notices": {
     "pageTitle": "Papan Notis",

@@ -151,6 +151,8 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
       'leaveEntitlements',
       'leaveBalanceHealth',
       'leaveAdjustments',
+      // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit joined directly after Leave Adjustments.
+      'leaveCredit',
       'leaveGenerate',
       'leaveEarnedAccrual',
       'leaveApprovalWorkflow',

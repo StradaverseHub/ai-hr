@@ -111,6 +111,16 @@ export type LeaveConfigScreenId =
    */
   | 'earnedAccrual'
   | 'adjustments'
+  /**
+   * 3fb1a611 (r299) — `leaveCredit` (`/admin/leave-config/leave-credit`) and `leaveCreditRules`
+   * (`/admin/leave-config/leave-credit/rules`): the Credits and Rules TABS of the Leave Credit row, directly
+   * after Leave Adjustments. Credits lists every Replacement Leave credit movement (earned through a request,
+   * added by HR, used, reversed, expired) with its history; Rules is the replacement-leave policy that left
+   * Company rules. Two routes, the house shape for a row with tabs (Leave Adjustments' two are the precedent),
+   * so the tab row is this component's and no page draws a strip of its own.
+   */
+  | 'leaveCredit'
+  | 'leaveCreditRules'
   | 'importLeaveData'
   | 'entitlementArchive'
   | 'ledgerArchive'
@@ -177,6 +187,8 @@ export type LeaveConfigGroupId =
   // through the same helper every other Leave Config page does.
   | 'balanceHealth'
   | 'adjustments'
+  // 3fb1a611 (r299) — a one-screen row directly after Leave Adjustments (see the screen id's note above).
+  | 'leaveCredit'
   | 'generate'
   // r281 (09386e29) — a one-screen row, like `generate` above it: Run earned accrual is an execution of
   // its own rather than a section of the generator, and the group exists so its page reads its heading
@@ -194,6 +206,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
+  | 'leaveCredit'
   | 'leaveGenerate'
   | 'leaveEarnedAccrual'
   | 'leaveApprovalWorkflow'
@@ -240,6 +253,16 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       // ad-hoc credits — core/leave-import.ts writes leave_ledger rows). That is an adjustment by
       // file, so it moved out of the Entitlements header and under this row.
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
+    ],
+  },
+  // 3fb1a611 (r299) — LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and
+  // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.
+  {
+    id: 'leaveCredit',
+    navKey: 'leaveCredit',
+    items: [
+      { id: 'leaveCredit', href: '/admin/leave-config/leave-credit' },
+      { id: 'leaveCreditRules', href: '/admin/leave-config/leave-credit/rules' },
     ],
   },
   { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },
@@ -363,6 +386,7 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
   balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
+  leaveCredit: ['admin.leaveConfigLeaveCredit', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
   earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],
   approval: ['admin.leaveConfigApprovalChains', 'pageDescription'],

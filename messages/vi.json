@@ -326,7 +326,8 @@
     "controlTowerReadiness": "Mức sẵn sàng hồ sơ",
     "controlTowerActions": "Hành động của tác nhân",
     "sectionHome": "Trang chính",
-    "schedule": "Lịch làm việc"
+    "schedule": "Lịch làm việc",
+    "leaveCredit": "Tín dụng nghỉ phép"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1960,7 +1961,12 @@
       "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp.",
       "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
       "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
-      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR.",
+      "cancellationCreditBlocked": "Không thể hủy đơn Nghỉ bù này: {credits}. Tín dụng đã hết hạn không thể hoàn lại.",
+      "cancellationCreditExpired": "tín dụng cho ngày làm việc {workedDate} đã hết hạn vào {expiresOn}",
+      "cancellationCreditPaidOut": "tín dụng cho ngày làm việc {workedDate} đã được trả thành tiền khi hết hạn vào {expiresOn}",
+      "cancellationCreditReversed": "tín dụng cho ngày làm việc {workedDate} đã bị hủy bỏ",
+      "cancellationCreditUnreadable": "không đọc được đầy đủ bản ghi tín dụng đã dùng, nên quản trị viên HR phải hủy"
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -1985,7 +1991,8 @@
         "pendingApproval": "Chờ phê duyệt",
         "broughtForwardForfeited": "Chuyển sang bị mất",
         "availableBalance": "Số dư khả dụng",
-        "available": "Số dư khả dụng"
+        "available": "Số dư khả dụng",
+        "expiringSoon": "Sắp hết hạn"
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
@@ -2027,7 +2034,8 @@
         "pendingHint": "Đang chờ quản lý trực tiếp phê duyệt",
         "approvedLabel": "Nghỉ Bù",
         "approvedHint": "Đã duyệt và sẵn sàng sử dụng",
-        "cardPending": "{days} chờ duyệt"
+        "cardPending": "{days} chờ duyệt",
+        "statusReversed": "Đã hủy bỏ"
       },
       "statusNotGeneratedTitle": "Đã cấu hình, nhưng chưa được tạo",
       "statusNotGeneratedBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này. Định mức chưa được tạo, nên các con số bên dưới không phải là số ngày bạn được hưởng. Hãy chạy Tạo định mức để cấp. Nếu sau đó các con số vẫn không thay đổi, số dư này có thể đang bị đóng băng để quy đổi thành tiền, hoặc gói quốc gia của công ty này có thể chưa được kích hoạt.",
@@ -7266,6 +7274,7 @@
       "negativeBalanceNeedsLimitHelp": "Các loại nghỉ phép này được đặt cho phép số dư âm nhưng chưa có mức tối đa. Chúng hoạt động y như hiện nay — việc phê duyệt vẫn từ chối số dư dưới 0 — vì quyền mới chỉ có hiệu lực khi bạn nhập giới hạn. Hãy xem xét từng loại: nhập số nếu đó là ý bạn, hoặc chuyển công tắc về Không.",
       "adjustmentsTitle": "Thực hiện điều chỉnh",
       "adjustmentsHelp": "Thêm hoặc trừ ngày nghỉ cho một nhóm nhân viên trong một thao tác. Chọn loại nghỉ phép, chọn đối tượng áp dụng, rồi nhập điều chỉnh. Mọi thao tác tại đây được ghi nhận thành một hành động và có thể hoàn tác trọn bộ.",
+      "adjustmentsReplacementNote": "Nghỉ bù không được điều chỉnh tại đây: mỗi ngày là một tín dụng có ngày làm việc, ngày hết hạn và lịch sử. Thêm hoặc hủy bỏ tín dụng tại",
       "adjustmentsStepTypes": "Loại nghỉ phép",
       "adjustmentsStepWho": "Chọn Nhân Viên",
       "adjustmentsStepWhat": "Chi tiết điều chỉnh",
@@ -8735,6 +8744,7 @@
       "healthNoRuleInForce": "Có {tables} bảng định mức, không có chế độ phúc lợi nào đang hiệu lực và cũng chưa chỉ định bảng mặc định, nên không nhân viên nào được trỏ tới bảng nào.",
       "healthConfiguredVsActual": "Đã cấu hình: {configured} ngày trên {tables} bảng định mức đang có hiệu lực. Không bảng nào đến được với ai, vì không có chế độ phúc lợi nào đang hiệu lực chỉ định chúng và cũng chưa đặt bảng mặc định - nên đợt tính quyền lợi không cấp gì từ cấu hình này. Số ngày đã có trên hồ sơ nhân viên đến từ cấu hình trước đó hoặc được nhập thủ công.",
       "healthTableWithoutRule": "Không có chế độ phúc lợi nào chỉ định: {tables}. Không ai nhận được chúng cho tới khi có chế độ chỉ định, hoặc một trong số đó trở thành bảng mặc định của loại nghỉ phép này.",
+      "healthReplacementLeaveHasEntitlementTable": "Tín dụng nghỉ phép đã được bật, nên mọi ngày của loại nghỉ phép này phải đến từ Tín dụng nghỉ phép. Một bảng định mức đang có hiệu lực vẫn cộng thêm những ngày không ai tích lũy được: {tables}. Hãy xóa bảng đó.",
       "healthRuleExpired": "Chế độ phúc lợi đã hết hạn nên không áp dụng cho ai: {rules}",
       "healthRuleExpiring": "Chế độ phúc lợi sắp hết hạn: {rules}",
       "healthGradesWithoutTable": "Các bậc chức danh không thuộc bảng định mức nào: {grades}",
@@ -8856,7 +8866,9 @@
         "adjustments": "Điều chỉnh số dư",
         "importLeaveData": "Nhập dữ liệu nghỉ phép",
         "entitlementArchive": "Bản ghi cấu hình",
-        "ledgerArchive": "Bản ghi số dư"
+        "ledgerArchive": "Bản ghi số dư",
+        "leaveCredit": "Tín dụng",
+        "leaveCreditRules": "Quy tắc"
       }
     },
     "leaveConfigRecords": {
@@ -9006,6 +9018,112 @@
       "gapDayTypesBody": "Chỉ đúng một phần. Năm loại ngày là cố định, và hai trong số đó — ngày nghỉ của công ty và ngày ngừng hoạt động — chỉ được ghi nhận chứ chưa có tác dụng. Ngày nghỉ việc và ngày nghỉ hằng tuần được coi là cùng một loại ngày không làm việc. Cài đặt dùng chúng thuộc về tính toán ngày phép, không thuộc lịch làm việc.",
       "gapOtCapTitle": "Giới hạn giờ tăng ca hằng tháng",
       "gapOtCapBody": "Được lưu trong chính sách lương, không phải trong lịch làm việc, và được chỉnh sửa ở mục Lương. Hiển thị tại đó để một con số chỉ có một nơi quản lý."
+    },
+    "leaveConfigLeaveCredit": {
+      "pageDescription": "Tín dụng có được khi làm việc vào ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ, và Nghỉ bù sử dụng tín dụng đó."
+    },
+    "leaveCredit": {
+      "addButton": "+ Thêm tín dụng nghỉ phép",
+      "moduleOffTitle": "Tín dụng nghỉ phép chưa được bật cho tài khoản này",
+      "moduleOffBody": "Tín dụng nghỉ phép là tiện ích trả phí. Việc bật tính năng được sắp xếp riêng; trước đó không thể nhận, thêm hoặc cấu hình tín dụng tại đây.",
+      "windDown": "Tín dụng nghỉ phép chưa được bật cho tài khoản này, nên không thể nhận hoặc thêm tín dụng mới và không thể thay đổi quy tắc. Vẫn còn {accruals} tín dụng tồn đọng: chúng được liệt kê bên dưới và vẫn có thể cho hết hạn, trả thành tiền hoặc hủy bỏ.",
+      "filterEmployee": "Nhân viên",
+      "filterAllEmployees": "Tất cả nhân viên",
+      "filterMovement": "Biến động",
+      "filterAllMovements": "Tất cả biến động",
+      "filterFrom": "Từ",
+      "filterTo": "Đến",
+      "filterApply": "Áp dụng",
+      "filterClear": "Xóa lọc",
+      "col": {
+        "date": "Ngày",
+        "employee": "Nhân viên",
+        "movement": "Biến động",
+        "dateWorked": "Ngày làm việc",
+        "before": "Trước",
+        "amount": "Số lượng",
+        "after": "Sau",
+        "expires": "Hết hạn",
+        "reason": "Lý do",
+        "by": "Người thực hiện",
+        "status": "Trạng thái",
+        "action": "Thao tác"
+      },
+      "movement": {
+        "earnedRequest": "Có được — yêu cầu",
+        "earnedRoster": "Có được — lịch làm việc",
+        "earnedAttendance": "Có được — chấm công",
+        "earnedOther": "Có được",
+        "addedHr": "Do HR thêm",
+        "used": "Đã dùng — Nghỉ bù",
+        "returned": "Hoàn lại — hủy nghỉ phép",
+        "reversed": "Đã hủy bỏ",
+        "expired": "Hết hạn",
+        "paidOut": "Trả thành tiền khi hết hạn",
+        "other": "Điều chỉnh khác"
+      },
+      "dayKind": {
+        "workday": "Ngày làm việc",
+        "restDay": "Ngày nghỉ hằng tuần",
+        "offDay": "Ngày nghỉ",
+        "holiday": "Ngày lễ"
+      },
+      "status": {
+        "available": "Còn dùng được",
+        "used": "Đã dùng",
+        "reversed": "Đã hủy bỏ",
+        "expired": "Hết hạn",
+        "paidOut": "Đã trả tiền"
+      },
+      "bySystem": "Hệ thống",
+      "empty": "Không có biến động tín dụng nghỉ phép nào khớp với bộ lọc.",
+      "truncated": "Đang hiển thị {shown} biến động gần nhất trên tổng số {matched}. Thu hẹp bộ lọc để xem các mục cũ hơn.",
+      "reverseFootnote": "Hủy bỏ không bao giờ xóa dòng nào. Dòng gốc được giữ nguyên, đánh dấu Đã hủy bỏ, và một dòng hủy bỏ được thêm bên cạnh. Tín dụng đã được dùng thì không thể hủy bỏ; hãy hủy đơn nghỉ đã dùng nó trước.",
+      "orderFootnote": "Trước và Sau là số dư Nghỉ bù lũy kế của nhân viên, tính theo thứ tự ngày rồi theo thứ tự ghi nhận các dòng. Một dòng có ngày sớm hơn các dòng đã ghi sẽ làm thay đổi Trước và Sau của mọi dòng sau đó. Danh sách hiển thị mục mới nhất trước.",
+      "reverse": {
+        "button": "Hủy bỏ",
+        "title": "Hủy bỏ tín dụng nghỉ phép này",
+        "body": "Dòng tín dụng được giữ lại, đánh dấu Đã hủy bỏ, và một dòng hủy bỏ được thêm vào. Nếu có giờ làm thêm được ghi nhận vào ngày làm việc, khoản làm thêm đó sẽ được trả lại.",
+        "reason": "Lý do",
+        "confirm": "Hủy bỏ tín dụng",
+        "cancel": "Hủy"
+      },
+      "banner": {
+        "granted": "Đã thêm tín dụng nghỉ phép {days} ngày.",
+        "grantedOvertime": "{hours} giờ làm thêm được ghi nhận ngày {date} sẽ không được trả thêm nữa.",
+        "reversed": "Đã hủy bỏ tín dụng nghỉ phép {days} ngày.",
+        "reversedOvertime": "{hours} giờ làm thêm được ghi nhận ngày {date} được trả lại."
+      },
+      "add": {
+        "title": "Thêm tín dụng nghỉ phép",
+        "description": "Dành cho ngày nhân viên đã làm việc nhưng không gửi yêu cầu, và ban quản lý đồng ý để HR ghi tín dụng.",
+        "employee": "Nhân viên",
+        "employeePlaceholder": "Tìm theo tên hoặc mã nhân viên",
+        "search": "Tìm…",
+        "noResults": "Không có nhân viên phù hợp",
+        "leaveType": "Loại nghỉ phép",
+        "leaveTypeValue": "Nghỉ bù",
+        "dateWorked": "Ngày làm việc",
+        "credit": "Số tín dụng (ngày)",
+        "expiry": "Ngày hết hạn",
+        "expiryHint": "Được điền theo quy tắc của bạn; bạn có thể thay đổi. Không được sớm hơn ngày làm việc.",
+        "reason": "Lý do",
+        "reasonPlaceholder": "Bắt buộc",
+        "remarks": "Ghi chú",
+        "remarksPlaceholder": "Không bắt buộc",
+        "submit": "Thêm tín dụng",
+        "cancel": "Hủy",
+        "checking": "Đang kiểm tra ngày…",
+        "dayKind": "{kind} đối với nhân viên này.",
+        "workingDay": "Đây là ngày làm việc bình thường của nhân viên này. Chỉ ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mới được tính tín dụng nghỉ phép.",
+        "overtime": "Ngày này đã ghi nhận {hours} giờ làm thêm cho nhân viên này. Khi đã ghi tín dụng, khoản làm thêm đó sẽ không được trả thêm, vì ngày đó được bù lại bằng nghỉ phép.",
+        "alreadyCredited": "Nhân viên này đã có tín dụng nghỉ phép cho ngày này.",
+        "policyOff": "Tín dụng nghỉ phép đang tắt cho công ty của nhân viên này. Hãy bật trong thẻ Quy tắc trước.",
+        "firstScheduleConsent": "Nhân viên này thuộc Phụ lục Thứ nhất nên được hưởng tiền làm thêm theo luật. Tín dụng cần có sự đồng ý đã ghi nhận của họ để nhận nghỉ phép thay cho khoản tiền đó, và tín dụng không dùng sẽ được trả thành tiền khi hết hạn.",
+        "firstScheduleConsentLabel": "Nhân viên đã đồng ý nhận ngày này làm nghỉ phép thay cho tiền làm thêm theo luật.",
+        "firstScheduleBlocked": "Nhân viên này thuộc Phụ lục Thứ nhất và công ty không cho phép dùng tín dụng nghỉ phép thay cho tiền làm thêm theo luật. Hãy thay đổi trong thẻ Quy tắc trước."
+      },
+      "rulesIntro": "Ai được nhận tín dụng nghỉ phép, cách nhận và tín dụng có hiệu lực bao lâu, theo từng công ty. Thay đổi ở đây áp dụng cho tín dụng cấp sau đó; tín dụng đã cấp giữ nguyên ngày hết hạn."
     }
   },
   "topbar": {
@@ -11768,9 +11886,9 @@
     "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "replacementRequest": {
-    "trigger": "+ Replacement Leave Request",
-    "title": "Replacement leave request",
-    "description": "Claim replacement leave for days you have already worked. Your line manager approves it, and the credit appears on your balance once they do.",
+    "trigger": "+ Yêu cầu tín dụng nghỉ phép",
+    "title": "Yêu cầu tín dụng nghỉ phép",
+    "description": "Yêu cầu tín dụng cho ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -11787,8 +11905,8 @@
     "totalHours": "{hours} hour(s)",
     "reason": "Reason",
     "cancel": "Cancel",
-    "submit": "Submit request",
-    "submittedToast": "Replacement leave request submitted.",
+    "submit": "Gửi cho quản lý",
+    "submittedToast": "Đã gửi yêu cầu tín dụng nghỉ phép cho quản lý của bạn.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
     "unavailable": {
       "moduleOffTitle": "Nghỉ bù không nằm trong gói của tài khoản này",
@@ -11810,7 +11928,15 @@
       "title": "Quy định bảo vệ tiền làm thêm giờ được áp dụng ở đây",
       "body": "Tiền lương của bạn bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên mỗi yêu cầu sẽ hỏi bạn có đồng ý quy đổi thời gian đó thành ngày nghỉ thay vì nhận tiền làm thêm giờ theo luật cho những ngày đó hay không. Phần chưa dùng sẽ được trả bằng tiền khi hết hạn thay vì bị mất.",
       "bodyAdmin": "Tiền lương của nhân viên này bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên mỗi yêu cầu sẽ hỏi họ có đồng ý quy đổi thời gian đó thành ngày nghỉ thay vì nhận tiền làm thêm giờ theo luật cho những ngày đó hay không. Phần chưa dùng sẽ được trả bằng tiền khi hết hạn thay vì bị mất."
-    }
+    },
+    "eligibleDaysNote": "Chỉ ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mới được tính tín dụng. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",
+    "dayKind": {
+      "workday": "Ngày làm việc",
+      "restDay": "Ngày nghỉ hằng tuần",
+      "offDay": "Ngày nghỉ",
+      "holiday": "Ngày lễ"
+    },
+    "workingDayRefused": "Ngày làm việc bình thường không được tính tín dụng."
   },
   "notices": {
     "pageTitle": "Bảng thông báo",

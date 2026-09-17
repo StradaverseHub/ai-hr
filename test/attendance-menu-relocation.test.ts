@@ -77,7 +77,8 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
       '/admin/locations',
-      '/admin/toil',
+      // 3fb1a611 (r299) — '/admin/toil' STOOD HERE: the row left with the page, which is a redirect stub to
+      // Leave Config › Leave Credit now (see test/r299-leave-credit-screens.test.ts).
     ]);
   });
 
@@ -102,7 +103,10 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/attendance/schedule-assignment',
     '/admin/attendance-allowance',
     '/admin/locations',
-    '/admin/toil',
+    // 3fb1a611 (r299) — '/admin/toil' left this loop: it is an UNGUARDED redirect stub now (a stub has nothing
+    // to guard — the function-access precedent). Its destination, /admin/leave-config/leave-credit, calls
+    // requireAdmin in its own page body, pinned by test/r299-leave-credit-screens.test.ts and
+    // test/function-access.test.ts.
   ])('%s calls a server-side admin guard in its own page body', (route) => {
     const src = read(`app${route}/page.tsx`);
     // Either helper is fine — both resolve the session server-side and refuse a non-administrator.

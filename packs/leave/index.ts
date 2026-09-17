@@ -31,7 +31,8 @@
  * - Routes: `app/leave/**` (the My Absence self-service home: balances, apply, edit/cancel history,
  *   per-date outcomes, export), `app/admin/leave/**` (config: type master, entitlements, application
  *   rules, approval workflow, payroll/encashment, import, audit), `app/admin/leave-approval/**`
- *   (approval templates + workflow matrix), `app/admin/toil/**` (TOIL policy), `app/me/leave/**`
+ *   (approval templates + workflow matrix), `app/admin/toil/**` (a redirect stub to Leave Config › Leave
+ *   Credit since 3fb1a611), `app/me/leave/**`
  *   (own-attachment download, kept for the /me?tab=leave deep-link back-compat).
  * - The boundary is enforced by test/leave-pack-drift.test.ts (D11 criterion 4, shrink-only ratchet
  *   seeded in test/pack-drift-allowlist.json under "leave").
@@ -107,6 +108,7 @@
  * via `modulePackById('leave')` and fails closed (D3). No entitlement machinery is built here.
  */
 import {
+  CalendarClock,
   CalendarDays,
   CalendarPlus,
   CalendarRange,
@@ -285,6 +287,26 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
       labelKey: 'leaveAdjustments',
       icon: SlidersHorizontal,
       ownedSubpaths: ['/admin/leave-config/import', '/admin/leave-config/records'],
+    },
+    // 3fb1a611 (r299) — LEAVE CREDIT, DIRECTLY AFTER LEAVE ADJUSTMENTS, where the approved plan puts it.
+    //
+    // Every Replacement Leave credit in one list (earned through a request, added by HR, used, reversed,
+    // expired), + Add Leave Credit, Reverse, and the Rules tab that took the replacement-leave policy off
+    // Company rules. Next to Leave Adjustments because it is the adjustment screen FOR Replacement Leave: Leave
+    // Adjustments refuses that type now and points here.
+    //
+    // ⚠️ THE ONE ROW OF THIS NODE THAT IS MODULE-GATED. Leave is core and its rows are not in the sidebar's
+    // MODULE_OF_HREF, but Leave Credit is the paid `toil` add-on: components/sidebar.tsx maps this href to
+    // `toil` by hand (there is no toil pack to derive it from) and lib/nav-entitlements.ts lists `toil` so the
+    // rail can hide it. The page repeats the check itself — a hidden row is not a gate.
+    //
+    // `ownedSubpaths` carries the Rules tab (its own address), so the row stays lit on it. Highlighting only;
+    // it must agree with components/leave-config-map.tsx's `leaveCredit` group (test/r266-leave-config-rows).
+    {
+      href: '/admin/leave-config/leave-credit',
+      labelKey: 'leaveCredit',
+      icon: CalendarClock,
+      ownedSubpaths: ['/admin/leave-config/leave-credit/rules'],
     },
     // a6fe37fc ROUND 5 (cutover) — the DESTINATION moved, the row did not. Generate entitlement is
     // `/admin/leave-config/generate` now (the old address is a redirect stub that left lib/permissions.ts

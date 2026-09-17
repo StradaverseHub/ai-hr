@@ -3506,6 +3506,35 @@ export function dayTypeFor(ctx: SessionContext, employmentId: string, date: stri
 }
 
 /**
+ * 3fb1a611 (r299) · WHICH KIND OF DAY WAS THIS, for a Leave Credit — the four answers the reporter uses:
+ * an ordinary working day, a rest day, an OFF day, or a public holiday.
+ *
+ * THE SAME LADDER THE CLOCKING PATH FREEZES ONTO AN ATTENDANCE ROW, not a second one. `scheduleFor` resolves
+ * rostered shift → public holiday (holidayDatesFor, the unified calendar) → rostered rest → the default
+ * shift's four-way weekly pattern → company working days, which is the precedence `classifyScheduleDay`
+ * (the Daily Attendance / Records ladder) states it mirrors. Reading it here means a credit's day kind can
+ * never disagree with the day type an attendance row for the same date would carry.
+ *
+ * THE OFF DAY IS READ FROM THE RESOLVED SOURCE, NOT A FOURTH DayType. b8aa3466 records an off day as a
+ * WORKDAY with a zero-minute normal day and `source: 'default-shift-rest'` (the default shift's own rest
+ * branch returns 'rest_day'; its off branch returns 'workday'). So on the default-shift branch, a 'workday'
+ * that came from the rest branch IS the off day. `attendance_day_type` is not widened and nothing about how
+ * that day is PAID changes.
+ *
+ * `deductAbsence` is NOT consulted, deliberately: that gate exists so the Records screen keeps rendering an
+ * unrostered company-working-day absence the old way until payroll opts in. It decides how a MISSING row is
+ * labelled, not what kind of day a date is — and this question is the latter.
+ */
+export type WorkedDayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
+export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
+  const s = await scheduleFor(tx, employmentId, date);
+  if (s.dayType === 'holiday') return 'holiday';
+  if (s.dayType === 'rest_day') return 'rest_day';
+  if (s.source === 'default-shift-rest') return 'off_day';
+  return 'workday';
+}
+
+/**
  * Month-to-date overtime for ONE employment, INCLUDING approved plans that have not landed yet — the figure
  * the cap warning is measured against.
  *

@@ -80,6 +80,59 @@ describe('TOIL activation seeds a disabled-but-present policy', () => {
   });
 });
 
+// r299 (3fb1a611) — the plan told the reporter "Leave Credit starts switched off … nothing uses it until you do".
+describe('a policy saved BEFORE the module was ever installed', () => {
+  it('is kept on FIRST install, but its three live switches are turned off for review', async () => {
+    await owner.db.insert(schema.toilPolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      enabled: true,
+      employeeRequestEnabled: true,
+      autoAccrueOnApproval: true,
+      expiryDays: 45,
+    });
+    const out = await activate();
+    const [policy] = await policiesFor(b.companyId);
+    expect(policy.enabled).toBe(false);
+    expect(policy.employeeRequestEnabled).toBe(false);
+    expect(policy.autoAccrueOnApproval).toBe(false);
+    expect(policy.expiryDays, 'every other saved setting is kept').toBe(45);
+    expect(out.detail.join(' ')).toMatch(/switched off for review/);
+  });
+
+  // r300 — first install is judged across EVERY scope (verifier measured both orders switching a live policy off).
+  for (const order of ['tenant-wide, then one company', 'one company, then tenant-wide'] as const) {
+    it(`a second activation at a DIFFERENT scope is not a first install (${order})`, async () => {
+      const act = (companyId: string | null) =>
+        owner.db.transaction((tx) =>
+          applyModuleChange(tx as unknown as Tx, {
+            id: randomUUID(), tenantId: b.tenantId, moduleCode: 'toil', companyId, action: 'activate', status: 'pending',
+            currentStep: null, error: null, claimedAt: null, requestedBy: 'operator@stradaverse.test', disposition: null,
+            createdAt: new Date(), decidedAt: null,
+          } as typeof schema.moduleChangeRequest.$inferSelect),
+        );
+      await act(order.startsWith('tenant') ? null : b.companyId);
+      await owner.db.update(schema.toilPolicy).set({ enabled: true, employeeRequestEnabled: true }).where(eq(schema.toilPolicy.companyId, b.companyId));
+      await act(order.startsWith('tenant') ? b.companyId : null);
+      const [policy] = await policiesFor(b.companyId);
+      expect(policy.enabled, 'HR switched it on while owning the module; a scope change must not switch it off').toBe(true);
+      expect(policy.employeeRequestEnabled).toBe(true);
+    });
+  }
+
+  it('a REACTIVATION still touches nothing (D4)', async () => {
+    await activate();
+    await owner.db
+      .update(schema.toilPolicy)
+      .set({ enabled: true, employeeRequestEnabled: true })
+      .where(eq(schema.toilPolicy.companyId, b.companyId));
+    await activate();
+    const [policy] = await policiesFor(b.companyId);
+    expect(policy.enabled).toBe(true);
+    expect(policy.employeeRequestEnabled).toBe(true);
+  });
+});
+
 describe('a company created LATER is born configured', () => {
   it('gives a new company the defaults of every already-active module', async () => {
     await activate();

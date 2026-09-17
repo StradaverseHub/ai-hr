@@ -8,6 +8,11 @@ import { listAllProfileOptions } from '@/core/profile-options';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import type { CriteriaSection } from '@/core/org-criteria-form';
 import type { SessionContext } from '@/db/client';
+// 3fb1a611 (r299 fix pass, D9) — "does this type's every day come from Leave Credit?": the tenant has the paid
+// `toil` module (the page's quiet form — an entitlement incident reads as "no", i.e. the findings as before) AND
+// the type is the replacement one, asked with the engine's own role-first predicate.
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { leaveTypeIs } from '@/core/leave';
 import {
   eligibilityRuleCountsByTemplate,
   entitlementDeleteBlocks,
@@ -244,6 +249,8 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     .filter((g) => g.archivedAt != null && heldByAGroup.has(g.id))
     .map((g) => ({ id: g.id, name: g.name }));
 
+  const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');
+
   return {
     leaveTypes: leaveTypes.map((x) => ({
       id: x.id,
@@ -251,6 +258,9 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
       archived: !!x.archivedAt,
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
+      // 3fb1a611 (r299 fix pass) — REQUIRED on HealthLeaveType; `listLeaveTypes` projects `role`, which
+      // `leaveTypeIs` asks first. False for every type on a tenant without Leave Credit.
+      daysFromLeaveCreditOnly: leaveCreditLive && leaveTypeIs(x, 'replacement'),
       eligibility: (x.eligibility ?? null) as LeaveTypeEligibility | null,
       probationEligibility: (x.probationEligibility ?? null) as 'confirmed_only' | 'probation_only' | null,
       /**
