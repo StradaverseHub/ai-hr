@@ -44,7 +44,7 @@ import {
   deductAbsentDaysByEmployment,
   type AbsenceBreakdown,
 } from './absence-days';
-import { holidayDatesFor } from './holidays';
+import { holidayDatesByEmployment, holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
 // module (see its header): this file reads the rows and hands them over, it does not restate the rule.
@@ -2239,13 +2239,21 @@ export function attendanceForDate(
 
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
     // → state → national), the SAME calendar leave + checkIn use — so a group/state holiday explains a
-    // missing row exactly as it freezes the day-type. Only no-row employees need this context; one resolver
-    // call each, sequential because every call shares the one transaction connection.
+    // missing row exactly as it freezes the day-type. Only no-row employees need this context.
+    // r298 (b6a995c1): this used to be one resolver call per no-row employee, awaited in turn — 1,000 of
+    // them before anyone clocks in. holidayDatesByEmployment answers them all at once: the same
+    // `holidayDatesFor`, called once per distinct set of the inputs that decide a calendar (company, work
+    // state, holiday group, open-assignment location), with an entry for every id asked.
+    const holidaysByEmp = await holidayDatesByEmployment(tx, {
+      employmentIds: rows.filter((r) => !r.attendanceId).map((r) => r.employmentId),
+      startDate: date,
+      endDate: date,
+    });
     const holidayEmp = new Set<string>();
     for (const r of rows) {
       if (r.attendanceId) continue;
-      const hs = await holidayDatesFor(tx, { employmentId: r.employmentId, startDate: date, endDate: date });
-      if (hs.has(date)) holidayEmp.add(r.employmentId);
+      const hs = holidaysByEmp.get(r.employmentId);
+      if (hs && hs.has(date)) holidayEmp.add(r.employmentId);
     }
 
     // e2632276 — the absence GATE, per employment (it lives on the assigned PAYROLL POLICY, so two

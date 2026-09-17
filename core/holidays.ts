@@ -265,7 +265,14 @@ export async function warnIfHolidaysIncomplete(
 }
 
 /** The set of holiday dates in [startDate, endDate] for an employment, resolved business-group → state →
- *  national. Returns a Set<string> of YYYY-MM-DD dates (both callers ask only "is this date a holiday?"). */
+ *  national. Returns a Set<string> of YYYY-MM-DD dates (both callers ask only "is this date a holiday?").
+ *
+ *  DETERMINING INPUTS, MIRRORED IN TWO MEMO KEYS. From the employment side this reads exactly four values:
+ *  employment.company_id, employment.work_state, employment.holiday_group_id, and the OPEN assignment's
+ *  location_id (plus how many open assignments there are, because it takes one via `.limit(1)`). Two memos
+ *  key on precisely those — `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts —
+ *  and hand every employment sharing them the same answer. Reading a new employment- or assignment-level
+ *  input here without adding it to BOTH keys silently gives one employee another's calendar. */
 export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate }: HolidayWindow): Promise<Set<string>> {
   const [emp] = await tx
     .select({
@@ -527,6 +534,92 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
     );
   // The chain's group-scoped extras stack on the gazette result (empty chain → no-op, byte-identical).
   return new Set([...baseRows.map((h) => h.d), ...chainExtras]);
+}
+
+/**
+ * r298 (board b6a995c1) — `holidayDatesFor` for MANY employments over ONE window, for a screen that asks
+ * "is this date a holiday?" of a whole population (the Daily Attendance loader, core/attendance.ts).
+ *
+ * NOT A SECOND RESOLVER, deliberately. It calls the UNCHANGED `holidayDatesFor` above, memoized on the four
+ * employment inputs that fully determine its answer — the key core/absence-days.ts `holidayKeyOf` already
+ * uses in production:
+ *   companyId      → company.country, company.default_work_state, and the is_company_descendant chain
+ *   workState      → employment.work_state (the `ws` rung of the state precedence)
+ *   holidayGroupId → the directly-assigned group: its archetype, states, parent, extras and ticked days
+ *   locationId     → the OPEN assignment's location: its state, its mapped calendar and that calendar's parent
+ * Employments sharing all four get the answer of ONE call. The precedence rules are not re-expressed here,
+ * so there is no second copy of them to drift, and the payroll/leave callers of `holidayDatesFor` are
+ * untouched.
+ *
+ * Cost: two queries load those inputs for every id whatever the headcount, then one resolver call per
+ * DISTINCT key plus one per ambiguous employment — sequential, because every call shares `tx`'s one
+ * connection. The worst case (every employment its own key) is the old one-call-per-head plus two queries.
+ *
+ * Exact-equivalence rules, each pinned by test/r298-holiday-memo.test.ts:
+ *  - an employment with MORE THAN ONE open assignment is resolved ON ITS OWN: `holidayDatesFor` joins an
+ *    arbitrary one via `.limit(1)`, and the memo must not pick a different one than it would. The database
+ *    forbids that state (`assignment_no_overlap`, migration 0001), so this is defence in depth, kept because
+ *    core/absence-days.ts makes the same promise and a relaxed constraint must not change anyone's calendar;
+ *  - the open-assignment predicate is the resolver's own (valid_to IS NULL AND superseded_at IS NULL);
+ *  - an id with no visible employment row maps to an empty Set, as `holidayDatesFor`'s `if (!emp)` does;
+ *  - the inputs are read through the caller's `tx`, so RLS hides from this exactly what it hides from the
+ *    resolver.
+ * Every requested id (duplicates collapsed) has an entry, and each entry is its OWN Set: mutating one
+ * employment's calendar can never change another's.
+ */
+export async function holidayDatesByEmployment(
+  tx: Tx,
+  { employmentIds, startDate, endDate }: { employmentIds: readonly string[]; startDate: string; endDate: string },
+): Promise<Map<string, Set<string>>> {
+  const ids = [...new Set(employmentIds)];
+  const out = new Map<string, Set<string>>();
+  if (ids.length === 0) return out;
+
+  const emps = await tx
+    .select({
+      employmentId: employment.id,
+      companyId: employment.companyId,
+      workState: employment.workState,
+      holidayGroupId: employment.holidayGroupId,
+    })
+    .from(employment)
+    .where(inArray(employment.id, ids));
+  const openAssignments = await tx
+    .select({ employmentId: assignment.employmentId, locationId: assignment.locationId })
+    .from(assignment)
+    .where(and(inArray(assignment.employmentId, ids), isNull(assignment.validTo), isNull(assignment.supersededAt)));
+
+  const empById = new Map(emps.map((e) => [e.employmentId, e]));
+  const openCount = new Map<string, number>();
+  const locationByEmp = new Map<string, string | null>();
+  for (const a of openAssignments) {
+    openCount.set(a.employmentId, (openCount.get(a.employmentId) ?? 0) + 1);
+    locationByEmp.set(a.employmentId, a.locationId);
+  }
+
+  const memo = new Map<string, Set<string>>();
+  for (const id of ids) {
+    const e = empById.get(id);
+    if (!e) {
+      out.set(id, new Set<string>());
+      continue;
+    }
+    const one = { employmentId: id, startDate, endDate };
+    if ((openCount.get(id) ?? 0) > 1) {
+      // Ambiguous open assignment — resolve this one alone rather than guess which row `.limit(1)` takes.
+      out.set(id, await holidayDatesFor(tx, one));
+      continue;
+    }
+    // JSON, not a joined string: null and '' stay distinct, and no value can forge a separator.
+    const key = JSON.stringify([e.companyId, e.workState, e.holidayGroupId, locationByEmp.get(id) ?? null]);
+    let dates = memo.get(key);
+    if (!dates) {
+      dates = await holidayDatesFor(tx, one);
+      memo.set(key, dates);
+    }
+    out.set(id, new Set(dates));
+  }
+  return out;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────
