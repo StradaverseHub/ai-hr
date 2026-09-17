@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin } from '@/lib/authz';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 // c002b3c3 — `scopedAdmin` is `requireAdmin` PLUS the active company context. Same admin gate as before
 // (it redirects non-admins identically); the scope ids are what the Search Employee box is narrowed to.
 import { scopedAdmin } from '@/lib/scope';
@@ -246,6 +247,21 @@ export default async function EmployeePage({
   // balance grids use, rather than a third phrasing of the same fact.
   const tBal = await getTranslations('me.leaveBalanceTable');
   const admin = isAdmin(s);
+  /**
+   * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE, here, and every Payroll-owned
+   * section below is gated on it at its READ, not only at its render: Pay Items (core/pay-components.ts),
+   * CP38 (core/cp38.ts) and the Payroll Policy picker (core/payroll-policy.ts). Personnel is a CORE screen;
+   * those three are the Payroll pack's (packs/payroll/index.ts), and the unconditional reads were what
+   * core/module-gate.ts names as stopping pay-components and cp38 from being bound at the service.
+   *
+   * Tenant-wide, with no companyId, for the reason core/module-gate.ts's COMPANY SCOPE paragraph gives —
+   * the rail, the route guard and the service gate all ask tenant-wide. The QUIET form, because what to
+   * draw is a display decision (core/entitlements.ts, isModuleEnabledOrFalse).
+   *
+   * Everything else on the Payroll tab stays: Basic Salary and Payment Method are core/comp.ts (spine),
+   * TP3 and the zakat summary read the country statutory profile, and leave encashment is Leave's.
+   */
+  const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
   const { employmentId } = await params;
   // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
@@ -429,10 +445,11 @@ export default async function EmployeePage({
       ? `state:${emp.workState}`
       : '';
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
-  const payComps = admin ? await listEmploymentPayComponents(s, employmentId) : [];
-  const componentCatalog = admin ? await listPayComponents(s) : [];
-  // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data).
-  const cp38Records = admin ? await listCp38(s, { employmentId }) : [];
+  // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
+  const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = admin && payrollOn ? await listPayComponents(s) : [];
+  // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
+  const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
   const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
@@ -448,7 +465,8 @@ export default async function EmployeePage({
   // and is visible to a second company's admin.
   const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
-  const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
+  const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
@@ -950,6 +968,9 @@ export default async function EmployeePage({
    * naming it describes something the reader can actually see.
    */
   const whenLive = (...names: string[]): string[] => (emp.terminatedOn ? [] : names);
+  // r298 (ceb1c560) — the same rule on the second axis a card can be absent on. `payrollPolicyCard` is not
+  // drawn for a tenant without Payroll, so the Payroll bar must not name it for that tenant either.
+  const whenPayroll = (...names: string[]): string[] => (payrollOn ? names : []);
   const tabSaveCovers = {
     profile: [t('personalDetails'), t('contactAddressTitle')],
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
@@ -959,7 +980,7 @@ export default async function EmployeePage({
     // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
     // salary revision. Naming the card would be the exact control-that-lies the classification exists
     // to prevent; `payMethodGroup` is the heading the reader actually sees above the control.
-    payroll: [t('payMethodGroup'), ...whenLive(tp('assignTitle')), t('tp3SectionTitle')],
+    payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
   const profilePanel = admin ? (
@@ -1291,7 +1312,9 @@ export default async function EmployeePage({
     </form>
   );
 
-  const payComponentsCard = admin && componentCatalog.length > 0 ? (
+  // r298 — `payrollOn` is stated here as well as at the read: an empty catalogue already hides the card, but
+  // that would make the gate an accident of the data rather than a decision a reader can see.
+  const payComponentsCard = admin && payrollOn && componentCatalog.length > 0 ? (
     <Card id="section-pay-components" className="overflow-hidden">
       <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
       <section className="border-t border-border">
@@ -1456,7 +1479,7 @@ export default async function EmployeePage({
     </fieldset>
   );
 
-  const cp38Card = admin ? (
+  const cp38Card = admin && payrollOn ? (
     <Card id="section-cp38" className="overflow-hidden">
       <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
       {/* The processed-period refusal. Kept ABOVE the table and outside the restyle on purpose:
@@ -2223,7 +2246,8 @@ export default async function EmployeePage({
 
   // 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
   // payroll uses it automatically on the next run. Null = monthly default.
-  const payrollPolicyCard = admin && !emp.terminatedOn ? (
+  // r298 — Payroll-owned: absent for a tenant without Payroll, and `whenPayroll` drops its name from the bar.
+  const payrollPolicyCard = admin && payrollOn && !emp.terminatedOn ? (
     <Card id="section-payroll-policy">
       <SectionHeader title={tp('assignTitle')} />
           <form action={assignPolicyAction} data-save-section="policy" className="flex flex-wrap items-end gap-3 p-4">

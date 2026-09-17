@@ -62,6 +62,16 @@
  * both halves: the two bindings refuse and work, and the four non-bindings still answer for a tenant
  * with every optional module off — so binding one of them turns that test red rather than a customer.
  *
+ * r298 (board ceb1c560) BUILT THE SECOND SEAM FOR THE THREE CORE SCREENS: Personnel, Organization and
+ * My Profile now ask `isModuleEnabledOrFalse(s, 'payroll')` once and do not CALL those reads for a tenant
+ * without Payroll (test/r298-payroll-sections-gate.test.ts). The screen blockers named above are therefore
+ * gone; the files stay unbound because binding is a separate change, and two things still stand in its way:
+ *   - core/admin.ts's cycle seeder (above) — unaffected, it passes a `tx`;
+ *   - for core/pay-components.ts, the ATTENDANCE pack. Measured at r298, the edge that actually bites is the
+ *     READ in app/admin/attendance-allowance/page.tsx (`listSupportedBatchComponents`, no handle). The write
+ *     named above does not: core/attendance-allowance.ts passes its own `tx` to setPayrollBatchComponent,
+ *     so a file rebinding would not reach it, and its only caller is app/payroll/actions.ts.
+ *
  * NOT core/read.ts, and that is the whole reason this file reasons about placement rather than
  * spraying calls. `read.ts` is the SHARED kernel read module: `dashboardStats` reads `payroll_batch`
  * AND attendance in the same function, and the dashboard is a CORE screen. Gating it would break
