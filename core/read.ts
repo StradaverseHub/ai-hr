@@ -27,6 +27,9 @@ import {
 // the row chip reads, so the filter and the chip can never disagree. Pure, no DB, safe to import here.
 import { MAPPED_AGGREGATE_TYPES, aggregateTypesForModule, type ModuleKey } from '../lib/audit-format';
 import {
+  // r303 (31492f74) — the Anniversary-to-Calendar correction's reason prefix, so classifyLedgerAdjustment
+  // treats its reversal row as the system correction it is.
+  A2C_RECALC_REASON_PREFIX,
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
@@ -43,6 +46,12 @@ import {
   resolveLeaveYearCycle,
   isLeaveEligible,
   resolveCarryBreakdown,
+  // r303 (31492f74) — the Leave Summary explanation reads the engine's own join-year and carry decisions
+  // rather than restating them.
+  carryEnabled,
+  earnedAccrualStart,
+  hireYearGrantShape,
+  leaveCycleEnd,
   applyLeaveTypeRules,
   leaveTypeRuleColumns,
   serviceYearsAt,
@@ -66,6 +75,9 @@ import {
   eligibilityNoticeFrom,
   explainEntitlementEligibility,
 } from './entitlement-template';
+// r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Type only: the
+// renderer is a pure client-safe module and this read builds its input from the locals behind each figure.
+import type { LeaveSummaryDerivation } from '../lib/leave-summary-explain';
 // 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
 // server read and the two presentation layers that show it share ONE definition (lib/entitlement-status.ts).
 import {
@@ -3167,6 +3179,20 @@ export type LeaveEntitlementBreakdown = {
    *  its five per-credit TABLE COLUMNS, every other type resolves the same nine summary items as before.
    *  The render sites already index this by a string field key, so nothing downstream changes shape. */
   formulaExplanations: Record<string, LeaveFormulaEntry | null>;
+  /**
+   * r303 (31492f74) — THE WORKING BEHIND EACH OF THE NINE FIGURES, for HR's Leave Summary sentences.
+   *
+   * Present ONLY when the caller asks (`{ derivation: true }`): the Employee Leave Inquiry rows and the Personnel
+   * record, which mount the HR explanation. The employee's own My Leave read never asks, so its breakdown object
+   * — and everything the dashboard is handed — is exactly what it was.
+   *
+   * BUILT FROM THE SAME LOCALS AS THE FIGURES. Each itemised record is pushed in the same branch of the same
+   * ledger walk that adds it to its figure; the pending list is the rows of the query whose sum IS
+   * `pendingApproval`; the table, band and service length are the ones `eligibleDays` was resolved from. So a
+   * list cannot describe a different set of rows than the figure beside it (lib/leave-summary-explain.ts checks
+   * the sums again before printing, and test/r303-leave-summary-explain.test.ts pins them on engine ledgers).
+   */
+  derivation?: LeaveSummaryDerivation;
 };
 
 /**
@@ -3176,22 +3202,39 @@ export type LeaveEntitlementBreakdown = {
  *   • 'forfeit' — one of the THREE machine forfeit reasons. Enumerating all three matters: treating only the
  *     cap forfeit as a boundary row would leave the carry-EXPIRY forfeit counted as an adjustment AND as a
  *     forfeit (a second double-count).
- *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`) or a profile
- *     change (`sys:profile_recalc:<id>`). Invisible on the Adjustment configuration screen, hence its own line.
+ *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`), a profile
+ *     change (`sys:profile_recalc:<id>`) or the Anniversary-to-Calendar first-year correction
+ *     (`sys:a2c_recalc:<leaveTypeId>`, r303). Invisible on the Adjustment configuration screen, hence its own
+ *     line. The a2c prefix was missing until r303: reprojectA2cEntitlement's REVERSAL row fell through to
+ *     'config', so HR's grid Adjustment column showed a machine reversal as a typed adjustment.
  *   • 'config'  — everything else: the festive / one-off / manual grants HR actually enters. A NULL reason
  *     falls here (a hand-written ledger row with no reason is a manual adjustment, not a machine one).
  * Exported so the tests can assert the partition directly against the reason constants.
  */
 export type LedgerAdjustmentClass = 'config' | 'system' | 'forfeit';
 
-export function classifyLedgerAdjustment(reason: string | null): LedgerAdjustmentClass {
+/** r303 — WHICH automatic correction a `sys:` recalc reason names, or null for anything else. The 'system' class
+ *  below IS "this returns non-null", so the Leave Summary can name the kind of correction without a second
+ *  reading of the prefixes. */
+export function systemCorrectionKind(reason: string | null): 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' | null {
   const r = reason ?? '';
-  if (r === CARRY_FORFEIT_REASON_CAP || r === CARRY_FORFEIT_REASON_EXPIRY || r === AGED_FORFEIT_REASON) {
-    return 'forfeit';
-  }
-  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`) || r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) {
-    return 'system';
-  }
+  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`)) return 'policy_recalc';
+  if (r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) return 'profile_recalc';
+  if (r.startsWith(`${A2C_RECALC_REASON_PREFIX}:`)) return 'a2c_recalc';
+  return null;
+}
+
+/** r303 — the forfeit class, named: which of the THREE forfeit reasons a row carries, or null. */
+export function forfeitKind(reason: string | null): 'carry_cap' | 'carry_expiry' | 'type_expiry' | null {
+  if (reason === CARRY_FORFEIT_REASON_CAP) return 'carry_cap';
+  if (reason === CARRY_FORFEIT_REASON_EXPIRY) return 'carry_expiry';
+  if (reason === AGED_FORFEIT_REASON) return 'type_expiry';
+  return null;
+}
+
+export function classifyLedgerAdjustment(reason: string | null): LedgerAdjustmentClass {
+  if (forfeitKind(reason) != null) return 'forfeit';
+  if (systemCorrectionKind(reason) != null) return 'system';
   return 'config';
 }
 
@@ -3201,6 +3244,9 @@ export function leaveEntitlementBreakdown(
   leaveTypeId: string,
   asOf: string,
   locale?: string,
+  /** r303 (31492f74) — `derivation: true` attaches the per-line working HR's Leave Summary sentences read. Only
+   *  the HR mounts ask; see `LeaveEntitlementBreakdown.derivation`. */
+  opts: { derivation?: boolean } = {},
 ): Promise<LeaveEntitlementBreakdown | null> {
   return withTenant(ctx, async (tx) => {
     // The type + the employment basics. RLS gates the employment row; a peer who can't see it gets null
@@ -3224,7 +3270,9 @@ export function leaveEntitlementBreakdown(
 
     // Leave Year Type override (e1a51aea): this TYPE's effective cycle — a per-type 'a2a'/'c2c' override
     // wins over the company cycle; null falls back to the company cycle (byte-identical to before).
-    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle));
+    // r303: the effective cycle is held as a local so the explanation names the SAME leave year this read uses.
+    const effectiveCycle = resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle);
+    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, effectiveCycle);
 
     // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
     // 6e9a126e RELEASE TWO — the entitlement TEMPLATE version in force ON `asOf`, with the employee's
@@ -3251,13 +3299,11 @@ export function leaveEntitlementBreakdown(
     // nothing is configured: with no band it still materialises the leave TYPE's own carry rules, at zero
     // days, so `applyLeaveTypeRules` has something to overlay onto. See its header for why days are the
     // one thing that must not be invented.
-    const policy = applyLeaveTypeRules(
-      policyForDatedReader(
-        templates.bandFor(employmentId, leaveTypeId, serviceYearsAt(emp.hiredOn, cycleStart)),
-        type,
-      ),
-      type,
-    );
+    // r303: the service length and the band are held as locals (unchanged expressions) so the Full Entitlement
+    // sentence names the very band `eligibleDays` below was read from, measured at the SAME date (cycle start).
+    const serviceYearsAtCycleStart = serviceYearsAt(emp.hiredOn, cycleStart);
+    const band = templates.bandFor(employmentId, leaveTypeId, serviceYearsAtCycleStart);
+    const policy = applyLeaveTypeRules(policyForDatedReader(band, type), type);
     // 31e39d74 — the WINNER, not just its band. `bandFor` above returns null both when nothing is
     // configured and when the employee's service length falls outside every band of a table that DOES
     // apply to them; only `winnerFor` separates "no table" from "a table with no band for you", and the
@@ -3288,11 +3334,13 @@ export function leaveEntitlementBreakdown(
 
     // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
     const num = (x: unknown) => Number(x ?? 0);
-    const [[agg], [debitAgg], [pendRow], rows] = await Promise.all([
+    const [[agg], [debitAgg], pendingRows, rows] = await Promise.all([
       tx
         .select({
-          // Fresh entitlement granted within the current cycle (accruals + in-lieu top-ups).
-          cycleAccrual: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual','in_lieu_accrual') and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // r303: "fresh entitlement granted within the current cycle" (accruals + in-lieu top-ups) used to be
+          // an aggregate here. It is now summed in the ledger walk below over `rows` — the identical
+          // [cycleStart, asOf] window — so each credit HR's explanation lists is pushed in the branch that adds
+          // it to the figure.
           // ADR-0066: positive `adjustment` credits within the current cycle (festive / one-off grants). The
           // accrual aggregates above exclude `adjustment`, so these are surfaced separately to reconcile the
           // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited` —
@@ -3351,8 +3399,11 @@ export function leaveEntitlementBreakdown(
       // total printed at the bottom of the same panel by exactly the days of every pending request
       // starting after `asOf`. Production: Mei Ling / ANNUAL / asOf 2026-08-04 read 6.00 here against the
       // grid's 4.00, and the column implied −12.50 beside an Available Balance of −10.50.
+      //
+      // r303 (31492f74): the REQUESTS, not only their sum. `pendingApproval` below is the sum of exactly these
+      // rows, so the list HR's explanation prints is by construction the set the figure counts.
       tx
-        .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+        .select({ startDate: leaveRequest.startDate, endDate: leaveRequest.endDate, days: leaveRequest.days })
         .from(leaveRequest)
         .where(
           and(
@@ -3361,9 +3412,12 @@ export function leaveEntitlementBreakdown(
             eq(leaveRequest.status, 'pending'),
             lte(leaveRequest.startDate, asOf),
           ),
-        ),
+        )
+        .orderBy(asc(leaveRequest.startDate), asc(leaveRequest.id)),
       tx
         .select({
+          // r303: the row id, so an unlinked debit can be matched to the Leave Credit it settled or reversed.
+          id: leaveLedger.id,
           effectiveOn: leaveLedger.effectiveOn,
           entryType: leaveLedger.entryType,
           days: leaveLedger.days,
@@ -3386,8 +3440,10 @@ export function leaveEntitlementBreakdown(
 
     const balance = num(agg?.balance);
     const priorBalance = num(agg?.priorBalance);
-    const cycleAccrual = num(agg?.cycleAccrual);
     const debitsInWindow = num(debitAgg?.taken);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    // r303 — Pending Approval IS the sum of the rows HR's explanation lists.
+    const pendingApproval = pendingRows.reduce((s, r) => r2(s + Number(r.days)), 0);
     // Delegates to the shared helper (core/leave.ts#resolveCarryBreakdown) so this view can never diverge
     // from carryForwardReport (core/analytics.ts) — byte-identical output to the pre-extraction inline
     // arithmetic (existing test suite is the regression gate).
@@ -3415,25 +3471,52 @@ export function leaveEntitlementBreakdown(
     // strictly before cycleStart) the six buckets tile the whole ledger ≤ asOf, which is what makes
     //   broughtForward + entitled + config + system − forfeited − taken = balance
     // an identity rather than an approximation. Derived carry figures deliberately take NO part here.
-    const r2 = (n: number) => Math.round(n * 100) / 100;
+    //
+    // r303 (31492f74) — EACH BRANCH ALSO PUSHES THE RECORD IT JUST COUNTED. HR's Leave Summary sentences list
+    // these records under the figure they make up; pushing them here, beside the `+=`, is what makes "the listed
+    // amounts add up to the figure" a property of this loop rather than of a second query.
+    let cycleAccrual = 0;
     let configAdjustments = 0;
     let systemAdjustments = 0;
     let forfeitedThisCycle = 0;
     let takenThisCycle = 0;
+    let takenOnLeave = 0;
     const configAdjustmentItems: LeaveEntitlementBreakdown['configAdjustmentItems'] = [];
+    const credits: LeaveSummaryDerivation['earned']['credits'] = [];
+    const systemItems: LeaveSummaryDerivation['adjustments']['system'] = [];
+    const forfeitItems: LeaveSummaryDerivation['forfeited'] = [];
+    const otherDebits: (LeaveSummaryDerivation['taken']['other'][number] & { ledgerId: string })[] = [];
     for (const r of rows) {
       const days = Number(r.days);
-      if (r.entryType === 'debit') {
-        takenThisCycle = r2(takenThisCycle - days); // debits are negative ⇒ positive magnitude
+      if (r.entryType === 'accrual' || r.entryType === 'in_lieu_accrual') {
+        cycleAccrual = r2(cycleAccrual + days);
+        credits.push({
+          effectiveOn: r.effectiveOn,
+          days,
+          kind:
+            r.entryType === 'in_lieu_accrual'
+              ? 'leave_credit'
+              : systemCorrectionKind(r.reason) === 'a2c_recalc'
+                ? 'a2c_correction'
+                : 'grant',
+        });
         continue;
       }
-      if (r.entryType !== 'adjustment') continue; // accrual / in_lieu_accrual ⇒ currentYearEntitlement
+      if (r.entryType === 'debit') {
+        takenThisCycle = r2(takenThisCycle - days); // debits are negative ⇒ positive magnitude
+        if (r.sourceRequestId != null) takenOnLeave = r2(takenOnLeave - days);
+        else otherDebits.push({ ledgerId: r.id, effectiveOn: r.effectiveOn, days: r2(-days), kind: null, reason: r.reason });
+        continue;
+      }
+      if (r.entryType !== 'adjustment') continue;
       switch (classifyLedgerAdjustment(r.reason)) {
         case 'forfeit':
           forfeitedThisCycle = r2(forfeitedThisCycle - days); // forfeits are negative ⇒ positive magnitude
+          forfeitItems.push({ effectiveOn: r.effectiveOn, days: r2(-days), kind: forfeitKind(r.reason)! });
           break;
         case 'system':
           systemAdjustments = r2(systemAdjustments + days);
+          systemItems.push({ effectiveOn: r.effectiveOn, days, kind: systemCorrectionKind(r.reason)! });
           break;
         case 'config':
           configAdjustments = r2(configAdjustments + days);
@@ -3512,6 +3595,104 @@ export function leaveEntitlementBreakdown(
         : undefined;
 
     const i18n = type.i18n as Record<string, { name: string }> | null;
+    const eligibleDays = r2(policy?.days ?? 0);
+
+    /**
+     * r303 (31492f74) — HR's per-line working, assembled ONLY when asked and ONLY from what this read already
+     * holds: the winner and band `eligibleDays` came from, the policy every rule came from, and the records the
+     * ledger walk above pushed beside each figure. The single extra read is the Leave Credit register, asked
+     * only about this leave year's unlinked debits, so an expired / paid-out / reversed credit can be named
+     * rather than listed as "reason not recorded".
+     */
+    let derivation: LeaveSummaryDerivation | undefined;
+    if (opts.derivation) {
+      if (otherDebits.length > 0) {
+        const ids = otherDebits.map((o) => o.ledgerId);
+        const leaveCredits = await tx
+          .select({
+            status: toilAccrual.status,
+            settledLedgerEntryId: toilAccrual.settledLedgerEntryId,
+            reversalLedgerEntryId: toilAccrual.reversalLedgerEntryId,
+          })
+          .from(toilAccrual)
+          .where(or(inArray(toilAccrual.settledLedgerEntryId, ids), inArray(toilAccrual.reversalLedgerEntryId, ids)));
+        const kindByLedgerId = new Map<string, LeaveSummaryDerivation['taken']['other'][number]['kind']>();
+        for (const c of leaveCredits) {
+          if (c.reversalLedgerEntryId) kindByLedgerId.set(c.reversalLedgerEntryId, 'credit_reversed');
+          if (c.settledLedgerEntryId) {
+            kindByLedgerId.set(
+              c.settledLedgerEntryId,
+              c.status === 'converted_to_pay' ? 'credit_paid_out' : c.status === 'lapsed' ? 'credit_expired' : null,
+            );
+          }
+        }
+        for (const o of otherDebits) o.kind = kindByLedgerId.get(o.ledgerId) ?? null;
+      }
+      const cycleEnd = leaveCycleEnd(cycleStart);
+      const override = type.yearCycleOverride;
+      const joinedThisLeaveYear = emp.hiredOn >= cycleStart && emp.hiredOn <= cycleEnd;
+      const roundingMethod = policy?.roundingMethod ?? 'none';
+      derivation = {
+        entitlement: {
+          tableName: entitlementWinner?.templateName ?? null,
+          via: !entitlementWinner
+            ? null
+            : entitlementWinner.viaSoleTemplate
+              ? 'sole_table'
+              : entitlementWinner.viaDefaultTemplate
+                ? 'default_table'
+                : 'scheme',
+          schemeName: entitlementWinner?.ruleName ?? null,
+          winReason: entitlementWinner?.winReason ?? null,
+          hiredOn: emp.hiredOn,
+          serviceYears: serviceYearsAtCycleStart,
+          band: band ? { fromYears: band.fromYears, toYears: band.toYears } : null,
+          days: eligibleDays,
+        },
+        earned: {
+          method: policy == null ? null : isEarnedMethod(policy.method) ? policy.method : 'up_front',
+          leaveYear: effectiveCycle === 'anniversary' ? 'anniversary' : 'calendar',
+          leaveYearOverride: override === 'a2a' || override === 'c2c' || override === 'a2c' ? override : null,
+          cycleEnd,
+          rounding:
+            policy == null
+              ? null
+              : roundingMethod === 'custom' && policy.roundingBands == null
+                ? 'custom_no_table'
+                : roundingMethod,
+          // An EARNED method on an a2c ANNUAL type in its hire year is the one combination where the engines
+          // disagree today (projectExpectedEntitlement's bc36c768 note: the accrual engine credits slices, the
+          // a2c kernel projects the up-front figure). There is no single join-year rule to name, so none is
+          // named; the credits listed below are still exactly what was posted.
+          joinYear:
+            joinedThisLeaveYear &&
+            policy != null &&
+            !(
+              isEarnedMethod(policy.method) &&
+              hireYearGrantShape({ typeCode: type.code, yearCycleOverride: override, hiredOn: emp.hiredOn }) === 'a2c_up_front'
+            )
+              ? isEarnedMethod(policy.method)
+                ? {
+                    hiredOn: emp.hiredOn,
+                    rule: 'earned_from',
+                    earnedFrom: earnedAccrualStart({ method: policy.method, cycleStart, hiredOn: emp.hiredOn, leaveCycle: effectiveCycle }),
+                  }
+                : {
+                    hiredOn: emp.hiredOn,
+                    rule: hireYearGrantShape({ typeCode: type.code, yearCycleOverride: override, hiredOn: emp.hiredOn }),
+                    earnedFrom: null,
+                  }
+              : null,
+          credits,
+        },
+        carry: { rule: policy == null ? 'not_recorded' : carryEnabled(policy) ? 'on' : 'off', maxDays: carryMax, percent: carryPercent },
+        adjustments: { manual: configAdjustmentItems, system: systemItems },
+        taken: { leaveDays: takenOnLeave, other: otherDebits.map(({ ledgerId: _id, ...o }) => o) },
+        pending: pendingRows.map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days) })),
+        forfeited: forfeitItems,
+      };
+    }
+
     return {
       leaveTypeId: type.id,
       leaveType: pickName(type.name, i18n, locale),
@@ -3520,7 +3701,7 @@ export function leaveEntitlementBreakdown(
       // 1f6fd6d8: the full-year grant from the SAME winning policy row every other figure here resolves
       // against (`policy`), so Eligible and the accrual that lands in the ledger can never describe
       // different policies.
-      eligibleDays: r2(policy?.days ?? 0),
+      eligibleDays,
       // 31e39d74: the state behind the figure, and the table it came from. Both DESCRIBE the tenant's own
       // configuration — nothing here changes it (the plan is explicit: surface, do not fix silently).
       entitlementStatus,
@@ -3534,7 +3715,7 @@ export function leaveEntitlementBreakdown(
       forfeited,
       otherAdjustments: num(agg?.otherAdjustments),
       balance,
-      pendingApproval: num(pendRow?.pending),
+      pendingApproval,
       broughtForward: priorBalance,
       configAdjustments,
       systemAdjustments,
@@ -3543,7 +3724,7 @@ export function leaveEntitlementBreakdown(
       configAdjustmentItems,
       adjustments,
       totalEntitlement,
-      totalAvailable: Math.round((balance - num(pendRow?.pending)) * 100) / 100,
+      totalAvailable: Math.round((balance - pendingApproval) * 100) / 100,
       transactions: rows.map((r) => ({
         effectiveOn: r.effectiveOn,
         entryType: r.entryType,
@@ -3558,6 +3739,8 @@ export function leaveEntitlementBreakdown(
       // type is coded `RL` gets its COLUMN wording resolved instead of nine summary keys that name nothing
       // on its table.
       formulaExplanations: resolveLeaveFormulaForCode(type, type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
+      // r303: attached only when asked, so a caller that did not ask receives the object it always did.
+      ...(derivation ? { derivation } : {}),
     };
   });
 }

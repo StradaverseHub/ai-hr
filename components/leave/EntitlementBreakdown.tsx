@@ -17,6 +17,8 @@
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import type { PanelSummary } from './entitlement-panel-config';
 import type { EligibilityNotice, EntitlementStatus } from '@/lib/entitlement-status';
+import type { LeaveSummaryDerivation } from '@/lib/leave-summary-explain';
+import type { SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
 /** Mirror of core/read.ts LeaveEntitlementBreakdown — kept structural so this stays db-free. */
 export type EntitlementBreakdownData = {
@@ -79,7 +81,17 @@ export type EntitlementBreakdownData = {
    *  icon whose hover tooltip carries the description + formula explanation (feedback b8b665ff). Missing key
    *  / null ⇒ no icon. Structural mirror of core/read.ts ResolvedLeaveFormula (kept db-free). */
   formulaExplanations?: Record<string, { description?: string; formula?: string } | null>;
+  /** r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Present only on a
+   *  breakdown read with `{ derivation: true }` (the HR mounts); structural mirror of core/read.ts. */
+  derivation?: LeaveSummaryDerivation;
 };
+
+/**
+ * r303 (31492f74) — the HR explanation switch. Set by the two HR mounts (Employee Leave Inquiry, the Personnel
+ * record); the employee's My Leave never passes it, so what an employee sees is untouched. Carries the one thing
+ * the sentences need that the breakdown does not: whose shared balance the row's figures are, when they are.
+ */
+export type HrLeaveSummaryExplanation = { sharedBalance: SharedLeaveBalanceInfo | null };
 
 export function EntitlementBreakdown({
   data,
@@ -91,6 +103,7 @@ export function EntitlementBreakdown({
   applyEssConfig = false,
   triggerLabel,
   triggerClassName,
+  hrExplanation,
 }: {
   data: EntitlementBreakdownData;
   /** §1 Leave Summary figures from the balance row (leaveBalances). */
@@ -112,6 +125,8 @@ export function EntitlementBreakdown({
    *  a translator closure crossing this boundary is a 500 (r123). */
   triggerLabel?: string;
   triggerClassName?: string;
+  /** r303 — HR mounts only: replace each row's info icon with sentences explaining THIS employee's figure. */
+  hrExplanation?: HrLeaveSummaryExplanation;
 }) {
   return (
     <LeaveDetailsPanel
@@ -124,6 +139,7 @@ export function EntitlementBreakdown({
       applyEssConfig={applyEssConfig}
       triggerLabel={triggerLabel}
       triggerClassName={triggerClassName}
+      hrExplanation={hrExplanation}
       /* r212 — the notice rides INSIDE the breakdown the server already loaded, so every page that renders
          this adapter shows it without a prop of its own. Wiring it as a sibling prop instead would have
          meant editing each of the four host pages, and the one that forgot would have silently kept the

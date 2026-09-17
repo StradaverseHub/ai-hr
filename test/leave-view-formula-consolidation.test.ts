@@ -245,7 +245,13 @@ describe('employee: hover tooltip on any explained row', () => {
   });
 
   it('the static tooltip yields to an HR explanation (one icon per row)', () => {
-    expect(panel.includes('f.tooltipKey && !hasExpl')).toBe(true);
+    // r303 (31492f74) UPDATED: on the employee mounts this is exactly as before — one icon per row, the HR
+    // explanation superseding the static tooltip. On the HR mounts (`explained` non-null) NEITHER icon renders:
+    // the generated sentences replace them and HR's explanation shows as a plain paragraph underneath.
+    // Rendered proof, both sides: test/r303-leave-summary-explain.dom.test.tsx.
+    expect(panel.includes('{!explained && f.tooltipKey && !hasExpl && (')).toBe(true);
+    expect(panel.includes('{!explained && hasExpl && (')).toBe(true);
+    expect(panel.includes('{explained && (')).toBe(true);
   });
 });
 

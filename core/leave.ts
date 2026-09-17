@@ -8043,6 +8043,23 @@ export function effectiveAccrualDay(asOf: string, accrualDay?: number | null): n
 }
 
 /**
+ * r303 (31492f74) — THE DATE AN EARNED METHOD STARTS COUNTING FROM, lifted out of `earnedToDateFor` verbatim
+ * (both of its branches) so the Leave Summary explanation can say which joiner rule applies without holding
+ * a second copy of it. The cycle start for anyone hired on or before it and for every anniversary cycle; for a
+ * calendar-cycle joiner, the hire DATE on earned_daily and the first of the hire MONTH on the monthly and
+ * quarterly methods. See `earnedToDateFor`'s header for why the two differ.
+ */
+export function earnedAccrualStart(p: {
+  method: string | null | undefined;
+  cycleStart: string;
+  hiredOn: string;
+  leaveCycle: string | null | undefined;
+}): string {
+  if (p.leaveCycle === 'anniversary' || p.hiredOn <= p.cycleStart) return p.cycleStart;
+  return p.method === 'earned_daily' ? p.hiredOn : `${p.hiredOn.slice(0, 7)}-01`;
+}
+
+/**
  * bc36c768 — THE ONE EARNED-TO-DATE KERNEL. Returns the RAW cumulative an employee has earned in the
  * current cycle as of `asOf`, BEFORE rounding and before any max-balance room cap.
  *
@@ -8102,15 +8119,14 @@ export function earnedToDateFor(p: {
   if (!(annualDays > 0)) return 0;
 
   if (method === 'earned_daily') {
-    const accrualStart = leaveCycle === 'anniversary' || hiredOn <= cycleStart ? cycleStart : hiredOn;
+    const accrualStart = earnedAccrualStart({ method, cycleStart, hiredOn, leaveCycle });
     const leaveYearDays = leaveYearLength(cycleStart);
     const elapsed = Math.max(0, daysInclusive(accrualStart, asOf));
     return round2(Math.min((annualDays / leaveYearDays) * elapsed, annualDays));
   }
 
   const totalPeriods = method === 'earned_quarterly' ? 4 : 12;
-  const accrualStart =
-    leaveCycle === 'anniversary' || hiredOn <= cycleStart ? cycleStart : `${hiredOn.slice(0, 7)}-01`;
+  const accrualStart = earnedAccrualStart({ method, cycleStart, hiredOn, leaveCycle });
   let periods = accrualPeriods(accrualStart, asOf, method);
   // The accrual-day gate, monthly only. The CURRENT period counts only once its credit day has arrived;
   // before that, this month's slice has not been earned. Applied to the RAW period count and clamped
@@ -8232,6 +8248,22 @@ export function isA2cFirstYear(
 }
 
 /**
+ * r303 (31492f74) — WHICH of `hireYearGrantDays`' three branches applies, as a value, so the Leave Summary
+ * explanation names the join-year rule the engine uses instead of restating its predicates. `hireYearGrantDays`
+ * branches on THIS, so the sentence and the grant cannot describe different rules.
+ */
+export type HireYearGrantShape = 'a2c_up_front' | 'months_remaining' | 'full';
+export function hireYearGrantShape(p: {
+  typeCode: string;
+  yearCycleOverride: string | null | undefined;
+  hiredOn: string;
+}): HireYearGrantShape {
+  if (isA2cFirstYear(p.yearCycleOverride, p.typeCode, p.hiredOn, p.hiredOn)) return 'a2c_up_front';
+  if (p.typeCode === 'ANNUAL') return 'months_remaining';
+  return 'full';
+}
+
+/**
  * r193 — HOW A GRANT IS SHAPED IN THE EMPLOYEE'S HIRE YEAR, as ONE function two engines share.
  *
  * ⚠️ THIS EXISTS BECAUSE FAULT 2'S FIX WOULD OTHERWISE BREAK THE ONE-COMPOSITION INVARIANT. `openLeaveYear`
@@ -8264,11 +8296,12 @@ export function hireYearGrantDays(p: {
   hiredOn: string;
   serviceEnd?: string | null;
 }): number {
-  if (isA2cFirstYear(p.yearCycleOverride, p.typeCode, p.hiredOn, p.hiredOn)) {
+  const shape = hireYearGrantShape(p);
+  if (shape === 'a2c_up_front') {
     return a2cFirstYearEntitledToDate(p.hiredOn, p.hiredOn, p.days, p.serviceEnd ?? null);
   }
   // s.60E practice: whole months remaining in the hire year, INCLUDING the month of hire.
-  if (p.typeCode === 'ANNUAL') {
+  if (shape === 'months_remaining') {
     const month = Number(p.hiredOn.slice(5, 7));
     return Math.round(((p.days * (12 - (month - 1))) / 12) * 100) / 100;
   }

@@ -15,7 +15,6 @@ import {
   employeeDetail,
   employmentCompanyEditable,
   leaveBalances,
-  leaveEntitlementBreakdown,
   leaveRequestsFor,
   listDepartments,
   listEmployees,
@@ -33,6 +32,7 @@ import { benefitSchemeView } from '@/core/entitlement-scheme-view';
 // list of addresses, so a link whose job is "go and change the schemes" cannot disagree with the menu.
 import { leaveConfigScreenHref } from '@/components/leave-config-map';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { personnelHrExplanation, personnelLeaveBreakdowns } from './leave-breakdowns';
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
   ENTITLEMENT_STATUS_TIP_KEY,
@@ -357,9 +357,8 @@ export default async function EmployeePage({
   // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
   // gets a null breakdown (rendered as nothing) rather than a leak. Invalid/empty asOf falls back to today.
   const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
-  const breakdowns = await Promise.all(
-    balances.map((b) => leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf)),
-  );
+  // r303 (31492f74): the Leave card's Explain panel prints HR's per-line working (./leave-breakdowns.ts).
+  const breakdowns = await personnelLeaveBreakdowns(s, employmentId, balances.map((b) => b.leaveTypeId), breakdownAsOf);
   const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
   // 4da751c6 — same asOf as the breakdowns, so the scheme and the days it explains can never be read at
   // two different dates. Read-only and derived; no write, no column, no migration.
@@ -2679,6 +2678,8 @@ export default async function EmployeePage({
                   asOf={breakdownAsOf}
                   action={`/admin/personnel/${employmentId}`}
                   hiddenParams={from ? { from } : {}}
+                  // r303 (31492f74): HR's per-line sentences, naming the pool when this row's figures are one.
+                  hrExplanation={personnelHrExplanation(s, b.sharedBalance)}
                 />
               )}
             </div>

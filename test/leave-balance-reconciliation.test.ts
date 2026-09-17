@@ -32,8 +32,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { setLeaveTypeRules } from '../core/admin';
+import { setLeaveTypeRules, updateLeaveType } from '../core/admin';
 import {
+  A2C_RECALC_REASON_PREFIX,
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
@@ -42,6 +43,7 @@ import {
   expireCarriedLeave,
   openLeaveYear,
 } from '../core/leave';
+import { deriveBalanceRow } from '../components/leave/leave-balance-row';
 import {
   classifyLedgerAdjustment,
   leaveBalances,
@@ -219,12 +221,76 @@ describe('classifyLedgerAdjustment — the partition is exhaustive and mutually 
     expect(classifyLedgerAdjustment(`${PROFILE_RECALC_REASON_PREFIX}:${randomUUID()}`)).toBe('system');
   });
 
+  it('r303 — the Anniversary-to-Calendar correction (sys:a2c_recalc:*) is a SYSTEM correction, not an HR adjustment', () => {
+    // reprojectA2cEntitlement stamps BOTH of its rows `sys:a2c_recalc:<leaveTypeId>`. Its ADJUSTMENT row (the
+    // reversal of superseded system rows) fell through to 'config' here, so it was counted — and would be
+    // LISTED, by name, on HR's Leave Summary explanation — as a manual adjustment somebody typed.
+    expect(classifyLedgerAdjustment(`${A2C_RECALC_REASON_PREFIX}:${randomUUID()}`)).toBe('system');
+    // The prefix is matched WITH its separator, exactly like the two recalc prefixes: a typed reason that
+    // merely starts with the same letters is still HR's own.
+    expect(classifyLedgerAdjustment(`${A2C_RECALC_REASON_PREFIX}ulation note`)).toBe('config');
+  });
+
   it('everything else — a typed reason or none at all — is a CONFIG adjustment, whatever its sign', () => {
     expect(classifyLedgerAdjustment('CNY 2026')).toBe('config');
     expect(classifyLedgerAdjustment(null)).toBe('config');
     expect(classifyLedgerAdjustment('')).toBe('config');
     // Reason-driven, never sign-driven: the class of a row does not depend on its days.
     expect(classifyLedgerAdjustment('Manual correction — overpaid')).toBe('config');
+  });
+});
+
+/**
+ * r303 (31492f74) — WHAT THE a2c CLASSIFIER FIX MOVES, AND WHAT IT DOES NOT, pinned on the rows the REAL engine
+ * posts. The reporter's claw-down shape from test/leave-a2c-entitlement.test.ts: a hire-month lump of 20, a stale
+ * −9.50 policy recalc, 3.50 taken, then HR saves "Anniversary to Calendar" — reprojectA2cEntitlement posts an
+ * accrual claw-down AND a +9.50 `adjustment` reversal, both stamped `sys:a2c_recalc:<typeId>`.
+ *
+ *   • The Leave Summary's ONE Adjustments line (`adjustments` = config + system) DOES NOT MOVE: it was 0.00
+ *     before the fix and is 0.00 after, because the reversal only changes bucket.
+ *   • The config/system SPLIT moves: the +9.50 reversal leaves `configAdjustments` / `configAdjustmentItems`
+ *     and nets against the −9.50 it reverses inside `systemAdjustments`.
+ *   • HR's Employee Balances grid Adjustment column reads `configAdjustments` (deriveBalanceRow), so THAT figure
+ *     changes for an a2c first-year employee with a reversal: +9.50 before (a machine row shown as an HR
+ *     adjustment), 0.00 after. That is the one visible figure the fix changes, and it is pinned here.
+ */
+describe('r303 — an a2c correction is a system correction on every surface that splits adjustments', () => {
+  it('the reversal leaves the HR adjustment bucket and the itemised list; the Adjustments line is unchanged', async () => {
+    await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 20, validFrom: '2026-01-01' });
+    const emp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'A2C Recon', primaryEmail: `a2c_recon_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-06',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    await post(emp.employmentId, b.annualLeaveTypeId, 'adjustment', -9.5, '2026-05-01', `${POLICY_RECALC_REASON_PREFIX}:${randomUUID()}`);
+    await post(emp.employmentId, b.annualLeaveTypeId, 'debit', -3.5, '2026-06-10');
+    // HR saves Anniversary to Calendar — the real engine posts the two a2c rows.
+    await updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: 'a2c', asOf: '2026-07-23' });
+    const a2cAdjustments = await owner.db
+      .select({ days: schema.leaveLedger.days, reason: schema.leaveLedger.reason })
+      .from(schema.leaveLedger)
+      .where(and(eq(schema.leaveLedger.employmentId, emp.employmentId), eq(schema.leaveLedger.entryType, 'adjustment')));
+    // Guard the guard: the engine really did post a +9.50 a2c reversal.
+    expect(a2cAdjustments.filter((r) => (r.reason ?? '').startsWith(`${A2C_RECALC_REASON_PREFIX}:`)).map((r) => Number(r.days))).toEqual([9.5]);
+
+    const bd = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-07-23');
+    expect(bd.configAdjustments).toBe(0); // WAS 9.5 — the machine reversal counted as HR's adjustment
+    expect(bd.configAdjustmentItems).toEqual([]); // WAS [{ reason: 'sys:a2c_recalc:…', days: 9.5 }]
+    expect(bd.systemAdjustments).toBe(0); // −9.50 policy recalc + 9.50 a2c reversal
+    // The Leave Summary's Adjustments line: the same 0.00 before and after the fix.
+    expect(bd.adjustments).toBe(0);
+    expect(bd.balance).toBe(16.23);
+    expectReconciles(bd);
+
+    // Employee Balances grid, Adjustment column (deriveBalanceRow → configAdjustments): 9.50 before, 0.00 now.
+    const gridRow = deriveBalanceRow(
+      { leaveTypeId: b.annualLeaveTypeId, leaveType: 'Annual Leave', color: null, icon: null, code: 'ANNUAL', available: 16.23, taken: 3.5, balance: 16.23, essView: {} },
+      bd,
+    );
+    expect(gridRow.adjustment).toBe(0);
   });
 });
 

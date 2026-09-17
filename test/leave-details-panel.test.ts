@@ -30,6 +30,7 @@ import {
   type PanelData,
 } from '../components/leave/entitlement-panel-config';
 import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
+import { LEAVE_SUMMARY_EXPLAIN_KEYS } from '../lib/leave-summary-explain';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -234,6 +235,8 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
     'adjustmentNoReason',
     'asAtDate',
     'apply',
+    // r303 (31492f74): every sentence HR's mounts can print under a line (lib/leave-summary-explain.ts).
+    ...LEAVE_SUMMARY_EXPLAIN_KEYS.map((k) => `explain.${k}`),
   ];
 
   for (const loc of LOCALES) {
@@ -305,7 +308,8 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
   it('the mirror type carries every figure the summary reads (else the panel silently loses lines)', () => {
     // The adapter's structural mirror is what the RSC's breakdown object is assigned to. A field missing
     // here would compile fine on the server and render nothing.
-    for (const k of ['eligibleDays', 'adjustments', 'totalEntitlement', 'broughtForward', 'forfeitedThisCycle', 'takenThisCycle', 'pendingApproval', 'carryForwardExpiryDate']) {
+    // r303 (31492f74): `derivation` — the working HR's per-line sentences are rendered from.
+    for (const k of ['eligibleDays', 'adjustments', 'totalEntitlement', 'broughtForward', 'forfeitedThisCycle', 'takenThisCycle', 'pendingApproval', 'carryForwardExpiryDate', 'derivation?']) {
       expect(adapter.includes(`${k}:`), `mirror type missing ${k}`).toBe(true);
     }
   });
@@ -337,6 +341,13 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
     expect(read('/core/my-leave.ts')).toContain("statuses: ['pending', 'approved'],");
     // …and the panel takes no upcoming prop (comments recording the 11876072 removal are allowed).
     expect(read('/components/leave/LeaveDetailsPanel.tsx')).not.toMatch(/\bupcoming\??:\s/);
+  });
+
+  it('r303: only the HR call site switches the per-line sentences on; the employee dashboard never does', () => {
+    expect(read('/components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
+    // Personnel: only for an HR administrator (isAdmin(s), in ./leave-breakdowns.ts) — see test/r303-personnel-leave-explain.test.ts.
+    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).toContain('hrExplanation={personnelHrExplanation(s, b.sharedBalance)}');
+    expect(read('/app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 
   it('1f6fd6d8: no call site still feeds the four figures the summary stopped taking from leaveBalances', () => {
