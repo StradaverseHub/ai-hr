@@ -1,3 +1,105 @@
+## r298 (2026-09-17) — payroll sections ask before they read, Daily Attendance resolves holidays per calendar, and two plans rewritten from the reporter's words. `main@60a40452`, **no migration**.
+
+Closed and DEPLOYED: `ceb1c560` (payroll sections on core screens) · `b6a995c1` (Daily Attendance holiday N+1).
+Planned, then approved the same session, now building as r299: `3de1453a` (Earned Accrual is Annual Leave only) ·
+`3fb1a611` (Leave Credit, rev 3). Gate: **886 files — equal to the suite file count — 13,445 tests, 0
+AssertionErrors**, 14 foreground chunks of 63-64 files at 3 workers, every chunk counted==asked, first pass.
+`next build` exit 0. Render-checked on a dev server. Deployed: rsync dry-run zero lines, service active, `GET /`
+401, `/health` 200, `stale_build=0`, `built_ref` = 60a40452. Receipt written by hand (r296 precedent).
+
+### THE LOCAL CLUSTER WAS DOWN AT SESSION START, AND THE SEEDER REFUSES A FRESH ONE
+
+The RAM disk did not survive a reboot (symlink dangling, no socket). `dev-db-rebuild.sh` fixed it in under a
+minute. `pnpm db:seed` then REFUSED: r290's R4 guard counts `00000000-…` "System (auth audit)" — which migration
+0151 itself inserts — as a foreign tenant. On a freshly rebuilt disposable cluster that tenant is the only row, so
+`SEED_MAY_DESTROY_OTHER_TENANTS=1` is the correct override; it is also what every r299 agent was told. **Worth a
+small fix: R4 should not count the migration-created system tenant.** Not done.
+
+### `ceb1c560` — HIDING WAS DECIDED BY PRECEDENT; ONE CARD WAS HIDDEN THAT MUST NOT BE
+
+Tenant-wide `isModuleEnabledOrFalse(s, 'payroll')`, asked once per page, gating the READ and the card:
+Personnel (Pay Items, CP38, and the payroll-policy picker the builder found beyond the plan's list), Organization
+(default payroll cycle), My Profile (payslips, TP1, loans). Basic Salary is `core/comp.ts` spine, so the Payroll tab
+never empties and `?tab=payroll` / `?tab=pay` keep landing on it.
+
+**The adversarial verifier's one real finding, hand-fixed (`7989e9d5`): the build also hid Borang EA.** EA is a
+statutory document built from payslips that already exist; `/me/ea/[employmentId]/pdf` has no module guard and
+its reads are `core/read.ts`, which no binding plan touches. Hiding it took the only in-app link to their tax
+statement from employees AND LEAVERS of a company that ran payroll and later dropped the module. Now drawn when
+Payroll is on OR a statement exists, PDF link only without Payroll (`/payroll/reports/ea` is behind the Payroll
+layout). Three mutations each fail exactly one named assertion.
+
+**Checked across files, not assumed:** no hidden form can clear stored data. The policy card and the cycle picker
+each post as their own form; the Personnel tab-save sends only sections that are on the page and edited
+(`tab-save-scope.tsx`), and `updateCompany` never reads `defaultPayrollCycle`.
+
+**The item's purpose is proven, not implied:** binding `core/loans.ts`, `core/cp38.ts`, `core/payroll-cycle.ts`
+in a scratch copy leaves the three screens rendering for a Payroll-off tenant, and the same binding with main's
+pages throws `ModuleNotEnabledError`. **Not bound in this round** — a separate change.
+
+**r294's audit corrected by the builder:** `core/attendance-allowance.ts` passes its own `tx` to
+`setPayrollBatchComponent`, so binding `pay-components` would not reach that call. The real Attendance-pack
+blocker is the READ of `listSupportedBatchComponents` in `app/admin/attendance-allowance/page.tsx`. Recorded in
+`core/module-gate.ts`; `test/module-gate.test.ts`'s r294 reasoning comments updated.
+
+### `b6a995c1` — THE REPO ALREADY HAD THE SAFE SHAPE, AND THE TICKET'S 10 SECONDS WAS MOSTLY SOMETHING ELSE
+
+**A deliberate departure from the approved plan's build notes, declared.** They proposed a set-based
+`holidayDatesForMany` with `holidayDatesFor` delegating to it. Rejected: `holidayDatesFor` has four call sites in
+`core/payroll.ts`, so delegation rewrites a money path for a display loop; re-expressing ~250 lines of calendar
+branches as set SQL is where divergence hides; and once single delegates to many, "many equals single" is a test
+of the code against itself. **`core/absence-days.ts` already memoizes the UNCHANGED resolver** on its four
+determining inputs (company, work state, holiday group, open-assignment location). r298 lifts that shape into
+`holidayDatesByEmployment` beside the resolver, whose body is untouched. The reporter-facing promise — same answer,
+fewer steps — holds exactly.
+
+**Equivalence against literal dates, not only against the resolver**, with fixture pairs that differ in ONE key
+input each. Removing each key component in turn turns 3-6 of 9 tests red (I re-derived the workState case: 3 red,
+the three equivalence tests). Only consumer of the loader: `app/attendance/daily/page.tsx`.
+
+**CORRECTION OWED — the premise we gave the reporter was partly wrong.** Measured with analysed tables, 1,000
+no-row employees: **~1.75 s → ~0.25 s** (holiday step 1.7 s → <0.1 s). But on freshly bulk-loaded tables with stale
+planner statistics the page still takes ~11 s — in the loader's FIRST query (employment/person/attendance/
+assignment), which this change does not touch. r297's "10 s → 0.31 s by adding attendance rows" was measured on a
+fresh bulk seed where that insert likely also triggered a re-analyse. **UNKNOWN whether production ever hits that
+plan** (`EXPLAIN ANALYZE` on the box, or `pg_stat_user_tables.last_autoanalyze`, would say). A company where every
+employee has a distinct calendar key gains nothing (worst case unchanged). The reporter was told the holiday loop
+was the whole cost; it was the dominant cost only on analysed tables.
+
+**Found en route, NOT changed:** `two open assignments` cannot exist (`assignment_no_overlap`, migration 0001), so
+both memos' ambiguity branch is defence in depth. **And a real, pre-existing inconsistency:** a group-override
+company's calendar depends on the WINDOW — the company override applies only when the company's own holiday falls
+inside the requested range, so the one-day Daily screen and the month roll-up can disagree about the same date.
+
+### `3de1453a` AND `3fb1a611` — PLANNED, WITH ONE COURSE EACH AND A PICTURE EACH
+
+`3de1453a`: the earned sweep keys on CODE (`STANDING_LEAVE_CODES`), while 65f466e2 made `leave_type.role` the
+tenant-independent answer and no screen can set it — so the reporter's own `*Annual Leave` (non-standing code,
+unclassified) can never accrue, AND Sick/Hospitalisation still can. Plan: one predicate (role first), a "This is
+our Annual Leave" switch, earned options only on that type, picker disables the rest. **Production read was
+refused by the auto-mode classifier** (`[Production Reads]`) so the plan's MEASURE FIRST could not run; r293's
+recorded state (no active standing code on the account) is the evidence relied on, stated as an assumption.
+
+`3fb1a611` rev 3: **rev 2 was our error** — it read `8a494721` (remove the dead setting) as cancelling Leave
+Credit; the reporter's block answer separates them. Research (read-only agent) corrected our own history in five
+places: the employee-request path accepts ANY date (no day-type gate), `replacement_leave_from` is not a day-type
+setting, r278's "role NULL + archived REPLACEMENT is not replacement" is wrong by code (the code fallback makes it
+true), `build/r279-credit`'s reversal DELETES `toil_accrual` rows (contradicts "reverse without deleting"), and
+`/admin/toil`'s nav row is hidden by the ATTENDANCE module. Plan: one ledger, Rules tab on the new screen (not back
+on Company Rules), HR grant names a date worked and warns about the OT it suppresses, Leave Adjustments refuses the
+replacement type. **Turning `toil` on for the tenant is an operator action for the owner, not part of the build.**
+
+### NOT DONE
+
+- Organization's statutory-body cards (`listCompanyStatutoryAuthorities`, `listSignatoryCandidates`, Payroll pack)
+  still render without Payroll — they share one save with the company's EPF/SOCSO/LHDN identity; splitting is its
+  own change. Also visible without Payroll: Personnel's Zakat card (links to a gated page), Add Company's Default
+  Payroll Cycle, the My Profile tour's payslips step (now anchorless → floating card), TP3, leave encashment.
+- `core/loans.ts` / `cp38.ts` / `payroll-cycle.ts` not bound. `core/absence-days.ts` keeps its own copy of the
+  memo key (the resolver's doc comment now names both).
+- Request cancellation for Daily Attendance (aborting the client does not stop the server) — still its own item.
+- `r297` has no round entry in this file.
+
 ## r296 (2026-09-17) — an alarm for the outage that had none, one PERKESO writer, and the runbook that is the control. `main@5727b28b`, **no migration**.
 
 Readiness **2.1** (alarm the entitlement engine going dark), **3.1** (two PERKESO builders disagreed),
