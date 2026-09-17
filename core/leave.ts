@@ -8952,7 +8952,8 @@ export async function reprojectEntitlementForEmployment(
     // Leave Year Type override (e1a51aea): yearCycleOverride resolves each type's effective cycle below.
     const types = await tx
       // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
-      .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+      // r299 (3de1453a): `role` rides along for the Earned Accrual boundary below.
+      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(and(eq(leaveType.tenantId, ctx.tenantId), isNull(leaveType.archivedAt)));
     if (types.length === 0) return none;
@@ -9018,6 +9019,15 @@ export async function reprojectEntitlementForEmployment(
     let totalDelta = 0;
     for (const type of types) {
       if (frozenSet.has(`${p.employmentId}|${type.id}`)) continue;
+      // r299 (3de1453a) — THE SAME BOUNDARY AS accrueEarnedLeave, OR THE PROMISE IS FALSE. Earned Accrual
+      // is Annual Leave only now, and the reporter was told that for every other leave type "nothing is
+      // calculated, added or changed". This kernel corrects any type with an accrual row this cycle, so a
+      // non-Annual type left on an earned method (e.g. a SICK type the old sweep had been topping up) would
+      // still be topped up here on an ordinary profile save — the one path left adding earned days to a type
+      // the sweep no longer touches. openLeaveYear skips it too (outcome 'earned_method'), so skipping it
+      // here makes all three engines agree: a STRANDED method posts nothing until HR changes it, and Leave
+      // Balance Health names it (earned_method_not_annual_leave).
+      if (isEarnedMethod(type.accrualMethod) && !isEarnedAccrualType(type)) continue;
       // Leave Year Type override (e1a51aea): the kernel receives the EFFECTIVE cycle for this type — a
       // per-type 'a2a'/'c2c' override wins; null falls back to the company cycle (byte-identical).
       const projected = projectExpectedEntitlement(

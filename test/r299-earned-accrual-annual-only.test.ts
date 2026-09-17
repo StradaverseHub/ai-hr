@@ -35,6 +35,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import {
   accrueEarnedLeave,
+  reprojectEntitlementForEmployment,
   annualLeaveSwitchState,
   isEarnedAccrualType,
   STANDING_LEAVE_CODES,
@@ -246,6 +247,32 @@ describe('§2 the engine sweeps Annual Leave only', () => {
       expect((await ledgerRowsFor(b.annualLeaveTypeId)).length).toBe(1);
     });
   }
+
+  it('the PROFILE RECALCULATION agrees: a stranded earned method on SICK is not topped up, Annual Leave still is', async () => {
+    // An accrual row the OLD sweep would have posted this cycle, before this release narrowed it. Without the
+    // boundary in reprojectEntitlementForEmployment an ordinary profile save corrects it upward.
+    const sick = await mkType('SICK', 'Medical Leave');
+    await setMethod(sick, 'earned_monthly');
+    await configure(sick);
+    await setMethod(b.annualLeaveTypeId, 'earned_monthly');
+    await configure(b.annualLeaveTypeId);
+    const { employmentId } = await hire();
+    for (const leaveTypeId of [sick, b.annualLeaveTypeId]) {
+      await owner.db.insert(schema.leaveLedger).values({
+        tenantId: b.tenantId,
+        employmentId,
+        leaveTypeId,
+        entryType: 'accrual',
+        days: '0.50',
+        effectiveOn: JAN,
+      });
+    }
+    const before = (await ledgerRowsFor(sick)).length;
+    await reprojectEntitlementForEmployment(ctx(), { employmentId, asOf: MID, trigger: 'r299-test' });
+    expect(await ledgerRowsFor(sick), 'nothing is calculated, added or changed for a non-Annual type').toHaveLength(before);
+    // POSITIVE CONTROL — the same shape on Annual Leave IS corrected, so the arm above is not vacuous.
+    expect((await ledgerRowsFor(b.annualLeaveTypeId)).length, 'Annual Leave is still corrected').toBeGreaterThan(1);
+  });
 
   it('an UNSCOPED run ("All leave types") posts Annual Leave rows only', async () => {
     const sick = await mkType('SICK', 'Medical Leave');
