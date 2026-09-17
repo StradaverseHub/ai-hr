@@ -51,17 +51,26 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     // History now filters by date and leave type, and the paginated read is where those filters live. What
     // makes a call org-wide is not its NAME but its SCOPE — so the assertion moved to the scope.
     //
-    // Every call on this page must be narrowed to the viewer's own employments. A `companyIds:` or
-    // `statuses:` argument here would be the register returning.
+    // Every call on this page must be narrowed to the viewer's own employments. A `companyIds:` argument here
+    // would be the register returning.
+    //
+    // UPDATED BY r302 (6c9802c9, the same rule): My Leave History gets Pending / Approved / Rejected / Cancelled
+    // tabs, and the approved build note puts them on "the existing statuses filter on the history read". So a
+    // `statuses:` argument is now legitimate — but only ever ONE status, taken from the tab whitelist, on a read
+    // that is still narrowed to the viewer. Three reads: the unfiltered one (options + total), one count per
+    // tab, and the active tab's rows.
     const pageCalls = leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
-    expect(pageCalls.length, 'the self-service history reads the paginated, self-narrowed read').toBe(2);
+    expect(pageCalls.length, 'the self-service history reads the paginated, self-narrowed read').toBe(3);
     for (const call of pageCalls) {
       expect(call, 'every /leave history read is narrowed to the viewer').toContain(
         'employmentIds: historyEmploymentIds',
       );
       expect(call).not.toContain('companyIds:');
-      expect(call).not.toContain('statuses:');
+      const statuses = call.match(/statuses: (.*),/)?.[1];
+      if (statuses != null) expect(['[tab]', '[historyTab]'], `a history read narrowed by ${statuses}`).toContain(statuses);
     }
+    expect(leavePage).toContain('LEAVE_HISTORY_TABS.map(');
+    expect(leavePage).toContain('const historyTab = resolveHistoryTab(sp.hTab, tabCounts);');
     // And it is the VIEWER's own employments — not just the current one, or a rehired person loses the
     // records of their earlier employment (the personId test this replaced kept them).
     expect(leavePage).toContain('const myEmploymentIds = (await myEmploymentIdsAll(session)).map(');
@@ -92,10 +101,12 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     }
     // Empty-with-filters says the filters matched nothing — NOT requestsEmpty, which means "no records at all".
     expect(leavePage).toContain("t('filters.emptyFiltered')");
-    expect(leavePage).toContain("t('filters.showingOf', { shown: selfHistory.length, total })");
+    // r302: "shown" is the filtered total across the four tabs (each tab is one status of the same filter).
+    expect(leavePage).toContain("t('filters.showingOf', { shown: filteredTotal, total })");
     // LAYOUT TRAP: FilterPanel's popover is absolutely positioned, not a portal, so a clipping ancestor
-    // would cut it off. The history Card must not clip.
-    expect(leavePage).toContain('<Card className={`flex flex-col ${COLUMN_CAP}`} data-tour="leave-requests">');
+    // would cut it off. The history Card must not clip. (r302: full width, no column cap any more.)
+    expect(leavePage).toContain('<Card className="flex flex-col" data-tour="leave-requests">');
+    expect(leavePage.slice(leavePage.indexOf('data-tour="leave-requests"')).split('<FilterPanel')[0]).not.toContain('overflow-hidden');
   });
 
   it('ad965821: the ESS apply dropdown is built from the ELIGIBILITY-filtered read', () => {

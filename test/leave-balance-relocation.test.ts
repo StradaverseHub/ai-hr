@@ -20,46 +20,59 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const leavePage = read('/app/leave/page.tsx');
 const mePage = read('/app/me/page.tsx');
+// r302 (6c9802c9) — the per-year dashboard read the page now calls, and the island that renders it.
+const myLeave = read('/core/my-leave.ts');
+const dashboardCmp = read('/components/leave/my-leave-dashboard.tsx');
 
-describe('R37 e5a158d3: /leave now hosts the detailed balance table', () => {
-  it('renders LeaveBalanceTable derived through the shared deriveBalanceRow helper', () => {
-    expect(leavePage).toMatch(/<LeaveBalanceTable/);
-    expect(leavePage).toMatch(/deriveBalanceRow\(b, bd \?\? null\)/);
+// ── UPDATED BY r302 (board 6c9802c9), which REVERSES the decision these blocks pinned ─────────────────────────
+// The approved My Leave dashboard plan removes the "My balances" card — the LeaveBalanceTable, its shared As-at
+// form and its collapsible cookie — and replaces the As-at date with a Year selector. The R37 invariants that
+// still hold are kept and repointed rather than deleted: the balance view is the VIEWER's own, from the SAME
+// sources (leaveBalances for which types, leaveEntitlementBreakdown for the figures), ESS-gated, with the
+// breakdown side-sheet posting back to /leave — and the old all-employee pivot never returns.
+describe('R37 e5a158d3 → r302: /leave hosts the viewer’s own balances, now as the per-year dashboard', () => {
+  it('the table is gone; the dashboard island renders cards from the server read', () => {
+    expect(leavePage).not.toMatch(/<LeaveBalanceTable/);
+    expect(leavePage).not.toMatch(/deriveBalanceRow\(/);
+    expect(leavePage).toMatch(/<MyLeaveDashboard\s/);
+    expect(leavePage).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
   });
 
-  it('preserves the per-row EntitlementBreakdown side-sheet with ESS gating', () => {
-    expect(leavePage).toMatch(/<EntitlementBreakdown/);
-    expect(leavePage.includes('applyEssConfig')).toBe(true);
-    // The breakdown's as-at form posts back to /leave (not /me).
-    expect(leavePage).toMatch(/action="\/leave"/);
+  it('preserves the per-type breakdown side-sheet with ESS gating, posting back to /leave', () => {
+    expect(dashboardCmp).toMatch(/<LeaveDetailsPanel/);
+    expect(dashboardCmp.includes('applyEssConfig')).toBe(true);
+    expect(dashboardCmp).toMatch(/action="\/leave"/);
+    // The figures themselves are gated on the server, before they cross to the client.
+    expect(myLeave).toContain("shows('available')");
+    expect(myLeave).toContain("shows('taken')");
   });
 
-  it('drives every row from ONE shared ?asOf= GET form (invalid/empty ⇒ today)', () => {
+  it('the As-at GET form is replaced by ONE Year GET form (an unknown year ⇒ the current one)', () => {
     expect(leavePage).toMatch(/method="GET"/);
-    expect(leavePage).toMatch(/name="asOf"/);
-    expect(leavePage).toMatch(/breakdownAsOf = sp\.asOf && \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(sp\.asOf\) \? sp\.asOf : today/);
+    expect(leavePage).toMatch(/name="leaveYear"/);
+    expect(leavePage).not.toMatch(/name="asOf"/);
+    expect(leavePage).not.toContain('breakdownAsOf');
+    expect(myLeave).toContain('export function resolveSelectedLeaveYear(');
   });
 });
 
 describe('R37 e5a158d3: same source, scoped to the viewer (no data change)', () => {
-  it('feeds the table from the per-employment leaveBalances + leaveEntitlementBreakdown (same as /me used)', () => {
-    // /leave uses the VIEWER's own employment — the self-service detailed view, not the admin pivot.
-    // ec991c2a relaxed the closing paren out of this pattern: the call now passes an explicit
-    // `{ includeArchived: false }`. What this guard is for — the VIEWER's own employment, localized, not
-    // the admin pivot — is asserted by the three arguments that remain, and `leaveBalancesAll` is still
-    // excluded below.
-    expect(leavePage).toMatch(/leaveBalances\(session, me\.employmentId, locale\b/);
-    expect(leavePage).toMatch(/leaveEntitlementBreakdown\(session, me\.employmentId, b\.leaveTypeId, breakdownAsOf, locale\)/);
+  it('feeds the dashboard from the per-employment leaveBalances + leaveEntitlementBreakdown', () => {
+    // /leave uses the VIEWER's own employment — the self-service view, not the admin pivot. r302 moved the two
+    // reads into core/my-leave.ts; they are the same reads, per leave year.
+    expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale, \{ includeArchived: false \}\)/);
+    expect(myLeave).toMatch(/leaveEntitlementBreakdown\(ctx, employmentId, storyId, asOf, locale\)/);
     // a7cbd895 (My Absence): the ENTIRE /me Leave tab has since moved to /leave, so /me reads no leave
-    // sources at all anymore — the /leave reads above are now the single self-service source.
+    // sources at all anymore.
     expect(mePage.includes('leaveBalances(')).toBe(false);
     expect(mePage.includes('leaveEntitlementBreakdown(')).toBe(false);
   });
 
   it('drops the old all-employee pivot balance view (leaveBalancesAll) from /leave', () => {
     expect(leavePage.includes('leaveBalancesAll')).toBe(false);
-    // The hidden default-placement filter is preserved (mirrors /me detailedBalances).
-    expect(leavePage).toMatch(/selfBalances\.filter\(\(b\) => b\.placement !== 'hidden'\)/);
+    expect(myLeave.includes('leaveBalancesAll')).toBe(false);
+    // The hidden default-placement filter is preserved.
+    expect(myLeave).toMatch(/\.filter\(\s*\(b\) => b\.placement !== 'hidden',?\s*\)/);
   });
 });
 
@@ -71,10 +84,13 @@ describe('R37 e5a158d3: /me no longer renders the detailed table (relocated away
 });
 
 describe('R37 e5a158d3: RSC server/client boundary is respected on /leave', () => {
-  it('/leave is a server component (no "use client") that imports deriveBalanceRow from the server-safe module', () => {
+  it('/leave is a server component (no "use client"); the dashboard it renders is the client island', () => {
     expect(leavePage.trimStart().startsWith("'use client'")).toBe(false);
-    // The pure helper must come from leave-balance-row (NON-'use client'), never the client table.
-    expect(leavePage).toMatch(/import \{ deriveBalanceRow \} from '@\/components\/leave\/leave-balance-row'/);
+    // UPDATED BY r302: the page calls no row helper any more — the figures come from core/my-leave.ts (server)
+    // and the dashboard component is a client island the page RENDERS, never calls.
+    expect(dashboardCmp.trimStart().startsWith("'use client'")).toBe(true);
+    expect(leavePage).not.toMatch(/MyLeaveDashboard\(/);
+    expect(myLeave.trimStart().startsWith("'use client'")).toBe(false);
   });
 
   it('leave-balance-row.ts (the module the server page CALLS) is not a client module', () => {

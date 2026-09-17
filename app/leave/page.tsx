@@ -4,7 +4,6 @@ import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
   leaveRequestDateBreakdown,
-  leaveRequestsFor,
   myEmployment,
   myEmploymentIdsAll,
   listEmployees,

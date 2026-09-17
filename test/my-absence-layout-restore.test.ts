@@ -60,27 +60,28 @@ const selfBranch = () => {
 const entriesBuilder = () =>
   leavePage.slice(leavePage.indexOf('const historyEntries'), leavePage.indexOf('{!admin && ('));
 
+// ── UPDATED BY r302 (board 6c9802c9) ──────────────────────────────────────────────────────────────────────────
+// The approved My Leave dashboard plan REVERSES three of 56a0deb9's decisions pinned in this file: "The My
+// balances card and the Other leave types card are removed", the history goes "across the full width" (no
+// two-column pairing), and "The 'As at' date on the old My balances table is replaced by the Year selector".
+// Each case below that pinned one of those now pins its reversal — the card, its cookie and its As-at form are
+// ABSENT, and what replaced them is present — rather than being deleted. The cases about things this item did
+// not change (the fold component, the short page, the shipped keys, the history builder) are untouched.
 describe('56a0deb9 §1: the Current Balance card is collapsible, closed by default, cookie-persisted', () => {
-  it('wraps the balance card body in CollapsibleCardSection with the leave_balance_open cookie', () => {
-    expect(leavePage.includes("const BALANCE_OPEN_COOKIE = 'leave_balance_open'")).toBe(true);
-    const card = leavePage.slice(
-      leavePage.indexOf('data-tour="leave-balance"'),
-      leavePage.indexOf('</CollapsibleCardSection>'),
-    );
-    expect(card).toContain('<CollapsibleCardSection');
-    expect(card).toContain("title={t('myBalancesTitle')}");
-    expect(card).toContain("subtitle={t('balancesSubtitle')}");
-    expect(card).toContain("toggleLabel={t('balancesToggle')}");
-    expect(card).toContain('cookieKey={BALANCE_OPEN_COOKIE}');
-    expect(card).toContain('defaultOpen={balanceOpen}');
-    // The body it folds is the unchanged detailed view: as-at form + LeaveBalanceTable.
-    expect(card).toContain('name="asOf"');
-    expect(card).toContain('<LeaveBalanceTable');
+  it('r302: the collapsible My balances card is GONE — no fold, no cookie, no As-at form, no table', () => {
+    expect(leavePage.includes("const BALANCE_OPEN_COOKIE = 'leave_balance_open'")).toBe(false);
+    expect(leavePage).not.toContain('<CollapsibleCardSection');
+    expect(leavePage).not.toContain("title={t('myBalancesTitle')}");
+    expect(leavePage).not.toContain('name="asOf"');
+    expect(leavePage).not.toContain('<LeaveBalanceTable');
+    // What replaced it: the always-open dashboard card, and the Year selector in the header.
+    expect(leavePage).toContain("{t('myLeave.dashboardTitle')}");
+    expect(leavePage).toContain('name="leaveYear"');
   });
 
-  it('starts CLOSED: cookie absent resolves defaultOpen false, read SSR-side (no flash)', () => {
-    expect(leavePage).toMatch(/await cookies\(\)/);
-    expect(leavePage).toMatch(/BALANCE_OPEN_COOKIE\)\?\.value === '1'/);
+  it('r302: nothing on /leave reads a cookie any more (the fold state went with the card)', () => {
+    expect(leavePage).not.toMatch(/await cookies\(\)/);
+    expect(leavePage).not.toContain('BALANCE_OPEN_COOKIE');
   });
 
   it('keeps the leave-balance tour anchor on the Card (summary bar stays visible when closed)', () => {
@@ -120,33 +121,31 @@ describe('56a0deb9 §1: the Current Balance card is collapsible, closed by defau
 });
 
 describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is restored', () => {
-  it('/leave buckets SECONDARY-placement balances via lib/leave-groups, as the old /me tab did', () => {
-    expect(leavePage).toMatch(
-      /import \{ PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup \} from '@\/lib\/leave-groups'/,
-    );
-    expect(leavePage).toMatch(/b\.placement === 'secondary' && resolveSecondaryGroup\(b\.code\) === group/);
-    // Empty groups (and an all-primary catalog) are omitted.
-    expect(leavePage).toMatch(/\.filter\(\(g\) => g\.types\.length > 0\)/);
+  it('r302: placement is ORDER now — Primary before Secondary, Secondary by its lib/leave-groups group', () => {
+    // The "Other leave types" card is removed; every type sits in the one dashboard, ordered on the server.
+    const myLeave = read('core/my-leave.ts');
+    expect(myLeave).toMatch(/import \{ PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup \} from '\.\.\/lib\/leave-groups'/);
+    expect(myLeave).toContain("(a.placement === 'primary' ? 0 : 1) - (b.placement === 'primary' ? 0 : 1)");
+    expect(myLeave).toContain('resolveSecondaryGroup(c.code)');
+    expect(leavePage).not.toContain('secondaryGroups');
   });
 
-  it('renders SecondaryLeaveGroups with the pre-translated me-namespace labels', () => {
-    expect(leavePage.includes('<SecondaryLeaveGroups')).toBe(true);
-    expect(leavePage.includes("heading={tMe('otherLeaveHeading')}")).toBe(true);
-    expect(leavePage.includes('label: tMe(`leaveGroups.${group}`)')).toBe(true);
+  it('r302: the Other leave types card is GONE from /leave', () => {
+    expect(leavePage.includes('<SecondaryLeaveGroups')).toBe(false);
+    expect(leavePage.includes("heading={tMe('otherLeaveHeading')}")).toBe(false);
+    expect(leavePage.includes('secondaryBreakdownCard')).toBe(false);
   });
 
-  it('each row keeps the ESS-gated remaining figure + the View Breakdown side-sheet on /leave', () => {
-    const start = leavePage.indexOf('const secondaryBreakdownCard');
-    const card = leavePage.slice(start, leavePage.indexOf(') : null;', start));
-    expect(card).toContain('deriveBalanceRow(b, bd ?? null).available');
-    // 1f6fd6d8: the gate is no longer the `entitlementCalcBreakdown` key — that named a section the panel no
-    // longer has. The question the call site was really asking is "does HR still show this employee ANY line
-    // of the Leave Summary", which is what essViewHasAnyVisibleRow answers. The PROPERTY this test pins —
-    // that the side-sheet is ESS-gated at all — is unchanged.
-    expect(card).toContain('essViewHasAnyVisibleRow(b.essView)');
-    expect(card).toContain('<EntitlementBreakdown');
-    expect(card).toContain('action="/leave"');
-    expect(card).toContain('applyEssConfig');
+  it('each dashboard card keeps the ESS-gated figures + the breakdown side-sheet on /leave', () => {
+    const dashboard = read('components/leave/my-leave-dashboard.tsx');
+    // 1f6fd6d8's question — "does HR still show this employee ANY line of the Leave Summary" — still gates the
+    // side-sheet, per card; the figures are gated on the server (core/my-leave.ts), so a hidden one never
+    // reaches the island.
+    expect(dashboard).toContain('essViewHasAnyVisibleRow(c.essView)');
+    expect(dashboard).toContain('<LeaveDetailsPanel');
+    expect(dashboard).toContain('action="/leave"');
+    expect(dashboard).toContain('applyEssConfig');
+    expect(dashboard).toContain('DAY_DASH');
   });
 
   it('the component reproduces the old grouped-panel markup (open details per group, visual chip, dash for hidden)', () => {
@@ -177,18 +176,28 @@ describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is re
 });
 
 describe('56a0deb9 §3: breakdown + history side by side for self-service; admin keeps the table', () => {
-  it('the self-service branch pairs the two cards in a responsive lg:grid-cols-2 grid', () => {
+  it('r302: the history runs across the FULL width, after the dashboard and Upcoming Leave — no pairing grid', () => {
     const self = selfBranch();
-    expect(self).toContain('lg:grid-cols-2');
-    expect(self).toContain('{secondaryBreakdownCard(');
+    expect(self).not.toContain('lg:grid-cols-2');
+    expect(self).not.toContain('secondaryBreakdownCard');
     expect(self).toContain('data-tour="leave-requests"');
+    // One page, top to bottom: dashboard → Upcoming Leave → My Leave History.
+    const dashAt = leavePage.indexOf('data-tour="me-leave"');
+    const upcomingAt = leavePage.indexOf("{t('myLeave.upcomingTitle')}");
+    const historyAt = leavePage.indexOf('data-tour="leave-requests"');
+    expect(dashAt).toBeGreaterThan(-1);
+    expect(upcomingAt).toBeGreaterThan(dashAt);
+    expect(historyAt).toBeGreaterThan(upcomingAt);
   });
 
   it('the self-service history keeps every ported affordance — now via the card entries builder', () => {
     const builder = entriesBuilder();
     for (const kept of [
       "tMe('leaveStatus.partiallyApproved')", // partial badge
-      "tMe('stageManager')", // pending stage line
+      // r302 — the pending stage line ("Manager review" / "HR review" for every other kind) is replaced by the
+      // approver line (who, and at which level) and the step-by-step progress, labelled by the step's KIND.
+      'approverLine: approverLineFor(r)',
+      'approvalProgress: approvalProgressFor(r)',
       "tMe('viewDocument')", // own attachment link
       "t('cancelPendingBadge')", // ADR-0065 give-back pill
       '<EditLeaveDialog',
@@ -235,7 +244,8 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     const guardAt = leavePage.indexOf('if (me == null || admin) {');
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
-    for (const read of ['leaveBalances(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
+    // r302: the balance read is the per-year dashboard read now (it calls leaveBalances inside core/my-leave.ts).
+    for (const read of ['myLeaveDashboard(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
       expect(leavePage.indexOf(read), read).toBeGreaterThan(guardAt);
     }
   });
@@ -244,7 +254,9 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     // The self-service branch still calls it; the admin-side call is gone (it was the third face of My
     // Balances on a page that stopped being about the viewer).
     expect(leavePage.includes('{admin && secondaryBreakdownCard()')).toBe(false);
-    expect(selfBranch()).toContain('{secondaryBreakdownCard(');
+    // r302: the breakdown card is gone for everyone; the dashboard that replaced it is behind `ess`.
+    expect(leavePage).toContain('{ess && dashboard && (');
+    expect(leavePage).not.toMatch(/\{admin && [^}]*<MyLeaveDashboard/);
   });
 
   it('exactly one leave-requests tour anchor survives — the self-service card', () => {
@@ -262,7 +274,8 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
 describe('657962ec §1: the self-service history renders as compact cards, newest first, with a count heading', () => {
   it('replaces the dense list with the LeaveHistoryCards island fed by pre-built entries', () => {
     const self = selfBranch();
-    expect(self).toContain('<LeaveHistoryCards entries={historyEntries} locale={locale} />');
+    // r302: the island now also receives the four tab links and the empty-tab sentence.
+    expect(self).toMatch(/<LeaveHistoryCards\s+entries=\{historyEntries\}\s+locale=\{locale\}\s+tabs=\{historyTabs\}/);
     // The count heading ("My leave history (N)") — i18n with {count}.
     expect(self).toContain("t('historyCount', { count: total })");
     // The old heading pair is gone.
@@ -293,7 +306,10 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
     );
     expect(cardPart).toContain("t('viewDetails')");
     expect(cardPart).toContain('statusLabel'); // status badge
-    expect(cardPart).toContain('durationLine'); // duration line
+    // r302: the row's Days column prints the day figure without the panel's "Duration:" prefix (daysCell, the
+    // same formatter + plural category); and the Approver column is new on the row.
+    expect(cardPart).toContain('daysCell(e)');
+    expect(cardPart).toContain('e.approverLine');
     for (const absent of ['.actions', '.dateOutcome', '.documentHref', '.stageLabel', '.cancelPendingLabel']) {
       expect(cardPart.includes(absent), `on card face: ${absent}`).toBe(false);
     }
@@ -311,7 +327,13 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
       "t('details.session')",
       "t('details.status')",
       "t('details.attachment')",
-      'selected.stageLabel',
+      // r302: the stage line became the approval progress, with the reason, the date submitted, a rejection's
+      // reason and a cancellation's who and when beside it.
+      'selected.approvalProgress',
+      'selected.rejectionReason',
+      'selected.cancellation',
+      "t('myLeave.reason')",
+      "t('myLeave.submitted')",
       'selected.cancelPendingLabel',
       'selected.documentHref',
       'selected.dateOutcome',
@@ -326,14 +348,12 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
     expect(builder).toContain('submitAction={requestLeaveCancellationAction}');
   });
 
-  it('both columns share the equal-height lg cap and scroll within themselves', () => {
-    expect(leavePage).toContain("const COLUMN_CAP = 'lg:max-h-[42rem]'");
-    const self = selfBranch();
-    // Breakdown column: capped card scrolling as one body.
-    expect(self).toContain('{secondaryBreakdownCard(`${COLUMN_CAP} lg:overflow-y-auto`)}');
-    // History column: capped flex card, header fixed, body scrolling.
-    expect(self).toContain('${COLUMN_CAP}`} data-tour="leave-requests"');
-    expect(self).toContain('min-h-0 flex-1 overflow-y-auto');
+  it('r302: no equal-height column cap — there is one column, and the history is not capped inside it', () => {
+    // The cap existed to keep two side-by-side columns level; with the pairing gone it would only clip the
+    // history. The table scrolls sideways on its own at narrow widths instead (leave-history-cards.tsx).
+    expect(leavePage).not.toContain('COLUMN_CAP');
+    expect(selfBranch()).toContain('<Card className="flex flex-col" data-tour="leave-requests">');
+    expect(historyCmp).toContain('overflow-x-auto');
   });
 
   it('ships the card + detail-view keys in every locale', () => {
