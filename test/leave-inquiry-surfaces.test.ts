@@ -173,10 +173,11 @@ describe('20c699f8: Employee Balances', () => {
     // UPDATED BY r242 AND AGAIN BY r279 (AGENTS rule 18), not rewritten. The eleven the reporter asked for in
     // 20c699f8 are still asserted one by one and none of them moved; what changed is that a TWELFTH column
     // was added on the reporter's approved plan — the Explanation column whose button opens the read-only
-    // entitlement side-sheet — and then a THIRTEENTH, Full Entitlement. Deleting the eleven-column claim to
-    // make room for them would have retired a promise that is still being kept; the empty-state colSpan is
-    // the one figure that HAD to move with them, because a colSpan that no longer spans the header is a
-    // visibly broken empty row.
+    // entitlement side-sheet — and then a THIRTEENTH, Full Entitlement. 39136455 (r306) added a FOURTEENTH
+    // and FIFTEENTH, Share and Pending Share, between Adjustment and Balance. Deleting the eleven-column
+    // claim to make room for any of them would have retired a promise that is still being kept; the
+    // empty-state colSpan is the one figure that HAD to move with them, because a colSpan that no longer
+    // spans the header is a visibly broken empty row.
     for (const col of [
       "tInq('colLeaveCode')",
       "tInq('colEntitlementYear')",
@@ -196,7 +197,7 @@ describe('20c699f8: Employee Balances', () => {
     ]) {
       expect(balancesPage.includes(col), col).toBe(true);
     }
-    expect(balancesPage).toContain('colSpan={13}');
+    expect(balancesPage).toContain('colSpan={15}');
   });
 
   /**
