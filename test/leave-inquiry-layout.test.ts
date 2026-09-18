@@ -53,6 +53,19 @@ const inquiryPart = (rel: string) => {
   return src.slice(0, at);
 };
 
+/** Source with block and line comments removed, for assertions about what the JSX actually says. */
+const codeOnly = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/**
+ * The nav's CODE, never its prose — the reason this file's header already gives about max-w-7xl, now true
+ * of the nav too: it records at length that it USED to be an sm:w-44 rail beside a gap-4, and that it is
+ * deliberately not a role="tablist". A whole-file search finds every one of those strings in the
+ * explanation of why it is gone. Comment-stripping rather than className-matching, because the pill's
+ * className is a template literal and a quoted-value regex cannot see inside one.
+ */
+const navCode = () => codeOnly(read(NAV));
+
 describe('026e16b9 · the three inquiry tabs use the page width, consistently', () => {
   it('all three share ONE container cap, and it is wider than the old max-w-7xl / max-w-6xl', () => {
     // They were 7xl, 7xl and 6xl — three tabs of one screen, three different widths. The shared cap is what
@@ -90,21 +103,74 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     }
   });
 
-  it('the inquiry rail is narrow, and the gap beside it is tight', () => {
-    // The rail holds three short labels; at w-56 plus gap-6 it was taking 248px off the content area.
-    expect(read(NAV).includes('sm:w-44')).toBe(true);
-    expect(read(NAV).includes('sm:w-56')).toBe(false);
+  /**
+   * d990f14a REVERSES THE RAIL, so the two assertions that used to pin its width and its column direction
+   * are RE-POINTED at the mechanism that replaces it, not deleted. The claim 026e16b9 made — "the tab list
+   * must not cost the table width" — is the same claim; the answer went from "make the column narrow" to
+   * "do not have a column". A rail reintroduced by a later edit fails here exactly as a WIDE rail did.
+   *
+   * The arithmetic that justified it: sm:w-44 is 11rem = 176px, plus the gap-4 beside it = 192px, against
+   * the 9px of overflow 026e16b9's own measurement left behind at a 1512px window.
+   */
+  it('there is NO rail: the tab list carries no width and takes no column', () => {
+    // SCOPED TO className VALUES, for the reason this file's header already gives about max-w-7xl: the nav
+    // now carries prose recording that it USED to be sm:w-44 beside a gap-4, and a whole-file search finds
+    // the width in the explanation of why it is gone.
+    const nav = navCode();
+    expect(nav.includes('sm:w-44'), 'the rail width is gone, not narrowed again').toBe(false);
+    expect(nav.includes('sm:w-56'), 'and certainly not back to the original width').toBe(false);
+    expect(nav, 'the tab list is never a vertical column again').not.toMatch(/sm:flex-col/);
     for (const p of [BALANCES, RECORDS, DETAILS]) {
-      expect(inquiryPart(p).includes('flex flex-col gap-4 sm:flex-row'), `${p} rail gap`).toBe(true);
+      expect(
+        inquiryPart(p).includes('sm:flex-row'),
+        `${p} must not put the tab list beside the content again`,
+      ).toBe(false);
     }
   });
 
-  it('remains responsive: the rail only takes a column from sm up, and tables still scroll inside a wrapper', () => {
-    // Below sm the rail is a horizontal strip above the table (flex-col), so nothing is squeezed on a phone.
-    expect(read(NAV)).toMatch(/sm:flex-col/);
+  it('the tab list is a horizontal strip that scrolls itself rather than wrapping onto a second line', () => {
+    // Six locales share this bar. Wrapping it would push the table down instead of costing width, which is
+    // the same defect in the other direction; scrolling the BAR keeps the table where it is.
+    const nav = navCode();
+    expect(nav).toMatch(/flex gap-[\d.]+ overflow-x-auto/);
+    expect(nav.includes('whitespace-nowrap'), 'a pill label never breaks mid-word').toBe(true);
+  });
+
+  it('it stays a NAV with aria-current — a segmented control that is really three routes', () => {
+    // The look is a tab strip; the behaviour is navigation. role="tablist"/aria-selected would tell a screen
+    // reader these are panels of one page and that activating one swaps a view, which is false.
+    // Comments stripped for the same reason: the component explains AT LENGTH why it is not a tablist, and
+    // that explanation necessarily names role="tablist" and aria-selected.
+    const nav = navCode();
+    expect(nav.includes('<nav aria-label={t(\'navLabel\')}>')).toBe(true);
+    expect(nav.includes("aria-current={active === tab.key ? 'page' : undefined}")).toBe(true);
+    expect(nav.includes('role="tablist"'), 'these are routes, not tabs').toBe(false);
+    expect(nav.includes('aria-selected'), 'these are routes, not tabs').toBe(false);
+  });
+
+  it('the tab bar is rendered ABOVE the table on every tab, and the tables still scroll in a wrapper', () => {
     for (const p of [BALANCES, RECORDS, DETAILS]) {
+      const src = inquiryPart(p);
+      const bar = src.indexOf('<LeaveInquiryNav');
+      const table = src.indexOf('<table');
+      expect(bar, `${p} still renders the tab bar`).toBeGreaterThan(-1);
+      expect(table, `${p} still renders its table`).toBeGreaterThan(-1);
+      expect(bar, `${p} must render the tab bar before its table`).toBeLessThan(table);
       // Whatever still cannot fit scrolls the TABLE, never the page.
-      expect(inquiryPart(p).includes('overflow-x-auto'), `${p} keeps its scroll container`).toBe(true);
+      expect(src.includes('overflow-x-auto'), `${p} keeps its scroll container`).toBe(true);
+    }
+  });
+
+  it('on the two tabs with a search bar, the bar sits BELOW the filters (the reporter asked for that order)', () => {
+    // Employee Details keeps its filters inside the card header and has nothing above the card, so it is
+    // deliberately not part of this assertion — see the note at its call site.
+    for (const p of [BALANCES, RECORDS]) {
+      const src = inquiryPart(p);
+      expect(src.indexOf('<FilterChips'), `${p} still has its filter chips`).toBeGreaterThan(-1);
+      expect(
+        src.indexOf('<FilterChips'),
+        `${p} must render the search bar and its chips above the tab bar`,
+      ).toBeLessThan(src.indexOf('<LeaveInquiryNav'));
     }
   });
 

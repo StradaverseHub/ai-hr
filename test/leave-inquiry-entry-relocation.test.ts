@@ -137,12 +137,14 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
 
 describe('388e53c2 · the rail is the way in, and only its FIRST tab moved', () => {
   it('Employee Details points at the tracker; the other two addresses are untouched', () => {
-    expect(nav).toContain("{ key: 'details', href: withEmp('/leave/tracker'), label: t('employeeDetails') }");
-    expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances'), label: t('employeeBalances') }");
-    expect(nav).toContain("{ key: 'records', href: withEmp('/leave/employee-records'), label: t('employeeLeaveRecord') }");
-    // `?emp=` threading is what makes switching tab keep the employee you are looking at.
-    expect(nav).toContain("const withEmp = (href: string) =>");
-    expect(nav).toContain('emp=${employmentId}');
+    expect(nav).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') }");
+    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
+    expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
+    // `emp` threading is what makes switching tab keep the employee you are looking at. d990f14a rebuilt
+    // the helper as hrefFor(base, tab) so it can also decide, PER DESTINATION, which filters carry over —
+    // the claim being guarded is unchanged: every tab href carries the employee.
+    expect(nav).toContain('const hrefFor = (base: string, tab: Tab) =>');
+    expect(nav).toContain("p.set('emp', employmentId)");
   });
 
   it('all three inquiry surfaces mount the rail, and the tracker opens on details', () => {
@@ -229,7 +231,7 @@ describe('r242 → 5ca446db · Leave Config points at the inquiry surface with a
     expect(leaveConfigLanding).not.toContain('LeaveInquiryNav');
     expect(leaveConfigLanding).not.toContain('employeeBalanceRows');
     // …and the rail's own three hrefs are untouched by this item; they are asserted verbatim above.
-    expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances'), label: t('employeeBalances') }");
+    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
   });
 });
 

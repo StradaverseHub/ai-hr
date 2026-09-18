@@ -181,9 +181,9 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     for (const href of [TRACKER_HREF, RECORDS_HREF]) expect(REGISTERED_ROUTES.has(href)).toBe(true);
     // The rail itself is untouched: three tabs, same three hrefs, `emp=` still threaded through.
     const rail = read('components/leave/leave-inquiry-nav.tsx');
-    expect(rail).toContain("{ key: 'details', href: withEmp('/leave/tracker'), label: t('employeeDetails') }");
-    expect(rail).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances'), label: t('employeeBalances') }");
-    expect(rail).toContain("{ key: 'records', href: withEmp('/leave/employee-records'), label: t('employeeLeaveRecord') }");
+    expect(rail).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') }");
+    expect(rail).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
+    expect(rail).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
   });
 
   it('it owns Employee Leave Record, and the tracker row has given both inquiry paths up', () => {

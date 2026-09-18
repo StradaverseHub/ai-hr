@@ -6,6 +6,7 @@ import { todayInKualaLumpur } from '@/core/leave';
 import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { EmployeeSearchField } from '@/components/employee-search-field';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
@@ -232,9 +233,9 @@ export default async function EmployeeBalancesPage({
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader title={tInq('balancesTitle')} description={tInq('balancesDescription')} />
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} />
-        <div className="min-w-0 flex-1 space-y-4">
+      {/* d990f14a — NO RAIL. The tab bar is rendered below, between the filters and the table, so the
+          table gets the whole width of the page instead of the 192px the rail and its gap were taking. */}
+      <div className="min-w-0 space-y-4">
           {/* Employee + as-at date in ONE GET form: both re-run the same breakdown, so submitting them
               together avoids a round trip that silently resets the other. */}
           <div className="flex flex-wrap items-end gap-2">
@@ -304,6 +305,12 @@ export default async function EmployeeBalancesPage({
 
           <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
 
+          {/* d990f14a — THE TAB BAR SITS HERE, under the search bar and its chips and above the table it
+              scopes. The chips only render when a filter is active, so the search bar is directly above the
+              bar in the ordinary case, which is what the reporter asked for; putting the bar between the
+              search fields and their own active-filter chips would split one control into two. */}
+          <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
+
           {/* r219 (7966ee35) — why Replacement Leave in Lieu is not available to the employee named on the
               card below. Directly above that card so it is unambiguously about THIS person, and phrased
               for an administrator ("this employee") by the same component that phrases it for the employee
@@ -316,6 +323,13 @@ export default async function EmployeeBalancesPage({
             <div className="border-b border-border px-4 py-3 text-sm font-medium">
               {selected ? `${selected.name} · ${selected.company}` : tInq('noEmployees')}
             </div>
+            <TableFullscreen
+              title={tInq('balancesTitle')}
+              subtitle={selected ? `${selected.name} · ${selected.company}` : undefined}
+              openLabel={tInq('fullScreen')}
+              closeLabel={tInq('fullScreenClose')}
+              escHint={tInq('fullScreenEsc')}
+            >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
@@ -475,9 +489,9 @@ export default async function EmployeeBalancesPage({
                 </tbody>
               </table>
             </div>
+            </TableFullscreen>
           </Card>
         </div>
-      </div>
     </div>
   );
 }

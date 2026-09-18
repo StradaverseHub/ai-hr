@@ -387,11 +387,11 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     // administrator should have been on all along — and "details" is still the tab it opens on.
     expect(trackerPage).toContain("import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav'");
     expect(trackerAdminBranch).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
-    expect(nav).toContain("{ key: 'details', href: withEmp('/leave/tracker')");
+    expect(nav).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details')");
     // THE OTHER TWO ARE UNCHANGED, and that is a promise made in writing: saved links and the export links
     // already in circulation point at these two addresses.
-    expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances')");
-    expect(nav).toContain("{ key: 'records', href: withEmp('/leave/employee-records')");
+    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances')");
+    expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records')");
     // …and My Absence kept none of it — one Employee Details screen, not two.
     expect(leavePage).not.toContain('LeaveInquiryNav');
   });

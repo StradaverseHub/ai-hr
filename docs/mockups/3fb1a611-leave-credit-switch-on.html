@@ -1,0 +1,161 @@
+<meta charset="utf-8"><title>3fb1a611 rev 4 — where Leave Credit is, and why you cannot see it</title>
+<style>
+/* 3fb1a611 rev 4 (contested: "I cannot find this feature in the deployed application").
+   The answer is a picture of the MENU, before and after the add-on is switched on — the screen
+   itself is already drawn in 3fb1a611-leave-credit.png from revision 3.
+   House style copied from docs/mockups/3fb1a611-leave-credit.html; everything inline, because
+   scripts/mockup/render.ts blocks every external request and fails loudly. */
+
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309;
+  --warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.page-h{font-size:15px;font-weight:700;margin:0 0 2px}
+.page-d{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+.crumb{font-size:11px;color:var(--mf);margin-bottom:4px}
+.info{background:#f0f1f7;border-radius:8px;padding:8px 11px;font-size:11.5px;color:#3b3b47;margin:8px 0 0}
+.warn{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:8px;padding:8px 11px;
+      font-size:11.5px;color:#7c2d12;margin-top:9px}
+
+/* the submenu rail, as the product draws it */
+.rail{border:1px solid var(--border);border-radius:11px;background:#fff;padding:7px;min-height:296px}
+.rail .hd{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+          font-weight:700;padding:5px 9px 7px}
+.r{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:8px;font-size:12px}
+.r .ico{width:15px;height:15px;border-radius:4px;background:var(--muted);flex:none;
+        display:inline-block;border:1px solid var(--border)}
+.r.new{background:color-mix(in srgb,var(--primary) 9%,white);
+       border:1px solid color-mix(in srgb,var(--primary) 32%,white);font-weight:700}
+.r.new .ico{background:color-mix(in srgb,var(--primary) 22%,white);
+            border-color:color-mix(in srgb,var(--primary) 40%,white)}
+.gap{height:30px;border:1px dashed #d8d9e6;border-radius:8px;margin:2px 0;
+     display:flex;align-items:center;justify-content:center;font-size:11px;color:#9a9ba8;
+     background:repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(0,0,0,.028) 7px,rgba(0,0,0,.028) 14px)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;margin-left:auto}
+.chip.new{background:color-mix(in srgb,var(--primary) 14%,white);color:var(--primary)}
+
+/* the screen strip */
+.strip{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+.strip .sh{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;
+           justify-content:space-between;align-items:center}
+.btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;
+     font-size:11.5px;font-weight:600}
+.tabs2{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0}
+.tb{border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px;color:var(--mf);background:#fff}
+.tb.on{background:color-mix(in srgb,var(--primary) 10%,white);
+       border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+   font-weight:600;padding:6px 10px;background:var(--muted)}
+td{padding:7px 10px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+td.n{text-align:right;color:#9a9ba8}
+.st{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+.st.av{background:#dcfce7;color:#166534}
+.st.us{background:#e0e7ff;color:#3730a3}
+.ghost{color:#9a9ba8}
+.notice{margin:12px;border:1px solid var(--border);border-radius:9px;background:var(--muted);
+        padding:14px;text-align:center;font-size:11.5px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Why Leave Credit is not in your menu &mdash; and where it appears once it is switched on</h2>
+  <p class="q">Leave Credit was built and is on the live system. It is switched off for your account, and a switched-off feature hides its own menu row. Nothing is missing or broken.</p>
+
+  <div class="two">
+    <div>
+      <span class="tag bad">What you see today</span>
+      <div class="crumb">Admin &rsaquo; Leave config</div>
+      <div class="rail">
+        <div class="hd">Leave config</div>
+        <div class="r"><span class="ico"></span>Entitlements</div>
+        <div class="r"><span class="ico"></span>Leave Balance Health</div>
+        <div class="r"><span class="ico"></span>Leave Adjustments</div>
+        <div class="gap">Leave Credit is here &mdash; hidden while the add-on is off</div>
+        <div class="r"><span class="ico"></span>Generate Entitlement</div>
+        <div class="r"><span class="ico"></span>Run Earned Accrual</div>
+        <div class="r"><span class="ico"></span>Approval Workflow</div>
+        <div class="r"><span class="ico"></span>Company rules</div>
+        <div class="r"><span class="ico"></span>Employee Leave Inquiry</div>
+        <div class="r"><span class="ico"></span>Special Setting</div>
+      </div>
+      <div class="info">This is exactly what you looked at. The row is not hidden by your role &mdash; you are an
+        administrator and the permission is already yours. It is hidden because the Leave Credit add-on has not been
+        turned on for your company yet.</div>
+    </div>
+
+    <div>
+      <span class="tag good">After we switch it on</span>
+      <div class="crumb">Admin &rsaquo; Leave config</div>
+      <div class="rail">
+        <div class="hd">Leave config</div>
+        <div class="r"><span class="ico"></span>Entitlements</div>
+        <div class="r"><span class="ico"></span>Leave Balance Health</div>
+        <div class="r"><span class="ico"></span>Leave Adjustments</div>
+        <div class="r new"><span class="ico"></span>Leave Credit<span class="chip new">appears</span></div>
+        <div class="r"><span class="ico"></span>Generate Entitlement</div>
+        <div class="r"><span class="ico"></span>Run Earned Accrual</div>
+        <div class="r"><span class="ico"></span>Approval Workflow</div>
+        <div class="r"><span class="ico"></span>Company rules</div>
+        <div class="r"><span class="ico"></span>Employee Leave Inquiry</div>
+        <div class="r"><span class="ico"></span>Special Setting</div>
+      </div>
+      <div class="info">The row appears in the position the approved plan promised &mdash; directly under Leave
+        Adjustments. Employees get the Leave Credit request on My Leave in the same moment.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The screen behind that row &mdash; already built, waiting</h2>
+  <p class="q">A reminder of what opens. The full picture went with the plan you approved; figures are left blank on purpose.</p>
+
+  <div class="strip">
+    <div class="sh">
+      <div>
+        <div class="page-h">Leave Credit</div>
+        <div class="page-d" style="margin:0">Credits earned by working a rest day, off day or public holiday, and the Replacement Leave that uses them.</div>
+      </div>
+      <span class="btn">+ Add Leave Credit</span>
+    </div>
+    <div class="tabs2"><span class="tb on">Credits</span><span class="tb">Rules</span></div>
+    <div style="padding:10px 12px 12px">
+      <table>
+        <tr><th>Date</th><th>Employee</th><th>Movement</th><th>Date worked</th><th>Before</th><th>Amount</th><th>After</th><th>Expires</th><th>Status</th></tr>
+        <tr><td class="ghost">dd/mm/yyyy</td><td class="ghost">Employee name</td><td>Earned &mdash; request</td><td>Rest day</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="n">+&ndash;.&mdash;&mdash;</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="ghost">dd/mm/yyyy</td><td><span class="st av">Available</span></td></tr>
+        <tr><td class="ghost">dd/mm/yyyy</td><td class="ghost">Employee name</td><td>Added by HR</td><td>Public holiday</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="n">+&ndash;.&mdash;&mdash;</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="ghost">dd/mm/yyyy</td><td><span class="st av">Available</span></td></tr>
+        <tr><td class="ghost">dd/mm/yyyy</td><td class="ghost">Employee name</td><td>Used &mdash; Replacement Leave</td><td class="ghost">&mdash;</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="n">&ndash;&ndash;.&mdash;&mdash;</td><td class="n">&ndash;.&mdash;&mdash;</td><td class="ghost">&mdash;</td><td><span class="st us">Used</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="warn">One thing to check on the day: the Rules tab opens with the eligibility you entered back in August,
+    saved but never used. We make sure it is left switched off before you look, so no employee earns a credit until you
+    have read the rule through and switched it on yourself.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>What the screen says today if you reach it by typing the address</h2>
+  <p class="q">Included so nothing is a surprise. This notice is the system telling the truth, not an error.</p>
+  <div class="strip">
+    <div class="sh"><div><div class="page-h">Leave Credit</div></div></div>
+    <div class="notice">
+      <div style="font-weight:700;color:var(--fg);margin-bottom:3px">Leave Credit is not switched on for this account</div>
+      Leave Credit is a paid add-on. Turning it on is arranged separately; until then no credit can be
+      earned, added or configured here.
+    </div>
+  </div>
+</div>

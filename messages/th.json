@@ -2285,7 +2285,10 @@
       "resolvedEntitlementTable": "ตารางสิทธิ: {name}",
       "sharedBalanceWith": "ใช้ยอดคงเหลือร่วมกับ {types} (แหล่งรวม: {pool})",
       "colExplanation": "คำอธิบาย",
-      "explainAction": "อธิบาย"
+      "explainAction": "อธิบาย",
+      "fullScreen": "เต็มหน้าจอ",
+      "fullScreenClose": "ปิด",
+      "fullScreenEsc": "กด Esc เพื่อปิด"
     },
     "override": {
       "title": "Before you submit",

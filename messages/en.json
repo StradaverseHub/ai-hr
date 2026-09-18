@@ -2285,7 +2285,10 @@
       "resolvedEntitlementTable": "Entitlement table: {name}",
       "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})",
       "colExplanation": "Explanation",
-      "explainAction": "Explain"
+      "explainAction": "Explain",
+      "fullScreen": "Full screen",
+      "fullScreenClose": "Close",
+      "fullScreenEsc": "Press Esc to close"
     },
     "override": {
       "title": "Before you submit",

@@ -2285,7 +2285,10 @@
       "resolvedEntitlementTable": "额度表：{name}",
       "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）",
       "colExplanation": "说明",
-      "explainAction": "查看说明"
+      "explainAction": "查看说明",
+      "fullScreen": "全屏",
+      "fullScreenClose": "关闭",
+      "fullScreenEsc": "按 Esc 关闭"
     },
     "override": {
       "title": "Before you submit",

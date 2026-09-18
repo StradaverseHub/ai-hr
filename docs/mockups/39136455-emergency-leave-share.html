@@ -1,0 +1,96 @@
+<meta charset="utf-8"><title>39136455 — Emergency Leave: Share and Pending Share</title>
+<style>
+/* 39136455 rev 1 — Employee Balances: stop mirroring Annual Leave onto the Emergency Leave row, and show
+   the pool transfer as its own two columns. House style from docs/mockups/3fb1a611-leave-credit.html.
+   Figures here are a WORKED EXAMPLE, not anybody's balance: 16 days Annual, 2 days taken as Emergency,
+   1 day of Emergency still awaiting approval. Everything inline (render.ts blocks external requests). */
+:root{
+  --bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+  --border:#e7e8f1;--warnbg:#fff7ed;--warnbd:#fed7aa
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+h2{font-size:13.5px;margin:0 0 3px}
+.q{font-size:12px;color:var(--mf);margin:0 0 13px;font-style:italic}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+.num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+     background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+.tag.bad{background:#fee2e2;color:#991b1b}
+.tag.good{background:#dcfce7;color:#166534}
+.tw{border:1px solid var(--border);border-radius:9px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;font-size:8.5px;text-transform:uppercase;color:var(--mf);font-weight:600;
+   padding:6px 6px;background:var(--muted);vertical-align:bottom}
+td{padding:7px 6px;border-top:1px solid var(--border)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.lc{color:var(--primary);font-weight:600}
+.cap{display:block;font-size:9.5px;color:var(--mf);font-weight:400;margin-top:1px}
+.new{background:color-mix(in srgb,var(--primary) 8%,white)}
+th.new{background:color-mix(in srgb,var(--primary) 16%,white);color:var(--fg)}
+.neg{color:#b91c1c;font-weight:600}
+.pos{color:#15803d;font-weight:600}
+.bad{color:#b91c1c;font-weight:700}
+.note{font-size:11.5px;color:var(--mf);margin-top:9px}
+.warn{background:var(--warnbg);border:1px solid var(--warnbd);border-radius:8px;padding:8px 11px;
+      font-size:11.5px;color:#7c2d12;margin-top:10px}
+.zero{color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Today &mdash; the Emergency Leave row copies Annual Leave's figures</h2>
+  <p class="q">Worked example: 16 days of Annual Leave, of which 2 days were taken as Emergency Leave and 1 more is awaiting approval.</p>
+  <span class="tag bad">Today</span>
+  <div class="tw">
+    <table>
+      <tr>
+        <th style="width:20%">Leave Code</th><th class="n">Full Entitlement</th><th class="n">Earned to Date</th>
+        <th class="n">Taken</th><th class="n">Pending Approval</th><th class="n">Balance</th>
+      </tr>
+      <tr>
+        <td><span class="lc">Annual Leave</span></td>
+        <td class="n">16.00</td><td class="n">16.00</td><td class="n">2.00</td><td class="n">1.00</td><td class="n">13.00</td>
+      </tr>
+      <tr>
+        <td><span class="lc">Emergency Leave</span><span class="cap">Shares one balance with Annual Leave</span></td>
+        <td class="n bad">16.00</td><td class="n bad">16.00</td><td class="n bad">2.00</td><td class="n bad">1.00</td><td class="n bad">13.00</td>
+      </tr>
+    </table>
+  </div>
+  <div class="note">Every figure on the Emergency Leave row is Annual Leave's, repeated. It reads as though
+    Emergency Leave has its own 16 days, and there is no way to tell how much Emergency Leave this person has
+    actually taken &mdash; the 2.00 is the pool's total, not Emergency Leave's.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Proposed &mdash; each row tells its own story, and the transfer is visible</h2>
+  <p class="q">Same person, same pool, same 13 days left. Two new columns, shaded here only to point them out.</p>
+  <span class="tag good">Proposed</span>
+  <div class="tw">
+    <table>
+      <tr>
+        <th style="width:20%">Leave Code</th><th class="n">Full Entitlement</th><th class="n">Earned to Date</th>
+        <th class="n">Taken</th><th class="n">Pending Approval</th>
+        <th class="n new">Share</th><th class="n new">Pending Share</th><th class="n">Balance</th>
+      </tr>
+      <tr>
+        <td><span class="lc">Annual Leave</span><span class="cap">Shares one balance with Emergency Leave</span></td>
+        <td class="n">16.00</td><td class="n">16.00</td><td class="n">0.00</td><td class="n">0.00</td>
+        <td class="n new neg">&minus;2.00</td><td class="n new neg">&minus;1.00</td><td class="n">13.00</td>
+      </tr>
+      <tr>
+        <td><span class="lc">Emergency Leave</span><span class="cap">Draws on Annual Leave &mdash; 13.00 available</span></td>
+        <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n">2.00</td><td class="n">1.00</td>
+        <td class="n new pos">+2.00</td><td class="n new pos">+1.00</td><td class="n zero">0.00</td>
+      </tr>
+    </table>
+  </div>
+  <div class="note">Read across the Emergency Leave row: no entitlement of its own, 2 days taken, 1 day
+    waiting, and 3 days drawn in from Annual Leave to cover them. Read across Annual Leave: 16 days, 3 of
+    them lent out. The pool still has 13.00, and it is shown once, on the row that owns it.</div>
+  <div class="warn">Emergency Leave's Balance is 0.00 on purpose, and that is the one thing worth knowing
+    before you approve this: Emergency Leave has no balance of its own to carry: it borrows. So the caption on
+    that row names the pool and the days actually left in it, which is the number you want when someone asks
+    "can they take another day of Emergency Leave".</div>
+</div>

@@ -2285,7 +2285,10 @@
       "resolvedEntitlementTable": "உரிமை அட்டவணை: {name}",
       "sharedBalanceWith": "{types} உடன் ஒரே இருப்பைப் பகிர்கிறது (தொகுப்பு: {pool})",
       "colExplanation": "விளக்கம்",
-      "explainAction": "விளக்கு"
+      "explainAction": "விளக்கு",
+      "fullScreen": "முழுத் திரை",
+      "fullScreenClose": "மூடு",
+      "fullScreenEsc": "மூட Esc அழுத்தவும்"
     },
     "override": {
       "title": "Before you submit",

@@ -5,6 +5,7 @@ import { listEmployees, listLeaveRequestsPage, listLeaveTypes } from '@/core/rea
 import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { EmployeeSearchField } from '@/components/employee-search-field';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { adminCancelLeaveAction } from '@/app/leave/actions';
@@ -257,9 +258,9 @@ export default async function EmployeeLeaveRecordPage({
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <LeaveInquiryNav active="records" employmentId={selected?.employmentId} />
-        <div className="min-w-0 flex-1 space-y-4">
+      {/* d990f14a — NO RAIL. The tab bar is rendered below, between the filters and the table, so the
+          table gets the whole width of the page instead of the 192px the rail and its gap were taking. */}
+      <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-end gap-2">
             <form method="get" action="/leave/employee-records" className="flex flex-wrap items-end gap-2">
             {/* 38b94df7: same searchable field as Employee Balances, posting the same `name="emp"` — the
@@ -324,6 +325,10 @@ export default async function EmployeeLeaveRecordPage({
 
           <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
 
+          {/* d990f14a — see the note on the Employee Balances tab: under the search bar and its chips,
+              above the table. `carry` hands on the leave-code search and the leave-type filter only. */}
+          <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
+
           <Card className="overflow-hidden">
             <div className="border-b border-border px-4 py-3 text-sm font-medium">
               {selected ? `${selected.name} · ${selected.company}` : tInq('noEmployees')}
@@ -331,6 +336,13 @@ export default async function EmployeeLeaveRecordPage({
                 {t('requestsCountTotal', { count: total })}
               </span>
             </div>
+            <TableFullscreen
+              title={tInq('employeeLeaveRecord')}
+              subtitle={selected ? `${selected.name} · ${selected.company}` : undefined}
+              openLabel={tInq('fullScreen')}
+              closeLabel={tInq('fullScreenClose')}
+              escHint={tInq('fullScreenEsc')}
+            >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
@@ -482,6 +494,7 @@ export default async function EmployeeLeaveRecordPage({
                 </tbody>
               </table>
             </div>
+            </TableFullscreen>
             <Pager
               hrefFor={pagerHref}
               state={pageState(pq, total, rows.length)}
@@ -489,7 +502,6 @@ export default async function EmployeeLeaveRecordPage({
             />
           </Card>
         </div>
-      </div>
     </div>
   );
 }

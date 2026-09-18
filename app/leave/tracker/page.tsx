@@ -21,6 +21,7 @@ import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge, inputCls }
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { inquiryPageWindow } from '@/lib/leave-inquiry';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 import { resolveCalendarFetchWindow, resolveViewPreference } from '@/lib/leave-calendar-range';
@@ -210,9 +211,12 @@ export default async function TeamLeaveTrackerPage({
       // narrower cap — a month grid does not want a 100rem line length.
       <div className="mx-auto max-w-[100rem] space-y-6">
         <PageHeader title={tInq('employeeDetails')} description={tInq('detailsDescription')} />
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />
-          <div className="min-w-0 flex-1 space-y-6">
+        {/* d990f14a — NO RAIL, and on THIS tab the bar sits above the card rather than under a search bar:
+            Employee Details keeps its filters inside the card's own header, so there is nothing above the
+            card for the bar to sit under. Details carries only `emp` onward — its search is an employee
+            search in its own edQ namespace, not the leave-code one the other two tabs share. */}
+        <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />
+        <div className="min-w-0 space-y-6">
             <Card className="overflow-hidden">
               <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border px-4 py-3">
                 <div className="text-sm font-medium">
@@ -262,6 +266,12 @@ export default async function TeamLeaveTrackerPage({
                   />
                 </div>
               )}
+              <TableFullscreen
+                title={tInq('employeeDetails')}
+                openLabel={tInq('fullScreen')}
+                closeLabel={tInq('fullScreenClose')}
+                escHint={tInq('fullScreenEsc')}
+              >
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   {/* 026e16b9: no `tracking-wide` here — the extra letter-spacing widened every heading
@@ -322,6 +332,7 @@ export default async function TeamLeaveTrackerPage({
                   </tbody>
                 </table>
               </div>
+              </TableFullscreen>
               {/* Numbered page navigation — "1 2 3 Next >" (650b6eb8 §ii). Ellipses stand in for the pages a
                   long list would otherwise print in full; the window helper is unit-tested. */}
               {employeePageCount > 1 && (
@@ -369,7 +380,6 @@ export default async function TeamLeaveTrackerPage({
                 </nav>
               )}
             </Card>
-          </div>
         </div>
       </div>
     );

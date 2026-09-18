@@ -2285,7 +2285,10 @@
       "resolvedEntitlementTable": "Bảng định mức: {name}",
       "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})",
       "colExplanation": "Giải thích",
-      "explainAction": "Xem giải thích"
+      "explainAction": "Xem giải thích",
+      "fullScreen": "Toàn màn hình",
+      "fullScreenClose": "Đóng",
+      "fullScreenEsc": "Nhấn Esc để đóng"
     },
     "override": {
       "title": "Before you submit",
