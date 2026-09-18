@@ -62,6 +62,22 @@
 /** The tenant id `db/seed.ts` writes. `deploy/deploy.sh` must look for exactly this id. */
 export const DEMO_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
+/**
+ * The reserved auth-audit tenant that `db/migrations/0151_real_auth_workos.sql` inserts into EVERY
+ * migrated database, customer and developer alike. It holds no company, person or employment — it
+ * exists only as a valid FK target for pre-auth domain events (login-failed on an un-invited email),
+ * so it is never evidence that a database belongs to somebody.
+ *
+ * It is excluded from R4 because counting it made R4 fire on every correctly-migrated DEVELOPER
+ * machine: `pnpm db:seed` refused out of the box and told the operator to re-run with
+ * DESTROY_OVERRIDE. A guard whose normal path is "set the destroy flag" teaches the habit it exists
+ * to prevent, and the flag would then be set on the one run where the database did hold real data.
+ * Excluding it costs nothing: a database holding only this row holds no records to destroy, which is
+ * the already-documented residual gap (an empty database is indistinguishable from a fresh demo box),
+ * not a new one.
+ */
+export const SYSTEM_AUTH_AUDIT_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 /** Escape hatch for R4 only, and deliberately in no template, runbook or example file. */
 export const DESTROY_OVERRIDE = 'SEED_MAY_DESTROY_OTHER_TENANTS';
 
@@ -132,7 +148,7 @@ export function foreignTenantRefusal(
   tenants: ReadonlyArray<{ id: string; name: string | null }>,
   env: SeedEnv,
 ): string | null {
-  const foreign = tenants.filter((t) => t.id !== DEMO_TENANT_ID);
+  const foreign = tenants.filter((t) => t.id !== DEMO_TENANT_ID && t.id !== SYSTEM_AUTH_AUDIT_TENANT_ID);
   if (foreign.length === 0) return null;
   if (env[DESTROY_OVERRIDE] === '1') return null;
 

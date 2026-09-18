@@ -7,8 +7,8 @@
 :root {
   /* Floating-shell surfaces: canvas frame the app floats on → content area
      where cards sit → white card/chrome. Warm, soft, friendly (the pivot). */
-  --canvas: #e6e8f1; /* outer frame */
-  --background: #f5f6fa; /* content area */
+  --canvas: #e6e4df; /* outer frame — warm neutral (revamp R1) */
+  --background: #f4f3f0; /* content area — warm neutral (revamp R1) */
   --foreground: #1a1a22;
   --card: #ffffff; /* cards + shell chrome */
   --card-foreground: #1a1a22;
@@ -23,12 +23,25 @@
   --secondary-foreground: #1a1a22;
   --muted: #f0f1f7;
   --muted-foreground: #63636f; /* AA (>5:1) on white and content bg */
-  --accent: #eceefb; /* soft indigo wash — nav active + hover */
+  --accent: #eceefb; /* soft indigo wash — hover */
   --accent-foreground: #312e81;
+  /* Revamp R1 — semantic status tones. Before these, every screen hard-coded its own
+     amber/emerald/rose (~2,665 raw colour classes, ~22 private status maps). One tone per
+     meaning, so "approved" is the same green on every screen and in both themes. */
+  --good: #1d7a43;
+  --good-bg: #e5f4ea;
+  --warning: #9a5a00;
+  --warning-bg: #fcefd6;
+  --critical: #b42318;
+  --critical-bg: #fde7e4;
+  --info: #2350b5;
+  --info-bg: #e7eefb;
+  --neutral: #55555c;
+  --neutral-bg: #efeeea;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e7e8f1;
-  --input: #dbdce7;
+  --border: #e9e7e2;
+  --input: #dedcd6;
   --ring: #6366f1;
   --radius: 1rem; /* soft 16px — the pivot's signature roundness */
   /* Soft, tinted elevation — toward the canvas hue, never pure black. */
@@ -62,6 +75,18 @@
   --border: #242429;
   --input: #34343c;
   --ring: #6366f1;
+  /* Revamp R1 — the same six meanings, re-lit for the dark ground rather than inverted:
+     text tones lift, backgrounds drop to a low-chroma wash that stays distinguishable. */
+  --good: #7fd3a0;
+  --good-bg: #16311f;
+  --warning: #f0bf6b;
+  --warning-bg: #3a2d14;
+  --critical: #ff9a8f;
+  --critical-bg: #3b1c19;
+  --info: #9db8ff;
+  --info-bg: #1b2745;
+  --neutral: #b3b3bb;
+  --neutral-bg: #232329;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -4px rgb(0 0 0 / 0.45);
   --shadow-pop: 0 8px 24px -6px rgb(0 0 0 / 0.6);
@@ -99,6 +124,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* Revamp R1 — semantic tones as Tailwind colours: text-good, bg-good-bg, … */
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-critical: var(--critical);
+  --color-critical-bg: var(--critical-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-neutral: var(--neutral);
+  --color-neutral-bg: var(--neutral-bg);
   /* One radius scale (shape-consistency lock): controls 12 · cards 16 · panels 24. */
   --radius-lg: var(--radius); /* 16 — cards */
   --radius-md: calc(var(--radius) - 4px); /* 12 — buttons, inputs */

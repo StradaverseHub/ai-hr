@@ -722,13 +722,16 @@ export function Sidebar({
                       collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
                       // Anchors the collapsed-rail badge bubble over the icon square.
                       showApprovalCount && 'relative',
+                      // Revamp R1 — "you are here" is the one place the accent is spent at full
+                      // strength. The soft wash it replaced read as a hover state, so on a rail of
+                      // 16 rows nothing said which screen you were on until you looked twice.
                       active
-                        ? 'bg-accent font-medium text-accent-foreground'
+                        ? 'bg-primary font-medium text-primary-foreground'
                         : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                     )}
                   >
                     <Icon
-                      className={cn('size-[20px] shrink-0', active && 'text-primary')}
+                      className={cn('size-[20px] shrink-0', active && 'text-primary-foreground')}
                       strokeWidth={2}
                     />
                     {!collapsed && <span className="truncate text-sm">{label}</span>}

@@ -45,6 +45,7 @@ import {
   demoSeedRefusal,
   foreignTenantRefusal,
   realAuthKeys,
+  SYSTEM_AUTH_AUDIT_TENANT_ID,
 } from '../db/seed-guard';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -406,6 +407,20 @@ describe('db/seed-guard — which signal says "this is somebody\'s real database
     expect(demoSeedRefusal(demoEnv)).toBeNull();
     expect(foreignTenantRefusal([{ id: 'aaaaaaaa-0000-0000-0000-000000000001', name: 'Real Sdn Bhd' }], demoEnv))
       .toContain('REFUSING TO SEED');
+  });
+
+  it('R4 ignores the reserved auth-audit tenant, so a migrated dev DB seeds without the destroy flag', () => {
+    // 0151 inserts this row into every migrated database. While R4 counted it, `pnpm db:seed` refused
+    // on a correctly-migrated developer machine and the printed way out was DESTROY_OVERRIDE — the
+    // flag then becomes routine, including on the run where the database does hold real data.
+    const system = { id: SYSTEM_AUTH_AUDIT_TENANT_ID, name: 'System (auth audit)' };
+    expect(foreignTenantRefusal([system], {})).toBeNull();
+    expect(foreignTenantRefusal([system, { id: DEMO_TENANT_ID, name: 'Demo Group' }], {})).toBeNull();
+    // and it buys a real tenant nothing: that still refuses, and the message names only the real one.
+    const msg = foreignTenantRefusal([system, { id: 'aaaaaaaa-0000-0000-0000-000000000001', name: 'Real Sdn Bhd' }], {});
+    expect(msg).toContain('1 tenant(s)');
+    expect(msg).toContain('Real Sdn Bhd');
+    expect(msg).not.toContain('System (auth audit)');
   });
 
   it('R4 has an explicit override, and it is in no template or runbook', () => {

@@ -100,6 +100,10 @@ export interface ScreenEntry {
 export const SCREENS: readonly ScreenEntry[] = [
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },
+  // REVAMP PREVIEW (not for release): the action-first Home rendered against real data, beside the live
+  // one. Same guard and same label as the dashboard column it previews; it carries no new i18n key
+  // because it carries no shipping copy. Delete this column with app/home-preview/.
+  { screenKey: 'homePreview', href: '/home-preview', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/home-preview'] },
   {
     screenKey: 'people',
     href: '/personnel',
