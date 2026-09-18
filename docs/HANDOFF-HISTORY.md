@@ -1,3 +1,122 @@
+## r306 (2026-09-18) — Four approved items: inquiry day screen, Card ID, pooled Share columns, Web Clocking. `main@ce43d575`, **migration 0474**.
+
+Closed and DEPLOYED: `570fd56e`, `44bc1c33`, `39136455`, `7ac6b4db` (partly — see below). Gate: **925 files — equal to the suite file count — 14,125 tests, 0 AssertionErrors**, 14 chunks at `VITEST_MAX_WORKERS=3`, THIRD run (see below). `gate:shadow` **PASS 390/390**. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` ce43d575, journal 390 = 390 applied.
+
+### THE GATE WAS RED TWICE, AND THAT IS THE ROUND'S MOST USEFUL RECORD
+
+Five real failures across runs 1 and 2, none of which any per-item targeted run could
+have caught — every one of them was green before each gate.
+
+- **Run 1, chunk 6:** `employee-import-field-parity` refused `employment.cardId` as neither an import column
+  nor an excluded field. **Run 1, chunk 12:** `r279-earned-and-full-entitlement` caught a REAL DEFECT — the
+  Employee Balances empty-state row still spanned `colSpan={13}` after 39136455 took the table to 15, so "no
+  rows" would have drawn a cell two columns short. `sidebar-attendance-group` pinned the literal
+  'Clock in/out'.
+- **Run 2, chunks 4 and 7:** two MORE guards hardcoding `colSpan={13}` against the same page
+  (`r196-entitlement-not-generated`, `leave-inquiry-surfaces`).
+
+**The root cause is worth writing down: one shared table had FIVE separate guards pinning its column count,
+in five files, none of which greps the directories the change touched.** Adding a column to Employee
+Balances is therefore a five-file edit that looks like a one-file edit. The r279 guard is the one that
+earned its keep — it DERIVES the header count and compares the colSpan to it, rather than quoting a number,
+which is why it caught the defect instead of just the stale literal. The new `570fd56e` guard counts
+headings for the same reason.
+
+What changed in method after the second red: sweeping **every test naming the touched surfaces** (70 files,
+1,360 tests) before re-gating, rather than discovering the class one 20-minute gate at a time. Run 3 was
+first-pass clean.
+
+### 570fd56e — Individual Attendance: eighteen columns become ten, and a per-day screen
+
+Six of the eighteen held an overtime figure that is 0.00 on an ordinary day. Lateness, Early Out and the six
+OT buckets moved to `app/attendance/individual/[date]` — **moved, not deleted**, and the guard asserts both
+halves of that. The day screen is not a second source: same `attendanceForEmploymentRange` read for one
+date, same `AttendanceFigureCells` island, same `explainAttendanceDay` working.
+
+- **Edit is a LINK** into the existing correction workflow. A second write path to an attendance record
+  would bypass its approval and attachment — that is how overtime changes with no trail.
+- **Break time is DERIVED** (shift span less net scheduled minutes) and captioned as derived, because there
+  is no break column on `AttendanceRangeRow`.
+- Dates go through new `fmtDayDate` / `fmtDayName` with the viewer's locale, in UTC. The weekday was
+  hardcoded `'en-GB'` inline.
+- Both full-width rows tracked from `colSpan={17}` to 10 — pinned by COUNTING the headings, not by quoting
+  a number, because a stale colSpan fails nothing and just draws wrong.
+
+### 44bc1c33 — Card / Clocking ID (migration 0474)
+
+`importAttendancePunches` matched only `employment.employee_code` and the IC on `employee_statutory_my`,
+reporting anything else as unmatched rather than guessing. A terminal recording its own card numbers matched
+NOTHING, with nowhere to fix it.
+
+- **ONE COLUMN, ONE OWNER.** The Card Assignment screen and the Card ID field on the employee's Attendance
+  tab edit the same `employment.card_id`, so "two interfaces, not separate data fields" holds by
+  construction. No `card_assignment` table.
+- **The collision that matters is not the one the unique index catches.** The importer builds code, IC and
+  card into ONE flat map, so a card equal to another employee's code or IC would post their attendance onto
+  the wrong person. No constraint can express that; `core/attendance-card.ts` refuses it, mirroring the
+  importer's own lookup (same join, same active-only population), and names the holder. Cards enter the map
+  LAST so an exact card match wins regardless.
+- **DECISION — the "same as Employee ID" setting was NOT built**, and the reason is testable rather than a
+  matter of taste: the importer already matches on employee code, so a device recording employee numbers has
+  always imported with no card at all. A copy would duplicate one fact and need a sync rule on every code
+  rename. A NULL card is the normal state; the screen says "Matched by: Employee ID".
+- Leading zeros survive — `'007'` and `'7'` are different cards, pinned behaviourally, and the input is
+  never `type="number"`.
+- Exact-set nav guards UPDATED, not loosened, in **two** files (`attendance-pack`, `attendance-menu-relocation`).
+
+### 39136455 — pooled balances: Share / Pending Share, partly reversing r209
+
+r209 gave every member of a pool the SOURCE's figures, because before it a borrower showed its own
+permanently empty ledger beside a balance it could in fact spend. That fixed the readable half and made the
+other impossible: with Annual's figures mirrored on, there was no way to see how much Emergency Leave anyone
+had taken. **Both halves ship together; r209's guards were re-pointed, not deleted.**
+
+- Taken is attributed to the code the leave was FILED under, derived by joining `leave_ledger.source_request_id`
+  to the request's own `leave_type_id`, COALESCEing back to the ledger's type for rows with no request behind
+  them (grants, carries, adjustments — which belong to the pool and are nobody's share). **No schema change,
+  no new stored figure.** `pending` already grouped by the filed type; only the pooling pass overwrote it.
+- **⚠️ `available` STAYS POOLED even though `balance` is 0.** They answer different questions and the submit
+  guard reads `available`; zeroing it alongside `balance` would have made Emergency Leave unapplyable for
+  everybody. It has its own named test.
+- **Negative zero** was a real defect the new guard caught, not review: `-0` fails `Object.is` and formats as
+  "−0.00", a minus sign on a row that lent nothing out.
+- Columns land on HR's grid, the employee's own grid (the shared `deriveBalanceRow` feeds both) and the
+  CSV/XLSX export, whose own header forbids a screen column absent from the file.
+- **THE INVARIANT, pinned:** across a pool the shares cancel, so members' balances sum to the pool's own
+  ledger total. Nothing about the ledger changed.
+
+### 7ac6b4db — Web Clocking: the rename and the shift, NOT the photo
+
+The rename (row and heading pinned to agree, six locales, route untouched), the date as "18 Sep 2026,
+Friday" formatted server-side, and a Current shift card reading the same resolved shift the "ends at" line
+already used, with an explicit no-shift state.
+
+**The webcam photo was deliberately not built, and it is owed to the reporter in plain words.** A face photo
+is biometric-adjacent personal data — `core/pdpa.ts` already says exactly that about the profile photograph
+— and there would be hundreds per employee per year rather than one. It needs a storage design that is NOT
+`person_photo`'s in-row `bytea` (150–400 KB × 2 per working day ≈ 10–20 GB a year for 100 employees, inside
+every backup), its own RLS policy, a place in the PDPA erasure path, a consent record, and a retention sweep
+**on the box's crontab** — a script in `scripts/` that nobody schedules is not a retention policy. Half-landing
+it beside a menu rename would be the worst version. A guard pins that no capture path was left behind and
+that the erasure precedent it must join is still in place.
+
+### NOT DONE / KNOWN
+
+- **No browser render for any of the four.** `pnpm db:seed` is refused by the auto-mode classifier (as in
+  r303 and r305). The i18n risk is covered by `test/i18n-coverage.test.ts` across six locales; the rendered
+  layouts are not. **Owed, and now owed twice** — r305's measurement is still outstanding.
+- `44bc1c33`: **bulk import of the card mapping is not built**; the reporter asked for it "where required".
+- `570fd56e`: **no Allowance section** on the day screen. "Allowance" is ambiguous in this codebase between
+  `attendance_allowance_policy` (minutes an employee may be away) and a pay component — asking beats guessing
+  on a screen about money-adjacent figures. Owed to the reporter as a question.
+- `570fd56e`: Daily Attendance still carries 19 columns with the same overload. Out of scope (the reporter
+  asked about Individual Attendance) and offered as a follow-up in the plan, but the two screens now differ
+  in shape.
+- `39136455`: production has not been read, so **which leave types actually pool is unknown**. The plan
+  promises the reporter that list.
+- `3fb1a611` and `d58bfa3f` remain approved and **unbuilt**: both need production reads the classifier
+  refuses, and `3fb1a611` additionally needs a `subscription_line` row, which is a commercial record.
+
 ## r305 (2026-09-18) — Employee Leave Inquiry: the tab rail becomes a bar, and Full screen on the wide tables. `main@62be49d7`, **no migration**.
 
 Closed and DEPLOYED: `d990f14a`. Gate: **921 files — equal to the suite file count — 14,081 tests, 0 AssertionErrors**, first pass, 14 chunks at `VITEST_MAX_WORKERS=3`. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `built_ref` 62be49d7.
