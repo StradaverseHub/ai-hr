@@ -29,9 +29,10 @@ import { listAttendanceCorrections } from './attendance';
 import { listTravelRequests } from './travel-request';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
-// r305 — the queue /approvals has rendered since 5ff7daff and this read model never counted. It lives in
-// core/, so this is a plain sibling import; the pack facade re-export exists for app/ callers.
-import { listPendingReplacementLeaveRequests } from './replacement-request';
+// r305 — the queue /approvals has rendered since 5ff7daff and this read model never counted.
+// Through the leave pack's facade, not the implementation file it re-exports: the replacement-request
+// service is a leave-pack boundary module, and test/leave-pack-drift.test.ts caught the direct import.
+import { listPendingReplacementLeaveRequests } from '../packs/leave/service';
 import { listResignationRequests } from './offboarding';
 import { listReviews, pendingManagerReviewsFor } from './employment-review';
 import { myEmployment } from './read';
