@@ -64,7 +64,7 @@ describe('listPendingTasks (Task tab)', () => {
       endDate: '2026-08-04',
     });
 
-    const tasks = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true });
+    const tasks = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true, profileChanges: false });
     const leaveTasks = tasks.filter((t) => t.kind === 'leave');
     expect(leaveTasks).toHaveLength(1);
     expect(leaveTasks[0].subjectName).toBe('Task Emp');
@@ -72,7 +72,7 @@ describe('listPendingTasks (Task tab)', () => {
     expect(Number.isNaN(Date.parse(leaveTasks[0].createdAt))).toBe(false); // serializable ISO timestamp
 
     // Count parity — the legacy badge figure is exactly the task list's length.
-    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBe(tasks.length);
+    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true, profileChanges: false })).toBe(tasks.length);
   });
 
   it('self-exclusion: your own pending travel request is a task for others, never for you', async () => {
@@ -92,10 +92,10 @@ describe('listPendingTasks (Task tab)', () => {
       .returning({ id: schema.travelRequest.id });
 
     // The requester never sees their own item in their Task tab…
-    const own = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true });
+    const own = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true, profileChanges: false });
     expect(own.some((t) => t.kind === 'travel')).toBe(false);
     // …but an admin (a different person) does, linked to the approvals page.
-    const adminTasks = await listPendingTasks(adminCtx(b), undefined, { attendance: true, claims: true });
+    const adminTasks = await listPendingTasks(adminCtx(b), undefined, { attendance: true, claims: true, profileChanges: true });
     const travelTask = adminTasks.find((t) => t.kind === 'travel' && t.id === travel.id);
     expect(travelTask).toBeDefined();
     expect(travelTask!.linkPath).toBe('/approvals');
@@ -106,8 +106,8 @@ describe('listPendingTasks (Task tab)', () => {
     const E = await hire('Plain Emp');
     const uE = await createAppUser(b.tenantId, E.personId, 'employee');
     const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'], entitlements: adminCtx(b).entitlements };
-    expect(await listPendingTasks(empCtx, undefined, { attendance: true, claims: true })).toEqual([]);
-    expect(await pendingApprovalsCount(empCtx, undefined, { attendance: true, claims: true })).toBe(0);
+    expect(await listPendingTasks(empCtx, undefined, { attendance: true, claims: true, profileChanges: false })).toEqual([]);
+    expect(await pendingApprovalsCount(empCtx, undefined, { attendance: true, claims: true, profileChanges: false })).toBe(0);
   });
 });
 

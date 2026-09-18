@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin } from '@/lib/authz';
+import { isAdmin, isGroupAdmin } from '@/lib/authz';
 import {
   awayTodayCount,
   dashboardStats,
@@ -18,9 +18,10 @@ import {
 import { pendingManagerReviewsFor } from '@/core/employment-review';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { myFeedbackRequests } from '@/packs/performance/service';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
 import { MODULE_CATALOG } from '@/packs/catalog';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
+import { canDecideProfileChanges, resolveRequestApprover } from '@/lib/profile-requestable-fields';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import {
@@ -241,11 +242,20 @@ export default async function DashboardPage({
     // covering today (per-date-approval aware).
     const [awayCount, approvals, reviewDeadlines] = await Promise.all([
       awayTodayCount(s, scopeIds, todayIso, s.personId ?? null),
-      // r292 — see core/approvals-inbox.ts InboxModules. The dashboard is a page, so the quiet form is
+      // r292 — see core/approvals-inbox.ts InboxGates. The dashboard is a page, so the quiet form is
       // the right one: a resolver outage must cost the two module queues, not the whole tile.
       pendingApprovalsCount(s, scopeIds, {
         attendance: isModuleEnabledOrFalse(s, 'attendance'),
         claims: isModuleEnabledOrFalse(s, 'claims'),
+        // r305 — the same predicate as the bell and /approvals. This tile and the bell are read side by
+        // side on one screen, so a difference between them reads as a bug in whichever the user trusts less.
+        profileChanges: canDecideProfileChanges({
+          admin: isAdmin(s),
+          groupAdmin: isGroupAdmin(s),
+          approverSetting: resolveRequestApprover(
+            getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
+          ),
+        }),
       }),
       // Performance / probation review deadlines assigned to this manager (the reporter's "review
       // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.

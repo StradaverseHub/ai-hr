@@ -14,7 +14,7 @@ import { listProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
 import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
-import { resolveRequestApprover } from '@/lib/profile-requestable-fields';
+import { canDecideProfileChanges, resolveRequestApprover } from '@/lib/profile-requestable-fields';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 import { ProfileChangeDecide } from '@/components/profile-change-decide';
@@ -170,8 +170,13 @@ export default async function ApprovalsPage({
   const profileChangeApproverSetting = resolveRequestApprover(
     getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
   );
-  const profileChangeDecider =
-    admin && (profileChangeApproverSetting === 'admin' || isGroupAdmin(s));
+  // r305 — the predicate moved to lib/ so the bell and the dashboard tile count exactly what this page
+  // shows. The behaviour here is unchanged; what changed is that it is no longer the only copy.
+  const profileChangeDecider = canDecideProfileChanges({
+    admin,
+    groupAdmin: isGroupAdmin(s),
+    approverSetting: profileChangeApproverSetting,
+  });
   const { error, sort: sortParam, category: categoryParam } = await searchParams;
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).

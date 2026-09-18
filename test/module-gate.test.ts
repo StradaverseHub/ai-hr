@@ -217,7 +217,7 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
     // The inbox fans out into claims and attendance. With both queues declared OFF it must answer a
     // number, not throw — that is the core-screen regression this change could cause.
     await expect(
-      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false }),
+      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false, profileChanges: true }),
     ).resolves.toBeTypeOf('number');
     // …and the flag is LOAD-BEARING, not decoration: the two queues it switches off are the two the
     // service refuses for this tenant. Asserted on the queues DIRECTLY rather than by re-running the

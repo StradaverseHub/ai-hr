@@ -22,20 +22,21 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
+import { canManagePayroll, canManagePerfComp, isAdmin, isGroupAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
+import { canDecideProfileChanges, resolveRequestApprover } from '@/lib/profile-requestable-fields';
 import { NotificationCenter } from '@/components/notification-center';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -124,6 +125,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const pendingTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
+    // r305 — the SAME predicate /approvals gates its section on. Counting an item the destination page
+    // will not show is worse than not counting it: the badge sends someone looking for a queue that is
+    // not there. Degraded read is 'group_admin', the narrower value, exactly as on the page.
+    profileChanges: canDecideProfileChanges({
+      admin: isAdmin(session),
+      groupAdmin: isGroupAdmin(session),
+      approverSetting: resolveRequestApprover(
+        getSettingOrFallback<string>(session, 'ess.profile_change_approver', 'group_admin'),
+      ),
+    }),
   });
   const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
   const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
