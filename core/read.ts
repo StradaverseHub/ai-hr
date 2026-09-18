@@ -161,6 +161,10 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         name: person.fullName,
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
+        // 44bc1c33 — the Card / Clocking ID a physical attendance device records for this employee, when it
+        // differs from the employee code. Additive; a column of the `employment` row already selected, so
+        // no extra join and no extra row. NULL means "this employee is matched by employee code / IC".
+        cardId: employment.cardId,
         // The person behind the employment — the invite form (0279) binds an invitation to a PERSON,
         // not an employment, so it needs this id. Additive; existing callers ignore it.
         personId: employment.personId,
@@ -2238,6 +2242,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
       .select({
         employmentId: employment.id,
         employeeCode: employment.employeeCode,
+        // 44bc1c33 — the Card / Clocking ID field on the Attendance tab. Same column the Card Assignment
+        // screen edits; a column of the `employment` row already selected, so no extra join.
+        cardId: employment.cardId,
         personId: employment.personId,
         name: person.fullName,
         email: person.primaryEmail,

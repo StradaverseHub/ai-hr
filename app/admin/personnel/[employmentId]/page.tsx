@@ -84,6 +84,7 @@ import {
   saveProfileTabAction,
   saveBankStatutoryTabAction,
   saveAttendanceTabAction,
+  saveCardIdFieldAction,
   saveJobTabAction,
   savePayrollTabAction,
   removePersonPhotoAction,
@@ -242,6 +243,9 @@ export default async function EmployeePage({
   const tFixed = await getTranslations('payroll.transactions.fixed');
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
+  // 44bc1c33 — the Card ID field reuses the Attendance namespace's strings rather than minting a second
+  // wording for one field that appears on two screens.
+  const ta = await getTranslations('attendance');
   const tStatus = await getTranslations('people.employeeStatus');
   // 31e39d74 — the leave-balance card captions a not-yet-generated entitlement with the SAME words the two
   // balance grids use, rather than a third phrasing of the same fact.
@@ -2419,6 +2423,26 @@ export default async function EmployeePage({
                 className={`${inputCls} w-36`}
               />
             </Field>
+          </form>
+          {/* 44bc1c33 — CARD / CLOCKING ID, the SECOND interface onto `employment.card_id`. The Attendance ›
+              Card Assignment screen edits the same column, so the two cannot drift: the reporter's
+              requirement that they be "two interfaces for managing the same Card ID data, not separate
+              data fields" is satisfied by there being one field, not by keeping two in step.
+              Emptying it CLEARS the card, which returns this employee to being matched by their Employee
+              ID — which is how device files have always matched and is the normal state. */}
+          <form action={saveCardIdFieldAction} data-save-section="card" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={ta('cardColCardId')}>
+              <input
+                name="cardId"
+                defaultValue={emp.cardId ?? ''}
+                // TEXT, never type="number": a card number carries leading zeros and '007' is not '7'.
+                inputMode="text"
+                autoComplete="off"
+                className={`${inputCls} w-44`}
+              />
+            </Field>
+            <p className="pb-2 text-xs text-muted-foreground">{ta('cardNoneNote')}</p>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
     </Card>

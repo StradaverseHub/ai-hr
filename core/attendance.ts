@@ -4288,15 +4288,26 @@ export async function importAttendancePunches(
         code: employment.employeeCode,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
+        // 44bc1c33 — the THIRD key, for a terminal whose Card / Clocking ID is not the employee code.
+        cardId: employment.cardId,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(isNull(employment.terminatedOn));
     const byRef = new Map<string, { id: string; name: string }>();
+    // 44bc1c33 — ORDER IS THE PRECEDENCE, and it is deliberate. This is a FLAT map, so the last writer of a
+    // key wins. Codes and ICs go in first and CARD IDS LAST, so an exact card match beats a coincidental
+    // collision with somebody else's code or IC: the card is the device's own field and the most specific
+    // answer to "who is this punch". `assertCardIdFree` (core/attendance-card.ts) refuses such a collision
+    // at the point a card is assigned, so this ordering is the second line rather than the first — it
+    // matters for cards that predate that guard or arrive by any other route.
     for (const e of emps) {
       if (e.code) byRef.set(e.code.toLowerCase(), { id: e.id, name: e.name });
       if (e.ic) byRef.set(onlyDigits(e.ic), { id: e.id, name: e.name });
+    }
+    for (const e of emps) {
+      if (e.cardId) byRef.set(e.cardId.toLowerCase(), { id: e.id, name: e.name });
     }
     const matchRef = (ref: string) =>
       byRef.get(ref.toLowerCase()) ?? (onlyDigits(ref) ? byRef.get(onlyDigits(ref)) : undefined);

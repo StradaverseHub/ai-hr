@@ -20,6 +20,7 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
+  CreditCard,
   Clock,
   FilePen,
   FileUp,
@@ -162,6 +163,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // week from the tables that already hold them. It sits BESIDE "Work Schedule" and does not replace
     // it: a later round is explicitly the cutover, so both rows are expected here at once.
     { href: '/admin/attendance/schedule', labelKey: 'schedule', icon: CalendarCog, adminOnly: true },
+    // 44bc1c33 (r306) — CARD ASSIGNMENT. The employee↔Card/Clocking ID mapping a physical terminal needs
+    // when its card numbers are not the employee codes. A genuinely new row for a genuinely new screen:
+    // `importAttendancePunches` matched only employee code and IC, so such a file imported NOTHING and
+    // there was nowhere to fix it. Admin-only and beside Shift because it is device configuration.
+    { href: '/admin/card-assignment', labelKey: 'cardAssignment', icon: CreditCard, adminOnly: true },
   ] as const;
 
   /**
@@ -309,6 +315,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
       '/attendance', // Employee Attendance
       '/admin/attendance', // Shift
+      '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration, beside Shift
       // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
       // '/admin/attendance-policy/schedule' (Work Schedule) STOOD HERE and are gone, because the reporter
       // asked for both to be consolidated into the Schedule row below: "to provide a single centralised
@@ -523,6 +530,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // 3fb1a611 (r299) — '/admin/toil' left this list with its row (RETIRED above).
     for (const href of [
       '/admin/attendance',
+      // 44bc1c33 — a card maps a device number to a person, so it is admin configuration, never a row a
+      // manager or an employee reaches.
+      '/admin/card-assignment',
       '/admin/attendance-allowance',
       '/admin/locations',
     ]) {
@@ -633,6 +643,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // ad52212d round 1 — plain "Shift": it is a category under a node already called "Attendance
       // settings", and repeating the word inside it is the sprawl the reporter is complaining about.
       '/admin/attendance': 'Shift',
+      // 44bc1c33 (r306) — the row says what it opens: the mapping between an employee and the Card /
+      // Clocking ID their physical terminal records. Not "Card", which would read as a payment card.
+      '/admin/card-assignment': 'Card Assignment',
       // ad52212d round 1 — "Overtime Pattern", the reporter's own name for what this screen already is:
       // a reusable library of hour-banded overtime rates (attendance_rule + attendance_rule_ot_row).
       //

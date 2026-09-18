@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
 import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
@@ -953,6 +954,26 @@ export async function setEmploymentHolidayCalendarAction(formData: FormData) {
  * card, and "no group" is the safe reading for it. The service treats null as "take them out of the
  * group", never refuses it, and appends nothing when the value has not moved.
  */
+/**
+ * 44bc1c33 — the Card / Clocking ID card on the Attendance tab.
+ *
+ * ABSENT IS NOT BLANK, the same rule every section here follows: a form that does not post the field at
+ * all leaves the card alone, while a posted-but-empty field CLEARS it (which returns the employee to being
+ * matched by their Employee ID / IC, not to having no attendance). `setEmploymentCardId` owns the
+ * collision refusal; nothing is decided here.
+ */
+async function applyCardIdSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  if (!formData.has('cardId')) return;
+  const raw = String(formData.get('cardId') ?? '').trim();
+  await setEmploymentCardId(s, {
+    employmentId: String(formData.get('employmentId')),
+    cardId: raw === '' ? null : raw,
+  });
+}
+
 async function applyScheduleGroupSection(
   s: Awaited<ReturnType<typeof requireAdmin>>,
   formData: FormData,
@@ -971,6 +992,27 @@ async function applyScheduleGroupSection(
  * the screen through the same `?error=` redirect every sibling action uses, message and allowed-shift list
  * intact.
  */
+/**
+ * 44bc1c33 — save ONLY the Card / Clocking ID. Its own thin partial-save action beside the Schedule
+ * Group's and the Holiday Calendar's, for the same reason those exist: HTML forms cannot span the tab
+ * panels, and a card sharing a form with its neighbour can wipe the neighbour's column.
+ *
+ * The refusal the service can raise (CardIdInUseError — the number already identifies somebody else, by
+ * card, employee code or IC) reaches the screen through the same `?error=` redirect every sibling uses,
+ * with the holder's NAME intact, because "that card is taken" without saying by whom is unactionable.
+ */
+export async function saveCardIdFieldAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await applyCardIdSection(s, formData);
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}`));
+}
+
 export async function setEmploymentScheduleGroupAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -1762,6 +1804,7 @@ export async function saveAttendanceTabAction(formData: FormData): Promise<TabSa
     schedule: applyScheduleGroupSection,
     clocking: applyClockingLocationsSection,
     geofencing: applyGeofencingSection,
+    card: applyCardIdSection,
   });
 }
 

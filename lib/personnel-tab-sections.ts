@@ -123,7 +123,14 @@ export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'ot
  * rather than as one all-or-nothing error, so a refused Schedule Group leaves the Holiday Calendar saved
  * and says which card broke.
  */
-export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'geofencing'] as const;
+// 44bc1c33 (r306) — `card` is the Card / Clocking ID a physical terminal records for this employee. It is
+// the SAME `employment.card_id` the Attendance › Card Assignment screen edits, not a second field: the
+// reporter's requirement that the two screens be "two interfaces for managing the same Card ID data" is
+// satisfied by there being one column, so neither screen can drift from the other.
+// LAST in the order deliberately: it is the only section here that can be REFUSED for a reason about
+// another employee (the card collides with somebody's code / IC), and `runTabSave` reports per section —
+// so a refused card leaves the four sections above it saved and names the card as the one that broke.
+export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'schedule', 'clocking', 'geofencing', 'card'] as const;
 
 /**
  * Employment (the `job` tab). One section: the Employment Dates card.

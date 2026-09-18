@@ -327,7 +327,8 @@
     "controlTowerActions": "Agent actions",
     "sectionHome": "Home",
     "schedule": "Schedule",
-    "leaveCredit": "Leave Credit"
+    "leaveCredit": "Leave Credit",
+    "cardAssignment": "Card Assignment"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -2742,7 +2743,20 @@
     "dayNoShift": "No shift assigned for this date",
     "dayNoRecord": "No attendance was recorded for this date",
     "dayBreakDerived": "Break is the shift span less its net working hours",
-    "dayEditCorrection": "Request an attendance correction"
+    "dayEditCorrection": "Request an attendance correction",
+    "cardTitle": "Card Assignment",
+    "cardDescription": "Map an employee to the Card / Clocking ID their attendance device records.",
+    "cardColCardId": "Card ID",
+    "cardColMatchedBy": "Matched by",
+    "cardMatchedCard": "Card ID",
+    "cardMatchedCode": "Employee ID",
+    "cardMatchedNone": "Not matchable",
+    "cardSave": "Save",
+    "cardClear": "Clear",
+    "cardSearch": "Search employee, Employee ID or Card ID",
+    "cardInUse": "That Card ID already identifies {name}. Give this employee a different one.",
+    "cardSaved": "Card ID saved.",
+    "cardNoneNote": "No Card ID set — this employee is matched by their Employee ID, which is how device files have always matched. Set one only when the device records a different number."
   },
   "org": {
     "title": "Org chart",

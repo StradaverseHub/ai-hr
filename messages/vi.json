@@ -327,7 +327,8 @@
     "controlTowerActions": "Hành động của tác nhân",
     "sectionHome": "Trang chính",
     "schedule": "Lịch làm việc",
-    "leaveCredit": "Tín dụng nghỉ phép"
+    "leaveCredit": "Tín dụng nghỉ phép",
+    "cardAssignment": "Gán thẻ"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2742,7 +2743,20 @@
     "dayNoShift": "Không có ca nào được phân cho ngày này",
     "dayNoRecord": "Không có chấm công nào được ghi cho ngày này",
     "dayBreakDerived": "Thời gian nghỉ là độ dài ca trừ giờ làm thực",
-    "dayEditCorrection": "Yêu cầu điều chỉnh chấm công"
+    "dayEditCorrection": "Yêu cầu điều chỉnh chấm công",
+    "cardTitle": "Gán thẻ",
+    "cardDescription": "Liên kết nhân viên với Mã thẻ / Mã chấm công mà thiết bị chấm công ghi nhận.",
+    "cardColCardId": "Mã thẻ",
+    "cardColMatchedBy": "Khớp theo",
+    "cardMatchedCard": "Mã thẻ",
+    "cardMatchedCode": "Mã nhân viên",
+    "cardMatchedNone": "Không thể khớp",
+    "cardSave": "Lưu",
+    "cardClear": "Xóa",
+    "cardSearch": "Tìm nhân viên, Mã nhân viên hoặc Mã thẻ",
+    "cardInUse": "Mã thẻ đó đã thuộc về {name}. Hãy đặt mã khác cho nhân viên này.",
+    "cardSaved": "Đã lưu Mã thẻ.",
+    "cardNoneNote": "Chưa đặt Mã thẻ — nhân viên này được khớp theo Mã nhân viên, cách mà tệp thiết bị vẫn luôn khớp. Chỉ đặt khi thiết bị ghi một số khác."
   },
   "org": {
     "title": "Sơ đồ tổ chức",

@@ -327,7 +327,8 @@
     "controlTowerActions": "Tindakan ejen",
     "sectionHome": "Utama",
     "schedule": "Jadual",
-    "leaveCredit": "Kredit Cuti"
+    "leaveCredit": "Kredit Cuti",
+    "cardAssignment": "Penetapan Kad"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2742,7 +2743,20 @@
     "dayNoShift": "Tiada syif ditetapkan untuk tarikh ini",
     "dayNoRecord": "Tiada kehadiran direkodkan untuk tarikh ini",
     "dayBreakDerived": "Rehat ialah jangka syif tolak waktu bekerja bersihnya",
-    "dayEditCorrection": "Mohon pembetulan kehadiran"
+    "dayEditCorrection": "Mohon pembetulan kehadiran",
+    "cardTitle": "Penetapan Kad",
+    "cardDescription": "Petakan pekerja kepada ID Kad / Pendaftaran Masa yang direkodkan oleh peranti kehadiran.",
+    "cardColCardId": "ID Kad",
+    "cardColMatchedBy": "Dipadankan dengan",
+    "cardMatchedCard": "ID Kad",
+    "cardMatchedCode": "ID Pekerja",
+    "cardMatchedNone": "Tidak boleh dipadankan",
+    "cardSave": "Simpan",
+    "cardClear": "Kosongkan",
+    "cardSearch": "Cari pekerja, ID Pekerja atau ID Kad",
+    "cardInUse": "ID Kad itu sudah mengenal pasti {name}. Berikan pekerja ini ID yang berbeza.",
+    "cardSaved": "ID Kad disimpan.",
+    "cardNoneNote": "Tiada ID Kad ditetapkan — pekerja ini dipadankan dengan ID Pekerja mereka, sebagaimana fail peranti sentiasa dipadankan. Tetapkan satu hanya apabila peranti merekodkan nombor berbeza."
   },
   "org": {
     "title": "Carta organisasi",

@@ -842,6 +842,16 @@ export const employment = pgTable(
       .notNull()
       .references(() => company.id),
     employeeCode: text('employee_code'),
+    /** 44bc1c33 (0474) — the Card / Clocking ID a physical attendance device records for this employee,
+     *  when it differs from `employeeCode`. NULL means "match this employee on employee_code / ic", which
+     *  is what every employment did before this column existed and what most still do.
+     *
+     *  TEXT, never numeric: card numbers carry leading zeros and '007' is not '7'.
+     *
+     *  NEVER holds a DERIVED copy of `employeeCode`. When a company turns on "Card ID is the same as
+     *  Employee ID" the value is resolved at read time (core/attendance-card.ts) — copying it here would
+     *  need a sync rule on every employee-code rename, which is the drift the setting exists to avoid. */
+    cardId: text('card_id'),
     // "Group Join Date" (UI label) — the employee's FIRST day anywhere in the group. NOT NULL and the durable
     // anchor for every downstream calculation (leave entitlement service bands, payroll proration, EA forms,
     // imports). Deliberately NOT renamed from hired_on (~50 readers + the import contract depend on the name);

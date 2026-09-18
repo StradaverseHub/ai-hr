@@ -53,6 +53,7 @@
  * built here by design.
  */
 import {
+  CreditCard,
   CalendarClock,
   CalendarCog,
   CalendarRange,
@@ -327,6 +328,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
+    // 44bc1c33 — CARD ASSIGNMENT. The employee↔Card/Clocking ID mapping a physical terminal needs when its
+    // card numbers are not the employee codes. Admin-only and beside Shift because it is device
+    // configuration, not a record anybody reads day to day.
+    { href: '/admin/card-assignment', labelKey: 'cardAssignment', icon: CreditCard, adminOnly: true },
     /**
      * ⚠️ e4471e3c (r287) — TWO ROWS WERE REMOVED HERE, AND THEIR SCREENS WERE NOT. READ THIS BEFORE
      * ADDING EITHER BACK.
