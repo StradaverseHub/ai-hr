@@ -1,3 +1,76 @@
+## r305 (2026-09-18) — Employee Leave Inquiry: the tab rail becomes a bar, and Full screen on the wide tables. `main@62be49d7`, **no migration**.
+
+Closed and DEPLOYED: `d990f14a`. Gate: **921 files — equal to the suite file count — 14,081 tests, 0 AssertionErrors**, first pass, 14 chunks at `VITEST_MAX_WORKERS=3`. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `built_ref` 62be49d7.
+
+**Round number:** this is r305, not r304. r304 was taken by the Approval Workflow edit drawer (`85875e4b`, `main@70f4b774`), already merged and recorded — caught from the stale `.gate-receipt.json` note, not from the branch name, which was wrong until it was renamed.
+
+### d990f14a — the rail cost the table 192px to hold three words
+
+`sm:w-44` is 11rem = 176px, plus `gap-4` = 192px. 026e16b9 had already narrowed it from `w-56` and its
+own guard header records what that bought: table area 1038px for 1047px of columns at a 1512px window —
+9px still overflowing. A bar across the top costs the table nothing, so this finishes that job rather than
+reducing it again.
+
+- **It stays a `nav` with `aria-current`, NOT a `role="tablist"`.** The three pills are separate ROUTES;
+  tablist semantics would tell a screen reader they are panels of one page and that activating one swaps a
+  view. The look changed, the meaning did not.
+- **Filters follow a tab change from a per-DESTINATION allowlist** (`CARRY` in leave-inquiry-nav), never a
+  query-string passthrough. `type` is leave-type ids on both balances and records; `q` is a leave-code
+  search on both, so it carries (records' box also matches a request reference — carrying one of those to
+  balances filters to nothing, visible in the box that carried it, which is the stated trade). **`asOf` is
+  balances-only and is never carried**; Employee Details keeps its own `edQ` namespace and carries `emp`
+  alone.
+- **`TableFullscreen` is promoted in place, not portalled.** Moving children into a portal is a container
+  change at the same tree position, which React reconciles as a different element — the table would unmount
+  and remount, resetting the horizontal scroll that is the whole point of the feature. The cost is a
+  dependency on `Card` having no transform/filter/contain (a fixed child escapes `overflow:hidden` but not a
+  transformed ancestor), and that is now pinned by assertion rather than left to be discovered.
+- **Position:** the bar sits under the search bar and its FilterChips on Balances and Records, above the
+  table it scopes. On Employee Details the filters live inside the card header, so the bar sits above the
+  card — stated at the call site rather than silently inconsistent.
+
+### DECISIONS the ticket did not settle
+
+- The reporter asked only for Employee Balances; the Full screen control went on **all three tabs**, because
+  a control that appears on two of three reads as a bug when the three are one screen.
+- Threading `q` and `type` goes slightly beyond "layout only". It was done because a tab bar directly under
+  the search bar makes losing the filters look like a defect rather than a reset; the plan says so and
+  offers rejection of that part alone.
+- Retention of the reporter's own earlier decisions: 20c699f8 asked for a left rail and 026e16b9 asked to
+  narrow it. This reverses both, with their agreement, and the guards were re-pointed rather than deleted.
+
+### GUARDS RE-POINTED, NOT LOOSENED
+
+`test/leave-inquiry-layout.test.ts` — the two assertions pinning `sm:w-44` and `sm:flex-col` now pin the
+ABSENCE of a rail, plus the horizontal strip, the nav-not-tablist property, bar-before-table ordering on all
+three tabs, and filters-above-bar on the two that have a search bar. Everything else in that file (the
+shared `max-w-[100rem]` cap, the calendar's own `max-w-6xl`, no `max-w-none`, no `table-fixed`, px-2 cells,
+wrapping headings with non-wrapping values, `w-[26%] min-w-[13rem]`, Explanation last) still holds.
+`test/leave-inquiry-entry-relocation.test.ts`, `test/leave-inquiry-surfaces.test.ts` and
+`test/r269-employee-leave-inquiry-row.test.ts` quoted `withEmp('/leave/tracker')` literally to assert WHICH
+ADDRESS each tab points at — no address moved, so they now quote `hrefFor(base, tab)`.
+
+**Both new guard files were shown non-vacuous**: re-adding `sm:w-44 sm:flex-col`, adding `asOf` to a carry
+list and rendering `{children}` twice each turned the named assertion red, then were reverted.
+
+### NOT DONE / KNOWN
+
+- **No browser measurement, and 026e16b9's header says that is the only way a layout claim is really
+  checked.** The dev-server render was not run (the auto-mode classifier refuses `pnpm db:seed`, as in
+  r303). The i18n risk specifically IS covered — `test/i18n-coverage.test.ts` proves the three new keys
+  exist in all six locales and resolve — but the pill bar's rendered WIDTH at a narrow window, and the table
+  area at 1512px before and after, are unmeasured. **Owed: measure and record, the way 026e16b9 did.**
+- **Correction to d990f14a's own build notes, already pushed:** they say "German and French are the long
+  ones". This product's six locales are en, ms, ta, th, vi, zh — there is no German or French. The bar is
+  `overflow-x-auto` at every width so a long label set scrolls rather than wrapping, which is the property
+  that mattered; the named languages were simply wrong.
+- `TableFullscreen`'s Escape, focus-return and body-scroll-lock behaviours are browser claims; the wiring is
+  asserted, the behaviour is not (no DOM/interaction runner covers these pages).
+- Employee Details' table is 7 columns and did not need the width; it got the bar and Full screen anyway for
+  consistency.
+- **39136455 (Emergency Leave) will take this table from 13 columns to 15.** It is planned and deliberately
+  sequenced after this round, which returns the 192px those columns need. Re-measure then.
+
 ## r304 (2026-09-17) — Approval Workflow: Edit and Add template open in a right-side drawer. `main@70f4b774`, **no migration**.
 
 Closed and DEPLOYED: `85875e4b`. Gate: **920 files — equal to the suite file count — 14,070 tests, 0 AssertionErrors, 0 deadlocks**, first pass, 14 chunks. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 70f4b774.
