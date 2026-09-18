@@ -2821,7 +2821,9 @@
         "taken": "Cuti yang telah anda gunakan.",
         "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
         "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
-        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
+        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil.",
+        "share": "Hari yang dipindahkan antara jenis cuti yang berkongsi satu baki: tolak di tempat ia dipinjamkan, tambah di tempat ia digunakan.",
+        "pendingShare": "Sama, untuk hari yang ditempah oleh permohonan yang masih menunggu keputusan."
       },
       "statusGenerated": "Telah dijana",
       "statusNotGenerated": "Belum dijana",
@@ -2841,7 +2843,9 @@
       "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di skrin Jenis cuti.",
       "statusNoEligibilityMatchTip": "Tiada skim faedah yang menggambarkan pekerja ini bagi jenis cuti ini, dan jenis cuti ini tiada jadual kelayakan lalai, jadi tiada jadual menentukan hari mereka. Skim adalah pilihan dan tidak menyimpan sebarang senarai nama: ia menggambarkan satu kumpulan mengikut gred jawatan, jabatan atau tempoh perkhidmatan, ia memilih antara jadual sesuatu jenis cuti, dan bukan ia yang menentukan sama ada seseorang layak.",
       "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
-      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})",
+      "colShare": "Kongsi",
+      "colPendingShare": "Kongsi Menunggu"
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",

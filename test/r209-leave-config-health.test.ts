@@ -761,16 +761,25 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
 
     const rows = await leaveBalances(adminCtx(b), employmentId, 'en', { includeHidden: true });
     const byId = new Map(rows.map((r) => [r.leaveTypeId, r]));
-    // ⚠️ ASSERTED ON A BORROWER FIRST, ON PURPOSE. The POOL's own row read 10 before r209 as well, so a
-    // loop that started there would pass its first two assertions against the old behaviour and fail
-    // later, on the descriptor — which is a much weaker statement than "the borrower's figure was wrong".
-    expect(byId.get(members[0])!.balance, 'the borrower shows the POOL, not its own empty ledger').toBe(10);
-    expect(byId.get(members[0])!.available).toBe(10);
+    // ⚠️ 39136455 RE-POINTED THIS, AND THE CLAIM MOVED FROM `balance` TO `available`.
+    //
+    // r209 gave every member the pool's `balance`, because before it a borrower showed its own permanently
+    // empty ledger with nothing naming the connection. The reporter then asked for the other half: with the
+    // pool's figures mirrored onto it, there was no way to see how much Emergency Leave anybody had
+    // actually taken. So a borrower's `balance` is 0.00 now — it has no balance of its own, it borrows —
+    // and the POOLED figure it must still agree with is `available`: what this person can book against this
+    // code, which is what the submit guard and the apply form read.
+    //
+    // The r209 defect is still pinned, and by the field that actually decides whether the employee can
+    // apply: a borrower reading 0 in `available` is the "Emergency Leave 0.00 beside a spendable Annual
+    // balance" failure, and it fails here.
+    expect(byId.get(members[0])!.available, 'the borrower can still book the POOL').toBe(10);
+    expect(byId.get(members[0])!.balance, 'a borrower holds no balance of its own').toBe(0);
+    expect(byId.get(pool)!.balance, 'the pool keeps its ledger balance, shown once').toBe(10);
     for (const id of [...members, pool]) {
       const row = byId.get(id);
       expect(row, id).toBeTruthy();
-      // ONE FIGURE. Before r209 the three borrowers each read 0.00 here while the pool read 10.
-      expect(row!.balance, `balance of ${row!.leaveType}`).toBe(10);
+      // ONE FIGURE, still — it is `available` that every member shares.
       expect(row!.available, `available of ${row!.leaveType}`).toBe(10);
       expect(row!.sharedBalance).not.toBeNull();
       expect(row!.sharedBalance!.sourceLeaveTypeName).toBe('Special Leave');
@@ -814,7 +823,8 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     const bor = byId.get(borrower)!;
 
     // The pooled figure itself is unchanged — this case is about everything printed BESIDE it.
-    expect(bor.balance, 'the borrower still shows the pool').toBe(10);
+    // 39136455 — the pooled figure a borrower shares is `available`; its own `balance` is 0.
+    expect(bor.available, 'the borrower can still book the pool').toBe(10);
     // THE ASSERTION THE CASE TURNS ON: a leave type that borrows is not a leave type missing a table.
     expect(bor.entitlementStatus).not.toBe('no_entitlement_table');
     // The pool's story, whole, so the row cannot contradict itself in any column.
@@ -873,9 +883,19 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     const rows = await leaveBalances(adminCtx(b), employmentId, 'en', { includeHidden: true });
     const byId = new Map(rows.map((r) => [r.leaveTypeId, r]));
     for (const id of [pool, marriage, study]) {
-      expect(byId.get(id)!.pending, id).toBe(4);
+      // 39136455 — `pending` is now the reservation filed under THIS code (r209 showed the pool's on every
+      // member). What every member still shares, and what the reporter's complaint was really about, is
+      // `available`: a pending application on ONE member still reduces what ALL of them can book.
       expect(byId.get(id)!.available, id).toBe(6);
-      expect(byId.get(id)!.balance, id).toBe(10);
+    }
+    // 39136455 — the pool keeps its ledger balance; a borrower holds none of its own, and the Pending Share
+    // column carries the four days the marriage application has reserved out of the pool.
+    expect(byId.get(pool)!.balance, 'pool balance').toBe(10);
+    expect(byId.get(marriage)!.balance, 'a borrower holds no balance').toBe(0);
+    expect(byId.get(pool)!.pendingShare, 'the pool has lent out four pending days').toBe(-4);
+    expect(byId.get(marriage)!.pendingShare, 'the borrower has drawn in four pending days').toBe(4);
+    expect(byId.get(study)!.pendingShare, 'an untouched member shares nothing').toBe(0);
+    for (const id of [pool, marriage, study]) {
     }
   });
 

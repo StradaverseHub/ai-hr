@@ -65,6 +65,10 @@ export async function GET(req: Request) {
       tMe('colTaken'),
       tInq('colPendingApproval'),
       tMe('colAdjustment'),
+      // 39136455 — the two pooled-transfer columns, in the SAME position as on screen. This route's header
+      // states the invariant they are here to satisfy: the file exports the table that was on screen.
+      tMe('colShare'),
+      tMe('colPendingShare'),
       tMe('colOverutilized'),
       tInq('colForfeitedBf'),
       tMe('colBalance'),
@@ -87,6 +91,8 @@ export async function GET(req: Request) {
       cell(r.taken),
       cell(r.pending),
       cell(r.adjustment),
+      cell(r.share),
+      cell(r.pendingShare),
       cell(r.overutilized),
       cell(r.forfeitedBf),
       cell(r.balance),

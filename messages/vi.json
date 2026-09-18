@@ -2821,7 +2821,9 @@
         "taken": "Ngày nghỉ bạn đã dùng.",
         "adjustment": "Thay đổi thủ công hoặc một lần đối với số dư, chẳng hạn ngày nghỉ lễ.",
         "overutilized": "Mức số dư của bạn xuống dưới 0, nếu có.",
-        "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng."
+        "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng.",
+        "share": "Số ngày chuyển giữa các loại phép dùng chung một số dư: âm ở nơi cho mượn, dương ở nơi sử dụng.",
+        "pendingShare": "Tương tự, cho số ngày được giữ bởi đơn còn chờ duyệt."
       },
       "statusGenerated": "Đã tạo",
       "statusNotGenerated": "Chưa được tạo",
@@ -2841,7 +2843,9 @@
       "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này trên màn hình Loại nghỉ phép.",
       "statusNoEligibilityMatchTip": "Không có chế độ phúc lợi nào mô tả nhân viên này cho loại nghỉ này, và loại nghỉ này cũng không có bảng định mức mặc định, nên không bảng nào quyết định số ngày của họ. Chế độ là tùy chọn và không giữ danh sách tên nào: nó mô tả một nhóm theo ngạch bậc, phòng ban hoặc thâm niên, nó chọn giữa các bảng của một loại nghỉ, và nó không phải là thứ quyết định ai có định mức hay không.",
       "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
-      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
+      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})",
+      "colShare": "Chia sẻ",
+      "colPendingShare": "Chia sẻ chờ duyệt"
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",

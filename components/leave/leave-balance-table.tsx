@@ -46,6 +46,11 @@ const NUM_COLS: { key: NumCol; labelKey: string; tipKey: string }[] = [
   { key: 'broughtForward', labelKey: 'colCarriedForward', tipKey: 'tip.carriedForward' },
   { key: 'taken', labelKey: 'colTaken', tipKey: 'tip.taken' },
   { key: 'adjustment', labelKey: 'colAdjustment', tipKey: 'tip.adjustment' },
+  // 39136455 — the pooled transfer. The employee sees it for the SAME reason HR does: without it, a leave
+  // type that borrows reads "taken 2, entitlement 0" and contradicts itself. 0.00 on every type that
+  // spends its own balance, which is most of them.
+  { key: 'share', labelKey: 'colShare', tipKey: 'tip.share' },
+  { key: 'pendingShare', labelKey: 'colPendingShare', tipKey: 'tip.pendingShare' },
   { key: 'overutilized', labelKey: 'colOverutilized', tipKey: 'tip.overutilized' },
   { key: 'balance', labelKey: 'colBalance', tipKey: 'tip.balance' },
 ];

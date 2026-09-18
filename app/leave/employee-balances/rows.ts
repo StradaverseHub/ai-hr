@@ -38,6 +38,11 @@ export type EmployeeBalanceRow = {
    *  row already shows as Eligible. Carried off the SAME `bd` as every other figure here, so the grid and
    *  the panel cannot quote two different full-year allowances. */
   fullEntitlement: number | null;
+  /** 39136455 — the pooled TRANSFER, between Adjustment and Balance. Negative on the row lending the days
+   *  out, positive on the row that used them. Carried off the same `deriveBalanceRow` the employee's own
+   *  grid uses, so HR's column and the employee's cannot disagree about how many days moved. */
+  share: number | null;
+  pendingShare: number | null;
   /** 31e39d74 — why YTD Entitled reads what it reads. Same value the employee's own screen shows, through
    *  the same `deriveBalanceRow`, so HR and the employee are never told two different stories about a 0.00. */
   entitlementStatus: EntitlementStatus;
@@ -126,6 +131,8 @@ export async function employeeBalanceRows(
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
         ytdEntitled: row.ytdEntitled,
         fullEntitlement: row.fullEntitlement,
+        share: row.share,
+        pendingShare: row.pendingShare,
         entitlementStatus: row.entitlementStatus,
         entitlementTemplateName: bd?.entitlementTemplateName ?? null,
         sharedBalance: row.sharedBalance,

@@ -365,6 +365,12 @@ export default async function EmployeeBalancesPage({
                     <th className={thNum}>{tMe('leaveBalanceTable.colTaken')}</th>
                     <th className={thNum}>{tInq('colPendingApproval')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colAdjustment')}</th>
+                    {/* 39136455 — SHARE / PENDING SHARE, between Adjustment and Balance exactly as the
+                        reporter asked. They are the pooled transfer Emergency Leave used to hide by
+                        mirroring Annual Leave's figures: a minus on the row that lends the days out, a plus
+                        of the same size on the row that used them. */}
+                    <th className={thNum}>{tMe('leaveBalanceTable.colShare')}</th>
+                    <th className={thNum}>{tMe('leaveBalanceTable.colPendingShare')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colOverutilized')}</th>
                     <th className={thNum}>{tInq('colForfeitedBf')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colBalance')}</th>
@@ -452,6 +458,8 @@ export default async function EmployeeBalancesPage({
                       <td className={tdNum}>{num(r.taken)}</td>
                       <td className={tdNum}>{num(r.pending)}</td>
                       <td className={tdNum}>{num(r.adjustment)}</td>
+                      <td className={tdNum}>{num(r.share)}</td>
+                      <td className={tdNum}>{num(r.pendingShare)}</td>
                       <td className={tdNum}>{num(r.overutilized)}</td>
                       <td className={tdNum}>{num(r.forfeitedBf)}</td>
                       <td className={`${tdNum} font-medium`}>{num(r.balance)}</td>

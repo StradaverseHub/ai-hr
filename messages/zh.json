@@ -2821,7 +2821,9 @@
         "taken": "您已使用的休假。",
         "adjustment": "对余额的手动或一次性变更，例如节日额度。",
         "overutilized": "您的余额低于零的程度（如有）。",
-        "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。"
+        "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。",
+        "share": "在共用同一余额的假期类型之间调剂的天数：借出方为负，使用方为正。",
+        "pendingShare": "同上，适用于尚待审批的申请所预留的天数。"
       },
       "statusGenerated": "已生成",
       "statusNotGenerated": "尚未生成",
@@ -2841,7 +2843,9 @@
       "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在“假期类型”页面为其创建额度表。",
       "statusNoEligibilityMatchTip": "没有福利方案描述此假期类型下的该员工，且该假期类型也没有默认额度表，因此没有任何额度表决定其天数。方案是可选的，且不保存任何姓名清单：它按职级、部门或服务年资描述一群人，用于在某个假期类型的多张额度表之间做选择，它并不是决定某人是否享有额度的东西。",
       "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
-      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）",
+      "colShare": "调剂",
+      "colPendingShare": "待批调剂"
     },
     "typeLabel": "类型",
     "fromLabel": "从",

@@ -54,6 +54,15 @@ export type LeaveBalanceRow = {
    *  beside the status caption that already explains it, not a gap. null ⇒ no breakdown loaded at all, or
    *  the `eligible` ESS row is hidden for this type. */
   fullEntitlement: number | null;
+  /** 39136455 — SHARE: the finalised transfer between members of one pooled balance. Negative on the row
+   *  that LENDS the days out (the pool's own type), positive and equal on the row that used them. 0 for a
+   *  leave type that spends its own balance — an honest zero, because "how many days moved" always has an
+   *  answer for such a type. Gated on Taken, because it is the same days seen from the pool's side: a
+   *  tenant that hides what an employee has taken must not get the figure back through this column. */
+  share: number | null;
+  /** 39136455 — PENDING SHARE: the same, for days reserved by an application that is still awaiting a
+   *  decision. Gated on Available, which is the figure pending already moves. */
+  pendingShare: number | null;
   /** 31e39d74 — the caption the YTD Entitled cell needs when the figure is 0.00 for a reason. Carried on
    *  the ROW (not re-derived per screen) so My Leave, Employee Balances and its export cannot disagree
    *  about whether an entitlement is merely ungenerated. `not_configured` when no breakdown loaded — the
@@ -80,6 +89,9 @@ export type NumCol =
   | 'broughtForward'
   | 'taken'
   | 'adjustment'
+  // 39136455 — the two pooled-transfer columns, sortable like every other figure beside them.
+  | 'share'
+  | 'pendingShare'
   | 'overutilized'
   | 'balance';
 
@@ -101,6 +113,10 @@ export type BalanceInput = {
   /** r209 — the shared-pool descriptor `leaveBalances` attaches when this type draws on another's balance.
    *  Optional so existing fixtures and callers that predate the pool compile unchanged. */
   sharedBalance?: SharedLeaveBalanceInfo | null;
+  /** 39136455 — the pooled transfer `leaveBalances` computes in the same pass as `sharedBalance`. Optional
+   *  so every non-pooled caller and every fixture stays byte-identical; absent ⇒ 0, i.e. shares nothing. */
+  share?: number | null;
+  pendingShare?: number | null;
 };
 
 /** The subset of leaveEntitlementBreakdown this table consumes (null ⇒ no breakdown loaded for the type). */
@@ -148,6 +164,9 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     visual: { color: b.color, icon: b.icon, code: b.code },
     available: showAvailable ? b.available : null,
     taken: showTaken ? b.taken : null,
+    // 39136455 — the two halves of a pooled transfer, gated by the figure each one IS.
+    share: showTaken ? (b.share ?? 0) : null,
+    pendingShare: showAvailable ? (b.pendingShare ?? 0) : null,
     broughtForward: bd ? bd.carriedForward : null,
     // Adjustment = the CONFIG adjustments only (0315dac7). It used to be `otherAdjustments`, which commingles
     // HR's festive / one-off grants with the automatic `sys:policy_recalc` corrections (and drops

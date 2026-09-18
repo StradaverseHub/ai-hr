@@ -2821,7 +2821,9 @@
         "taken": "Leave you have already used.",
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
-        "balance": "Your remaining balance: total entitlement, including any brought forward and adjustments, minus leave taken."
+        "balance": "Your remaining balance: total entitlement, including any brought forward and adjustments, minus leave taken.",
+        "share": "Days moved between leave types that share one balance: a minus where they were lent out, a plus where they were used.",
+        "pendingShare": "The same, for days reserved by an application that is still waiting for a decision."
       },
       "statusGenerated": "Generated",
       "statusNotGenerated": "Not yet generated",
@@ -2841,7 +2843,9 @@
       "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on the Leave types screen.",
       "statusNoEligibilityMatchTip": "No benefit scheme describes this employee for this leave type, and the leave type has no default entitlement table, so no table decides their days. A scheme is optional and holds no list of names: it describes a population by job grade, department or length of service, it chooses between a leave type’s tables, and it is not what decides whether somebody is entitled.",
       "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
-      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})",
+      "colShare": "Share",
+      "colPendingShare": "Pending Share"
     },
     "typeLabel": "Type",
     "fromLabel": "From",

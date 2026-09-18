@@ -2626,7 +2626,7 @@ export function leaveBalances(
 ) {
   return withTenant(ctx, async (tx) => {
     const asOf = opts.asOf;
-    const [rows, pend] = await Promise.all([
+    const [rows, pend, takenFiled] = await Promise.all([
       tx
         .select({
           leaveTypeId: leaveType.id,
@@ -2667,8 +2667,37 @@ export function leaveBalances(
           ),
         )
         .groupBy(leaveRequest.leaveTypeId, leaveType.name),
+      /**
+       * 39136455 — TAKEN, ATTRIBUTED TO THE LEAVE CODE IT WAS FILED UNDER.
+       *
+       * A pooled type spends the SOURCE's ledger (core/leave.ts `balanceTypeId`), so an Emergency Leave
+       * application lands as a debit on Annual Leave's rows and `rows` above counts it as Annual taken.
+       * That is correct about the POOL and useless to HR, who asked how much Emergency Leave this person
+       * has actually taken.
+       *
+       * `leave_ledger.source_request_id` already carries the request, and the request carries the type the
+       * employee chose. So the attribution needs no new column and no new write — COALESCE back to the
+       * ledger's own type for every row that has no request behind it (a grant, an adjustment, a carry, an
+       * expiry), which belongs to the pool and is not a share of anything.
+       *
+       * Identical to `rows`'s own filter and date cut, or the two would disagree about which rows exist.
+       */
+      tx
+        .select({
+          filedTypeId: sql<string>`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+        })
+        .from(leaveLedger)
+        .leftJoin(leaveRequest, eq(leaveRequest.id, leaveLedger.sourceRequestId))
+        .where(
+          asOf
+            ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
+            : eq(leaveLedger.employmentId, employmentId),
+        )
+        .groupBy(sql`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
+    const takenFiledBy = new Map(takenFiled.map((t) => [t.filedTypeId, Number(t.taken)]));
     const out = rows.map((r) => {
       const pending = pendingBy.get(r.leaveTypeId) ?? 0;
       const balance = Number(r.balance);
@@ -2702,6 +2731,11 @@ export function leaveBalances(
         placement: 'secondary' as EssPlacement,
         // r209 — filled in the pooling pass below; null for every type that spends its own balance.
         sharedBalance: null as SharedLeaveBalanceInfo | null,
+        // 39136455 — the pooled TRANSFER, filled in the same pass. 0 for every type that is not in a pool:
+        // a type that spends its own balance shares nothing with anybody, which is an honest 0.00 rather
+        // than a null, because the question "how many days moved" always has an answer for such a type.
+        share: 0,
+        pendingShare: 0,
       };
     });
     // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
@@ -2726,6 +2760,8 @@ export function leaveBalances(
         // Leave grouping visibility (b653ac1b): placeholder, overwritten in the final pass. See rows.map above.
         placement: 'secondary' as EssPlacement,
         sharedBalance: null as SharedLeaveBalanceInfo | null,
+        share: 0,
+        pendingShare: 0,
       });
       seen.add(p.leaveTypeId);
     }
@@ -2747,7 +2783,7 @@ export function leaveBalances(
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null, share: 0, pendingShare: 0 });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
@@ -2856,11 +2892,51 @@ export function leaveBalances(
           sourceLeaveTypeName: source.leaveType,
           contributingLeaveTypes: members.map((m) => m.leaveType),
         };
+        /**
+         * 39136455 — EACH ROW TELLS ITS OWN STORY, AND THE TRANSFER IS A COLUMN.
+         *
+         * r209 gave every member the SOURCE's figures, because before it a borrower showed its own
+         * permanently-empty ledger (Emergency Leave 0.00 beside an Annual balance it could in fact spend)
+         * with nothing naming the connection. That was the right fix for the wrong half of the problem: it
+         * made the Emergency row readable and made it impossible to see how much Emergency Leave anybody
+         * had actually taken, because the figure shown was the pool's.
+         *
+         * So the mirroring stops, and Share / Pending Share carry what it was hiding:
+         *   · `taken` is now the days filed under THIS code (takenFiledBy, above).
+         *   · `pending` is this code's own reservation — `pendingBy` already grouped by the FILED type; it
+         *     was only the line below that overwrote it with the pool's.
+         *   · `share` is the finalised transfer: a borrower draws IN what it took (+), and the source lends
+         *     OUT the sum of what every borrower took (−).
+         *   · `pendingShare` is the same for days still awaiting approval.
+         *   · a borrower's `accrued` and `balance` are 0.00 — it has no entitlement and no balance of its
+         *     own, which is the honest statement and the one the reporter asked for. The POOL's balance
+         *     stays on the source, shown once, on the row that owns it.
+         *
+         * ⚠️ `available` STAYS POOLED FOR EVERY MEMBER, and that is not an inconsistency with `balance`
+         * being 0. They answer different questions: `balance` is "what does this code hold" (nothing — it
+         * borrows) and `available` is "how much can this person still book against it" (the pool's). The
+         * submit guard and the apply form read `available`; zeroing it would make Emergency Leave
+         * unapplyable for everyone, which is the defect this change is one careless line away from.
+         *
+         * THE INVARIANT: across a pool, sum(balance) equals the pool's own ledger balance, because the
+         * shares cancel — the source's −N is exactly the borrowers' +N.
+         */
+        const borrowers = members.filter((m) => m.leaveTypeId !== sourceId);
+        const lentOut = borrowers.reduce((n, m) => n + (takenFiledBy.get(m.leaveTypeId) ?? 0), 0);
+        const lentPending = borrowers.reduce((n, m) => n + m.pending, 0);
         for (const m of members) {
-          m.accrued = source.accrued;
-          m.taken = source.taken;
-          m.balance = source.balance;
-          m.pending = pooledPending;
+          const isSource = m.leaveTypeId === sourceId;
+          const ownTaken = takenFiledBy.get(m.leaveTypeId) ?? 0;
+          m.taken = ownTaken;
+          // `|| 0` is NOT redundant: `-0` is a real JavaScript value, it fails Object.is against 0, and it
+          // formats as "-0.00" on the grid — a minus sign against a row that lent nothing out.
+          m.share = isSource ? -lentOut || 0 : ownTaken;
+          m.pendingShare = isSource ? -lentPending || 0 : m.pending;
+          if (!isSource) {
+            m.accrued = 0;
+            m.balance = 0;
+          }
+          // What this person can still BOOK against this code is the pool's, for every member.
           m.available = source.balance - pooledPending;
           m.sharedBalance = info;
         }
