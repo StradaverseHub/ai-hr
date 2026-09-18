@@ -34,9 +34,10 @@ import {
   Wallet,
 } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin } from '@/lib/authz';
+import { isAdmin, isGroupAdmin } from '@/lib/authz';
 import { listPendingTasks, type PendingTaskItem } from '@/core/approvals-inbox';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { getSettingOrFallback, isModuleEnabledOrFalse } from '@/core/entitlements';
+import { canDecideProfileChanges, resolveRequestApprover } from '@/lib/profile-requestable-fields';
 import { listCompanies, plannedAbsences, recentHires } from '@/core/read';
 import { recordReadiness, type ReadinessBlocks } from '@/core/record-readiness';
 import { payrollReadiness } from '@/core/payroll-readiness';
@@ -62,6 +63,9 @@ const GAP_LABEL: Record<string, string> = {
 const KIND_LABEL: Record<PendingTaskItem['kind'], string> = {
   leave: 'Leave request',
   leaveCancellation: 'Leave cancellation',
+  // r305 added this queue to the inbox; the compiler required it here, which is the point of the
+  // exhaustive Record — a preview that silently dropped a queue would misreport the day's work.
+  replacementLeave: 'Replacement leave claim',
   attendance: 'Attendance correction',
   travel: 'Travel request',
   profile: 'Profile change',
@@ -74,6 +78,7 @@ const KIND_LABEL: Record<PendingTaskItem['kind'], string> = {
 const KIND_ICON: Record<PendingTaskItem['kind'], typeof Plane> = {
   leave: Plane,
   leaveCancellation: Plane,
+  replacementLeave: Clock,
   attendance: Clock,
   travel: Plane,
   profile: Users,
@@ -171,7 +176,19 @@ export default async function HomePreviewPage() {
   ]);
 
   const [tasks, absences, hires, companies, readiness] = await Promise.all([
-    listPendingTasks(s, scopeIds, { attendance: attendanceOn, claims: claimsOn }),
+    listPendingTasks(s, scopeIds, {
+      attendance: attendanceOn,
+      claims: claimsOn,
+      // r305 — the same predicate /approvals and the bell use, so this preview cannot show a count
+      // the Approvals page would not honour.
+      profileChanges: canDecideProfileChanges({
+        admin,
+        groupAdmin: isGroupAdmin(s),
+        approverSetting: resolveRequestApprover(
+          getSettingOrFallback<string>(s, 'ess.profile_change_approver', 'group_admin'),
+        ),
+      }),
+    }),
     plannedAbsences(s, scopeIds, { from: todayIso, to: todayIso }, todayIso),
     recentHires(s, scopeIds, { since: since60, limit: 5 }),
     listCompanies(s),
