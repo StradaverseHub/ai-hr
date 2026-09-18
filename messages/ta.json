@@ -11757,8 +11757,12 @@
   },
   "commandBar": {
     "open": "தேடு",
-    "placeholder": "செயலைத் தேடு…",
+    "placeholder": "நபர்கள், பக்கங்கள், செயல்களைத் தேடு…",
     "noResults": "பொருத்தம் இல்லை.",
+    "groupPages": "பக்கங்கள்",
+    "groupPeople": "நபர்கள்",
+    "groupActions": "செயல்கள்",
+    "searching": "தேடுகிறது…",
     "back": "பின்செல்",
     "loading": "ஏற்றுகிறது…",
     "openFull": "முழுப் பக்கத்தைத் திற",

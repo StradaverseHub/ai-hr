@@ -83,6 +83,55 @@ type CollapsibleGroupItem = {
 };
 type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
+
+/**
+ * Who is looking, as the rail understands it. The same three answers app/layout.tsx already resolves
+ * for the Sidebar: two role facts and the module list (null = no opinion, show everything — see
+ * lib/nav-entitlements.ts for why nav fails open where services fail closed).
+ */
+export type NavGates = { isAdmin: boolean; canApprove: boolean; enabledModules: string[] | null };
+
+/** Is this row's owning module on the tenant's plan? (ADR-0077 slice 4.) */
+const navModuleAllows = (href: string, enabledModules: string[] | null) => {
+  if (enabledModules === null) return true;
+  const owner = MODULE_OF_HREF.get(href);
+  return owner == null || enabledModules.includes(owner);
+};
+
+/**
+ * Row visibility — module AND role, ANDed. Extracted to module scope in r306 so the ⌘K palette can
+ * offer exactly the pages the rail offers. It is deliberately the SAME function rather than a second
+ * list: a palette with its own copy of this rule is a palette that advertises a screen the rail hides
+ * the first time either changes, which is the drift r305 had just finished paying for in the bell.
+ */
+const navRowVisible = (c: ChildItem, g: NavGates) =>
+  navModuleAllows(c.href, g.enabledModules) && (c.adminOnly ? g.isAdmin : c.managerUp ? g.isAdmin || g.canApprove : true);
+
+/** One searchable nav destination, carrying the section it sits under so the palette can group. */
+export type NavSearchRow = { href: string; labelKey: string; sectionLabelKey: string | null };
+
+/**
+ * Every destination this viewer may reach from the rail, flattened (nodes contribute their children,
+ * never the parent — a flyout parent is not a page). The palette's page list, so that what ⌘K finds and
+ * what the rail shows are one answer with one owner.
+ */
+export function visibleNavRows(g: NavGates): NavSearchRow[] {
+  const out: NavSearchRow[] = [];
+  for (const group of GROUPS) {
+    if (group.adminOnly ? !g.isAdmin : group.managerUp ? !(g.isAdmin || g.canApprove) : false) continue;
+    const section = group.labelKey ?? null;
+    for (const row of group.items) {
+      if (isCollapsible(row)) {
+        for (const child of row.children) {
+          if (navRowVisible(child, g)) out.push({ href: child.href, labelKey: child.labelKey, sectionLabelKey: section });
+        }
+      } else if (navRowVisible(row, g)) {
+        out.push({ href: row.href, labelKey: row.labelKey, sectionLabelKey: section });
+      }
+    }
+  }
+  return out;
+}
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
 // Consolidated Attendance node (b3dc0f78 / 5cb199b3 / f60cd403 / 5249d43f). Since ADR-0080 rung 2
@@ -506,15 +555,10 @@ export function Sidebar({
    * opinion and shows everything — see lib/nav-entitlements.ts for why nav fails open where services
    * fail closed. A row belonging to no sellable module (core rows, hardcoded rows) is always shown.
    */
-  const moduleAllows = (href: string) => {
-    if (enabledModules === null) return true;
-    const owner = MODULE_OF_HREF.get(href);
-    return owner == null || enabledModules.includes(owner);
-  };
+  const moduleAllows = (href: string) => navModuleAllows(href, enabledModules);
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
-  const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+  const canSeeChild = (c: ChildItem) => navRowVisible(c, { isAdmin, canApprove, enabledModules });
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))

@@ -1,17 +1,38 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
-import { Search, ArrowRight, UserCog } from 'lucide-react';
+import { Search, ArrowRight, UserCog, CornerDownLeft, UserRound } from 'lucide-react';
 import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
+// r306 — the palette's page list IS the rail's visibility answer, not a second copy of it.
+import { visibleNavRows, type NavGates, type NavSearchRow } from '@/components/sidebar';
+import {
+  commandBarGatesAction,
+  searchPeopleAction,
+  type CommandPersonHit,
+} from '@/app/command-bar-actions';
 
 /**
  * R44 delegation (Phase 1) — the product's FIRST global command bar. There was no search / cmdk primitive
  * anywhere, so this is built from scratch: a topbar trigger + a Cmd/Ctrl-K listener open a Radix Dialog with
  * a text box that substring-matches a small in-code registry of quick actions. It is deliberately generic
- * (add entries to COMMAND_ITEMS) — v1 ships one action, "Approval Delegation".
+ * (add entries to COMMAND_ITEMS) — v1 shipped one action, "Approval Delegation".
+ *
+ * r306 — IT NOW FINDS PAGES AND PEOPLE, because one action was not a search and "I cannot find it" is the
+ * complaint this product gets most: a public-holiday screen the consultant could not locate (R20), a grade
+ * field that was on the page all along behind a collapsed section (2026-09-12), 200-odd screens behind a
+ * rail that only fits 16 rows at a time.
+ *
+ *   • PAGES come from `visibleNavRows` in components/sidebar.tsx — the rail's own filter, so the palette
+ *     cannot offer a screen the menu hides or a module the tenant has not bought. One owner, not a copy.
+ *   • PEOPLE come from the People screen's own paginated query under RLS, six at a time.
+ *   • ACTIONS stay the in-code registry below.
+ *
+ * The gates and the people search are server actions fetched when the dialog opens (app/command-bar-actions.ts),
+ * so the header keeps rendering `<CommandBar />` with no props and an unopened palette costs nothing.
  *
  * Popup parity (feedback 29fe2d45): the delegation quick panel renders the SAME DelegationManager as the
  * /delegations page — coverage cascade, existing-delegation list, edit/revoke, history toggle, HR
@@ -45,11 +66,18 @@ const COMMAND_ITEMS: CommandItem[] = [
 
 export function CommandBar() {
   const t = useTranslations('commandBar');
+  // Page labels are the rail's own keys, read from the rail's own namespace — so a screen is called
+  // the same thing in ⌘K as it is in the menu, in all six locales, with nothing new to translate.
+  const nav = useTranslations('nav');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   // Which action's sub-panel is showing (null = the search list).
   const [active, setActive] = useState<CommandItemId | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // r306 — resolved once per session on first open, then reused: the gates do not change under the user.
+  const [gates, setGates] = useState<NavGates | null>(null);
+  const [people, setPeople] = useState<CommandPersonHit[]>([]);
+  const [peopleBusy, setPeopleBusy] = useState(false);
 
   // Cmd/Ctrl-K opens the bar from anywhere; Escape is handled by the Dialog itself.
   useEffect(() => {
@@ -63,9 +91,57 @@ export function CommandBar() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // The gates arrive from the server on first open. A failure leaves `gates` null, which renders the
+  // palette WITHOUT pages rather than with a guessed list — the one thing worse than no page list is a
+  // page list that advertises somebody else's screens.
+  useEffect(() => {
+    if (!open || gates !== null) return;
+    let live = true;
+    commandBarGatesAction()
+      .then((g) => {
+        if (live) setGates(g);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, gates]);
+
+  // People are searched server-side, so the query is debounced: one keystroke is not one query. The
+  // `live` flag drops a late response from an earlier query — otherwise fast typing can paint results
+  // for a prefix the person has already finished.
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setPeople([]);
+      setPeopleBusy(false);
+      return;
+    }
+    let live = true;
+    setPeopleBusy(true);
+    const timer = setTimeout(() => {
+      searchPeopleAction(q)
+        .then((hits) => {
+          if (live) setPeople(hits);
+        })
+        .catch(() => {
+          if (live) setPeople([]);
+        })
+        .finally(() => {
+          if (live) setPeopleBusy(false);
+        });
+    }, 180);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [query, open]);
+
   const reset = useCallback(() => {
     setQuery('');
     setActive(null);
+    setPeople([]);
+    setPeopleBusy(false);
   }, []);
 
   const onOpenChange = useCallback(
@@ -82,6 +158,16 @@ export function CommandBar() {
     const hay = [t(item.titleKey), t(item.subtitleKey), ...item.keywords].join(' ').toLowerCase();
     return hay.includes(q);
   });
+
+  // r306 — pages. Matched on the LOCALIZED label and on the href, so a Malay-speaking user finds the
+  // screen by its Malay name and an operator who knows the address finds it by that. Unfiltered the
+  // list is every screen this viewer can reach, which is a menu, not a search result, so it only
+  // appears once something is typed.
+  const pageRows: NavSearchRow[] = gates ? visibleNavRows(gates) : [];
+  const pages = q
+    ? pageRows.filter((r) => `${nav(r.labelKey)} ${r.href}`.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+  const nothingFound = q.length > 0 && pages.length === 0 && people.length === 0 && results.length === 0 && !peopleBusy;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -132,10 +218,79 @@ export function CommandBar() {
                 />
               </div>
               <div className="p-3">
-                {results.length === 0 ? (
+                {nothingFound && (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
-                ) : (
-                  <ul className="space-y-1">
+                )}
+                {pages.length > 0 && (
+                  <>
+                    <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('groupPages')}
+                    </p>
+                    <ul className="mb-2 space-y-1">
+                      {pages.map((row) => (
+                        <li key={`page-${row.href}`}>
+                          <Link
+                            href={row.href}
+                            onClick={() => onOpenChange(false)}
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                              <CornerDownLeft className="size-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">{nav(row.labelKey)}</span>
+                              {row.sectionLabelKey && (
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {nav(row.sectionLabelKey)}
+                                </span>
+                              )}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {(people.length > 0 || peopleBusy) && (
+                  <>
+                    <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('groupPeople')}
+                    </p>
+                    {people.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">{t('searching')}</p>
+                    ) : (
+                      <ul className="mb-2 space-y-1">
+                        {people.map((person) => (
+                          <li key={`person-${person.employmentId}`}>
+                            <Link
+                              href={`/personnel/${person.employmentId}`}
+                              onClick={() => onOpenChange(false)}
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                                <UserRound className="size-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium">{person.name}</span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {[person.employeeCode, person.department, person.company]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </span>
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+                {results.length > 0 && (
+                  <>
+                    <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('groupActions')}
+                    </p>
+                    <ul className="space-y-1">
                     {results.map((item) => (
                       <li key={item.id}>
                         <button
@@ -156,7 +311,8 @@ export function CommandBar() {
                         </button>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </>
                 )}
               </div>
             </>

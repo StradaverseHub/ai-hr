@@ -11757,8 +11757,12 @@
   },
   "commandBar": {
     "open": "Tìm kiếm",
-    "placeholder": "Tìm một thao tác…",
+    "placeholder": "Tìm người, trang, thao tác…",
     "noResults": "Không có kết quả phù hợp.",
+    "groupPages": "Trang",
+    "groupPeople": "Nhân viên",
+    "groupActions": "Thao tác",
+    "searching": "Đang tìm…",
     "back": "Quay lại",
     "loading": "Đang tải…",
     "openFull": "Mở trang đầy đủ",

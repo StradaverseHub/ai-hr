@@ -11757,8 +11757,12 @@
   },
   "commandBar": {
     "open": "Cari",
-    "placeholder": "Cari tindakan…",
+    "placeholder": "Cari orang, halaman, tindakan…",
     "noResults": "Tiada padanan.",
+    "groupPages": "Halaman",
+    "groupPeople": "Orang",
+    "groupActions": "Tindakan",
+    "searching": "Mencari…",
     "back": "Kembali",
     "loading": "Memuatkan…",
     "openFull": "Buka halaman penuh",

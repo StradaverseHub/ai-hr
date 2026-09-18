@@ -11757,8 +11757,12 @@
   },
   "commandBar": {
     "open": "搜索",
-    "placeholder": "搜索操作…",
+    "placeholder": "搜索人员、页面、操作…",
     "noResults": "无匹配结果。",
+    "groupPages": "页面",
+    "groupPeople": "人员",
+    "groupActions": "操作",
+    "searching": "搜索中…",
     "back": "返回",
     "loading": "加载中…",
     "openFull": "打开完整页面",

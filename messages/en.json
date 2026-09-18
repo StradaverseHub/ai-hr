@@ -11757,8 +11757,12 @@
   },
   "commandBar": {
     "open": "Search",
-    "placeholder": "Search for an action…",
+    "placeholder": "Search people, pages, actions…",
     "noResults": "No matches.",
+    "groupPages": "Pages",
+    "groupPeople": "People",
+    "groupActions": "Actions",
+    "searching": "Searching…",
     "back": "Back",
     "loading": "Loading…",
     "openFull": "Open full page",
