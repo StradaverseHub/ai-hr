@@ -10099,6 +10099,7 @@
     "task": {
       "leave": "审批请假申请",
       "leaveCancellation": "审批销假申请",
+      "replacementLeave": "审批替代假申请",
       "attendance": "审核考勤更正",
       "travel": "审批出差申请",
       "profile": "核实资料变更",

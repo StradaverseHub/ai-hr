@@ -10099,6 +10099,7 @@
     "task": {
       "leave": "Phê duyệt đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt hủy nghỉ phép",
+      "replacementLeave": "Phê duyệt yêu cầu nghỉ bù",
       "attendance": "Xem xét điều chỉnh chấm công",
       "travel": "Phê duyệt yêu cầu công tác",
       "profile": "Xác minh thay đổi hồ sơ",

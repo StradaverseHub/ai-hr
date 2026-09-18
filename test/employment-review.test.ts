@@ -342,7 +342,7 @@ describe('pendingApprovalsCount', () => {
     // freshly seeded tenant actually holds rather than a hand-written guess.
     const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['employee'], entitlements: adminCtx(b).entitlements };
     expect(await pendingManagerReviewsFor(mgrCtx, M.employmentId)).toHaveLength(1);
-    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBeGreaterThanOrEqual(1);
+    expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true, profileChanges: false })).toBeGreaterThanOrEqual(1);
   });
 });
 

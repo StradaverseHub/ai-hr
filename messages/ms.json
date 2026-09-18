@@ -10099,6 +10099,7 @@
     "task": {
       "leave": "Luluskan permohonan cuti",
       "leaveCancellation": "Luluskan pembatalan cuti",
+      "replacementLeave": "Luluskan permohonan cuti gantian",
       "attendance": "Semak pembetulan kehadiran",
       "travel": "Luluskan permohonan perjalanan",
       "profile": "Sahkan perubahan profil",

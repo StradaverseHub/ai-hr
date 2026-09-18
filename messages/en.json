@@ -10099,6 +10099,7 @@
     "task": {
       "leave": "Approve leave request",
       "leaveCancellation": "Approve leave cancellation",
+      "replacementLeave": "Approve replacement leave request",
       "attendance": "Review attendance correction",
       "travel": "Approve travel request",
       "profile": "Verify profile change",

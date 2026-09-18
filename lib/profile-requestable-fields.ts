@@ -330,6 +330,28 @@ export function resolveRequestApprover(raw: unknown): ProfileRequestApprover {
 }
 
 /**
+ * Whether THIS viewer decides profile-change requests — the one owner of that predicate.
+ *
+ * It exists because the rule had two copies with different answers. `/approvals` gated its queue on
+ * `admin && (setting === 'admin' || isGroupAdmin)`, while `core/approvals-inbox.ts` — the read model
+ * behind the header bell and the dashboard tile — gated the same queue on `admin` alone. On a tenant
+ * whose setting is `group_admin` (also the degraded fallback when the setting cannot be read), a
+ * company-scoped HR admin was therefore counted an item in the bell, clicked it, and arrived at a page
+ * that renders no such section: a number nobody could act on and nobody could find. Counting and
+ * showing have to be the same decision, so they are now the same function.
+ *
+ * Pure on purpose. The setting read stays with the caller, because the two callers must resolve it with
+ * OPPOSITE failure behaviour — see the note on `InboxGates` in core/approvals-inbox.ts.
+ */
+export function canDecideProfileChanges(p: {
+  admin: boolean;
+  groupAdmin: boolean;
+  approverSetting: ProfileRequestApprover;
+}): boolean {
+  return p.admin && (p.approverSetting === 'admin' || p.groupAdmin);
+}
+
+/**
  * The stored allow-list, resolved to the set of keys an employee may ask about.
  *
  * ── THE ONE PLACE THE `'all'` SENTINEL IS INTERPRETED ───────────────────────────────────────────────
