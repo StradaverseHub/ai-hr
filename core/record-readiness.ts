@@ -23,7 +23,7 @@
  * ADR-0083's action layer (§2.5) is a separate build with its own security review; this is the read that
  * tells you what to fix. Naming the gap is the whole deliverable.
  */
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 
@@ -126,6 +126,103 @@ export function gapsForRecord(r: ReadinessInput): ReadinessGapId[] {
   if (blank(r.epfNumber)) out.push('no_epf_number');
   if (blank(r.socsoNumber)) out.push('no_socso_number');
   return out;
+}
+
+/**
+ * The employments with at least one gap, ids only — the set behind the People list's "Needs action"
+ * view and its count.
+ *
+ * Ids rather than the grouped view because the two consumers need different shapes and the grouped one
+ * CAPS its names: `recordReadiness` carries at most PEOPLE_PER_GAP people per gap for readability, so
+ * building a filter from it would quietly show 25 of 40. This returns every id and nothing else.
+ *
+ * Active employments only, matching `recordReadiness`: a leaver's incomplete record is history, not
+ * work to be done, and putting them in a to-do view is how the view stops being believed.
+ */
+export async function employmentIdsWithGaps(ctx: SessionContext): Promise<Set<string>> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employmentId: schema.employment.id,
+        paymentMethod: schema.employment.paymentMethod,
+        ic: schema.employeeStatutoryMy.icNumber,
+        passport: schema.employeeStatutoryMy.passportNumber,
+        taxNumber: schema.employeeStatutoryMy.taxNumber,
+        epfNumber: schema.employeeStatutoryMy.epfNumber,
+        socsoNumber: schema.employeeStatutoryMy.socsoNumber,
+        bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
+        hasComp: sql<boolean>`exists (
+          select 1 from ${schema.compensation} c where c.employment_id = ${schema.employment.id}
+        )`,
+      })
+      .from(schema.employment)
+      .leftJoin(
+        schema.employeeStatutoryMy,
+        eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
+      )
+      .where(isNull(schema.employment.terminatedOn));
+    return new Set(rows.filter((r) => gapsForRecord(r).length > 0).map((r) => r.employmentId));
+  });
+}
+
+/**
+ * What is missing from THESE records, keyed by employment — the per-person view of the same question
+ * `recordReadiness` answers per gap.
+ *
+ * WHY A SECOND PROJECTION AND NOT A FILTER OVER THE FIRST. `recordReadiness` groups BY GAP and caps the
+ * names it carries (PEOPLE_PER_GAP), because it feeds a screen that asks "what is missing, and roughly
+ * for whom". The People list asks the transposed question — "for this page of 25 people, what does each
+ * one need" — and reading it off a capped list would answer correctly for the first 25 names in a gap
+ * and wrongly, silently, for everyone after them. Same query, same `gapsForRecord`, different index.
+ *
+ * WHO MAY CALL IT. Bank accounts and statutory identifiers are admin-visible data: this returns them as
+ * the ABSENCE of a value, which is still a fact about somebody's record. RLS scopes the read to the
+ * tenant, but the decision of whether this viewer may see gaps at all belongs to the caller — today
+ * `app/personnel/page.tsx` shows the column only to an admin, and `/control-tower/readiness` is
+ * admin-gated outright. A manager's "what is needed next" is their approval queue, not this.
+ *
+ * An employment with nothing missing is absent from the map rather than present with an empty array, so
+ * a caller cannot mistake "complete" for "not looked at".
+ */
+export async function gapsForEmployments(
+  ctx: SessionContext,
+  employmentIds: readonly string[],
+): Promise<Map<string, ReadinessGapId[]>> {
+  const out = new Map<string, ReadinessGapId[]>();
+  // An empty list must match NOTHING. Without this, `inArray(…, [])` on an empty array is the kind of
+  // predicate that either throws or degrades to "every row", and both answers are wrong here.
+  if (employmentIds.length === 0) return out;
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employmentId: schema.employment.id,
+        paymentMethod: schema.employment.paymentMethod,
+        ic: schema.employeeStatutoryMy.icNumber,
+        passport: schema.employeeStatutoryMy.passportNumber,
+        taxNumber: schema.employeeStatutoryMy.taxNumber,
+        epfNumber: schema.employeeStatutoryMy.epfNumber,
+        socsoNumber: schema.employeeStatutoryMy.socsoNumber,
+        bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
+        hasComp: sql<boolean>`exists (
+          select 1 from ${schema.compensation} c where c.employment_id = ${schema.employment.id}
+        )`,
+      })
+      .from(schema.employment)
+      .leftJoin(
+        schema.employeeStatutoryMy,
+        eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
+      )
+      // NOT filtered to active employments, unlike recordReadiness: the caller has already chosen which
+      // rows are on the page, and silently dropping a leaver's row here would leave that person's column
+      // blank where the list shows them — indistinguishable from "nothing needed".
+      .where(inArray(schema.employment.id, [...employmentIds]));
+
+    for (const r of rows) {
+      const gaps = gapsForRecord(r);
+      if (gaps.length > 0) out.set(r.employmentId, gaps);
+    }
+    return out;
+  });
 }
 
 /**

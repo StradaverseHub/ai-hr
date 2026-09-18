@@ -318,6 +318,19 @@ export type EmployeeListFilters = {
    *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
    *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
   employmentStatuses?: EmploymentStatus[];
+  /**
+   * An explicit set of employments, ANDed with everything else (r307).
+   *
+   * The People list's "Needs action" view is a set the LIST cannot compute — which records are missing
+   * something is answered by core/record-readiness.ts — so that view narrows to ids resolved there. It
+   * goes through this shared WHERE rather than being filtered after paging, because a filter applied to
+   * one page makes the pager total a lie about a population it never counted.
+   *
+   * An EMPTY array matches nothing, deliberately: "these ids" with no ids is an empty result, never the
+   * whole company. (The neighbouring optional arrays treat empty as "no opinion" because they are
+   * pickers, where an empty selection means the user picked nothing to narrow BY.)
+   */
+  employmentIds?: readonly string[];
 };
 
 /** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
@@ -334,6 +347,13 @@ const currentAssignmentJoin = () =>
 function employeeListWhere(p: EmployeeListFilters) {
   const q = p.q?.trim();
   return and(
+    // r307 — see the note on `employmentIds`: present-but-empty must match nothing, which is why this
+    // reads `!== undefined` rather than the `&& length` idiom the pickers below use.
+    p.employmentIds !== undefined
+      ? p.employmentIds.length
+        ? inArray(employment.id, [...p.employmentIds])
+        : sql`false`
+      : undefined,
     p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
     p.companyId ? eq(employment.companyId, p.companyId) : undefined,
     p.filterCompanyIds && p.filterCompanyIds.length
