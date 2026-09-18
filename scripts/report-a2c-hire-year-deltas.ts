@@ -16,8 +16,18 @@
  * same computation the real commit would perform — not a re-implementation of it, which would be a second
  * definition of the arithmetic this whole item exists to unify.
  *
- * THE TWO NUMBERS.
- *   · BEFORE — what the type's ledger holds for this employee today.
+ * ⚠️ THE FIRST VERSION OF THIS REPORT COMPARED THE WRONG TWO NUMBERS, and it is worth recording because the
+ * result looked alarming and was meaningless. `before` was `sum(all ledger days)` and `after` was the
+ * accrual target, so every hire grant, carry row, adjustment and `sys:a2c_recalc:` correction on the ledger
+ * counted as a "delta". On production that produced 24 negative deltas totalling −362 days, none of which
+ * any sweep would have applied. The ledger holds three entry types and 36 rows that are neither accrual nor
+ * debit; comparing its TOTAL to an accrual figure is not a comparison.
+ *
+ * THE TWO NUMBERS, CORRECTED.
+ *   · BEFORE — the ACCRUAL-CLASS sum for this employee and type, which is precisely what the screen's
+ *              "Earned to Date" column shows (`leaveBalances` derives `accrued` the same way). Grants,
+ *              carry, adjustments and corrections are deliberately excluded: they are not what the accrual
+ *              sweep tops up, so they cannot be part of a delta it would apply.
  *   · AFTER  — what the engine would credit at `asOf`, which post-r307 is the a2c up-front part-year figure
  *              for an employee in their hire year on an a2c type, and the ordinary earned slice otherwise.
  *   · DELTA  — AFTER − BEFORE. The accrual engine only ever tops UP, so a negative delta is NOT something
@@ -95,15 +105,27 @@ async function main() {
 
   let moved = 0;
   let unchanged = 0;
+  let skipped = 0;
   let negative = 0;
   let totalDelta = 0;
 
   for (const e of scoped) {
     for (const t of types.filter((x) => x.tenantId === e.tenantId)) {
+      // ACCRUAL-CLASS ONLY, and dated into this year — the same filter `leaveBalances` uses for `accrued`,
+      // which is the "Earned to Date" figure the reporter is looking at. Summing the whole ledger here is
+      // the mistake the header describes.
       const [held] = await db
-        .select({ n: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+        .select({
+          n: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual','in_lieu_accrual')), 0)`,
+        })
         .from(leaveLedger)
-        .where(and(eq(leaveLedger.employmentId, e.employmentId), eq(leaveLedger.leaveTypeId, t.id)));
+        .where(
+          and(
+            eq(leaveLedger.employmentId, e.employmentId),
+            eq(leaveLedger.leaveTypeId, t.id),
+            gte(leaveLedger.effectiveOn, yearStart),
+          ),
+        );
       const before = Number(held.n);
 
       // The REAL engine, scoped to this one employment and type, writing nothing. The context is the one
@@ -113,6 +135,18 @@ async function main() {
         { tenantId: e.tenantId, roles: ['hr_admin'], entitlementsExempt: 'sweeps' },
         { asOf, dryRun: true, employmentIds: [e.employmentId], leaveTypeIds: [t.id] },
       );
+      // ⚠️ A SKIPPED PAIR IS NOT A ZERO TARGET, and conflating them is what made the first two runs of this
+      // report read −362 and −379 days. `earnedToDateTotal` is accumulated only for pairs the sweep
+      // actually PROCESSES: a type that is not configured for this employee, has no entitlement at `asOf`,
+      // is archived or resolves to no earned method never reaches that line, so the total stays 0 and a
+      // naive delta reports the whole accrued balance as a loss. `pairs` is the sweep's own record of what
+      // it processed — if this pair is not in it, the sweep would do nothing here and there is no delta to
+      // report.
+      const processed = (preview.pairs ?? []).length > 0;
+      if (!processed) {
+        skipped += 1;
+        continue;
+      }
       const after = Number(preview.earnedToDateTotal ?? 0);
       const delta = Math.round((after - before) * 100) / 100;
 
@@ -130,7 +164,10 @@ async function main() {
     }
   }
 
-  lines.push(``, `moved: ${moved}   unchanged: ${unchanged}   negative: ${negative}   total delta: ${totalDelta.toFixed(2)}`);
+  lines.push(
+    ``,
+    `moved: ${moved}   unchanged: ${unchanged}   skipped-by-sweep: ${skipped}   negative: ${negative}   total delta: ${totalDelta.toFixed(2)}`,
+  );
   writeFileSync(OUT, lines.join('\n') + '\n', 'utf8');
 
   // Console gets COUNTS ONLY — the list names individuals and belongs in the file, not in a terminal.
@@ -139,6 +176,7 @@ async function main() {
   console.log(`  leave types in scope   : ${types.length}`);
   console.log(`  figures that MOVE      : ${moved}`);
   console.log(`  unchanged              : ${unchanged}`);
+  console.log(`  pairs the sweep skips  : ${skipped}  (not configured / no entitlement / not earned)`);
   console.log(`  NEGATIVE deltas        : ${negative}  ${negative ? '  <-- look at these' : ''}`);
   console.log(`  total delta (days)     : ${totalDelta.toFixed(2)}`);
   console.log(`  per-employee list      : ${OUT}`);
