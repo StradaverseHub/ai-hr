@@ -1,4 +1,4 @@
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myAttendance, myEmployment } from '@/core/read';
 import { attendanceForEmploymentRange, attendancePunchesForRange, isoWeekday } from '@/core/attendance';
@@ -9,6 +9,7 @@ import { Card, ErrorBanner } from '@/components/ui';
 import { cumulativeWorkedSeconds, type ShiftOption } from './clock-display';
 import { ClockPageClient, type PunchEvent } from './clock-client';
 
+import { fmtDayDate, fmtDayName } from '@/components/attendance-format';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -45,6 +46,7 @@ export default async function AttendanceClockPage({
   }
 
   const now = new Date(); // SERVER clock — the same clock the punch actions stamp with
+  const locale = await getLocale();
   const today = todayInKualaLumpur(now); // same day-key convention as the /me card, read in MYT
   const [recent, punchesByDay, requireDevice, devices, todayRange, assignedSites, tenantShifts] =
     await Promise.all([
@@ -60,6 +62,9 @@ export default async function AttendanceClockPage({
       listShiftsForTenant(s),
     ]);
   const todayRow = recent.find((r) => r.date === today) ?? null;
+  // 7ac6b4db — "18 Sep 2026, Friday". Built HERE rather than in the client island because the locale and
+  // the day key both live on the server; the island receives a finished string and formats nothing.
+  const todayLabel = `${fmtDayDate(today, locale)}, ${fmtDayName(today, locale)}`;
 
   // Today's ordered punch trail. A legacy row written before the punch table (terminal import) may carry
   // aggregate times but no punch children — synthesize the pair so the log never contradicts the record.
@@ -120,6 +125,8 @@ export default async function AttendanceClockPage({
       <ErrorBanner message={sp.error} />
       <ClockPageClient
         today={today}
+        todayLabel={todayLabel}
+        resolvedShiftStart={resolved?.shiftStart ?? null}
         events={events}
         requireDevice={requireDevice}
         registeredDeviceCount={devices.length}

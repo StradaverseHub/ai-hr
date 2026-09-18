@@ -288,7 +288,7 @@
     "employeeIdConfig": "Employee ID numbering",
     "securityPermission": "Security & permissions",
     "attendanceAllowance": "Attendance allowance",
-    "attendanceClock": "Clock in/out",
+    "attendanceClock": "Web Clocking",
     "attendanceRecords": "Records",
     "myRecords": "My Records",
     "attendanceRequest": "Attendance Irregularity",
@@ -2528,7 +2528,7 @@
     "punchFirst": "First",
     "punchLast": "Last",
     "clock": {
-      "title": "Clock in/out",
+      "title": "Web Clocking",
       "description": "Clock in and out of work — every recorded time comes from the server, verified against your registered device and approved locations.",
       "notLinked": "This account isn’t linked to an employee profile.",
       "statusNotClockedIn": "Not clocked in",
@@ -2563,7 +2563,12 @@
       "shiftEndsAt": "This shift ends at {time}",
       "clockedInAt": "Clocked in at {time}",
       "sessionsToday": "{count, plural, one {# completed session today} other {# completed sessions today}}",
-      "locationUnknown": "Your work location is matched when you clock in"
+      "locationUnknown": "Your work location is matched when you clock in",
+      "currentShift": "Current shift",
+      "shiftId": "Shift ID",
+      "shiftStarts": "Clock in",
+      "shiftEnds": "Clock out",
+      "noShiftAssigned": "No shift assigned for today"
     },
     "colOtFlat": "Flat OT",
     "colOt00": "OT 0.0 (unpaid)",

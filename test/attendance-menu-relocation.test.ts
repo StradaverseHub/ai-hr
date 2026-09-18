@@ -73,6 +73,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(adminRoutes).toEqual([
       '/attendance',
       '/admin/attendance',
+      // 44bc1c33 (r306) — Card Assignment. Its page carries its own scopedAdmin guard, which is this file's
+      // whole premise: a row in the Admin node is not what protects the screen behind it.
+      '/admin/card-assignment',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
@@ -102,6 +105,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   // is what keeps it that way.
   it.each([
     '/admin/attendance',
+    '/admin/card-assignment',
     '/admin/attendance-policy',
     '/admin/attendance-policy/schedule',
     '/admin/attendance/schedule',

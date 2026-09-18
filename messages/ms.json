@@ -288,7 +288,7 @@
     "employeeIdConfig": "Penomboran ID Pekerja",
     "securityPermission": "Keselamatan & kebenaran",
     "attendanceAllowance": "Elaun kehadiran",
-    "attendanceClock": "Daftar masuk/keluar",
+    "attendanceClock": "Pendaftaran Masa Web",
     "attendanceRecords": "Rekod",
     "myRecords": "Rekod Saya",
     "attendanceRequest": "Ketidakteraturan Kehadiran",
@@ -2528,7 +2528,7 @@
     "punchFirst": "Pertama",
     "punchLast": "Terakhir",
     "clock": {
-      "title": "Daftar masuk/keluar",
+      "title": "Pendaftaran Masa Web",
       "description": "Daftar masuk dan keluar kerja — setiap masa yang direkodkan datang daripada pelayan, disahkan dengan peranti berdaftar dan lokasi yang diluluskan anda.",
       "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja.",
       "statusNotClockedIn": "Belum daftar masuk",
@@ -2563,7 +2563,12 @@
       "shiftEndsAt": "Syif ini tamat pada {time}",
       "clockedInAt": "Daftar masuk pada {time}",
       "sessionsToday": "{count, plural, one {# sesi selesai hari ini} other {# sesi selesai hari ini}}",
-      "locationUnknown": "Lokasi kerja anda dipadankan semasa anda daftar masuk"
+      "locationUnknown": "Lokasi kerja anda dipadankan semasa anda daftar masuk",
+      "currentShift": "Syif semasa",
+      "shiftId": "ID Syif",
+      "shiftStarts": "Masuk",
+      "shiftEnds": "Keluar",
+      "noShiftAssigned": "Tiada syif ditetapkan untuk hari ini"
     },
     "colOtFlat": "OT Rata",
     "colOt00": "OT 0.0 (tanpa bayaran)",

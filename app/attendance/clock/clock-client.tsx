@@ -36,6 +36,11 @@ export type PunchEvent = { time: string; direction: 'in' | 'out' };
 
 type Props = {
   today: string; // YYYY-MM-DD (server's day key)
+  // 7ac6b4db — "18 Sep 2026, Friday", already formatted in the viewer's locale on the SERVER. The island
+  // receives a finished string: `toLocaleDateString` here would format against the BROWSER's locale and
+  // time zone, so a viewer in another zone could be shown yesterday's date beside today's punches.
+  todayLabel: string;
+  resolvedShiftStart: string | null; // today's resolved shift start (HH:MM), for the Current shift card
   events: PunchEvent[]; // today's punches, ordered first → last, SERVER-recorded times
   requireDevice: boolean; // company policy: registered device required for web clocking
   registeredDeviceCount: number; // this employee's active devices (any browser)
@@ -52,6 +57,8 @@ const hhmm = (t: string) => t.slice(0, 5);
 
 export function ClockPageClient({
   today,
+  todayLabel,
+  resolvedShiftStart,
   events,
   requireDevice,
   registeredDeviceCount,
@@ -155,7 +162,40 @@ export function ClockPageClient({
               {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
             </p>
           )}
-          <p className="mt-1 text-xs text-muted-foreground">{today}</p>
+          <p className="mt-1 text-sm font-medium text-foreground">{todayLabel}</p>
+        </div>
+
+        {/* 7ac6b4db — CURRENT SHIFT. The employee's own words for it: which shift am I clocking against,
+            and what are its hours. Every value is the one the ENGINE resolved for today (roster > default
+            shift > company policy) and the same one the "This shift ends at" line below already used — not
+            a second resolution that could name a different shift from the one the punch is judged against.
+            When the day resolves to no shift at all (plain company policy, a rest day), it says so rather
+            than printing an empty card that reads as a loading failure. */}
+        <div className="mt-5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('currentShift')}
+          </div>
+          {shownShiftEnd || resolvedShiftStart || resolvedShiftCode ? (
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+              {resolvedShiftCode && (
+                <span className="font-medium text-foreground">
+                  {t('shiftId')} {resolvedShiftCode}
+                </span>
+              )}
+              {resolvedShiftStart && (
+                <span className="tabular-nums text-muted-foreground">
+                  {t('shiftStarts')} {hhmm(resolvedShiftStart)}
+                </span>
+              )}
+              {shownShiftEnd && (
+                <span className="tabular-nums text-muted-foreground">
+                  {t('shiftEnds')} {hhmm(shownShiftEnd)}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm text-muted-foreground">{t('noShiftAssigned')}</div>
+          )}
         </div>
 
         {/* The big circular action button — or the register-first notice when the device gate applies. */}

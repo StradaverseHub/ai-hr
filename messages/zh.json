@@ -288,7 +288,7 @@
     "employeeIdConfig": "员工编号规则",
     "securityPermission": "安全与权限",
     "attendanceAllowance": "出勤津贴",
-    "attendanceClock": "上下班打卡",
+    "attendanceClock": "网页打卡",
     "attendanceRecords": "记录",
     "myRecords": "我的记录",
     "attendanceRequest": "考勤异常",
@@ -2528,7 +2528,7 @@
     "punchFirst": "首次",
     "punchLast": "末次",
     "clock": {
-      "title": "上下班打卡",
+      "title": "网页打卡",
       "description": "在此打卡上下班——每条记录的时间均来自服务器，并与您的已注册设备和批准地点核验。",
       "notLinked": "此账户未关联员工档案。",
       "statusNotClockedIn": "尚未打卡上班",
@@ -2563,7 +2563,12 @@
       "shiftEndsAt": "本班次将于 {time} 结束",
       "clockedInAt": "已于 {time} 打卡上班",
       "sessionsToday": "{count, plural, one {今日已完成 # 个时段} other {今日已完成 # 个时段}}",
-      "locationUnknown": "打卡时将匹配您的工作地点"
+      "locationUnknown": "打卡时将匹配您的工作地点",
+      "currentShift": "当前班次",
+      "shiftId": "班次编号",
+      "shiftStarts": "上班",
+      "shiftEnds": "下班",
+      "noShiftAssigned": "今日未安排班次"
     },
     "colOtFlat": "固定加班",
     "colOt00": "加班 0.0（不支薪）",

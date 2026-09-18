@@ -288,7 +288,7 @@
     "employeeIdConfig": "การกำหนดเลขรหัสพนักงาน",
     "securityPermission": "ความปลอดภัยและสิทธิ์",
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
-    "attendanceClock": "ลงเวลาเข้า-ออก",
+    "attendanceClock": "ลงเวลาผ่านเว็บ",
     "attendanceRecords": "บันทึก",
     "myRecords": "บันทึกของฉัน",
     "attendanceRequest": "ความผิดปกติของการเข้างาน",
@@ -2528,7 +2528,7 @@
     "punchFirst": "แรก",
     "punchLast": "สุดท้าย",
     "clock": {
-      "title": "ลงเวลาเข้า-ออก",
+      "title": "ลงเวลาผ่านเว็บ",
       "description": "ลงเวลาเข้าและออกงาน — เวลาที่บันทึกทุกครั้งมาจากเซิร์ฟเวอร์ ตรวจสอบกับอุปกรณ์ที่ลงทะเบียนและสถานที่ที่ได้รับอนุมัติของคุณ",
       "notLinked": "บัญชีนี้ไม่ได้เชื่อมโยงกับโปรไฟล์พนักงาน",
       "statusNotClockedIn": "ยังไม่ได้ลงเวลาเข้า",
@@ -2563,7 +2563,12 @@
       "shiftEndsAt": "กะนี้สิ้นสุดเวลา {time}",
       "clockedInAt": "ลงเวลาเข้าเมื่อ {time}",
       "sessionsToday": "{count, plural, one {วันนี้ทำครบ # ช่วง} other {วันนี้ทำครบ # ช่วง}}",
-      "locationUnknown": "ระบบจะจับคู่สถานที่ทำงานของคุณเมื่อลงเวลาเข้า"
+      "locationUnknown": "ระบบจะจับคู่สถานที่ทำงานของคุณเมื่อลงเวลาเข้า",
+      "currentShift": "กะปัจจุบัน",
+      "shiftId": "รหัสกะ",
+      "shiftStarts": "เข้างาน",
+      "shiftEnds": "ออกงาน",
+      "noShiftAssigned": "ไม่มีกะที่กำหนดสำหรับวันนี้"
     },
     "colOtFlat": "OT แบบคงที่",
     "colOt00": "OT 0.0 (ไม่จ่าย)",
