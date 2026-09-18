@@ -410,12 +410,22 @@ describe('bc36c768 (g) · the accrual engine and the recalc kernel compute the S
     }
   });
 
-  it('EXPLICITLY EXCLUDES a2c-first-year ANNUAL, where the two already disagree — this item does not fix that', async () => {
-    // The exclusion is asserted, not silently omitted. projectExpectedEntitlement tests a2cFirstYear
-    // BEFORE the earned branch; accrueEarnedLeave contains zero a2c handling. So for an ANNUAL type with
-    // yearCycleOverride 'a2c' in the employee's HIRE year the two disagree TODAY for earned_monthly, and
-    // earned_daily inherits that unchanged. Extracting the shared kernel does NOT close it — the two sides
-    // never reach the shared function on the same input. Closing it is a separate item.
+  it('EXPLICITLY EXCLUDES a2c-first-year ANNUAL: the two FUNCTIONS still differ, and that is now by design', async () => {
+    // ⚠️ d58bfa3f CLOSED THE ENGINE HALF OF THIS. Read the update before trusting the sentence below it.
+    //
+    // WAS: projectExpectedEntitlement tests a2cFirstYear BEFORE the earned branch while accrueEarnedLeave
+    // contained zero a2c handling, so for an ANNUAL a2c type in the hire year the ENGINE credited period
+    // slices and the KERNEL projected the up-front part-year — a real divergence on a real tenant's
+    // configuration, and the defect behind d58bfa3f (the reporter saw 2.50 where the kernel said 7.10).
+    //
+    // NOW: `accrueEarnedLeave` calls `isA2cFirstYear` / `a2cFirstYearEntitledToDate` — the SAME predicate
+    // and helper the kernel uses — so the two ENGINES agree. What this test asserts is narrower and still
+    // true: the two pure FUNCTIONS below return different things, because they answer different questions.
+    // `earnedToDateFor` is period arithmetic and knows nothing about a2c by design; an a2c first year is
+    // not a partial year being earned, it is a part-year entitlement granted up front. Teaching the period
+    // arithmetic about a2c would have been a third definition of the same rule.
+    //
+    // So this stays as documentation of WHY the two functions differ, not of an open gap.
     await policy(20);
     await setTypeColumns({ accrualMethod: 'earned_daily', yearCycleOverride: 'a2c' });
     const t = await typeRow();
