@@ -62,8 +62,13 @@ correct by design.
 
 ### NOT DONE / KNOWN
 
-- **Why 42 of 48 pairs are skipped is not explained.** "not configured / no entitlement / not earned" is the
-  sweep's own reason, but 18 hire-year employees having no resolved ANNUAL entitlement deserves a look.
+- **Why 42 of 48 pairs are skipped is not explained, and one theory is already dead.** "not configured / no
+  entitlement / not earned" is the sweep's own reason. TESTED AND DISMISSED 2026-09-18: it is NOT a missing
+  job grade. 11 of the 24 hire-year employees have `grade_id` NULL, but all 11 carry positive ANNUAL accrual
+  (207.50 days between them), and 23 of the 24 have ANNUAL ledger rows at all — so neither "no grade" nor "no
+  entitlement history" explains the skips. Whatever makes `entitlement <= 0` for those pairs at `asOf` is
+  still unknown, and it is worth knowing: an employee the accrual sweep silently steps over earns nothing.
+  Start from the entitlement COMPOSITION (template band validity window vs hire date), not from the grade.
 - No browser render, as in r305 and r306 — `pnpm db:seed` is classifier-refused. **Owed three rounds running.**
 - **Production runs with `ALLOW_DEMO_SESSION=true`.** Every script run prints the box's own warning that the
   dev identity switcher is active and must NEVER be set for a real tenant deployment. Not touched this round.
