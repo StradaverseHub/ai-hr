@@ -42,3 +42,27 @@ export const fmtClock = (abs: number) => {
   const hhmm = `${String(Math.floor(within / 60)).padStart(2, '0')}:${String(within % 60).padStart(2, '0')}`;
   return day === 0 ? hhmm : `${hhmm} (${day > 0 ? '+' : ''}${day})`;
 };
+
+/**
+ * 570fd56e — the attendance DATE as "18 Sep 2026", and the weekday beside it.
+ *
+ * ⚠️ LOCALE-DEPENDENT, NOT A STRING TEMPLATE. The reporter wrote the format in English, but this product
+ * ships six locales and the month abbreviation differs in every one of them. Hardcoding "Sep" would print
+ * an English month inside a Tamil or Thai screen, which is the same defect as a missing translation — so
+ * the locale is an argument and the platform does the naming. `en-GB` is passed by callers that have no
+ * locale in hand only where the value is not user-facing.
+ *
+ * UTC throughout: an attendance date is a plain calendar date (`YYYY-MM-DD`), never an instant, and
+ * rendering it in the viewer's zone is how a day silently becomes the one before it.
+ */
+export const fmtDayDate = (iso: string, locale: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+/** The weekday name for an attendance date, in the viewer's locale (was hardcoded `en-GB` inline). */
+export const fmtDayName = (iso: string, locale: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale, { weekday: 'long', timeZone: 'UTC' });

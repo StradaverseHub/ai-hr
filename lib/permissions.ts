@@ -197,7 +197,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // SCREEN with a different audience (the column below), not a fourth tab of this one: the split is the
     // whole item, and collapsing the two back into one column here would tell a reader of the access grid
     // that the employee's own record and the administrator's reading of everybody are the same surface.
-    routes: ['/attendance', '/attendance/daily', '/attendance/individual'],
+    // 570fd56e — the per-day detail screen the eight calculation columns moved onto. Same audience and
+    // same scope as the list it opens from (it resolves the employee through the caller's own scope), so it
+    // belongs to THIS column rather than becoming a screen of its own.
+    routes: ['/attendance', '/attendance/daily', '/attendance/individual', '/attendance/individual/[date]'],
     hasScopeNote: true,
   },
   /**

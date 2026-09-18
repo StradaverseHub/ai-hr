@@ -2730,7 +2730,19 @@
       "intro": "Kehadiran anda sendiri, hari demi hari. Hanya rekod anda dipaparkan di sini.",
       "notLinked": "Log masuk anda tidak dipautkan kepada pekerjaan aktif, jadi tiada rekod kehadiran untuk dipaparkan.",
       "correctionNote": "Ada hari yang tidak betul? Failkan di bawah Permohonan Kehadiran — skrin ini ialah rekod, bukan tempat untuk mengubahnya."
-    }
+    },
+    "dayViewEdit": "Lihat/Edit",
+    "dayTitle": "Butiran kehadiran",
+    "daySecShift": "Butiran syif",
+    "daySecBreak": "Waktu rehat",
+    "daySecClock": "Data pendaftaran masa",
+    "daySecOt": "Kerja lebih masa",
+    "daySecIrregular": "Ketidakteraturan kehadiran",
+    "dayBackToList": "Kembali ke Kehadiran Individu",
+    "dayNoShift": "Tiada syif ditetapkan untuk tarikh ini",
+    "dayNoRecord": "Tiada kehadiran direkodkan untuk tarikh ini",
+    "dayBreakDerived": "Rehat ialah jangka syif tolak waktu bekerja bersihnya",
+    "dayEditCorrection": "Mohon pembetulan kehadiran"
   },
   "org": {
     "title": "Carta organisasi",

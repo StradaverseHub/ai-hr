@@ -2730,7 +2730,19 @@
       "intro": "Chấm công của chính bạn, theo từng ngày. Chỉ hồ sơ của bạn được hiển thị ở đây.",
       "notLinked": "Tài khoản của bạn chưa được liên kết với một hợp đồng lao động đang hoạt động nên không có hồ sơ chấm công để hiển thị.",
       "correctionNote": "Có ngày nào chưa đúng? Hãy gửi tại Yêu cầu chấm công — màn hình này là hồ sơ, không phải nơi để sửa."
-    }
+    },
+    "dayViewEdit": "Xem/Sửa",
+    "dayTitle": "Chi tiết chấm công",
+    "daySecShift": "Chi tiết ca",
+    "daySecBreak": "Thời gian nghỉ",
+    "daySecClock": "Dữ liệu chấm công",
+    "daySecOt": "Tăng ca",
+    "daySecIrregular": "Bất thường chấm công",
+    "dayBackToList": "Quay lại Chấm công cá nhân",
+    "dayNoShift": "Không có ca nào được phân cho ngày này",
+    "dayNoRecord": "Không có chấm công nào được ghi cho ngày này",
+    "dayBreakDerived": "Thời gian nghỉ là độ dài ca trừ giờ làm thực",
+    "dayEditCorrection": "Yêu cầu điều chỉnh chấm công"
   },
   "org": {
     "title": "Sơ đồ tổ chức",

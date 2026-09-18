@@ -2730,7 +2730,19 @@
       "intro": "您本人的考勤，按天列出。此处仅显示您的记录。",
       "notLinked": "您的登录账号未关联在职雇佣记录，因此没有可显示的考勤记录。",
       "correctionNote": "某一天有误？请到考勤申请页面提交——本页面是记录，不是修改记录的地方。"
-    }
+    },
+    "dayViewEdit": "查看/编辑",
+    "dayTitle": "考勤明细",
+    "daySecShift": "班次详情",
+    "daySecBreak": "休息时间",
+    "daySecClock": "打卡数据",
+    "daySecOt": "加班",
+    "daySecIrregular": "考勤异常",
+    "dayBackToList": "返回个人考勤",
+    "dayNoShift": "该日期未安排班次",
+    "dayNoRecord": "该日期没有考勤记录",
+    "dayBreakDerived": "休息时间为班次时长减去净工作时长",
+    "dayEditCorrection": "申请考勤更正"
   },
   "org": {
     "title": "组织架构图",

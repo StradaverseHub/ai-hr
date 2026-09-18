@@ -2730,7 +2730,19 @@
       "intro": "Your own attendance, day by day. Only your record is shown here.",
       "notLinked": "Your login is not linked to an active employment, so there is no attendance record to show.",
       "correctionNote": "Something wrong with a day? Raise it under Attendance Request — this screen is a record, not a place to change one."
-    }
+    },
+    "dayViewEdit": "View/Edit",
+    "dayTitle": "Attendance detail",
+    "daySecShift": "Shift details",
+    "daySecBreak": "Break time",
+    "daySecClock": "Clock data",
+    "daySecOt": "Overtime",
+    "daySecIrregular": "Attendance irregularity",
+    "dayBackToList": "Back to Individual Attendance",
+    "dayNoShift": "No shift assigned for this date",
+    "dayNoRecord": "No attendance was recorded for this date",
+    "dayBreakDerived": "Break is the shift span less its net working hours",
+    "dayEditCorrection": "Request an attendance correction"
   },
   "org": {
     "title": "Org chart",

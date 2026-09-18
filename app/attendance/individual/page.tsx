@@ -1,22 +1,20 @@
 import { Fragment } from 'react';
-import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
-import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
-import { explainAttendanceDay } from '@/core/attendance-explain';
+import { flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
-import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
-import { fmtMin } from '@/components/attendance-format';
+import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
-const dayName = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+
 
 /**
  * Attendance > Records — Individual Attendance tab. Enhanced per-employee, per-day verification table
@@ -41,6 +39,7 @@ export default async function IndividualAttendancePage({
   }>;
 }) {
   const t = await getTranslations('attendance');
+  const locale = await getLocale();
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
   const statusText: Record<AttendanceStatus, string> = {
@@ -123,23 +122,18 @@ export default async function IndividualAttendancePage({
                   <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
-                  {/* 7c834696 rev 2 point 2 — Lateness / Early Out, same position as the Daily tab. */}
-                  <th className="px-3 py-2 text-right font-medium">{t('colLateness')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colEarlyOut')}</th>
-                  {/* 7c834696 rev 2 point 1 — OVERTIME ONLY; these sum to the day's OT, not to Actual Hours. */}
-                  <th className="px-3 py-2 text-right font-medium">{t('colOtFlat')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colOt00')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('colOt30')}</th>
+                  {/* 570fd56e — Lateness, Early Out and the six overtime buckets came OFF this list. Six of
+                      them hold 0.00 on an ordinary day and they were the reason an eighteen-column row could
+                      not be scanned. They are NOT deleted: the day screen below renders all eight through the
+                      SAME AttendanceFigureCells island with the SAME explainAttendanceDay working, so the two
+                      surfaces cannot explain one day differently. */}
                   <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
                   <th className="px-3 py-2 font-medium">{t('colFlag')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colAction')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {dayPage.map((r) => {
-                  const ot = otByRate(r);
                   const status = statusOf(r);
                   const flag = flagOf(r);
                   // R45 — punch trail for a multiple-clocking day (>2 punches). A plain single pair (or fewer)
@@ -151,24 +145,13 @@ export default async function IndividualAttendancePage({
                   return (
                     <Fragment key={r.date}>
                     <tr>
-                      <td className="px-3 py-2.5 tabular-nums">{r.date}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{dayName(r.date)}</td>
+                      <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{fmtDayDate(r.date, locale)}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{fmtDayName(r.date, locale)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkInAt?.slice(0, 5) ?? '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
-                      {/* NULL, not 0, for a day no engine has computed — an em dash rather than a confident
-                          "on time". Days before the stage-1 release carry null and read as "—".
-                          7c834696 point 3 — the same eight figures carry their working here as on the
-                          Daily tab, from the SAME island, so the two tabs cannot explain a day differently. */}
-                      <AttendanceFigureCells
-                        lateMinutes={r.lateMinutes}
-                        earlyOutMinutes={r.earlyOutMinutes}
-                        ot={ot}
-                        hasRow={r.attendanceId != null}
-                        explanation={explainAttendanceDay(r.calcTrace)}
-                      />
                       <td className="px-3 py-2.5">
                         {/* Only Absent in red; every other status uses the standard text colour. */}
                         <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
@@ -182,10 +165,18 @@ export default async function IndividualAttendancePage({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
+                      <td className="px-3 py-2.5">
+                        <Link
+                          href={`/attendance/individual/${r.date}?emp=${encodeURIComponent(selectedEmp!)}&from=${from}&to=${to}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {t('dayViewEdit')}
+                        </Link>
+                      </td>
                     </tr>
                     {showTrail && (
                       <tr className="bg-muted/20">
-                        <td colSpan={17} className="px-3 py-2">
+                        <td colSpan={10} className="px-3 py-2">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                             <span className="font-medium uppercase tracking-wide">{t('punchTrail')}</span>
                             {punches.map((p, i) => (
@@ -210,7 +201,7 @@ export default async function IndividualAttendancePage({
                 })}
                 {dayPage.length === 0 && (
                   <tr>
-                    <td colSpan={17} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>
