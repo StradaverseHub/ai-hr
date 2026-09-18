@@ -111,7 +111,7 @@ describe('d58bfa3f · the reporter’s two numbers, reproduced without reading t
    * on the reporter's exact configuration it credits the daily slice — the 2.50 — while the whole point of
    * an a2c first year is that the employee is granted their prorated part-year UP FRONT.
    */
-  it('THE DEFECT: with a2c + Daily Accrual in the hire year, the engine credits the daily slice, not the up-front part-year', async () => {
+  it('FIXED: with a2c + Daily Accrual in the hire year, the engine now credits the UP-FRONT part-year, as the kernel always projected', async () => {
     await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 16,
@@ -127,18 +127,31 @@ describe('d58bfa3f · the reporter’s two numbers, reproduced without reading t
       .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
 
     const emp = await hireOn('2026-07-23');
+
+    // ⚠️ MEASURED, NOT ASSUMED: what did the HIRE GRANT itself put down? hireYearGrantDays shapes an a2c
+    // first year to the up-front part-year figure — but only if an earned type receives a hire grant at
+    // all. This is the number that decides where the reporter's 2.50 actually comes from.
+    const atHire = await annualBalance(emp.employmentId);
+    // eslint-disable-next-line no-console
+    console.log('[d58bfa3f] balance immediately after hire =', atHire);
+
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-09-17' });
 
     const credited = await annualBalance(emp.employmentId);
+    // eslint-disable-next-line no-console
+    console.log('[d58bfa3f] balance after accrueEarnedLeave =', credited);
 
-    // The reporter's observed figure, from the engine, on their own configuration.
-    expect(credited, "the engine credits the daily slice — the reporter's 2.50").toBeCloseTo(2.5, 1);
-
-    // …and it is NOT the up-front a2c part-year figure an a2c first year is supposed to grant.
-    expect(credited, 'the up-front a2c figure is 7.10, and the engine never produces it').not.toBeCloseTo(
+    // THE RED→GREEN PROOF. Before the fix this line read `toBeCloseTo(2.5)` and passed: the engine credited
+    // the daily slice (57/365 × 16) while projectExpectedEntitlement projected the up-front part-year
+    // (162/365 × 16), and the employee's screen showed the engine's number because the hire grant writes
+    // NOTHING for an earned type — measured above as 0.00, which is why the sweep was the only writer.
+    expect(credited, "the reporter's expected 7.10, from the engine that actually writes the ledger").toBeCloseTo(
       7.1,
       1,
     );
+
+    // …and it is NO LONGER the daily slice, which is the defect this item closed.
+    expect(credited, 'the 2.50 the reporter reported seeing is gone').not.toBeCloseTo(2.5, 1);
   });
 
   /**

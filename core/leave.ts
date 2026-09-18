@@ -8749,6 +8749,9 @@ export async function accrueEarnedLeave(
       .select({
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
+        // d58bfa3f — needed to cap a first-year LEAVER's a2c figure at their last day of service, exactly
+        // as projectExpectedEntitlement does. Without it the engine would over-grant days never served.
+        terminatedOn: employment.terminatedOn,
         country: company.country,
         leaveCycle: company.leaveCycle,
         gradeId: employment.gradeId,
@@ -9065,15 +9068,40 @@ export async function accrueEarnedLeave(
         // bc36c768 — THE SHARED KERNEL. This used to be four lines of period arithmetic written out here
         // and again inside projectExpectedEntitlement. One function now, called from both, because the two
         // must agree to the day or every profile edit posts an oscillating delta (see earnedToDateFor).
-        let earnedToDate = earnedToDateFor({
-          method: pol!.method,
-          accrualDay: pol!.accrualDay ?? null,
-          annualDays: entitlement,
-          cycleStart,
-          hiredOn: e.hiredOn,
-          leaveCycle: cyc,
-          asOf: p.asOf,
-        });
+        //
+        // d58bfa3f — THE a2c FIRST YEAR IS NOT EARNED DAY BY DAY, AND THIS IS WHERE THAT WAS MISSING.
+        //
+        // `projectExpectedEntitlement` tests `isA2cFirstYear` BEFORE its earned branch and projects the
+        // up-front part-year figure; this engine had no a2c handling at all and credited period slices. The
+        // two therefore disagreed for the whole of an employee's hire year — which bc36c768 recorded as a
+        // known gap ("closing it is a separate item") and test/leave-earning-method-simplified.test.ts
+        // excluded BY ASSERTION rather than by silent omission. This is that item.
+        //
+        // The shape is REAL and the reporter's figures are its two sides: an ANNUAL a2c type, hire 23 Jul,
+        // 16 days/year — the kernel says 162/365 × 16 = 7.10, this engine said 57/365 × 16 = 2.50, and the
+        // employee's screen showed 2.50 because the hire grant writes NOTHING for an earned type (measured)
+        // so the accrual sweep was the only writer.
+        //
+        // WHICH WAY IT WAS CLOSED, because the code named two options. Not "teach the period arithmetic
+        // about a2c" — an a2c first year is not a partial year being earned, it is a part-year entitlement
+        // granted UP FRONT, and slicing it would be inventing a third definition. Instead the engine calls
+        // the SAME predicate and the SAME helper the kernel already uses, so there is one rule with two
+        // callers, which is the invariant every other branch in this function is built on.
+        //
+        // Year two onward is untouched: `isA2cFirstYear` is false once the hire year ends, and an a2c type
+        // is an ordinary calendar type from then on.
+        const a2cType = earnedTypes.find((t) => t.id === typeId);
+        let earnedToDate = isA2cFirstYear(a2cType?.yearCycleOverride, a2cType?.code ?? '', e.hiredOn, p.asOf)
+          ? a2cFirstYearEntitledToDate(e.hiredOn, p.asOf, entitlement, e.terminatedOn ?? null)
+          : earnedToDateFor({
+              method: pol!.method,
+              accrualDay: pol!.accrualDay ?? null,
+              annualDays: entitlement,
+              cycleStart,
+              hiredOn: e.hiredOn,
+              leaveCycle: cyc,
+              asOf: p.asOf,
+            });
         // Feedback b81d3c52 — Rounding Method (the Accrual Process surface). The CUMULATIVE-to-date figure
         // is tidied every period, before the room-cap, so the running balance the Accrual Process credits
         // is itself a whole day: 'up' shows whole days as they build, 'down' floors a small early
