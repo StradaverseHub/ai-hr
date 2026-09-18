@@ -492,6 +492,24 @@ on production until the owner turns the add-on on.
 - HR cannot add/preview/reverse on their own record; the worked date must be within service; consumption is guarded against
   a concurrent reversal; expiry dates use `todayInKualaLumpur`.
 
+### ⚠️ CORRECTION (2026-09-18, r306 session) — THE OWED READS ARE NOW MEASURED, AND ONE RECORDED FACT WAS WRONG
+
+The four reads below were answered on 2026-09-18 as AGGREGATES (the auto-mode classifier permits counts and
+existence checks against production; it refuses row dumps of customer data — a distinction this round did
+not know when it wrote "I could not read production").
+
+- `tenant_module` rows for `toil` = **0** ⇒ **FIRST INSTALL**, so D5's switch-off applies automatically.
+  `toil_policy` holds **2 rows, both `enabled`** — which makes D5 load-bearing rather than theoretical.
+- `toil_accrual` rows = **0**, confirming this entry's own deploy-log NOTICE.
+- **`toil` is billable = yes, and `subscription_line` for it = 0.** So the grant WILL be refused by
+  `applyModuleChange` until a commercial line exists. That is now the ONLY thing blocking the switch-on;
+  `depends_on` is satisfied (`leave` is core, `attendance` is active) and no change request is queued.
+- **THE RECORDED CLAIM ABOUT THE RL TYPE IS WRONG.** This entry says "production's RL is `role='replacement'`,
+  code `RL`". Measured: leave types with code `RL` = **0**, with code `REPLACEMENT` = **1**, with
+  `role='replacement'` = **0**. The tenant's replacement type therefore resolves through the CODE FALLBACK
+  (role NULL + code REPLACEMENT), which is the path this same entry notes returns true. The type exists and
+  resolves; only the description of it was wrong, and `ensureReplacementLeaveType` has nothing to create.
+
 ### OWED TO THE OWNER BEFORE THE ADD-ON IS GRANTED (I could not read production)
 
 - `select status, company_id from tenant_module where module_code='toil'` — if ANY row exists (a past trial), activation is
