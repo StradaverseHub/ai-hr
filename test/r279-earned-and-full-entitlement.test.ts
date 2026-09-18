@@ -236,10 +236,14 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
     expect(page).toContain('const num = (v: number | null) => formatDays(v)');
   });
 
-  it('the empty-state colSpan spans every header (13 since this column was added)', () => {
+  it('the empty-state colSpan spans every header (15 since Share / Pending Share were added)', () => {
     const thead = page.slice(page.indexOf('<thead'), page.indexOf('</thead>'));
     const headers = thead.match(/<th\b/g) ?? [];
-    expect(headers.length).toBe(13);
+    // 39136455 (r306) took this table from 13 columns to 15: Share and Pending Share landed between
+    // Adjustment and Balance. The CLAIM this test makes is unchanged and is the line below — the empty
+    // state must span EVERY header — and it is the one that actually catches a stale colSpan. The count is
+    // restated rather than dropped so that a column arriving or leaving still has to be noticed here.
+    expect(headers.length).toBe(15);
     expect(page).toContain(`colSpan={${headers.length}}`);
   });
 

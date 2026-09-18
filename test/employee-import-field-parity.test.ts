@@ -167,6 +167,21 @@ const REGISTRY: Record<string, RegistryTable> = {
         fields: ['probationEndDate'],
       },
       {
+        // 44bc1c33 (r306). The reporter DID ask for a bulk path ("bulk assignment/import where required"),
+        // so this exclusion is a not-yet, not a never — and it is deliberately not this template.
+        //
+        // A card id is refused when it collides with another employee's card, employee_code OR ic
+        // (core/attendance-card.ts `assertCardIdFree`), because `importAttendancePunches` builds all three
+        // into one flat lookup and a collision posts one person's attendance onto another. That rule lives
+        // in the service, not in a constraint, so a template column writing `card_id` straight into the row
+        // would be a SECOND write path with the rule missing — silently mis-attributing attendance, which
+        // feeds overtime, which is pay. A bulk path has to go through the same service and report its
+        // clashes the way the punch import already reports unmatched refs; that is its own piece of work.
+        reason:
+          'assigned on Attendance › Card Assignment (or the employee’s Attendance tab), where the cross-column collision refusal lives — a template column would be a second write path without that rule, and a card colliding with another employee’s code or IC posts their attendance onto the wrong person',
+        fields: ['cardId'],
+      },
+      {
         reason:
           'exit data. A day-one import creates ACTIVE employees; a file that could also terminate them would make one upload capable of ending a workforce',
         fields: [

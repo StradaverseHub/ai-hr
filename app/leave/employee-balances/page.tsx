@@ -385,7 +385,7 @@ export default async function EmployeeBalancesPage({
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={15} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRows')}
                       </td>
                     </tr>

@@ -379,7 +379,10 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
     const en = JSON.parse(
       fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'),
     ) as { nav: Record<string, string> };
-    expect(en.nav.attendanceClock).toBe('Clock in/out');
+    // 7ac6b4db (r306) renamed the ROW, and only the row: the reporter asked for "Web Clocking" because
+    // that is what their users call it. The href is untouched (asserted elsewhere in this file), which is
+    // the property that actually matters — a label may move, an address may not.
+    expect(en.nav.attendanceClock).toBe('Web Clocking');
   });
 
   // 0bb0e303 rev2 — the third staff row. DECLARED here rather than letting the assertions above simply
