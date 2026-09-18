@@ -1,3 +1,75 @@
+## r307 (2026-09-18) — the a2c hire-year divergence closes, and the reporter's premise turns out to be stale. `main@5aa7ae83`, **no migration**.
+
+Closed and DEPLOYED: `d58bfa3f`. Gate: **926 files — equal to the suite file count — 14,132 tests, 0 AssertionErrors**, FIRST pass, 14 chunks at `VITEST_MAX_WORKERS=3`. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 5aa7ae83.
+
+**Merge note:** not a fast-forward. `main` had moved ahead by one DOCS-ONLY commit while the branch gated; verified `git diff 97c316d3..HEAD -- . ':!docs'` empty before merging, and the receipt records that the gate ran on the branch tip.
+
+### THE BLOCKER WAS NOT WHERE THREE ROUNDS SAID IT WAS
+
+r300 wrote "I could not read production" and this session repeated it. That was true of ROW DUMPS and false of
+AGGREGATES: the auto-mode classifier permits counts and existence checks. Every read r300 recorded as owed,
+plus two it never listed, was answered in about five minutes once that was tested rather than assumed. The
+lesson is cheap to state and was expensive to miss — **a refusal on one query shape is not a refusal on the
+capability.**
+
+### d58bfa3f — the fix, and why it is one call rather than new arithmetic
+
+`projectExpectedEntitlement` tested `isA2cFirstYear` BEFORE its earned branch and projected the up-front
+part-year; `accrueEarnedLeave` had no a2c handling and credited daily slices. bc36c768 recorded this as a
+known gap and `test/leave-earning-method-simplified.test.ts` excluded it BY ASSERTION.
+
+MEASURED, not assumed: for an a2c type with an earned method the hire grant writes **0.00** — an earned type
+earns, it is not granted — so the sweep was the only writer. The reporter's two figures are exactly the two
+sides: 57/365 × 16 = 2.50 credited, 162/365 × 16 = 7.10 projected.
+
+The engine now calls the SAME `isA2cFirstYear` / `a2cFirstYearEntitledToDate` the kernel uses. NOT "teach the
+period arithmetic about a2c": an a2c first year is not a partial year being earned, it is a part-year
+entitlement granted up front, and slicing it would be a third definition of one rule. The sweep also now
+selects `terminatedOn`, so a first-year LEAVER is capped at their last day of service.
+
+### ⚠️ WHAT THE FIX ACTUALLY DOES IS NOT WHAT THIS ROUND PREDICTED
+
+The dry-run report says the sweep would apply **nothing** today: of 48 employee/type pairs, 42 are skipped,
+4 unchanged, 2 move by −0.36 days, and the sweep only tops UP.
+
+Employee 100814 already reads **7.00** (7.101, rounded down by their own custom table — r303's work). All
+four of their ANNUAL ledger rows are `sys:a2c_recalc` corrections, the last written **14 September**, and
+there are **79** such rows tenant-wide.
+
+So the recalc path was ALREADY dragging these employees to the kernel's figure — repeatedly. **r307's real
+value is that the corrections stop**, not that a figure moves. That is the oscillating-delta harm
+`earnedToDateFor`'s own header warns about, observed in production data. Recorded because this round's
+plan, its commit messages and its first report all described a different effect.
+
+### THE DRY-RUN REPORT WAS WRONG TWICE BEFORE IT WAS RIGHT
+
+`scripts/report-a2c-hire-year-deltas.ts` (read-only; every call is `dryRun`).
+
+1. `before` was `sum(ALL ledger days)` vs an accrual target. The ledger carries three entry types and 36 rows
+   that are neither accrual nor debit. It read **−362 days**.
+2. Corrected to the accrual-class sum it read **−379**, because a pair the sweep SKIPS returns
+   `earnedToDateTotal = 0`, and a skipped pair is not a zero target. `pairs` is the sweep's own record of
+   what it processed; filtering on it is the fix.
+
+Either version, sent to the reporter, would have told a customer that 24 employees were about to lose 362
+days of leave. The per-employee list goes to a FILE on the box; the console gets counts only.
+
+### OWED TO THE REPORTER — RAISED, NOT ASSUMED
+
+`52aaee75` asks them to confirm what 100814 shows today, because this round corrected their premise and a
+correction nobody can see on their screen is worth nothing. It also repeats that Full Entitlement 16.00 is
+correct by design.
+
+### NOT DONE / KNOWN
+
+- **Why 42 of 48 pairs are skipped is not explained.** "not configured / no entitlement / not earned" is the
+  sweep's own reason, but 18 hire-year employees having no resolved ANNUAL entitlement deserves a look.
+- No browser render, as in r305 and r306 — `pnpm db:seed` is classifier-refused. **Owed three rounds running.**
+- **Production runs with `ALLOW_DEMO_SESSION=true`.** Every script run prints the box's own warning that the
+  dev identity switcher is active and must NEVER be set for a real tenant deployment. Not touched this round.
+- `3fb1a611` remains approved and unbuilt: `toil` is billable with no `subscription_line`. Everything else
+  measured green (first install, dependencies satisfied, nothing queued).
+
 ## r306 (2026-09-18) — Four approved items: inquiry day screen, Card ID, pooled Share columns, Web Clocking. `main@ce43d575`, **migration 0474**.
 
 Closed and DEPLOYED: `570fd56e`, `44bc1c33`, `39136455`, `7ac6b4db` (partly — see below). Gate: **925 files — equal to the suite file count — 14,125 tests, 0 AssertionErrors**, 14 chunks at `VITEST_MAX_WORKERS=3`, THIRD run (see below). `gate:shadow` **PASS 390/390**. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` ce43d575, journal 390 = 390 applied.
