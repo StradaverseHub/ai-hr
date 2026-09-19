@@ -42,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEMO_TENANT_ID,
   DESTROY_OVERRIDE,
+  SYSTEM_TENANT_ID,
   demoSeedRefusal,
   foreignTenantRefusal,
   realAuthKeys,
@@ -397,6 +398,63 @@ describe('db/seed-guard — which signal says "this is somebody\'s real database
     expect(msg).toContain('REFUSING TO SEED');
     expect(msg).toContain('Real Sdn Bhd');
     expect(msg).toContain(DESTROY_OVERRIDE);
+  });
+
+  /**
+   * r312 — THE RESERVED SYSTEM TENANT IS NOT A FOREIGN TENANT, and before this it was treated as one.
+   *
+   * Migration 0151 inserts the nil-uuid 'System (auth audit)' row on EVERY correctly migrated database.
+   * R4 therefore fired on all of them: a developer could not seed a freshly rebuilt local cluster
+   * without SEED_MAY_DESTROY_OTHER_TENANTS=1. That is not a stricter guard, it is a broken one — an
+   * always-on refusal teaches the operator to type the override by reflex, and the override is the last
+   * thing between a real database and the TRUNCATE.
+   */
+  it('R4 tolerates the reserved system tenant — it is on every database and names nobody', () => {
+    expect(foreignTenantRefusal([{ id: SYSTEM_TENANT_ID, name: 'System (auth audit)' }], {})).toBeNull();
+    expect(
+      foreignTenantRefusal(
+        [{ id: SYSTEM_TENANT_ID, name: 'System (auth audit)' }, { id: DEMO_TENANT_ID, name: 'Demo Group' }],
+        {},
+      ),
+      'the ordinary state of a seeded developer machine',
+    ).toBeNull();
+  });
+
+  /**
+   * THE NON-VACUITY ARM, and the one that matters: tolerating the system row must not tolerate a real
+   * one standing next to it. If this ever returns null, R4 has been turned off rather than corrected.
+   */
+  it('…and still refuses a real tenant sitting beside it, naming only the real one', () => {
+    const msg = foreignTenantRefusal(
+      [
+        { id: SYSTEM_TENANT_ID, name: 'System (auth audit)' },
+        { id: DEMO_TENANT_ID, name: 'Demo Group' },
+        { id: 'aaaaaaaa-0000-0000-0000-000000000001', name: 'Real Sdn Bhd' },
+      ],
+      {},
+    );
+    expect(msg).toContain('REFUSING TO SEED');
+    expect(msg).toContain('Real Sdn Bhd');
+    // The COUNT is the operator's evidence, so it must not be inflated by a row that is not theirs.
+    expect(msg, 'the system row must not be counted against them').toContain('1 tenant(s)');
+    expect(msg).not.toContain('System (auth audit)');
+  });
+
+  /**
+   * The seeder TRUNCATEs `tenant`, so it takes the reserved row with it — and nothing re-creates it,
+   * because 0151 has already been applied and migrations do not run again. Without the restore,
+   * app.append_auth_event's COALESCE onto the nil uuid violates domain_event's NOT NULL FK, so the
+   * auth-audit write fails on exactly the pre-auth events that exist to record someone knocking.
+   */
+  it('the seeder puts the reserved system tenant BACK after the truncate', () => {
+    const src = fs.readFileSync(path.join(REPO, 'db/seed.ts'), 'utf8');
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code, 'tenant is truncated…').toMatch(/TRUNCATE \$\{TABLES/);
+    expect(code, '…so the reserved row has to be re-inserted').toContain('SYSTEM_TENANT_ID');
+    expect(code, 'and idempotently, mirroring 0151 ON CONFLICT DO NOTHING').toContain('onConflictDoNothing');
+    // It must come AFTER the truncate, or it is truncated away again. Anchored on the INSERT's own
+    // field, not the bare name — the import line carries that and sits at the top of the file.
+    expect(code.indexOf('id: SYSTEM_TENANT_ID')).toBeGreaterThan(code.indexOf('TRUNCATE ${TABLES'));
   });
 
   it('R4 is the layer that survives a customer copying the demo env template', () => {

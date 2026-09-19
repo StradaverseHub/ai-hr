@@ -62,6 +62,23 @@
 /** The tenant id `db/seed.ts` writes. `deploy/deploy.sh` must look for exactly this id. */
 export const DEMO_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
+/**
+ * The reserved system tenant that migration 0151 inserts on EVERY database, demo and customer alike.
+ *
+ * It is not anybody's data and cannot become anybody's data: `domain_event.tenant_id` is NOT NULL with
+ * an FK to `tenant`, and pre-auth auth events (login-failed on an un-invited email, a reset request for
+ * an unknown email) have no tenant to stamp — so `app.append_auth_event` COALESCEs them onto this
+ * nil-uuid row. By construction it holds no companies, people or employments, which is what makes RLS
+ * on every tenant-scoped table exclude it naturally.
+ *
+ * ⚠️ IT IS THEREFORE NOT A SIGNAL, AND TREATING IT AS ONE MADE R4 WORSE, NOT SAFER. Because 0151 runs
+ * on every correctly migrated database, R4 fired on ALL of them — a developer could not seed a freshly
+ * rebuilt local cluster without `SEED_MAY_DESTROY_OTHER_TENANTS=1`. A guard that is always tripped
+ * teaches the operator to type the override by reflex, and the override is the one thing standing
+ * between a real database and the TRUNCATE. The refusal is worth more when it means something.
+ */
+export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 /** Escape hatch for R4 only, and deliberately in no template, runbook or example file. */
 export const DESTROY_OVERRIDE = 'SEED_MAY_DESTROY_OTHER_TENANTS';
 
@@ -125,14 +142,19 @@ export function demoSeedRefusal(env: SeedEnv): string | null {
 
 /**
  * R4: decided from the live database, immediately before the TRUNCATE. `tenants` is every row of
- * `tenant` in the target database. Returns the refusal message, or `null` when only the demo tenant
- * (or nothing at all) is present.
+ * `tenant` in the target database. Returns the refusal message, or `null` when only the demo tenant,
+ * the reserved system tenant (see SYSTEM_TENANT_ID — it is on every database and says nothing about
+ * whose database this is), or nothing at all is present.
+ *
+ * Everything else still refuses. One real tenant alongside the system row is a refusal, which is what
+ * keeps this check the non-vacuous half of the guard: a customer who copied the demo env template gets
+ * past R1-R3, and is stopped here from the moment their database holds one tenant of their own.
  */
 export function foreignTenantRefusal(
   tenants: ReadonlyArray<{ id: string; name: string | null }>,
   env: SeedEnv,
 ): string | null {
-  const foreign = tenants.filter((t) => t.id !== DEMO_TENANT_ID);
+  const foreign = tenants.filter((t) => t.id !== DEMO_TENANT_ID && t.id !== SYSTEM_TENANT_ID);
   if (foreign.length === 0) return null;
   if (env[DESTROY_OVERRIDE] === '1') return null;
 
