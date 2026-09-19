@@ -1,3 +1,40 @@
+## r311 (2026-09-19) — Attendance Breakdown Detail, and a guard that was hiding a link instead of shutting a door. `main@8d7cbf34`, **no migration**.
+
+Closed and DEPLOYED: `22d67223`. Gate: **928 files — equal to the suite file count — 14,164 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. RENDERED on a dev server: 29 headers, 19 day rows, 551 cells, no `MISSING_MESSAGE`.
+
+### THE SCREEN
+
+`/attendance/breakdown` — one employee, one date range, every figure the engine recorded per day: shift and schedule source, declared vs deducted break, span, actual hours, lateness and its deduction, early out and its deduction, under-time, OT total and all six rate bands, status, flag, and the raw clocking trail. Twenty-nine columns, admin-only.
+
+It is the deliberate **counterpart of 570fd56e** (r306), which took eight calculation columns OFF Individual Attendance because eighteen columns could not be scanned. Those columns were moved, not deleted, and this is where they were moved to. One screen to review a month, one to interrogate it — neither may later be removed on the argument that the other covers it.
+
+### ⚠️ THE DECISION THAT MATTERS: IT WAS BUILT WITH THE WRONG GUARD FIRST
+
+The screen was written `scopedSession`, to match `/attendance` next door. **That was a leak, not a style choice, and it was caught by asking what the guard actually narrows rather than by trusting the comment on the neighbouring file.**
+
+`scopedSession` resolves a **company** scope. The employee picker is `listEmployees`, which is `withTenant` and filtered only by those company ids — **no narrowing by role at all**. A plain employee who typed the URL would have been offered every colleague in their company and served any one of their full calculation audits. The `adminOnly` flag on the nav row hides the LINK and protects nothing, which is precisely the failure `test/attendance-menu-relocation.test.ts` exists to prevent.
+
+`/attendance` may be `scopedSession` because it is genuinely self-service and its service narrows the reading. This screen has **no self-service entry point anywhere**, so it refuses at the door: `scopedAdmin`.
+
+It also takes **its own column in the access grid** rather than riding the `attendance` column. Listing an admin-only route on a `scopedSession` column would have been worse than a wrong guard — it would have told every reader of that grid that ordinary staff reach a screen they are refused. The precedent is `/attendance/my-records`: a different audience is a different SCREEN, not another route on an existing one.
+
+Non-vacuity: reverting to `scopedSession` fails **two independent guards** — the item's own, and the relocation guard's per-route loop.
+
+### A THIRD OF THE REQUESTED COLUMNS HAVE NO SOURCE, AND STAY UNBUILT
+
+Half-day splits, break-level lateness, Shift Group ID, Day Type Today, Day Code, Early In / Late In Shift, Schedule Overtime vs Approved Overtime. Some may be real requests we cannot yet answer; `schedule.ruleId` **may** be what "Shift Group ID" means, and that is a guess, so it was asked rather than shipped. They are named as UNKNOWN in the page header, were put to the reporter in the plan, and a guard pins that none of them appears as a key — **an audit screen is the worst place for an invented figure.**
+
+### PROCESS
+
+The r306 pre-gate sweep was run before the gate rather than after: 101 guard files naming the nav node and access matrix, 2,365 tests, green first pass. Four exact-set guards were UPDATED, not loosened (ADDED_SINCE, the node order list, the adminOnly list, the six-locale label oracle) plus both exact sets in the relocation guard.
+
+Two invented i18n keys (`filters.from` / `filters.to`) were replaced with the `filters.dateFrom` / `filters.dateTo` that Individual Attendance already uses in all six locales — **found by the item's own test, not by review.**
+
+### NOT DONE, AND WORTH KNOWING
+
+- **`pnpm db:seed` cannot run on this machine without a destroy flag**, so the section 8 render check nearly did not happen. Migration 0151 inserts the System (auth audit) tenant on **every** correctly-migrated database, and the seeder refuses while a tenant it did not create exists. The render was done instead with a small additive fixture (tenant + admin + company + employee + the ADR-0077 module rows), which is also what surfaced a `ModuleNotEnabledError` — the module gate working correctly, not a defect. The fixture was deleted, not committed. **Worth fixing properly: the documented verification path in CLAUDE.md section 8 does not work as written.**
+- `fe2360f9` stays blocked pending `7c80a168`; `7c80a168` stays planned, awaiting the reporter.
+
 ## r309 (2026-09-19) — Taken counts the days taken. `main@87cc021e`, **no migration**.
 
 Closed and DEPLOYED: `690d4400`. Gate: **927 files — equal to the suite file count — 14,138 tests, 0 AssertionErrors**, SECOND run, 14 chunks. `next build` exit 0. Deployed: rsync dry-run clean, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 87cc021e.
