@@ -1,3 +1,61 @@
+## r309 (2026-09-19) — Taken counts the days taken. `main@87cc021e`, **no migration**.
+
+Closed and DEPLOYED: `690d4400`. Gate: **927 files — equal to the suite file count — 14,138 tests, 0 AssertionErrors**, SECOND run, 14 chunks. `next build` exit 0. Deployed: rsync dry-run clean, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 87cc021e.
+
+### THE FAULT WAS A COLUMN FAITHFULLY REPORTING THE WRONG QUANTITY
+
+`finalizeLeaveApproval` writes the ledger debit as `-(approvedDays - unpaidDays)` — only the part that came
+OUT OF A BALANCE (core/leave.ts ~:4896, and ~:4892 already spelled the distinction out). For a fully unpaid
+leave those are equal, so the debit row is written with **0.00 days**. The row EXISTS; it is zero. A Taken
+column derived from debits then reports 0.00 for someone who was absent all week.
+
+Not a UPL special case, which the reporter asked for explicitly: any request with non-zero `unpaid_days`
+under-reported by exactly that much, including a PAID type that went part-unpaid when the balance ran out.
+
+**The fix is an identity, not new arithmetic.** absence = need + unpaid, and the debit already IS need, so
+summing `leave_request.unpaid_days` for approved requests completes it with no new stored figure. Summed from
+the REQUEST (never joined onto the ledger, so a request cannot be counted twice) and grouped by the type it
+was FILED under — r306's attribution. r302 split survivors each carry their own `unpaid_days`, so a partially
+cancelled leave contributes only what survived.
+
+### WHAT IT DELIBERATELY NARROWS, PINNED FROM BOTH SIDES
+
+39136455 (r306) promised `Balance = BF + Entitlement + Share - Taken - Pending - Pending Share`. That held
+only because `taken` was balance-spend. It now holds for fully-paid leave and NOT for part-unpaid, where
+absence legitimately exceeds what left the balance. **The reporter was shown that trade in writing before it
+was built.** r306's own assertion now carries why it still closes on its own fixture, and a new part-unpaid
+arm proves exactly where it stops — the narrowing is a tested property, not a sentence in a plan.
+
+BALANCE IS UNTOUCHED and asserted in both directions: the unpaid leave moves the ledger by 0, and the Balance
+column with it. It stays `sum(leave_ledger.days)`, never re-derived from these columns (6574c6b4 — re-deriving
+it once turned a true +14 into -14).
+
+Non-vacuity: reverting the unpaid half reproduces the reported fault exactly (`expected +0 to be 5`).
+
+### ⚠️ THE FIRST GATE WAS RED, AND IT CAUGHT r307's SLOPPINESS, NOT THIS ITEM'S
+
+One AssertionError: the ADR-0080 D9 leave-pack drift ratchet flagged
+`scripts/report-a2c-hire-year-deltas.ts` importing `core/leave` directly.
+
+**How it reached main ungated is the part to remember.** r307's gate ran on branch tip `97c316d3`; the report
+script was committed AFTER that, straight onto main. Two commits therefore shipped without ever passing a
+gate, and this was the first full run to see them. Earlier in the same session r306's first gate was voided
+for changing code DURING a run — this is the looser version of the same error, committed after one. **A
+commit after the gate is a commit nobody tested.**
+
+Fixed by importing through `packs/leave/service`, which `packs/leave/service.ts`'s own header names as the
+right answer for an operator script ("the alternative was a fifth scripts/ entry in the audited debt"). The
+allowlist only ever shrinks; nothing was added to it.
+
+### NOT DONE / KNOWN
+
+- No browser render, five rounds running — `pnpm db:seed` is classifier-refused. The Taken column's new value
+  is proven by tests and unseen by eye.
+- `fe2360f9` and `22d67223` are both approved and both edit the SAME exact-set nav guard that already caught
+  r306 out. They are sequenced deliberately: fe2360f9 first, 22d67223 last. `sidebar-attendance-group` holds
+  an explicit `'Roster is NOT in the admin-gated node'` assertion — the decision fe2360f9 reverses, so it gets
+  updated with the reason rather than deleted.
+
 ## r308 (2026-09-19) — Leave Credit switched on. `main@b7e6cff3`, **no migration, no code change**.
 
 Closed and DEPLOYED: `3fb1a611` (build_ref `769e6d9a`, shipped in r300 and dormant since). **This round
