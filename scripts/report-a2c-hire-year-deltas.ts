@@ -45,7 +45,11 @@ import { writeFileSync } from 'node:fs';
 import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { loadSweepScope } from '../core/sweep-scope';
-import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
+// ADR-0080 D9 — through the PACK FACADE, not core/leave. The drift ratchet
+// (test/leave-pack-drift.test.ts) refuses a new file importing the leave pack's implementation directly,
+// and its allowlist only ever shrinks: adding a fifth scripts/ entry to the audited debt is exactly what
+// packs/leave/service.ts's own header says not to do.
+import { accrueEarnedLeave, todayInKualaLumpur } from '../packs/leave/service';
 import { employment, leaveLedger, leaveType, person } from '../db/schema';
 
 const asOf = process.argv[2] ?? todayInKualaLumpur();
