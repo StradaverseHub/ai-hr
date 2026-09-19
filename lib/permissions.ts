@@ -204,6 +204,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     hasScopeNote: true,
   },
   /**
+   * 22d67223 (r311) — ATTENDANCE BREAKDOWN: the audit view, one employee's every recorded figure across a
+   * range. It reads the same data as the column above and is deliberately NOT a route on it.
+   *
+   * The column above is `scopedSession` — every role reaches it and the reading is narrowed to them. This
+   * screen is `scopedAdmin`, because its employee picker is `listEmployees`, which is tenant-scoped and
+   * filtered only by company: under scopedSession an employee could read any colleague's full calculation
+   * audit. Listing it on the column above would have been worse than a wrong guard — it would tell every
+   * reader of the access grid that ordinary staff reach this screen, when they are refused at the door.
+   *
+   * The precedent is '/attendance/my-records' below: a different audience is a different SCREEN, not
+   * another route on an existing one.
+   */
+  {
+    screenKey: 'attendanceBreakdown',
+    href: '/attendance/breakdown',
+    labelKey: 'nav.attendanceBreakdown',
+    guard: 'scopedAdmin',
+    routes: ['/attendance/breakdown'],
+  },
+  /**
    * f3e6c36e (r287) — MY RECORDS: the employee's own attendance, and the employee half of the split that
    * took the administrative Record function out of My Attendance.
    *

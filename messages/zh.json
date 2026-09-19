@@ -328,7 +328,8 @@
     "sectionHome": "首页",
     "schedule": "排班",
     "leaveCredit": "假期额度",
-    "cardAssignment": "卡号分配"
+    "cardAssignment": "卡号分配",
+    "attendanceBreakdown": "考勤分解"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -2761,7 +2762,23 @@
     "cardSearch": "搜索员工、员工编号或卡号",
     "cardInUse": "该卡号已对应 {name}。请为此员工设置其他卡号。",
     "cardSaved": "卡号已保存。",
-    "cardNoneNote": "未设置卡号 — 该员工按员工编号匹配，这也是设备文件一直以来的匹配方式。仅当设备记录不同号码时才需设置。"
+    "cardNoneNote": "未设置卡号 — 该员工按员工编号匹配，这也是设备文件一直以来的匹配方式。仅当设备记录不同号码时才需设置。",
+    "breakdownTitle": "考勤明细分解",
+    "breakdownDescription": "考勤引擎为某位员工在所选日期范围内逐日记录的全部数值。",
+    "colEmployeeId": "员工编号",
+    "colDayType": "日别",
+    "colBreakDeclared": "休息（班次）",
+    "colBreakTaken": "已扣休息",
+    "colUnder": "不足",
+    "colOtTotal": "加班合计",
+    "colSpan": "时长",
+    "colLateDeduct": "迟到扣减",
+    "colEarlyOutDeduct": "早退扣减",
+    "colScheduleSource": "班表来源",
+    "breakdownView": "查看",
+    "breakdownReset": "重置",
+    "breakdownPickEmployee": "请选择员工和日期范围以查看明细。",
+    "breakdownNoTrace": "未记录"
   },
   "org": {
     "title": "组织架构图",

@@ -328,7 +328,8 @@
     "sectionHome": "Trang chính",
     "schedule": "Lịch làm việc",
     "leaveCredit": "Tín dụng nghỉ phép",
-    "cardAssignment": "Gán thẻ"
+    "cardAssignment": "Gán thẻ",
+    "attendanceBreakdown": "Phân tách chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2761,7 +2762,23 @@
     "cardSearch": "Tìm nhân viên, Mã nhân viên hoặc Mã thẻ",
     "cardInUse": "Mã thẻ đó đã thuộc về {name}. Hãy đặt mã khác cho nhân viên này.",
     "cardSaved": "Đã lưu Mã thẻ.",
-    "cardNoneNote": "Chưa đặt Mã thẻ — nhân viên này được khớp theo Mã nhân viên, cách mà tệp thiết bị vẫn luôn khớp. Chỉ đặt khi thiết bị ghi một số khác."
+    "cardNoneNote": "Chưa đặt Mã thẻ — nhân viên này được khớp theo Mã nhân viên, cách mà tệp thiết bị vẫn luôn khớp. Chỉ đặt khi thiết bị ghi một số khác.",
+    "breakdownTitle": "Chi tiết phân tách chấm công",
+    "breakdownDescription": "Mọi số liệu bộ máy chấm công đã ghi, theo từng ngày, cho một nhân viên trong khoảng thời gian đã chọn.",
+    "colEmployeeId": "Mã nhân viên",
+    "colDayType": "Loại ngày",
+    "colBreakDeclared": "Nghỉ (theo ca)",
+    "colBreakTaken": "Nghỉ đã trừ",
+    "colUnder": "Thiếu",
+    "colOtTotal": "Tổng tăng ca",
+    "colSpan": "Khoảng",
+    "colLateDeduct": "Trừ đi muộn",
+    "colEarlyOutDeduct": "Trừ về sớm",
+    "colScheduleSource": "Lịch từ",
+    "breakdownView": "Xem",
+    "breakdownReset": "Đặt lại",
+    "breakdownPickEmployee": "Chọn nhân viên và khoảng ngày để xem phân tách.",
+    "breakdownNoTrace": "chưa ghi nhận"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
