@@ -26,7 +26,7 @@ import { seedCatalogs } from '../scripts/seed-catalogs';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 // r290 / readiness 1.1 — this seeder TRUNCATEs 24 tables. The refusal that keeps it off a customer's
 // database, and the reasoning for the exact signals it fires on, live in db/seed-guard.ts.
-import { DEMO_TENANT_ID, demoSeedRefusal, foreignTenantRefusal } from './seed-guard';
+import { DEMO_TENANT_ID, SYSTEM_TENANT_ID, demoSeedRefusal, foreignTenantRefusal } from './seed-guard';
 
 const DEV_TENANT_ID = DEMO_TENANT_ID;
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -68,6 +68,24 @@ async function main() {
 
   console.log('Resetting dev database…');
   await owner.db.execute(sql.raw(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`));
+
+  // ⚠️ PUT THE RESERVED SYSTEM TENANT BACK. `tenant` is in TABLES above, so the TRUNCATE takes the
+  // nil-uuid row that migration 0151 inserted — and nothing else ever re-creates it, because 0151 has
+  // already been applied and migrations do not run again. It is not demo data; it is a schema-level
+  // invariant that outlives any reset.
+  //
+  // What breaks without it, and it is silent until somebody hits it: `app.append_auth_event` stamps a
+  // pre-auth event (login-failed on an un-invited email, a reset request for an unknown email) with
+  // COALESCE(p_tenant_id, '00000000-…'), and domain_event.tenant_id is NOT NULL with an FK to tenant.
+  // With the row gone that insert raises a foreign-key violation, so the auth-audit write fails on
+  // exactly the events that exist to record someone knocking on the door.
+  //
+  // Idempotent, mirroring 0151's own ON CONFLICT DO NOTHING: this also repairs a database seeded by an
+  // older build of this file, without needing a migration to do it.
+  await owner.db
+    .insert(schema.tenant)
+    .values({ id: SYSTEM_TENANT_ID, workosOrgId: 'org_system_auth_audit', name: 'System (auth audit)' })
+    .onConflictDoNothing();
 
   await owner.db.insert(schema.tenant).values({ id: DEV_TENANT_ID, workosOrgId: 'org_dev', name: 'Demo Group' });
   // Group structure (ADR-0009): a holding company over the operating entity.
