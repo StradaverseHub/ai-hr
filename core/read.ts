@@ -2626,7 +2626,7 @@ export function leaveBalances(
 ) {
   return withTenant(ctx, async (tx) => {
     const asOf = opts.asOf;
-    const [rows, pend, takenFiled] = await Promise.all([
+    const [rows, pend, takenFiled, unpaidFiled] = await Promise.all([
       tx
         .select({
           leaveTypeId: leaveType.id,
@@ -2695,9 +2695,54 @@ export function leaveBalances(
             : eq(leaveLedger.employmentId, employmentId),
         )
         .groupBy(sql`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`),
+      /**
+       * 690d4400 — THE UNPAID HALF OF "TAKEN", WITHOUT WHICH THE COLUMN UNDER-REPORTS ABSENCE.
+       *
+       * `finalizeLeaveApproval` writes the ledger debit as `-(approvedDays - unpaidDays)`: only the part
+       * that came OUT OF A BALANCE. For a fully unpaid leave those are equal, so the debit row is written
+       * with 0.00 — the row exists, it is zero — and a Taken column that reads debits faithfully reports
+       * 0.00 for someone who was absent all week. That is the reported fault, and it is not UPL-specific:
+       * any request with non-zero `unpaid_days` under-reports by exactly that much, including a PAID type
+       * that went part-unpaid when the balance ran out.
+       *
+       * `leave_request.unpaid_days` carries the missing half (schema: "Anything that reads `days` as 'days
+       * deducted from the balance' must subtract this"), so absence = debit + unpaid, and no new stored
+       * figure is needed. Summed from the REQUEST rather than joined onto the ledger so a request can never
+       * be counted twice, and grouped by the type it was FILED under — the same attribution r306 chose.
+       *
+       * Split survivors (r302) each carry their own `days` and `unpaid_days`, so a partially cancelled
+       * leave contributes only what actually survived.
+       */
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          unpaid: sql<string>`coalesce(sum(${leaveRequest.unpaidDays}), 0)`,
+        })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'approved'),
+            // The same cut the ledger debits use: a debit is dated on the request's start date.
+            ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
+          ),
+        )
+        .groupBy(leaveRequest.leaveTypeId),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
-    const takenFiledBy = new Map(takenFiled.map((t) => [t.filedTypeId, Number(t.taken)]));
+    // 690d4400 — TAKEN IS ABSENCE, not balance spend: the days the employee was away. `taken` from the
+    // debits is only the part that came out of a balance; the unpaid remainder is added back here so the
+    // column answers the question its heading asks. Balance is untouched by this — it is
+    // `sum(leave_ledger.days)` and is never re-derived from these columns (6574c6b4).
+    const unpaidFiledBy = new Map(unpaidFiled.map((u) => [u.leaveTypeId, Number(u.unpaid)]));
+    const takenFiledBy = new Map<string, number>();
+    for (const t of takenFiled) {
+      takenFiledBy.set(t.filedTypeId, Number(t.taken));
+    }
+    for (const [typeId, unpaid] of unpaidFiledBy) {
+      if (unpaid === 0) continue;
+      takenFiledBy.set(typeId, Math.round(((takenFiledBy.get(typeId) ?? 0) + unpaid) * 100) / 100);
+    }
     const out = rows.map((r) => {
       const pending = pendingBy.get(r.leaveTypeId) ?? 0;
       const balance = Number(r.balance);
@@ -2705,7 +2750,9 @@ export function leaveBalances(
         leaveTypeId: r.leaveTypeId,
         leaveType: r.leaveType,
         accrued: Number(r.accrued),
-        taken: Number(r.taken),
+        // 690d4400 — the ABSENCE figure, filed-type attributed. Falls back to the ledger's own debit total
+        // only for a type that produced no request rows at all (a pure adjustment history).
+        taken: takenFiledBy.get(r.leaveTypeId) ?? Number(r.taken),
         pending,
         balance,
         // What the employee can still book: ledger balance minus not-yet-decided requests.
