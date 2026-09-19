@@ -1,3 +1,25 @@
+## r312 (2026-09-19) — the seeder stopped treating a schema fixture as somebody's data. `main@8b6b0016`, **no migration**.
+
+No board item — asked for directly, off the back of r311's finding. Gate: **928 files — equal to the suite file count — 14,167 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: rsync dry-run clean, active, `GET /` 401, deploy `exit_code=0`, "Demo data already present — skipping seed" as expected.
+
+### TWO DEFECTS, ONE CAUSE
+
+Migration 0151 inserts a reserved nil-uuid tenant, `System (auth audit)`, on **every** correctly migrated database. It is a valid FK target for pre-auth auth events (login-failed on an un-invited email, a reset request for an unknown email) — `app.append_auth_event` COALESCEs their NULL tenant onto it — and by construction it holds no companies, people or employments.
+
+**1. R4 counted it as a foreign tenant.** So `foreignTenantRefusal` fired on every database there is: `pnpm db:seed` could not run on a freshly rebuilt local cluster without `SEED_MAY_DESTROY_OTHER_TENANTS=1`. That is not a stricter guard, it is a broken one — **an always-on refusal teaches the operator to type the override by reflex, and the override is the last thing standing between a real database and the TRUNCATE.** The refusal is worth more when it means something. R4 still refuses a real tenant standing beside the system row, and the count in its message no longer bills the operator for a row that is not theirs.
+
+**2. The seeder destroyed it and never put it back.** `tenant` is in the TRUNCATE list, and nothing re-creates the row, because 0151 is already applied and migrations do not run again. So on any seeded database `app.append_auth_event` raised a foreign-key violation on exactly the events that exist to record someone knocking on the door. The seeder now re-inserts it immediately after the TRUNCATE, idempotently, mirroring 0151's own `ON CONFLICT DO NOTHING` — which also repairs a database seeded by an older build without needing a migration to do it.
+
+**Both proven against the live cluster, not reasoned about.** `pnpm db:seed` ran with no override; the reserved row survived; `app.append_auth_event(NULL, …)` wrote a row onto it. The failure it prevents was demonstrated inside a transaction that deleted the row, watched the FK violation, and rolled back.
+
+### ⚠️ WHAT THIS CHANGES ON THE CONSULTANT BOX, AND IT IS NOT NOTHING
+
+R4's always-on refusal was also, by accident, the thing that made `./deploy/deploy.sh --reseed` a no-op on that box. **It is no longer.** `--reseed` now does exactly what its own help text says — TRUNCATE 24 tables and re-plant Demo Group — which on that box means the feedback board's 853 items and every consultant record go with it. That is the documented semantics restored, not a new hazard invented, and the normal deploy path is untouched (`Demo data already present — skipping seed`). **RECOMMENDATION, not built: replace the accidental protection with a deliberate one** — a refusal keyed on the target database holding real usage (feedback items, payslips) rather than on a tenant row that says nothing.
+
+### PROCESS
+
+Pre-gate sweep of everything naming these surfaces — 59 files, 1,692 tests, green first pass. `test/r290-customer-deploy-path.test.ts` was UPDATED, not loosened: three new arms (the system row alone is tolerated; a real tenant beside it still refuses and is the only one named or counted; the seeder's restore comes AFTER the truncate). Reverting either half fails all three.
+
 ## r311 (2026-09-19) — Attendance Breakdown Detail, and a guard that was hiding a link instead of shutting a door. `main@8d7cbf34`, **no migration**.
 
 Closed and DEPLOYED: `22d67223`. Gate: **928 files — equal to the suite file count — 14,164 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. RENDERED on a dev server: 29 headers, 19 day rows, 551 cells, no `MISSING_MESSAGE`.
