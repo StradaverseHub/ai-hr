@@ -211,6 +211,14 @@ describe('39136455 · nothing about the money moved', () => {
     expect(ledger, 'the pool’s ledger is where the days actually live').toBe(14);
     expect(byId.get(pool)!.balance + byId.get(borrower)!.balance, 'shares cancel across the pool').toBe(ledger);
     // The borrower's own arithmetic closes too: 0 entitlement + 2 shared in − 2 taken = 0.
+    //
+    // ⚠️ 690d4400 NARROWED THIS IDENTITY, and the fixture above is why it still passes. `taken` now means
+    // ABSENCE (the days the employee was away), not balance-spend, so this closes for FULLY PAID leave —
+    // which is all this fixture has — and NOT for a part-unpaid request, where absence legitimately exceeds
+    // what came off the balance. That is a deliberate trade the reporter was shown in writing before it was
+    // built; see test/690d4400-unpaid-leave-taken.test.ts for the arm that pins the other side.
+    // BALANCE itself is unaffected either way: it is sum(leave_ledger.days), never re-derived from these
+    // columns (6574c6b4).
     const bor = byId.get(borrower)!;
     expect(bor.balance).toBe(bor.accrued + bor.share - bor.taken);
   });

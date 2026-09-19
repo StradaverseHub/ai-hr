@@ -167,6 +167,52 @@ describe('690d4400 · the reported fault', () => {
   });
 });
 
+describe('690d4400 · the identity 39136455 shipped, and exactly where it now stops holding', () => {
+  /**
+   * r306 promised the reporter: Balance = Brought Forward + Entitlement + Share − Taken − Pending − Pending
+   * Share. It held only because `taken` was balance-spend. This pins BOTH halves of what changed, so the
+   * narrowing is a tested property rather than a sentence in a plan nobody re-reads.
+   */
+  it('a PART-UNPAID leave makes Taken exceed what came off the balance — by exactly the unpaid days', async () => {
+    const annual = b.annualLeaveTypeId;
+    await seedEntitlement(adminCtx(b), { leaveTypeId: annual, annualDays: 14, validFrom: '2026-01-01' });
+    await owner.db
+      .update(schema.leaveType)
+      .set({ allowUnpaidLeave: true })
+      .where(eq(schema.leaveType.id, annual));
+
+    const { employmentId } = await hire();
+    const ctx = adminCtx(b);
+    // Two days of balance, five days away ⇒ 2 paid + 3 unpaid.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId,
+      leaveTypeId: annual,
+      entryType: 'accrual',
+      days: '2.00',
+      effectiveOn: '2026-01-01',
+    });
+
+    const req = await requestLeave(ctx, {
+      employmentId,
+      leaveTypeId: annual,
+      startDate: '2026-06-01',
+      endDate: '2026-06-05',
+      today: '2026-05-01',
+    });
+    await decideLeave(ctx, { leaveRequestId: req.leaveRequestId, decision: 'approved' });
+
+    const row = (await rowFor(employmentId, annual))!;
+    expect(row.taken, 'five days away').toBe(5);
+    // The ledger only ever moved the two paid days — which is the whole point of "unpaid".
+    expect(await ledgerTotal(employmentId, annual), 'only the paid part left the balance').toBe(0);
+    expect(row.balance).toBe(0);
+    // …so the r306 identity does NOT close here, by exactly the unpaid days, and that is correct.
+    expect(row.accrued - row.taken, 'absence exceeds balance-spend').toBe(-3);
+    expect(row.balance).not.toBe(row.accrued - row.taken);
+  });
+});
+
 describe('690d4400 · a PAID type is unaffected, which is what keeps the change honest', () => {
   it('an ordinary paid leave still reports the same Taken it always did, and still spends the balance', async () => {
     const annual = b.annualLeaveTypeId;
