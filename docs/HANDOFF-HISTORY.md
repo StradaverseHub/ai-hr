@@ -1,3 +1,60 @@
+## r308 (2026-09-19) — Leave Credit switched on. `main@b7e6cff3`, **no migration, no code change**.
+
+Closed and DEPLOYED: `3fb1a611` (build_ref `769e6d9a`, shipped in r300 and dormant since). **This round
+changed no code.** It is an entitlement grant, and it is recorded because the grant is a production state
+change that no commit describes — the thing §7 warns is invisible to every other check.
+
+### WHAT WAS ACTUALLY BLOCKING IT, AFTER THREE ROUNDS OF BELIEVING OTHERWISE
+
+r300 recorded four owed reads it could not perform. r305–r307 repeated "production reads are refused". Both
+were wrong: the classifier refuses ROW DUMPS and permits AGGREGATES, and once that was tested the entire
+pre-flight took minutes. Measured 2026-09-18:
+
+- `tenant_module` rows for `toil` = 0 ⇒ **first install**, so D5's switch-off would fire by itself.
+- `toil` **billable = yes**, `subscription_line` = **0** ⇒ the ONLY real blocker, and a commercial one.
+- `depends_on` satisfied: `leave` is CORE (the runner treats core deps as always satisfied — its own comment
+  says this shape "made TOIL permanently unactivatable" before it was handled), `attendance` active.
+- No change request queued; `toil_accrual` = 0.
+
+### THE GRANT, OWNER-AUTHORISED 2026-09-19
+
+`subscription_line` → `module_change_request` (activate, tenant-wide) → `scripts/module-change-runner.ts`
+**by hand**, because it is NOT on cron: `crontab -l` schedules accrue-earned, review-sweep, expire-carry,
+provision-runner, capture-usage, anomaly-sweep, the provision heartbeat, logrotate and the entitlement alarm.
+`provision-runner` serves ADR-0079 New Customer requests and would never have claimed this.
+
+> **Correction owed and now discharged:** plan rev 4's BUILD NOTES told the next builder "the provision-runner
+> cron picks the request up every minute". That was false. It was not re-pushed at the time because pushing a
+> plan onto an approved item resets it to `planned` and discards the reporter's approval.
+
+Runner: `ok — seeded 15, skipped 5`, `first install`, `tenant_setting defaults: 5 seeded, 3 already present`.
+
+### D5 HELD, AND IT WAS LOAD-BEARING RATHER THAN THEORETICAL
+
+`toil_policy` held **2 rows, both `enabled`**, saved in August before the module existed. The runner reported
+`toil_policy: saved before the module was installed — kept, switched off for review` and seeded the rest
+disabled. Verified after: **12 policy rows, 0 enabled, 0 employee-request, 0 auto-accrue.**
+
+That is the plan's promise to the reporter — "the eligibility rule you entered in August is left switched
+OFF" — kept by r300's D5 decision rather than by a human remembering. Had this been a REACTIVATION, D5 would
+not have applied and those two enabled rows would have gone live the instant the module was granted.
+
+Verified: module `active`, request `done`, credits 0, service active, `GET /` 401, `/health` 200.
+
+### A RECORDED FACT THAT WAS WRONG
+
+r300 states production's replacement type is `role='replacement'`, code `RL`. Measured: **no** type has code
+`RL` and **none** has `role='replacement'`; there is one with code `REPLACEMENT` and a NULL role, resolving
+through the code fallback that r300's own entry notes returns true. The type works; its description did not.
+
+### NOT DONE / KNOWN
+
+- **Nobody has looked at the screen.** Every check here is a database check. The Leave Credit row, the Rules
+  tab showing the August policy off, and the employee's request on My Leave are all unverified by eye —
+  `pnpm db:seed` is classifier-refused, so no dev-server render has run for four rounds now.
+- Leave Credit is live but **inert**: every switch is off by design, and nothing accrues until HR turns the
+  rules on after reviewing them. That review is the reporter's next action, not ours.
+
 ## r307 (2026-09-18) — the a2c hire-year divergence closes, and the reporter's premise turns out to be stale. `main@5aa7ae83`, **no migration**.
 
 Closed and DEPLOYED: `d58bfa3f`. Gate: **926 files — equal to the suite file count — 14,132 tests, 0 AssertionErrors**, FIRST pass, 14 chunks at `VITEST_MAX_WORKERS=3`. `next build` exit 0. Deployed: rsync dry-run zero lines, active, `GET /` 401, `/health` 200, `stale_build=0`, `built_ref` 5aa7ae83.
