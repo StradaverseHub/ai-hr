@@ -328,7 +328,8 @@
     "sectionHome": "Home",
     "schedule": "Schedule",
     "leaveCredit": "Leave Credit",
-    "cardAssignment": "Card Assignment"
+    "cardAssignment": "Card Assignment",
+    "attendanceBreakdown": "Attendance Breakdown"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -2761,7 +2762,23 @@
     "cardSearch": "Search employee, Employee ID or Card ID",
     "cardInUse": "That Card ID already identifies {name}. Give this employee a different one.",
     "cardSaved": "Card ID saved.",
-    "cardNoneNote": "No Card ID set — this employee is matched by their Employee ID, which is how device files have always matched. Set one only when the device records a different number."
+    "cardNoneNote": "No Card ID set — this employee is matched by their Employee ID, which is how device files have always matched. Set one only when the device records a different number.",
+    "breakdownTitle": "Attendance Breakdown Detail",
+    "breakdownDescription": "Every figure the attendance engine recorded, day by day, for one employee over a date range.",
+    "colEmployeeId": "Employee ID",
+    "colDayType": "Day Type",
+    "colBreakDeclared": "Break (shift)",
+    "colBreakTaken": "Break deducted",
+    "colUnder": "Under",
+    "colOtTotal": "OT Total",
+    "colSpan": "Span",
+    "colLateDeduct": "Lateness deducted",
+    "colEarlyOutDeduct": "Early Out deducted",
+    "colScheduleSource": "Schedule From",
+    "breakdownView": "View",
+    "breakdownReset": "Reset",
+    "breakdownPickEmployee": "Select an employee and a date range to view the breakdown.",
+    "breakdownNoTrace": "not recorded"
   },
   "org": {
     "title": "Org chart",

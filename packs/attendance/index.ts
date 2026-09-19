@@ -65,6 +65,7 @@ import {
   Hourglass,
   MapPin,
   Plane,
+  Table2,
   Users,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
@@ -327,6 +328,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * reporter asked for it twice. The employee keeps their own record next door, which is their point 7.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
+    // 22d67223 — ATTENDANCE BREAKDOWN DETAIL. The audit surface: every figure the engine recorded, day by
+    // day, for one employee over a range. Deliberately the opposite of 570fd56e, which took the calculation
+    // columns OFF Individual Attendance — one screen to review a month, one to interrogate it.
+    { href: '/attendance/breakdown', labelKey: 'attendanceBreakdown', icon: Table2, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
     // 44bc1c33 — CARD ASSIGNMENT. The employee↔Card/Clocking ID mapping a physical terminal needs when its
     // card numbers are not the employee codes. Admin-only and beside Shift because it is device

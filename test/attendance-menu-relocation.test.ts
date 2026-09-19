@@ -72,6 +72,10 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // because a screen with no menu row at all is the case this file's premise matters MOST for.
     expect(adminRoutes).toEqual([
       '/attendance',
+      // 22d67223 (r311) — Attendance Breakdown. Unlike '/attendance' above it, this one is NOT an
+      // exception to this file's premise: its page calls scopedAdmin in its own body and it is in the
+      // loop below. See the note there for why it could not be scopedSession like its neighbour.
+      '/attendance/breakdown',
       '/admin/attendance',
       // 44bc1c33 (r306) — Card Assignment. Its page carries its own scopedAdmin guard, which is this file's
       // whole premise: a row in the Admin node is not what protects the screen behind it.
@@ -104,6 +108,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   // (which only counts a page.tsx that calls a guard). So each stub calls requireAdmin() first, and this loop
   // is what keeps it that way.
   it.each([
+    // 22d67223 (r311) — THE SECOND ROW IN THIS NODE WHOSE SCREEN IS UNDER '/attendance', and the first one
+    // that is admin-guarded. It was written as scopedSession to match its neighbour and that was WRONG:
+    // its employee picker is `listEmployees`, tenant-scoped and filtered only by company, so a plain
+    // employee reaching the URL would have been offered every colleague and served any one of their full
+    // calculation audits. The adminOnly nav row hides the link and protects nothing. It refuses now, which
+    // is why it belongs in this loop rather than beside '/attendance' in the exception below.
+    '/attendance/breakdown',
     '/admin/attendance',
     '/admin/card-assignment',
     '/admin/attendance-policy',

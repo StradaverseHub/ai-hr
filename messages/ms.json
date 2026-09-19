@@ -328,7 +328,8 @@
     "sectionHome": "Utama",
     "schedule": "Jadual",
     "leaveCredit": "Kredit Cuti",
-    "cardAssignment": "Penetapan Kad"
+    "cardAssignment": "Penetapan Kad",
+    "attendanceBreakdown": "Pecahan Kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2761,7 +2762,23 @@
     "cardSearch": "Cari pekerja, ID Pekerja atau ID Kad",
     "cardInUse": "ID Kad itu sudah mengenal pasti {name}. Berikan pekerja ini ID yang berbeza.",
     "cardSaved": "ID Kad disimpan.",
-    "cardNoneNote": "Tiada ID Kad ditetapkan — pekerja ini dipadankan dengan ID Pekerja mereka, sebagaimana fail peranti sentiasa dipadankan. Tetapkan satu hanya apabila peranti merekodkan nombor berbeza."
+    "cardNoneNote": "Tiada ID Kad ditetapkan — pekerja ini dipadankan dengan ID Pekerja mereka, sebagaimana fail peranti sentiasa dipadankan. Tetapkan satu hanya apabila peranti merekodkan nombor berbeza.",
+    "breakdownTitle": "Butiran Pecahan Kehadiran",
+    "breakdownDescription": "Setiap angka yang direkodkan enjin kehadiran, hari demi hari, bagi seorang pekerja dalam julat tarikh.",
+    "colEmployeeId": "ID Pekerja",
+    "colDayType": "Jenis Hari",
+    "colBreakDeclared": "Rehat (syif)",
+    "colBreakTaken": "Rehat ditolak",
+    "colUnder": "Kurang",
+    "colOtTotal": "Jumlah OT",
+    "colSpan": "Jangka",
+    "colLateDeduct": "Potongan lewat",
+    "colEarlyOutDeduct": "Potongan keluar awal",
+    "colScheduleSource": "Jadual Dari",
+    "breakdownView": "Lihat",
+    "breakdownReset": "Set semula",
+    "breakdownPickEmployee": "Pilih pekerja dan julat tarikh untuk melihat pecahan.",
+    "breakdownNoTrace": "tidak direkodkan"
   },
   "org": {
     "title": "Carta organisasi",

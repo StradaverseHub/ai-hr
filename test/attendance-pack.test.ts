@@ -21,6 +21,7 @@ import {
   CalendarRange,
   ClipboardList,
   CreditCard,
+  Table2,
   Clock,
   FilePen,
   FileUp,
@@ -168,6 +169,14 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // `importAttendancePunches` matched only employee code and IC, so such a file imported NOTHING and
     // there was nowhere to fix it. Admin-only and beside Shift because it is device configuration.
     { href: '/admin/card-assignment', labelKey: 'cardAssignment', icon: CreditCard, adminOnly: true },
+    // 22d67223 (r311) — ATTENDANCE BREAKDOWN DETAIL, the audit view: every figure the engine recorded for
+    // one employee, day by day, across a range. It is the EXACT COUNTERPART of 570fd56e (r306), which took
+    // the eight calculation columns OFF Individual Attendance because that screen is for reviewing a month.
+    // Those columns were moved, not deleted, and this is where they were moved TO — so the pair only makes
+    // sense read together, and neither row may be removed on the argument that the other covers it.
+    // It leads with '/attendance' rather than sitting among the settings for the reason that oracle already
+    // states below: it is a READING, not a configuration screen.
+    { href: '/attendance/breakdown', labelKey: 'attendanceBreakdown', icon: Table2, adminOnly: true },
   ] as const;
 
   /**
@@ -314,6 +323,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // READING rather than a setting, so it sits above the configuration rows rather than among them.
       // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
       '/attendance', // Employee Attendance
+      // 22d67223 (r311) — Attendance Breakdown, SECOND and not among the settings: by this list's own
+      // rule the readings lead and the configuration rows follow, and this is the second reading.
+      '/attendance/breakdown',
       '/admin/attendance', // Shift
       '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration, beside Shift
       // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
@@ -530,6 +542,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // 3fb1a611 (r299) — '/admin/toil' left this list with its row (RETIRED above).
     for (const href of [
       '/admin/attendance',
+      // 22d67223 — the breakdown names one employee's every recorded figure for a range, so it is the
+      // same audience as Employee Attendance above it: administrators, never a manager or the employee.
+      '/attendance/breakdown',
       // 44bc1c33 — a card maps a device number to a person, so it is admin configuration, never a row a
       // manager or an employee reaches.
       '/admin/card-assignment',
@@ -635,6 +650,8 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // what is new is an administrator-gated way in that says what they will find there, because from
       // this node the same screen lists every employee rather than the viewer's own month.
       '/attendance': 'Employee Attendance',
+      // 22d67223 (r311) — says what it opens: the breakdown OF attendance, not a report about it.
+      '/attendance/breakdown': 'Attendance Breakdown',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.
