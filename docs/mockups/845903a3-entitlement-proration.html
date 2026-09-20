@@ -1,0 +1,129 @@
+<meta charset="utf-8">
+<title>845903a3 — Entitlement, prorated, with its own rounding</title>
+<!--
+  Mockup for 845903a3 (ANNUAL LEAVE ENTITLEMENT PRORATION).
+
+  MEASURED ON PRODUCTION 2026-09-20, read-only aggregates through MIGRATION_DATABASE_URL:
+    active employments                                     75
+    hired during the 2026 leave year, still active         24   (of these, 1 joined exactly 1 Jan)
+    ANNUAL rounding bands today  0.00-0.38 -> 0.00 · 0.39-0.68 -> 0.50 · 0.69-0.99 -> 1.00
+    AL     rounding bands today  0.00-0.24 -> 0.00 · 0.25-0.49 -> 0.50 · 0.50-0.74 -> 0.50 · 0.75-0.99 -> 1.00
+    Both ANNUAL and AL are year_cycle_override='a2c', accrual_method='earned_daily'.
+
+  THE POINT THE PICTURE EXISTS TO MAKE, and it is the reason the plan leads with a correction:
+  the prorated number the reporter is asking for ALREADY EXISTS on this screen. For a 15 Mar 2026
+  joiner the kernel already computes 292/365 x 16 = 12.80 — the reporter's own figure, to the decimal —
+  and shows it in EARNED TO DATE, rounded by the ANNUAL table to 13.00. What this item adds is a second
+  column showing that same 12.80 under a DIFFERENT rounding rule. The two columns are drawn side by side
+  at the same width so that duplication is visible rather than described.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - Effective dates on the rounding table. The existing framework stores rounding on the leave type
+      itself and has no effective dating; the reporter made that conditional ("if the existing
+      configuration framework supports effective dating"). It does not, so nothing is drawn.
+    - Employee names. The figures are real; nobody is named.
+    - The other eleven columns of Employee Balances, which are unchanged.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;
+        --newbg:#eef2ff;--newfg:#4338ca}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:8px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .new{background:var(--newbg);color:var(--newfg)}
+  .keep{background:var(--goodbg);color:var(--goodfg)}
+  .col2{display:flex;gap:16px} .col2>*{flex:1;min-width:0}
+  .hl{background:var(--newbg)}
+  .was{color:var(--mf);text-decoration:line-through}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .big{font-size:15px;font-weight:700}
+  .steps td{border-top:1px solid var(--border)} .steps td:first-child{color:var(--mf);width:44%}
+</style>
+
+<div class="card">
+  <h1>Employee Balances — Annual Leave, an employee who joined on 15 March 2026</h1>
+  <p class="sub">Grade 13 · Full Time · under 2 years' service · entitlement table gives 16 days</p>
+
+  <div class="col2">
+    <div>
+      <h2>Today</h2>
+      <table>
+        <tr><th>Full Entitlement</th><th>Earned to Date</th><th class="r">Balance</th></tr>
+        <tr><td class="big">16.00</td><td class="big">13.00</td><td class="r">13.00</td></tr>
+      </table>
+      <p class="note">16.00 is the whole year's allowance for the grade, with no proration.
+        13.00 is 292/365 &times; 16 = 12.80, rounded by the Annual Leave table you already maintain.</p>
+    </div>
+    <div>
+      <h2>After this change <span class="pill new">proposed</span></h2>
+      <table>
+        <tr><th>Entitlement</th><th>Earned to Date</th><th class="r">Balance</th></tr>
+        <tr><td class="big hl">12.00</td><td class="big">13.00</td><td class="r">13.00</td></tr>
+      </table>
+      <p class="note"><strong>Entitlement</strong> is now prorated: the same 12.80, rounded by a
+        <em>separate</em> Entitlement rounding rule that you configure — here set to round down.
+        Earned to Date and Balance are untouched.</p>
+    </div>
+  </div>
+
+  <p class="note"><strong>Read the two columns together.</strong> They are now the same underlying
+    figure — 12.80 — shown under two different rounding rules. That is what this item asks for, and it
+    is worth seeing before you approve it.</p>
+</div>
+
+<div class="card">
+  <h2>How the Entitlement figure is reached — shown on the Explain panel</h2>
+  <table class="steps">
+    <tr><td>Annual entitlement from your table</td><td class="r">16.00 days</td></tr>
+    <tr><td>Hire date</td><td class="r">15 March 2026</td></tr>
+    <tr><td>Leave year</td><td class="r">1 Jan 2026 – 31 Dec 2026</td></tr>
+    <tr><td>Eligible days (15 Mar – 31 Dec, both included)</td><td class="r">292</td></tr>
+    <tr><td>Days in leave year</td><td class="r">365</td></tr>
+    <tr><td>Proration</td><td class="r">292 / 365 &times; 16</td></tr>
+    <tr><td>Unrounded entitlement</td><td class="r">12.80</td></tr>
+    <tr><td>Entitlement rounding rule in force</td><td class="r">Round down to whole days</td></tr>
+    <tr class="hl"><td><strong>Entitlement</strong></td><td class="r"><strong>12.00 days</strong></td></tr>
+  </table>
+  <p class="note">An employee who joined on 1 January gets 365/365 &times; 16 = 16.00 — no proration,
+    and no rounding to apply.</p>
+</div>
+
+<div class="card">
+  <h2>Leave Config &rsaquo; Annual Leave &rsaquo; Rounding — two rules, kept apart</h2>
+  <div class="col2">
+    <div>
+      <h2 style="font-size:12.5px">Earned to Date rounding <span class="pill keep">unchanged</span></h2>
+      <table>
+        <tr><th>From</th><th>To</th><th class="r">Round to</th></tr>
+        <tr><td>0.00</td><td>0.38</td><td class="r">0.00</td></tr>
+        <tr><td>0.39</td><td>0.68</td><td class="r">0.50</td></tr>
+        <tr><td>0.69</td><td>0.99</td><td class="r">1.00</td></tr>
+      </table>
+      <p class="note">Your existing table, exactly as it is today. Nothing here moves, and it is never
+        applied to Entitlement.</p>
+    </div>
+    <div>
+      <h2 style="font-size:12.5px">Entitlement rounding <span class="pill new">new</span></h2>
+      <table>
+        <tr><th>From</th><th>To</th><th class="r">Round to</th></tr>
+        <tr class="hl"><td>0.00</td><td>0.99</td><td class="r">0.00</td></tr>
+      </table>
+      <p class="note">A second table of the same shape, switched on or off on its own. One row reading
+        &ldquo;0.00 to 0.99 rounds to 0.00&rdquo; <em>is</em> round-down — nothing is hard-coded, and you
+        can set half days or round up instead by editing the rows.</p>
+    </div>
+  </div>
+  <p class="note">Switching Entitlement rounding off leaves the exact prorated figure (12.80) on the
+    screen. The table is kept when it is switched off, so you can turn it back on without retyping it.</p>
+</div>
