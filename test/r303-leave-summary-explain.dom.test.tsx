@@ -46,10 +46,23 @@ describe('r303: the employee Leave Summary renders byte-for-byte what it rendere
     { opened: string; tooltip: string; trigger: string }
   >;
 
+  /**
+   * ⚠️ 845903a3 (r313) — THE BASELINE WAS REGENERATED, AND HERE IS THE PROOF IT WAS SAFE TO.
+   *
+   * A byte-for-byte fixture is worthless if it is refreshed whenever it goes red, so it was regenerated
+   * and then DIFFED against the old one before being committed. Every difference, in all six locales and
+   * all three rendered surfaces, was the removal of the qualifier in the Entitlement label and nothing
+   * else: "Full " / " Penuh" / "முழு " / "เต็มปี" / " cả năm" / "全年". No figure, attribute or element
+   * changed. Eighteen sections differed; eighteen were that word.
+   *
+   * If this file goes red again, diff before regenerating. The employee panel not moving is the whole
+   * point of it, and r303's sentences must still not leak into the employee's view.
+   */
   it('the baseline really is the employee panel (guard the guard)', () => {
     expect(Object.keys(baseline).sort()).toEqual([...LOCALES].sort());
     const en = baseline.en;
-    expect(en.opened).toContain('Full Entitlement');
+    expect(en.opened).toContain('Entitlement');
+    expect(en.opened, 'the qualifier went with r313').not.toContain('Full Entitlement');
     expect(en.opened).toContain('aria-label="Show explanation"'); // HR-authored explanation icon
     expect(en.opened).toContain('title="Leave you'); // a static summary tooltip icon
     expect(en.tooltip).toContain('role="tooltip"');
@@ -113,6 +126,10 @@ const HR_DATA: EntitlementBreakdownData = {
   asOf: '2026-12-31',
   cycleStart: '2026-01-01',
   eligibleDays: 14,
+  // 845903a3 (r313) — joined before the leave year, so nothing prorates and the Entitlement line
+  // shows the band figure, exactly as it did before.
+  entitlement: { annualEntitlementDays: 14, prorated: false, eligibleCalendarDays: null,
+    daysInLeaveYear: null, unroundedEntitlementDays: 14, displayEntitlementDays: 14, roundingApplied: false },
   entitlementStatus: 'granted',
   entitlementTemplateName: 'Annual — all staff',
   currentYearEntitlement: 10.5,
@@ -297,6 +314,11 @@ const ARGS = {
   method: 'none', start: '2026-01-01', end: '2026-12-31', kind: 'grant', date: '2026-03-31', max: '5.00', percent: 50,
   bf: '3.00', earned: '10.50', adj: '1.00', asOf: '2026-12-31', types: 'Annual Leave and Emergency Leave',
   type: 'Annual Leave', available: '7.50', taken: '4.00', pending: '2.00', forfeited: '1.00', balance: '9.50', column: '7.50',
+  // 845903a3 (r313) — the Entitlement proration working. Registered HERE rather than at the emit site
+  // because this map is what proves a new sentence cannot ship as a FORMATTING_ERROR: a placeholder with
+  // no value listed makes the message throw at render, which tsc, the suite and `next build` are all
+  // green over (CLAUDE.md section 8). That is exactly what this guard caught when the keys first landed.
+  annual: '16.00', eligibleDays: 292, yearDays: 365, unrounded: '12.80', final: '12.00',
 };
 
 const placeholders = (msg: string) => new Set([...msg.matchAll(/\{\s*(\w+)\s*[,}]/g)].map((m) => m[1]));

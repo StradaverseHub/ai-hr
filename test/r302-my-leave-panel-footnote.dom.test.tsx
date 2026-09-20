@@ -21,7 +21,11 @@ afterEach(() => cleanup());
 
 const breakdown = (over: Partial<LeaveEntitlementBreakdown> = {}): LeaveEntitlementBreakdown =>
   ({
-    leaveTypeId: 'lt-annual', leaveType: 'Annual Leave', asOf: '2026-12-31', cycleStart: '2026-01-01', eligibleDays: 14, entitlementStatus: 'granted', entitlementTemplateName: null,
+    leaveTypeId: 'lt-annual', leaveType: 'Annual Leave', asOf: '2026-12-31', cycleStart: '2026-01-01', eligibleDays: 14,
+    // 845903a3 (r313) — joined before the leave year, so nothing prorates.
+    entitlement: { annualEntitlementDays: 14, prorated: false, eligibleCalendarDays: null, daysInLeaveYear: null,
+      unroundedEntitlementDays: 14, displayEntitlementDays: 14, roundingApplied: false },
+    entitlementStatus: 'granted', entitlementTemplateName: null,
     currentYearEntitlement: 14, monthlyAccruedToDate: 14, carriedForward: 0, carryForwardRemaining: 0, carryForwardExpiryDate: null, forfeited: 0, otherAdjustments: 0, balance: 14,
     pendingApproval: 0, broughtForward: 0, configAdjustments: 0, systemAdjustments: 0, forfeitedThisCycle: 0, takenThisCycle: 0, configAdjustmentItems: [], adjustments: 0,
     totalEntitlement: 14, totalAvailable: 14, transactions: [],

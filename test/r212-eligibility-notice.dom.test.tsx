@@ -57,6 +57,10 @@ const breakdown: EntitlementBreakdownData = {
   asOf: '2026-08-20',
   cycleStart: '2026-01-01',
   eligibleDays: 0,
+  // 845903a3 (r313) — this fixture's employee joined before the leave year, so nothing prorates:
+  // the Entitlement line shows the band figure itself, which is what it showed before r313.
+  entitlement: { annualEntitlementDays: 0, prorated: false, eligibleCalendarDays: null,
+    daysInLeaveYear: null, unroundedEntitlementDays: 0, displayEntitlementDays: 0, roundingApplied: false },
   entitlementStatus: 'no_eligibility_match',
   entitlementTemplateName: null,
   currentYearEntitlement: 0,

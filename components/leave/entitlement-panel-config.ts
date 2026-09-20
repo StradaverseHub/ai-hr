@@ -189,13 +189,19 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     labelKey: 'section.summary',
     order: 1,
     fields: [
-      // Eligible — the full leave year's entitlement, before proration, carry, adjustment or usage.
+      // Entitlement — this employee's allowance FOR THIS LEAVE YEAR.
+      //
+      // 845903a3 (r313): the select moved from `eligibleDays` (the band's whole-year figure) to the
+      // prorated, rounded one. Still a PICK, and still the same single resolver in core/read.ts — the
+      // proration lives in the kernel's displayEntitlementFor, never in a panel select. The `essKey`
+      // stays 'eligible' because it is a STORED ESS view component key (leave_type.ess_view_config);
+      // renaming it would be a data migration for a label change (the r279 precedent on ytdEntitled).
       {
         key: 'eligible',
         labelKey: 'field.eligible',
         essKey: 'eligible',
         tooltipKey: 'summaryTip.eligible',
-        select: (d) => d.breakdown.eligibleDays,
+        select: (d) => d.breakdown.entitlement.displayEntitlementDays,
       },
       // YTD Entitled — granted to date. See the deviation note above before changing this to a projection.
       {

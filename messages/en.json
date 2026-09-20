@@ -1997,7 +1997,7 @@
         "summary": "Leave summary"
       },
       "field": {
-        "eligible": "Full Entitlement",
+        "eligible": "Entitlement",
         "ytdEntitled": "Earned to Date",
         "broughtForward": "Brought forward",
         "adjustments": "Adjustments",
@@ -2085,8 +2085,8 @@
         "itemsDoNotAddUp": "The records behind {figure} could not be listed so that they add up to it, so they are not shown here.",
         "addsUpTo": "Together: {total}.",
         "poolFigures": "These are the {source} figures. The same balance is also used by {others}.",
-        "eligibleNoTable": "No entitlement table has been set up for this leave type, so Full Entitlement is 0.00.",
-        "eligibleNoMatch": "No entitlement table applies to this employee. Tables exist for this leave type, but none of them reaches this employee, so Full Entitlement is 0.00.",
+        "eligibleNoTable": "No entitlement table has been set up for this leave type, so Entitlement is 0.00.",
+        "eligibleNoMatch": "No entitlement table applies to this employee. Tables exist for this leave type, but none of them reaches this employee, so Entitlement is 0.00.",
         "eligibleNotRecorded": "Which entitlement table applies is not recorded for this date.",
         "eligibleViaScheme": "Entitlement table: {table}. It applies because the benefit scheme {scheme} matches this employee.",
         "eligibleWin": "{reason, select, more_specific {Another scheme also matched; this one won because it names more conditions.} later_start {Another scheme matched just as closely; this one won because it starts later.} later_created {Another scheme matched just as closely from the same start date; this one won because it was set up more recently.} other {Another scheme matched just as closely and nothing separated the two, so this is the one the system found first.}}",
@@ -2095,7 +2095,7 @@
         "eligibleService": "Joined {hiredOn}: {years, plural, one {# completed year} other {# completed years}} of service at the start of the leave year on {cycleStart}.",
         "eligibleBand": "The table's band for {from, plural, one {# year} other {# years}} and under {to, plural, one {# year} other {# years}} of service gives {days} days.",
         "eligibleBandOpen": "The table's band for {from, plural, one {# year} other {# years}} of service and over gives {days} days.",
-        "eligibleNoBand": "No band in this table covers that length of service, so Full Entitlement is {days}.",
+        "eligibleNoBand": "No band in this table covers that length of service, so Entitlement is {days}.",
         "eligibleFullYear": "This is the full-year figure. Any adjustment for joining during the year shows under Earned to Date.",
         "earnedMethod": "Earning method: {method, select, up_front {granted up front, in one amount for the leave year} earned_monthly {earned monthly} earned_quarterly {earned quarterly} earned_daily {earned daily} other {not recorded}}.",
         "earnedLeaveYear": "Leave year: {start} to {end} ({kind, select, anniversary {anniversary year} a2c {Anniversary to Calendar} other {calendar year}}).",
@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "Days carried into this leave year expire on {date}.",
         "availableFormula": "{total} total − {taken} taken − {pending} pending − {forfeited} forfeited = {available}.",
         "availablePool": "{available} is the {source} balance of {balance} less applications waiting on every leave type that shares it ({types}). Pending Approval above counts {source} applications only, so the lines above come to {column}.",
-        "availableDiffers": "{available} is the leave balance record's own figure, not added up from the lines above, which come to {column}."
+        "availableDiffers": "{available} is the leave balance record's own figure, not added up from the lines above, which come to {column}.",
+        "entitlementProrated": "They joined part way through the leave year, so the {annual} day allowance is prorated: {eligibleDays} eligible days out of {yearDays} gives {unrounded} days.",
+        "entitlementRounded": "The Entitlement rounding rule in force takes {unrounded} to {final} days.",
+        "entitlementNotRounded": "No Entitlement rounding rule is in force, so the figure stands at {final} days."
       }
     },
     "preview": {
@@ -2827,7 +2830,7 @@
       "colTaken": "Taken",
       "colAdjustment": "Adjustment",
       "colOverutilized": "Overutilized",
-      "colFullEntitlement": "Full Entitlement",
+      "colFullEntitlement": "Entitlement",
       "colYtdEntitled": "Earned to Date",
       "daysValue": "{value} Days",
       "sortBy": "Sort by {column}",
@@ -7001,7 +7004,9 @@
         "annualLeaveSwitchOtherRoleHelp": "This leave type is already recorded as a different kind of leave, so it cannot be your Annual Leave.",
         "annualLeaveSwitchHeldHelp": "To switch this off, first change the earning method to {none} — only Annual Leave can use {monthly} or {daily}.",
         "earningEntitlementBasedNote": "{type} is entitlement-based. Only Annual Leave can be earned through Earned Accrual.",
-        "earningStrandedNote": "{type} is still set to earn its days through Earned Accrual, but Earned Accrual applies only to Annual Leave, so no run adds days to it. The setting is kept exactly as it is when you save. To fix it, change the earning method to {none} (granted up front)."
+        "earningStrandedNote": "{type} is still set to earn its days through Earned Accrual, but Earned Accrual applies only to Annual Leave, so no run adds days to it. The setting is kept exactly as it is when you save. To fix it, change the earning method to {none} (granted up front).",
+        "entitlementRoundingMethodLabel": "Entitlement rounding",
+        "entitlementRoundingHelp": "Applied to the Entitlement column after proration, for an employee who joined part way through the leave year. It never affects Earned to Date, which keeps its own rounding above."
       },
       "conditionStep": {
         "criteria": "Criteria",

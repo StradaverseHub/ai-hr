@@ -37,6 +37,10 @@ const breakdown = (leaveTypeId: string, leaveType: string): EntitlementBreakdown
   asOf: '2026-08-03',
   cycleStart: '2026-01-01',
   eligibleDays: 20,
+  // 845903a3 (r313) — joined before the leave year, so nothing prorates and the Entitlement line
+  // shows the band figure, exactly as it did before.
+  entitlement: { annualEntitlementDays: 20, prorated: false, eligibleCalendarDays: null,
+    daysInLeaveYear: null, unroundedEntitlementDays: 20, displayEntitlementDays: 20, roundingApplied: false },
   // 31e39d74: a generated entitlement ⇒ no not-yet-generated banner, so these cases keep asserting the
   // replacement-leave panel and nothing else.
   entitlementStatus: 'granted',

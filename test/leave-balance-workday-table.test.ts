@@ -43,6 +43,10 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   // r279: the full-year BAND, deliberately DISTINCT from currentYearEntitlement (20 vs 12) so a regression
   // that binds Full Entitlement to the accrued figure — the reporter's original request — fails loudly here.
   eligibleDays: 20,
+  // 845903a3 (r313) — the column's source moved to the prorated figure. This fixture describes an
+  // employee who joined in an earlier year, so no proration applies and it equals the band, which is
+  // what keeps the 20-vs-12 distinction above doing its job.
+  entitlement: { displayEntitlementDays: 20 },
   currentYearEntitlement: 12,
   carriedForward: 5,
   forfeited: 1,

@@ -479,6 +479,12 @@ export default async function LeaveConfigTypesPage({
                   // jsonb — a plain array of plain objects, which is the only kind of prop a server
                   // component may hand a client one. The editor validates the shape itself.
                   roundingBands: (lt.roundingBands as RoundingBand[] | null) ?? null,
+                  // 845903a3 (r313) — the Entitlement rounding rule, loaded the same way so the editor
+                  // opens on what is stored rather than on an empty table that a save would then clear.
+                  entitlementRoundingMethod: (lt.entitlementRoundingMethod as LeaveRoundingMethod | null) ?? null,
+                  entitlementRoundingThreshold:
+                    lt.entitlementRoundingThreshold == null ? null : Number(lt.entitlementRoundingThreshold),
+                  entitlementRoundingBands: (lt.entitlementRoundingBands as RoundingBand[] | null) ?? null,
                   maxBalanceDays: lt.maxBalanceDays == null ? null : Number(lt.maxBalanceDays),
                 },
               };

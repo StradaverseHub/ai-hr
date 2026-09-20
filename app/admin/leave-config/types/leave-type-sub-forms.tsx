@@ -91,6 +91,11 @@ export type LeaveTypeRules = {
   roundingMethod?: LeaveRoundingMethod | null;
   roundingThreshold?: string | number | null;
   roundingBands?: RoundingBand[] | null;
+  /** 845903a3 (r313) — the Entitlement rounding rule. Same three shapes; see core/admin.ts for why they
+   *  are stored beside the accrual trio but deliberately outside `leaveTypeRuleColumns`. */
+  entitlementRoundingMethod?: LeaveRoundingMethod | null;
+  entitlementRoundingThreshold?: string | number | null;
+  entitlementRoundingBands?: RoundingBand[] | null;
   maxBalanceDays?: number | null;
 };
 
@@ -154,10 +159,16 @@ function RoundingBandsEditor({
   t,
   rows,
   setRows,
+  /** 845903a3 (r313) — which column this table posts into. The accrual table keeps its original name, so
+   *  every existing post is byte-identical; the Entitlement table is the same editor under another name.
+   *  ONE component means the two tables cannot drift in validation, tidying or warnings — which is the
+   *  whole reason the reporter's request to reuse the framework was the right call. */
+  fieldName = 'roundingBands',
 }: {
   t: ReturnType<typeof useTranslations>;
   rows: BandRow[];
   setRows: (next: BandRow[]) => void;
+  fieldName?: string;
 }) {
   const cell = 'px-1.5 py-1';
   const problems: RoundingBandProblem[] = rows.length === 0 ? [] : checkRoundingBands(rowsToBands(rows));
@@ -199,7 +210,7 @@ function RoundingBandsEditor({
   return (
     <div className="space-y-2 rounded-lg border border-border p-2">
       {/* The ONE posted field: the whole table as JSON, on the rounding form's existing tri-state marker. */}
-      <input type="hidden" name="roundingBands" value={JSON.stringify(rowsToBands(rows))} />
+      <input type="hidden" name={fieldName} value={JSON.stringify(rowsToBands(rows))} />
       <span className="text-xs font-medium text-muted-foreground">{t('subStep.roundingBandsTitle')}</span>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[26rem] text-xs">
@@ -387,6 +398,13 @@ export function EarningMethodForm({
   const [rounding, setRounding] = useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod));
   const [bandRows, setBandRows] = useState<BandRow[]>(() => rowsFromStored(rules.roundingBands));
   const showBands = rounding === 'custom';
+  // 845903a3 (r313) — the SECOND rounding rule, for the displayed Entitlement figure. Separate state on
+  // purpose: the two are never applied to each other, which is the reporter's requirement 7 verbatim.
+  const [entRounding, setEntRounding] = useState<LeaveRoundingMethod>(
+    roundingMethodValue(rules.entitlementRoundingMethod),
+  );
+  const [entBandRows, setEntBandRows] = useState<BandRow[]>(() => rowsFromStored(rules.entitlementRoundingBands));
+  const showEntBands = entRounding === 'custom';
   /**
    * r299 (3de1453a) — "THIS IS OUR ANNUAL LEAVE", LIVE.
    *
@@ -602,6 +620,33 @@ export function EarningMethodForm({
       </Field>
       {showBands && <RoundingBandsEditor t={t} rows={bandRows} setRows={setBandRows} />}
       <p className="text-xs text-muted-foreground">{t('subStep.roundingHelp')}</p>
+
+      {/* 845903a3 (r313) — ENTITLEMENT ROUNDING. A second rule of the same shape, immediately under the
+          accrual one so the pair reads as two purposes rather than two screens, and so it is obvious
+          which figure each tidies. THE THIRD tri-state marker: without it a save that does not render
+          this block would clear the column. */}
+      <input type="hidden" name="entitlementRoundingMethodRendered" value="1" />
+      <Field label={t('subStep.entitlementRoundingMethodLabel')}>
+        <select
+          name="entitlementRoundingMethod"
+          value={entRounding}
+          onChange={(e) => setEntRounding(e.target.value as LeaveRoundingMethod)}
+          aria-label={t('subStep.entitlementRoundingMethodLabel')}
+          className={cn(inputCls, 'w-72')}
+        >
+          <option value="none">{t('subStep.roundingNone')}</option>
+          <option value="custom">{t('subStep.roundingCustom')}</option>
+        </select>
+      </Field>
+      {showEntBands && (
+        <RoundingBandsEditor
+          t={t}
+          rows={entBandRows}
+          setRows={setEntBandRows}
+          fieldName="entitlementRoundingBands"
+        />
+      )}
+      <p className="text-xs text-muted-foreground">{t('subStep.entitlementRoundingHelp')}</p>
       {rounding !== 'none' && (
         <p className="text-xs text-muted-foreground">
           {t('subStep.roundingWorkedExample', {

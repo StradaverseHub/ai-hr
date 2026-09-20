@@ -150,6 +150,11 @@ const MARKERS = [
   'annualLeaveRendered',
   'earningRendered',
   'roundingMethodRendered',
+  // 845903a3 (r313) — ENTITLEMENT rounding: a SECOND rounding rule with its OWN marker, deliberately not
+  // riding `roundingMethodRendered`. The two are rendered by the same form today, but a form that ever
+  // renders one without the other must PRESERVE the one it did not show, and a shared marker would
+  // silently clear it — the tri-state footgun this whole rule exists to prevent.
+  'entitlementRoundingMethodRendered',
   'carryBlockRendered',
   'negativeBalance',
   'balanceSource',
@@ -176,7 +181,7 @@ describe('a6fe37fc R2 · rule 1 — every sub-form keeps its tri-state marker an
     expect(newScreen).toContain(`<input type="hidden" name="${marker}" value="1" />`);
   });
 
-  it('renders 29 markers and no more — nothing was merged into a neighbour (r299 added annualLeaveRendered, r301 cancelApproved)', () => {
+  it('renders 30 markers and no more — nothing was merged into a neighbour (r299 added annualLeaveRendered, r301 cancelApproved, r313 entitlementRoundingMethodRendered)', () => {
     const count = [...newScreen.matchAll(/name="[a-zA-Z]+" value="1"/g)].length;
     expect(count, 'a marker was added, dropped or merged').toBe(MARKERS.length);
   });
@@ -240,6 +245,19 @@ const posted = (name: string): PostedField => ({
   inAction: new RegExp(`(?:\\.get(?:All)?|num)\\('${name}'\\)`),
 });
 
+/**
+ * 845903a3 (r313) — a field posted under a PARAMETERISED name. The rounding table is rendered by one
+ * shared editor whose posted name is a prop, so there is no name="..." literal to find in the JSX; the
+ * literal lives where the name is decided (the prop default, or the value passed at the mount). Matching
+ * that is what actually pins the wire format — and it is stricter than the attribute was, because it
+ * catches somebody changing the DEFAULT, which would silently repoint every existing save.
+ */
+const postedAs = (name: string, decidedBy: RegExp): PostedField => ({
+  label: `fieldName for ${name}`,
+  inForm: decidedBy,
+  inAction: new RegExp(`(?:\\.get(?:All)?|num)\\('${name}'\\)`),
+});
+
 /** A field rendered once per key — `name={`prefix_${k}suffix`}`, read the same way in the action. */
 const postedPerKey = (prefix: string, suffix = ''): PostedField => ({
   label: `name={\`${prefix}\${…}${suffix}\`}`,
@@ -279,7 +297,11 @@ const MARKER_FIELDS: Record<(typeof MARKERS)[number], PostedField[]> = {
   // r299 — and the Annual Leave switch rides a third, on the same form: its value is a hidden '1'/'0'.
   annualLeaveRendered: [posted('isAnnualLeave')],
   earningRendered: [posted('method'), posted('accrualDay')],
-  roundingMethodRendered: [posted('roundingMethod'), posted('roundingBands')],
+  roundingMethodRendered: [posted('roundingMethod'), postedAs('roundingBands', /fieldName = 'roundingBands'/)],
+  // 845903a3 (r313) — the Entitlement rule's own branch. `entitlementRoundingBands` posts through the
+  // SHARED RoundingBandsEditor under a parameterised name, so the literal is asserted here rather than
+  // as a hardcoded attribute in the component.
+  entitlementRoundingMethodRendered: [posted('entitlementRoundingMethod'), postedAs('entitlementRoundingBands', /fieldName="entitlementRoundingBands"/)],
   carryBlockRendered: [
     posted('carryForwardEnabled'),
     posted('carryForwardMax'),
@@ -501,7 +523,14 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     ['F9 earning method', 'name="method"'],
     ['F9 accrual day', 'name="accrualDay"'],
     ['F9 rounding', 'name="roundingMethod"'],
-    ['F9 rounding table', 'name="roundingBands"'],
+    // 845903a3 (r313) — the table's posted name is now a PARAMETER of the shared RoundingBandsEditor, so
+    // the literal moved from the JSX attribute to the component's default. Pinning the default is what
+    // actually guarantees the accrual table still posts under its original name: if somebody changes
+    // that default, every existing save silently starts writing a different column.
+    ['F9 rounding table', "fieldName = 'roundingBands'"],
+    // …and the second table, which must post under its OWN name or the two rules collapse into one.
+    ['F9 entitlement rounding table', 'fieldName="entitlementRoundingBands"'],
+    ['F9 entitlement rounding', 'name="entitlementRoundingMethod"'],
     ['F10 carry forward', 'name="carryForwardMax"'],
     ['F10 carry expiry', 'name="carryForwardExpiryMode"'],
     ['F13 eligibility gate', 'name="minServiceMonths"'],

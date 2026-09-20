@@ -613,6 +613,34 @@ const roundingBandsField = (fd: FormData): RoundingBand[] | null | undefined => 
 };
 
 /**
+ * 845903a3 (r313) — the ENTITLEMENT rounding rule, the exact twin of the two parsers above with its OWN
+ * marker (`entitlementRoundingMethodRendered`). A separate marker is not tidiness: the two rules are
+ * rendered by the same form today, but a form that renders one and not the other must preserve the one
+ * it did not show, and sharing a marker would silently clear it. That is the tri-state footgun
+ * `roundingMethodField`'s own header describes.
+ *
+ * A malformed JSON string is `undefined` (PRESERVE), never `null` (CLEAR) — the serviceBandsField
+ * precedent, for the same reason: a client-side bug must not wipe a table somebody spent time building.
+ */
+const entitlementRoundingMethodField = (fd: FormData): 'custom' | null | undefined => {
+  if (fd.get('entitlementRoundingMethodRendered') == null) return undefined;
+  return String(fd.get('entitlementRoundingMethod') ?? '') === 'custom' ? 'custom' : null;
+};
+
+const entitlementRoundingBandsField = (fd: FormData): RoundingBand[] | null | undefined => {
+  if (fd.get('entitlementRoundingMethodRendered') == null) return undefined;
+  const raw = fd.get('entitlementRoundingBands');
+  if (raw == null || String(raw) === '') return null;
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.length === 0 ? null : (parsed as RoundingBand[]);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Feedback 9f5164d8 — the custom decimal threshold, riding the SAME `roundingMethodRendered` marker as the
  * dropdown it belongs to. It is not a second tri-state: the threshold is part of the rounding
  * configuration, so a form that does not render the rounding control preserves both, and a form that does
@@ -739,6 +767,12 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
             roundingBands: roundingBandsField(formData),
           }
         : {}),
+      // 845903a3 (r313) — the ENTITLEMENT rounding rule, on its OWN marker rather than inside the
+      // `earningRendered` block above. It is rendered by the same form today, but the two are separate
+      // purposes and a form that ever renders one without the other must preserve the one it did not
+      // show. Reading its own marker is what makes that true by construction instead of by arrangement.
+      entitlementRoundingMethod: entitlementRoundingMethodField(formData),
+      entitlementRoundingBands: entitlementRoundingBandsField(formData),
       // Carry half — enable flag, cap, expiry mode and both expiry shapes, plus the max-balance cap.
       ...(carryRendered
         ? {

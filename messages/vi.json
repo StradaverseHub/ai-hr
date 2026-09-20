@@ -1997,7 +1997,7 @@
         "summary": "Tóm tắt nghỉ phép"
       },
       "field": {
-        "eligible": "Quyền lợi cả năm",
+        "eligible": "Quyền lợi",
         "ytdEntitled": "Đã tích lũy đến nay",
         "broughtForward": "Chuyển sang",
         "adjustments": "Điều chỉnh",
@@ -2085,8 +2085,8 @@
         "itemsDoNotAddUp": "Không thể liệt kê các bản ghi phía sau {figure} sao cho cộng lại bằng số này, nên chúng không được hiển thị ở đây.",
         "addsUpTo": "Cộng lại: {total}.",
         "poolFigures": "Đây là số liệu của {source}. {others} dùng chung số dư này.",
-        "eligibleNoTable": "Chưa thiết lập bảng định mức cho loại nghỉ phép này, nên Quyền lợi cả năm là 0.00.",
-        "eligibleNoMatch": "Không có bảng định mức nào áp dụng cho nhân viên này. Loại nghỉ phép này có bảng, nhưng không bảng nào đến được nhân viên này, nên Quyền lợi cả năm là 0.00.",
+        "eligibleNoTable": "Chưa thiết lập bảng định mức cho loại nghỉ phép này, nên Quyền lợi là 0.00.",
+        "eligibleNoMatch": "Không có bảng định mức nào áp dụng cho nhân viên này. Loại nghỉ phép này có bảng, nhưng không bảng nào đến được nhân viên này, nên Quyền lợi là 0.00.",
         "eligibleNotRecorded": "Không có ghi nhận bảng định mức nào áp dụng vào ngày này.",
         "eligibleViaScheme": "Bảng định mức: {table}. Bảng này áp dụng vì chế độ phúc lợi {scheme} khớp với nhân viên này.",
         "eligibleWin": "{reason, select, more_specific {Một chế độ khác cũng khớp; chế độ này được chọn vì nêu nhiều điều kiện hơn.} later_start {Một chế độ khác khớp tương đương; chế độ này được chọn vì bắt đầu muộn hơn.} later_created {Một chế độ khác khớp tương đương với cùng ngày bắt đầu; chế độ này được chọn vì được tạo gần đây hơn.} other {Một chế độ khác khớp tương đương và không có gì phân biệt hai chế độ, nên đây là chế độ hệ thống tìm thấy trước.}}",
@@ -2095,7 +2095,7 @@
         "eligibleService": "Vào làm {hiredOn}: {years, plural, other {# năm}} thâm niên tròn tại đầu năm nghỉ phép, ngày {cycleStart}.",
         "eligibleBand": "Khung thâm niên từ {from} năm đến dưới {to} năm của bảng cho {days} ngày.",
         "eligibleBandOpen": "Khung thâm niên từ {from} năm trở lên của bảng cho {days} ngày.",
-        "eligibleNoBand": "Không có khung nào trong bảng này bao gồm thâm niên đó, nên Quyền lợi cả năm là {days}.",
+        "eligibleNoBand": "Không có khung nào trong bảng này bao gồm thâm niên đó, nên Quyền lợi là {days}.",
         "eligibleFullYear": "Đây là số liệu cả năm. Mọi điều chỉnh do vào làm giữa năm được hiển thị ở mục Đã tích lũy đến nay.",
         "earnedMethod": "Phương thức tích lũy: {method, select, up_front {cấp trước một lần cho năm nghỉ phép} earned_monthly {tích lũy hàng tháng} earned_quarterly {tích lũy hàng quý} earned_daily {tích lũy hàng ngày} other {không có ghi nhận}}.",
         "earnedLeaveYear": "Năm nghỉ phép: {start} đến {end} ({kind, select, anniversary {năm theo ngày vào làm} a2c {Ngày vào làm đến năm dương lịch} other {năm dương lịch}}).",
@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "Số ngày chuyển sang năm nghỉ phép này hết hạn ngày {date}.",
         "availableFormula": "{total} tổng − {taken} đã dùng − {pending} chờ duyệt − {forfeited} bị mất = {available}.",
         "availablePool": "{available} là số dư {balance} của {source} trừ các đơn đang chờ ở mọi loại nghỉ phép dùng chung số dư này ({types}). Mục Chờ phê duyệt ở trên chỉ tính đơn của {source}, nên các dòng trên cộng lại bằng {column}.",
-        "availableDiffers": "{available} là số liệu riêng của bản ghi số dư nghỉ phép, không cộng từ các dòng trên, vốn cộng lại bằng {column}."
+        "availableDiffers": "{available} là số liệu riêng của bản ghi số dư nghỉ phép, không cộng từ các dòng trên, vốn cộng lại bằng {column}.",
+        "entitlementProrated": "Nhân viên vào làm giữa năm nghỉ phép, nên quyền lợi {annual} ngày được chia theo tỷ lệ: {eligibleDays} ngày đủ điều kiện trên {yearDays} ngày cho ra {unrounded} ngày.",
+        "entitlementRounded": "Quy tắc làm tròn Quyền lợi đang áp dụng đưa {unrounded} thành {final} ngày.",
+        "entitlementNotRounded": "Không có quy tắc làm tròn Quyền lợi nào đang áp dụng, nên con số giữ nguyên {final} ngày."
       }
     },
     "preview": {
@@ -2827,7 +2830,7 @@
       "colTaken": "Đã dùng",
       "colAdjustment": "Điều chỉnh",
       "colOverutilized": "Dùng vượt",
-      "colFullEntitlement": "Quyền lợi cả năm",
+      "colFullEntitlement": "Quyền lợi",
       "colYtdEntitled": "Đã tích lũy đến nay",
       "daysValue": "{value} ngày",
       "sortBy": "Sắp xếp theo {column}",
@@ -7001,7 +7004,9 @@
         "annualLeaveSwitchOtherRoleHelp": "Loại nghỉ phép này đã được ghi nhận là một loại nghỉ khác, nên không thể là Nghỉ phép năm của bạn.",
         "annualLeaveSwitchHeldHelp": "Để tắt mục này, trước tiên hãy đổi phương thức tích lũy thành {none} — chỉ Nghỉ phép năm mới dùng được {monthly} hoặc {daily}.",
         "earningEntitlementBasedNote": "{type} được cấp theo quyền lợi. Chỉ Nghỉ phép năm mới có thể được hưởng qua Tích lũy.",
-        "earningStrandedNote": "{type} vẫn được đặt để hưởng ngày nghỉ qua Tích lũy, nhưng Tích lũy chỉ áp dụng cho Nghỉ phép năm, nên không lần chạy nào cộng thêm ngày cho loại này. Thiết lập được giữ nguyên khi bạn lưu. Để khắc phục, hãy đổi phương thức tích lũy thành {none} (cấp trước một lần)."
+        "earningStrandedNote": "{type} vẫn được đặt để hưởng ngày nghỉ qua Tích lũy, nhưng Tích lũy chỉ áp dụng cho Nghỉ phép năm, nên không lần chạy nào cộng thêm ngày cho loại này. Thiết lập được giữ nguyên khi bạn lưu. Để khắc phục, hãy đổi phương thức tích lũy thành {none} (cấp trước một lần).",
+        "entitlementRoundingMethodLabel": "Làm tròn quyền lợi",
+        "entitlementRoundingHelp": "Áp dụng cho cột Quyền lợi sau khi chia theo tỷ lệ, với nhân viên vào làm giữa năm nghỉ phép. Không ảnh hưởng đến Đã tích lũy đến nay, vốn giữ cách làm tròn riêng ở trên."
       },
       "conditionStep": {
         "criteria": "Tiêu chí",

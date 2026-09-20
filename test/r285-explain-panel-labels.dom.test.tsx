@@ -49,6 +49,10 @@ const DATA: EntitlementBreakdownData = {
   asOf: '2026-08-04',
   cycleStart: '2026-01-01',
   eligibleDays: 18,
+  // 845903a3 (r313) — this fixture's employee joined before the leave year, so nothing prorates:
+  // the Entitlement line shows the band figure itself, which is what it showed before r313.
+  entitlement: { annualEntitlementDays: 18, prorated: false, eligibleCalendarDays: null,
+    daysInLeaveYear: null, unroundedEntitlementDays: 18, displayEntitlementDays: 18, roundingApplied: false },
   entitlementStatus: 'granted',
   entitlementTemplateName: null,
   currentYearEntitlement: 5.5,
@@ -137,7 +141,8 @@ describe('r285: the Explain panel prints the grid’s words on the two rows the 
 
   it('English: the old panel-only wording is gone from the rendered panel', async () => {
     const panel = await openPanel('en', en as unknown as Record<string, unknown>);
-    expect(panel.getByText('Full Entitlement')).toBeInTheDocument();
+    // 845903a3 (r313) — the label lost the word "Full": the column is prorated now, so it no longer shows the whole year for a mid-year joiner. The PAIRING this file exists to pin is unchanged — the panel and the grid must still read the SAME words — so the assertion is updated, not dropped.
+    expect(panel.getByText('Entitlement')).toBeInTheDocument();
     expect(panel.getByText('Earned to Date')).toBeInTheDocument();
     expect(panel.queryByText('Eligible (full year entitlement)')).toBeNull();
     expect(panel.queryByText('YTD entitled')).toBeNull();
@@ -147,7 +152,7 @@ describe('r285: the Explain panel prints the grid’s words on the two rows the 
     const panel = await openPanel('en', en as unknown as Record<string, unknown>);
     // 18.00 is the full-year band; 5.50 is what has been earned by the as-at date. Reading the same number
     // twice under two names is the defect; reading the WRONG number under the right name would be worse.
-    expect(row(panel, 'Full Entitlement')).toContain('18.00');
+    expect(row(panel, 'Entitlement')).toContain('18.00');
     expect(row(panel, 'Earned to Date')).toContain('5.50');
   });
 

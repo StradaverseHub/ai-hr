@@ -304,6 +304,9 @@ const breakdownInput = (status: EntitlementStatus): BreakdownInput => ({
   // r279 — this fixture describes a type with NO days resolved at all, so its full-year band is 0 too. That
   // is the honest reading for fifteen of the sixteen live leave types, and the grid prints it as 0.00.
   eligibleDays: 0,
+  // 845903a3 (r313) — nothing resolves, so there is nothing to prorate and nothing to round: 0.00,
+  // the same honest reading the band above carries.
+  entitlement: { displayEntitlementDays: 0 },
   currentYearEntitlement: 0,
   carriedForward: 0,
   forfeited: 0,

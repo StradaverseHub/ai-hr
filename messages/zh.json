@@ -1997,7 +1997,7 @@
         "summary": "假期摘要"
       },
       "field": {
-        "eligible": "全年额度",
+        "eligible": "额度",
         "ytdEntitled": "至今已累积",
         "broughtForward": "结转",
         "adjustments": "调整",
@@ -2085,8 +2085,8 @@
         "itemsDoNotAddUp": "无法将 {figure} 背后的记录列出并使其合计等于该数字，因此此处不显示。",
         "addsUpTo": "合计：{total}。",
         "poolFigures": "以下是 {source} 的数字。{others} 共用同一余额。",
-        "eligibleNoTable": "此假期类型尚未设置额度表，因此全年额度为 0.00。",
-        "eligibleNoMatch": "没有额度表适用于此员工。此假期类型有额度表，但没有一个触及此员工，因此全年额度为 0.00。",
+        "eligibleNoTable": "此假期类型尚未设置额度表，因此额度为 0.00。",
+        "eligibleNoMatch": "没有额度表适用于此员工。此假期类型有额度表，但没有一个触及此员工，因此额度为 0.00。",
         "eligibleNotRecorded": "未记录此日期适用哪个额度表。",
         "eligibleViaScheme": "额度表：{table}。适用原因：福利方案 {scheme} 与此员工匹配。",
         "eligibleWin": "{reason, select, more_specific {另有方案也匹配；此方案因条件更多而胜出。} later_start {另有方案匹配程度相同；此方案因开始日期较晚而胜出。} later_created {另有方案匹配程度相同且开始日期相同；此方案因设置较晚而胜出。} other {另有方案匹配程度相同，且无法区分两者，因此采用系统先找到的方案。}}",
@@ -2095,7 +2095,7 @@
         "eligibleService": "入职日期 {hiredOn}：截至假期年度开始日 {cycleStart}，已满 {years, plural, other {# 年}} 服务年资。",
         "eligibleBand": "额度表中服务 {from} 年至未满 {to} 年的档位给予 {days} 天。",
         "eligibleBandOpen": "额度表中服务 {from} 年及以上的档位给予 {days} 天。",
-        "eligibleNoBand": "此额度表没有档位涵盖该服务年资，因此全年额度为 {days}。",
+        "eligibleNoBand": "此额度表没有档位涵盖该服务年资，因此额度为 {days}。",
         "eligibleFullYear": "这是全年数字。年中入职的任何调整显示在“至今已累积”下。",
         "earnedMethod": "累积方式：{method, select, up_front {假期年度一次性预先发放} earned_monthly {按月累积} earned_quarterly {按季度累积} earned_daily {按日累积} other {未记录}}。",
         "earnedLeaveYear": "假期年度：{start} 至 {end}（{kind, select, anniversary {入职周年年度} a2c {入职周年至日历年} other {日历年}}）。",
@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "结转至本假期年度的天数于 {date} 到期。",
         "availableFormula": "{total} 合计 − {taken} 已使用 − {pending} 待批准 − {forfeited} 作废 = {available}。",
         "availablePool": "{available} 是 {source} 的余额 {balance} 减去共用此余额的每个假期类型（{types}）的待批准申请。上方的待批准只计算 {source} 的申请，因此上方各行合计为 {column}。",
-        "availableDiffers": "{available} 是假期余额记录本身的数字，并非由上方各行相加得出；上方各行合计为 {column}。"
+        "availableDiffers": "{available} 是假期余额记录本身的数字，并非由上方各行相加得出；上方各行合计为 {column}。",
+        "entitlementProrated": "该员工在休假年度中途入职，因此 {annual} 天额度按比例折算：{yearDays} 天中有 {eligibleDays} 天符合条件，得出 {unrounded} 天。",
+        "entitlementRounded": "当前生效的额度取整规则将 {unrounded} 变为 {final} 天。",
+        "entitlementNotRounded": "当前没有生效的额度取整规则，因此数字保持为 {final} 天。"
       }
     },
     "preview": {
@@ -2827,7 +2830,7 @@
       "colTaken": "已用",
       "colAdjustment": "调整",
       "colOverutilized": "超用",
-      "colFullEntitlement": "全年额度",
+      "colFullEntitlement": "额度",
       "colYtdEntitled": "至今已累积",
       "daysValue": "{value} 天",
       "sortBy": "按{column}排序",
@@ -7001,7 +7004,9 @@
         "annualLeaveSwitchOtherRoleHelp": "此假期类型已被记录为其他类别的假期，因此不能作为您的年假。",
         "annualLeaveSwitchHeldHelp": "如需关闭此项，请先将累积方式改为{none}——只有年假可以使用{monthly}或{daily}。",
         "earningEntitlementBasedNote": "{type}按额度发放。只有年假可以通过累积计提获得。",
-        "earningStrandedNote": "{type}仍设置为通过累积计提获得天数，但累积计提仅适用于年假，因此任何运行都不会为其增加天数。保存时该设置将保持原样。如需修正，请将累积方式改为{none}（一次性发放）。"
+        "earningStrandedNote": "{type}仍设置为通过累积计提获得天数，但累积计提仅适用于年假，因此任何运行都不会为其增加天数。保存时该设置将保持原样。如需修正，请将累积方式改为{none}（一次性发放）。",
+        "entitlementRoundingMethodLabel": "额度取整",
+        "entitlementRoundingHelp": "在按比例折算后应用于“额度”列，适用于在休假年度中途入职的员工。不影响“至今累计”，后者保留上方自己的取整规则。"
       },
       "conditionStep": {
         "criteria": "资格条件",
