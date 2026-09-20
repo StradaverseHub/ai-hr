@@ -119,6 +119,17 @@ export type LeaveSummaryFigures = {
   asOf: string;
   cycleStart: string;
   eligibleDays: number;
+  /** 845903a3 (r313) — the Entitlement figure's working. Optional: several callers build these figures by
+   *  hand for one sentence and have no proration to explain, and a missing block simply emits nothing. */
+  entitlement?: {
+    prorated: boolean;
+    annualEntitlementDays: number;
+    eligibleCalendarDays: number | null;
+    daysInLeaveYear: number | null;
+    unroundedEntitlementDays: number;
+    displayEntitlementDays: number;
+    roundingApplied: boolean;
+  };
   entitlementStatus: EntitlementStatus;
   currentYearEntitlement: number;
   broughtForward: number;
@@ -188,6 +199,10 @@ export const LEAVE_SUMMARY_EXPLAIN_KEYS = [
   'eligibleBandOpen',
   'eligibleNoBand',
   'eligibleFullYear',
+  // 845903a3 (r313) — the proration working, for an employee who joined part way through the leave year.
+  'entitlementProrated',
+  'entitlementRounded',
+  'entitlementNotRounded',
   // Earned to Date
   'earnedMethod',
   'earnedLeaveYear',
@@ -334,6 +349,33 @@ export function explainLeaveSummary(
     }
     body.push({ key: 'eligibleFullYear' });
     eligible.push(...guarded(e.days, f.eligibleDays, body));
+  }
+
+  /**
+   * 845903a3 (r313) — HOW THE ENTITLEMENT FIGURE WAS REACHED, which the reporter asked for by name
+   * ("provide an explanation/audit trail for how ENTITLEMENT was calculated").
+   *
+   * Appended AFTER the band working above, because it reads as a continuation of it: the band sentences
+   * explain where the year's allowance came from, and these explain what was then done to it for THIS
+   * employee. Emitted only when proration actually applied — for everybody else the allowance IS the
+   * entitlement and a sentence saying so would be noise on every other row.
+   */
+  const ent = f.entitlement;
+  if (ent?.prorated) {
+    eligible.push({
+      key: 'entitlementProrated',
+      args: {
+        annual: days(ent.annualEntitlementDays),
+        eligibleDays: { count: ent.eligibleCalendarDays ?? 0 },
+        yearDays: { count: ent.daysInLeaveYear ?? 365 },
+        unrounded: days(ent.unroundedEntitlementDays),
+      },
+    });
+    eligible.push(
+      ent.roundingApplied
+        ? { key: 'entitlementRounded', args: { unrounded: days(ent.unroundedEntitlementDays), final: days(ent.displayEntitlementDays) } }
+        : { key: 'entitlementNotRounded', args: { final: days(ent.displayEntitlementDays) } },
+    );
   }
 
   // ── Earned to Date ──────────────────────────────────────────────────────────────────────────────────

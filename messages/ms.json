@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "Hari yang dibawa ke tahun cuti ini luput pada {date}.",
         "availableFormula": "{total} jumlah − {taken} diambil − {pending} menunggu − {forfeited} dilucuthak = {available}.",
         "availablePool": "{available} ialah baki {source} sebanyak {balance} tolak permohonan yang menunggu pada setiap jenis cuti yang berkongsinya ({types}). Menunggu kelulusan di atas hanya mengira permohonan {source}, jadi baris di atas berjumlah {column}.",
-        "availableDiffers": "{available} ialah angka rekod baki cuti itu sendiri, bukan dijumlahkan daripada baris di atas, yang berjumlah {column}."
+        "availableDiffers": "{available} ialah angka rekod baki cuti itu sendiri, bukan dijumlahkan daripada baris di atas, yang berjumlah {column}.",
+        "entitlementProrated": "Mereka menyertai pertengahan tahun cuti, jadi kelayakan {annual} hari dibahagikan pro rata: {eligibleDays} hari layak daripada {yearDays} memberi {unrounded} hari.",
+        "entitlementRounded": "Peraturan pembundaran Kelayakan yang berkuat kuasa menjadikan {unrounded} kepada {final} hari.",
+        "entitlementNotRounded": "Tiada peraturan pembundaran Kelayakan berkuat kuasa, jadi angka kekal pada {final} hari."
       }
     },
     "preview": {

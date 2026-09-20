@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "Số ngày chuyển sang năm nghỉ phép này hết hạn ngày {date}.",
         "availableFormula": "{total} tổng − {taken} đã dùng − {pending} chờ duyệt − {forfeited} bị mất = {available}.",
         "availablePool": "{available} là số dư {balance} của {source} trừ các đơn đang chờ ở mọi loại nghỉ phép dùng chung số dư này ({types}). Mục Chờ phê duyệt ở trên chỉ tính đơn của {source}, nên các dòng trên cộng lại bằng {column}.",
-        "availableDiffers": "{available} là số liệu riêng của bản ghi số dư nghỉ phép, không cộng từ các dòng trên, vốn cộng lại bằng {column}."
+        "availableDiffers": "{available} là số liệu riêng của bản ghi số dư nghỉ phép, không cộng từ các dòng trên, vốn cộng lại bằng {column}.",
+        "entitlementProrated": "Nhân viên vào làm giữa năm nghỉ phép, nên quyền lợi {annual} ngày được chia theo tỷ lệ: {eligibleDays} ngày đủ điều kiện trên {yearDays} ngày cho ra {unrounded} ngày.",
+        "entitlementRounded": "Quy tắc làm tròn Quyền lợi đang áp dụng đưa {unrounded} thành {final} ngày.",
+        "entitlementNotRounded": "Không có quy tắc làm tròn Quyền lợi nào đang áp dụng, nên con số giữ nguyên {final} ngày."
       }
     },
     "preview": {

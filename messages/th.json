@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "วันที่ยกมาในปีการลานี้หมดอายุวันที่ {date}",
         "availableFormula": "{total} รวม − {taken} ใช้ไป − {pending} รออนุมัติ − {forfeited} ถูกริบ = {available}",
         "availablePool": "{available} คือยอดคงเหลือของ {source} จำนวน {balance} หักใบลาที่รออนุมัติของทุกประเภทการลาที่ใช้ยอดนี้ร่วมกัน ({types}) รายการรอการอนุมัติด้านบนนับเฉพาะใบลาของ {source} บรรทัดด้านบนจึงรวมได้ {column}",
-        "availableDiffers": "{available} เป็นตัวเลขของบันทึกยอดคงเหลือการลาเอง ไม่ได้รวมจากบรรทัดด้านบน ซึ่งรวมได้ {column}"
+        "availableDiffers": "{available} เป็นตัวเลขของบันทึกยอดคงเหลือการลาเอง ไม่ได้รวมจากบรรทัดด้านบน ซึ่งรวมได้ {column}",
+        "entitlementProrated": "พนักงานเข้าทำงานระหว่างปีวันลา สิทธิ์ {annual} วันจึงถูกคำนวณตามสัดส่วน: {eligibleDays} วันที่มีสิทธิ์จาก {yearDays} วัน ได้ {unrounded} วัน",
+        "entitlementRounded": "กฎการปัดเศษสิทธิ์ที่ใช้อยู่ทำให้ {unrounded} เป็น {final} วัน",
+        "entitlementNotRounded": "ไม่มีกฎการปัดเศษสิทธิ์ที่ใช้อยู่ ตัวเลขจึงคงอยู่ที่ {final} วัน"
       }
     },
     "preview": {

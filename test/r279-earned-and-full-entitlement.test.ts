@@ -54,6 +54,23 @@ const balance = (over: Partial<BalanceInput> = {}): BalanceInput => ({
  * Defaults are the first production pin: 12.50 earned against an 18.00 band, carry 0 — every figure
  * deliberately distinct so a row bound to the wrong field cannot pass by coincidence.
  */
+/**
+ * 845903a3 (r313) — the Entitlement block, DERIVED from whatever band the caller set rather than pinned.
+ * r279 §1 asserts that moving the band moves both surfaces together, so a fixture that hard-codes this
+ * figure would break that proof by construction: the band would move and the column would not. This
+ * fixture's employee joined before the leave year, so nothing prorates and the block is the band itself —
+ * which keeps r279's real point (Earned to Date and Entitlement are DIFFERENT numbers) exactly as it was.
+ */
+const unproratedEntitlement = (band: number) => ({
+  annualEntitlementDays: band,
+  prorated: false,
+  eligibleCalendarDays: null,
+  daysInLeaveYear: null,
+  unroundedEntitlementDays: band,
+  displayEntitlementDays: band,
+  roundingApplied: false,
+});
+
 const panelData = (over: Partial<PanelData['breakdown']> = {}): PanelData => ({
   breakdown: {
     leaveTypeId: 'lt-al',
@@ -61,12 +78,7 @@ const panelData = (over: Partial<PanelData['breakdown']> = {}): PanelData => ({
     asOf: '2026-09-14',
     cycleStart: '2026-01-01',
     eligibleDays: 18,
-    // 845903a3 (r313) — r279's proof is that Earned to Date and Entitlement are DIFFERENT figures.
-    // That survives proration unchanged: this fixture's employee joined before the leave year, so the
-    // Entitlement line still shows the 18.00 band against the 12.50 earned. If a later change makes
-    // these equal, r279's whole point has been lost, not merely this fixture.
-    entitlement: { annualEntitlementDays: 18, prorated: false, eligibleCalendarDays: null,
-      daysInLeaveYear: null, unroundedEntitlementDays: 18, displayEntitlementDays: 18, roundingApplied: false },
+    entitlement: unproratedEntitlement(over.eligibleDays ?? 18),
     entitlementStatus: 'granted',
     entitlementTemplateName: 'Executive Annual Leave',
     currentYearEntitlement: 12.5,
@@ -294,7 +306,20 @@ describe('r279 §6: both labels resolve in all six locales, and the English word
 
   it('English says exactly what the reporter will read', () => {
     const d = dict('en');
-    expect(d.colFullEntitlement).toBe('Full Entitlement');
+    /**
+     * 845903a3 (r313) — THE LABEL LOST THE WORD "FULL", and this assertion is updated rather than
+     * dropped because r279's reasoning still holds and now points the other way. r279 refused to call
+     * Earned to Date "Full Entitlement" because that column understates the year. This column no longer
+     * shows the whole year either: for an employee who joined part way through it, it shows THEIR
+     * entitlement for this year, prorated. "Full" would now be the inaccurate word, so it went — while
+     * the two columns stay the two DIFFERENT figures r279 exists to keep apart.
+     *
+     * The message KEY is deliberately unchanged. `colFullEntitlement` and the ESS component key
+     * `eligible` are stored configuration (leave_type.ess_view_config); renaming either would be a data
+     * migration for a label change — the same call r279 made about `ytdEntitled`.
+     */
+    expect(d.colFullEntitlement).toBe('Entitlement');
+    expect(String(d.colFullEntitlement)).not.toContain('Full');
     expect(d.colYtdEntitled).toBe('Earned to Date');
     expect(String((d.tip as Record<string, unknown>).ytdEntitled)).not.toContain('including any brought forward');
   });

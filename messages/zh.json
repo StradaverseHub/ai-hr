@@ -2155,7 +2155,10 @@
         "forfeitCarryExpiry": "结转至本假期年度的天数于 {date} 到期。",
         "availableFormula": "{total} 合计 − {taken} 已使用 − {pending} 待批准 − {forfeited} 作废 = {available}。",
         "availablePool": "{available} 是 {source} 的余额 {balance} 减去共用此余额的每个假期类型（{types}）的待批准申请。上方的待批准只计算 {source} 的申请，因此上方各行合计为 {column}。",
-        "availableDiffers": "{available} 是假期余额记录本身的数字，并非由上方各行相加得出；上方各行合计为 {column}。"
+        "availableDiffers": "{available} 是假期余额记录本身的数字，并非由上方各行相加得出；上方各行合计为 {column}。",
+        "entitlementProrated": "该员工在休假年度中途入职，因此 {annual} 天额度按比例折算：{yearDays} 天中有 {eligibleDays} 天符合条件，得出 {unrounded} 天。",
+        "entitlementRounded": "当前生效的额度取整规则将 {unrounded} 变为 {final} 天。",
+        "entitlementNotRounded": "当前没有生效的额度取整规则，因此数字保持为 {final} 天。"
       }
     },
     "preview": {
