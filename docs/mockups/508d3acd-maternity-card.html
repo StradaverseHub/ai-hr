@@ -1,0 +1,128 @@
+<meta charset="utf-8">
+<title>508d3acd — the card is telling the truth</title>
+<!--
+  Mockup for 508d3acd (hide ineligible leave-type cards in My Leave).
+
+  MEASURED ON PRODUCTION 2026-09-20, read-only aggregates through MIGRATION_DATABASE_URL:
+    EMP-0004  gender male, marital married; ledger ANNUAL 11.00, AL 10.50, MTL 98.00 (1 row)
+    Maternity (MTL) eligibility  {"gender":["female"],"maritalStatus":["married"]}   — correctly configured
+    Ledger rows written TODAY (effective_on 2026-09-20):
+        MTL / Maternity Leave   79 rows   7742.00 days      <-- one Leave Generation run
+        AL  / *Annual Leave      2 rows      0.64 days
+    Of today's rows: 67 rows / 6566.00 days went to employees the GENDER rule excludes
+                     58 rows / 5684.00 days went to employees the MARITAL rule excludes
+    domain_event today: leave-generation.run x1 (actor user), leave-year.opened x1,
+                        entitlement-template.created x1, leave-type.updated x4
+    Active employees 75 · female AND married 5 · no gender recorded 55 · no marital status recorded 48
+    Types with a REAL gender/marital restriction: MTL (female+married), PTL (male+married+12mo).
+    The other eight list every gender and every marital status, so they restrict nobody.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the card is not wrong. The 98.00 is really in the ledger,
+  written today by the reporter's own Leave Generation run, which did not consult the eligibility rules
+  the leave type already carries. Hiding the card would hide the evidence and leave the days in place —
+  in HR screens, in reports, and in anything that ever pays a balance out.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - A redesigned My Leave. Nothing about the screen's layout changes.
+    - The cleanup dialog. Its shape is not decided until this is approved.
+    - Employee names other than the one the reporter named themselves.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;
+        --amberbg:#fffbeb;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:8px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+  .col3{display:flex;gap:16px} .col3>*{flex:1;min-width:0}
+  .tile{border:1px solid var(--border);border-radius:12px;padding:12px}
+  .tile .n{font-size:22px;font-weight:700;line-height:1.1}
+  .tile .l{font-size:11px;color:var(--mf);margin-top:2px}
+  .lc{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--card)}
+  .lc .t{font-size:12px;font-weight:600} .lc .v{font-size:20px;font-weight:700;margin-top:4px}
+  .lc .s{font-size:11px;color:var(--mf)}
+  .strike{opacity:.45}
+  .arrow{font-size:20px;color:var(--mf);align-self:center;padding:0 2px}
+</style>
+
+<div class="card">
+  <h1>Arjun Kumar (EMP-0004) — My Leave &rsaquo; My Leave Balance, today</h1>
+  <p class="sub">Recorded in his profile as <strong>male</strong>, married. Maternity Leave is configured
+    for female &amp; married employees — and that configuration is correct.</p>
+  <div class="col3">
+    <div class="lc"><div class="t">Annual Leave</div><div class="v">11.00</div><div class="s">Balance</div></div>
+    <div class="lc" style="border-color:#fca5a5;background:#fef2f2">
+      <div class="t">Maternity Leave <span class="pill bad">should not be here</span></div>
+      <div class="v">98.00</div><div class="s">Entitlement 98.00 · Balance 98.00</div></div>
+    <div class="lc"><div class="t">*Annual Leave</div><div class="v">10.50</div><div class="s">Balance</div></div>
+  </div>
+  <p class="note"><strong>The card is not inventing that number.</strong> There really is a 98.00 day
+    Maternity credit in his leave record. The screen is reporting it correctly.</p>
+</div>
+
+<div class="card">
+  <h2>Where the 98.00 came from — his actual leave record</h2>
+  <table>
+    <tr><th>Date</th><th>Leave type</th><th>Entry</th><th class="r">Days</th><th>Written by</th></tr>
+    <tr><td>20 September 2026</td><td>Maternity Leave</td><td>Credit</td><td class="r">98.00</td>
+        <td>Leave Generation run</td></tr>
+  </table>
+  <p class="note">That run was today. It credited Maternity Leave to <strong>every</strong> employee
+    without checking the &ldquo;Who is eligible&rdquo; conditions on the leave type.</p>
+
+  <div class="col3" style="margin-top:14px">
+    <div class="tile"><div class="n">79</div><div class="l">employees credited with Maternity Leave today</div></div>
+    <div class="tile" style="border-color:#fca5a5"><div class="n" style="color:var(--badfg)">6,566</div>
+      <div class="l">of those days went to <strong>67</strong> employees the gender rule excludes</div></div>
+    <div class="tile" style="border-color:#86efac"><div class="n" style="color:var(--goodfg)">5</div>
+      <div class="l">employees are female <em>and</em> married — the ones who should have it</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What we propose, and why the card looks after itself</h2>
+  <table>
+    <tr><th style="width:34%">Step</th><th>What changes</th></tr>
+    <tr><td><strong>1. Stop it happening again</strong></td>
+        <td>Leave Generation checks the leave type&rsquo;s &ldquo;Who is eligible&rdquo; conditions before
+            crediting anybody, using the same rule the Request Leave dropdown already uses.</td></tr>
+    <tr><td><strong>2. Remove the wrong credits</strong></td>
+        <td>The 6,566 days credited today to employees the rule excludes are taken back off, with a record
+            of what was removed. Nothing anyone has actually taken is touched.</td></tr>
+    <tr><td><strong>3. The card disappears by itself</strong></td>
+        <td>My Leave already hides a leave type the employee is not eligible for &mdash; unless they have
+            activity on it. The 98.00 credit <em>is</em> that activity. Take it away and the card goes,
+            with no change to the screen.</td></tr>
+  </table>
+  <div class="col3" style="margin-top:14px">
+    <div class="lc"><div class="t">Annual Leave</div><div class="v">11.00</div><div class="s">Balance</div></div>
+    <div class="lc strike" style="border-style:dashed">
+      <div class="t">Maternity Leave <span class="pill good">gone</span></div>
+      <div class="v">&mdash;</div><div class="s">no credit, no card</div></div>
+    <div class="lc"><div class="t">*Annual Leave</div><div class="v">10.50</div><div class="s">Balance</div></div>
+  </div>
+  <p class="note">Your edge case 1 is already how it behaves: a woman whose status changed after she
+    applied keeps her card, because her taken and pending days are activity.</p>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">One thing to look at while you are here</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    <strong>55 of your 75 active employees have no gender recorded, and 48 have no marital status.</strong>
+    The eligibility rules treat &ldquo;not recorded&rdquo; as &ldquo;does not match&rdquo;, so once the wrong
+    credits are cleared, those employees will not see a Maternity card &mdash; not because they are male,
+    but because the field is empty. The same is true of Paternity Leave. Filling those fields in is what
+    makes the rule do what you mean; we can give you the list of who is missing what.</p>
+</div>
