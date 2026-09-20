@@ -1,3 +1,40 @@
+## r313 (2026-09-20) — Entitlement means this year's entitlement. `main@a3014277`, **migration 0475**.
+
+Closed and DEPLOYED: `845903a3`. Gate: **929 files — equal to the suite file count — 14,190 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `gate:shadow` PASS (391/391). `next build` exit 0. RENDERED on a dev server: Employee Balances reads "Entitlement", no "Full Entitlement", no `MISSING_MESSAGE`.
+
+### WHAT SHIPPED
+
+"Full Entitlement" is now "Entitlement" in all six locales, and for an employee who joined part way through the leave year it shows THEIR entitlement for this year: `min((band / 365) × days-from-hire-to-31-Dec-inclusive, band)`, rounded by a NEW second rounding rule that HR maintains themselves. The Explain panel prints the working — band, hire date, eligible days, divisor, unrounded figure, which rule was in force, final figure. Earned to Date, every grant and every ledger row are untouched.
+
+### ⚠️ THE APPROVED PLAN'S PREMISE WAS WRONG, AND THE REPORTER IS OWED THE CORRECTION
+
+The plan led with a correction OF the reporter: that the prorated figure was already on that screen as **Earned to Date**, because a2c grants a first-year employee their part-year amount up front. Verified afterwards, and it is false for the only type they use.
+
+- The seeded `ANNUAL` type is **ARCHIVED**. Their live Annual Leave is `AL` ("*Annual Leave"), `role = 'annual'`.
+- `isA2cFirstYear` matches the **literal code `'ANNUAL'`**, so the up-front path never runs for `AL`.
+- Measured: of their six 2026 joiners with an AL accrual, **4 match the to-date slice and 0 match the year-end slice**. Their Earned to Date is what they have earned so far, not the year's allowance.
+
+So the figure was genuinely missing and this item is not a second rendering of an existing one. **An item correcting the record is owed to the reporter** — the same shape as `52aaee75` after r307. It is not raised here because the build is unaffected; the deliverable was right either way.
+
+### THE GATE IS THE ROLE, AND THAT IS THE WHOLE FEATURE ON THIS TENANT
+
+Gating the proration on `isA2cFirstYear` would have shipped a column that prorates **nothing** for `AL`. `isEarnedAccrualType` asks `leave_type.role` first and falls back to the seeded code — precisely the fix 65f466e2 made for the earned sweep after the identical trap ("a tenant's own Annual Leave on a code the pack never seeded could never accrue a day").
+
+**`isA2cFirstYear` itself is deliberately untouched.** It decides HOW MANY DAYS PEOPLE RECEIVE; moving it to the role moves balances and is a separate, recorded change. This function decides only what a column says, so it may use the better predicate without moving anybody's ledger. SICK and HOSPITALIZATION are never prorated — per-calendar-year entitlements under EA-1955 s.60F must reach a mid-year joiner in full.
+
+### DISPLAY-ONLY, ENFORCED BY WHERE THE COLUMNS ARE NOT
+
+0475 adds `entitlement_rounding_{method,threshold,bands}`, all nullable, mirroring the accrual trio so `applyRounding` / `checkRoundingBands` and the band editor are REUSED rather than forked — the reporter asked for that in writing. They are deliberately **outside `leaveTypeRuleColumns`**: that map exists so the granting engines and the projection kernel read the identical rule set, and a rule one reads and the other does not posts a permanent oscillating delta (7cd914b1, twice). A display rule must never reach a ledger write, which is the reporter's "Earned to Date must not change" stated as a constraint. Rounding is applied ONLY when proration happened — an entitlement straight from the table is the number HR configured.
+
+### GUARDS UPDATED, NOT LOOSENED
+
+The marker count (29 → 30, its own tri-state so a form rendering one rule and not the other preserves the other), the F9 field pins (the table's posted name is a prop now, so the pin moved to where the name is DECIDED — stricter, because it catches a changed default repointing every save), r279's label assertion, and the explain ARGS map (which caught a real `FORMATTING_ERROR` before it shipped). **r303's byte-for-byte employee-panel baseline was regenerated and then DIFFED**: all 18 differing sections, across six locales and three surfaces, were the removal of the qualifier — "Full " / " Penuh" / "முழு " / "เต็มปี" / " cả năm" / "全年" — and nothing else. That diff is recorded in the test so the next person diffs before regenerating.
+
+### NOT DONE
+
+- **Effective dates on the rounding tables.** The reporter made it conditional on the framework supporting it; rounding is held on the leave type with no dated history. Told them so in the plan.
+- The CSV/XLSX export of Employee Balances still exports the band figure, not the prorated one. Same read, one field; worth a follow-up so the file and the screen cannot disagree.
+
 ## r312 (2026-09-19) — the seeder stopped treating a schema fixture as somebody's data. `main@8b6b0016`, **no migration**.
 
 No board item — asked for directly, off the back of r311's finding. Gate: **928 files — equal to the suite file count — 14,167 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: rsync dry-run clean, active, `GET /` 401, deploy `exit_code=0`, "Demo data already present — skipping seed" as expected.
