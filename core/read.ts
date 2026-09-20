@@ -793,6 +793,13 @@ export function listLeaveTypes(
         // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
         // Read here rather than via a second query — the panel renders one row per type already.
         ...leaveTypeRuleColumns,
+        // 845903a3 (r313) — the ENTITLEMENT rounding rule, named explicitly rather than folded into
+        // `leaveTypeRuleColumns`: that map is the set the granting engines and the projection kernel must
+        // read IDENTICALLY, and these three must never reach a ledger write. The editor needs them, so
+        // this listing selects them on its own.
+        entitlementRoundingMethod: leaveType.entitlementRoundingMethod,
+        entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold,
+        entitlementRoundingBands: leaveType.entitlementRoundingBands,
         // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
         // the identity edit form (MUST be projected here or the field renders empty on every reload).
         description: leaveType.description,

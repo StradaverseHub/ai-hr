@@ -7001,7 +7001,9 @@
         "annualLeaveSwitchOtherRoleHelp": "Jenis cuti ini sudah direkodkan sebagai jenis cuti yang lain, jadi ia tidak boleh menjadi Cuti Tahunan anda.",
         "annualLeaveSwitchHeldHelp": "Untuk mematikan ini, tukar dahulu kaedah perolehan kepada {none} — hanya Cuti Tahunan boleh menggunakan {monthly} atau {daily}.",
         "earningEntitlementBasedNote": "{type} adalah berasaskan kelayakan. Hanya Cuti Tahunan boleh diperoleh melalui Akruan Terperoleh.",
-        "earningStrandedNote": "{type} masih ditetapkan untuk memperoleh harinya melalui Akruan Terperoleh, tetapi Akruan Terperoleh hanya terpakai untuk Cuti Tahunan, jadi tiada larian yang menambah hari kepadanya. Tetapan ini dikekalkan seperti sedia ada apabila anda menyimpan. Untuk membetulkannya, tukar kaedah perolehan kepada {none} (diberikan sekali gus)."
+        "earningStrandedNote": "{type} masih ditetapkan untuk memperoleh harinya melalui Akruan Terperoleh, tetapi Akruan Terperoleh hanya terpakai untuk Cuti Tahunan, jadi tiada larian yang menambah hari kepadanya. Tetapan ini dikekalkan seperti sedia ada apabila anda menyimpan. Untuk membetulkannya, tukar kaedah perolehan kepada {none} (diberikan sekali gus).",
+        "entitlementRoundingMethodLabel": "Pembundaran kelayakan",
+        "entitlementRoundingHelp": "Digunakan pada lajur Kelayakan selepas pembahagian pro rata, bagi pekerja yang menyertai pertengahan tahun cuti. Ia tidak menjejaskan Diperoleh Sehingga Kini, yang mengekalkan pembundarannya sendiri di atas."
       },
       "conditionStep": {
         "criteria": "Kriteria",

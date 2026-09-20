@@ -7001,7 +7001,9 @@
         "annualLeaveSwitchOtherRoleHelp": "Loại nghỉ phép này đã được ghi nhận là một loại nghỉ khác, nên không thể là Nghỉ phép năm của bạn.",
         "annualLeaveSwitchHeldHelp": "Để tắt mục này, trước tiên hãy đổi phương thức tích lũy thành {none} — chỉ Nghỉ phép năm mới dùng được {monthly} hoặc {daily}.",
         "earningEntitlementBasedNote": "{type} được cấp theo quyền lợi. Chỉ Nghỉ phép năm mới có thể được hưởng qua Tích lũy.",
-        "earningStrandedNote": "{type} vẫn được đặt để hưởng ngày nghỉ qua Tích lũy, nhưng Tích lũy chỉ áp dụng cho Nghỉ phép năm, nên không lần chạy nào cộng thêm ngày cho loại này. Thiết lập được giữ nguyên khi bạn lưu. Để khắc phục, hãy đổi phương thức tích lũy thành {none} (cấp trước một lần)."
+        "earningStrandedNote": "{type} vẫn được đặt để hưởng ngày nghỉ qua Tích lũy, nhưng Tích lũy chỉ áp dụng cho Nghỉ phép năm, nên không lần chạy nào cộng thêm ngày cho loại này. Thiết lập được giữ nguyên khi bạn lưu. Để khắc phục, hãy đổi phương thức tích lũy thành {none} (cấp trước một lần).",
+        "entitlementRoundingMethodLabel": "Làm tròn quyền lợi",
+        "entitlementRoundingHelp": "Áp dụng cho cột Quyền lợi sau khi chia theo tỷ lệ, với nhân viên vào làm giữa năm nghỉ phép. Không ảnh hưởng đến Đã tích lũy đến nay, vốn giữ cách làm tròn riêng ở trên."
       },
       "conditionStep": {
         "criteria": "Tiêu chí",

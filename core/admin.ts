@@ -4328,6 +4328,19 @@ export async function setLeaveTypeRules(
      *  emptied editor cannot leave a `[]` behind that reads as "this type carries rules" (hasAnyLeaveTypeRule
      *  tests for null, not for emptiness). */
     roundingBands?: RoundingBand[] | null;
+    /**
+     * 845903a3 (r313) — THE SECOND ROUNDING RULE, applied only to the DISPLAYED Entitlement figure after
+     * proration. Same three shapes, same validation, same normalisation as the trio above, because
+     * applyRounding takes its configuration as arguments and cannot tell the two apart.
+     *
+     * ⚠️ It never reaches a ledger write. The accrual trio above is read by the granting engines AND the
+     * projection kernel through `leaveTypeRuleColumns`; these three are deliberately outside that map, so
+     * storing one cannot move a day count. That is the reporter's requirement stated as a constraint:
+     * EARNED TO DATE MUST NOT CHANGE.
+     */
+    entitlementRoundingMethod?: 'custom' | null;
+    entitlementRoundingThreshold?: number | null;
+    entitlementRoundingBands?: RoundingBand[] | null;
     maxBalanceDays?: number | null;
     /**
      * r299 (3de1453a) — "This is our Annual Leave", posted by the Earning Method form it sits on. Same
@@ -4364,6 +4377,25 @@ export async function setLeaveTypeRules(
   // value this accepts is 'custom'.
   if (p.roundingMethod !== undefined && p.roundingMethod !== null && !isUserRoundingMethod(p.roundingMethod)) {
     throw new LeaveTypeRuleError('Rounding must be either No Rounding or Custom Rounding.');
+  }
+  // 845903a3 (r313) — the same refusal for the Entitlement rule. A retired method that a hand-crafted POST
+  // could still save is not retired, and that argument does not weaken because the column is newer.
+  if (
+    p.entitlementRoundingMethod !== undefined &&
+    p.entitlementRoundingMethod !== null &&
+    !isUserRoundingMethod(p.entitlementRoundingMethod)
+  ) {
+    throw new LeaveTypeRuleError('Entitlement rounding must be either No Rounding or Custom Rounding.');
+  }
+  if (p.entitlementRoundingBands !== undefined && p.entitlementRoundingBands !== null && p.entitlementRoundingBands.length > 0) {
+    // The AUTHORITATIVE check, same function and same sentences as the accrual table's — the editor's live
+    // warnings are a courtesy, this is what decides whether a table is storable.
+    const problems = roundingBandErrors(p.entitlementRoundingBands);
+    if (problems.length > 0) {
+      throw new LeaveTypeRuleError(
+        `Entitlement rounding table: ${problems.length} row problem(s). Check that From and To are between 0.00 and 1.00, use at most two decimals, and that no two ranges overlap.`,
+      );
+    }
   }
   // 8fec719e — the AUTHORITATIVE band check. The editor renders the same problems live from the same
   // function, but the editor is a courtesy: this is what decides whether a table is storable. Gaps are
@@ -4456,6 +4488,15 @@ export async function setLeaveTypeRules(
     'roundingThreshold',
     p.roundingThreshold == null ? p.roundingThreshold : Math.round(p.roundingThreshold * 1000) / 1000,
   );
+  // 845903a3 (r313) — the Entitlement trio, normalised identically. Written through the SAME `put` and
+  // the SAME empty-table-is-null rule below, so the two rounding rules cannot drift in how they store.
+  put('entitlementRoundingMethod', p.entitlementRoundingMethod);
+  put(
+    'entitlementRoundingThreshold',
+    p.entitlementRoundingThreshold == null
+      ? p.entitlementRoundingThreshold
+      : Math.round(p.entitlementRoundingThreshold * 1000) / 1000,
+  );
   // 8fec719e — an empty table is stored as NULL, never as `[]`. `hasAnyLeaveTypeRule` asks whether the
   // column is null, so a `[]` would keep the type "ruled" on the strength of a table with nothing in it.
   put(
@@ -4468,6 +4509,20 @@ export async function setLeaveTypeRules(
         // anything with a third decimal, so this only strips binary-float noise; it can never round a
         // figure somebody typed into a different one.
         p.roundingBands.map((b) => ({
+          from: Math.round(b.from * 100) / 100,
+          to: Math.round(b.to * 100) / 100,
+          result: Math.round(b.result * 100) / 100,
+        })),
+  );
+  // 845903a3 (r313) — the Entitlement table, stored by the identical rule: empty is NULL, never `[]`,
+  // and rows are kept exactly as typed at two decimals.
+  put(
+    'entitlementRoundingBands',
+    p.entitlementRoundingBands == null || p.entitlementRoundingBands.length === 0
+      ? p.entitlementRoundingBands === undefined
+        ? undefined
+        : null
+      : p.entitlementRoundingBands.map((b) => ({
           from: Math.round(b.from * 100) / 100,
           to: Math.round(b.to * 100) / 100,
           result: Math.round(b.result * 100) / 100,

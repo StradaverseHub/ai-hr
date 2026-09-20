@@ -7001,7 +7001,9 @@
         "annualLeaveSwitchOtherRoleHelp": "此假期类型已被记录为其他类别的假期，因此不能作为您的年假。",
         "annualLeaveSwitchHeldHelp": "如需关闭此项，请先将累积方式改为{none}——只有年假可以使用{monthly}或{daily}。",
         "earningEntitlementBasedNote": "{type}按额度发放。只有年假可以通过累积计提获得。",
-        "earningStrandedNote": "{type}仍设置为通过累积计提获得天数，但累积计提仅适用于年假，因此任何运行都不会为其增加天数。保存时该设置将保持原样。如需修正，请将累积方式改为{none}（一次性发放）。"
+        "earningStrandedNote": "{type}仍设置为通过累积计提获得天数，但累积计提仅适用于年假，因此任何运行都不会为其增加天数。保存时该设置将保持原样。如需修正，请将累积方式改为{none}（一次性发放）。",
+        "entitlementRoundingMethodLabel": "额度取整",
+        "entitlementRoundingHelp": "在按比例折算后应用于“额度”列，适用于在休假年度中途入职的员工。不影响“至今累计”，后者保留上方自己的取整规则。"
       },
       "conditionStep": {
         "criteria": "资格条件",

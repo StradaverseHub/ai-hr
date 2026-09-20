@@ -7001,7 +7001,9 @@
         "annualLeaveSwitchOtherRoleHelp": "This leave type is already recorded as a different kind of leave, so it cannot be your Annual Leave.",
         "annualLeaveSwitchHeldHelp": "To switch this off, first change the earning method to {none} — only Annual Leave can use {monthly} or {daily}.",
         "earningEntitlementBasedNote": "{type} is entitlement-based. Only Annual Leave can be earned through Earned Accrual.",
-        "earningStrandedNote": "{type} is still set to earn its days through Earned Accrual, but Earned Accrual applies only to Annual Leave, so no run adds days to it. The setting is kept exactly as it is when you save. To fix it, change the earning method to {none} (granted up front)."
+        "earningStrandedNote": "{type} is still set to earn its days through Earned Accrual, but Earned Accrual applies only to Annual Leave, so no run adds days to it. The setting is kept exactly as it is when you save. To fix it, change the earning method to {none} (granted up front).",
+        "entitlementRoundingMethodLabel": "Entitlement rounding",
+        "entitlementRoundingHelp": "Applied to the Entitlement column after proration, for an employee who joined part way through the leave year. It never affects Earned to Date, which keeps its own rounding above."
       },
       "conditionStep": {
         "criteria": "Criteria",
