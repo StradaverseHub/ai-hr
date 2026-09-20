@@ -51,6 +51,10 @@ const breakdown = (over: Partial<LeaveEntitlementBreakdown> = {}): LeaveEntitlem
     asOf: '2026-12-31',
     cycleStart: '2026-01-01',
     eligibleDays: 14,
+    // 845903a3 (r313) — joined before the leave year, so nothing prorates: the Entitlement line
+    // shows the band itself, which keeps this fixture's figures exactly as they were.
+    entitlement: { annualEntitlementDays: 14, prorated: false, eligibleCalendarDays: null,
+      daysInLeaveYear: null, unroundedEntitlementDays: 14, displayEntitlementDays: 14, roundingApplied: false },
     entitlementStatus: 'granted',
     entitlementTemplateName: 'Annual — all staff',
     currentYearEntitlement: 10.5,

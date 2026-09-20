@@ -81,7 +81,8 @@ describe('r285 §1: the panel says what the grid says — the same words for the
 
   it('English reads exactly what the reporter will see', () => {
     const f = panelField('en');
-    expect(f.eligible).toBe('Full Entitlement');
+    // 845903a3 (r313) — the label lost the word "Full": the column is prorated now, so it no longer shows the whole year for a mid-year joiner. The PAIRING this file exists to pin is unchanged — the panel and the grid must still read the SAME words — so the assertion is updated, not dropped.
+    expect(f.eligible).toBe('Entitlement');
     expect(f.ytdEntitled).toBe('Earned to Date');
     // The words that caused the report are gone from these two rows.
     expect(f.eligible).not.toContain('Eligible');
@@ -92,7 +93,15 @@ describe('r285 §1: the panel says what the grid says — the same words for the
     expect(field('eligible').labelKey).toBe('field.eligible');
     expect(field('ytdEntitled').labelKey).toBe('field.ytdEntitled');
     // And still the SAME two picks off the one breakdown object that made them duplicates of the grid.
-    const b = { eligibleDays: 18, currentYearEntitlement: 12.5 } as PanelData['breakdown'];
+    // 845903a3 (r313) — the Entitlement row now selects the prorated block, so this deliberately
+    // minimal breakdown must carry one. Unprorated, so the row still reads the 18.00 band and this
+    // file's point — the two rows are two DIFFERENT figures — is untouched.
+    const b = {
+      eligibleDays: 18,
+      entitlement: { annualEntitlementDays: 18, prorated: false, eligibleCalendarDays: null,
+        daysInLeaveYear: null, unroundedEntitlementDays: 18, displayEntitlementDays: 18, roundingApplied: false },
+      currentYearEntitlement: 12.5,
+    } as PanelData['breakdown'];
     const d = { breakdown: b, summary: { available: 0 } } as PanelData;
     expect(field('eligible').select).toBeTypeOf('function');
     expect(field('ytdEntitled').select).toBeTypeOf('function');
@@ -129,7 +138,7 @@ describe('r285 §2: the blast radius — stored keys and the shared popup string
   });
 
   it('the grid keeps ITS names — r279 is not undone', () => {
-    expect(gridCol('en').colFullEntitlement).toBe('Full Entitlement');
+    expect(gridCol('en').colFullEntitlement).toBe('Entitlement');
     expect(gridCol('en').colYtdEntitled).toBe('Earned to Date');
   });
 
