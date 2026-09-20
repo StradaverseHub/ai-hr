@@ -1,0 +1,152 @@
+<meta charset="utf-8">
+<title>76dbcaa1 — Special Leave: what exists, what is a setting, what we build</title>
+<!--
+  Mockup for 76dbcaa1 (Redesign Special Leave Structure).
+
+  MEASURED ON PRODUCTION 2026-09-20, read-only through MIGRATION_DATABASE_URL:
+    leave_shared_group: ONE group, "Special Leave", total_limit_days 10.00,
+                        max_days_per_application 3.00, ess_placement 'primary'
+    leave_shared_group_member: 6 rows — CGL, CPL, EXM, GD, NDL, STD
+                        (exactly the six the reporter listed)
+    Each of those six: ess_placement NULL, balance_source_type_id NULL (spends its own ledger)
+    EL "Emergency Leave" already has balance_source_type_id -> AL, so the spend-another-type's-balance
+                        mechanism is live and proven on this tenant.
+    Live types with placement 'primary': AL, MC, UPL.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the Special Leave card the reporter is asking for already exists
+  (feedback 46afcc48) and the 10-day / 3-per-application shared ceiling is already configured and already
+  enforced by the engine across exactly those six types. What makes the screen look wrong is that each of
+  the six is ALSO still shown as its own card — because each one's own visibility setting is unset, which
+  is a setting the reporter owns. The genuinely new work is the detail view and the two-step request.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - Figures for every card but Special Leave. Only the 9.00-of-10.00 is sourced (46afcc48's own
+      header records it for this tenant); the neighbours carry a dash rather than a plausible number.
+    - Figures for the six member cards. Their real balances were not measured per employee, and a picture
+      cannot hedge; they are drawn as cards without numbers to make the CLUTTER point, not a balance claim.
+    - The reason taxonomy as a database change. The reporter's tree (Compassionate / Congratulatory) is
+      drawn as the detail view groups them; nothing here proposes renaming or re-coding their leave types.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;
+        --newbg:#eef2ff;--newfg:#4338ca}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .new{background:var(--newbg);color:var(--newfg)} .keep{background:var(--goodbg);color:var(--goodfg)}
+  .set{background:var(--amberbg);color:var(--amber)}
+  .grid{display:flex;flex-wrap:wrap;gap:10px}
+  .lc{border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:150px;flex:1}
+  .lc .t{font-size:12px;font-weight:600} .lc .v{font-size:19px;font-weight:700;margin-top:3px}
+  .lc .s{font-size:10.5px;color:var(--mf)}
+  .ghost{opacity:.45;border-style:dashed}
+  .col2{display:flex;gap:16px} .col2>*{flex:1;min-width:0}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:8px 9px;border-top:1px solid var(--border)}
+  .reason{border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:7px;
+          display:flex;justify-content:space-between;align-items:center}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:3px 12px;font-size:11px;font-weight:600}
+  .hdr{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin:10px 0 6px}
+</style>
+
+<div class="card">
+  <h1>My Leave today — and why it looks cluttered</h1>
+  <p class="sub">The Special Leave card is already there. So are the six reasons, each as its own card.</p>
+  <div class="grid">
+    <div class="lc"><div class="t">Annual Leave</div><div class="v">&mdash;</div><div class="s">available</div></div>
+    <div class="lc" style="border-color:#a5b4fc;background:var(--newbg)">
+      <div class="t">Special Leave <span class="pill keep">already exists</span></div>
+      <div class="v">9.00</div><div class="s">of 10.00 shared</div></div>
+    <div class="lc"><div class="t">Medical Leave</div><div class="v">&mdash;</div><div class="s">available</div></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div class="lc ghost"><div class="t">Caregiver Leave</div><div class="s">its own card</div></div>
+    <div class="lc ghost"><div class="t">Compassionate Leave</div><div class="s">its own card</div></div>
+    <div class="lc ghost"><div class="t">Examination Leave</div><div class="s">its own card</div></div>
+    <div class="lc ghost"><div class="t">Graduation Leave</div><div class="s">its own card</div></div>
+    <div class="lc ghost"><div class="t">Natural Disaster Leave</div><div class="s">its own card</div></div>
+    <div class="lc ghost"><div class="t">Study Leave</div><div class="s">its own card</div></div>
+  </div>
+  <p class="note"><strong>The six greyed cards are the clutter.</strong> Each is shown because its own
+    visibility setting has never been set — not because the system thinks it is a separate entitlement.</p>
+</div>
+
+<div class="card">
+  <h2>What your system already does — measured on your live data today</h2>
+  <table>
+    <tr><th style="width:42%">Your requirement</th><th>Status</th></tr>
+    <tr><td>Ten working days per calendar year, shared</td>
+        <td><span class="pill keep">already configured</span> the Special Leave group is set to 10.00 days</td></tr>
+    <tr><td>Maximum three consecutive days per application</td>
+        <td><span class="pill keep">already configured</span> set to 3.00 per application</td></tr>
+    <tr><td>Shared across the six reasons, no separate pools</td>
+        <td><span class="pill keep">already enforced</span> all six are members of that one group</td></tr>
+    <tr><td>One Special Leave card on My Leave</td>
+        <td><span class="pill keep">already on screen</span> showing what is drawable, of 10.00 shared</td></tr>
+    <tr><td>Stop showing the six as their own cards</td>
+        <td><span class="pill set">a setting</span> one visibility setting per leave type — we will set them</td></tr>
+    <tr><td>Special Leave detail view, with Apply per reason</td>
+        <td><span class="pill new">we build this</span></td></tr>
+    <tr><td>Request Leave in two steps: type, then reason</td>
+        <td><span class="pill new">we build this</span></td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <div class="col2">
+    <div>
+      <h2>After: My Leave <span class="pill new">proposed</span></h2>
+      <div class="grid">
+        <div class="lc"><div class="t">Annual Leave</div><div class="v">&mdash;</div><div class="s">available</div></div>
+        <div class="lc"><div class="t">Medical Leave</div><div class="v">&mdash;</div><div class="s">available</div></div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <div class="lc" style="border-color:#a5b4fc;background:var(--newbg)">
+          <div class="t">Special Leave</div><div class="v">9.00</div>
+          <div class="s">of 10.00 shared · Compassionate &amp; Congratulatory</div>
+          <div style="margin-top:8px"><span class="btn">View details</span></div></div>
+        <div class="lc"><div class="t">Unpaid Leave</div><div class="v">—</div><div class="s">available</div></div>
+      </div>
+      <p class="note">Seven cards become three. Nothing about entitlement changed — only what is shown.</p>
+    </div>
+    <div>
+      <h2>Special Leave details <span class="pill new">new</span></h2>
+      <div style="border:1px solid var(--border);border-radius:12px;padding:12px">
+        <div style="font-size:14px;font-weight:700">Special Leave</div>
+        <div class="s" style="font-size:11.5px;color:var(--mf)">10 working days per calendar year ·
+          maximum 3 consecutive days per application</div>
+        <div style="font-size:19px;font-weight:700;margin-top:6px">Remaining 9.00 days</div>
+
+        <div class="hdr">Compassionate Leave</div>
+        <div class="reason"><span>Natural Disaster</span><span class="btn">Apply</span></div>
+        <div class="reason"><span>Death of Family Member</span><span class="btn">Apply</span></div>
+        <div class="reason"><span>Caregiver</span><span class="btn">Apply</span></div>
+
+        <div class="hdr">Congratulatory Leave</div>
+        <div class="reason"><span>Wedding</span><span class="btn">Apply</span></div>
+        <div class="reason"><span>Graduation / Study / Examination</span><span class="btn">Apply</span></div>
+      </div>
+      <p class="note">Each Apply opens the normal leave form for that reason, so nothing about approval,
+        documents or notice changes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">One thing we need you to confirm</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    Your reason list mentions <strong>Wedding</strong> and <strong>Death of Family Member</strong>, and your
+    system has no leave types with those names — the six it does have are Caregiver, Compassionate,
+    Examination, Graduation, Natural Disaster and Study. We will map Wedding and Death of Family Member onto
+    Compassionate Leave unless you tell us otherwise, because inventing two new leave codes would change
+    what your reports and payroll see. If they should be their own codes, reject this plan and say so.</p>
+</div>
