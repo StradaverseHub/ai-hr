@@ -27,8 +27,21 @@ export type EntitlementBreakdownData = {
   asOf: string;
   cycleStart: string;
   /** 1f6fd6d8 — "Eligible (Full Year Entitlement)": the winning policy's whole-year days. The one summary
-   *  line that is not ledger-derived, and the top of the reporter's column. */
+   *  line that is not ledger-derived. 845903a3 (r313): no longer what the Entitlement line SHOWS — that is
+   *  `entitlement` below — but still the figure the proration is taken from, and named by its captions. */
   eligibleDays: number;
+  /** 845903a3 (r313) — the Entitlement line's figure and the working behind it: the table allowance,
+   *  whether proration applied, the eligible calendar days and divisor, the unrounded result and the
+   *  rounded one. Mirrors core/read.ts, where it is derived; nothing is recomputed on the client. */
+  entitlement: {
+    annualEntitlementDays: number;
+    prorated: boolean;
+    eligibleCalendarDays: number | null;
+    daysInLeaveYear: number | null;
+    unroundedEntitlementDays: number;
+    displayEntitlementDays: number;
+    roundingApplied: boolean;
+  };
   /** 31e39d74 — why the figures below are what they are: generated, configured-but-not-yet-generated,
    *  blocked on a missing earning method, or not configured at all. The panel renders a notice for the two
    *  middle states so a 0.00 is never silent. Mirrors core/read.ts. */

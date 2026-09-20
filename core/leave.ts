@@ -8226,6 +8226,95 @@ export function a2cFirstYearEntitledToDate(
   return round2(Math.min((entitledDays / 365) * daysWorked, entitledDays));
 }
 
+/**
+ * 845903a3 (r313) — THE DISPLAYED ENTITLEMENT: the year's allowance for THIS employee, prorated when they
+ * joined part way through the leave year, then rounded by the leave type's own ENTITLEMENT rounding rule.
+ *
+ * PURE, AND DISPLAY-ONLY BY CONSTRUCTION. It returns a figure and the working behind it. It writes
+ * nothing, it is not consulted by any granting engine or by the projection kernel, and its rounding
+ * configuration is deliberately absent from `leaveTypeRuleColumns` — a rule the grant engine reads and
+ * the kernel does not is the permanent oscillating delta that map exists to prevent. The reporter's
+ * requirement is the same statement from the other side: EARNED TO DATE MUST NOT CHANGE.
+ *
+ * THE ARITHMETIC IS `a2cFirstYearEntitledToDate`, NOT A COPY OF IT. That helper already computes
+ * min((entitled / 365) x days-from-hire-to-31-Dec-inclusive, entitled) — the reporter's formula to the
+ * decimal, including their 1 January case (365/365) and with a clamp that keeps a leap-year first year
+ * from overshooting the annual figure. Restating it here would be a second definition of the one sum
+ * this item exists to surface.
+ *
+ * ⚠️ THE GATE IS THE ROLE, NOT THE CODE, AND THAT DISTINCTION IS THE WHOLE FEATURE ON THIS TENANT.
+ * `isA2cFirstYear` keys on the literal code 'ANNUAL'. Production's live Annual Leave is coded `AL`
+ * ("*Annual Leave") — the seeded `ANNUAL` row is ARCHIVED — so gating on that helper would have shipped
+ * a column that prorates nothing for the only type the reporter actually uses. `isEarnedAccrualType`
+ * asks `leave_type.role` first and falls back to the seeded code, which is precisely the fix 65f466e2
+ * made for the earned sweep after the same trap ("a tenant's own Annual Leave on a code the pack never
+ * seeded could never accrue a day").
+ *
+ * `isA2cFirstYear` ITSELF STAYS UNTOUCHED. It decides HOW MANY DAYS PEOPLE RECEIVE; moving it to the
+ * role moves day counts and is a separate, recorded change. This function decides only what a column
+ * says, so it may use the better predicate without moving anybody's balance.
+ *
+ * ROUNDING IS APPLIED ONLY WHEN PRORATION HAPPENED. An entitlement taken straight from the table is the
+ * number the administrator configured; a display rule has no business altering it, and the plan promised
+ * in writing that an employee who joined in an earlier year sees nothing change but the column's name.
+ */
+export type DisplayEntitlement = {
+  /** The table figure, before anything is done to it. Named as the reporter asked: never "entitlement". */
+  annualEntitlementDays: number;
+  prorated: boolean;
+  /** Hire date through the end of the leave year, both ends included. null when no proration applies. */
+  eligibleCalendarDays: number | null;
+  /** The divisor. 365 per the reporter's spec and the kernel's own a2c helper. null when not prorated. */
+  daysInLeaveYear: number | null;
+  unroundedEntitlementDays: number;
+  displayEntitlementDays: number;
+  roundingApplied: boolean;
+};
+
+export function displayEntitlementFor(p: {
+  type: { role?: string | null; code?: string | null };
+  annualEntitlementDays: number;
+  hiredOn: string;
+  cycleStart: string;
+  asOf: string;
+  serviceEnd?: string | null;
+  rounding?: { method?: string | null; threshold?: string | number | null; bands?: unknown } | null;
+}): DisplayEntitlement {
+  const annual = round2(p.annualEntitlementDays);
+  const flat: DisplayEntitlement = {
+    annualEntitlementDays: annual,
+    prorated: false,
+    eligibleCalendarDays: null,
+    daysInLeaveYear: null,
+    unroundedEntitlementDays: annual,
+    displayEntitlementDays: annual,
+    roundingApplied: false,
+  };
+  // Only the tenant's Annual Leave prorates. SICK and HOSPITALIZATION are per-calendar-year entitlements
+  // under EA-1955 s.60F and must reach a mid-year joiner IN FULL — day-slicing them would understate a
+  // statutory floor, which is the same reason isA2cFirstYear carries an annual-only guard of its own.
+  if (!isEarnedAccrualType(p.type)) return flat;
+  if (annual <= 0) return flat;
+  // Joined before this leave year opened ⇒ the whole year's allowance, untouched and unrounded.
+  if (!(p.hiredOn > p.cycleStart)) return flat;
+
+  const unrounded = a2cFirstYearEntitledToDate(p.hiredOn, p.asOf, annual, p.serviceEnd ?? null);
+  const yearEnd = `${p.hiredOn.slice(0, 4)}-12-31`;
+  const end = p.serviceEnd != null && p.serviceEnd < yearEnd ? p.serviceEnd : yearEnd;
+  const rounded = round2(
+    applyRounding(unrounded, p.rounding?.method ?? null, p.rounding?.threshold ?? null, p.rounding?.bands),
+  );
+  return {
+    annualEntitlementDays: annual,
+    prorated: true,
+    eligibleCalendarDays: Math.max(0, daysBetween(p.hiredOn, end) + 1),
+    daysInLeaveYear: 365,
+    unroundedEntitlementDays: unrounded,
+    displayEntitlementDays: rounded,
+    roundingApplied: rounded !== unrounded,
+  };
+}
+
 /** Anniversary to Calendar (f3a64d90): is this (type, employee, asOf) inside the ONE window where a2c
  *  behaves differently from a plain calendar type — the employee's HIRE year, on ANNUAL only?
  *

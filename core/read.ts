@@ -45,6 +45,8 @@ import {
   isAccrualUnconfigured,
   resolveLeaveYearCycle,
   isLeaveEligible,
+  displayEntitlementFor,
+  type DisplayEntitlement,
   resolveCarryBreakdown,
   // r303 (31492f74) — the Leave Summary explanation reads the engine's own join-year and carry decisions
   // rather than restating them.
@@ -3192,6 +3194,12 @@ export type LeaveEntitlementBreakdown = {
    *  ledger-derived: the ledger records what has been granted, never what a full year would grant. 0 when no
    *  policy resolves for this (type, grade, company) — i.e. the employee holds the type but earns nothing on it. */
   eligibleDays: number;
+  /** 845903a3 (r313) — THE ENTITLEMENT COLUMN'S figure and the working behind it: the table allowance,
+   *  whether it was prorated, the eligible calendar days and divisor, the unrounded result and the final
+   *  rounded one. `eligibleDays` above is deliberately unchanged and still means the whole year's
+   *  allowance — every grant and projection resolves against THAT, and this is derived from it for one
+   *  column and its explanation. See displayEntitlementFor for why it is display-only by construction. */
+  entitlement: DisplayEntitlement;
   // ── 31e39d74: why this figure is what it is ────────────────────────────────────────────────────────
   /** Whether the entitlement behind these figures has been GENERATED, is configured-but-not-yet-generated,
    *  is blocked on a missing earning method, or is simply not configured. Derived from three facts, none of
@@ -3385,12 +3393,19 @@ export function leaveEntitlementBreakdown(
       tx
         // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
         // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride,
+          // 845903a3 (r313) — the ENTITLEMENT rounding trio, named here rather than added to
+          // `leaveTypeRuleColumns`. That map exists so the granting engines and the projection kernel
+          // read the IDENTICAL rule set; a rule one reads and the other does not posts a permanent
+          // oscillating delta on every reproject. These three must never reach a ledger write — the
+          // item's whole promise is that Earned to Date does not move — so they ride THIS read only.
+          entitlementRoundingMethod: leaveType.entitlementRoundingMethod, entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold, entitlementRoundingBands: leaveType.entitlementRoundingBands,
+          ...leaveTypeRuleColumns })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
       tx
-        .select({ hiredOn: employment.hiredOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle })
+        .select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle })
         .from(employment)
         .innerJoin(company, eq(company.id, employment.companyId))
         .where(eq(employment.id, employmentId))
@@ -3728,6 +3743,30 @@ export function leaveEntitlementBreakdown(
     const eligibleDays = r2(policy?.days ?? 0);
 
     /**
+     * 845903a3 (r313) — THE DISPLAYED ENTITLEMENT. `eligibleDays` above is the year's allowance from the
+     * entitlement table, which is what the column headed "Full Entitlement" has always shown. For an
+     * employee who joined part way through the leave year that is not their entitlement FOR THIS YEAR,
+     * and the reporter asked for the column to say what it claims to.
+     *
+     * The arithmetic is the kernel's own a2c helper, not a copy — see displayEntitlementFor. Nothing here
+     * is written anywhere: `eligibleDays` is still what every grant, projection and accrual reads, and
+     * this is a second figure DERIVED from it for one column and its explanation.
+     */
+    const entitlementView = displayEntitlementFor({
+      type,
+      annualEntitlementDays: eligibleDays,
+      hiredOn: emp.hiredOn,
+      cycleStart,
+      asOf,
+      serviceEnd: emp.terminatedOn,
+      rounding: {
+        method: type.entitlementRoundingMethod,
+        threshold: type.entitlementRoundingThreshold,
+        bands: type.entitlementRoundingBands,
+      },
+    });
+
+    /**
      * r303 (31492f74) — HR's per-line working, assembled ONLY when asked and ONLY from what this read already
      * holds: the winner and band `eligibleDays` came from, the policy every rule came from, and the records the
      * ledger walk above pushed beside each figure. The single extra read is the Leave Credit register, asked
@@ -3832,6 +3871,10 @@ export function leaveEntitlementBreakdown(
       // against (`policy`), so Eligible and the accrual that lands in the ledger can never describe
       // different policies.
       eligibleDays,
+      // 845903a3 (r313) — the prorated, rounded figure the ENTITLEMENT column renders, plus the working
+      // the Explain panel prints. `eligibleDays` above is deliberately still returned unchanged: it is
+      // what the grant engines resolve against, and every existing consumer of it keeps its meaning.
+      entitlement: entitlementView,
       // 31e39d74: the state behind the figure, and the table it came from. Both DESCRIBE the tenant's own
       // configuration — nothing here changes it (the plan is explicit: surface, do not fix silently).
       entitlementStatus,

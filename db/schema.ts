@@ -1594,6 +1594,23 @@ export const leaveType = pgTable('leave_type', {
   //     'none' is dormant, not deleted — the reporter can switch Custom Rounding off and on without
   //     retyping the table, the same containment `rounding_threshold` already has.
   roundingBands: jsonb('rounding_bands'),
+  //   entitlementRounding{Method,Threshold,Bands} — 845903a3 (migration 0475): the SECOND rounding
+  //     configuration, applied only to the DISPLAYED Entitlement figure after proration. Identical shape
+  //     to the trio above on purpose: applyRounding takes its configuration as arguments, so the same
+  //     evaluator and the same checkRoundingBands validator serve both with no change to either.
+  //
+  //     ⚠️ DELIBERATELY NOT IN `leaveTypeRuleColumns`. That map exists so the granting engines and the
+  //     projection kernel read the IDENTICAL rule set; a rule one reads and the other does not posts a
+  //     permanent oscillating delta on every reproject (7cd914b1, twice). These three must never reach a
+  //     ledger write — the whole point of the item is that Earned to Date does not move — so the one read
+  //     that renders the figure selects them explicitly instead.
+  //
+  //     NULL method ⇒ no entitlement rounding ⇒ the exact prorated figure is shown. Method AND bands are
+  //     both required to round, the same containment the accrual trio has: a table with the method back
+  //     on 'none' is dormant, not deleted.
+  entitlementRoundingMethod: text('entitlement_rounding_method').$type<'none' | 'up' | 'down' | 'nearest_half' | 'custom'>(),
+  entitlementRoundingThreshold: numeric('entitlement_rounding_threshold', { precision: 4, scale: 3 }),
+  entitlementRoundingBands: jsonb('entitlement_rounding_bands'),
   //   accrualDay — bc36c768 (migration 0375): the DAY OF THE MONTH Monthly Accrual credits on, 1..31
   //     (DB CHECK). NULL ⇒ day 1, which is what every pre-bc36c768 row means and what `accrualPeriods`
   //     has always hard-wired. Read ONLY by the 'earned_monthly' branch of `earnedToDateFor`; meaningless

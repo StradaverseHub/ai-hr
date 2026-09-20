@@ -42,8 +42,13 @@ export type LeaveBalanceRow = {
    *  production balance carried 0 when this shipped, so no displayed figure moved; test/r279-earned-and-full-
    *  entitlement.test.ts pins BOTH halves of that (equal at carry 0, apart by exactly the carry otherwise). */
   ytdEntitled: number | null;
-  /** r279 — FULL ENTITLEMENT: the whole leave year's allowance for this employee's company/grade/service
-   *  band, before proration, carry, adjustment or usage.
+  /** r279 — ENTITLEMENT: this employee's allowance FOR THIS LEAVE YEAR, before carry, adjustment or usage.
+   *
+   *  845903a3 (r313) — it was the whole year's band figure, "before proration", and the column was headed
+   *  "Full Entitlement" to say so. It is now PRORATED for an employee who joined part way through the
+   *  leave year, and rounded by the leave type's own Entitlement rounding rule, so the column says what
+   *  this person is entitled to this year. The label lost the word "Full" in all six locales for the same
+   *  reason. Earned to Date beside it is untouched — a different question, still answered the same way.
    *
    *  It is `bd.eligibleDays` PICKED, never recomputed. That field already resolves the winning entitlement
    *  band in `core/read.ts` and is what the Explain panel renders as `leave.breakdown.field.eligible`;
@@ -122,10 +127,14 @@ export type BalanceInput = {
 /** The subset of leaveEntitlementBreakdown this table consumes (null ⇒ no breakdown loaded for the type). */
 export type BreakdownInput = {
   monthlyAccruedToDate: number | null;
-  /** r279 — the winning policy's FULL-YEAR days (`LeaveEntitlementBreakdown.eligibleDays`), the Full
-   *  Entitlement column's one and only source. Required rather than optional so a call site that hands this
-   *  helper a hand-built breakdown cannot silently render an em dash where a band exists. */
+  /** r279 — the winning policy's FULL-YEAR days (`LeaveEntitlementBreakdown.eligibleDays`). No longer the
+   *  Entitlement column's source (see `entitlement` below), but still required: it is the figure the
+   *  proration is taken FROM, and several captions name it. */
   eligibleDays: number;
+  /** 845903a3 (r313) — the ENTITLEMENT column's source: the prorated, rounded figure plus its working.
+   *  Required rather than optional so a call site handing this helper a hand-built breakdown cannot
+   *  silently render an em dash where a band exists — the same reason `eligibleDays` is required. */
+  entitlement: { displayEntitlementDays: number };
   currentYearEntitlement: number;
   carriedForward: number;
   forfeited: number;
@@ -180,8 +189,12 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     // r279 — Earned to Date. `currentYearEntitlement` ONLY; see the field's doc above for why the
     // `+ bd.carriedForward` that used to be here is gone and why the field name did not change with the label.
     ytdEntitled: bd ? bd.currentYearEntitlement : null,
-    // r279 — Full Entitlement. A PICK off the breakdown, never a re-resolved band.
-    fullEntitlement: bd && showEligible ? bd.eligibleDays : null,
+    // r279 — ENTITLEMENT. A PICK off the breakdown, never a re-resolved band.
+    // 845903a3 (r313): the pick moved from `eligibleDays` (the table's whole-year allowance) to the
+    // prorated, rounded figure the kernel derives from it. Still a pick, still one resolver — the
+    // proration and its rounding happen in `displayEntitlementFor`, not here, so this file cannot
+    // become a second place the number is decided.
+    fullEntitlement: bd && showEligible ? bd.entitlement.displayEntitlementDays : null,
     // 31e39d74 — deliberately NOT gated by essView. It is not a figure: it is the reason a figure reads
     // 0.00, and hiding the reason while showing the zero is precisely the silence the reporter raised.
     // No breakdown loaded ⇒ 'not_configured' (we cannot claim a table exists), which shows no caption.

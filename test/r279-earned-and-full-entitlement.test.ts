@@ -61,6 +61,12 @@ const panelData = (over: Partial<PanelData['breakdown']> = {}): PanelData => ({
     asOf: '2026-09-14',
     cycleStart: '2026-01-01',
     eligibleDays: 18,
+    // 845903a3 (r313) — r279's proof is that Earned to Date and Entitlement are DIFFERENT figures.
+    // That survives proration unchanged: this fixture's employee joined before the leave year, so the
+    // Entitlement line still shows the 18.00 band against the 12.50 earned. If a later change makes
+    // these equal, r279's whole point has been lost, not merely this fixture.
+    entitlement: { annualEntitlementDays: 18, prorated: false, eligibleCalendarDays: null,
+      daysInLeaveYear: null, unroundedEntitlementDays: 18, displayEntitlementDays: 18, roundingApplied: false },
     entitlementStatus: 'granted',
     entitlementTemplateName: 'Executive Annual Leave',
     currentYearEntitlement: 12.5,
