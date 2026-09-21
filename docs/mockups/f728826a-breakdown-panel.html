@@ -1,0 +1,123 @@
+<meta charset="utf-8">
+<title>f728826a — Attendance Breakdown with the employee panel</title>
+<!--
+  Mockup for f728826a (Attendance Breakdown employee selection + frozen columns).
+
+  MEASURED IN THE SOURCE 2026-09-21:
+    components/collapsible-employee-panel.tsx — the two-column employee panel + workspace shell, built
+      once (49e7e0a2 / f3ae3245) and ALREADY mounted by five screens:
+        app/payroll/transaction-view/page.tsx   <- the very screen the reporter names as the model
+        app/payroll/transactions/fixed|tp1|zakat/page.tsx, app/admin/loans/page.tsx
+      It owns the grid so collapsing the panel gives its width to the workspace, carries search, and
+      persists open/closed in a cookie the server reads so first paint is already correct.
+    app/attendance/breakdown/page.tsx (22d67223) already has SIX stick() calls — Employee ID, Employee
+      Name and Date are already frozen while the other 26 columns scroll.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: two of the reporter's four requests are already built — the
+  frozen identity section, and the panel component itself. This is a mount plus a move of the date
+  range, not a new design; and it will behave exactly like Transaction View because it IS Transaction
+  View's component.
+
+  WHAT IS DELIBERATELY NOT DRAWN: all 29 columns, and real figures. The columns and their order are the
+  screen's own; the values are illustrative and the caption says so.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+        --primary:#4f46e5;--newbg:#eef2ff;--newfg:#4338ca;--okbg:#f0fdf4;--okfg:#15803d;--dead:#e9eaf2}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .new{background:var(--newbg);color:var(--newfg)} .ok{background:var(--okbg);color:var(--okfg)}
+  .row{display:flex;gap:12px}
+  .panel{flex:0 0 250px;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fbfbfe}
+  .work{flex:1;min-width:0;border:1px solid var(--border);border-radius:12px;padding:10px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:11.5px;color:var(--mf);background:#fff}
+  .emp{padding:6px 8px;border-radius:8px;font-size:12px}
+  .emp.sel{background:var(--newbg);color:var(--newfg);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 6px;background:var(--muted);white-space:nowrap}
+  td{padding:5px 6px;border-top:1px solid var(--border);white-space:nowrap}
+  .frozen{background:#eef2ff}
+  .gutter{background:repeating-linear-gradient(45deg,var(--dead),var(--dead) 6px,#f3f4fa 6px,#f3f4fa 12px);
+          border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--mf);padding:10px}
+</style>
+
+<div class="card">
+  <h1>Attendance Breakdown today</h1>
+  <p class="sub">One wide filter row across the top: pick an employee, type two dates, press View. To look
+    at the next person you come back up here and do it again.</p>
+  <div class="row" style="align-items:flex-start">
+    <div class="work" style="flex:1">
+      <div class="row" style="gap:8px">
+        <span class="inp" style="flex:1">Employee Name &nbsp;&#9662;</span>
+        <span class="inp">Date From</span><span class="inp">Date To</span>
+        <span class="inp" style="background:var(--primary);color:#fff;border-color:var(--primary)">View</span>
+      </div>
+      <table style="margin-top:10px">
+        <tr><th class="frozen">Employee ID</th><th class="frozen">Employee Name</th><th class="frozen">Date</th>
+            <th>Day</th><th>Shift</th><th>Check-in</th><th>Check-out</th><th>Lateness</th><th>OT Total</th></tr>
+        <tr><td class="frozen">1001</td><td class="frozen">Ahmad bin Ali</td><td class="frozen">01 Sep</td>
+            <td>Mon</td><td>S1</td><td>08:02</td><td>17:30</td><td>2</td><td>0.50</td></tr>
+      </table>
+      <p class="note">The identity columns are <strong>already frozen</strong> &mdash; that part of the
+        request is built.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>After <span class="pill new">proposed</span></h2>
+  <p class="sub">The same panel Payroll &rsaquo; Transaction View uses &mdash; the same component, so it
+    searches, highlights and collapses identically.</p>
+  <div class="row" style="align-items:stretch">
+    <div class="panel">
+      <div style="font-size:11px;font-weight:700;color:var(--mf);text-transform:uppercase;letter-spacing:.04em">Employees</div>
+      <div class="inp" style="margin:8px 0;display:block">Search name or ID&hellip;</div>
+      <div class="emp">1001 &middot; Ahmad bin Ali</div>
+      <div class="emp sel">1002 &middot; Siti binti Rahman</div>
+      <div class="emp">1003 &middot; Kumar a/l Raj</div>
+      <div class="emp">1004 &middot; Mei Ling Tan</div>
+      <p class="note" style="margin-top:10px">Move between people without leaving the screen.</p>
+    </div>
+    <div class="work">
+      <div style="font-size:13px;font-weight:700">1002 &middot; Siti binti Rahman</div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <span class="inp">Date From &nbsp;01 Sep 2026</span>
+        <span class="inp">Date To &nbsp;18 Sep 2026</span>
+        <span class="inp" style="background:var(--primary);color:#fff;border-color:var(--primary)">View</span>
+      </div>
+      <table style="margin-top:10px">
+        <tr><th class="frozen">Employee ID</th><th class="frozen">Employee Name</th><th class="frozen">Date</th>
+            <th>Day</th><th>Shift</th><th>Check-in</th><th>Check-out</th><th>Lateness</th><th>OT Total</th></tr>
+        <tr><td class="frozen">1002</td><td class="frozen">Siti binti Rahman</td><td class="frozen">01 Sep</td>
+            <td>Mon</td><td>S1</td><td>08:00</td><td>17:31</td><td>0</td><td>0.52</td></tr>
+        <tr><td class="frozen">1002</td><td class="frozen">Siti binti Rahman</td><td class="frozen">02 Sep</td>
+            <td>Tue</td><td>S1</td><td>07:58</td><td>17:29</td><td>0</td><td>0.48</td></tr>
+      </table>
+      <p class="note">Figures are illustrative; the frozen columns and the 29-column table are the
+        screen's own and are unchanged.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What is already built, and what this adds</h2>
+  <table style="font-size:12.5px;table-layout:auto">
+    <tr><th style="width:44%">Your request</th><th>Status</th></tr>
+    <tr><td>Frozen employee identification when scrolling sideways</td>
+        <td><span class="pill ok">already built</span> Employee ID, Name and Date are already frozen</td></tr>
+    <tr><td>Left-side employee panel, with search and highlight</td>
+        <td><span class="pill ok">component exists</span> the one Transaction View uses &mdash; we mount it</td></tr>
+    <tr><td>Move between employees without leaving the screen</td>
+        <td><span class="pill new">comes with the panel</span></td></tr>
+    <tr><td>Date From / Date To / View in the main area</td>
+        <td><span class="pill new">we move these</span> out of the top filter row</td></tr>
+  </table>
+</div>

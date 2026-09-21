@@ -1,0 +1,99 @@
+<meta charset="utf-8">
+<title>72b100cd — PCB 2(II): which boxes we can fill</title>
+<!--
+  Mockup for 72b100cd (PCB 2(II) statutory form, English + Bahasa Malaysia).
+
+  READ FROM THE REPORTER'S OWN ATTACHMENTS, not from memory: PCB2II_Pin2012_2 - Eng Version.pdf and
+  - BM Version.pdf, both on the item. Section 2 is a twelve-month table with SIX columns under three
+  headings (Amount RM / Receipt No. / Receipt Date), each split MTD and CP38, plus a Total row.
+
+  MEASURED ON PRODUCTION 2026-09-21:
+    PCB (MTD) and CP38 are stamped per payslip (core/payroll.ts) — CP38 as a DISTINCT CP39 source with
+      its own LHDN instruction reference. employee_cp38 holds 2 instruction rows.
+    statutory_report holds 21 rows; my.cp39 has 6, and **every one is status=draft with no ack_ref and
+      no filed_on**. That table's ack_ref is the ONLY acknowledgement reference in the system, and it is
+      one per company+period — not split MTD vs CP38, and not per employee.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the money columns can be filled from payroll. The RECEIPT
+  columns cannot be filled from anything, today, for any month — and on a statutory form an empty box
+  asserts nothing while a 0.00 asserts the money does not exist. So they are drawn EMPTY, deliberately,
+  and the plan asks the reporter where those references should come from.
+
+  WHAT IS DELIBERATELY NOT DRAWN: the whole form. This is section 2 only — the part where the question
+  lives. Sections 1 and 3 and the signature block are in their own PDF and are not in dispute.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#c9cad6;
+        --okbg:#f0fdf4;--okfg:#15803d;--badbg:#fef2f2;--badfg:#b91c1c;--amberbg:#fffbeb;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid #e7e8f1;border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .ok{background:var(--okbg);color:var(--okfg)} .bad{background:var(--badbg);color:var(--badfg)}
+  table.form{width:100%;border-collapse:collapse;font-size:12px}
+  table.form th,table.form td{border:1px solid var(--border);padding:4px 7px;text-align:center}
+  table.form th{background:var(--muted);font-weight:600;font-size:10.5px}
+  td.m{text-align:left}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .blank{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 5px,#f2f2f5 5px,#f2f2f5 10px)}
+  .tot td{font-weight:700;border-top:2px solid var(--fg)}
+</style>
+
+<div class="card">
+  <h1>PCB 2(II) &mdash; Statement of Payment by Employer, section 2</h1>
+  <p class="sub">Your own form (PCB 2(II)-Pin. 2012), with what we can fill from payroll and what we cannot.</p>
+  <table class="form">
+    <tr>
+      <th rowspan="2">Year 2026</th>
+      <th colspan="2">Amount (RM) <span class="pill ok">we have this</span></th>
+      <th colspan="2">Receipt No./Bank Slip No./Transaction No. <span class="pill bad">not held</span></th>
+      <th colspan="2">Receipt Date/Transaction Date <span class="pill bad">not held</span></th>
+    </tr>
+    <tr><th>MTD</th><th>CP38</th><th>MTD</th><th>CP38</th><th>MTD</th><th>CP38</th></tr>
+    <tr><td class="m">January</td><td class="r">412.00</td><td class="r">150.00</td>
+        <td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+    <tr><td class="m">February</td><td class="r">412.00</td><td class="r">150.00</td>
+        <td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+    <tr><td class="m">March</td><td class="r">438.50</td><td class="r">150.00</td>
+        <td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+    <tr><td class="m">April &hellip; December</td><td class="r">&hellip;</td><td class="r">&hellip;</td>
+        <td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+    <tr class="tot"><td class="m">Total</td><td class="r">5,143.50</td><td class="r">1,800.00</td>
+        <td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+  </table>
+  <p class="note">Figures are illustrative. What is <strong>not</strong> illustrative is which columns are
+    shaded: those four are the ones nothing in your system can fill today.</p>
+</div>
+
+<div class="card">
+  <h2>Why the shaded columns are empty, and why we will not print a zero in them</h2>
+  <table class="form" style="font-size:12.5px">
+    <tr><th style="width:34%">What the form asks for</th><th>Where it would come from</th></tr>
+    <tr><td class="m">MTD amount, per month</td><td class="m">Your payroll. Already recorded on each payslip.</td></tr>
+    <tr><td class="m">CP38 amount, per month</td><td class="m">Your payroll. Recorded separately from MTD, with the
+      LHDN instruction reference it came from.</td></tr>
+    <tr><td class="m">Receipt / bank slip / transaction number</td>
+        <td class="m"><strong>Nowhere.</strong> That is the reference LHDN gives you when you PAY. The only
+          acknowledgement field in the system sits on the monthly CP39 return, and all six of your CP39
+          returns are still drafts with no reference and no filing date recorded.</td></tr>
+    <tr><td class="m">Receipt / transaction date</td>
+        <td class="m"><strong>Nowhere</strong>, for the same reason.</td></tr>
+  </table>
+  <p class="note">On a statutory form an empty box says &ldquo;we are not telling you this&rdquo;, and a
+    0.00 says &ldquo;the money does not exist&rdquo;. Those are different statements to LHDN, so we will
+    print the first and never the second.</p>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">The one thing we need from you</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    Tell us where the receipt numbers and payment dates should come from. Either <strong>you key them in
+    once per month</strong> when you pay LHDN &mdash; we would add those two fields to the monthly PCB
+    return you already have &mdash; or the form is issued with those columns blank for you to complete by
+    hand. We are not going to guess a receipt number onto a tax form.</p>
+</div>
