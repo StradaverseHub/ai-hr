@@ -3335,7 +3335,14 @@ export async function decideAttendanceCorrection(
           // the credit's Request Date. Passed rather than re-queried inside the accrual because the status
           // flip to 'approved' happens BELOW this call — a lookup would still see 'pending' and could not
           // identify the row it was looking for.
-          requestedOn: cor.createdAt.toISOString().slice(0, 10),
+          // ⚠️ THE KUALA LUMPUR DATE, NOT THE UTC ONE (r324). This read `cor.createdAt.toISOString()`,
+          // which is a DATE DERIVED FROM AN INSTANT IN UTC — the thing CLAUDE.md §8 forbids, and the
+          // exact defect r299 fixed one line away in core/toil.ts for `approvedOn`. For any correction
+          // filed between midnight and 08:00 in Malaysia it stamped the credit's Request Date A DAY
+          // EARLY, while the EXPIRY on the very same row was resolved in KL — so one accrual carried two
+          // dates that disagreed about what day it was. Found by a gate run that happened to start at
+          // 01:07 MYT; it passes for sixteen hours out of every twenty-four.
+          requestedOn: todayInKualaLumpur(cor.createdAt),
         });
       }
       deferredApproval = deferred;
@@ -3822,7 +3829,9 @@ async function applyApprovedOtPlanTx(
     employmentId: p.employmentId,
     workedDate: p.date,
     dayType: p.sched.dayType,
-    requestedOn: plan.createdAt.toISOString().slice(0, 10),
+    // The same UTC-from-an-instant defect as the correction path above, and fixed with it: a plan filed
+    // before 08:00 MYT stamped its credit's Request Date a day early.
+    requestedOn: todayInKualaLumpur(plan.createdAt),
   });
 
   return otMinutes;

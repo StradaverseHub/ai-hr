@@ -11,6 +11,7 @@
  * today/asOf are injected.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { and, eq, sql } from 'drizzle-orm';
 
 // ── 20e759a0: the three Next primitives setToilPolicyAction needs, and nothing else ─────────────────
@@ -374,12 +375,19 @@ describe('Request / approval dates on a banked credit (00307068)', () => {
       .select({ createdAt: schema.attendanceCorrection.createdAt })
       .from(schema.attendanceCorrection)
       .where(eq(schema.attendanceCorrection.id, cor.correctionId));
-    const requestDay = corrRow.createdAt.toISOString().slice(0, 10);
+    // ⚠️ THE KUALA LUMPUR DATE ON BOTH SIDES (r324). This derived the expected day with
+    // `.toISOString()` — a UTC date from an instant, which CLAUDE.md §8 forbids "fixtures included" —
+    // while the code resolves it in KL. The two agree for sixteen hours a day and disagree between
+    // midnight and 08:00 MYT, so this file passed every run that did not start in that window.
+    const requestDay = todayInKualaLumpur(corrRow.createdAt);
     expect(acc.requestedOn).toBe(requestDay);
     expect(acc.requestedOn).not.toBe(REST_DAY); // …and it is NOT the worked-day fallback
     expect(acc.approvedOn).not.toBeNull();
     // Approval is the anchor here too: the credit expires 90 days from the decision, never from the work.
-    const approvedDay = acc.approvedOn!.toISOString().slice(0, 10);
+    // Same correction here: the ANCHOR is the KL date of the approval, because that is what
+    // `resolveExpiry` is given (core/toil.ts, `approvedOnDate`). Ninety days from it is then plain
+    // calendar arithmetic on a date string, which carries no timezone at all.
+    const approvedDay = todayInKualaLumpur(acc.approvedOn!);
     expect(acc.expiresOn).toBe(
       new Date(Date.parse(`${approvedDay}T00:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10),
     );
