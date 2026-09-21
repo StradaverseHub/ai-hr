@@ -1,3 +1,28 @@
+## r320 (2026-09-21) — the Attendance Breakdown employee panel, mounted not designed. `main@09dff053`, **no migration**.
+
+Closed and DEPLOYED: `f728826a`. Gate: **932 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 09dff053, active, `GET /` 401.
+
+### TWO OF THE FOUR REQUESTS WERE ALREADY BUILT
+
+- The **frozen identity section** shipped with the screen (22d67223): Employee ID, Employee Name and Date were already sticky while the other twenty-six columns scrolled.
+- The **left-hand employee panel** already existed as `components/collapsible-employee-panel.tsx`, serving five screens — including `app/payroll/transaction-view/page.tsx`, **the very screen the reporter pointed at as the model**.
+
+So this round mounted a component rather than designing a picker, which is why the screen now behaves identically to Transaction View rather than merely resembling it. What was genuinely missing was the workflow: employee, Date From and Date To all sat in one filter row, so looking at the next person meant going back to the top and starting again.
+
+### THE THREE THINGS A MOUNT CAN STILL GET WRONG
+
+- **`selectParam="emp"`** keeps this screen's existing query parameter instead of taking the component's `employmentId` default, so a link or bookmark anybody already holds still opens the person it always did.
+- **The panel is fed from the SAME `listEmployees(s, scopeIds)` read** the dropdown used, and the selection is still re-guarded against that list before any read uses it. A panel-shaped list must not become a second, wider source of employees.
+- **Every caption is pre-translated.** A translator closure passed from this server component into that client one returns a 500 on every request while tsc, the suite and `next build` all stay green — the component's own LABELS note records it, and the guard now asserts it here too.
+
+The open/closed state is read from a cookie **on the server**, so the first paint is already correct rather than flashing open and folding; the cookie is this screen's own, so collapsing it says nothing about any other screen's.
+
+Rendered on a dev server: the panel with its search box, the old `<select name="emp">` gone, 29 table headers and 57 sticky cells intact, no `MISSING_MESSAGE`.
+
+### NOT DONE, AND ASKED RATHER THAN ASSUMED
+
+Further filtering of the employee list by company or department. The ticket mentions it in passing; the list is already scoped to the caller's own authorised companies, so a second filter layer on top of that is a deliberate decision and the plan put it to the reporter instead of guessing.
+
 ## r319 (2026-09-21) — three Attendance screens join the full-width set they were always meant to be in. `main@35028785`, **no migration**.
 
 Closed and DEPLOYED: `dde08629`. Gate: **932 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 35028785, active, `GET /` 401.
