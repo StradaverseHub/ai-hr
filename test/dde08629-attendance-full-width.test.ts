@@ -53,12 +53,35 @@ describe('dde08629 · the three screens are wide, and say so in the shared guard
 });
 
 describe('dde08629 · the identity columns stay put when the table scrolls', () => {
+  /**
+   * UPDATED BY f728826a (r322), NOT LOOSENED. This used to read
+   *
+   *   expect(src).toContain("stick('left-0', true)");
+   *   expect(src).toContain("stick('left-[7rem]', true)");   … and the two body cells
+   *
+   * which pinned the OFFSETS as literal Tailwind classes. Those offsets were the fault: neither sticky
+   * column had a WIDTH, so `left-[7rem]` was an assumption about how wide the code column happened to
+   * render, and when a value was wider the frozen columns painted over one another. The Breakdown screen
+   * showed it first; Daily carried the same unbacked arithmetic, masked by its min-width.
+   *
+   * The property this case protects — BOTH identity columns are frozen, header and body alike — is
+   * unchanged and asserted below. What changed is that the offset is now DERIVED from the declared widths
+   * (lib/sticky-columns.ts) instead of typed, so there is no literal left-* to assert any more. The
+   * nesting-free geometry itself is pinned in test/f728826a-sticky-columns.test.ts.
+   */
   it('Daily sticks Employee Code and Employee Name, header and body alike', () => {
     const src = codeOnly(read(DAILY));
-    expect(src).toContain("stick('left-0', true)");
-    expect(src).toContain("stick('left-[7rem]', true)");
-    expect(src).toContain("stick('left-0', false)");
-    expect(src).toContain("stick('left-[7rem]', false)");
+    expect(src, 'geometry comes from the shared source').toContain('placeStickyColumns');
+    // Two columns declared, in order, each with a width — which is what the old left-* values assumed
+    // and nothing established.
+    expect(src).toMatch(/\{ key: 'employeeCode', rem: \d+ \}/);
+    expect(src).toMatch(/\{ key: 'employeeName', rem: \d+ \}/);
+    // Header AND body, both columns: four sticky cells, each taking its geometry from STICKY.
+    expect(src).toContain('stick(true)');
+    expect(src).toContain('stick(false)');
+    expect((src.match(/style=\{STICKY\[\d\]\.style\}/g) ?? []).length, 'two headers + two body cells').toBe(4);
+    // And no hand-typed offset may come back.
+    expect(src, 'no literal sticky offset').not.toMatch(/left-\[\d/);
   });
 
   /**
@@ -68,7 +91,7 @@ describe('dde08629 · the identity columns stay put when the table scrolls', () 
    */
   it('every sticky cell carries an opaque background', () => {
     const src = codeOnly(read(DAILY));
-    const helper = src.slice(src.indexOf('const stick ='), src.indexOf('\n', src.indexOf('bg-card')));
+    const helper = src.slice(src.indexOf('const stick ='), src.indexOf('bg-card') + 'bg-card'.length + 4);
     expect(helper, 'the header ground').toContain('bg-muted');
     expect(helper, 'the body ground').toContain('bg-card');
     expect(helper, 'and it is genuinely sticky').toContain('sticky');

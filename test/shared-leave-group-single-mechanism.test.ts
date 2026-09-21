@@ -92,13 +92,41 @@ describe('1ef1cf95 · exactly one table pair groups leave types for sharing', ()
     );
   });
 
-  it('only the leave engine and its own config module touch those tables', () => {
-    // Was ['benefit-scheme.ts', 'leave.ts'] — the config half moved OUT of benefit-scheme.ts into a module
-    // of its own when the group stopped being a property of a scheme. Still exactly two files: one that
-    // configures, one that enforces.
+  /**
+   * EXACT SET, EXTENDED ONCE AND NAMED — not loosened.
+   *
+   * Was ['benefit-scheme.ts', 'leave.ts']; the config half moved OUT of benefit-scheme.ts into a module of
+   * its own when the group stopped being a property of a scheme. One that configures, one that enforces.
+   *
+   * a0b90c81 (r322) adds a THIRD ROLE that did not exist before: a READER. `core/read.ts` consults
+   * membership to decide whether a member type still draws its OWN balance card on employee self-service —
+   * because if a type's balance IS a placed pool's, a separate card for it says nothing the pooled card
+   * does not. That is display, and it is neither configuration nor enforcement.
+   *
+   * The set is extended rather than the assertion relaxed, and the READER IS CONSTRAINED BELOW: it may
+   * only read. The fault this whole file exists to prevent is a SECOND grouping mechanism, which is what a
+   * third file that WROTE these tables would be.
+   */
+  it('only the leave engine, its config module and the display reader touch those tables', () => {
     const coreFiles = readdirSync(resolve(here, '../core')).filter((f) => f.endsWith('.ts'));
     const touching = coreFiles.filter((f) => read(`../core/${f}`).includes('leaveSharedGroupMember'));
-    expect(touching.sort()).toEqual(['leave-shared-group.ts', 'leave.ts']);
+    expect(touching.sort()).toEqual(['leave-shared-group.ts', 'leave.ts', 'read.ts']);
+  });
+
+  it('the display reader only READS — a third writer would be a second mechanism', () => {
+    const src = read('../core/read.ts');
+    // Every write verb drizzle offers against these two tables. `read.ts` is a query module; if any of
+    // these ever appears there, membership has acquired a second owner and "which group owns this type"
+    // stops having one answer.
+    for (const table of ['leaveSharedGroupMember', 'leaveSharedGroup']) {
+      for (const verb of ['insert', 'update', 'delete']) {
+        expect(src, `core/read.ts must never ${verb} ${table}`).not.toMatch(
+          new RegExp(`\\.${verb}\\(\\s*${table}\\b`),
+        );
+      }
+    }
+    // And it must not re-derive placement: the one resolver is lib/leave-groups.
+    expect(src, 'placement is resolved in one place').toContain('resolveSharedGroupPlacement');
   });
 
   it('the retired scheme-level pair is gone from the schema, not merely unused', () => {

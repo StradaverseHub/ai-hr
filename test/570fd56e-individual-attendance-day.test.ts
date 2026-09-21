@@ -22,6 +22,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const LIST = '/app/attendance/individual/page.tsx';
 const DAY = '/app/attendance/individual/[date]/page.tsx';
+/** dae7a10f — the one-action admin correction that now sits on that screen. */
+const ACTION = '/app/attendance/individual/[date]/actions.ts';
 const FORMAT = '/components/attendance-format.ts';
 const PERMISSIONS = '/lib/permissions.ts';
 
@@ -85,14 +87,42 @@ describe('570fd56e · the day screen is not a second source of anything', () => 
   });
 
   /**
-   * EDIT IS A LINK. A second write path to an attendance record would bypass the correction workflow's
-   * approval and attachment, which is how overtime changes with no trail.
+   * NO SECOND WRITE PATH TO AN ATTENDANCE RECORD. That was always the property; "Edit is a link" was how
+   * 570fd56e achieved it.
+   *
+   * dae7a10f (r322) — UPDATED, NOT DELETED, because it pinned a decision that has now been reversed on
+   * purpose. The screen DOES submit a form now: an administrator corrects the day in one action instead
+   * of raising a request and waiting for somebody else to approve it. What has NOT changed is the thing
+   * this case exists for. The action composes the SAME two services the two-step workflow calls —
+   * requestAttendanceCorrection then decideAttendanceCorrection — so approval still re-derives the day
+   * through the time engine and corrected OT still reaches payroll with the same trail. A direct write to
+   * `attendance` would have been the shorter diff and is exactly what is still forbidden.
+   *
+   * So the assertion moved from "there is no form" to "there is no write that skips the engine", which is
+   * what the original comment actually claimed. The refusals around it (self-approval, scope) live in
+   * test/dae7a10f-admin-day-correction.test.ts.
    */
-  it('has no write path of its own — no server action, no form post', () => {
+  it('has no write path of its own — every change goes through the correction services', () => {
     const day = codeOnly(read(DAY));
-    expect(day.includes("'use server'")).toBe(false);
-    expect(day.includes('<form'), 'the day screen submits nothing').toBe(false);
-    expect(day.includes('/attendance/requests'), 'Edit points at the existing correction flow').toBe(true);
+    // The PAGE is still a server component with no inline action; the action is its own module.
+    expect(day.includes("'use server'"), 'the page declares no server action of its own').toBe(false);
+    for (const forbidden of ['.update(attendance', 'db.insert', 'recordAttendance']) {
+      expect(day.includes(forbidden), `${forbidden} would bypass the engine`).toBe(false);
+    }
+
+    const action = codeOnly(read(ACTION));
+    expect(action.includes('requestAttendanceCorrection'), 'the request half').toBe(true);
+    expect(action.includes('decideAttendanceCorrection'), 'the decide half').toBe(true);
+    expect(
+      action.indexOf('requestAttendanceCorrection(') < action.indexOf('decideAttendanceCorrection('),
+      'request, then decide — never the other way round',
+    ).toBe(true);
+    for (const forbidden of ['.update(attendance', 'db.insert', 'recordAttendance']) {
+      expect(action.includes(forbidden), `${forbidden} in the action would bypass the engine`).toBe(false);
+    }
+
+    // And a non-admin still gets the link to the workflow they already use.
+    expect(day.includes('/attendance/requests'), 'Edit still points at the existing correction flow').toBe(true);
   });
 
   it('is registered as a guarded route, so the access grid covers it', () => {
