@@ -1,3 +1,48 @@
+## r322 (2026-09-21) — five approved items, and two that their own plans stopped. `main@d1524110`, **no migration**.
+
+Closed and DEPLOYED: `f728826a`, `0fe1ca2e`, `a0b90c81`, `a57f0584`, `dae7a10f`. Gate: **937 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
+
+BLOCKED rather than built: `07ebd04d`, `8cd601d0`, `fdfd8ec7` — each on a question only the reporter can answer, all three measured on production first.
+
+### THE ONE THAT WAS NOT A LIFT, AND THE REPORT THAT CAUGHT IT
+
+`07ebd04d`'s own approved plan required a READ-ONLY comparison before any migration, and it earned its place. Schedule Group **"Standard" holds five shifts that disagree about Saturday**: three ignore it, `AM02` makes it a HALF day, `MB28 SAG MORNING FULL` makes it an OFF day. A group cannot own a working week until somebody says which week it is, and picking one would have silently changed who is rostered on Saturdays.
+
+Put to the reporter as two options with a recommendation: name the week, or — more likely — these are separate Schedule Groups wearing one name. `8cd601d0` is blocked behind it, because "assign by group, refuse a shift outside it" means nothing until the group carries the pattern.
+
+`fdfd8ec7` is a DATA task and its plan said so. Measured today: 75 active employees, **55 needing attention — 48 missing both gender and marital status, 7 missing gender only, none missing marital status alone**. That last figure is the useful one: it is one gap ("these profiles were never completed"), not two problems. Blocked on how they want the list delivered; it names individuals, so it was not pasted into a ticket.
+
+### THE REPORTED CAUSE WAS WRONG TWICE, AND BOTH PLANS SAID SO FIRST
+
+- **`a57f0584`** blamed the Roster filters for demanding choices before showing anything. They never did — `companyId` fell back to `companies[0].id` and the month defaulted. The fault was that the screen showed ONE COMPANY at a time: twelve companies, 75 employments spread 31/15/5/4/4/3/2/1 across nine of them, so Roster opened on about a third of the workforce. It now opens on every authorised company; the picker narrows rather than decides. Verified on a dev server: 6 + 2 = **8**, and the Company column appears only when more than one company is on screen.
+- **`f728826a`** reported overlapping columns as one fault. There were TWO, and fixing either alone still leaves overlap: `w-full` squeezed 29 nowrap columns below content width, and three frozen columns sat at `left-0` / `left-[7rem]` / `left-[19rem]` with **no width on any of them**.
+
+### A PROXY THAT WAS WRONG IN BOTH DIRECTIONS
+
+`f728826a`'s real lesson. `7 + 12 = 19` held only if the first two columns really were 7rem and 12rem, and nothing made them so. The offset is no longer written down: `lib/sticky-columns.ts` derives it as the running sum of the declared widths, and the same number is applied as the width, so the two cannot disagree.
+
+The guards told the same story. `test/cp39-form.test.ts` (r321) counted `<form ` as a stand-in for "no form nests"; **verified, that count PASSES two genuinely nested forms when a third sibling is deleted in the same change**. `test/dde08629` pinned Daily's `left-[7rem]` literal — the very assumption that was the bug. Both now measure the property instead of a symptom of it.
+
+### THE SWITCH THAT COULD NOT DO WHAT WAS PROMISED
+
+`a0b90c81`. An earlier round promised to hide the six Special Leave reason cards. `visible_to_employee` hides a card AND removes the type from Request Leave — one flag, two consequences — so honouring that promise would have deleted every Special Leave reason from the apply dropdown, including the per-reason Apply buttons shipped alongside it. Reported back rather than worked around. A member of a PLACED shared pool now draws no card of its own: structural, so it cannot be misconfigured, and it covers a group created next year.
+
+Three things it does not touch, each pinned: the pooled figure (the summer reads with `includeHidden`, which is the requirement the reporter CONTESTED a revision-1 plan to get), applying, and HR's own screens.
+
+### CORRECTING A DAY WITHOUT WAITING, WHICH IS NOT THE SAME AS WITHOUT A RECORD
+
+`dae7a10f`. An administrator now fixes a day in one action. It calls `requestAttendanceCorrection` then `decideAttendanceCorrection` — the SAME services the two-step calls — never a direct write, because approval re-derives the day through the time engine so corrected OT reaches payroll. **The permission barrier the ticket assumed does not exist**: `assertCanDecide` blocks the SUBJECT, not the requester, so an admin deciding somebody else's correction was always allowed.
+
+⚠️ Self-correction still refuses, **and the request survives the refusal as pending** — the work is not lost, it needs another approver. An admin is very often also an employee; swallowing that refusal would let one approve their own overtime.
+
+### THE FALSE RED, TWICE, AND WHAT ACTUALLY CAUSED IT
+
+Chunks 7 and 10/11 first reported red with **zero AssertionErrors** — hook timeouts across unrelated suites, at 401s and **4416s against ~85s**. Cause measured, not guessed: **~208 MB of system memory free**. The 8 GB RAM disk starves an 18 GB machine. Re-run with `AIHR_RAMDISK_GB=0 VITEST_MAX_WORKERS=2` they passed in 106s and 160s **with identical test counts**. §4's rule held again: assertion count first, and a chunk with none is not evidence about the code.
+
+### NOT DONE
+
+`27605faa` (open, unplanned) and `72b100cd` (the PCB 2(II) form itself, still building from r321). No pagination was added to the widened Roster: the cross-company view is READ-ONLY — generate, copy and upload each need one company and withdraw with a reason — so the writable view holds exactly the rows it held before.
+
 ## r321 (2026-09-21) — what the employer actually PAID LHDN, which nothing here recorded. `main@f24fdbee`, **migration 0476**.
 
 `72b100cd` stays **building**, deliberately: this round ships the SOURCE for PCB 2(II), not the form. Deployed anyway rather than held — the payment references can be keyed from today, and gated code sitting unmerged is how main and production drift apart. Gate: **933 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 392/392**. Deployed: `exit_code=0`, `stale_build=0`, `GET /` 401, `pcb_payment` present, 392 applied on the box.
