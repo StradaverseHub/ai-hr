@@ -111,7 +111,10 @@ async function main() {
     for (const row of held) {
       const emp = empById.get(row.employmentId);
       if (!emp) continue;
-      if (isProfileEligible(t.eligibility as LeaveEligibility | null, emp)) {
+      // 'allow' — a reversal TAKES DAYS AWAY, so it may only fire on a fact we positively hold. An
+      // employee whose gender is blank is unplaced, not ineligible: the first production dry run would
+      // have stripped Annual Leave from 33 people on exactly that reading.
+      if (isProfileEligible(t.eligibility as LeaveEligibility | null, emp, 'allow')) {
         correct += 1;
         continue;
       }

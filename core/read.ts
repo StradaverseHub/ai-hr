@@ -2849,7 +2849,7 @@ export function leaveBalances(
       // On the reporting account that is 55 of 75 active employees, and it is why the plan said so in
       // plain words rather than letting them discover it: the fix is to fill the profiles in, not to
       // soften the gate.
-      if (!isProfileEligible(lt.eligibility as LeaveEligibility | null, emp)) continue;
+      if (!isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude')) continue;
       out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null, share: 0, pendingShare: 0 });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
