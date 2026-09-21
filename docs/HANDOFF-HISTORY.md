@@ -1,3 +1,45 @@
+## r323 (2026-09-21) — PCB 2(II), the form r321 left building. `main@0c362da9`, **no migration**.
+
+Closed and DEPLOYED: `72b100cd`. Gate: **938 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, GREEN ON THE FIRST PASS. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed on the second attempt (see below): `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
+
+r321 built the SOURCE and said in as many words that the form would follow; the item stayed `building` rather than being closed on a half-delivery. This closes it.
+
+### BUILT FROM THE SPECIMENS, NOT FROM THE TICKET'S PROSE
+
+The reporter attached LHDN's own English and BM sheets. Both were extracted from `feedback_attachment` and read page by page before anything was written — `\copy` corrupts them, so the base64 route from r321 was reused (exact byte counts, valid `%%EOF`). Three things came out of reading them that the ticket does not say:
+
+- **The English sheet heads a column MTD; the Malay sheet heads the same column PCB.** Same figure, two official names. The BM sheet also says `Kepada:`, not `To:`. Anyone tidying those into one label is changing what the form says.
+- The first column is headed **"Year"** on the English sheet and **"Bulan"** on the Malay one — transcribed as published rather than corrected.
+- The Total row is boxed under the two Amount columns **only**.
+
+### AN EMPTY BOX AND A ZERO ARE DIFFERENT STATEMENTS TO LHDN
+
+Carried end to end rather than asserted once. An amount is `number | null`: a month with no payroll prints **nothing**; a month whose payroll ran and deducted nothing prints **0.00**. The totals follow — twelve absent months total to NOTHING, because summing them to `0.00` would turn twelve absent statements into one positive claim that no tax was deducted all year. Every amount goes through `pcb2iiAmount()` and **the renderer contains no `toFixed` at all**, which is pinned.
+
+### THE DATING RULE IS CP39's, IMPORTED
+
+Both forms report the same deductions to the same body, so a second dating rule here would let two of our own documents disagree about which month a month's tax belongs to. `cp39DeductionPeriodFor`'s own header warns exactly this, and the test pins both that it is imported and that `epfContributionPeriodFor` is nowhere near it.
+
+### SECTION 3 IS EMPTY BY REFUSAL
+
+The third table wants prior-year income and the MTD attributable to it. `back_pay_line.affected_period` can identify such arrears, but PCB is computed on a whole month's pay and splitting it would be **an apportionment nobody performed, printed on a tax document**. Measured on production: zero back-pay lines whose affected period is an earlier year. The three ruled rows print blank, as the published form ships them, and `priorYearRows` exists so there is one place to fill the day that attribution becomes real.
+
+### THE RENDER CHECK EARNED ITS PLACE AGAIN
+
+The picker reused the EA's `eaNoneForYear`, so an empty year on a PCB 2(II) screen said *"there is no **EA statement** to produce"*. It typechecked, the suite stayed green and `next build` stayed green. Only rendering the screen and reading the sentence showed it.
+
+Two layout faults were also caught by looking at the output beside the specimen: the sub-column rules ran up through the grouped headings and sliced them (`Receipt Date/Tr|ansaction`), and receipt references were being clipped — the identifier LHDN matches a payment by. Group boundaries now rule full height and sub-splits start below the heading; the receipt columns are the widest on the sheet.
+
+### DEPLOY FAILED ONCE, AND THE BOX'S OWN GUARD HELD
+
+First attempt: `next build` compiled in 106s then the **TypeScript worker was OOM-killed** (SIGKILL) on the 3.8 GB box, leaving `state=failed`, `exit_code=1`, `stale_build=1`. Production was untouched and still serving r322 — which is exactly what §7 says an OOM does. Re-run unchanged it succeeded. Worth remembering: the box has 3.8 GB and 3.8 GB of swap, and `next build` there is close enough to the edge that a transient spike loses it.
+
+### NOT DONE, AND SAID PLAINLY
+
+The **employee picker lists nobody on the demo tenant**, because its population is `my.cp8d` — and the EA screen, which has used that same population since r256, shows the identical empty state on the identical data. So this is pre-existing shared behaviour, not something this round introduced; it was verified by running both screens side by side rather than assumed. The part this round owns — read, model, labels, renderer, download route — was exercised end to end and returns valid PDFs in both languages.
+
+`branch` and the officer/designation/telephone block are rendered as the form's own blank ruled lines: nothing in this repo records an LHDN branch or a signing officer for this statement, and inventing either on a tax form is the one thing §8 forbids outright.
+
 ## r322 (2026-09-21) — five approved items, and two that their own plans stopped. `main@d1524110`, **no migration**.
 
 Closed and DEPLOYED: `f728826a`, `0fe1ca2e`, `a0b90c81`, `a57f0584`, `dae7a10f`. Gate: **937 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
