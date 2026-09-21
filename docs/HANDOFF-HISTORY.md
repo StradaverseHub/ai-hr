@@ -1,3 +1,27 @@
+## r319 (2026-09-21) — three Attendance screens join the full-width set they were always meant to be in. `main@35028785`, **no migration**.
+
+Closed and DEPLOYED: `dde08629`. Gate: **932 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 35028785, active, `GET /` 401.
+
+### NOT A NEW DESIGN, AND THE PLAN SAID SO BEFORE APPROVAL
+
+Eight Attendance screens already carried `pageWideCls` and were already pinned by `test/attendance-screens-layout.test.ts`. Employee Attendance and its Daily / Individual tabs were simply never added, so a sixteen-column table sat in a 72rem middle column with roughly a third of a wide monitor as empty margin either side — the reporter's complaint verbatim.
+
+**The guard list is as much the deliverable as the className.** af7a8eb4's own header records the hole: a screen can gain the layout without gaining the guard, and then lose it again silently. All three are declared in `WIDE_LIST_SCREENS` with the reason.
+
+### THE STICKY COLUMNS, AND WHERE THEY DO NOT BELONG
+
+Daily's Employee Code and Employee Name stay put while the other sixteen columns scroll, reusing 22d67223's `stick()` shape — **including the opaque background**, which is the part that looks broken rather than failing: a sticky cell is transparent by default and the scrolled columns slide visibly underneath it. Verified on a dev server: 18 sticky cells, all with a `bg-muted` or `bg-card` ground.
+
+Individual has no identity column to stick — one employee's own days, so the employee is the page rather than a column — and the guard asserts it does not pretend otherwise.
+
+### WHAT THE REPORTER ASKED FOR THAT HAS NOTHING TO DO
+
+Their point 3 asked for secondary filters behind a Filter button. Employee Attendance has a month stepper and two action links, not a bank of filter fields, so there is nothing to collapse. The plan said so in words rather than inventing a filter panel to fill the space, and nothing was built for it.
+
+### A GUARD CAUGHT ITS OWN AUTHOR
+
+The first draft of this round's test asserted that `app/admin/attendance/shift-form.tsx` stays narrow. It does not: 6340aecb widened it deliberately, because the Shift screen stopped being one column of boxes, and it sits in `WIDE_FORM_SCREENS`. The genuinely narrow one is the rule form. A "forms stay narrow" test that names the wrong form passes while the form it meant to protect is wide.
+
 ## r318 (2026-09-21) — a way in to the Special Leave reasons. `main@dbda227f`, **no migration**.
 
 Closed and DEPLOYED: `76dbcaa1` (partly — see what is NOT done). Gate: **931 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` dbda227f.
