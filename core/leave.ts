@@ -1493,21 +1493,43 @@ export function maternityAllowanceEligibility(
  * `isLeaveEligible` below is this plus the timing rules, so there is ONE definition of each half and the
  * apply gate keeps the exact behaviour it has always had.
  */
+/**
+ * ⚠️ WHAT AN UNRECORDED ATTRIBUTE MEANS, AND WHY EVERY CALLER MUST SAY. An employee whose gender is
+ * blank matches no configured list, so `'unknown'` decides whether a missing FACT counts as a missing
+ * QUALIFICATION. The two answers are both right, for different questions:
+ *
+ *   · `'exclude'` — hide it. Correct for a DISPLAY decision: showing a Maternity card to someone we
+ *     cannot place is worse than showing nothing, and the reporter was told in writing that an
+ *     incomplete profile loses the card.
+ *   · `'allow'`  — let it through. Mandatory for any decision that GRANTS OR TAKES AWAY DAYS. On the
+ *     reporting account 55 of 75 active employees have no gender recorded, and six live leave types
+ *     list ["male","female"] — which restricts nobody, and which `'exclude'` would read as excluding
+ *     almost the whole workforce. A year-open under that rule would grant those 55 nothing on six
+ *     types; a reversal sweep under it would take real Annual Leave off 33 people because a field is
+ *     blank. Both were caught by a production dry run, neither by the suite.
+ *
+ * There is no default. A caller that has not thought about it cannot compile.
+ */
+export type UnknownAttributePolicy = 'exclude' | 'allow';
+
 export function isProfileEligible(
   elig: LeaveEligibility | null | undefined,
   emp: ProfileEligibilityEmp | undefined,
+  unknown: UnknownAttributePolicy,
 ): boolean {
   if (!elig) return true;
   // Multi-select (#badc5966): qualify on ANY selected value within a field, AND across fields. `asList`
-  // normalizes a legacy scalar. An unrecorded attribute reads as '' and therefore does NOT match a
-  // configured list — see the note in leaveBalances about what that means for an incomplete profile.
-  const genders = asList(elig.gender);
-  if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) return false;
-  const maritals = asList(elig.maritalStatus);
-  if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
+  // normalizes a legacy scalar.
+  const fails = (configured: readonly string[], value: string | null | undefined): boolean => {
+    if (configured.length === 0) return false; // no restriction on this field
+    const v = value ?? '';
+    if (v === '') return unknown === 'exclude'; // the fact is missing, not contradicted
+    return !configured.includes(v);
+  };
+  if (fails(asList(elig.gender), emp?.gender)) return false;
+  if (fails(asList(elig.maritalStatus), emp?.marital)) return false;
   for (const c of ORG_ASSIGNMENT_CRITERIA) {
-    const allowed = asList(elig[c.key]);
-    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) return false;
+    if (fails(asList(elig[c.key]), emp?.[c.key])) return false;
   }
   return true;
 }
@@ -1521,7 +1543,10 @@ export function isLeaveEligible(
   asOf: string,
 ): boolean {
   if (!elig) return true;
-  if (!isProfileEligible(elig, emp)) return false;
+  // 'exclude' preserves this gate's behaviour to the letter: it has always compared `emp.gender ?? ''`
+  // against the configured list, so an unrecorded attribute has always refused. Changing that here would
+  // silently widen who may APPLY for a restricted leave type.
+  if (!isProfileEligible(elig, emp, 'exclude')) return false;
   if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths))
     return false;
   // Probation gate (d6bdbd55) — mirrors assertEligible so reads hide a type the employee can't take.
@@ -7815,7 +7840,7 @@ export async function openLeaveYear(
          * Dated at `effectiveOn` like every other decision in this loop, though none of the identity
          * criteria is time-varying today; that keeps the pair consistent if one ever becomes so.
          */
-        if (!isProfileEligible(t.eligibility as LeaveEligibility | null, e)) {
+        if (!isProfileEligible(t.eligibility as LeaveEligibility | null, e, 'allow')) {
           skipped += 1;
           rows.push(logRow(e.employmentId, t.id, 'not_eligible'));
           continue;
