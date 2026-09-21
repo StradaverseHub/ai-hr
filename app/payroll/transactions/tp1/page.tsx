@@ -92,6 +92,9 @@ export default async function Tp1DeclarationPage({
     /** The selected assessment year. Server-owned (see the header); also written by adminSaveTp1Draft /
      *  adminSubmitTp1, which redirect back here after a save. */
     year?: string;
+    /** 27605faa — which month "+ Add New TP1" should open. 1–12; anything else falls back to the
+     *  current month, so a hand-edited URL cannot land a declaration in month 13. */
+    addMonth?: string;
     // Two independently paged listings sit below the header, so each carries its own page/size pair.
     dPage?: string;
     dSize?: string;
@@ -204,10 +207,35 @@ export default async function Tp1DeclarationPage({
     createdOn: r.createdOn,
   }));
 
-  // "+ Add New TP1" opens the SELECTED year at the current calendar month — a new declaration always
-  // needs a month now, and the month a reader means when they press Add on an open year is this one. A
-  // month already declared opens as an Edit through its own row, so Add never silently overwrites.
-  const addMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
+  /**
+   * 27605faa — "+ Add New TP1" now ASKS WHICH MONTH instead of assuming this one.
+   *
+   * THE REPORTED FAULT WAS NARROWER THAN THE TICKET SAID, and the plan said so before this was built. The
+   * deduction month was never fixed to the current month: each declaration belongs to a month, the form
+   * takes it from the `[month]` path segment, and any month is reachable by opening it. The one place it
+   * was imposed is HERE — this line read
+   *
+   *   const addMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
+   *
+   * so pressing Add went straight to the current month (or January on any other year) with nothing to
+   * change it. Keying March in April meant going the long way round. That constant WAS the whole fault.
+   *
+   * The current month is still the DEFAULT, because it is what a reader means most of the time; it is no
+   * longer the only reachable answer. A month already declared still opens as an Edit through its own
+   * row, so Add never silently overwrites.
+   */
+  const defaultAddMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
+  const askedAddMonth = Number(sp.addMonth ?? '');
+  const addMonth =
+    Number.isInteger(askedAddMonth) && askedAddMonth >= 1 && askedAddMonth <= 12
+      ? askedAddMonth
+      : defaultAddMonth;
+  /** The month names for the picker — through the screen's OWN `monthFmt`, so the Add control and the
+   *  list below can never name the same month two different ways. */
+  const addMonthOptions = Array.from({ length: 12 }, (_, i) => ({
+    value: i + 1,
+    label: monthFmt.format(new Date(Date.UTC(2000, i, 1))),
+  }));
 
   return (
     <div className={pageWideCls}>
@@ -238,6 +266,29 @@ export default async function Tp1DeclarationPage({
                   {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
                 </p>
               </div>
+              {/* 27605faa — the month rides a plain GET form beside the button. A form, not an onChange
+                  handler: the URL is the state on this screen already (year, employee and both pagers all
+                  live there), so the chosen month is shareable and survives a refresh like everything
+                  else. Submitting returns HERE with `addMonth` set; the button then opens that month. */}
+              <form method="get" className="flex items-end gap-2">
+                <input type="hidden" name="year" value={selectedYear} />
+                {selectedEmploymentId && (
+                  <input type="hidden" name="employmentId" value={selectedEmploymentId} />
+                )}
+                <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('tp1.addMonthLabel')}
+                  <select name="addMonth" defaultValue={String(addMonth)} className={inputCls}>
+                    {addMonthOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button type="submit" variant="outline" size="sm">
+                  {t('tp1.addMonthApply')}
+                </Button>
+              </form>
               <Button asChild size="sm">
                 <Link href={monthHref(selectedYear, addMonth)}>{t('tp1.addButton')}</Link>
               </Button>

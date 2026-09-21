@@ -8,6 +8,7 @@ import { employmentSubject } from '@/core/read';
 import {
   approveTp1ForPerson,
   cancelTp1ForPerson,
+  discardTp1DraftForPerson,
   rejectTp1ForPerson,
   saveTp1DraftForPerson,
   submitTp1ForPerson,
@@ -159,6 +160,69 @@ export async function adminRejectTp1(formData: FormData) {
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+rejected');
+}
+
+/**
+ * 27605faa — SUBMIT AND APPROVE IN ONE PRESS.
+ *
+ * The reporter asked not to reopen a second screen to approve what they had just keyed. What they should
+ * not have to do is make a second pass; what nobody skips is the record.
+ *
+ * ⚠️ IT COMPOSES THE SAME TWO SERVICES, IN ORDER, AND WRITES NO STATUS ITSELF. `submitTp1ForPerson` then
+ * `approveTp1ForPerson` — never a direct update — for the reason dae7a10f (r322) records about the
+ * attendance correction: `decide()` is what stamps the event, the approver and the approved month, and a
+ * second write path is how a money-affecting figure changes with no trail.
+ *
+ * ⚠️ AND WHEN THE APPROVAL IS REFUSED, THE SUBMISSION SURVIVES. An administrator approving their own
+ * declaration is refused by `approveTp1ForPerson` (see `refuseSelfApproval`), and at that point the row
+ * is already SUBMITTED. That is the correct outcome rather than an error to roll back: the work is not
+ * lost, it simply needs a second person — exactly what the two-step screen would have produced. The
+ * refusal is surfaced; it is never swallowed, because an administrator quietly approving their own tax
+ * relief is the one thing this press must not be able to do.
+ */
+export async function adminSubmitAndApproveTp1(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const input = readTp1FormInput(formData);
+  const personId = await resolveTarget(s, employmentId, input.assessmentYear);
+
+  let submitted: { id: string };
+  try {
+    submitted = await submitTp1ForPerson(s, { personId, ...input });
+  } catch (e) {
+    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+
+  try {
+    await approveTp1ForPerson(s, {
+      personId,
+      id: submitted!.id,
+      // The consent fields ride the same form; absent ones fall back inside the service to the
+      // declaration's own deduction month and assessment year rather than being invented here.
+      approvedMonth: formData.get('approvedMonth') as string | null,
+      approvedYear: formData.get('approvedYear') as string | null,
+      approverPosition: formData.get('approverPosition') as string | null,
+    });
+  } catch (e) {
+    // SUBMITTED, NOT APPROVED — and the message says which, so the operator knows the work is safe.
+    revalidatePath('/payroll/transactions/tp1');
+    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted+and+approved');
+}
+
+/** 27605faa — discard a DRAFT. Distinct from cancel, which is for a submitted or approved row. */
+export async function adminDiscardTp1Draft(formData: FormData) {
+  const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);
+  try {
+    await discardTp1DraftForPerson(s, input);
+  } catch (e) {
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, assessmentYear, 'toast=Draft+discarded');
 }
 
 export async function adminCancelTp1(formData: FormData) {

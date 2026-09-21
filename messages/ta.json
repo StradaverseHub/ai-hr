@@ -5066,7 +5066,12 @@
         "yearLabel": "மதிப்பீட்டு ஆண்டு",
         "viewYear": "ஆண்டைக் காட்டு",
         "monthSubtitle": "கழிவு மாதம் {month}, {year}",
-        "downloadForm": "படிவத்தைப் பதிவிறக்கு"
+        "downloadForm": "படிவத்தைப் பதிவிறக்கு",
+        "addMonthLabel": "பிடித்த மாதம்",
+        "addMonthApply": "அமை",
+        "discardButton": "வரைவை நீக்கு",
+        "discardTitle": "இந்த வரைவை நீக்கவும். எதுவும் அறிவிக்கப்படவில்லை, எனவே எதுவும் இழக்கப்படாது.",
+        "submitApproveButton": "சமர்ப்பித்து அனுமதிக்கவும்"
       },
       "zakat": {
         "title": "ஜகாத்",

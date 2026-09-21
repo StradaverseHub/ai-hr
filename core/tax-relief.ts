@@ -1402,9 +1402,43 @@ export type Tp1DecisionInput = {
   approverPosition?: string | null;
 };
 
+/**
+ * 27605faa — AN ADMINISTRATOR MAY NOT APPROVE THEIR OWN TAX RELIEF.
+ *
+ * ⚠️ THIS CLOSES A HOLE THAT WAS ALREADY OPEN, and the item's plan said so in writing before it was
+ * approved. `requireAdminTarget` checks `isAdmin(ctx)` and NOTHING ELSE — no self test — so until now an
+ * HR administrator could approve their own TP1 declaration. TP1 relief reduces PCB, which is money, and
+ * every other approval in this product already refuses a decider who is the subject: attendance
+ * (`assertCanDecide`, core/approvals.ts) and leave both do.
+ *
+ * Nobody had walked through it — measured on production 2026-09-21, two approvals carry an approver and
+ * ZERO are self-approved — which is exactly why it was safe to close: it breaks nothing that exists. The
+ * reason it belongs in THIS item is that the same round adds a one-press "submit and approve", and a
+ * one-press hole is a very different thing from a two-screen one.
+ *
+ * THE RULE IS `assertCanDecide`'s, MIRRORED INCLUDING ITS ESCAPE HATCH: blocked for an hr_admin, allowed
+ * for a super_admin, so a company whose only administrator is also an employee is not stranded with a
+ * declaration nobody can approve. Copying the shape rather than inventing a second one is deliberate —
+ * two spellings of "you may not decide your own" is how one of them quietly stops matching the other.
+ *
+ * ⚠️ IT LIVES HERE AND NOT IN THE COMBINED ACTION. Putting it in the one-press path would leave the
+ * two-step screen — the same buttons, one page apart — still able to do it.
+ */
+function refuseSelfApproval(ctx: SessionContext, subjectPersonId: string): void {
+  const roles = ctx.roles ?? [];
+  if (roles.includes('super_admin')) return;
+  if (ctx.personId != null && ctx.personId === subjectPersonId) {
+    throw new TaxReliefError(
+      'You cannot approve your own TP1 declaration — it has been submitted and needs a second person.',
+    );
+  }
+}
+
 /** Section F: the employer consents, and the declaration starts feeding payroll from `approvedMonth`. */
 export async function approveTp1ForPerson(ctx: SessionContext, p: Tp1DecisionInput): Promise<{ id: string }> {
   const personId = requireAdminTarget(ctx, p.personId);
+  // BEFORE the row is read, so the refusal cannot depend on what is in it.
+  refuseSelfApproval(ctx, personId);
   const current = await getTp1RowById(ctx, personId, p.id);
   if (!current) throw new TaxReliefError('That TP1 declaration was not found.');
   if (current.status !== 'submitted') {
@@ -1447,6 +1481,37 @@ export async function cancelTp1ForPerson(ctx: SessionContext, p: Tp1DecisionInpu
   if (!current) throw new TaxReliefError('That TP1 declaration was not found.');
   if (current.status !== 'submitted' && current.status !== 'approved') {
     throw new TaxReliefError('Only a submitted or approved TP1 declaration can be cancelled.');
+  }
+  return decide(ctx, personId, current, 'cancelled', 'tp1.cancelled', {});
+}
+
+/**
+ * 27605faa — DISCARD A DRAFT, which until now could not be removed by any means.
+ *
+ * THE GAP, and it is wider than the ticket reported. The ticket asked to "delete an existing TP1 Relief
+ * record". A submitted or approved one could already be CANCELLED (above) — the right answer for a tax
+ * record, because it keeps the history. A DRAFT could not: `cancelTp1ForPerson` refuses anything that is
+ * not submitted or approved, so a draft somebody started and abandoned stayed on the screen forever.
+ * Measured on production 2026-09-21: two such drafts, unreachable by any path.
+ *
+ * ⚠️ STILL NOT A ROW DELETE. `tp1_relief` is a tax record and its history is the point, so this writes
+ * status 'cancelled' through the SAME `decide()` writer the other three decisions use — which is what
+ * stops a new stamp reaching one path and not another, and what makes the discard show up in the event
+ * log as an act somebody performed rather than as a row that silently stopped existing.
+ *
+ * DRAFT AND ONLY DRAFT. A submitted declaration has been declared to the employer and an approved one is
+ * feeding payroll; both keep `cancelTp1ForPerson`, which is a different act with a different meaning.
+ * Refusing every other status here rather than widening the one above keeps those two meanings apart.
+ */
+export async function discardTp1DraftForPerson(
+  ctx: SessionContext,
+  p: Tp1DecisionInput,
+): Promise<{ id: string }> {
+  const personId = requireAdminTarget(ctx, p.personId);
+  const current = await getTp1RowById(ctx, personId, p.id);
+  if (!current) throw new TaxReliefError('That TP1 declaration was not found.');
+  if (current.status !== 'draft') {
+    throw new TaxReliefError('Only a draft TP1 declaration can be discarded.');
   }
   return decide(ctx, personId, current, 'cancelled', 'tp1.cancelled', {});
 }

@@ -5066,7 +5066,12 @@
         "yearLabel": "Assessment year",
         "viewYear": "View year",
         "monthSubtitle": "Deduction month {month}, {year}",
-        "downloadForm": "Download form"
+        "downloadForm": "Download form",
+        "addMonthLabel": "Deduction month",
+        "addMonthApply": "Set",
+        "discardButton": "Discard draft",
+        "discardTitle": "Remove this draft. Nothing has been declared, so nothing is lost.",
+        "submitApproveButton": "Submit and approve"
       },
       "zakat": {
         "title": "Zakat",

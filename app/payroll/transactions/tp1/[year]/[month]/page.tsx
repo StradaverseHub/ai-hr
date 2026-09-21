@@ -24,7 +24,9 @@ import {
   adminApproveTp1,
   adminCancelTp1,
   adminRejectTp1,
+  adminDiscardTp1Draft,
   adminSaveTp1Draft,
+  adminSubmitAndApproveTp1,
   adminSubmitTp1,
 } from '../../../deductions-actions';
 
@@ -158,6 +160,10 @@ export default async function Tp1DeclarationMonthPage({
 
       {/* The SHARED declaration form — identical to the employee's own screen, writing on-behalf, plus
           Section F, which only an admin session ever gets. */}
+      {/* 27605faa — `submitApproveAction` and `discardDraftAction` are ADMIN-ONLY and passed ONLY here.
+          /me/tax-relief renders this same component and omits both, so an employee never sees either
+          button; and if one were posted by hand, `requireAdmin` in the action and `requireAdminTarget` in
+          the service refuse it, with `refuseSelfApproval` behind those. Three layers, same as Section F. */}
       <Tp1DeclarationForm
         selectedYear={year}
         deductionMonth={formMonth}
@@ -183,6 +189,8 @@ export default async function Tp1DeclarationMonthPage({
         }
         saveDraftAction={adminSaveTp1Draft}
         submitAction={adminSubmitTp1}
+        submitApproveAction={adminSubmitAndApproveTp1}
+        discardDraftAction={adminDiscardTp1Draft}
         hiddenFields={hidden}
       />
 

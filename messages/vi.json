@@ -5066,7 +5066,12 @@
         "yearLabel": "Năm tính thuế",
         "viewYear": "Xem năm",
         "monthSubtitle": "Tháng khấu trừ {month}, {year}",
-        "downloadForm": "Tải biểu mẫu"
+        "downloadForm": "Tải biểu mẫu",
+        "addMonthLabel": "Tháng khấu trừ",
+        "addMonthApply": "Đặt",
+        "discardButton": "Huỷ bản nháp",
+        "discardTitle": "Xoá bản nháp này. Chưa có gì được kê khai nên không mất gì.",
+        "submitApproveButton": "Gửi và phê duyệt"
       },
       "zakat": {
         "title": "Zakat",

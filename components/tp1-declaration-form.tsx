@@ -160,6 +160,8 @@ export async function Tp1DeclarationForm({
   consent,
   saveDraftAction,
   submitAction,
+  submitApproveAction,
+  discardDraftAction,
   hiddenFields,
 }: {
   selectedYear: number;
@@ -183,10 +185,22 @@ export async function Tp1DeclarationForm({
   };
   saveDraftAction: Tp1Action;
   submitAction: Tp1Action;
+  /**
+   * 27605faa — SUBMIT AND APPROVE IN ONE PRESS. Admin-only, like Section F itself: it is supplied ONLY by
+   * the HR screen, so an employee cannot reach it even though they render the same editable form. Absent
+   * ⇒ the button is not drawn, which is what keeps /me/tax-relief unchanged.
+   */
+  submitApproveAction?: Tp1Action;
+  /** 27605faa — discard a DRAFT. Admin-only for the same reason, and drawn only while it IS a draft. */
+  discardDraftAction?: Tp1Action;
   /** Extra hidden inputs rendered inside the editable form (e.g. { employmentId } for the HR screen). */
   hiddenFields?: Record<string, string>;
 }) {
   const t = await getTranslations('taxRelief');
+  // 27605faa — the three new controls are the HR SCREEN's vocabulary, and their keys already live in
+  // `payroll.transactions.tp1` beside the Add-month picker that shares the same round. A second copy
+  // under `taxRelief` would be the same five strings twice, in six locales.
+  const tp1t = await getTranslations('payroll.transactions.tp1');
   const status = latest?.status ?? null;
   const isSubmitted = status === 'submitted';
   const isDecided = status === 'approved' || status === 'rejected' || status === 'cancelled';
@@ -544,6 +558,28 @@ export async function Tp1DeclarationForm({
               <Button type="submit" formAction={submitAction} form="tp1-form">
                 {t(isSubmitted || isDecided ? 'submitCorrection' : 'submit')}
               </Button>
+              {/* 27605faa — one press instead of two passes. Same form, same fields; the action behind it
+                  composes submit-then-approve rather than writing a status itself (see the action's own
+                  note). Rendered only for an admin, because only the HR screen passes it. */}
+              {submitApproveAction && (
+                <Button type="submit" formAction={submitApproveAction} form="tp1-form">
+                  {tp1t('submitApproveButton')}
+                </Button>
+              )}
+              {/* 27605faa — a DRAFT can now be removed. It sits with the editing buttons rather than
+                  beside Section F's Cancel, because discarding a draft and cancelling a declared one are
+                  different acts: nobody has been told about a draft. */}
+              {discardDraftAction && status === 'draft' && (
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  formAction={discardDraftAction}
+                  form="tp1-form"
+                  title={tp1t('discardTitle')}
+                >
+                  {tp1t('discardButton')}
+                </Button>
+              )}
             </div>
           </form>
         </>

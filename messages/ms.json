@@ -5066,7 +5066,12 @@
         "yearLabel": "Tahun taksiran",
         "viewYear": "Papar tahun",
         "monthSubtitle": "Bulan potongan {month}, {year}",
-        "downloadForm": "Muat turun borang"
+        "downloadForm": "Muat turun borang",
+        "addMonthLabel": "Bulan potongan",
+        "addMonthApply": "Tetapkan",
+        "discardButton": "Buang draf",
+        "discardTitle": "Buang draf ini. Tiada apa-apa telah diisytiharkan, jadi tiada yang hilang.",
+        "submitApproveButton": "Hantar dan luluskan"
       },
       "zakat": {
         "title": "Zakat",

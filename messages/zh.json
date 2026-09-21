@@ -5066,7 +5066,12 @@
         "yearLabel": "课税年度",
         "viewYear": "查看年度",
         "monthSubtitle": "扣除月份 {month}，{year}",
-        "downloadForm": "下载表单"
+        "downloadForm": "下载表单",
+        "addMonthLabel": "扣除月份",
+        "addMonthApply": "设定",
+        "discardButton": "丢弃草稿",
+        "discardTitle": "移除此草稿。尚未申报任何内容，不会有任何损失。",
+        "submitApproveButton": "提交并批准"
       },
       "zakat": {
         "title": "天课",

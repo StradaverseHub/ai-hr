@@ -5066,7 +5066,12 @@
         "yearLabel": "ปีภาษี",
         "viewYear": "ดูปี",
         "monthSubtitle": "เดือนที่หัก {month}, {year}",
-        "downloadForm": "ดาวน์โหลดแบบฟอร์ม"
+        "downloadForm": "ดาวน์โหลดแบบฟอร์ม",
+        "addMonthLabel": "เดือนที่หัก",
+        "addMonthApply": "ตั้งค่า",
+        "discardButton": "ทิ้งฉบับร่าง",
+        "discardTitle": "ลบฉบับร่างนี้ ยังไม่มีการแจ้งใด ๆ จึงไม่มีสิ่งใดสูญหาย",
+        "submitApproveButton": "ส่งและอนุมัติ"
       },
       "zakat": {
         "title": "ซะกาต",
