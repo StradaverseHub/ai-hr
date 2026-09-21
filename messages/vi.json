@@ -3926,7 +3926,8 @@
       "link_pcb2ii_hint": "Mỗi nhân viên một bản kê: thuế khấu trừ hằng tháng và biên lai tương ứng.",
       "desc_pcb2ii_en": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Anh. Chọn năm, rồi chọn nhân viên.",
       "desc_pcb2ii_ms": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Mã Lai. Chọn năm, rồi chọn nhân viên.",
-      "pcb2iiSelectHint": "Chọn những nhân viên cần bản kê. Mỗi người có một trang riêng."
+      "pcb2iiSelectHint": "Chọn những nhân viên cần bản kê. Mỗi người có một trang riêng.",
+      "pcb2iiNoneForYear": "Không có nhân viên nào tại {company} có dữ liệu lương cho năm {year}, nên không có thuế để kê khai trên PCB 2(II). Hãy chạy bảng lương của năm đó trước."
     },
     "ea": {
       "backToReports": "Báo cáo",

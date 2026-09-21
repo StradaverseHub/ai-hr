@@ -3926,7 +3926,8 @@
       "link_pcb2ii_hint": "Satu penyata bagi setiap pekerja: cukai yang dipotong setiap bulan dan resitnya.",
       "desc_pcb2ii_en": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Inggeris. Pilih tahun, kemudian pekerja.",
       "desc_pcb2ii_ms": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Malaysia. Pilih tahun, kemudian pekerja.",
-      "pcb2iiSelectHint": "Tandakan pekerja yang memerlukan penyata. Setiap seorang mendapat halaman sendiri."
+      "pcb2iiSelectHint": "Tandakan pekerja yang memerlukan penyata. Setiap seorang mendapat halaman sendiri.",
+      "pcb2iiNoneForYear": "Tiada pekerja di {company} mempunyai angka gaji bagi {year}, jadi tiada cukai untuk diisytiharkan dalam PCB 2(II). Jalankan gaji tahun tersebut dahulu."
     },
     "ea": {
       "backToReports": "Laporan",

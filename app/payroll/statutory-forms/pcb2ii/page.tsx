@@ -112,9 +112,12 @@ export default async function Pcb2iiEmployeeSelectionPage({
         <div className="px-4 py-4">
           {rows.length === 0 ? (
             /* An honest empty year beats a list of people whose statements would come out blank: this form
-               declares what was DEDUCTED, and a year with no payroll behind it has nothing to declare. */
+               declares what was DEDUCTED, and a year with no payroll behind it has nothing to declare.
+               ITS OWN MESSAGE, not the EA's — `eaNoneForYear` says "there is no EA statement to produce",
+               which is the wrong document's name on this screen. Caught by the render check, which is the
+               only place a reused key that TYPECHECKS reveals itself. */
             <p className="py-6 text-center text-sm text-muted-foreground">
-              {t('eaNoneForYear', { company: companyName, year })}
+              {t('pcb2iiNoneForYear', { company: companyName, year })}
             </p>
           ) : (
             <EaEmployeePicker
