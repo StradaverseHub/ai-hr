@@ -87,6 +87,20 @@ const WIDE_LIST_SCREENS = [
   // seventeen-column day table the Individual tab does. Listed from the start rather than after somebody
   // complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
   'app/attendance/my-records/page.tsx',
+  /**
+   * dde08629 (r319) — EMPLOYEE ATTENDANCE and its two sibling tabs, added on the same reasoning every
+   * entry above carries and on the identical complaint: at `mx-auto max-w-6xl` a sixteen-column table sat
+   * in a 72rem middle column while roughly a third of a wide monitor went unused.
+   *
+   * They are the reporter's "ADMIN › Attendance › Employee Attendance" and the Daily / Individual tabs
+   * beside it. Nothing about this was a new design — eight attendance screens already had the property
+   * and were already pinned here; these three were simply never added, which is exactly the hole
+   * af7a8eb4's header warns about: a screen can gain the layout without gaining the guard, and then lose
+   * it again silently.
+   */
+  'app/attendance/page.tsx',
+  'app/attendance/daily/page.tsx',
+  'app/attendance/individual/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.

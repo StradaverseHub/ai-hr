@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { attendanceMonthSummary, listAttendanceCorrections, resolveApprovedOt } from '@/core/attendance';
-import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { Pager } from '@/components/pager';
@@ -75,7 +75,12 @@ export default async function AttendancePage({
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
+      {/* dde08629 (r319) — FULL WIDTH, the same `pageWideCls` eight other Attendance screens already use
+          and test/attendance-screens-layout.test.ts already pins for them. These three were simply never
+          added: at `mx-auto max-w-6xl` a sixteen-column table sat in a 72rem middle column with roughly a
+          third of a wide monitor as empty margin either side — the reporter's complaint verbatim. The
+          one-column rule form stays capped on purpose; see NARROW_FORM_SCREENS in that guard. */}
       <div data-tour="attendance-intro">
         <PageHeader
           title={t('title')}

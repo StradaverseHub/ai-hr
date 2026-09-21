@@ -4,7 +4,7 @@ import { attendanceForDate } from '@/core/attendance';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listCompanies, listDepartments } from '@/core/read';
-import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
 import { fmtMin } from '@/components/attendance-format';
@@ -70,8 +70,22 @@ export default async function DailyAttendancePage({
   // fc776376 — one row per employee for the chosen day: a genuine list that grows with headcount.
   const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
 
+  /**
+   * dde08629 (r319) — the sticky identity columns. `left-[7rem]` is arithmetic, not a guess: the code
+   * column is `px-3` (0.75rem each side) around a tabular-nums code, and 7rem is where the name column
+   * therefore begins. A sticky cell MUST carry an opaque background — the default is transparent, and a
+   * transparent sticky cell shows the scrolled content passing underneath it.
+   */
+  const stick = (left: string, head: boolean) =>
+    `sticky ${left} z-10 whitespace-nowrap px-3 ${head ? 'py-2 font-medium bg-muted' : 'py-2.5 bg-card'}`;
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
+      {/* dde08629 (r319) — FULL WIDTH, the same `pageWideCls` eight other Attendance screens already use
+          and test/attendance-screens-layout.test.ts already pins for them. These three were simply never
+          added: at `mx-auto max-w-6xl` a sixteen-column table sat in a 72rem middle column with roughly a
+          third of a wide monitor as empty margin either side — the reporter's complaint verbatim. The
+          one-column rule form stays capped on purpose; see NARROW_FORM_SCREENS in that guard. */}
       <PageHeader title={t('title')} />
       <AttendanceTabs active="daily" />
       <ErrorBanner message={sp.error} />
@@ -117,8 +131,13 @@ export default async function DailyAttendancePage({
           <table className="w-full min-w-[80rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">{t('colEmployeeCode')}</th>
-                <th className="px-3 py-2 font-medium">{t('colEmployeeName')}</th>
+                {/* dde08629 (r319) — the two identity columns stay put while the other sixteen scroll.
+                    Same shape as 22d67223's `stick()` on the Breakdown screen, and for the same reason a
+                    sticky cell there carries its own surface colour: a transparent one shows the scrolled
+                    content sliding underneath it. The header takes the table head's own background, the
+                    body cells the card's. */}
+                <th className={stick('left-0', true)}>{t('colEmployeeCode')}</th>
+                <th className={stick('left-[7rem]', true)}>{t('colEmployeeName')}</th>
                 <th className="px-3 py-2 font-medium">{t('colShiftCode')}</th>
                 <th className="px-3 py-2 font-medium">{t('colCheckIn')}</th>
                 <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
@@ -148,8 +167,10 @@ export default async function DailyAttendancePage({
                 const flag = flagOf(r);
                 return (
                   <tr key={r.employmentId}>
-                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.employeeCode ?? '—'}</td>
-                    <td className="px-3 py-2.5">
+                    <td className={`${stick('left-0', false)} tabular-nums text-muted-foreground`}>
+                      {r.employeeCode ?? '—'}
+                    </td>
+                    <td className={stick('left-[7rem]', false)}>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={r.name} className="size-7 text-[10px]" />
                         <span className="font-medium">{r.name}</span>
