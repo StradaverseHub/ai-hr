@@ -3881,10 +3881,6 @@
       "planned_perkeso_employee_registration_hint": "Pendaftaran PERKESO bagi pekerja baharu. Belum dibina.",
       "planned_lhdn_tp3": "Borang TP3",
       "planned_lhdn_tp3_hint": "Angka majikan terdahulu bagi pekerja yang menyertai pertengahan tahun. Angka itu sudah direkodkan pada tab payroll pekerja — borang TP3 bercetak belum dibina.",
-      "planned_lhdn_pcb2ii_en": "PCB 2(II) — Bahasa Inggeris",
-      "planned_lhdn_pcb2ii_en_hint": "Penyata majikan bagi cukai yang dipotong. Belum dibina.",
-      "planned_lhdn_pcb2ii_ms": "PCB 2(II) — Bahasa Malaysia",
-      "planned_lhdn_pcb2ii_ms_hint": "Penyata majikan bagi cukai yang dipotong, dalam Bahasa Malaysia. Belum dibina.",
       "planned_lhdn_cp21": "CP21 — pekerja meninggalkan Malaysia",
       "planned_lhdn_cp21_hint": "Notis bahawa seorang pekerja akan meninggalkan Malaysia. Belum dibina.",
       "planned_lhdn_cp22a": "CP22A — pelepasan cukai apabila berhenti",
@@ -3924,7 +3920,13 @@
       "eaColDepartment": "Jabatan",
       "eaNoMatch": "Tiada pekerja sepadan dengan carian anda.",
       "eaTooMany": "Pilih tidak lebih daripada {max} orang pada satu masa.",
-      "eaNoneForYear": "Tiada sesiapa di {company} mempunyai angka gaji bagi {year}, jadi tiada penyata EA untuk dijana. Jalankan gaji tahun tersebut dahulu."
+      "eaNoneForYear": "Tiada sesiapa di {company} mempunyai angka gaji bagi {year}, jadi tiada penyata EA untuk dijana. Jalankan gaji tahun tersebut dahulu.",
+      "link_pcb2ii_en": "PCB 2(II) — Bahasa Inggeris",
+      "link_pcb2ii_ms": "PCB 2(II) — Bahasa Malaysia",
+      "link_pcb2ii_hint": "Satu penyata bagi setiap pekerja: cukai yang dipotong setiap bulan dan resitnya.",
+      "desc_pcb2ii_en": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Inggeris. Pilih tahun, kemudian pekerja.",
+      "desc_pcb2ii_ms": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Malaysia. Pilih tahun, kemudian pekerja.",
+      "pcb2iiSelectHint": "Tandakan pekerja yang memerlukan penyata. Setiap seorang mendapat halaman sendiri."
     },
     "ea": {
       "backToReports": "Laporan",

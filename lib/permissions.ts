@@ -891,6 +891,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       // by name, employee ID, department and status. Its `download` sibling is a route handler, not a
       // guarded page, so it is not listed — the reverse-completeness check walks page.tsx files.
       '/payroll/statutory-forms/ea',
+      // 72b100cd (r323): PCB 2(II)'s employee selection — step two of the SAME two-step flow the EA above
+      // uses, for the same reason: this form is one statement PER EMPLOYEE for a year, not one document
+      // for a company and a period. Same scopedAdmin key as its siblings, and it needs one on its own
+      // account too — it lists the year's paid population by name, employee ID, department and status,
+      // and the document behind it carries tax numbers and identity card numbers. Its `download` sibling
+      // is a route handler, not a guarded page, so it is not listed; the reverse-completeness check in
+      // test/function-access.test.ts walks page.tsx files.
+      '/payroll/statutory-forms/pcb2ii',
       // 88076362: the CP22 review step, between the joiner list on the statutory-form directory and the
       // download. Same scopedAdmin key as the directory that links to it (statutory-forms/page.tsx builds
       // the href twice, for the due list and the watchlist) — it shows one joiner's full particulars, name,

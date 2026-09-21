@@ -4246,10 +4246,6 @@
       "planned_perkeso_employee_registration_hint": "PERKESO registration for a new employee. Not built.",
       "planned_lhdn_tp3": "Form TP3",
       "planned_lhdn_tp3_hint": "Previous-employer figures for a mid-year joiner. The figures are already captured on the employee’s payroll tab — the printable TP3 form is not built.",
-      "planned_lhdn_pcb2ii_en": "PCB 2(II) — English",
-      "planned_lhdn_pcb2ii_en_hint": "The employer’s statement of tax deducted. Not built.",
-      "planned_lhdn_pcb2ii_ms": "PCB 2(II) — Bahasa Malaysia",
-      "planned_lhdn_pcb2ii_ms_hint": "The employer’s statement of tax deducted, in Bahasa Malaysia. Not built.",
       "planned_lhdn_cp21": "CP21 — employee leaving Malaysia",
       "planned_lhdn_cp21_hint": "Notification that an employee is leaving Malaysia. Not built.",
       "planned_lhdn_cp22a": "CP22A — tax clearance on cessation",
@@ -4289,7 +4285,13 @@
       "eaColDepartment": "Department",
       "eaNoMatch": "No employee matches your search.",
       "eaTooMany": "Select at most {max} people at a time.",
-      "eaNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no EA statement to produce. Run that year’s payroll first."
+      "eaNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no EA statement to produce. Run that year’s payroll first.",
+      "link_pcb2ii_en": "PCB 2(II) — English",
+      "link_pcb2ii_ms": "PCB 2(II) — Bahasa Malaysia",
+      "link_pcb2ii_hint": "One statement per employee: the tax deducted each month and the receipt for it.",
+      "desc_pcb2ii_en": "Statement of Payment by Employer, in English. Choose a year, then the employees.",
+      "desc_pcb2ii_ms": "Penyata Bayaran Cukai Oleh Majikan, in Bahasa Malaysia. Choose a year, then the employees.",
+      "pcb2iiSelectHint": "Tick the employees whose statement you need. Each one gets its own page."
     },
     "ea": {
       "backToReports": "Reports",

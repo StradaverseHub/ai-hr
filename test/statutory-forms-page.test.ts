@@ -161,11 +161,16 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // person's declaration for one deduction month, so there is no company-wide table for a ReportDef to
     // generate. The count is asserted as the list rather than as a number, which is what lets this line
     // fail loudly when an entry appears or leaves.
+    // 72b100cd (r323) — `my.pcb2ii.en` / `my.pcb2ii.ms` JOINED this list, from MY_PLANNED_FORMS. They are
+    // doors for the same reason the two EA rows are: PCB 2(II) is one person's statement for a year, so
+    // there is no company-wide table for a ReportDef to generate.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
       'my.cp22',
       'my.ea.en',
       'my.ea.ms',
+      'my.pcb2ii.en',
+      'my.pcb2ii.ms',
       'my.tp1',
     ]);
     for (const l of MY_STATUTORY_LINKS) {
@@ -200,8 +205,6 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       'perkeso.sip',
       'perkeso.employee-registration',
       'lhdn.tp3',
-      'lhdn.pcb2ii-en',
-      'lhdn.pcb2ii-ms',
       'lhdn.cp21',
       'lhdn.cp22a',
       'lhdn.cp39a',
@@ -609,6 +612,11 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     ).toEqual([
       ['my.ea.en', 'openForm'],
       ['my.ea.ms', 'openForm'],
+      // r323 — PCB 2(II) says "Open form" for the same reason the EA does: the button opens the employee
+      // picker, and the DESTINATION is what it names. `openEmployeeList` stays TP1's, where the list IS
+      // the destination; `openWorklist` stays CP22's alone.
+      ['my.pcb2ii.en', 'openForm'],
+      ['my.pcb2ii.ms', 'openForm'],
       ['my.borang-e', null],
       ['my.tp1', 'openEmployeeList'],
       ['my.cp22', 'openWorklist'],
@@ -898,7 +906,19 @@ describe('the four pins', () => {
     expect(MY_REPORTS.find((r) => r.id === 'my.hrd-levy')!.fidelity).toBe('figures');
     expect(
       [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
-    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.ea.en', 'my.ea.ms', 'my.tp1']);
+    // r323 — the two PCB 2(II) rows are 'agency-layout' on the same honest reasoning: lib/pcb2ii-pdf.ts is
+    // OUR typesetting of LHDN's sheet from the specimens attached to 72b100cd, not a facsimile of their
+    // PDF. The assertion above — exactly one 'official' entry, and it is my.cp22 — is what this protects.
+    ).toEqual([
+      'my.borang-8a',
+      'my.borang-a',
+      'my.cp39',
+      'my.ea.en',
+      'my.ea.ms',
+      'my.pcb2ii.en',
+      'my.pcb2ii.ms',
+      'my.tp1',
+    ]);
   });
 
   /**

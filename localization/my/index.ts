@@ -42,6 +42,7 @@ import {
 } from './statutory-config';
 import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
+import { pcb2iiStatement } from './pcb2ii';
 import type { CountryPack } from '../country-pack';
 
 // ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
@@ -194,5 +195,7 @@ export const myPack: CountryPack = {
   // produce a document.
   plannedForms: MY_PLANNED_FORMS,
   eaStatement,
+  // 72b100cd — LHDN's PCB 2(II). Optional on the contract; Malaysia implements it.
+  pcb2iiStatement,
   eaCompaniesInYear,
 };

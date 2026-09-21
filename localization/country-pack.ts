@@ -31,6 +31,7 @@
  * `typeof import(…)`, so importing the contract never drags in db/client or the MY tables.
  */
 import type { SessionContext, Tx } from '../db/client';
+import type { Pcb2iiForm } from '../lib/pcb2ii-form';
 
 /**
  * ADR-0024 §7 worksheet vocabulary, RE-EXPORTED from the contract so a generic screen can name the
@@ -517,4 +518,19 @@ export interface CountryPack {
     ctx: SessionContext,
     p: { employmentId: string; year: string },
   ) => Promise<{ companyId: string; name: string; isCurrent: boolean }[]>;
+
+  /**
+   * 72b100cd — the employer's per-employee statement of TAX PAID for a year (MY: PCB 2(II)).
+   *
+   * OPTIONAL, and that is the modelling rather than laziness. An annual employee statement (`eaStatement`)
+   * is a concept every payroll jurisdiction has in some form, so the contract requires it. "The statement
+   * an employer files with the revenue board declaring the monthly tax it deducted and the receipt it was
+   * given" is LHDN's form, and a pack for a country with no such filing should say so by NOT implementing
+   * this — not by returning a plausible empty document under a Malaysian form's name (D-14: a
+   * non-statutory jurisdiction owes no statutory form, which is the correct empty and not a degraded one).
+   */
+  pcb2iiStatement?: (
+    ctx: SessionContext,
+    p: { employmentId: string; year: string; companyId?: string },
+  ) => Promise<Pcb2iiForm | null>;
 }

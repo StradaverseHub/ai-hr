@@ -71,6 +71,17 @@ const linkById = new Map(MY_STATUTORY_LINKS.map((l) => [l.id, l]));
 const kinds = (href: string) => parseDestination(href).criteria.map((c) => c.kind);
 /** The two C.P.8A rows, found the way the screen finds them — by destination, never by id. */
 const EA_LINKS = MY_STATUTORY_LINKS.filter((l) => l.href.startsWith('/payroll/statutory-forms/ea'));
+/**
+ * 72b100cd (r323) — PCB 2(II) takes the SAME two-step flow, so it belongs in the same assertions.
+ *
+ * Not because it is an EA, but because it is the other form on this shelf that produces one document PER
+ * EMPLOYEE for a year rather than one document for a company and a period. Company + year is therefore
+ * the FIRST of two steps for it too, which is exactly what `criteria_continue` means — the button does
+ * not generate anything, it moves to the employee picker.
+ */
+const PCB2II_LINKS = MY_STATUTORY_LINKS.filter((l) => l.href.startsWith('/payroll/statutory-forms/pcb2ii'));
+/** The two-step forms, together: every entry whose criteria step continues rather than generates. */
+const TWO_STEP_LINKS = [...EA_LINKS, ...PCB2II_LINKS];
 
 describe('the main screen is a directory: no company, year or month gates the form list', () => {
   it('reads the catalog from the admin’s company SCOPE, not from one chosen company', () => {
@@ -219,11 +230,35 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
     }
   });
 
-  it('says CONTINUE on the EA’s step, because company + year is the first of two steps', () => {
-    for (const l of EA_LINKS) expect(l.criteriaLabelKey, l.id).toBe('criteria_continue');
+  /**
+   * 72b100cd — the same three facts for PCB 2(II): company and year, never a month (the form has no month
+   * box, it has twelve month ROWS), and the language rides through as part of which form was chosen.
+   */
+  it('asks PCB 2(II) for company and year, and NEVER for a month', () => {
+    expect(PCB2II_LINKS.map((l) => l.id).sort()).toEqual(['my.pcb2ii.en', 'my.pcb2ii.ms']);
+    for (const l of PCB2II_LINKS) {
+      const d = parseDestination(l.href);
+      expect(d.criteria.map((c) => c.kind), l.id).toEqual(['company', 'year']);
+      expect(d.criteria.map((c) => c.kind), l.id).not.toContain('month');
+      expect(d.action, l.id).toBe('/payroll/statutory-forms/pcb2ii');
+      expect(d.hidden, l.id).toEqual([{ name: 'lang', value: l.id.endsWith('.ms') ? 'ms' : 'en' }]);
+    }
+  });
+
+  it('says CONTINUE on every two-step form’s step, because company + year is the first of two', () => {
+    // UPDATED, NOT LOOSENED (r323): the set was EA_LINKS alone. PCB 2(II) joined it because it has the
+    // same shape — one statement per employee — not because the assertion was inconvenient. The exact-set
+    // half below is what keeps that honest: every OTHER entry must still fall back to "Generate form".
+    expect(TWO_STEP_LINKS.map((l) => l.id).sort()).toEqual([
+      'my.ea.en',
+      'my.ea.ms',
+      'my.pcb2ii.en',
+      'my.pcb2ii.ms',
+    ]);
+    for (const l of TWO_STEP_LINKS) expect(l.criteriaLabelKey, l.id).toBe('criteria_continue');
     // Every other templated entry falls back to the shared "Generate form" — the button that IS the
     // moment of generation.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => !EA_LINKS.includes(x))) {
+    for (const l of MY_STATUTORY_LINKS.filter((x) => !TWO_STEP_LINKS.includes(x))) {
       expect(l.criteriaLabelKey, l.id).toBeUndefined();
     }
     expect(CRITERIA).toContain("link?.criteriaLabelKey ?? 'criteria_generate'");

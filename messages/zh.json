@@ -3881,10 +3881,6 @@
       "planned_perkeso_employee_registration_hint": "为新员工办理 PERKESO 登记。尚未构建。",
       "planned_lhdn_tp3": "TP3 表格",
       "planned_lhdn_tp3_hint": "年中入职员工的前雇主数据。这些数据已记录在员工的薪资页签中——可打印的 TP3 表格尚未构建。",
-      "planned_lhdn_pcb2ii_en": "PCB 2(II) — 英文",
-      "planned_lhdn_pcb2ii_en_hint": "雇主的扣税报表。尚未构建。",
-      "planned_lhdn_pcb2ii_ms": "PCB 2(II) — 马来文",
-      "planned_lhdn_pcb2ii_ms_hint": "雇主的扣税报表（马来文）。尚未构建。",
       "planned_lhdn_cp21": "CP21 — 员工离开马来西亚",
       "planned_lhdn_cp21_hint": "员工即将离开马来西亚的通知。尚未构建。",
       "planned_lhdn_cp22a": "CP22A — 离职税务清缴",
@@ -3924,7 +3920,13 @@
       "eaColDepartment": "部门",
       "eaNoMatch": "没有员工符合您的搜索条件。",
       "eaTooMany": "每次最多选择 {max} 位员工。",
-      "eaNoneForYear": "{company} 在 {year} 没有任何薪资数据，因此无法生成 EA 表格。请先完成该年度的薪资运算。"
+      "eaNoneForYear": "{company} 在 {year} 没有任何薪资数据，因此无法生成 EA 表格。请先完成该年度的薪资运算。",
+      "link_pcb2ii_en": "PCB 2(II) — 英文",
+      "link_pcb2ii_ms": "PCB 2(II) — 马来文",
+      "link_pcb2ii_hint": "每位员工一份报表：每月扣缴的税款及其收据。",
+      "desc_pcb2ii_en": "雇主缴税报表（英文版）。先选择年份，再选择员工。",
+      "desc_pcb2ii_ms": "雇主缴税报表（马来文版）。先选择年份，再选择员工。",
+      "pcb2iiSelectHint": "勾选需要出具报表的员工。每位员工各占一页。"
     },
     "ea": {
       "backToReports": "报表",

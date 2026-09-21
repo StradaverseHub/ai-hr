@@ -3881,10 +3881,6 @@
       "planned_perkeso_employee_registration_hint": "Đăng ký PERKESO cho nhân viên mới. Chưa xây dựng.",
       "planned_lhdn_tp3": "Biểu mẫu TP3",
       "planned_lhdn_tp3_hint": "Số liệu từ người sử dụng lao động trước của nhân viên vào giữa năm. Các số liệu đó đã được ghi nhận ở tab lương của nhân viên — biểu mẫu TP3 in được thì chưa xây dựng.",
-      "planned_lhdn_pcb2ii_en": "PCB 2(II) — tiếng Anh",
-      "planned_lhdn_pcb2ii_en_hint": "Bản kê thuế đã khấu trừ của người sử dụng lao động. Chưa xây dựng.",
-      "planned_lhdn_pcb2ii_ms": "PCB 2(II) — tiếng Mã Lai",
-      "planned_lhdn_pcb2ii_ms_hint": "Bản kê thuế đã khấu trừ của người sử dụng lao động, bằng tiếng Mã Lai. Chưa xây dựng.",
       "planned_lhdn_cp21": "CP21 — nhân viên rời Malaysia",
       "planned_lhdn_cp21_hint": "Thông báo nhân viên sắp rời Malaysia. Chưa xây dựng.",
       "planned_lhdn_cp22a": "CP22A — thanh toán thuế khi chấm dứt hợp đồng",
@@ -3924,7 +3920,13 @@
       "eaColDepartment": "Phòng ban",
       "eaNoMatch": "Không có nhân viên nào khớp với tìm kiếm của bạn.",
       "eaTooMany": "Mỗi lần chỉ chọn tối đa {max} nhân viên.",
-      "eaNoneForYear": "Không ai tại {company} có số liệu lương cho năm {year}, nên không có biểu mẫu EA nào để tạo. Hãy chạy lương của năm đó trước."
+      "eaNoneForYear": "Không ai tại {company} có số liệu lương cho năm {year}, nên không có biểu mẫu EA nào để tạo. Hãy chạy lương của năm đó trước.",
+      "link_pcb2ii_en": "PCB 2(II) — Tiếng Anh",
+      "link_pcb2ii_ms": "PCB 2(II) — Tiếng Mã Lai",
+      "link_pcb2ii_hint": "Mỗi nhân viên một bản kê: thuế khấu trừ hằng tháng và biên lai tương ứng.",
+      "desc_pcb2ii_en": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Anh. Chọn năm, rồi chọn nhân viên.",
+      "desc_pcb2ii_ms": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Mã Lai. Chọn năm, rồi chọn nhân viên.",
+      "pcb2iiSelectHint": "Chọn những nhân viên cần bản kê. Mỗi người có một trang riêng."
     },
     "ea": {
       "backToReports": "Báo cáo",

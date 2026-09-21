@@ -5,6 +5,7 @@
  * (audit / idempotency / reproducibility). Filed per legal entity — RLS gates on is_admin_for.
  */
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import type { Pcb2iiForm } from '../lib/pcb2ii-form';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -722,6 +723,25 @@ export async function employeeEaStatement(
   const pack = packFor(country);
   if (!pack) return null;
   return pack.eaStatement(ctx, p);
+}
+
+/**
+ * 72b100cd — one employee's PCB 2(II) for a tax year, via the EMPLOYER'S jurisdiction pack.
+ *
+ * The same seam `employeeEaStatement` uses, and for the same reasons: RLS scopes visibility, and the pack
+ * is resolved from the employer rather than assumed. A jurisdiction whose pack does not implement the
+ * form returns null — LHDN's statement of tax paid is not a universal concept, and a pack that has no
+ * such filing must not be made to produce a plausible-looking one (see the contract's own note).
+ */
+export async function employeePcb2iiStatement(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string; companyId?: string },
+): Promise<Pcb2iiForm | null> {
+  const country = await eaEmployerCountry(ctx, p);
+  if (country === undefined) return null;
+  const pack = packFor(country);
+  if (!pack?.pcb2iiStatement) return null;
+  return pack.pcb2iiStatement(ctx, p);
 }
 
 /** b7b22514 — the employers that owe this employee an EA form for the year, oldest first. Drives the

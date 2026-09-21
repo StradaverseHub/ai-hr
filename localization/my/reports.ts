@@ -2011,6 +2011,55 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     outputs: ['pdf', 'print'],
     shelfOrder: 4,
   },
+  /**
+   * 72b100cd (r323) — PCB 2(II), built. Both rows LEFT MY_PLANNED_FORMS and joined MY_STATUTORY_LINKS at
+   * the SAME shelfOrder 5 and 6 they held there: the shelf is unchanged, the cards simply stop saying
+   * "not built yet" and grow an action.
+   *
+   * THIS LIST AND NOT MY_REPORTS, which is the same call the EA and TP1 made. A `ReportDef` generates a
+   * company-wide TABLE for a period; these two have no such table to generate, because the form is one
+   * person's statement. They are DOORS — an href to a screen — which is what MY_STATUTORY_LINKS holds.
+   *
+   * SAME SHAPE AS THE EA BESIDE IT, AND FOR THE SAME REASON. Every other entry on this shelf produces ONE
+   * document for a company and a period; these produce one statement PER EMPLOYEE for a year, so they
+   * take the EA's two-step flow — company + year on `open`, then pick the people — rather than a direct
+   * href to a single document. `populationReportId: 'my.cp8d'` is the EA's population verbatim, because
+   * it is the same question: who did this employer pay in this tax year.
+   *
+   * `fidelity: 'agency-layout'`, never 'official'. This is our typesetting of LHDN's form from the
+   * specimens the reporter attached, not a facsimile of their PDF — the same honest label Borang A,
+   * Borang 8A and the EA carry. CP22 is the only 'official' row in this catalogue and a test pins that.
+   */
+  {
+    id: 'my.pcb2ii.en',
+    labelKey: 'link_pcb2ii_en',
+    hintKey: 'link_pcb2ii_hint',
+    descriptionKey: 'desc_pcb2ii_en',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/statutory-forms/pcb2ii?companyId={companyId}&year={year}&lang=en',
+    actionLabelKey: 'openForm',
+    criteriaLabelKey: 'criteria_continue',
+    populationReportId: 'my.cp8d',
+    fidelity: 'agency-layout',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 5,
+  },
+  {
+    id: 'my.pcb2ii.ms',
+    labelKey: 'link_pcb2ii_ms',
+    hintKey: 'link_pcb2ii_hint',
+    descriptionKey: 'desc_pcb2ii_ms',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/statutory-forms/pcb2ii?companyId={companyId}&year={year}&lang=ms',
+    actionLabelKey: 'openForm',
+    criteriaLabelKey: 'criteria_continue',
+    populationReportId: 'my.cp8d',
+    fidelity: 'agency-layout',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 6,
+  },
   // 587ee719 — BORANG E IS AN ALIAS, AND MUST STAY ONE. The reporter listed Borang E (item 7) and CP8D
   // (item 13) as two forms; they are two NAMES for one annual return we already produce in a single step,
   // so this entry's href resolves to the same `my.cp8d` generator the CP8D card opens. Both cards carry a
@@ -2143,8 +2192,11 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // MY_STATUTORY_LINKS as `my.tp1` at the same shelfOrder 1, exactly as the two Borangs did before it.
   // Its two message keys went with it.
   { id: 'lhdn.tp3', labelKey: 'planned_lhdn_tp3', hintKey: 'planned_lhdn_tp3_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 2 },
-  { id: 'lhdn.pcb2ii-en', labelKey: 'planned_lhdn_pcb2ii_en', hintKey: 'planned_lhdn_pcb2ii_en_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 5 },
-  { id: 'lhdn.pcb2ii-ms', labelKey: 'planned_lhdn_pcb2ii_ms', hintKey: 'planned_lhdn_pcb2ii_ms_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 6 },
+  // 72b100cd (r323) — `lhdn.pcb2ii-en` and `lhdn.pcb2ii-ms` STOOD HERE and are deliberately gone: both
+  // are BUILT now (the screen at /payroll/statutory-forms/pcb2ii and the drawn form at lib/pcb2ii-pdf.ts),
+  // so they left this list and joined MY_STATUTORY_LINKS as `my.pcb2ii.en` / `my.pcb2ii.ms` at the SAME shelf
+  // orders 5 and 6 they held here — the migration path `PlannedFormDef` was designed for, and the one
+  // TP1, Borang A and Borang 8A each took before them. Their four planned_* message keys went with them.
   { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
   { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a', hintKey: 'planned_lhdn_cp22a_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
   { id: 'lhdn.cp39a', labelKey: 'planned_lhdn_cp39a', hintKey: 'planned_lhdn_cp39a_hint', body: 'lhdn', cadence: 'monthly', shelfOrder: 12 },
