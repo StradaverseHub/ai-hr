@@ -1,0 +1,101 @@
+<meta charset="utf-8">
+<title>07ebd04d — Shift vs Schedule: where the pattern lives</title>
+<!--
+  Mockup for 07ebd04d (Review and Redesign Shift and Schedule Settings).
+
+  MEASURED ON PRODUCTION 2026-09-21:
+    shift (active): 5 rows. ALL FIVE carry weekly_pattern, half_pattern AND off_pattern.
+    All five point at the SAME Schedule Group (attendance_rule "Standard"); the other group, "A02",
+      has no shifts.
+    The shift row also carries genuinely shift-level columns: start_time, end_time, break_minutes,
+      break_periods, crosses_midnight, flexible_break_enabled/minutes, early_in, late_out.
+    "Schedule Group" is the reporter's own name for attendance_rule — r277 (870b79e2) renamed the row
+      to the word they use for the object.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the reporter says working-day rules are configured separately
+  inside individual Shift records. That is not an impression — it is true of every shift they have, and
+  all five belong to one group, so the same pattern is stored five times.
+
+  WHAT IS DELIBERATELY NOT DRAWN: a migration. Where the columns end up is a data decision this plan
+  puts to them, not one a picture should pre-empt.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+        --okbg:#f0fdf4;--okfg:#15803d;--badbg:#fef2f2;--badfg:#b91c1c;--newbg:#eef2ff;--newfg:#4338ca}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .keep{background:var(--okbg);color:var(--okfg)} .move{background:var(--newbg);color:var(--newfg)}
+  .row{display:flex;gap:14px} .col{flex:1;min-width:0}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;padding:5px 7px;background:var(--muted)}
+  td{padding:6px 7px;border-top:1px solid var(--border)}
+  .box{border:1px solid var(--border);border-radius:12px;padding:12px}
+  .dup{background:var(--badbg);color:var(--badfg);font-weight:600}
+</style>
+
+<div class="card">
+  <h1>Your five shifts today &mdash; the same pattern, five times</h1>
+  <p class="sub">All five belong to one Schedule Group ("Standard"), and every one of them stores its
+    own copy of the working-day pattern.</p>
+  <table>
+    <tr><th>Shift</th><th>Schedule Group</th><th>Working day pattern</th><th>Half-day pattern</th><th>Off-day pattern</th></tr>
+    <tr><td>Shift 1</td><td>Standard</td><td class="dup">stored here</td><td class="dup">stored here</td><td class="dup">stored here</td></tr>
+    <tr><td>Shift 2</td><td>Standard</td><td class="dup">stored here</td><td class="dup">stored here</td><td class="dup">stored here</td></tr>
+    <tr><td>Shift 3</td><td>Standard</td><td class="dup">stored here</td><td class="dup">stored here</td><td class="dup">stored here</td></tr>
+    <tr><td>Shift 4</td><td>Standard</td><td class="dup">stored here</td><td class="dup">stored here</td><td class="dup">stored here</td></tr>
+    <tr><td>Shift 5</td><td>Standard</td><td class="dup">stored here</td><td class="dup">stored here</td><td class="dup">stored here</td></tr>
+  </table>
+  <p class="note">Change how the week is worked and you change it in five places, or in four and forget
+    the fifth.</p>
+</div>
+
+<div class="card">
+  <h2>The separation you are describing</h2>
+  <div class="row">
+    <div class="col box">
+      <h2>Shift <span class="pill keep">what stays</span></h2>
+      <table>
+        <tr><td>Shift name and code</td></tr>
+        <tr><td>Start time · End time</td></tr>
+        <tr><td>Crosses midnight</td></tr>
+        <tr><td>Break minutes and break periods</td></tr>
+        <tr><td>Flexible break</td></tr>
+        <tr><td>Grace: early in, late out</td></tr>
+      </table>
+      <p class="note">What the shift IS.</p>
+    </div>
+    <div class="col box" style="border-color:#a5b4fc;background:#fbfbff">
+      <h2>Schedule <span class="pill move">what moves</span></h2>
+      <table>
+        <tr><td>Working day pattern</td></tr>
+        <tr><td>Half-day pattern</td></tr>
+        <tr><td>Off-day / rest-day pattern</td></tr>
+        <tr><td>Rotation across days</td></tr>
+        <tr><td>Which shifts the group allows</td></tr>
+      </table>
+      <p class="note">How the shift is USED across the week &mdash; once per group, not once per shift.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What we need you to decide</h2>
+  <table>
+    <tr><th style="width:38%">Question</th><th>Why it is yours and not ours</th></tr>
+    <tr><td>Do all five of your shifts really share one pattern?</td>
+        <td>They store five copies today. If those copies are IDENTICAL we can move one pattern up to
+            the group. If they differ, moving them would change how somebody's week is worked.</td></tr>
+    <tr><td>Should a shift ever override its group's pattern?</td>
+        <td>If yes, the pattern stays on the shift as an optional exception and the group holds the
+            default. If no, it moves entirely and the shift form loses those fields.</td></tr>
+  </table>
+  <p class="note">We will read your five patterns and tell you whether they are the same before anything
+    is moved. Nobody's roster changes without you seeing that answer first.</p>
+</div>

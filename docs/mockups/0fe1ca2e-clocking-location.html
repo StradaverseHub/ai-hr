@@ -1,0 +1,108 @@
+<meta charset="utf-8">
+<title>0fe1ca2e — Clocking Location: it is already centralized</title>
+<!--
+  Mockup for 0fe1ca2e (Redesign Clocking Location Workflow).
+
+  MEASURED 2026-09-21.
+  SCHEMA: clocking_location has NO company_id. Its columns are id, tenant_id, name, lat, lng, address,
+    remarks, archived_at, created_at, radius_m, location_id, report_label — i.e. exactly the physical
+    location the reporter describes. `location_id` (the optional link to the org-spine location) is
+    NULLABLE, and app/admin/locations/clocking/clocking-form.tsx labels it clockingLocationLinkOptional
+    with a comment from feedback f9afd1ce: "OPTIONAL, and any company's location: a site shared by five
+    companies cannot be required to belong to one company's holiday-calendar record."
+  PRODUCTION: 2 clocking locations — KLCC (150 m) and Wisma BU8 (100 m) — and BOTH are unlinked
+    (location_id IS NULL). The reporter has already created company-free clocking locations.
+  ASSIGNMENT: employee_clocking_location (employment_id, clocking_location_id) is the many-to-many, and
+    components/attendance/location-assignment.tsx (r272 / 0e8cf366) is a searchable multi-select with
+    address and status, mounted on app/admin/personnel/[employmentId]/page.tsx line 2364.
+  BUT: employee_clocking_location holds ZERO rows. The feature is built and has never been used.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: this is not a build, it is a "you already have this, and here
+  is where". The one honest change available is removing the optional company link from the form if
+  they never want to see it.
+
+  WHAT IS DELIBERATELY NOT DRAWN: any new screen. Both screens below exist today.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+        --primary:#4f46e5;--okbg:#f0fdf4;--okfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;--newbg:#eef2ff;--newfg:#4338ca}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .ok{background:var(--okbg);color:var(--okfg)} .new{background:var(--newbg);color:var(--newfg)}
+  .row{display:flex;gap:14px} .col{flex:1;min-width:0}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11.5px;background:#fff;display:block;color:var(--mf)}
+  .lab{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;margin:8px 0 3px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;padding:5px 7px;background:var(--muted)}
+  td{padding:6px 7px;border-top:1px solid var(--border)}
+  .crumb{font-size:11px;color:var(--mf);margin-bottom:6px}
+</style>
+
+<div class="card">
+  <h1>What you asked for, and where it already is</h1>
+  <table>
+    <tr><th style="width:44%">Your requirement</th><th>Status</th></tr>
+    <tr><td>A Clocking Location is a physical place, not a company configuration</td>
+        <td><span class="pill ok">already true</span> it has no company field at all</td></tr>
+    <tr><td>Name, address, latitude, longitude, radius</td>
+        <td><span class="pill ok">already the form</span></td></tr>
+    <tr><td>No Company / Branch required before creating one</td>
+        <td><span class="pill ok">already optional</span> your two locations are both unlinked</td></tr>
+    <tr><td>Reusable across companies</td>
+        <td><span class="pill ok">already true</span> nothing scopes it to one</td></tr>
+    <tr><td>Assign locations to employees, one or many</td>
+        <td><span class="pill ok">already built</span> Personnel &rsaquo; Employee &rsaquo; Attendance</td></tr>
+    <tr><td>Remove the optional company link from the form</td>
+        <td><span class="pill new">the only thing to build</span></td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <div class="row">
+    <div class="col">
+      <h2>ADMIN &rsaquo; Attendance &rsaquo; Clocking Location <span class="pill ok">exists</span></h2>
+      <div class="crumb">Add Clocking Location</div>
+      <div class="lab">Name</div><span class="inp">KLCC</span>
+      <div class="lab">Address</div><span class="inp">Jalan Ampang, Kuala Lumpur</span>
+      <div class="row" style="gap:8px">
+        <div class="col"><div class="lab">Latitude</div><span class="inp">3.15790</span></div>
+        <div class="col"><div class="lab">Longitude</div><span class="inp">101.71180</span></div>
+        <div class="col"><div class="lab">Radius (m)</div><span class="inp">150</span></div>
+      </div>
+      <div class="lab">Link to a company location &mdash; optional</div>
+      <span class="inp" style="border-style:dashed">Not linked to a location</span>
+      <p class="note">No Company, Code, Country, State, Holiday Calendar or Branch. The last field is
+        optional and both of your locations already leave it empty.</p>
+    </div>
+    <div class="col">
+      <h2>Personnel &rsaquo; Employee &rsaquo; Attendance <span class="pill ok">exists</span></h2>
+      <div class="crumb">Location Assignment &mdash; where this employee may clock</div>
+      <span class="inp" style="margin-bottom:6px">Search locations&hellip;</span>
+      <table>
+        <tr><th>Location</th><th>Radius</th><th></th></tr>
+        <tr><td>KLCC<div style="font-size:10px;color:var(--mf)">Jalan Ampang, Kuala Lumpur</div></td>
+            <td>150 m</td><td style="color:var(--mf)">Remove</td></tr>
+        <tr><td>Wisma BU8<div style="font-size:10px;color:var(--mf)">Bandar Utama</div></td>
+            <td>100 m</td><td style="color:var(--mf)">Remove</td></tr>
+      </table>
+      <p class="note">Search, address, status, assign as many as you like, remove with one click. This
+        is the screen your point 3 describes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">The thing that is actually missing</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    <strong>Nobody has been assigned to either location.</strong> Not one employee, on either KLCC or
+    Wisma BU8. Until somebody is assigned, location-based clocking has nothing to check against &mdash;
+    which may well be why the workflow feels unfinished. That is a few minutes of setup on the screen
+    above, not a rebuild, and we are happy to walk you through it or do the first batch for you.</p>
+</div>
