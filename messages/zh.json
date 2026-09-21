@@ -3260,7 +3260,14 @@
       "heading": "共享假期余额",
       "ofLimit": "共享额度 {limit} 天",
       "sharedAcross": "共享类型：{types}",
-      "maxPerApplication": "单次申请最多 {days} 天"
+      "maxPerApplication": "单次申请最多 {days} 天",
+      "detailDescription": "一项共享额度，以及你可以申请的事由。",
+      "remaining": "剩余",
+      "usedThisYear": "本年已使用：{days}",
+      "reasonsHeading": "事由",
+      "reasonsHelp": "下列每个事由都使用上方同一份共享余额。",
+      "applyForReason": "申请",
+      "viewDetails": "查看详情"
     },
     "maSectionAll": "全部",
     "maSectionAllHelp": "所有需要你处理的日子。",

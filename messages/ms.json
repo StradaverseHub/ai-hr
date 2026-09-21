@@ -3260,7 +3260,14 @@
       "heading": "Baki cuti dikongsi",
       "ofLimit": "daripada {limit} hari dikongsi",
       "sharedAcross": "Dikongsi antara: {types}",
-      "maxPerApplication": "Sehingga {days} hari dalam satu permohonan"
+      "maxPerApplication": "Sehingga {days} hari dalam satu permohonan",
+      "detailDescription": "Satu kelayakan dikongsi, dan sebab-sebab anda boleh memohon.",
+      "remaining": "Baki",
+      "usedThisYear": "Digunakan tahun ini: {days}",
+      "reasonsHeading": "Sebab",
+      "reasonsHelp": "Setiap sebab di bawah menggunakan baki dikongsi yang sama di atas.",
+      "applyForReason": "Mohon",
+      "viewDetails": "Lihat butiran"
     },
     "maSectionAll": "Semua",
     "maSectionAllHelp": "Setiap hari yang memerlukan tindakan anda.",

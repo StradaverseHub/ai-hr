@@ -337,6 +337,18 @@ export type SharedLeaveGroupBalance = {
   /** EVERY member type's name in the viewer's locale, name-ordered — including the ones HR has hidden.
    *  The pot is what it is; naming only the visible half would describe a different pot. */
   memberNames: string[];
+  /**
+   * 76dbcaa1 — the SAME members, with their ids, so a caller can offer one Apply action per reason.
+   *
+   * Identical set and identical order to `memberNames` (both are built from one list in one pass), and
+   * hidden members are in it for the reason above: the employee may still APPLY for a member type whose
+   * balance card HR has hidden — hiding a card is a presentation choice, never an entitlement one, and
+   * a reason list that silently dropped half the pot would be describing a different pot again.
+   *
+   * `memberNames` is deliberately kept: 46afcc48's card renders a comma-joined sentence and has no use
+   * for ids, and removing it would push that join into every caller.
+   */
+  members: { id: string; name: string }[];
 };
 
 /**
@@ -462,6 +474,11 @@ export async function sharedLeaveGroupBalances(
       available: sharedGroupAvailableDays({ totalLimitDays, usedDays, memberAvailableSum }),
       usedDays,
       memberNames: mine.map((m) => pickName(m.name, m.i18n as Record<string, { name: string }> | null, opts.locale)),
+      // 76dbcaa1 — one pass, so the two can never describe different memberships.
+      members: mine.map((m) => ({
+        id: m.leaveTypeId,
+        name: pickName(m.name, m.i18n as Record<string, { name: string }> | null, opts.locale),
+      })),
     });
   }
   return out;

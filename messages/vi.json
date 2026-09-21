@@ -3260,7 +3260,14 @@
       "heading": "Số dư phép dùng chung",
       "ofLimit": "trên {limit} ngày dùng chung",
       "sharedAcross": "Dùng chung giữa: {types}",
-      "maxPerApplication": "Tối đa {days} ngày trong một đơn"
+      "maxPerApplication": "Tối đa {days} ngày trong một đơn",
+      "detailDescription": "Một quyền lợi dùng chung, và các lý do bạn có thể nộp đơn.",
+      "remaining": "Còn lại",
+      "usedThisYear": "Đã dùng năm nay: {days}",
+      "reasonsHeading": "Lý do",
+      "reasonsHelp": "Mọi lý do bên dưới đều dùng chung số dư ở trên.",
+      "applyForReason": "Nộp đơn",
+      "viewDetails": "Xem chi tiết"
     },
     "maSectionAll": "Tất cả",
     "maSectionAllHelp": "Mọi ngày cần bạn xử lý.",

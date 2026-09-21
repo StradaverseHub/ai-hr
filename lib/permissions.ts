@@ -216,6 +216,18 @@ export const SCREENS: readonly ScreenEntry[] = [
    * The precedent is '/attendance/my-records' below: a different audience is a different SCREEN, not
    * another route on an existing one.
    */
+  /**
+   * 76dbcaa1 (r318) — SPECIAL LEAVE DETAILS: one pooled entitlement and the reasons that draw on it. The
+   * employee's OWN figure (it resolves `myEmployment`), so it is `scopedSession` and sits beside the other
+   * self-service leave screens rather than in the admin block.
+   */
+  {
+    screenKey: 'sharedLeaveGroup',
+    href: '/leave',
+    labelKey: 'nav.leave',
+    guard: 'scopedSession',
+    routes: ['/leave/shared/[groupId]'],
+  },
   {
     screenKey: 'attendanceBreakdown',
     href: '/attendance/breakdown',
