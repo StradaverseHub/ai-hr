@@ -1,3 +1,40 @@
+## r324 (2026-09-22) — TP1 Relief, and a date bug that only exists before breakfast. `main@8665c6e2`, **no migration**.
+
+Closed and DEPLOYED: `27605faa`. Gate: **939 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
+
+### TWO OF THE THREE REPORTED PREMISES WERE WRONG, AND THE PLAN SAID SO BEFORE APPROVAL
+
+- **"Allow Admin to delete a record"** — a submitted or approved declaration could ALREADY be cancelled, which is right for a tax record because it keeps the history. A **DRAFT could not be removed by any means at all**: `cancelTp1ForPerson` refuses anything not submitted or approved, and production held two unreachable drafts. The real gap was wider than reported. `discardTp1DraftForPerson` refuses every status except draft and goes through the SAME `decide()` writer — status `cancelled`, never a row DELETE. Discard and cancel stay separate because they mean different things: **nobody has been told about a draft**.
+- **"The deduction month is automatically the current month"** — it never was. The month is the `[month]` path segment and any month was reachable. The one place it was imposed was the "+ Add New TP1" button: `const addMonth = selectedYear === currentYear ? … : 1`. **That constant was the whole fault.** The current month stays the default; it is no longer the only answer. A month outside 1–12 falls back rather than being honoured, and the options are named through the screen's own `monthFmt`.
+
+### THE HOLE NOBODY ASKED ABOUT, AND WHY IT BELONGED IN THIS ROUND
+
+`requireAdminTarget` checked `isAdmin` and **nothing else**, so an administrator could approve their **own** tax relief. TP1 reduces PCB, which is money, and attendance (`assertCanDecide`) and leave both already refuse a decider who is the subject.
+
+Closed in `approveTp1ForPerson` and **NOT** in the new one-press action: putting it there would have left the two-step screen — the same buttons, one page apart — still able to do it. The rule is `assertCanDecide`'s, mirrored **including its escape hatch** (blocked for hr_admin, allowed for super_admin) so a company whose only administrator is also an employee is not stranded. When the refusal fires the declaration stays **SUBMITTED**: the work is not lost, it needs a second person.
+
+Safe to close because it was measured first: two approvals on production carry an approver, **zero are self-approved**. It belonged in THIS round because this round adds the one press, and a one-press hole is a different animal from a two-screen one.
+
+### A DATE BUG FOUND BY RUNNING THE GATE AT 01:07
+
+⚠️ **PRE-EXISTING, NOT PART OF THE ITEM, AND DIAGNOSED RATHER THAN WORKED AROUND.** A chunk went red in `test/replacement-leave-controls.test.ts`. It failed **on `main` too**, which is what turned it from a flake into an investigation.
+
+`core/attendance.ts` derived a DATE from an INSTANT in UTC at two sites (`requestedOn`, on the correction and plan paths). That is what §8 forbids, and it is the exact bug **r299 already fixed ONE LINE AWAY** in `core/toil.ts` for `approvedOn` — whose own comment reads *"the UTC date froze an expiry one day early for any approval between midnight and 08:00 in Malaysia."*
+
+So a replacement-leave credit banked in that window carried a **Request Date a day early while the EXPIRY on the same row was resolved in Kuala Lumpur**: one accrual, two dates disagreeing about what day it was. TOIL is leave credit, so it is money-adjacent.
+
+**Two test files carried the same fault on the assertion side**, deriving their expectation with `.toISOString()` — which §8 forbids *"fixtures included"*. They agreed with the code for sixteen hours a day, which is why all of this survived this long: **the existing tests would have passed either way.**
+
+### SWEPT, AND ONE DELIBERATELY LEFT
+
+Every other `toISOString().slice(0, 10)` in `core/`, `packs/` and `lib/` is calendar arithmetic on a Z-anchored midnight — timezone-free and correct. In `test/`, the only other hit round-trips a date the fixture supplies explicitly.
+
+**One genuine instance remains and was NOT fixed here**: `core/employment-review.ts:492` stamps `decidedOn` the same way. It is display-only, in a subsystem this round does not otherwise touch, and shipping an untested fix alongside an unrelated item is how a scoped round stops being one. Raised as `fc88ba08` with a plan and a recommendation, so the decision is the reporter's.
+
+### NOT DONE
+
+Nothing outstanding on the item. The PCB 2(II) picker's empty population (r323) remains shared pre-existing behaviour, unchanged.
+
 ## r323 (2026-09-21) — PCB 2(II), the form r321 left building. `main@0c362da9`, **no migration**.
 
 Closed and DEPLOYED: `72b100cd`. Gate: **938 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, GREEN ON THE FIRST PASS. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed on the second attempt (see below): `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
