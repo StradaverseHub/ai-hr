@@ -157,8 +157,15 @@ export default async function LeavePage({
     hType?: string | string[];
     // r302 — the history tab: pending | approved | rejected | cancelled (lib/my-leave-history.ts).
     hTab?: string;
-    /** 76dbcaa1 — the leave type a named Apply action asked to open the Request Leave form on. */
-    type?: string;
+    /**
+     * 76dbcaa1 — the leave type a named Apply action asked to open the Request Leave form on.
+     *
+     * ⚠️ `applyType`, NOT `type`. The retired admin register owned bare `from`/`to`/`type` on THIS path,
+     * and test/leave-filter-panel.test.ts keeps them inert so a saved admin link cannot quietly start
+     * filtering — or, here, quietly start preselecting a leave type. The prefix is the whole point of
+     * that rule and it applies to a new parameter exactly as it applies to an old one.
+     */
+    applyType?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -984,7 +991,9 @@ export default async function LeavePage({
                   // Leave details screen has one per reason). Shape-checked like `?start=` above and never
                   // trusted: LeaveDurationFields falls back to the first option if the id is not one the
                   // subject may take, so a stale or hand-typed link cannot preselect an ineligible type.
-                  defaultTypeId={typeof sp.type === 'string' && /^[0-9a-f-]{36}$/i.test(sp.type) ? sp.type : null}
+                  defaultTypeId={
+                    typeof sp.applyType === 'string' && /^[0-9a-f-]{36}$/i.test(sp.applyType) ? sp.applyType : null
+                  }
                   employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}

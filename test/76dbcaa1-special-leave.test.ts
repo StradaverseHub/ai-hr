@@ -81,13 +81,19 @@ describe('76dbcaa1 · the details screen is the employee’s own', () => {
 
   it('each reason links into the EXISTING apply form, not a second write path', () => {
     const src = codeOnly(read(DETAIL));
-    expect(src).toContain('href={`/leave?type=${m.id}`}');
+    // `applyType`, not `type`: the retired admin register owned bare `type` on this path and
+    // test/leave-filter-panel.test.ts keeps it inert, so a stale admin link cannot preselect anything.
+    expect(src).toContain('href={`/leave?applyType=${m.id}`}');
     expect(src, 'the details screen submits nothing').not.toContain("'use server'");
     expect(src).not.toContain('<form');
   });
 
-  it('is a guarded route with a column in the access grid', () => {
-    expect(read('lib/permissions.ts')).toContain("'/leave/shared/[groupId]'");
+  it('rides the leave column in the access grid, rather than minting a second one', () => {
+    const perms = read('lib/permissions.ts');
+    expect(perms).toContain("'/leave/shared/[groupId]'");
+    // Same audience, same scope, same guard as /leave — and a second column would carry the SAME label,
+    // describing one function as two. (570fd56e made the identical call for the per-day attendance view.)
+    expect((perms.match(/labelKey: 'nav.myAbsence'/g) ?? []).length, 'one My Absence column').toBe(1);
   });
 });
 

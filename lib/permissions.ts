@@ -116,7 +116,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/leave',
     labelKey: 'nav.myAbsence',
     guard: 'scopedSession',
-    routes: ['/leave'],
+    // 76dbcaa1 (r318) — '/leave/shared/[groupId]' rides THIS column rather than minting its own. It is
+    // the same audience, the same scope and the same guard: the employee's own pooled Special Leave
+    // figure, opened from the card on this very screen. The 570fd56e precedent, and the reason it
+    // matters here in particular is that a second column would carry the SAME label — two rows reading
+    // "My Absence" in the access grid describe one function as if it were two.
+    routes: ['/leave', '/leave/shared/[groupId]'],
     hasScopeNote: true,
   },
   {
@@ -216,18 +221,6 @@ export const SCREENS: readonly ScreenEntry[] = [
    * The precedent is '/attendance/my-records' below: a different audience is a different SCREEN, not
    * another route on an existing one.
    */
-  /**
-   * 76dbcaa1 (r318) — SPECIAL LEAVE DETAILS: one pooled entitlement and the reasons that draw on it. The
-   * employee's OWN figure (it resolves `myEmployment`), so it is `scopedSession` and sits beside the other
-   * self-service leave screens rather than in the admin block.
-   */
-  {
-    screenKey: 'sharedLeaveGroup',
-    href: '/leave',
-    labelKey: 'nav.leave',
-    guard: 'scopedSession',
-    routes: ['/leave/shared/[groupId]'],
-  },
   {
     screenKey: 'attendanceBreakdown',
     href: '/attendance/breakdown',
