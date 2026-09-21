@@ -5,15 +5,28 @@ import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
+import { cookies } from 'next/headers';
+import {
+  CollapsibleEmployeePanel,
+  EmployeeScopePanel,
+  type ScopeEmployee,
+} from '@/components/collapsible-employee-panel';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
+
+/**
+ * dae7a10f — this screen's OWN panel cookie. Collapsing the list here says nothing about Attendance
+ * Breakdown or Transaction View, which is the whole reason the component takes a key rather than owning
+ * one (r320).
+ */
+const PANEL_COOKIE = 'attendance-individual-panel';
 
 
 /**
@@ -70,6 +83,26 @@ export default async function IndividualAttendancePage({
   // columns still use the row's first-in / last-out, this only expands the audit detail below a multi-punch day.
   const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
 
+  /**
+   * The panel is fed from the SAME `listEmployees(s, scopeIds)` the dropdown used — it must never become a
+   * second, wider source of employees. `selectedEmp` above is still re-guarded against this very list
+   * before any read uses it, so the list is what is DISPLAYED and never what grants access.
+   */
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
+  /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
+  const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
+
   return (
     <div className={pageWideCls}>
       {/* dde08629 (r319) — FULL WIDTH, the same `pageWideCls` eight other Attendance screens already use
@@ -81,6 +114,51 @@ export default async function IndividualAttendancePage({
       <AttendanceTabs active="individual" />
       <ErrorBanner message={sp.error} />
 
+      {/**
+       * dae7a10f — THE EMPLOYEE PANEL, a MOUNT and not a design. Same component Payroll › Transaction View
+       * and Attendance Breakdown use — six screens after r320 — so this cannot drift into a seventh
+       * slightly different picker. It owns the grid: collapsing the panel gives its width to the table.
+       *
+       * `selectParam="emp"` keeps this screen's existing query parameter, so every link and bookmark
+       * anybody already holds still opens the person it always did, and `preserve` carries the date range
+       * across a switch — the reporter's "pick a person on the left, read their month on the right".
+       *
+       * ⚠️ EVERY LABEL IS PRE-TRANSLATED. A translator closure passed from this server component into that
+       * client one returns a 500 on EVERY request while tsc, the suite and next build all stay green.
+       */}
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={PANEL_COOKIE}
+        title={t('title')}
+        hideLabel={t('panel.hide')}
+        showLabel={t('panel.show')}
+        detailHeader={
+          selected ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+              <EmployeeName
+                code={selected.employeeCode}
+                name={selected.name}
+                className="text-sm font-semibold text-foreground"
+              />
+            </div>
+          ) : undefined
+        }
+        panel={
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold">{t('panel.heading')}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t('panel.hintIndividual')}</p>
+            <div className="mt-3">
+              <EmployeeScopePanel
+                employees={panelEmployees}
+                selectedId={selectedEmp ?? null}
+                basePath="/attendance/individual"
+                selectParam="emp"
+                preserve={{ from, to }}
+              />
+            </div>
+          </Card>
+        }
+      >
       <Card className="overflow-hidden">
         <SectionHeader
           title={selected ? selected.name : t('individualTitle')}
@@ -88,17 +166,10 @@ export default async function IndividualAttendancePage({
         />
         {/* Filter panel — plain GET form: Select Employee · Date From · Date To. Unchanged. */}
         <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t('filters.selectEmployee')}
-            <select name="emp" defaultValue={selectedEmp ?? ''} className={inputCls}>
-              <option value="">{t('filters.chooseEmployee')}</option>
-              {employees.map((e) => (
-                <option key={e.employmentId} value={e.employmentId}>
-                  {e.employeeCode ? `${e.employeeCode} · ${e.name}` : e.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* The employee rides the URL now, chosen in the panel — carried here so submitting the dates
+              cannot silently clear the selection. The old <select> is gone: two pickers for one value is
+              how they come to disagree. */}
+          {selectedEmp && <input type="hidden" name="emp" value={selectedEmp} />}
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('filters.dateFrom')}
             <input type="date" name="from" defaultValue={from} className={inputCls} />
@@ -117,7 +188,10 @@ export default async function IndividualAttendancePage({
         ) : (
           /* Wide table — the extra columns scroll horizontally on narrow screens. */
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[76rem] text-sm">
+            {/* f728826a — `w-max min-w-full`, not `w-full`: the same squeeze fixed on Breakdown and Daily this
+                  round. w-full compresses every cell below its content width and nowrap text then paints
+                  over the next column. Fixed here too rather than waiting for it to be reported. */}
+            <table className="w-max min-w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t('colDate')}</th>
@@ -221,6 +295,7 @@ export default async function IndividualAttendancePage({
           </div>
         )}
       </Card>
+      </CollapsibleEmployeePanel>
     </div>
   );
 }

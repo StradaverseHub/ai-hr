@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
+import { isAdmin } from '@/lib/authz';
+import { adminCorrectAttendanceDayAction } from './actions';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
 import { fmtMin, fmtDayDate } from '@/components/attendance-format';
 
@@ -36,12 +38,27 @@ import { fmtMin, fmtDayDate } from '@/components/attendance-format';
  * pay allowance (a payroll component). Guessing would put a confident wrong section on a screen about
  * money-adjacent figures, so it is left out and the question is recorded for the reporter.
  */
+/**
+ * dae7a10f — the message keys the correction action may redirect with. An ALLOWLIST rather than
+ * `t(sp.error)` on whatever arrives: `error` is an untrusted url value, and handing an arbitrary string
+ * to the translator either prints the raw string back at the operator or throws MISSING_MESSAGE on a
+ * screen that was otherwise fine.
+ */
+const CORRECTION_MESSAGES: readonly string[] = [
+  'correctionForbidden',
+  'correctionBadDate',
+  'correctionReasonRequired',
+  'correctionNothingToChange',
+  'correctionRejected',
+  'correctionPendingAnotherApprover',
+];
+
 export default async function IndividualAttendanceDayPage({
   params,
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ emp?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ emp?: string; from?: string; to?: string; error?: string; corrected?: string }>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -52,7 +69,7 @@ export default async function IndividualAttendanceDayPage({
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRe.test(date)) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('dayTitle')} />
         <ErrorBanner message={t('dayNoRecord')} />
       </div>
@@ -66,7 +83,7 @@ export default async function IndividualAttendanceDayPage({
 
   if (!selected) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('dayTitle')} />
         <ErrorBanner message={t('dayNoRecord')} />
       </div>
@@ -78,6 +95,8 @@ export default async function IndividualAttendanceDayPage({
     attendancePunchesForRange(s, selected.employmentId, date, date),
   ]);
   const row = rows[0] ?? null;
+  /** dae7a10f — the one-action correction is an ADMIN affordance; everyone else keeps the link. */
+  const admin = isAdmin(s);
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
 
@@ -87,7 +106,7 @@ export default async function IndividualAttendanceDayPage({
 
   if (!row) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('dayTitle')} description={`${selected.name} · ${fmtDayDate(date, locale)}`} />
         <Link href={backHref} className="text-sm font-medium text-primary hover:underline">
           ← {t('dayBackToList')}
@@ -134,12 +153,22 @@ export default async function IndividualAttendanceDayPage({
   const DASH = '—';
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('dayTitle')} description={`${selected.name} · ${fmtDayDate(date, locale)}`} />
 
       <Link href={backHref} className="inline-block text-sm font-medium text-primary hover:underline">
         ← {t('dayBackToList')}
       </Link>
+
+      {/* dae7a10f — the correction's outcome. The action redirects with a message KEY, never a sentence,
+          so the six locales stay the one place wording lives. An unknown key renders nothing rather than
+          printing itself at the operator. */}
+      {sp.error && CORRECTION_MESSAGES.includes(sp.error) && <ErrorBanner message={t(sp.error)} />}
+      {sp.corrected === '1' && !sp.error && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {t('correctionSaved')}
+        </div>
+      )}
 
       {/* 1 · SHIFT DETAILS */}
       <Card className="overflow-hidden">
@@ -240,11 +269,48 @@ export default async function IndividualAttendanceDayPage({
           <Field label={t('colLateness')} value={fmtMin(row.lateMinutes)} />
           <Field label={t('colEarlyOut')} value={fmtMin(row.earlyOutMinutes)} />
         </div>
-        <div className="border-t border-border px-4 py-2 text-xs">
-          <Link href="/attendance/requests" className="font-medium text-primary hover:underline">
-            {t('dayEditCorrection')}
-          </Link>
-        </div>
+        {/**
+          * dae7a10f — THE ONE-ACTION ADMIN CORRECTION, and the link that stays for everyone else.
+          *
+          * The reporter asked to fix a day "without going through the approval workflow". An
+          * administrator no longer waits for anybody: this posts the correction and approves it in the
+          * same submit. What it does NOT do is write the attendance row — see actions.ts. The correction
+          * still runs through the same engine an approved request runs through, and still leaves the same
+          * record of who changed it, when, and why.
+          *
+          * For a non-admin the affordance is unchanged: the correction workflow they already use.
+          */}
+        {admin ? (
+          <form
+            action={adminCorrectAttendanceDayAction}
+            className="flex flex-wrap items-end gap-3 border-t border-border px-4 py-3"
+          >
+            <input type="hidden" name="employmentId" value={selected.employmentId} />
+            <input type="hidden" name="date" value={date} />
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('colCheckIn')}
+              <input type="time" name="checkIn" defaultValue={row.checkInAt?.slice(0, 5) ?? ''} className={inputCls} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('colCheckOut')}
+              <input type="time" name="checkOut" defaultValue={row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
+            </label>
+            <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
+              {t('dayCorrectReason')}
+              <input name="reason" required maxLength={500} className={inputCls} />
+            </label>
+            <Button type="submit" variant="outline" size="sm">
+              {t('dayCorrectSave')}
+            </Button>
+            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectTrailNote')}</p>
+          </form>
+        ) : (
+          <div className="border-t border-border px-4 py-2 text-xs">
+            <Link href="/attendance/requests" className="font-medium text-primary hover:underline">
+              {t('dayEditCorrection')}
+            </Link>
+          </div>
+        )}
       </Card>
     </div>
   );

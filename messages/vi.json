@@ -2789,8 +2789,19 @@
       "hide": "Ẩn danh sách",
       "show": "Chọn nhân viên",
       "heading": "Nhân viên",
-      "hint": "Tìm theo tên hoặc mã nhân viên, rồi chọn một người để xem phân tách của họ."
-    }
+      "hint": "Tìm theo tên hoặc mã nhân viên, rồi chọn một người để xem phân tách của họ.",
+      "hintIndividual": "Tìm theo tên hoặc mã nhân viên, sau đó chọn một người để xem chấm công của họ."
+    },
+    "dayCorrectReason": "Lý do điều chỉnh",
+    "dayCorrectSave": "Lưu điều chỉnh",
+    "dayCorrectTrailNote": "Lưu ngay và được ghi nhận: ai đã thay đổi, khi nào, giá trị trước đó và lý do này.",
+    "correctionForbidden": "Bạn không có quyền điều chỉnh nhân viên này.",
+    "correctionBadDate": "Ngày không hợp lệ.",
+    "correctionReasonRequired": "Vui lòng nêu lý do điều chỉnh.",
+    "correctionNothingToChange": "Nhập giờ vào hoặc giờ ra cần điều chỉnh.",
+    "correctionRejected": "Không thể ghi nhận điều chỉnh này.",
+    "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
+    "correctionSaved": "Đã lưu và áp dụng điều chỉnh."
   },
   "org": {
     "title": "Sơ đồ tổ chức",

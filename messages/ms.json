@@ -2789,8 +2789,19 @@
       "hide": "Sembunyikan senarai",
       "show": "Pilih pekerja",
       "heading": "Pekerja",
-      "hint": "Cari mengikut nama atau ID pekerja, kemudian pilih seseorang untuk melihat pecahan mereka."
-    }
+      "hint": "Cari mengikut nama atau ID pekerja, kemudian pilih seseorang untuk melihat pecahan mereka.",
+      "hintIndividual": "Cari mengikut nama atau ID pekerja, kemudian pilih seseorang untuk melihat kehadiran mereka."
+    },
+    "dayCorrectReason": "Sebab pembetulan",
+    "dayCorrectSave": "Simpan pembetulan",
+    "dayCorrectTrailNote": "Disimpan serta-merta dan direkodkan: siapa yang mengubah, bila, nilai sebelumnya dan sebab ini.",
+    "correctionForbidden": "Pekerja itu bukan pekerja yang boleh anda betulkan.",
+    "correctionBadDate": "Itu bukan tarikh yang sah.",
+    "correctionReasonRequired": "Berikan sebab untuk pembetulan ini.",
+    "correctionNothingToChange": "Masukkan waktu masuk atau waktu keluar untuk dibetulkan.",
+    "correctionRejected": "Pembetulan itu tidak dapat direkodkan.",
+    "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
+    "correctionSaved": "Pembetulan disimpan dan digunakan."
   },
   "org": {
     "title": "Carta organisasi",

@@ -109,6 +109,13 @@ const WIDE_LIST_SCREENS = [
    * screen that could afford to acquire a reading-width cap.
    */
   'app/roster/page.tsx',
+  /**
+   * dae7a10f (r322) — the per-day detail screen. 570fd56e moved the eight calculation columns onto it and
+   * left it at `mx-auto max-w-5xl`, so the screen carrying the WIDEST content on this tab was the one
+   * narrow screen in the set. It opens from a full-width list and now matches it — and is listed here so
+   * it cannot drift back, the same reasoning r319 used for the three screens above.
+   */
+  'app/attendance/individual/[date]/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.

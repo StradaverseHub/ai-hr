@@ -2789,8 +2789,19 @@
       "hide": "Hide list",
       "show": "Select employee",
       "heading": "Employees",
-      "hint": "Search by name or employee ID, then pick someone to see their breakdown."
-    }
+      "hint": "Search by name or employee ID, then pick someone to see their breakdown.",
+      "hintIndividual": "Search by name or employee ID, then pick someone to see their attendance."
+    },
+    "dayCorrectReason": "Reason for correction",
+    "dayCorrectSave": "Save correction",
+    "dayCorrectTrailNote": "Saved immediately, and recorded: who changed it, when, the previous value and this reason.",
+    "correctionForbidden": "That employee is not one you may correct.",
+    "correctionBadDate": "That is not a valid date.",
+    "correctionReasonRequired": "Give a reason for the correction.",
+    "correctionNothingToChange": "Enter a clock-in or clock-out time to correct.",
+    "correctionRejected": "That correction could not be recorded.",
+    "correctionPendingAnotherApprover": "Saved, but it needs another approver: you cannot approve a correction to your own attendance.",
+    "correctionSaved": "Correction saved and applied."
   },
   "org": {
     "title": "Org chart",

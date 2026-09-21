@@ -2789,8 +2789,19 @@
       "hide": "隐藏列表",
       "show": "选择员工",
       "heading": "员工",
-      "hint": "按姓名或工号搜索，然后选择一位员工查看其考勤分解。"
-    }
+      "hint": "按姓名或工号搜索，然后选择一位员工查看其考勤分解。",
+      "hintIndividual": "按姓名或员工编号搜索，然后选择一位员工查看其考勤记录。"
+    },
+    "dayCorrectReason": "更正原因",
+    "dayCorrectSave": "保存更正",
+    "dayCorrectTrailNote": "立即保存并记录：更改人、时间、原值及本次原因。",
+    "correctionForbidden": "您无权更正该员工的记录。",
+    "correctionBadDate": "日期无效。",
+    "correctionReasonRequired": "请填写更正原因。",
+    "correctionNothingToChange": "请输入需更正的上班或下班时间。",
+    "correctionRejected": "无法记录该更正。",
+    "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
+    "correctionSaved": "更正已保存并生效。"
   },
   "org": {
     "title": "组织架构图",
