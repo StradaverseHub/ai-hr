@@ -68,6 +68,7 @@ import {
 import { setRestDay } from '../core/roster';
 import { setToilPolicy, type ToilPolicyInput } from '../core/toil';
 import type { SessionContext } from '../db/client';
+import { todayInKualaLumpur } from '../lib/hr-date';
 
 let b: Base;
 
@@ -414,7 +415,11 @@ describe('3 · *** the replacement-leave credit survives pre-approval ***', () =
       .select({ requestedOn: schema.toilAccrual.requestedOn })
       .from(schema.toilAccrual)
       .where(eq(schema.toilAccrual.employmentId, employmentId));
-    const requestedOnCorrection = (await correctionRow(correctionId)).createdAt.toISOString().slice(0, 10);
+    // ⚠️ THE KUALA LUMPUR DATE (r324), matching what the code now stamps. This derived the expectation
+    // with `.toISOString()` — a UTC date from an instant, which CLAUDE.md §8 forbids "fixtures included"
+    // — and so disagreed with the stamped value for any run between midnight and 08:00 MYT. The code
+    // side of the same defect is fixed in core/attendance.ts in this round.
+    const requestedOnCorrection = todayInKualaLumpur((await correctionRow(correctionId)).createdAt);
     expect(accrual?.requestedOn).toBe(requestedOnCorrection);
   });
 
