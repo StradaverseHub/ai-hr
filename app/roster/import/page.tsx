@@ -49,7 +49,7 @@ export default async function RosterImportPage({
   // this date exactly as it is", so a partly-filled month can be topped up without disturbing the rest.
   // Built by the SHARED builder, whose four identity headings are the machine header and stay English in
   // every locale — see lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS for what a translated one cost.
-  const view = await rosterMonthView(s, { companyId: company.id, month });
+  const view = await rosterMonthView(s, { companyIds: [company.id], month });
   const codeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
   const template = buildRosterTemplate({
     dates: view.dates,

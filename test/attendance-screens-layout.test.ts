@@ -101,6 +101,14 @@ const WIDE_LIST_SCREENS = [
   'app/attendance/page.tsx',
   'app/attendance/daily/page.tsx',
   'app/attendance/individual/page.tsx',
+  /**
+   * a57f0584 (r322) — Roster. It has BEEN pageWideCls all along and was never listed, which is exactly the
+   * hole af7a8eb4's header names: a screen can hold the property without the guard and lose it again with
+   * nobody noticing. Added in the round that widened what the screen SHOWS (every authorised company at
+   * once, rather than whichever sorted first), because a month grid spanning twelve companies is the last
+   * screen that could afford to acquire a reading-width cap.
+   */
+  'app/roster/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.

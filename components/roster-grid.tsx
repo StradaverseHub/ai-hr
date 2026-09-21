@@ -70,6 +70,8 @@ export type GridEmployee = {
   code?: string | null;
   department?: string | null;
   occupation?: string | null;
+  /** a57f0584 — set ONLY when the roster spans more than one company; absent/blank hides the column. */
+  company?: string | null;
 };
 export type GridDate = { iso: string; dow: string; day: string };
 type Brush = string; // shiftId | 'rest' | 'clear'
@@ -89,20 +91,27 @@ const AUTO_SHIFT_COLORS = [
 const hhmm = (t: string) => t.slice(0, 5);
 
 /** The pinned block. Widths are explicit because sticky columns need a known left offset each. */
-const PINNED_W = { check: 36, no: 96, name: 190, dept: 132, occ: 132, edit: 54 } as const;
+const PINNED_W = { check: 36, no: 96, name: 190, company: 170, dept: 132, occ: 132, edit: 54 } as const;
 type PinnedKey = keyof typeof PINNED_W;
-const EDIT_ORDER: PinnedKey[] = ['check', 'no', 'name', 'dept', 'occ', 'edit'];
+const EDIT_ORDER: PinnedKey[] = ['check', 'no', 'name', 'company', 'dept', 'occ', 'edit'];
 /** Read-only drops the two columns that exist only in order to change something. */
-const VIEW_ORDER: PinnedKey[] = ['no', 'name', 'dept', 'occ'];
+const VIEW_ORDER: PinnedKey[] = ['no', 'name', 'company', 'dept', 'occ'];
 const DATE_W = 78;
 const HEAD_CLS = 'bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
 const CELL_MUTED = 'truncate bg-background px-2 py-1.5 text-xs text-muted-foreground';
 
-/** Sticky left offsets, recomputed rather than constant because the read-only grid has fewer columns. */
-function pinnedLayout(canEdit: boolean) {
+/**
+ * Sticky left offsets, recomputed rather than constant because the read-only grid has fewer columns.
+ *
+ * a57f0584 — and fewer again when the roster is ONE company's: the Company column is dropped from the
+ * order entirely rather than rendered empty, so every offset after it closes up. A column that says the
+ * same thing on every row is noise, and the screen is only cross-company when nothing is filtering it.
+ */
+function pinnedLayout(canEdit: boolean, showCompany: boolean) {
   const left = {} as Record<PinnedKey, number>;
   let x = 0;
-  for (const k of canEdit ? EDIT_ORDER : VIEW_ORDER) {
+  const order = (canEdit ? EDIT_ORDER : VIEW_ORDER).filter((k) => k !== 'company' || showCompany);
+  for (const k of order) {
     left[k] = x;
     x += PINNED_W[k];
   }
@@ -272,7 +281,8 @@ export function RosterGrid({
   };
 
   const editingEmployee = canEdit ? (employees.find((e) => e.employmentId === editing) ?? null) : null;
-  const pinned = pinnedLayout(canEdit);
+  const showCompany = employees.some((e) => (e.company ?? '') !== '');
+  const pinned = pinnedLayout(canEdit, showCompany);
 
   return (
     <div className="space-y-3">
@@ -327,6 +337,11 @@ export function RosterGrid({
               <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('name')}>
                 {t('colEmployeeName')}
               </th>
+              {showCompany && (
+                <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('company')}>
+                  {t('colCompany')}
+                </th>
+              )}
               <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('dept')}>
                 {t('colDepartment')}
               </th>
@@ -385,6 +400,11 @@ export function RosterGrid({
                     )}
                   </span>
                 </td>
+                {showCompany && (
+                  <td className={`sticky z-10 ${CELL_MUTED}`} style={pinned.styTrunc('company')} title={e.company ?? ''}>
+                    {e.company ?? '—'}
+                  </td>
+                )}
                 <td className={`sticky z-10 ${CELL_MUTED}`} style={pinned.styTrunc('dept')}>
                   {e.department ?? '—'}
                 </td>

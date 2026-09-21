@@ -212,7 +212,10 @@
     "breakDeductionSummary": "Trừ {deducted} khỏi một ngày làm việc đầy đủ, còn lại {net} giờ làm việc bình thường.",
     "breakDeductionSemiHint": "Với ca bán linh hoạt, giờ làm việc bình thường là con số đặt ở trên chứ không phải khung giờ, nên ở đây không tính tổng.",
     "moreSettingsSummary": "Cài đặt khác",
-    "moreSettingsHint": "Mô tả, danh mục, loại ngày, giờ vào sớm nhất, giờ ra muộn nhất, giờ vào nửa ngày thứ hai, nghỉ cả ngày, tăng ca cả ngày, làm tròn giờ bình thường, bảng tăng ca và phụ cấp ca — tất cả vẫn được lưu và vẫn sửa được."
+    "moreSettingsHint": "Mô tả, danh mục, loại ngày, giờ vào sớm nhất, giờ ra muộn nhất, giờ vào nửa ngày thứ hai, nghỉ cả ngày, tăng ca cả ngày, làm tròn giờ bình thường, bảng tăng ca và phụ cấp ca — tất cả vẫn được lưu và vẫn sửa được.",
+    "allCompanies": "Tất cả công ty",
+    "colCompany": "Công ty",
+    "pickCompanyToEdit": "Chọn một công ty ở trên để tạo, sao chép hoặc tải lên lịch làm việc."
   },
   "common": {
     "appName": "Kingdee AI HR",

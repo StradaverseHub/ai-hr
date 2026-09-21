@@ -212,7 +212,10 @@
     "breakDeductionSummary": "{deducted} comes off a full day, leaving {net} of normal working time.",
     "breakDeductionSemiHint": "On a Semi Flexi shift the normal working time is the figure set above, not the window, so no total is worked out here.",
     "moreSettingsSummary": "More settings",
-    "moreSettingsHint": "Description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in, full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift premium — all still saved, all still editable."
+    "moreSettingsHint": "Description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in, full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift premium — all still saved, all still editable.",
+    "allCompanies": "All companies",
+    "colCompany": "Company",
+    "pickCompanyToEdit": "Choose a company above to generate, copy or upload a roster."
   },
   "common": {
     "appName": "Kingdee AI HR",

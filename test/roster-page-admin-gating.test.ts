@@ -91,9 +91,9 @@ beforeEach(async () => {
 
 /** Render the roster screen as `s`. Translations are mocked to return their KEY, so a label below is the
  *  message key the page asked for — which is what makes an exact-match assertion possible. */
-async function renderAs(s: SessionContext): Promise<unknown> {
+async function renderAs(s: SessionContext, sp: Record<string, string> = {}): Promise<unknown> {
   SCOPE = { s, scopeIds: [b.companyId], allowedCount: 1 };
-  return RosterPage({ searchParams: Promise.resolve({ month: MONTH }) } as any);
+  return RosterPage({ searchParams: Promise.resolve({ month: MONTH, ...sp }) } as any);
 }
 
 /** Every React element in a rendered tree, descending through element-valued props as well as children. */
@@ -144,8 +144,17 @@ const formActions = (tree: unknown): unknown[] =>
 const hasTemplateButton = (tree: unknown): boolean => elementsIn(tree).some((el) => el.type === RosterTemplateButton);
 
 describe('the roster screen offers its write tools to an HR administrator', () => {
+  /**
+   * a57f0584 (r322) — UPDATED, NOT LOOSENED: this now renders WITH a company chosen.
+   *
+   * Roster used to pick `companies[0]` whenever none was asked for, so "no companyId" and "one company"
+   * were the same render and this case never had to say which it meant. The screen now opens on EVERY
+   * authorised company, and Generate / Copy / Upload each write roster_assignment for a NAMED company, so
+   * they are offered once one is chosen. The property this file exists for — an administrator gets these
+   * five and a supervisor gets none — is unchanged and still asserted; the case below pins the new state.
+   */
   it('Upload, Download Template, Generate, Copy and Manage shift schedules are all on the page', async () => {
-    const tree = await renderAs(admin);
+    const tree = await renderAs(admin, { companyId: b.companyId });
     const labels = stringsIn(tree);
 
     expect(labels).toContain('uploadRoster');
@@ -159,6 +168,32 @@ describe('the roster screen offers its write tools to an HR administrator', () =
 
     // 2ec1e3d2 — the link stays exactly where it was for the people it actually opens for.
     expect(labels).toContain('manageShiftsLink');
+  });
+});
+
+describe('a57f0584 · the all-companies view is read-only, and says why', () => {
+  /**
+   * The cross-company roster is a READ. Both write tools take a companyId, and `copyRosterAction` posts
+   * every employee on screen as hidden employmentIds — across twelve companies that is a bulk write
+   * nobody asked for. Withdrawing the affordance (rather than rendering a form with an empty hidden
+   * field, which would post '' and fail inside the action) is what makes the widening safe without
+   * paginating the grid: the writable view still holds exactly the rows it held before.
+   */
+  it('an administrator viewing every company gets the tools withheld, with a reason on screen', async () => {
+    const labels = stringsIn(await renderAs(admin));
+    expect(labels, 'the forms are gone').not.toContain('generate');
+    expect(labels).not.toContain('copyTitle');
+    expect(labels, 'and the upload with them').not.toContain('uploadRoster');
+    expect(labels, 'but the screen SAYS so rather than going quiet').toContain('pickCompanyToEdit');
+  });
+
+  it('and the roster itself still rendered — the read is what this view is for', async () => {
+    const labels = stringsIn(await renderAs(admin));
+    // NOT the company switcher: it renders only when there is more than one company to switch BETWEEN,
+    // and this harness seeds one. Its all-companies option is pinned on the source in
+    // test/a57f0584-roster-all-companies.test.ts, where a second company exists to make it meaningful.
+    expect(labels, 'the read is unaffected by withholding the write tools').toContain('exportLabel');
+    expect(labels).toContain('filterBusinessGroup');
   });
 });
 

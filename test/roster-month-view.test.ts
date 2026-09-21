@@ -66,7 +66,7 @@ beforeEach(async () => {
 
 describe('rosterMonthView (23390097)', () => {
   it('returns every date of the month and leaves a terminated employee out', async () => {
-    const view = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08' });
+    const view = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08' });
     expect(view.dates).toHaveLength(31);
     expect(view.from).toBe('2026-08-01');
     expect(view.to).toBe('2026-08-31');
@@ -75,18 +75,18 @@ describe('rosterMonthView (23390097)', () => {
   });
 
   it('filters the grid by department while leaving the dropdown source whole', async () => {
-    const view = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08', departmentId: b.deptA });
+    const view = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08', departmentId: b.deptA });
     expect(view.employees.map((e) => e.code)).toEqual(['A0003']);
     // The filters are built from allEmployees precisely so choosing one cannot empty the others.
     expect(view.allEmployees.map((e) => e.code).sort()).toEqual(['A0003', 'A0005']);
   });
 
   it('finds an employee by name OR by employee number, case-insensitively', async () => {
-    const byName = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08', q: 'muthusamy' });
+    const byName = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08', q: 'muthusamy' });
     expect(byName.employees.map((e) => e.code)).toEqual(['A0005']);
-    const byNumber = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08', q: 'a0003' });
+    const byNumber = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08', q: 'a0003' });
     expect(byNumber.employees.map((e) => e.code)).toEqual(['A0003']);
-    const nobody = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08', q: 'nobody' });
+    const nobody = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08', q: 'nobody' });
     expect(nobody.employees).toEqual([]);
   });
 
@@ -95,7 +95,7 @@ describe('rosterMonthView (23390097)', () => {
     await setRestDay(ctx, { employmentId: finance, shiftDate: '2026-08-04' });
     await assignShift(ctx, { employmentId: finance, shiftDate: '2026-09-01', shiftId: morning });
 
-    const view = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08' });
+    const view = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08' });
     expect(view.cells[`${finance}|2026-08-03`]).toEqual({ kind: 'shift', shiftId: morning });
     expect(view.cells[`${finance}|2026-08-04`]).toEqual({ kind: 'rest' });
     expect(view.cells[`${finance}|2026-09-01`]).toBeUndefined();
@@ -104,7 +104,7 @@ describe('rosterMonthView (23390097)', () => {
 
   it('returns the usual shift WITH its weekly pattern, and omits anyone who has none', async () => {
     await assignDefaultShift(ctx, { employmentId: finance, shiftId: morning });
-    const view = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08' });
+    const view = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08' });
     expect(view.usual[finance]).toEqual({ shiftId: morning, pattern: [1, 2, 3, 4, 5] });
     expect(view.usual[ops]).toBeUndefined();
     expect(view.usualNames[morning]).toEqual({ code: 'MB28', name: 'Morning full' });
@@ -112,7 +112,7 @@ describe('rosterMonthView (23390097)', () => {
 
   it('a filtered month reads only the filtered employees’ rows', async () => {
     await assignShift(ctx, { employmentId: ops, shiftDate: '2026-08-03', shiftId: morning });
-    const view = await rosterMonthView(ctx, { companyId: b.companyId, month: '2026-08', departmentId: b.deptA });
+    const view = await rosterMonthView(ctx, { companyIds: [b.companyId], month: '2026-08', departmentId: b.deptA });
     expect(view.cells[`${ops}|2026-08-03`]).toBeUndefined();
   });
 });

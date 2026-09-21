@@ -212,7 +212,10 @@
     "breakDeductionSummary": "整日将扣除 {deducted}，正常工作时间为 {net}。",
     "breakDeductionSemiHint": "半弹性班次的正常工作时间取自上面填写的数值，而非时间窗口，因此这里不做合计。",
     "moreSettingsSummary": "更多设置",
-    "moreSettingsHint": "描述、类别、日期类型、最早上班时间、最晚下班时间、第二段半日上班时间、全日请假、全日加班、正常时数取整、加班时段表和班次津贴 — 全部仍会保存，仍可编辑。"
+    "moreSettingsHint": "描述、类别、日期类型、最早上班时间、最晚下班时间、第二段半日上班时间、全日请假、全日加班、正常时数取整、加班时段表和班次津贴 — 全部仍会保存，仍可编辑。",
+    "allCompanies": "所有公司",
+    "colCompany": "公司",
+    "pickCompanyToEdit": "请在上方选择公司，以生成、复制或上传排班表。"
   },
   "common": {
     "appName": "Kingdee AI HR",

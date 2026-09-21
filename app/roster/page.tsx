@@ -49,20 +49,38 @@ export default async function RosterPage({
 
   const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (companies.length === 0) {
+    // a57f0584 — the empty state takes the SAME width as the screen. It was mx-auto max-w-6xl, which is a
+    // page-level cap on a screen whose whole point is being full width; one card of text is no reason for
+    // the header above it to sit at a different width from every other state of this page.
     return (
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('title')} description={t('subtitle')} />
         <Card className="p-4 text-sm text-muted-foreground">{t('noCompanies')}</Card>
       </div>
     );
   }
-  const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : companies[0].id;
+  /**
+   * a57f0584 — THE COMPANY NO LONGER DECIDES WHAT YOU SEE; it narrows it.
+   *
+   * This read `companies[0].id` when nothing was chosen, so an operator with twelve companies opened
+   * Roster on whichever sorted first — measured on production: 31 of 75 employees in the largest, the
+   * rest spread across eight more — and the only way to see the others was to switch company eleven
+   * times. That is the ticket's "I cannot immediately see the overall employee roster". The filters were
+   * never the fault, and the plan said so before this was built.
+   *
+   * `companies` is already `listCompanies(s)` narrowed to `scopeIds`, so opening on all of them widens
+   * what is ASKED FOR and not what is permitted. Nothing about who may be seen changes.
+   */
+  const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
+  const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
+  /** The Company column earns its place only when more than one company can appear in the rows. */
+  const showCompany = companyIds.length > 1;
   const todayIso = todayInKualaLumpur();
   const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
   const admin = isAdmin(s);
 
   const view = await rosterMonthView(s, {
-    companyId,
+    companyIds,
     month,
     ...(sp.bu ? { businessUnitId: sp.bu } : {}),
     ...(sp.dept ? { departmentId: sp.dept } : {}),
@@ -70,9 +88,9 @@ export default async function RosterPage({
   });
 
   const [variance, toilPolicies, departments] = await Promise.all([
-    rosterVariance(s, { from: view.from, to: view.to, companyIds: [companyId], today: todayIso }),
-    listToilPolicies(s, [companyId]),
-    listDepartments(s, { companyIds: [companyId] }),
+    rosterVariance(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
+    listToilPolicies(s, companyIds),
+    listDepartments(s, { companyIds }),
   ]);
 
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
@@ -110,7 +128,8 @@ export default async function RosterPage({
   const deptOptions = dedupe(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.department })));
 
   const qs = (over: Record<string, string | undefined>) => {
-    const p = new URLSearchParams({ companyId, month });
+    const p = new URLSearchParams({ month });
+    if (companyId) p.set('companyId', companyId);
     if (sp.bu) p.set('bu', sp.bu);
     if (sp.dept) p.set('dept', sp.dept);
     if (sp.q) p.set('q', sp.q);
@@ -155,7 +174,9 @@ export default async function RosterPage({
         {companies.length > 1 ? (
           <form method="get" className="flex items-center gap-2">
             <input type="hidden" name="month" value={month} />
-            <select name="companyId" defaultValue={companyId} className={inputCls}>
+            <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
+              {/* a57f0584 — and it is the DEFAULT, not merely available: the screen opens on everyone. */}
+              <option value="">{t('allCompanies')}</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -173,9 +194,12 @@ export default async function RosterPage({
         <div className="flex flex-wrap items-center gap-2">
           {admin && (
             <>
-              <Link href={`/roster/import?companyId=${companyId}&month=${month}`} className={navBtn}>
-                {t('uploadRoster')}
-              </Link>
+              {/* Upload targets ONE company's roster too — /roster/import reads a companyId. */}
+              {companyId && (
+                <Link href={`/roster/import?companyId=${companyId}&month=${month}`} className={navBtn}>
+                  {t('uploadRoster')}
+                </Link>
+              )}
               <RosterTemplateButton
                 dates={view.dates}
                 rows={template.rows}
@@ -205,7 +229,7 @@ export default async function RosterPage({
           shareable and the export link below carries the same narrowing. */}
       <Card>
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
-          <input type="hidden" name="companyId" value={companyId} />
+          {companyId && <input type="hidden" name="companyId" value={companyId} />}
           <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t('filterBusinessGroup')}
             <select name="bu" defaultValue={sp.bu ?? ''} className={inputCls}>
@@ -291,13 +315,15 @@ export default async function RosterPage({
                 code: e.code,
                 department: e.department,
                 occupation: e.occupation,
+                // Only when the roster actually spans companies — the grid drops the column otherwise.
+                company: showCompany ? e.company : null,
               }))}
               shifts={view.shifts}
               initial={view.cells}
               usual={view.usual}
               isAdmin={admin}
               today={todayIso}
-              companyName={companies.find((c) => c.id === companyId)?.name ?? ''}
+              companyName={companyId ? (companies.find((c) => c.id === companyId)?.name ?? '') : ''}
             />
           )}
         </div>
@@ -310,7 +336,21 @@ export default async function RosterPage({
           BOTH ARE ADMIN-ONLY, for the same reason the grid is read-only for a supervisor: they write
           roster_assignment, whose RLS requires can_admin_employment, so for anybody else they are a form
           that can only ever end in a 42501. */}
-      {admin && (
+      {/*
+        * a57f0584 — GENERATE AND COPY STILL NEED ONE COMPANY, and they say so rather than going quiet.
+        *
+        * Both WRITE roster_assignment for a named company (generateRosterAction / copyRosterAction each
+        * take a companyId), so neither has a meaning across twelve of them: "generate the December
+        * roster" is a different instruction per company. Rendering the forms with an empty hidden field
+        * would have posted '' and failed in the action, so the affordance is withdrawn and the reason
+        * given — a disabled form the operator cannot explain is worse than one that is absent.
+        *
+        * The READ is unaffected: the whole workforce's month stays on screen behind this.
+        */}
+      {admin && !companyId && (
+        <Card className="p-4 text-sm text-muted-foreground">{t('pickCompanyToEdit')}</Card>
+      )}
+      {admin && companyId && (
         <Card>
           <SectionHeader title={t('generate')} />
           <div className="space-y-3 px-4 py-3">
@@ -373,7 +413,7 @@ export default async function RosterPage({
           Scoped to this company's active employees (posted as hidden employmentIds). Defaults now: source =
           the PREVIOUS month, target = the month on screen. Administrators only, with Generate and for
           the same reason. */}
-      {admin && (
+      {admin && companyId && (
         <Card>
           <SectionHeader title={t('copyTitle')} />
           <div className="space-y-3 px-4 py-3">

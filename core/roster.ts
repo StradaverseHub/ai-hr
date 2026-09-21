@@ -2223,6 +2223,10 @@ export type RosterMonthEmployee = {
   businessUnit: string | null;
   businessUnitId: string | null;
   occupation: string | null;
+  /** a57f0584 — whose employee this is. Carried on every row because the roster can now span companies,
+   *  and a row that does not say which company it belongs to is unreadable once it can. */
+  company: string | null;
+  companyId: string | null;
 };
 
 export type RosterMonthView = {
@@ -2251,11 +2255,32 @@ export type RosterMonthView = {
  */
 export async function rosterMonthView(
   ctx: SessionContext,
-  p: { companyId: string; month: string; businessUnitId?: string; departmentId?: string; q?: string },
+  p: {
+    /**
+     * a57f0584 — COMPANIES, plural. This read took a single company and the Roster screen picked
+     * `companies[0]` when none was chosen, so an operator with twelve companies opened the screen on
+     * whichever sorted first and about a third of their people, with no indication the rest existed.
+     * That is the "I cannot immediately see the overall employee roster" in the ticket — the filters were
+     * never the problem.
+     *
+     * The caller passes the set it is authorised for, and a chosen company simply narrows that set. RLS is
+     * unchanged and `listEmployees` is scoped by it either way: this widens what is ASKED FOR, never what
+     * is permitted. An EMPTY array means "every company the session may see", matching `listEmployees`'
+     * own contract for an absent filter — it is not a request for nothing.
+     */
+    companyIds: string[];
+    month: string;
+    businessUnitId?: string;
+    departmentId?: string;
+    q?: string;
+  },
 ): Promise<RosterMonthView> {
   const { from, to } = monthRange(p.month);
   const dates = monthDates(p.month);
-  const [employeeRows, shiftRows] = await Promise.all([listEmployees(ctx, [p.companyId]), listShiftsForTenant(ctx)]);
+  const [employeeRows, shiftRows] = await Promise.all([
+    listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
+    listShiftsForTenant(ctx),
+  ]);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
     .filter((e) => !e.terminatedOn)
@@ -2268,6 +2293,8 @@ export async function rosterMonthView(
       businessUnit: e.businessUnit,
       businessUnitId: e.businessUnitId,
       occupation: e.position,
+      company: e.company,
+      companyId: e.companyId,
     }));
 
   const needle = (p.q ?? '').trim().toLowerCase();

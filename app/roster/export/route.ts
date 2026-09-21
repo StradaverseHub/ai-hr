@@ -44,7 +44,15 @@ export async function GET(req: Request) {
   const inScope = allowed.filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (inScope.length === 0) return new Response('Forbidden', { status: 403 });
   const asked = url.searchParams.get('companyId');
-  const company = inScope.find((c) => c.id === asked) ?? inScope[0];
+  /**
+   * a57f0584 — the export must span the same companies the screen does, or the file disagrees with what
+   * was on screen when it was asked for. Unchosen means EVERY in-scope company now, not `inScope[0]`.
+   * `inScope` is already the authorised set, so this widens what is asked for, never what is permitted.
+   */
+  const chosen = inScope.find((c) => c.id === asked) ?? null;
+  const companyIds = chosen ? [chosen.id] : inScope.map((c) => c.id);
+  /** The subtitle names one company only when the file IS one company's. */
+  const subtitle = chosen ? chosen.name : null;
 
   const fmtRaw = url.searchParams.get('format');
   const format: ReportFormat = FORMATS.includes(fmtRaw as ReportFormat) ? (fmtRaw as ReportFormat) : 'xlsx';
@@ -53,7 +61,7 @@ export async function GET(req: Request) {
 
   try {
     const view = await rosterMonthView(s, {
-      companyId: company.id,
+      companyIds,
       month,
       ...(url.searchParams.get('bu') ? { businessUnitId: url.searchParams.get('bu')! } : {}),
       ...(url.searchParams.get('dept') ? { departmentId: url.searchParams.get('dept')! } : {}),
@@ -97,7 +105,7 @@ export async function GET(req: Request) {
         columns,
         rows,
         layout: {
-          subtitle: company.name,
+          ...(subtitle ? { subtitle } : {}),
           description: 'A code in brackets is the employee\u2019s usual shift, not a rostered day. RD = rest day, OFF = not scheduled.',
           orientation: 'landscape',
           freeze: 4,
