@@ -127,6 +127,8 @@ import {
   leaveType,
   location,
   payComponent,
+  leaveSharedGroup,
+  leaveSharedGroupMember,
   payrollBatch,
   payrollPolicy,
   payslip,
@@ -147,7 +149,7 @@ import { resolveEssView, type ResolvedEssView } from './ess-view';
 // in this file now resolves BY LEAVE TYPE CODE. The function itself is unchanged and still exported for the
 // pack facade and its own tests.
 import { resolveLeaveFormulaForCode, type LeaveFormulaEntry } from './leave-formula';
-import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
+import { resolvePlacement, resolveSharedGroupPlacement, type EssPlacement } from '../lib/leave-groups';
 import type { EmploymentStatus } from './employment-status';
 import { employmentStatusSql } from './employment-status-sql';
 
@@ -3030,6 +3032,59 @@ export function leaveBalances(
         ? out
         : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
 
+    /**
+     * a0b90c81 — A MEMBER OF A PLACED SHARED GROUP DRAWS NO CARD OF ITS OWN.
+     *
+     * The reporter asked for the six Special Leave reason cards to come off My Leave, leaving the one
+     * pooled card. The switch that hides a type — `visible_to_employee` — could not do it: hiding a card
+     * and removing the type from Request Leave are the SAME flag (`mayAppearInApplyMenu` excludes any type
+     * resolving to 'hidden'), so using it would have taken every Special Leave reason out of the apply
+     * dropdown, including the per-reason Apply buttons built for them in the same round. That was reported
+     * back rather than worked around, and this is the mechanism approved in its place.
+     *
+     * The rule is structural, so it cannot be misconfigured and it applies to a group created next year
+     * without anyone remembering a switch: if a type's balance IS the pool's, a separate card for it was
+     * never telling the employee anything the pooled card does not already say.
+     *
+     * ⚠️ THREE THINGS THIS MUST NOT TOUCH, each of which is a way it could ship wrong.
+     *
+     *  1. THE POOLED FIGURE. `sharedLeaveGroupBalances` calls this read with `includeHidden: true`
+     *     precisely so that member visibility is not an input to any figure — see that flag's note above.
+     *     Gating on the SAME flag keeps it that way: the summer takes the unfiltered list, so the number on
+     *     screen still cannot drift from the verdict `enforceSharedLeaveGroupLimit` gives. A filter applied
+     *     unconditionally here would make the pool depend on which cards happen to be drawn.
+     *  2. APPLYING. `mayAppearInApplyMenu` is untouched. Every reason stays in Request Leave and on the
+     *     details screen; this drops a CARD, never a right to apply. That distinction is the whole item.
+     *  3. HR's SCREENS. Employee Balances and the Personnel leave card pass `includeHidden`, so they keep
+     *     showing every member type for every employee, which is what 994a5287 established.
+     *
+     * A GROUP THAT IS ITSELF HIDDEN CHANGES NOTHING. Its members keep their own cards — dropping them
+     * would leave the employee with no way to see those balances at all, since the group draws no card to
+     * absorb them. Placement defaults to Hidden (migration 0438), so no existing group starts folding its
+     * members the morning after this release.
+     *
+     * ACTIVITY DOES NOT SAVE A CARD, AND THAT IS A DECISION RATHER THAN AN ORDERING ACCIDENT. r315
+     * established that activity on a type keeps its card (508d3acd, edge case 1). Membership wins here:
+     * the pooled card already reflects that activity, because the pool is summed from the member ledgers.
+     * Pinned in both directions in test/a0b90c81-shared-group-cards.test.ts.
+     */
+    const pooledAway = await (async () => {
+      if (opts.includeHidden) return visible;
+      const members = await tx
+        .select({
+          leaveTypeId: leaveSharedGroupMember.leaveTypeId,
+          placement: leaveSharedGroup.essPlacement,
+        })
+        .from(leaveSharedGroupMember)
+        .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId));
+      const folded = new Set(
+        members
+          .filter((m) => resolveSharedGroupPlacement(m.placement) !== 'hidden')
+          .map((m) => m.leaveTypeId),
+      );
+      return folded.size === 0 ? visible : visible.filter((r) => !folded.has(r.leaveTypeId));
+    })();
+
     // ec991c2a — ARCHIVED gate. An administrator archiving a leave type means it is retired; until this
     // item it still sat in the employee's balance list beside the live ones, because the two ledger/pending
     // selects above join `leave_type` with no `archived_at` predicate. (The third tail, eligible-but-
@@ -3052,8 +3107,8 @@ export function leaveBalances(
     );
     const live =
       opts.includeArchived || archivedTypeIds.size === 0
-        ? visible
-        : visible.filter((r) => !archivedTypeIds.has(r.leaveTypeId));
+        ? pooledAway
+        : pooledAway.filter((r) => !archivedTypeIds.has(r.leaveTypeId));
 
     return live.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
