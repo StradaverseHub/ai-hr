@@ -311,11 +311,17 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     // now — the rule is unchanged, the node is not.
     // rev3 — Roster and Import left the node for flat Manage rows, because the node moved behind the
     // group-level admin gate and both are managerUp. "Import last" is now measured in that link list.
+    /**
+     * ⚠️ r317 (1661123d) — "IMPORT LAST IN THE MANAGE LIST" NO LONGER HAS A SUBJECT. Import's Manage row
+     * was removed (it was managerUp in front of a requireAdmin page), so the f60cd403 ordering rule now
+     * lives entirely in the admin node, where it is asserted below. Roster is the only Manage row left,
+     * and "last of one" states nothing — so the Manage half is asserted as what it now is.
+     */
     const links = PACK.slice(PACK.indexOf('const ATTENDANCE_MANAGE_LINKS'));
     const importIdx = links.indexOf(`'/attendance/import'`);
-    expect(importIdx, 'Import is a Manage row').toBeGreaterThan(-1);
+    expect(importIdx, 'Import must NOT be a Manage row any more').toBe(-1);
     const rosterIdx = links.indexOf(`'/roster'`);
-    expect(rosterIdx, 'Roster present').toBeGreaterThan(-1);
+    expect(rosterIdx, 'Roster is still a Manage row').toBeGreaterThan(-1);
     /**
      * ⚠️ r314 (fe2360f9 + 7c80a168) — THESE TWO LINES ASSERTED THE OPPOSITE, and they are inverted
      * rather than deleted. rev3's reasoning is intact: a managerUp row inside the admin-gated node is
@@ -335,16 +341,10 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
     // Roster still precedes Import in the node too, so the f60cd403 order reads the same from both menus.
     expect(nodeRoster, 'Roster precedes Import in the node as well').toBeLessThan(nodeImport);
-    expect(rosterIdx, 'Roster precedes Import (Import stays last)').toBeLessThan(importIdx);
-    // "Last" is measured within the Manage link list now — the config rows are in a different container,
-    // so a position comparison against them would compare offsets in unrelated blocks of text.
-    expect(links.indexOf(`'/attendance/import'`), 'Import is the last Manage row').toBe(
-      Math.max(links.indexOf(`'/attendance/import'`), links.indexOf(`'/roster'`)),
-    );
+    // r317 — the Roster-then-Import order is asserted in the NODE above, which is where both rows now
+    // live together. Repeating it here would compare an index against -1.
 
-    const line = links.split('\n').find((l) => l.includes(`'/attendance/import'`));
-    expect(line, 'Import row exists').toBeDefined();
-    expect(line, 'Import keeps managerUp visibility').toMatch(/managerUp:\s*true/);
+    // r317 — Import has no Manage line to check any more; its node copy's gate is asserted above.
     const rosterLine = links.split('\n').find((l) => l.includes(`'/roster'`));
     expect(rosterLine, 'Roster keeps managerUp visibility').toMatch(/managerUp:\s*true/);
   });

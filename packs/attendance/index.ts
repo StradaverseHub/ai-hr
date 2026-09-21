@@ -466,7 +466,22 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
  */
 const ATTENDANCE_MANAGE_LINKS = [
   { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true, group: 'manage' as const },
-  { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true, group: 'manage' as const },
+  /**
+   * 1661123d (r317) — IMPORT'S MANAGE ROW IS GONE, and Roster's stays. They are not a pair any more.
+   *
+   * The row was `managerUp` while app/attendance/import/page.tsx calls `requireAdmin()`, which redirects
+   * a non-admin to '/'. So it advertised a screen every manager was bounced out of — found while r314
+   * was moving both rows, pre-existing, and put to the reporter rather than fixed on our own judgement:
+   * the opposite fix (let managers import) widens who can write other people's attendance, because
+   * `importAttendancePunches` writes for every employment the file names and the page guard is not what
+   * scopes that. They chose to remove the row.
+   *
+   * NOBODY LOST A FUNCTION. No manager could import attendance before; the menu simply stopped saying
+   * they could. Import remains exactly where r314 put it for administrators, in the Attendance node.
+   *
+   * ROSTER IS DIFFERENT AND UNTOUCHED: app/roster/page.tsx is `scopedSession`, so it genuinely works for
+   * a manager. That asymmetry is why the two rows had to be checked separately rather than as a pair.
+   */
 ];
 
 export const attendancePack: ModulePack = {

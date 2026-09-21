@@ -74,11 +74,50 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
 
 /**
  * r314 (fe2360f9 + 7c80a168) — the hrefs that appear TWICE on purpose: once adminOnly in the Attendance
- * node, once managerUp as a flat Manage row. Module-scoped because two separate describes assert on it:
+ * node, once managerUp as a flat Manage row.
+ *
+ * ⚠️ r317 (1661123d) — '/attendance/import' LEFT THIS LIST. Its Manage row was managerUp while the page
+ * calls requireAdmin(), so it advertised a screen every manager was bounced out of; the reporter chose to
+ * remove the row. Import is now an ORDINARY single adminOnly row, and the "appears exactly once" branch
+ * below covers it again — which is the stronger statement, so the entry is removed rather than exempted.
+ * Roster stays paired: its page is scopedSession and genuinely works for a manager.
+ *
+ * Module-scoped because two separate describes assert on it:
  * the parity block (a duplicate that is NOT one of these still fails, and removing either half fails)
  * and the label block (a pair shares ONE label key, so both menus name the screen the same).
  */
-const PAIRED_HREFS: readonly string[] = ['/roster', '/attendance/import'];
+const PAIRED_HREFS: readonly string[] = ['/roster'];
+
+/**
+ * r317 (1661123d) — rows whose label KEY is deliberately not the camelCase of its English string.
+ *
+ * `/attendance/import` reads "Import" and is keyed `nav.attendanceImport`. `nav.import` would be the
+ * camelCase form and is a worse key: `nav` is one flat namespace shared by every module, and a bare
+ * "import" there says nothing about what is being imported. The key was minted when the row lived in
+ * Manage beside its module's other rows; r317 removed that twin but renaming the key now would be a
+ * six-locale message change for nothing, and `import` is a reserved word besides.
+ *
+ * Declared as an exemption rather than silently skipped, so a FUTURE row cannot drift its key from its
+ * label by accident — which is the misdiagnosis this guard was written for.
+ */
+const LABEL_KEY_EXEMPT: readonly string[] = ['/attendance/import'];
+
+/**
+ * r317 (1661123d) — rows whose GATE changed since the frozen capture, declared because EXPECTED cannot
+ * be edited and this is neither a departure nor an addition.
+ *
+ * `/attendance/import` was captured as a `managerUp` Manage row. That row is gone — its page calls
+ * requireAdmin(), so the row was offering managers a screen that bounced them — and the href survives as
+ * the `adminOnly` row r314 put in the Attendance node. So the href is still in the pack, its function is
+ * unchanged, and only who is OFFERED it moved. RETIRED would say the function left (it did not) and
+ * MOVED_OUT would say the pack lost it (it did not).
+ *
+ * The parity loop below therefore judges these against their ADDED_SINCE declaration rather than the
+ * capture, and the new gate is asserted positively here so the change cannot be silent.
+ */
+const REGATED: readonly { href: string; adminOnly?: true; managerUp?: true }[] = [
+  { href: '/attendance/import', adminOnly: true },
+];
 
 describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // components/sidebar.tsx ATTENDANCE_NODE as of the commit before rung 2, captured VERBATIM
@@ -191,6 +230,8 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // shown that trade in writing and chose the duplication rather than lose the manager rows. Both sets
     // are asserted, here and in test/attendance-menu-relocation.test.ts.
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, adminOnly: true },
+    // r317 (1661123d) — Import is a SINGLE adminOnly row now; its managerUp twin in Manage was removed
+    // because the page refuses managers. See PAIRED_HREFS above.
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, adminOnly: true },
   ] as const;
 
@@ -314,8 +355,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // correction — the CONFIG menu belongs in Administration between Leave config and Claims config — and
     // it is only safe there because the mixed rows moved out first. See the regression guard below.
     expect(NODES.map((n) => n.group)).toEqual(['main', 'admin']);
-    // The two managerUp rows are flat Manage rows now, not children of anything.
-    expect(MANAGE_LINKS.map((l) => l.href).sort()).toEqual(['/attendance/import', '/roster']);
+    // The managerUp row is a flat Manage row, not a child of anything.
+    // r317 (1661123d) — ONE, not two. Import's Manage row was removed: it was managerUp while the page
+    // calls requireAdmin(), so it offered managers a screen that bounced them. Roster's page is
+    // scopedSession and genuinely works for them, so it stays.
+    expect(MANAGE_LINKS.map((l) => l.href).sort()).toEqual(['/roster']);
   });
 
   it('orders the Attendance CONFIG menu as the reporter listed the settings', () => {
@@ -367,7 +411,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
     expect(flattened).toHaveLength(
-      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length,
+      // r317 (1661123d) — MINUS ONE for Import's removed Manage row. It is subtracted here with its
+      // reason rather than by quietly editing a number: the row was managerUp while the page calls
+      // requireAdmin(), and the reporter chose to remove it. Import itself did not leave the pack — its
+      // adminOnly row in the node is still declared in ADDED_SINCE, which is why this is a lone -1 and
+      // not a RETIRED entry (RETIRED means the FUNCTION left).
+      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length - 1,
     );
     /**
      * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
@@ -392,7 +441,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         // A declared pair carries DIFFERENT gates on its two copies by design (one adminOnly, one
         // managerUp), so asserting one declaration against got[0] would be asserting an arbitrary half.
         // The pair block below asserts both halves positively, which is the stronger statement.
-        if (!PAIRED_HREFS.includes(want.href)) {
+        const regated = REGATED.find((r) => r.href === want.href);
+        if (regated) {
+          // Judged against the declared NEW gate, not the capture — see REGATED.
+          expect(got[0].adminOnly, `${want.href} adminOnly (regated)`).toBe(regated.adminOnly);
+          expect(got[0].managerUp, `${want.href} managerUp (regated)`).toBe(regated.managerUp);
+        } else if (!PAIRED_HREFS.includes(want.href)) {
           expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
           expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
         }
@@ -568,9 +622,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       adminOnly: undefined,
       managerUp: undefined,
     });
-    for (const href of ['/roster', '/attendance/import']) {
-      const row = MANAGE_LINKS.find((l) => l.href === href)!;
-      expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }, `${href} stays managerUp`).toEqual({
+    // r317 (1661123d) — ROSTER ALONE. Import's Manage row was removed because its page calls
+    // requireAdmin(): a managerUp row in front of an admin-only screen is not a gate that "stays", it is
+    // a menu lying about a permission. Roster's page is scopedSession, so its row is a true statement and
+    // this assertion still means what it always did.
+    {
+      const row = MANAGE_LINKS.find((l) => l.href === '/roster')!;
+      expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }, '/roster stays managerUp').toEqual({
         adminOnly: undefined,
         managerUp: true,
       });
@@ -774,7 +832,7 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
        * either rename the Manage row's key too or split one screen into two names — which is the drift
        * this guard exists to prevent, arrived at from the other direction.
        */
-      if (PAIRED_HREFS.includes(row.href)) continue;
+      if (PAIRED_HREFS.includes(row.href) || LABEL_KEY_EXEMPT.includes(row.href)) continue;
       expect(row.labelKey, `${row.href}: key must name its own label`).toBe(camel(en.nav[row.labelKey]!));
     }
     // …and the pairs are checked the way that IS meaningful for them: both menus name the screen the

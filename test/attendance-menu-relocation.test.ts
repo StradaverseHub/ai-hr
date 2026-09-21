@@ -161,11 +161,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
 
     const imp = read('app/attendance/import/page.tsx');
     expect(imp, 'Import refuses a non-administrator in its own page body').toMatch(/requireAdmin\(|scopedAdmin\(/);
-    // The contradiction, stated: the row says managerUp, the page says admin. If a later round fixes
-    // this properly — either grant managers access or drop the row — this assertion is what makes the
-    // change deliberate rather than accidental.
-    const flat = attendancePack.navLinks!.find((l) => l.href === '/attendance/import')!;
-    expect(flat.managerUp, 'the Manage row still claims managerUp').toBe(true);
+    // r317 (1661123d) — AND THE CONTRADICTION IS RESOLVED. This assertion used to record that the Manage
+    // row still claimed managerUp while the page refused managers. The reporter chose to remove the row,
+    // so the menu and the page now agree, and the assertion says that instead of describing the fault.
+    expect(
+      attendancePack.navLinks!.some((l) => l.href === '/attendance/import'),
+      'the menu must not offer what the page refuses',
+    ).toBe(false);
   });
 
   it('/attendance is the exception, and it is protected by SCOPING rather than by refusal', () => {
@@ -282,15 +284,26 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
      * managerUp rows stay in Manage. Losing the second half is the thing that would actually hurt
      * somebody, so it is asserted here rather than left to the Manage-rows test alone.
      */
-    for (const both of ['/roster', '/attendance/import']) {
-      const inNode = merged.children.find((c) => c.href === both);
-      expect(inNode, `${both} is an admin entry point (fe2360f9)`).toBeTruthy();
-      expect(inNode!.adminOnly, `${both} in this node must be adminOnly — the group gates before rows`).toBe(true);
-      const flat = attendancePack.navLinks!.find((l) => l.href === both);
-      expect(flat, `${both} must STILL be a flat Manage row — managers were promised it`).toBeTruthy();
-      expect(flat!.managerUp, `${both} in Manage must stay managerUp`).toBe(true);
-      expect(flat!.group).toBe('manage');
+    for (const href of ['/roster', '/attendance/import']) {
+      const inNode = merged.children.find((c) => c.href === href);
+      expect(inNode, `${href} is an admin entry point (fe2360f9)`).toBeTruthy();
+      expect(inNode!.adminOnly, `${href} in this node must be adminOnly — the group gates before rows`).toBe(true);
     }
+    /**
+     * r314 promised the reporter that managers keep the rows they use. r317 (1661123d) found that the
+     * promise was only ever TRUE for Roster — Import's page calls requireAdmin() — and the reporter chose
+     * to drop the Import row rather than widen who may write attendance. So the Manage half is asserted
+     * per row now, positively in both directions, because "managers keep it" and "managers never had it"
+     * are different facts and a single loop could only state one of them.
+     */
+    const roster = attendancePack.navLinks!.find((l) => l.href === '/roster');
+    expect(roster, 'Roster must STILL be a flat Manage row — it works for managers').toBeTruthy();
+    expect(roster!.managerUp).toBe(true);
+    expect(roster!.group).toBe('manage');
+    expect(
+      attendancePack.navLinks!.some((l) => l.href === '/attendance/import'),
+      'Import must NOT be a Manage row — the page refuses managers (1661123d)',
+    ).toBe(false);
     /**
      * r274 (2420718d) — `/attendance` LEFT this list, and what it was defending did not.
      *
@@ -326,8 +339,11 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(mine.children.some((c) => c.href === EMPLOYEE_RECORDS), 'My Records is self-service').toBe(true);
     expect(mine.children.find((c) => c.href === EMPLOYEE_RECORDS)?.adminOnly).toBeUndefined();
     const manageLinks = (attendancePack.navLinks ?? []).filter((l) => l.group === 'manage');
-    expect(manageLinks.map((l) => l.href).sort()).toEqual(['/attendance/import', '/roster']);
-    expect(manageLinks.every((l) => l.managerUp === true), 'both stay managerUp').toBe(true);
+    // r317 (1661123d) — ONE Manage row, not two. Import's was removed: it was managerUp in front of a
+    // page that calls requireAdmin(), so it was a menu lying about a permission rather than a gate worth
+    // keeping. Roster's page is scopedSession, so its row is a true statement and stays.
+    expect(manageLinks.map((l) => l.href).sort()).toEqual(['/roster']);
+    expect(manageLinks.every((l) => l.managerUp === true), 'what is left stays managerUp').toBe(true);
   });
 
   it('rev3: the two relocated rows keep their module gating', () => {
