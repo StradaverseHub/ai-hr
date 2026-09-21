@@ -157,6 +157,15 @@ export default async function LeavePage({
     hType?: string | string[];
     // r302 — the history tab: pending | approved | rejected | cancelled (lib/my-leave-history.ts).
     hTab?: string;
+    /**
+     * 76dbcaa1 — the leave type a named Apply action asked to open the Request Leave form on.
+     *
+     * ⚠️ `applyType`, NOT `type`. The retired admin register owned bare `from`/`to`/`type` on THIS path,
+     * and test/leave-filter-panel.test.ts keeps them inert so a saved admin link cannot quietly start
+     * filtering — or, here, quietly start preselecting a leave type. The prefix is the whole point of
+     * that rule and it applies to a new parameter exactly as it applies to an old one.
+     */
+    applyType?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -426,9 +435,33 @@ export default async function LeavePage({
             ? null
             : tMe('sharedLeaveGroups.maxPerApplication', { days: formatDays(g.maxDaysPerApplication) }),
         membersLabel: tMe('sharedLeaveGroups.sharedAcross', { types: g.memberNames.join(', ') }),
+        // 76dbcaa1 — the way in to the reasons and their Apply actions.
+        detailsHref: `/leave/shared/${g.id}`,
+        detailsLabel: tMe('sharedLeaveGroups.viewDetails'),
       }));
   const sharedGroupsPrimary = sharedGroupEntriesAt('primary');
   const sharedGroupsSecondary = sharedGroupEntriesAt('secondary');
+
+  /**
+   * 76dbcaa1 — WHICH POOL EACH TYPE DRAWS ON, for the Request Leave picker. The reporter's requirement is
+   * that the list stops reading as a flat set of every leave type in the database: the six Special Leave
+   * reasons belong under one heading, because they are one entitlement.
+   *
+   * A LABEL ONLY. The form still posts one `leaveTypeId` and the engine still debits that type — grouping
+   * the options changes what the employee reads, never what is submitted or what the shared-group guard
+   * enforces. Built from `sharedLeaveGroupBalances`, so the picker and the balance card can never disagree
+   * about who is in the pool.
+   *
+   * Empty on the on-behalf path (that read is self-service only), which simply means no grouping — the
+   * same flat list as before, rather than a half-grouped one.
+   */
+  const groupNameByTypeId = new Map(
+    sharedGroupBalances.flatMap((g) => g.members.map((m) => [m.id, g.name] as const)),
+  );
+  const requestLeaveTypeOptionsGrouped = requestLeaveTypeOptions.map((o) => ({
+    ...o,
+    groupName: groupNameByTypeId.get(o.id) ?? null,
+  }));
 
   // History: the viewer's OWN requests, and only those.
   //
@@ -945,7 +978,7 @@ export default async function LeavePage({
                   Replacement Leave button immediately below already gives (replacementRequest.allowed). */}
               {ess && requestLeaveTypeOptions.length > 0 && (
                 <RequestLeaveDialog
-                  types={requestLeaveTypeOptions}
+                  types={requestLeaveTypeOptionsGrouped}
                   // 5206539f — the per-subject type map is NOT passed any more, and the dialog's optional
                   // prop is left unset rather than fed an empty object. It existed to re-draw the offer as a
                   // line manager switched between reports; with that selector gone the self-service path has
@@ -954,6 +987,13 @@ export default async function LeavePage({
                   // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
                   // value seeds a date input and rides no further.
                   startDefault={/^\d{4}-\d{2}-\d{2}$/.test(sp.start ?? '') ? sp.start! : today}
+                  // 76dbcaa1 — `?type=` when a named Apply action sent the employee here (the Special
+                  // Leave details screen has one per reason). Shape-checked like `?start=` above and never
+                  // trusted: LeaveDurationFields falls back to the first option if the id is not one the
+                  // subject may take, so a stale or hand-typed link cannot preselect an ineligible type.
+                  defaultTypeId={
+                    typeof sp.applyType === 'string' && /^[0-9a-f-]{36}$/i.test(sp.applyType) ? sp.applyType : null
+                  }
                   employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}

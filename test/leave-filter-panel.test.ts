@@ -161,7 +161,23 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     expect(leavePage).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
     // NOTHING announces that a row was removed: no caption, no disabled option, no count under the select.
     const fields = read('components/leave-duration-fields.tsx');
-    expect(fields).toContain('{visibleTypes.map((x) => (');
+    /**
+     * 76dbcaa1 (r318) — THE ANCHOR MOVED, THE CLAIM DID NOT. The select used to be one
+     * `{visibleTypes.map(...)}`; it is now two passes over the SAME list — ungrouped types, then an
+     * optgroup per shared pool — so that Special Leave's six reasons read as one entitlement instead of
+     * six. Pinning the old literal would have failed on a change that cannot affect what this test is
+     * about, so what is asserted is the property: every option comes from `visibleTypes`, the
+     * eligibility-filtered list, and none is read off the unfiltered `types`.
+     */
+    {
+      const stripped = fields.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      const at = stripped.indexOf('name="leaveTypeId"');
+      const slice = stripped.slice(at, stripped.indexOf('</select>', at));
+      expect(slice, 'options come from the eligibility-filtered list').toContain('visibleTypes');
+      // …and never from the unfiltered catalogue, which is what would put a type the subject cannot
+      // take back on the menu.
+      expect(slice, 'no option is read off the unfiltered `types`').not.toMatch(/[^e]\btypes\s*\.\s*(map|filter)\(/);
+    }
     // Sliced to the LEAVE TYPE select, WITH COMMENTS STRIPPED FIRST — both halves learned the hard way.
     // The duration select below legitimately renders `disabled` options (a type allowing no half day greys
     // that row), which is a different control answering a different question; and the comment that EXPLAINS

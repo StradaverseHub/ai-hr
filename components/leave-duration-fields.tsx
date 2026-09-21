@@ -88,6 +88,13 @@ export type LeaveTypeOption = {
   label: string;
   durations: string[] | null;
   code?: string;
+  /**
+   * 76dbcaa1 — the shared leave group this type draws on, pre-translated, or absent for a type that
+   * spends its own balance. Purely a LABEL for the picker: it groups the reasons under one heading so
+   * the list stops reading as seven unrelated entitlements, and it changes nothing about what is
+   * submitted — the form still posts one `leaveTypeId`, which is what the engine debits.
+   */
+  groupName?: string | null;
   /** Feedback 9d8cf621: optional HR-authored custom message shown to the employee when this type is selected
    *  on the apply form. Absent/empty ⇒ no notice. */
   applyNotice?: string | null;
@@ -116,6 +123,7 @@ export type LeaveTypeOption = {
 export function LeaveDurationFields({
   types,
   startDefault,
+  defaultTypeId,
   layout = 'grid',
   showDocumentFields = false,
   employeeOptions,
@@ -124,6 +132,8 @@ export function LeaveDurationFields({
   summaryAction,
 }: {
   types: LeaveTypeOption[];
+  /** 76dbcaa1 — the leave type to open on, when the employee arrived from a named Apply action. */
+  defaultTypeId?: string | null;
   startDefault?: string;
   /** 'grid' = two-up for the /leave page; 'stack' = single-column for the /me sidebar. */
   layout?: 'grid' | 'stack';
@@ -175,7 +185,16 @@ export function LeaveDurationFields({
   const tCommon = useTranslations('common');
   const tMe = useTranslations('me');
   const locale = useLocale();
-  const [typeId, setTypeId] = useState(types[0]?.id ?? '');
+  /**
+   * 76dbcaa1 — SEEDED, not forced. `defaultTypeId` is the type the employee arrived asking for (the Apply
+   * button beside a reason on the Special Leave details screen). It is only an initial value: the select
+   * is live afterwards, so they can change their mind without going back. An id that is not in `types` —
+   * a stale link, or a type they do not qualify for — falls back to the first option rather than posting
+   * something the subject cannot take.
+   */
+  const [typeId, setTypeId] = useState(
+    (defaultTypeId && types.some((t) => t.id === defaultTypeId) ? defaultTypeId : types[0]?.id) ?? '',
+  );
   const [duration, setDuration] = useState<Duration>('full_day');
   const [start, setStart] = useState(startDefault ?? '');
   const [end, setEnd] = useState(startDefault ?? '');
@@ -363,10 +382,29 @@ export function LeaveDurationFields({
         >
           {/* ad965821 — `visibleTypes`, not `types`. A type the subject does not qualify for is simply not
               here: no disabled option, no greyed row, no caption under the select saying one was left out. */}
-          {visibleTypes.map((x) => (
-            <option key={x.id} value={x.id}>
-              {x.label}
-            </option>
+          {/* 76dbcaa1 — GROUPED. The reporter's "do not expose every database leave type as a flat list":
+              types that share a pooled entitlement sit under that pool's name, so Special Leave reads as
+              one thing with reasons under it rather than as six separate allowances. Ungrouped types keep
+              their place and their order; the grouped ones move under their heading, and the ORDER WITHIN
+              each set is untouched, so nothing an employee learned to find has moved relative to its
+              neighbours. Still one posted `leaveTypeId` — this is a label, not a second control. */}
+          {visibleTypes
+            .filter((x) => !x.groupName)
+            .map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.label}
+              </option>
+            ))}
+          {[...new Set(visibleTypes.map((x) => x.groupName).filter(Boolean))].map((g) => (
+            <optgroup key={g as string} label={g as string}>
+              {visibleTypes
+                .filter((x) => x.groupName === g)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.label}
+                  </option>
+                ))}
+            </optgroup>
           ))}
         </select>
       </Field>

@@ -3260,7 +3260,14 @@
       "heading": "Shared leave balances",
       "ofLimit": "of {limit} shared days",
       "sharedAcross": "Shared across: {types}",
-      "maxPerApplication": "Up to {days} days in one application"
+      "maxPerApplication": "Up to {days} days in one application",
+      "detailDescription": "One shared entitlement, and the reasons you can apply under.",
+      "remaining": "Remaining",
+      "usedThisYear": "Used this year: {days}",
+      "reasonsHeading": "Reasons",
+      "reasonsHelp": "Every reason below draws on the same shared balance above.",
+      "applyForReason": "Apply",
+      "viewDetails": "View details"
     },
     "maSectionAll": "All",
     "maSectionAllHelp": "Every day that needs something from you.",

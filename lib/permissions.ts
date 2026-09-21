@@ -116,7 +116,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/leave',
     labelKey: 'nav.myAbsence',
     guard: 'scopedSession',
-    routes: ['/leave'],
+    // 76dbcaa1 (r318) — '/leave/shared/[groupId]' rides THIS column rather than minting its own. It is
+    // the same audience, the same scope and the same guard: the employee's own pooled Special Leave
+    // figure, opened from the card on this very screen. The 570fd56e precedent, and the reason it
+    // matters here in particular is that a second column would carry the SAME label — two rows reading
+    // "My Absence" in the access grid describe one function as if it were two.
+    routes: ['/leave', '/leave/shared/[groupId]'],
     hasScopeNote: true,
   },
   {

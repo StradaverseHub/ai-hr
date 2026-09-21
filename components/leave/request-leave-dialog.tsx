@@ -26,6 +26,7 @@ type SummaryAction = ComponentProps<typeof LeaveDurationFields>['summaryAction']
 export function RequestLeaveDialog({
   types,
   startDefault,
+  defaultTypeId,
   employeeOptions,
   eligibleTypeIdsByEmployment,
   submitAction,
@@ -34,6 +35,8 @@ export function RequestLeaveDialog({
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
+  /** 76dbcaa1 — forwarded to LeaveDurationFields: the type an Apply action asked to open on. */
+  defaultTypeId?: string | null;
   // Optional (item 69088c13): omitted for self-service employees so the Employee selector is hidden and the
   // submit binds to the signed-in viewer; passed only on the admin/manager on-behalf-of path.
   employeeOptions?: { id: string; name: string }[];
@@ -101,6 +104,7 @@ export function RequestLeaveDialog({
             <LeaveDurationFields
               types={types}
               startDefault={startDefault}
+              defaultTypeId={defaultTypeId}
               showDocumentFields
               employeeOptions={employeeOptions}
               eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
