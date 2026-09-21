@@ -1,3 +1,38 @@
+## r314 (2026-09-21) — Roster and Import in two places, because the reporter chose it. `main@3ea20585`, **no migration**.
+
+Closed and DEPLOYED: `fe2360f9`, `7c80a168`. Gate: **929 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 3ea20585, active, `GET /` 401, rsync dry-run clean.
+
+### THE DECISION WAS THE DELIVERABLE, AND IT WAS THE REPORTER'S TO MAKE
+
+`fe2360f9` asked for Roster and Import under Admin › Attendance **and** for their permissions to be unchanged. Those cannot both hold: the admin group gates at GROUP level before individual rows are considered, so a `managerUp` row inside it is invisible to every non-admin manager. That is not a limitation to code around — it is why `a324a4b3 rev3` moved both rows OUT of that node in the first place.
+
+`7c80a168` put the trade to the reporter in writing rather than choosing for them, with a recommendation: put them under Admin as asked AND leave the manager rows alone, accepting that an administrator sees each row twice. **They approved it.** So the node now carries `adminOnly` copies and `ATTENDANCE_MANAGE_LINKS` is untouched.
+
+Taking a function away from their managers was never ours to choose. The cost of asking was one round of waiting; the cost of guessing would have been two screens silently disappearing from every manager's rail.
+
+### THE GUARDS WERE INVERTED, NOT LOOSENED
+
+Four assertions pinned the decision this round reverses, and each now pins the NEW decision plus the thing the old one was really protecting:
+
+- **`attendance-menu-relocation`** asserted `/roster` and `/attendance/import` "must NOT be in the admin node". It now requires them to be there AND `adminOnly`, AND requires each to still exist as a `managerUp` Manage row — so losing the manager half fails, which is the promise that was made.
+- **`attendance-pack`'s "no href is listed twice"** was `toEqual([])`, tightened there by f3e6c36e. It now NAMES the declared pairs (`PAIRED_HREFS`) and requires each pair to be exactly one `adminOnly` and one `managerUp` copy. An undeclared duplicate still fails, which is what the line has always been for.
+- **`sidebar-attendance-group`'s** "Import is NOT in the admin-gated node" is inverted the same way, with the node copies required to carry `adminOnly` and forbidden to carry `managerUp`.
+- The **camelCase labelKey guard** exempts the pairs, because they deliberately share their Manage twins' keys so one screen reads identically from both menus — and a new assertion requires exactly that.
+
+### ⚠️ FOUND, PRE-EXISTING, DELIBERATELY NOT FIXED HERE
+
+**`/attendance/import` calls `requireAdmin()`, which redirects a non-admin to `/`. Its Manage row is `managerUp`.** So that row advertises a screen every manager is bounced out of, and has done since before this round. r314 changed neither the row nor the page.
+
+It is pinned by a new test arm so it cannot later be mistaken for something this round caused, and **raised as its own item**: whether managers may import attendance is a policy question with two opposite fixes (grant them access, or drop the row), and it is the reporter's to answer. Roster, by contrast, is `scopedSession` and genuinely works for managers — which is exactly why the two rows needed checking separately rather than as a pair.
+
+### THE GATE WENT RED ON A BACKGROUND RUN, AND THE RULE CAUGHT IT
+
+Chunks 11 and 12 failed with **zero AssertionErrors** — a Postgres deadlock on the harness's ~100-table TRUNCATE, plus hook timeouts, across eleven unrelated suites. Both passed with identical file counts when re-run in the FOREGROUND. That is precisely the environment-not-code signal §4 documents, and the reason the rule is "count AssertionErrors first".
+
+### NOT DONE
+
+- The render check could not see the new rows. The sidebar server-renders node HEADERS and flat links; node CHILDREN (Leave config's and Claims config's too) render on expand, so they are absent from the initial HTML by construction. The nav structure is pinned by the three source-reading guards instead — which is why those guards read the pack source rather than a rendered page.
+
 ## r313 (2026-09-20) — Entitlement means this year's entitlement. `main@a3014277`, **migration 0475**.
 
 Closed and DEPLOYED: `845903a3`. Gate: **929 files — equal to the suite file count — 14,190 tests, 0 AssertionErrors**, 14 chunks, every chunk exit 0 and counted in full. `gate:shadow` PASS (391/391). `next build` exit 0. RENDERED on a dev server: Employee Balances reads "Entitlement", no "Full Entitlement", no `MISSING_MESSAGE`.
