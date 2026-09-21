@@ -2781,7 +2781,13 @@
     "breakdownView": "Xem",
     "breakdownReset": "Đặt lại",
     "breakdownPickEmployee": "Chọn nhân viên và khoảng ngày để xem phân tách.",
-    "breakdownNoTrace": "chưa ghi nhận"
+    "breakdownNoTrace": "chưa ghi nhận",
+    "panel": {
+      "hide": "Ẩn danh sách",
+      "show": "Chọn nhân viên",
+      "heading": "Nhân viên",
+      "hint": "Tìm theo tên hoặc mã nhân viên, rồi chọn một người để xem phân tách của họ."
+    }
   },
   "org": {
     "title": "Sơ đồ tổ chức",

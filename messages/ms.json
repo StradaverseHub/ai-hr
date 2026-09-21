@@ -2781,7 +2781,13 @@
     "breakdownView": "Lihat",
     "breakdownReset": "Set semula",
     "breakdownPickEmployee": "Pilih pekerja dan julat tarikh untuk melihat pecahan.",
-    "breakdownNoTrace": "tidak direkodkan"
+    "breakdownNoTrace": "tidak direkodkan",
+    "panel": {
+      "hide": "Sembunyikan senarai",
+      "show": "Pilih pekerja",
+      "heading": "Pekerja",
+      "hint": "Cari mengikut nama atau ID pekerja, kemudian pilih seseorang untuk melihat pecahan mereka."
+    }
   },
   "org": {
     "title": "Carta organisasi",

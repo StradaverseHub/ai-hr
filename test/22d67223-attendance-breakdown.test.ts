@@ -88,6 +88,70 @@ describe('22d67223 · the screen refuses, it does not merely hide its link', () 
   });
 });
 
+/**
+ * f728826a (r320) — THE EMPLOYEE PANEL, mounted rather than designed. Two of the reporter's four points
+ * were already built: the frozen identity columns shipped with this screen, and the panel itself is the
+ * component Payroll › Transaction View already uses. What this pins is that it stayed a MOUNT — same
+ * component, same scope-fenced list, same query parameter — because each of those is a way the screen
+ * could quietly become a sixth slightly different picker.
+ */
+describe('f728826a · the employee panel is the shared one, on the same scope', () => {
+  it('mounts the shared component rather than growing its own picker', () => {
+    const src = codeOnly(read(SCREEN));
+    expect(src).toContain("from '@/components/collapsible-employee-panel'");
+    expect(src).toContain('<CollapsibleEmployeePanel');
+    expect(src).toContain('<EmployeeScopePanel');
+    // The old dropdown is gone — the employee is chosen in the panel and nowhere else.
+    expect(src, 'no second employee control survives').not.toMatch(/<select[^>]*name="emp"/);
+  });
+
+  it('feeds the panel from the SAME scope-fenced read, not a wider one', () => {
+    const src = codeOnly(read(SCREEN));
+    expect(src).toContain('listEmployees(s, scopeIds)');
+    expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map(');
+    // …and the selection is still re-guarded against that list before any read uses it.
+    expect(src).toContain('employees.some((e) => e.employmentId === sp.emp)');
+  });
+
+  it('keeps this screen’s own query parameter, so existing links still open the same person', () => {
+    expect(codeOnly(read(SCREEN))).toContain('selectParam="emp"');
+  });
+
+  it('carries the date range across an employee switch', () => {
+    expect(codeOnly(read(SCREEN))).toContain('preserve={{ from, to }}');
+  });
+
+  /**
+   * ⚠️ THE 500 THAT LOOKS GREEN. A translator closure passed from this server component into that client
+   * one returns a 500 on every request while tsc, the suite and `next build` all pass — the component's
+   * own LABELS note records it. Every caption must therefore be resolved HERE, by a literal t() call.
+   */
+  it('passes every panel caption pre-translated', () => {
+    const src = codeOnly(read(SCREEN));
+    for (const key of ['panel.hide', 'panel.show', 'panel.heading', 'panel.hint']) {
+      expect(src, `${key} must be resolved on the server`).toContain(`t('${key}')`);
+    }
+    expect(src, 'no translator is handed to the client component').not.toMatch(/(hideLabel|showLabel)=\{t\}/);
+  });
+
+  it('reads the panel’s open state on the SERVER, so it does not flash open then fold', () => {
+    const src = codeOnly(read(SCREEN));
+    expect(src).toContain('await cookies()');
+    expect(src).toContain('PANEL_COOKIE');
+    // Its own cookie: collapsing this panel says nothing about any other screen's.
+    expect(src).toContain("'attendance-breakdown-panel'");
+  });
+
+  it('the date range keeps ONE definition of a valid range', () => {
+    const src = codeOnly(read(SCREEN));
+    // Moving the controls must not grow a second parser; the shape check stays where it was.
+    expect((src.match(/dateRe\.test/g) ?? []).length, 'parsed once').toBe(2);
+    expect(src, 'and the employee rides the form so submitting dates cannot clear it').toContain(
+      '<input type="hidden" name="emp"',
+    );
+  });
+});
+
 describe('22d67223 · every column it renders has a label in all six locales', () => {
   /** Read back out of the page, so a column added later without a key fails here rather than at runtime. */
   const keys = [...new Set([...codeOnly(read(SCREEN)).matchAll(/\bt\('([a-zA-Z0-9_.]+)'\)/g)].map((m) => m[1]))];
