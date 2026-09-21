@@ -45,6 +45,7 @@ import {
   isAccrualUnconfigured,
   resolveLeaveYearCycle,
   isLeaveEligible,
+  isProfileEligible,
   displayEntitlementFor,
   type DisplayEntitlement,
   resolveCarryBreakdown,
@@ -2838,7 +2839,17 @@ export function leaveBalances(
     const today = todayInKualaLumpur();
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
-      if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
+      // 508d3acd — `isProfileEligible`, NOT `isLeaveEligible`. The reporter asked in these words that
+      // minimum service must not hide a card, and it could: Annual Leave carries a one-month rule on this
+      // account, so a brand-new joiner with no activity yet would have had no Annual Leave card at all.
+      // Identity conditions still hide one, which is the whole point of the item.
+      //
+      // ⚠️ AN UNRECORDED ATTRIBUTE DOES NOT MATCH A CONFIGURED LIST. `emp.gender ?? ''` is compared
+      // against the type's list, so an employee whose gender is blank fails every gender-restricted type.
+      // On the reporting account that is 55 of 75 active employees, and it is why the plan said so in
+      // plain words rather than letting them discover it: the fix is to fill the profiles in, not to
+      // soften the gate.
+      if (!isProfileEligible(lt.eligibility as LeaveEligibility | null, emp)) continue;
       out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null, share: 0, pendingShare: 0 });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
