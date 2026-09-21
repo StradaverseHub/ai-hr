@@ -332,6 +332,31 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // day, for one employee over a range. Deliberately the opposite of 570fd56e, which took the calculation
     // columns OFF Individual Attendance — one screen to review a month, one to interrogate it.
     { href: '/attendance/breakdown', labelKey: 'attendanceBreakdown', icon: Table2, adminOnly: true },
+    /**
+     * fe2360f9 + 7c80a168 (r314) — ROSTER and IMPORT, back in this node as ADMIN-ONLY rows, DELIBERATELY
+     * DUPLICATING the two managerUp rows in Manage that stay exactly where they are.
+     *
+     * ⚠️ READ a324a4b3 rev3 BELOW BEFORE TOUCHING THIS. It moved these two OUT of this node precisely
+     * because the node sits behind the group-level admin gate, so a managerUp row here is invisible to
+     * every non-admin manager — and it rejected "a third parent node labelled Attendance" because the
+     * duplicated menu was what the reporter objected to in the first place.
+     *
+     * NOTHING ABOUT THAT ANALYSIS HAS CHANGED. What changed is that the reporter was shown the trade in
+     * writing (7c80a168) and CHOSE the duplication: administrators get every attendance-administration
+     * function in one place, managers keep the rows they use today, and the price is that an
+     * administrator sees Roster and Import twice. That is the owner's decision on a question that was
+     * theirs — taking a function away from their managers was never ours to choose — and it is recorded
+     * in the r314 round entry.
+     *
+     * THE TWO SETS MUST STAY IN STEP. These are adminOnly duplicates of ATTENDANCE_MANAGE_LINKS, not
+     * replacements: removing the Manage rows is what the reporter was told would NOT happen, and
+     * removing these is what they asked for. They point at the same routes, which is why neither set
+     * needs its own guard beyond the exact-set nav tests.
+     *
+     * Import after Roster, the f60cd403 order: administrative bulk-upload is used less than the roster.
+     */
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, adminOnly: true },
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
     // 44bc1c33 — CARD ASSIGNMENT. The employee↔Card/Clocking ID mapping a physical terminal needs when its
     // card numbers are not the employee codes. Admin-only and beside Shift because it is device
@@ -425,6 +450,12 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
 
 /**
  * a324a4b3 rev3 — Roster and Import, as FLAT Manage rows rather than children of the Attendance node.
+ *
+ * ⚠️ r314 (fe2360f9 + 7c80a168) — THESE ROWS STAY, and they are no longer the only ones. The reporter
+ * asked for both functions under Admin › Attendance; they were shown that moving them there would take
+ * both rows away from every manager, and they chose to have them in BOTH places rather than lose them.
+ * So the node now carries adminOnly duplicates and this set is untouched. Deleting either set breaks a
+ * promise made to the reporter in writing — see the note beside the duplicates in ATTENDANCE_NAV.
  *
  * They are managerUp, and the node they used to live in has moved into the admin-gated group. Left there
  * they would disappear for every non-admin manager. A third parent node literally labelled "Attendance"

@@ -316,8 +316,25 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(importIdx, 'Import is a Manage row').toBeGreaterThan(-1);
     const rosterIdx = links.indexOf(`'/roster'`);
     expect(rosterIdx, 'Roster present').toBeGreaterThan(-1);
-    expect(node.indexOf(`'/attendance/import'`), 'Import is NOT in the admin-gated node').toBe(-1);
-    expect(node.indexOf(`'/roster'`), 'Roster is NOT in the admin-gated node').toBe(-1);
+    /**
+     * ⚠️ r314 (fe2360f9 + 7c80a168) — THESE TWO LINES ASSERTED THE OPPOSITE, and they are inverted
+     * rather than deleted. rev3's reasoning is intact: a managerUp row inside the admin-gated node is
+     * invisible to managers. The reporter was shown that in writing and chose to have both rows in BOTH
+     * places, so the node now carries adminOnly COPIES while these Manage rows stay untouched. What the
+     * guard must protect is unchanged — that the manager keeps a working row — so it is asserted
+     * positively on the Manage list above AND the node copies are required to be adminOnly here.
+     */
+    const nodeImport = node.indexOf(`'/attendance/import'`);
+    const nodeRoster = node.indexOf(`'/roster'`);
+    expect(nodeImport, 'Import has an admin entry point in the node').toBeGreaterThan(-1);
+    expect(nodeRoster, 'Roster has an admin entry point in the node').toBeGreaterThan(-1);
+    for (const [label, at] of [['Roster', nodeRoster], ['Import', nodeImport]] as const) {
+      const line = node.slice(at).split('\n')[0];
+      expect(line, `${label}'s node copy must be adminOnly — the group gates before the rows`).toContain('adminOnly: true');
+      expect(line, `${label}'s node copy must NOT be managerUp — it would vanish for managers`).not.toContain('managerUp');
+    }
+    // Roster still precedes Import in the node too, so the f60cd403 order reads the same from both menus.
+    expect(nodeRoster, 'Roster precedes Import in the node as well').toBeLessThan(nodeImport);
     expect(rosterIdx, 'Roster precedes Import (Import stays last)').toBeLessThan(importIdx);
     // "Last" is measured within the Manage link list now — the config rows are in a different container,
     // so a position comparison against them would compare offsets in unrelated blocks of text.

@@ -72,6 +72,14 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
   });
 });
 
+/**
+ * r314 (fe2360f9 + 7c80a168) — the hrefs that appear TWICE on purpose: once adminOnly in the Attendance
+ * node, once managerUp as a flat Manage row. Module-scoped because two separate describes assert on it:
+ * the parity block (a duplicate that is NOT one of these still fails, and removing either half fails)
+ * and the label block (a pair shares ONE label key, so both menus name the screen the same).
+ */
+const PAIRED_HREFS: readonly string[] = ['/roster', '/attendance/import'];
+
 describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // components/sidebar.tsx ATTENDANCE_NODE as of the commit before rung 2, captured VERBATIM
   // (b3dc0f78 consolidation + 5cb199b3 + f60cd403 order + 5249d43f clock-first). This is the
@@ -177,6 +185,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // It leads with '/attendance' rather than sitting among the settings for the reason that oracle already
     // states below: it is a READING, not a configuration screen.
     { href: '/attendance/breakdown', labelKey: 'attendanceBreakdown', icon: Table2, adminOnly: true },
+    // r314 (fe2360f9 + 7c80a168) — ROSTER and IMPORT return to this node as adminOnly DUPLICATES of the
+    // managerUp rows in Manage, which stay. a324a4b3 rev3 took them out because a managerUp row inside
+    // the admin-gated group is invisible to managers, and rejected the duplicated menu; the reporter was
+    // shown that trade in writing and chose the duplication rather than lose the manager rows. Both sets
+    // are asserted, here and in test/attendance-menu-relocation.test.ts.
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, adminOnly: true },
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, adminOnly: true },
   ] as const;
 
   /**
@@ -326,6 +341,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 22d67223 (r311) — Attendance Breakdown, SECOND and not among the settings: by this list's own
       // rule the readings lead and the configuration rows follow, and this is the second reading.
       '/attendance/breakdown',
+      // r314 — the two administrative READINGS/operations, before the settings rows, by this list's own
+      // rule that readings lead. Import after Roster (f60cd403): bulk upload is used less than the roster.
+      '/roster',
+      '/attendance/import',
       '/admin/attendance', // Shift
       '/admin/card-assignment', // Card Assignment (44bc1c33) — device configuration, beside Shift
       // e4471e3c (r287) — THE CUTOVER. '/admin/attendance-policy' (Schedule Group) and
@@ -365,21 +384,47 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       .filter((want) => !goneHrefs.includes(want.href))
       .forEach((want) => {
         const got = flattened.filter((c) => c.href === want.href && c.labelKey === want.labelKey);
-        expect(got, `${want.href} (${want.labelKey}) appears exactly once`).toHaveLength(1);
+        // r314 — a DECLARED PAIR appears twice by the owner's decision; everything else still once.
+        expect(got, `${want.href} (${want.labelKey}) appears ${PAIRED_HREFS.includes(want.href) ? 'twice' : 'exactly once'}`)
+          .toHaveLength(PAIRED_HREFS.includes(want.href) ? 2 : 1);
         expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
         expect(got[0].icon, `${want.href} icon ref`).toBe(want.icon);
-        expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
-        expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
+        // A declared pair carries DIFFERENT gates on its two copies by design (one adminOnly, one
+        // managerUp), so asserting one declaration against got[0] would be asserting an arbitrary half.
+        // The pair block below asserts both halves positively, which is the stronger statement.
+        if (!PAIRED_HREFS.includes(want.href)) {
+          expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
+          expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
+        }
       });
     // NO href is listed twice. This assertion has been TIGHTENED, not loosened: r274 allowed exactly one
     // duplicate (`/attendance`, deliberately, as the only way one screen could serve two audiences from
     // two menus), and f3e6c36e removed the CAUSE rather than the symptom by giving the employee their own
     // screen. An empty list is the strongest form this line has ever taken, and it is what keeps
     // "match on href + labelKey" above from becoming a way to hide a duplicate.
+    /**
+     * ⚠️ r314 (fe2360f9 + 7c80a168) — THIS LIST IS NO LONGER EMPTY, AND THAT IS A DECISION, NOT A DRIFT.
+     *
+     * Its history is the argument: r274 allowed exactly one deliberate duplicate because it was the only
+     * way one screen could serve two audiences from two menus; f3e6c36e removed the CAUSE by giving the
+     * employee their own screen and tightened this to []. r314 reintroduces two, for the r274 reason
+     * exactly — the reporter asked for Roster and Import under Admin, was shown in writing that moving
+     * them there takes both rows from every manager, and chose to have them in both places.
+     *
+     * So the assertion NAMES what may be duplicated instead of permitting duplicates. An undeclared
+     * duplicate still fails, which is what this line has always been for.
+     */
     const dupes = [...new Set(flattened.map((c) => c.href))].filter(
       (h) => flattened.filter((c) => c.href === h).length > 1,
     );
-    expect(dupes, 'no href is listed twice — r287 split the one screen that was').toEqual([]);
+    expect(dupes.sort(), 'only the declared admin/manager pairs may appear twice').toEqual([...PAIRED_HREFS].sort());
+    // …and each pair is one adminOnly row and one managerUp row. Two adminOnly copies would mean the
+    // manager row was quietly dropped — the exact loss the reporter was promised would not happen.
+    for (const href of PAIRED_HREFS) {
+      const pair = flattened.filter((c) => c.href === href);
+      expect(pair.filter((c) => c.adminOnly === true), `${href}: one adminOnly copy`).toHaveLength(1);
+      expect(pair.filter((c) => c.managerUp === true), `${href}: one managerUp copy`).toHaveLength(1);
+    }
     // The two rows the split produced, named, so "no duplicates" cannot be satisfied by losing one of
     // them. `/attendance` is the administrator's, gated; `/attendance/my-records` is the employee's own
     // and carries no gate. That pairing IS the item, so it is asserted positively rather than implied.
@@ -545,6 +590,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // 22d67223 — the breakdown names one employee's every recorded figure for a range, so it is the
       // same audience as Employee Attendance above it: administrators, never a manager or the employee.
       '/attendance/breakdown',
+      // r314 — these two are adminOnly IN THIS NODE specifically: the group gates before the rows, so a
+      // managerUp row here would vanish for managers. Their Manage twins carry managerUp instead.
+      '/roster',
+      '/attendance/import',
       // 44bc1c33 — a card maps a device number to a person, so it is admin configuration, never a row a
       // manager or an employee reaches.
       '/admin/card-assignment',
@@ -652,6 +701,10 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/attendance': 'Employee Attendance',
       // 22d67223 (r311) — says what it opens: the breakdown OF attendance, not a report about it.
       '/attendance/breakdown': 'Attendance Breakdown',
+      // r314 — the SAME labels their Manage twins carry; two rows for one screen must not read as two
+      // different functions.
+      '/roster': 'Roster',
+      '/attendance/import': 'Import',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.
@@ -713,7 +766,25 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
         .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
         .join('');
     for (const row of adminRows) {
+      /**
+       * r314 — THE DECLARED PAIRS ARE EXEMPT, and the exemption is the point rather than a hole. These
+       * two rows deliberately carry the SAME labelKey as their managerUp twins in Manage, so that one
+       * screen reads identically from both menus. `attendanceImport` is the key that pair has always
+       * used (its string is "Import", inside an attendance namespace); forcing it to `import` here would
+       * either rename the Manage row's key too or split one screen into two names — which is the drift
+       * this guard exists to prevent, arrived at from the other direction.
+       */
+      if (PAIRED_HREFS.includes(row.href)) continue;
       expect(row.labelKey, `${row.href}: key must name its own label`).toBe(camel(en.nav[row.labelKey]!));
+    }
+    // …and the pairs are checked the way that IS meaningful for them: both menus name the screen the
+    // same. Read off the pack directly — this describe has no flattened list of its own.
+    for (const href of PAIRED_HREFS) {
+      const fromNodes = attendancePack.navNodes!.flatMap((n) => n.children).filter((c) => c.href === href);
+      const fromLinks = (attendancePack.navLinks ?? []).filter((l) => l.href === href);
+      expect(fromNodes, `${href}: one admin-node entry`).toHaveLength(1);
+      expect(fromLinks, `${href}: one Manage entry`).toHaveLength(1);
+      expect(fromLinks[0].labelKey, `${href}: both entries must use one label key`).toBe(fromNodes[0].labelKey);
     }
   });
 
