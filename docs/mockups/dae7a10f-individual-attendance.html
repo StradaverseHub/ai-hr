@@ -1,0 +1,131 @@
+<meta charset="utf-8">
+<title>dae7a10f — Individual Attendance: panel, day screen, admin correction</title>
+<!--
+  Mockup for dae7a10f (Individual Attendance UI/UX + admin attendance maintenance).
+
+  MEASURED IN THE SOURCE 2026-09-21:
+    components/collapsible-employee-panel.tsx — the shared panel, now on SIX screens after r320 put it
+      on Attendance Breakdown; Payroll > Transaction View (the reporter's reference) is one of them.
+    app/attendance/individual/page.tsx — full width since r319 (dde08629); the employee is still chosen
+      in a dropdown in the filter row.
+    app/attendance/individual/[date]/page.tsx — the per-day detail screen ALREADY EXISTS (570fd56e):
+      it carries the eight calculation columns that were moved off the list, and its "Edit" is a LINK
+      into the correction workflow. It is mx-auto max-w-5xl, i.e. NOT full width.
+    core/approvals.ts assertCanDecide — `isSelf` is subject.personId === ctx.personId. The rule is
+      decider != SUBJECT EMPLOYEE, not decider != requester. An HR admin correcting somebody else's
+      attendance is therefore already permitted to decide it.
+    core/attendance.ts decideAttendanceCorrection — approval re-derives the day through the time
+      engine, "so corrected OT flows to payroll".
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the reporter asks for admin maintenance "without going through
+  the employee approval workflow". They can have the SPEED without losing the TRAIL — one admin action
+  that raises and decides the correction in the same step, still through both kernel functions. What is
+  skipped is the WAIT, not the record, and not the engine that puts corrected overtime into payroll.
+
+  WHAT IS DELIBERATELY NOT DRAWN: a direct write to the attendance row. That is the one shape this
+  must not take, and drawing it would be proposing it.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+        --primary:#4f46e5;--newbg:#eef2ff;--newfg:#4338ca;--okbg:#f0fdf4;--okfg:#15803d;
+        --badbg:#fef2f2;--badfg:#b91c1c;--amberbg:#fffbeb;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .new{background:var(--newbg);color:var(--newfg)} .ok{background:var(--okbg);color:var(--okfg)}
+  .bad{background:var(--badbg);color:var(--badfg)}
+  .row{display:flex;gap:12px}
+  .panel{flex:0 0 230px;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fbfbfe}
+  .work{flex:1;min-width:0;border:1px solid var(--border);border-radius:12px;padding:10px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:11.5px;color:var(--mf);background:#fff}
+  .emp{padding:6px 8px;border-radius:8px;font-size:12px}
+  .emp.sel{background:var(--newbg);color:var(--newfg);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 6px;background:var(--muted);white-space:nowrap}
+  td{padding:6px;border-top:1px solid var(--border);white-space:nowrap}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:3px 10px;font-size:11px;font-weight:600;display:inline-block}
+  .chip{background:var(--muted);border-radius:999px;padding:1px 8px;font-size:10px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h1>Individual Attendance &mdash; the same panel Breakdown and Transaction View use</h1>
+  <p class="sub">Employee on the left, their month on the right. The panel collapses when you want the
+    full table. The screen is already full width; only the picker moves.</p>
+  <div class="row" style="align-items:stretch">
+    <div class="panel">
+      <div style="font-size:11px;font-weight:700;color:var(--mf);text-transform:uppercase;letter-spacing:.04em">Employees</div>
+      <div class="inp" style="margin:8px 0;display:block">Search name or ID&hellip;</div>
+      <div class="emp">1001 &middot; Ahmad bin Ali</div>
+      <div class="emp sel">1002 &middot; Siti binti Rahman</div>
+      <div class="emp">1003 &middot; Kumar a/l Raj</div>
+    </div>
+    <div class="work">
+      <div style="font-size:13px;font-weight:700">1002 &middot; Siti binti Rahman</div>
+      <div class="row" style="gap:8px;margin-top:8px"><span class="inp">Sep 2026</span><span class="inp">View</span></div>
+      <table style="margin-top:10px">
+        <tr><th>Date</th><th>Day</th><th>Shift</th><th>Check-in</th><th>Check-out</th><th>Status</th><th>Flag</th><th></th></tr>
+        <tr><td>01 Sep</td><td>Mon</td><td>S1</td><td>08:00</td><td>17:31</td><td>Present</td><td>&mdash;</td>
+            <td><span class="btn">View / Edit</span></td></tr>
+        <tr><td>02 Sep</td><td>Tue</td><td>S1</td><td>08:14</td><td>17:29</td><td>Present</td>
+            <td><span class="chip">Late</span></td><td><span class="btn">View / Edit</span></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>The day screen <span class="pill ok">already exists</span> &mdash; it becomes full width</h2>
+  <p class="sub">2 September 2026 &middot; Siti binti Rahman. The eight calculation columns already live
+    here; this is where an admin fixes the day.</p>
+  <div class="row">
+    <div class="work" style="flex:1">
+      <table>
+        <tr><th>Clock in</th><th>Clock out</th><th>Shift hours</th><th>Actual</th><th>Lateness</th>
+            <th>Early out</th><th>OT 1.5</th><th>OT 2.0</th></tr>
+        <tr><td>08:14</td><td>17:29</td><td>8.00</td><td>7.75</td><td>14 min</td><td>&mdash;</td><td>0.00</td><td>0.00</td></tr>
+      </table>
+      <p class="note">Clock data, shift detail, irregularity and the overtime working, on one screen.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Correcting it as an administrator <span class="pill new">what changes</span></h2>
+  <table style="table-layout:auto">
+    <tr><th style="width:30%">Today</th><th>Proposed</th></tr>
+    <tr>
+      <td>Edit is a LINK to the correction screen. You raise a request there, and somebody approves it.</td>
+      <td><strong>Correct the day here, in one action.</strong> The clock times are editable on this
+        screen and saving records the correction and applies it in the same step.</td>
+    </tr>
+  </table>
+  <div class="row" style="margin-top:12px">
+    <div class="work" style="flex:1">
+      <div class="row" style="gap:8px;align-items:flex-end">
+        <span class="inp">Clock in &nbsp;08:00</span>
+        <span class="inp">Clock out &nbsp;17:29</span>
+        <span class="inp" style="flex:1">Reason &nbsp;Door reader missed the entry scan</span>
+        <span class="btn">Save correction</span>
+      </div>
+      <p class="note" style="margin-top:10px">After saving, the day shows
+        <span class="chip">Corrected by ADMIN &middot; 21 Sep 2026</span> with the reason, and the
+        overtime is recalculated by the same engine that would have run on approval.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">What we will NOT do, and why it matters to you</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    We will not write the attendance row directly. Corrected clock times change overtime, and overtime
+    is paid &mdash; so every correction goes through the same calculation the approval path uses, and
+    leaves the same record. <strong>What an administrator skips is the WAIT, not the trail.</strong>
+    You still get, for every corrected day: who changed it, when, what it was before, and why.</p>
+</div>

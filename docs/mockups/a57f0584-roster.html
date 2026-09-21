@@ -1,0 +1,93 @@
+<meta charset="utf-8">
+<title>a57f0584 — Roster: the filters were never the problem</title>
+<!--
+  Mockup for a57f0584 (Redesign Attendance Roster Screen and Workflow).
+
+  MEASURED IN THE SOURCE 2026-09-21 (app/roster/page.tsx):
+    line 59  companyId = sp.companyId ?? companies[0].id   — it DEFAULTS; nothing is required
+    lines 67-68  business unit and department are optional narrowings (`...(sp.bu ? … )`)
+    line 140  the screen body is pageWideCls — already full width
+    line 53   mx-auto max-w-6xl is the NO-COMPANIES empty state only
+    test/attendance-screens-layout.test.ts — app/roster/page.tsx is NOT in WIDE_LIST_SCREENS (0 hits),
+      so the screen is wide but unpinned and could lose it silently.
+
+  MEASURED ON PRODUCTION 2026-09-21: the tenant has TWELVE companies, with active employments spread
+  across at least nine of them (31, 15, 5, 4, 4, 3, 2, 1, …). So "one company at a time" is the real
+  constraint: an admin opens Roster and sees whichever company sorts first, never their whole scope.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: the roster already opens with data — the premise in the ticket
+  is inverted. What it does not do is span the companies the viewer is authorised for, and with twelve
+  companies that is the complaint underneath the one that was written down.
+
+  WHAT IS DELIBERATELY NOT DRAWN: a "modern, clean" restyle. The ticket asks for one; nothing here
+  proposes new visual language, because the screen's problem is scope, not paint.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+        --primary:#4f46e5;--newbg:#eef2ff;--newfg:#4338ca;--okbg:#f0fdf4;--okfg:#15803d;--amberbg:#fffbeb;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .new{background:var(--newbg);color:var(--newfg)} .ok{background:var(--okbg);color:var(--okfg)}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11.5px;color:var(--mf);background:#fff;display:inline-block}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 7px;background:var(--muted);white-space:nowrap}
+  td{padding:6px 7px;border-top:1px solid var(--border);white-space:nowrap}
+  .co{font-size:10.5px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h1>Roster today &mdash; it already opens with data</h1>
+  <p class="sub">Nothing has to be chosen first. The screen picks a company for you and shows that
+    company's month.</p>
+  <div><span class="inp">Chin Hin Construction Engineering Sdn Bhd &nbsp;&#9662;</span>
+       <span class="inp">September 2026</span>
+       <span class="inp" style="color:var(--mf)">Business unit &mdash; optional</span>
+       <span class="inp" style="color:var(--mf)">Department &mdash; optional</span></div>
+  <table style="margin-top:10px">
+    <tr><th>Employee</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th></tr>
+    <tr><td>1001 &middot; Ahmad bin Ali</td><td>S1</td><td>S1</td><td>S1</td><td>S1</td><td>S1</td><td>R</td><td>R</td></tr>
+    <tr><td>1002 &middot; Siti binti Rahman</td><td>S2</td><td>S2</td><td>S2</td><td>R</td><td>R</td><td>S2</td><td>S2</td></tr>
+  </table>
+  <p class="note"><strong>31 of your 75 employees.</strong> The other 44 are in your eleven other
+    companies, and the only way to see them is to switch, one company at a time.</p>
+</div>
+
+<div class="card">
+  <h2>After <span class="pill new">proposed</span></h2>
+  <p class="sub">The same screen, opening on everybody you are authorised to see.</p>
+  <div><span class="inp" style="border-color:#a5b4fc;background:var(--newbg);color:var(--newfg);font-weight:600">All companies &nbsp;&#9662;</span>
+       <span class="inp">September 2026</span>
+       <span class="inp" style="color:var(--mf)">Company &mdash; optional</span>
+       <span class="inp" style="color:var(--mf)">Business unit &mdash; optional</span>
+       <span class="inp" style="color:var(--mf)">Department &mdash; optional</span></div>
+  <table style="margin-top:10px">
+    <tr><th>Employee</th><th>Company</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th></tr>
+    <tr><td>1001 &middot; Ahmad bin Ali</td><td class="co">Chin Hin Construction</td>
+        <td>S1</td><td>S1</td><td>S1</td><td>S1</td><td>S1</td><td>R</td><td>R</td></tr>
+    <tr><td>2117 &middot; Nurul Aina</td><td class="co">ISEDECOR BINA</td>
+        <td>S1</td><td>S1</td><td>R</td><td>S1</td><td>S1</td><td>S1</td><td>R</td></tr>
+    <tr><td>3004 &middot; Rajesh Kumar</td><td class="co">Kerjaya Riang</td>
+        <td>S3</td><td>S3</td><td>S3</td><td>R</td><td>R</td><td>S3</td><td>S3</td></tr>
+  </table>
+  <p class="note">The filters stay exactly where they are and keep working &mdash; they narrow the view
+    instead of being the only way to get one. A Company column appears when more than one is shown, so a
+    row always says whose it is.</p>
+</div>
+
+<div class="card" style="border-color:#fcd34d;background:var(--amberbg)">
+  <h2 style="color:var(--amber)">Two things we noticed while looking</h2>
+  <p class="note" style="color:var(--fg);font-size:12.5px">
+    <strong>You have two companies with the same name.</strong> &ldquo;Chin Hin Construction Engineering
+    Sdn Bhd&rdquo; appears twice &mdash; one with 31 employees and one with 4 &mdash; differing only in
+    capitals. Whichever view you use, those two are impossible to tell apart in a dropdown. Worth a look.<br><br>
+    <strong>Four of your twelve companies have no active employees.</strong> They will show as empty
+    rosters. Tell us if you would rather they were hidden.</p>
+</div>
