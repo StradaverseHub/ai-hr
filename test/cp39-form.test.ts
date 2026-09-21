@@ -95,6 +95,53 @@ const PDF_ROUTE_CODE = code('app/payroll/cp39/pdf/route.ts');
 const TEXT_ROUTE_CODE = code('app/payroll/cp39/text/route.ts');
 const REPORTS_CODE = code('localization/my/reports.ts');
 
+/**
+ * FORM NESTING, MEASURED RATHER THAN COUNTED.
+ *
+ * Both cases below used to assert that `<form ` appeared exactly TWICE on this screen, as a cheap proxy
+ * for the property they name: that no form is nested inside another, which browsers silently drop —
+ * turning the download buttons back into a "Show".
+ *
+ * r321 added a THIRD form here (the PCB payment reference, a flat sibling below the downloads) and the
+ * proxy failed while the property it stood for still held. Counting was the wrong instrument in both
+ * directions: it fails on a legitimate sibling, and it would have PASSED two genuinely nested forms had
+ * a third been deleted in the same change. The nesting is now measured, which is strictly stronger, and
+ * the thing the count was really protecting — that the three downloads share ONE form, which is what
+ * makes them buttons carrying their own formAction — is pinned explicitly rather than by arithmetic.
+ *
+ * Comment-stripped source, so a `<form` written inside prose cannot register as an element.
+ */
+const maxFormDepth = (src: string) => {
+  let depth = 0;
+  let max = 0;
+  for (const m of src.matchAll(/<form[\s>]|<\/form>/g)) {
+    if (m[0] === '</form>') depth -= 1;
+    else {
+      depth += 1;
+      max = Math.max(max, depth);
+    }
+  }
+  return max;
+};
+
+/** The inner text of each TOP-LEVEL form, in source order. */
+const formBlocks = (src: string) => {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (const m of src.matchAll(/<form[\s>]|<\/form>/g)) {
+    const at = m.index ?? 0;
+    if (m[0] === '</form>') {
+      depth -= 1;
+      if (depth === 0) out.push(src.slice(start, at));
+    } else {
+      if (depth === 0) start = at;
+      depth += 1;
+    }
+  }
+  return out;
+};
+
 const row = (p: Partial<Cp39FormRow> & { employmentId: string }): Cp39FormRow => ({
   // '' by default ON PURPOSE: it exercises the identity fallback in `cp39PersonKey`, which is what a
   // caller that predates the field gets. The person-aware cases below pass one explicitly.
@@ -437,9 +484,14 @@ describe('00806b4c — the e-Data PCB file carries every identity box, at Exhibi
     // …AND IT SAYS DRAFT, because the file it downloads is one. See the whole-locale case below.
     expect(ns.downloadFile).toMatch(/DRAFT/);
     expect(ns.downloadFileTitle).toMatch(/DRAFT until verified against e-PCB Plus/);
-    // Still two forms, never three: a nested form is invalid HTML and browsers drop the inner one, which
-    // would turn these buttons back into a "Show".
-    expect((PREVIEW.match(/<form /g) ?? []).length).toBe(2);
+    // The downloads must share ONE form — that is what makes each a button with its own formAction
+    // rather than a link or a "Show" — and no form may nest inside another.
+    expect(maxFormDepth(PREVIEW_CODE), 'no form may nest inside another').toBe(1);
+    const withDownloads = formBlocks(PREVIEW_CODE).filter((f) => f.includes('formAction='));
+    expect(withDownloads, 'the downloads share exactly one form').toHaveLength(1);
+    for (const a of ['/payroll/cp39/pdf', '/payroll/cp39/text', '/payroll/reports/cp39-file']) {
+      expect(withDownloads[0], `${a} must be a button inside that one form`).toContain(a);
+    }
   });
 
   /**
@@ -958,10 +1010,10 @@ describe('the three surfaces cannot disagree', () => {
     expect(PREVIEW_CODE).toContain("t('downloadsBlocked')");
   });
 
-  it('never nests the two forms, which browsers silently drop', () => {
+  it('never nests forms, which browsers silently drop', () => {
     expect(PREVIEW).toContain('<input type="hidden" name="companyId"');
     expect(PREVIEW).toContain('<input type="hidden" name="periodKey"');
-    expect((PREVIEW.match(/<form /g) ?? []).length).toBe(2);
+    expect(maxFormDepth(PREVIEW_CODE)).toBe(1);
   });
 
   it('never claims the printed page is the LHDN submission', () => {

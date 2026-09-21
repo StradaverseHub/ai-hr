@@ -6081,6 +6081,47 @@ export const employmentPayComponent = pgTable(
 // row (set its `valid_to`) and INSERTs a new open row, so at most one row applies to a given month. Dates
 // are MONTH-ALIGNED (the service normalises any input to the first of its month). The `amount` is a
 // garnishment figure (tenant data) — kept OUT of the DomainEvent payload (ADR-0030 Layer 0).
+/**
+ * 72b100cd (migration 0476) — THE EMPLOYER'S PAYMENT of monthly tax deductions to LHDN, which PCB 2(II)
+ * reports per month and per stream.
+ *
+ * NOT `statutory_report.ack_ref`, and the distinction is the whole reason this table exists: that column
+ * is ONE acknowledgement for the RETURN (a CP39 lodgement), while this is a PAYMENT — an employer may
+ * pay more than once against one return, and LHDN issues a receipt per payment. The form also splits MTD
+ * from CP38 into separate columns, which a single reference cannot express.
+ *
+ * ⚠️ EVERY ROW IS KEYED BY A HUMAN AND PRINTED VERBATIM. Nothing here is derived, and a month with no row
+ * prints an EMPTY box on the form rather than 0.00 — an absent box asserts nothing, a zero asserts the
+ * money does not exist, and those are different statements to LHDN (CLAUDE.md §8).
+ */
+export const pcbPayment = pgTable(
+  'pcb_payment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    /** 'YYYY-MM' — the DEDUCTION month this payment settles, the shape statutory_report.period_key uses. */
+    periodKey: text('period_key').notNull(),
+    /** The two streams the form reports apart: 'mtd' is the ordinary deduction, 'cp38' the instalment. */
+    kind: text('kind').$type<'mtd' | 'cp38'>().notNull(),
+    /** LHDN's receipt / bank slip / transaction number. Unvalidated on purpose — this repo cannot verify
+     *  their format, and policing one would be inventing third-party behaviour. */
+    receiptRef: text('receipt_ref').notNull(),
+    paidOn: date('paid_on').notNull(),
+    recordedBy: uuid('recorded_by'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // One reference per company, month and stream: a correction UPDATES the row, because the form has
+    // exactly one box to print it in and no way to show two.
+    uniqueIndex('pcb_payment_company_period_kind_uq').on(t.companyId, t.periodKey, t.kind),
+    index('pcb_payment_tenant_idx').on(t.tenantId),
+  ],
+);
+
 export const employeeCp38 = pgTable(
   'employee_cp38',
   {

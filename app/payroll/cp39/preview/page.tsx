@@ -5,6 +5,9 @@ import { formatMyIc, money } from '@/lib/cp39-form';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { loadCp39Form } from '../shared';
+// 72b100cd — the payment reference this month's PCB 2(II) will print, read beside the return it settles.
+import { pcbPaymentsForYear } from '@/core/pcb-payment';
+import { recordPcbPaymentAction } from '../actions';
 
 /**
  * e0cd4583 — the CP39 review screen: pick a payroll cycle month, check the statement, fill in the
@@ -96,6 +99,9 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
   const year = typeof sp.year === 'string' && /^\d{4}$/.test(sp.year) ? sp.year : fallback.slice(0, 4);
   const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? (sp.month as string) : fallback.slice(5, 7);
   const periodKey = `${year}-${month}`;
+  // 72b100cd — the year's payment references for this company, so the two cards below open on what was
+  // recorded rather than blank. Keyed 'YYYY-MM|kind'; a month with no record simply has no entry.
+  const pcbPayments = companyId ? await pcbPaymentsForYear(s, { companyId, year: Number(year) }) : new Map();
   const years = yearOptions(today, year);
   const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
   const monthName = (mm: string) => monthFmt.format(new Date(Date.UTC(2000, Number(mm) - 1, 1)));
@@ -513,6 +519,46 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
             )}
           </div>
         </form>
+      </Card>
+
+      {/**
+       * 72b100cd (r321) — WHAT YOU PAID LHDN FOR THIS MONTH, and the only place it is recorded.
+       *
+       * PCB 2(II) reports, per month, the receipt / bank slip / transaction number and the receipt date,
+       * separately for MTD and for CP38. Nothing in this system held those: they are what LHDN gives the
+       * employer on PAYMENT, while `statutory_report.ack_ref` beside it is the acknowledgement of the
+       * RETURN. Two different facts about two different acts, so this is its own record.
+       *
+       * IT SITS HERE because this is the screen an operator is already on when they pay — the CP39 for
+       * that month. Asking them to go somewhere else afterwards is how a box stays empty for a year and
+       * is discovered at filing time.
+       *
+       * ⚠️ NOTHING IS DERIVED. Both values are typed in. A month with nothing recorded prints an EMPTY
+       * box on PCB 2(II), never 0.00: an absent box asserts nothing, a zero asserts the money does not
+       * exist, and those are different statements to LHDN.
+       */}
+      <Card>
+        <SectionHeader title={t('pcbPaymentTitle')} subtitle={t('pcbPaymentHint')} />
+        <div className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
+          {(['mtd', 'cp38'] as const).map((kind) => {
+            const rec = pcbPayments.get(`${periodKey}|${kind}`);
+            return (
+              <form key={kind} action={recordPcbPaymentAction} className="space-y-2 rounded-xl border border-border p-3">
+                <input type="hidden" name="companyId" value={companyId} />
+                <input type="hidden" name="periodKey" value={periodKey} />
+                <input type="hidden" name="kind" value={kind} />
+                <div className="text-sm font-medium">{kind === 'mtd' ? t('pcbPaymentKindMtd') : t('pcbPaymentKindCp38')}</div>
+                <Field label={t('pcbPaymentReceiptRef')}>
+                  <input name="receiptRef" defaultValue={rec?.receiptRef ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('pcbPaymentPaidOn')}>
+                  <input type="date" name="paidOn" defaultValue={rec?.paidOn ?? ''} className={inputCls} />
+                </Field>
+                <button className={btnGhost}>{t('pcbPaymentSave')}</button>
+              </form>
+            );
+          })}
+        </div>
       </Card>
     </div>
   );

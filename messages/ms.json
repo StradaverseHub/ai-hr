@@ -6235,7 +6235,14 @@
       "downloadTextTitle": "Kandungan yang sama dalam teks biasa, disusun untuk DIBACA sambil anda mengunci masuk angka ke portal e-PCB LHDN secara manual. Ini BUKAN fail e-Data PCB yang diterima LHDN — fail itu ada butangnya di sebelah.",
       "downloadFile": "Muat turun fail muat naik e-Data PCB — DRAF",
       "downloadFileTitle": "Fail yang diterima portal e-PCB / e-Data PCB LHDN (Exhibit 4): lebar tetap, 136 aksara bagi setiap baris pekerja, tanpa pemisah, jumlah berpad sifar. Setiap baris disemak sebelum ditawarkan. Ia tidak disusun untuk dibaca — gunakan salinan untuk dibaca bagi tujuan itu. DRAF sehingga disahkan dengan e-PCB Plus.",
-      "downloadsBlocked": "Muat turun dihalang sehingga setiap baris di atas lengkap."
+      "downloadsBlocked": "Muat turun dihalang sehingga setiap baris di atas lengkap.",
+      "pcbPaymentTitle": "Dibayar kepada LHDN",
+      "pcbPaymentHint": "Nombor dan tarikh resit yang diberikan LHDN semasa anda membayar. PCB 2(II) mencetaknya; bulan yang dibiarkan kosong akan dicetak kosong.",
+      "pcbPaymentKindMtd": "PCB (potongan cukai bulanan)",
+      "pcbPaymentKindCp38": "CP38 (arahan ansuran)",
+      "pcbPaymentReceiptRef": "No. resit / slip bank / transaksi",
+      "pcbPaymentPaidOn": "Tarikh bayaran",
+      "pcbPaymentSave": "Simpan"
     },
     "pcbDetail": {
       "additionalAmount": "Yₜ — saraan tambahan bulan ini",
