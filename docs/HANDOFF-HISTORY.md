@@ -1,3 +1,48 @@
+## r316 (2026-09-21) — a missing profile field is not a failed qualification. `main@90b6fa6e`, **no migration**.
+
+Gate: **930 files — equal to the suite file count — 14,205 tests**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 90b6fa6e.
+
+### r315 SHIPPED A REGRESSION AND THE DRY RUN CAUGHT IT, NOT THE SUITE
+
+r315's identity gate read an **unrecorded** attribute as an **excluded** one, because `isProfileEligible` compared `emp.gender ?? ''` against the configured list — the shape `isLeaveEligible` has always had.
+
+The first production dry run of the reversal sweep is what exposed it: it proposed reversing **105 pairs / 7,696.50 days**, of which **33 pairs / 472.50 days were ANNUAL**. `ANNUAL` lists *every* gender, so the only way to fail it is to have none recorded — and **55 of 75 active employees have no gender**. The sweep would have taken real Annual Leave off 33 people because a field is blank.
+
+**The same flaw was in the grant.** Six LIVE types (CGL, CPL, EXM, GD, NDL, STD) list `["male","female"]`, a list that restricts nobody. At the next year-open, r315's gate would have granted those 55 employees **nothing on all six**. The suite was green throughout.
+
+`isProfileEligible` now takes an explicit `UnknownAttributePolicy` **with no default**, so no caller can avoid deciding:
+
+- **`'exclude'`** — DISPLAY only (the balance card). Unchanged behaviour, and what the reporter was told in writing: an incomplete profile loses the card.
+- **`'allow'`** — anything that GRANTS OR TAKES AWAY DAYS. A missing fact is not a missing qualification. A **recorded contradiction still refuses**, so the relaxation is not a hole.
+
+The trade is stated in the test: we would rather grant a day we may have to take back than withhold one we owe.
+
+---
+
+## r315 (2026-09-21) — the year-open grant asks who the leave type is for. `main@5b278d2d`, **no migration**.
+
+Closed and DEPLOYED: `508d3acd`. Gate: **930 files, 14,202 tests**, 14 chunks green. `next build` exit 0.
+
+### THE REPORTED FAULT WAS A DISPLAY BUG AND IT WAS NOT ONE
+
+The ticket asked for the Maternity card to be filtered out for ineligible employees. Measured on production first: **the card is correct.** EMP-0004 really held a 98-day Maternity credit, written by a Leave Generation run that credited the type to all 79 employments — 6,566 days of it to 67 people the gender rule excludes.
+
+`leaveBalances` already filters its no-activity tail through the eligibility gate — which is also the reporter's own edge case 1, already built. It could not fire, because **a credit IS activity**. Hiding the card would have hidden 6,566 wrong days that still sit in HR screens, reports and anything that pays a balance out.
+
+**`openLeaveYear` consulted no identity condition at all.** Harmless while it granted only the three standing codes; `783bf55a` / `baea8e5b` widened it to every type, and it stopped being harmless the moment a tenant configured Maternity for female married employees.
+
+### THE SPLIT: IDENTITY GATES THE GRANT, TIMING DOES NOT
+
+`isProfileEligible` separates gender / marital / organisation-assignment (whose leave this is) from minimum service and probation (when they may take it). The grant uses identity only — **the year-open runs once**, so refusing a new joiner on service would withhold their Annual Leave forever. The card filter uses it too, because the reporter asked in these words that minimum service must not hide a card. The apply gate keeps both halves and is unchanged.
+
+### THE CORRECTION THAT WAS APPLIED, AND WHAT IS LEFT
+
+`scripts/reverse-ineligible-leave-grants.ts` — dry run by default, a negative `adjustment` beside the wrong accrual rather than a DELETE (6574c6b4: the ledger is the record), refusing any pair where days were spent or a request is attached, and idempotent.
+
+Applied on production after the r316 fix: **19 pairs, −1,862.00 days, all Maternity, none Annual.** EMP-0004 now reads **0.00**, so the reported card goes. No balance went negative.
+
+**60 employments still hold a positive Maternity balance. Five of them are correct** (recorded female and married). **The other 55 are there because their gender or marital status is not recorded** — the sweep deliberately will not take days off a person it cannot place. That is the reporter's data to fix, it was flagged in the plan before approval, and it is raised again with the result.
+
 ## r314 (2026-09-21) — Roster and Import in two places, because the reporter chose it. `main@3ea20585`, **no migration**.
 
 Closed and DEPLOYED: `fe2360f9`, `7c80a168`. Gate: **929 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 3ea20585, active, `GET /` 401, rsync dry-run clean.
