@@ -76,6 +76,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       // exception to this file's premise: its page calls scopedAdmin in its own body and it is in the
       // loop below. See the note there for why it could not be scopedSession like its neighbour.
       '/attendance/breakdown',
+      // r314 (fe2360f9 + 7c80a168) — Roster and Import, as ADMIN entry points beside their unchanged
+      // managerUp rows in Manage. They are in this list because a row in the Admin node is not what
+      // protects the screen behind it, and both screens must prove they guard themselves — which for
+      // these two is the interesting case: they are reachable by managers too, so they cannot simply
+      // call requireAdmin. See the exception below.
+      '/roster',
+      '/attendance/import',
       '/admin/attendance',
       // 44bc1c33 (r306) — Card Assignment. Its page carries its own scopedAdmin guard, which is this file's
       // whole premise: a row in the Admin node is not what protects the screen behind it.
@@ -132,6 +139,33 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // Either helper is fine — both resolve the session server-side and refuse a non-administrator.
     // What must not happen is a page relying on the sidebar having hidden its link.
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
+  });
+
+  /**
+   * r314 (fe2360f9 + 7c80a168) — ROSTER AND IMPORT, the two rows that now appear in BOTH menus. They are
+   * not in the admin-guard loop above because they are reachable by managers too, so this file's premise
+   * — the screen is protected by something of its OWN, never by which menu hides its link — is asserted
+   * here in the form that is true for each of them.
+   *
+   * ⚠️ AND THEY ARE NOT PROTECTED THE SAME WAY, WHICH IS A FINDING RATHER THAN A DETAIL. Roster resolves
+   * the caller's scope and shows them what they may see. IMPORT CALLS requireAdmin(), which redirects a
+   * non-admin to '/' — so the managerUp Manage row for Import advertises a screen every manager is
+   * bounced out of. That is PRE-EXISTING (r314 changed neither the row nor the page) and it is pinned
+   * here so it cannot be mistaken for something this round introduced. Whether managers should be able
+   * to import attendance, or the row should go, is the reporter's call and is raised separately.
+   */
+  it('r314: the two paired screens guard themselves, and Import is admin-only despite its manager row', () => {
+    const roster = read('app/roster/page.tsx');
+    expect(roster, 'Roster resolves the session and its scope server-side').toContain('await scopedSession()');
+    expect(roster, 'deliberately NOT admin-guarded — managers use it').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+
+    const imp = read('app/attendance/import/page.tsx');
+    expect(imp, 'Import refuses a non-administrator in its own page body').toMatch(/requireAdmin\(|scopedAdmin\(/);
+    // The contradiction, stated: the row says managerUp, the page says admin. If a later round fixes
+    // this properly — either grant managers access or drop the row — this assertion is what makes the
+    // change deliberate rather than accidental.
+    const flat = attendancePack.navLinks!.find((l) => l.href === '/attendance/import')!;
+    expect(flat.managerUp, 'the Manage row still claims managerUp').toBe(true);
   });
 
   it('/attendance is the exception, and it is protected by SCOPING rather than by refusal', () => {
@@ -237,8 +271,25 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
         .map((c) => c.href)
         .join(', ')}`,
     ).toBe(true);
-    for (const gone of ['/roster', '/attendance/import']) {
-      expect(merged.children.some((c) => c.href === gone), `${gone} must NOT be in the admin node`).toBe(false);
+    /**
+     * ⚠️ r314 (fe2360f9 + 7c80a168) — THIS ASSERTION USED TO READ "/roster and /attendance/import must
+     * NOT be in the admin node", and it is inverted rather than deleted because the RISK it guards is
+     * unchanged and now needs pinning from both sides.
+     *
+     * The reporter asked for both under Admin › Attendance. They were shown, in writing, that moving
+     * them there takes both rows away from every non-admin manager — the exact failure rev3 prevented —
+     * and they chose to have them in BOTH places. So the node carries adminOnly duplicates AND the
+     * managerUp rows stay in Manage. Losing the second half is the thing that would actually hurt
+     * somebody, so it is asserted here rather than left to the Manage-rows test alone.
+     */
+    for (const both of ['/roster', '/attendance/import']) {
+      const inNode = merged.children.find((c) => c.href === both);
+      expect(inNode, `${both} is an admin entry point (fe2360f9)`).toBeTruthy();
+      expect(inNode!.adminOnly, `${both} in this node must be adminOnly — the group gates before rows`).toBe(true);
+      const flat = attendancePack.navLinks!.find((l) => l.href === both);
+      expect(flat, `${both} must STILL be a flat Manage row — managers were promised it`).toBeTruthy();
+      expect(flat!.managerUp, `${both} in Manage must stay managerUp`).toBe(true);
+      expect(flat!.group).toBe('manage');
     }
     /**
      * r274 (2420718d) — `/attendance` LEFT this list, and what it was defending did not.
