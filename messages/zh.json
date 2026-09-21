@@ -7711,7 +7711,8 @@
       "cancelApprovedApprovalHelp": "重新审批将按与原休假申请相同的审批级别和顺序进行。自动批准会立即取消休假并退回天数。",
       "cancelApprovedReplacementNote": "取消补休始终需要审批人重新审批，因为退回休假也会退回其抵扣额度。",
       "cancelApprovedNotifyLabel": "有取消申请时通知审批人和人力资源部",
-      "cancelApprovedNotifyHelp": "通知显示在通知铃中。系统不会发送电子邮件。"
+      "cancelApprovedNotifyHelp": "通知显示在通知铃中。系统不会发送电子邮件。",
+      "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工"
     },
     "holidays": {
       "pageTitle": "公共假期",
