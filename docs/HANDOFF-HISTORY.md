@@ -1,3 +1,33 @@
+## r321 (2026-09-21) — what the employer actually PAID LHDN, which nothing here recorded. `main@f24fdbee`, **migration 0476**.
+
+`72b100cd` stays **building**, deliberately: this round ships the SOURCE for PCB 2(II), not the form. Deployed anyway rather than held — the payment references can be keyed from today, and gated code sitting unmerged is how main and production drift apart. Gate: **933 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 392/392**. Deployed: `exit_code=0`, `stale_build=0`, `GET /` 401, `pcb_payment` present, 392 applied on the box.
+
+### WHY A TABLE AND NOT `statutory_report.ack_ref`
+
+That column is ONE acknowledgement for the **return** — the CP39 lodgement. A payment is a different act. An employer may pay more than once against a single return, LHDN issues a receipt per payment, and PCB 2(II) prints **MTD and CP38 in separate columns**. One reference cannot express that, so widening it would have made the field mean two things depending on who read it.
+
+Measured on production before deciding: all six CP39 rows are `status=draft` with `ack_ref` and `filed_on` NULL. Nothing was lost by leaving that column alone — the alternative was reinterpreting a field nobody has used yet.
+
+### AN ABSENT BOX IS NOT A ZERO
+
+A month with nothing recorded is **absent from the map**, never `0.00`. On a tax form those are different statements to LHDN: an absent box asserts nothing, a zero asserts the money does not exist (§8). The renderer in the next round has to be able to tell them apart, so the service must not flatten them now. The receipt reference is also deliberately **excluded from the event payload** — it is evidence, not telemetry.
+
+No format check is imposed on the reference itself. This repo cannot verify LHDN's receipt format, and policing one would be inventing third-party behaviour — the same decision `ack_ref` already records.
+
+### A GUARD UPDATED, NOT LOOSENED — AND THE PROXY WAS WRONG IN BOTH DIRECTIONS
+
+`test/cp39-form.test.ts` asserted `<form ` appeared **exactly twice** on the CP39 preview, as a cheap stand-in for "no form nests inside another". The payment card is a third, flat sibling: the proxy failed while the property it stood for still held.
+
+Counting was simply the wrong instrument. It fails on a legitimate sibling — and, verified rather than asserted, it **passes two genuinely nested forms** if a third is deleted in the same change (that case reads 2). Nesting is now measured directly, and the thing the count was really protecting — that the three downloads share ONE form, which is what makes them buttons carrying their own `formAction` — is pinned explicitly.
+
+### THE FALSE RED, RECORDED BECAUSE IT WILL RECUR
+
+Chunk 14 first reported red: 8 files, 11 tests, **zero AssertionErrors**, at 1907s against ~80s for every other chunk — seven hook timeouts, a deadlock and a failed query across eight suites with nothing to do with CP39. Cause: board pulls running beside a *background* chunk. Re-run alone in the foreground it passed 66/66 with **the same 1035 test count**, in 84s. The §4 rule earned its place again: assertion count first, and a background gate is not evidence.
+
+### NOT DONE
+
+The PCB 2(II) form itself. It is per-employee (TP1's shape, not a batch table), so it needs its own screen, and it moves `lhdn.pcb2ii-en` / `lhdn.pcb2ii-ms` out of `MY_PLANNED_FORMS` into `MY_REPORTS` at `fidelity: 'agency-layout'` — CP22 is the only `'official'` row and a test pins that.
+
 ## r320 (2026-09-21) — the Attendance Breakdown employee panel, mounted not designed. `main@09dff053`, **no migration**.
 
 Closed and DEPLOYED: `f728826a`. Gate: **932 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 09dff053, active, `GET /` 401.
