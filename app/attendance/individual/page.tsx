@@ -5,7 +5,7 @@ import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
-import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
+import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
 import { Pager } from '@/components/pager';
@@ -71,7 +71,12 @@ export default async function IndividualAttendancePage({
   const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
+      {/* dde08629 (r319) — FULL WIDTH, the same `pageWideCls` eight other Attendance screens already use
+          and test/attendance-screens-layout.test.ts already pins for them. These three were simply never
+          added: at `mx-auto max-w-6xl` a sixteen-column table sat in a 72rem middle column with roughly a
+          third of a wide monitor as empty margin either side — the reporter's complaint verbatim. The
+          one-column rule form stays capped on purpose; see NARROW_FORM_SCREENS in that guard. */}
       <PageHeader title={t('title')} />
       <AttendanceTabs active="individual" />
       <ErrorBanner message={sp.error} />
