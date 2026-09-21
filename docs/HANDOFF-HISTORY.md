@@ -1,3 +1,36 @@
+## r318 (2026-09-21) — a way in to the Special Leave reasons. `main@dbda227f`, **no migration**.
+
+Closed and DEPLOYED: `76dbcaa1` (partly — see what is NOT done). Gate: **931 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` dbda227f.
+
+### MOST OF THE ITEM WAS ALREADY BUILT, AND THE PLAN SAID SO BEFORE APPROVAL
+
+Measured on production first: `leave_shared_group` already held ONE group — "Special Leave", 10.00 days, 3.00 per application — and `leave_shared_group_member` already held exactly the six types the ticket lists. The pooled card already existed (46afcc48) and the engine already enforced the ceiling. What was missing was a way IN to the reasons, and a picker that did not read as seven unrelated entitlements.
+
+### WHAT SHIPPED
+
+- `sharedLeaveGroupBalances` exposes `members` with ids, built in the SAME pass as `memberNames`, so the picker and the card cannot disagree about who is in the pool. Hidden members are included, because hiding a card is a presentation choice and a reason list that dropped half the pot would describe a different pot.
+- **The Request Leave picker groups a pooled type under its pool's name.** A LABEL: it still posts one `leaveTypeId`, so nothing the engine enforces changes.
+- **`/leave/shared/[groupId]`** — the employee's own pooled figure with the policy as context, and one Apply per reason linking into the EXISTING apply form via `?applyType=`, seeded and never trusted. It rides the `leave` access column rather than minting a second one carrying the same label (the 570fd56e precedent).
+
+Rendered as a seeded employee: 200 with one Apply link per reason, a bogus group id 404s, no `MISSING_MESSAGE`.
+
+### ⚠️ THE CARD-HIDING COULD NOT BE DONE AS PLANNED, AND NOTHING WAS WRITTEN
+
+The plan promised: *"Hide the six reason cards from My Leave… Nobody loses access to anything - every reason stays available through Special Leave."* **That promise cannot be kept with the switch that exists.**
+
+- `leave_type.ess_placement` refuses `'hidden'` outright — `STORABLE_PLACEMENTS` is `primary | secondary`; hidden is a RESOLVED value, not a storable one. The UPDATE was refused by the CHECK constraint and rolled back.
+- The switch that does hide a card is `visible_to_employee = false`, and **`mayAppearInApplyMenu` excludes any type whose resolved placement is `hidden`**. So hiding the six cards would also remove every Special Leave reason from the Request Leave dropdown — making this round's own Apply links dead ends.
+
+In this system, hiding a balance card and withdrawing the right to apply are **the same flag**. The plan assumed they were separable; they are not.
+
+**THE FIX IS A BETTER ONE THAN A SETTING, AND IT IS RAISED RATHER THAN SLIPPED IN:** a member of a PLACED shared group should not draw its own balance card, because its balance is the pool's — derived from membership that already exists, automatic for any future shared group (which the reporter asked for), impossible to misconfigure, and it does not touch the apply menu at all. That is a change to `leaveBalances`' self-service path and belongs in its own round with its own gate.
+
+### ALSO NOT DONE
+
+The **Compassionate / Congratulatory sub-grouping**. Nothing in the data says which reason sits under which heading, and hardcoding the mapping is what the ticket itself forbids (*"read the conditions from the leave type configuration"*). Where it should be STORED is the reporter's decision. The detail screen lists the reasons under the pool that owns them.
+
+The **two-step Request Leave wizard**. The picker groups the reasons under Special Leave, which delivers *"do not expose every database leave type as a flat list"*, but it is one control and not two steps.
+
 ## r317 (2026-09-21) — the menu stops offering what the page refuses. `main@d21ff2df`, **no migration**.
 
 Closed and DEPLOYED: `1661123d`. Gate: **930 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` d21ff2df, active, `GET /` 401.
