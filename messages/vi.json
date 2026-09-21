@@ -6235,7 +6235,14 @@
       "downloadTextTitle": "Cùng nội dung dưới dạng văn bản thuần, trình bày để ĐỌC trong khi bạn nhập số liệu vào cổng e-PCB của LHDN bằng tay. Đây KHÔNG phải tệp e-Data PCB mà LHDN nhận — tệp đó là nút ngay bên cạnh.",
       "downloadFile": "Tải tệp tải lên e-Data PCB — NHÁP",
       "downloadFileTitle": "Tệp mà cổng e-PCB / e-Data PCB của LHDN nhận (Exhibit 4): cố định độ rộng, 136 ký tự cho mỗi dòng nhân viên, không có ký tự phân tách, số tiền được đệm số 0. Mỗi dòng được kiểm tra trước khi được cung cấp. Tệp này không trình bày để đọc — hãy dùng bản để đọc. NHÁP cho đến khi được xác minh với e-PCB Plus.",
-      "downloadsBlocked": "Việc tải xuống bị chặn cho tới khi mọi dòng ở trên đầy đủ."
+      "downloadsBlocked": "Việc tải xuống bị chặn cho tới khi mọi dòng ở trên đầy đủ.",
+      "pcbPaymentTitle": "Đã nộp cho LHDN",
+      "pcbPaymentHint": "Số biên lai và ngày LHDN cấp khi bạn nộp. PCB 2(II) in các thông tin này; tháng để trống sẽ in ô trống.",
+      "pcbPaymentKindMtd": "MTD (khấu trừ thuế hằng tháng)",
+      "pcbPaymentKindCp38": "CP38 (lệnh trả góp)",
+      "pcbPaymentReceiptRef": "Số biên lai / phiếu ngân hàng / giao dịch",
+      "pcbPaymentPaidOn": "Ngày nộp",
+      "pcbPaymentSave": "Lưu"
     },
     "pcbDetail": {
       "additionalAmount": "Yₜ — thù lao bổ sung tháng này",
