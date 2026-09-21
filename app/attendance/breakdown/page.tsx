@@ -1,4 +1,5 @@
 import { getLocale, getTranslations } from 'next-intl/server';
+import { placeStickyColumns } from '@/lib/sticky-columns';
 import { cookies } from 'next/headers';
 import { scopedAdmin } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
@@ -132,10 +133,23 @@ export default async function AttendanceBreakdownPage({
   const thNum = `${th} text-right`;
   const td = 'whitespace-nowrap px-2 py-2 text-muted-foreground';
   const tdNum = `${td} text-right tabular-nums`;
-  /** Sticky identity columns. A transparent sticky cell shows the scrolled content underneath, so each
-   *  carries the surface colour of the row it belongs to. */
-  const stick = (left: string, head: boolean) =>
-    `sticky ${left} z-10 whitespace-nowrap px-2 py-2 ${head ? 'bg-muted font-medium' : 'bg-card'}`;
+  /**
+   * Sticky identity columns. A transparent sticky cell shows the scrolled content underneath, so each
+   * carries the surface colour of the row it belongs to.
+   *
+   * f728826a — THE OFFSETS ARE NO LONGER TYPED. They were `left-0` / `left-[7rem]` / `left-[19rem]` with
+   * no width set on any of the three, so the assumed edges and the real ones drifted apart and the frozen
+   * columns overlapped. Width and offset now come from one declaration; see lib/sticky-columns.ts.
+   */
+  const STICKY = placeStickyColumns([
+    { key: 'employeeId', rem: 7 },
+    { key: 'employeeName', rem: 12 },
+    { key: 'date', rem: 8 },
+  ]);
+  const stick = (head: boolean) =>
+    `sticky z-10 whitespace-nowrap px-2 py-2 ${head ? 'bg-muted font-medium' : 'bg-card'}`;
+  /** The name is the one identity column that overruns: clip it in its OWN cell, full value on hover. */
+  const stickClip = (head: boolean) => `${stick(head)} overflow-hidden text-ellipsis`;
 
   return (
     <div className="mx-auto max-w-[120rem] space-y-6">
@@ -219,12 +233,16 @@ export default async function AttendanceBreakdownPage({
           {/* The TABLE scrolls, never the page — the rule test/leave-inquiry-layout.test.ts states for the
               inquiry tables, and the reason this screen can afford thirty columns at all. */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            {/* f728826a — `w-max` sizes the table to what twenty-nine columns actually need instead of
+                  squeezing them into the viewport; `min-w-full` still fills a wide screen. `w-full` was
+                  the squeeze: it compressed every cell below its content width, and nowrap content then
+                  painted outside its own cell. No magic rem figure, so no number to fall out of date. */}
+            <table className="w-max min-w-full text-sm">
               <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className={stick('left-0', true)}>{t('colEmployeeId')}</th>
-                  <th className={stick('left-[7rem]', true)}>{t('colEmployeeName')}</th>
-                  <th className={stick('left-[19rem]', true)}>{t('colDate')}</th>
+                  <th className={stick(true)} style={STICKY[0].style}>{t('colEmployeeId')}</th>
+                  <th className={stick(true)} style={STICKY[1].style}>{t('colEmployeeName')}</th>
+                  <th className={stick(true)} style={STICKY[2].style}>{t('colDate')}</th>
                   <th className={th}>{t('colDay')}</th>
                   <th className={th}>{t('colShiftCode')}</th>
                   <th className={th}>{t('colDayType')}</th>
@@ -274,9 +292,11 @@ export default async function AttendanceBreakdownPage({
                   const noTrace = <span className="italic">{t('breakdownNoTrace')}</span>;
                   return (
                     <tr key={r.date} className="hover:bg-muted/40">
-                      <td className={stick('left-0', false)}>{r.employeeCode ?? DASH}</td>
-                      <td className={stick('left-[7rem]', false)}>{r.name}</td>
-                      <td className={`${stick('left-[19rem]', false)} tabular-nums`}>
+                      <td className={stick(false)} style={STICKY[0].style}>{r.employeeCode ?? DASH}</td>
+                      <td className={stickClip(false)} style={STICKY[1].style} title={r.name}>
+                        {r.name}
+                      </td>
+                      <td className={`${stick(false)} tabular-nums`} style={STICKY[2].style}>
                         {fmtDayDate(r.date, locale)}
                       </td>
                       <td className={td}>{fmtDayName(r.date, locale)}</td>

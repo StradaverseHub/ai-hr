@@ -84,6 +84,20 @@ export function ClockingLocationForm({
   // today, `.env.production` holds fifteen and none is one — this is the free, keyless OpenStreetMap
   // provider, and it reports no satellite. It never throws when a key is absent.
   const mapProvider = resolveMapProvider(process.env);
+  /**
+   * 0fe1ca2e — the linked location's caption, or null when there is no link (every production row today).
+   * An ARCHIVED link is still named rather than hidden: `linkNotOffered` exists precisely so the form
+   * cannot imply a point is unlinked when it is not.
+   */
+  const linkedLabel: string | null = (() => {
+    const id = (values.locationId ?? '').trim();
+    if (!id) return null;
+    if (linkNotOffered?.id === id) {
+      return `${linkNotOffered.code ?? '?'} · ${linkNotOffered.name ?? '?'} · ${t('statusArchived')}`;
+    }
+    const hit = linkableLocations.find((l) => l.id === id);
+    return hit ? `${hit.code} · ${hit.name} · ${hit.companyName ?? ''}`.trim() : null;
+  })();
   return (
     <form
       action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}
@@ -112,23 +126,29 @@ export function ClockingLocationForm({
           <Field label={t('address')} className="sm:col-span-2">
             <textarea name="address" defaultValue={values.address} rows={2} maxLength={1000} className={textareaCls} />
           </Field>
-          {/* f9afd1ce — OPTIONAL, and any company's location: a site shared by five companies cannot be
-              required to belong to one company's holiday-calendar record. */}
-          <Field label={t('clockingLocationLinkOptional')}>
-            <select name="locationId" defaultValue={values.locationId} className={inputCls}>
-              <option value="">{t('clockingLocationNone')}</option>
-              {linkNotOffered && (
-                <option value={linkNotOffered.id}>
-                  {linkNotOffered.code ?? '?'} · {linkNotOffered.name ?? '?'} · {t('statusArchived')}
-                </option>
-              )}
-              {linkableLocations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.code} · {l.name} · {l.companyName}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/*
+            * 0fe1ca2e — THE CONTROL IS GONE; THE COLUMN, THE LINK AND THE REGISTER'S GROUPING ARE NOT.
+            *
+            * A Clocking Location is a physical place — name, address, lat, lng, radius. It has no company
+            * and never had one. This optional link to a company `location` record was the single field on
+            * the form that made it LOOK company-based, which is what the reporter read it as. Measured on
+            * production before removing it: both clocking locations have `location_id` NULL, so no row
+            * loses an editable link.
+            *
+            * ⚠️ REMOVING THE SELECT ALONE WOULD HAVE SILENTLY UNLINKED EVERY ROW THAT DOES USE IT.
+            * `resolveLocationLink` maps an absent or empty field to NULL and `updateClockingLocation`
+            * then `.set({ locationId })` unconditionally — so on a tenant that had used the link, one
+            * plain Save would have cleared it with no message. That is the exact failure `linkNotOffered`
+            * was added to prevent ("the form just never LIES about what is linked"), so the rule is kept
+            * and narrowed: when a link EXISTS it is shown read-only and carried through the post; when
+            * there is none the field is not rendered at all, which is every row today.
+            */}
+          {linkedLabel && (
+            <Field label={t('clockingLocationLinkOptional')}>
+              <input type="hidden" name="locationId" value={values.locationId} />
+              <p className="flex h-9 items-center text-sm text-muted-foreground">{linkedLabel}</p>
+            </Field>
+          )}
           <Field label={t('remarks')}>
             <input name="remarks" defaultValue={values.remarks} maxLength={1000} className={inputCls} />
           </Field>

@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { placeStickyColumns } from '@/lib/sticky-columns';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate } from '@/core/attendance';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
@@ -76,8 +77,20 @@ export default async function DailyAttendancePage({
    * therefore begins. A sticky cell MUST carry an opaque background — the default is transparent, and a
    * transparent sticky cell shows the scrolled content passing underneath it.
    */
-  const stick = (left: string, head: boolean) =>
-    `sticky ${left} z-10 whitespace-nowrap px-3 ${head ? 'py-2 font-medium bg-muted' : 'py-2.5 bg-card'}`;
+  /**
+   * f728826a — THE SAME LATENT FAULT AS THE BREAKDOWN SCREEN, FIXED BEFORE IT WAS REPORTED.
+   *
+   * These two were `left-0` / `left-[7rem]` with no width on either, so the 7rem offset was an assumption
+   * about how wide the code column happened to render. `min-w-[80rem]` masked it here — the table was
+   * rarely squeezed, so the columns rarely drifted — but the arithmetic was just as unbacked. Width and
+   * offset now come from the single declaration in lib/sticky-columns.ts.
+   */
+  const STICKY = placeStickyColumns([
+    { key: 'employeeCode', rem: 7 },
+    { key: 'employeeName', rem: 14 },
+  ]);
+  const stick = (head: boolean) =>
+    `sticky z-10 whitespace-nowrap px-3 ${head ? 'py-2 font-medium bg-muted' : 'py-2.5 bg-card'}`;
 
   return (
     <div className={pageWideCls}>
@@ -128,7 +141,7 @@ export default async function DailyAttendancePage({
         </form>
         {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[80rem] text-sm">
+          <table className="w-max min-w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 {/* dde08629 (r319) — the two identity columns stay put while the other sixteen scroll.
@@ -136,8 +149,8 @@ export default async function DailyAttendancePage({
                     sticky cell there carries its own surface colour: a transparent one shows the scrolled
                     content sliding underneath it. The header takes the table head's own background, the
                     body cells the card's. */}
-                <th className={stick('left-0', true)}>{t('colEmployeeCode')}</th>
-                <th className={stick('left-[7rem]', true)}>{t('colEmployeeName')}</th>
+                <th className={stick(true)} style={STICKY[0].style}>{t('colEmployeeCode')}</th>
+                <th className={stick(true)} style={STICKY[1].style}>{t('colEmployeeName')}</th>
                 <th className="px-3 py-2 font-medium">{t('colShiftCode')}</th>
                 <th className="px-3 py-2 font-medium">{t('colCheckIn')}</th>
                 <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
@@ -167,13 +180,13 @@ export default async function DailyAttendancePage({
                 const flag = flagOf(r);
                 return (
                   <tr key={r.employmentId}>
-                    <td className={`${stick('left-0', false)} tabular-nums text-muted-foreground`}>
+                    <td className={`${stick(false)} tabular-nums text-muted-foreground`} style={STICKY[0].style}>
                       {r.employeeCode ?? '—'}
                     </td>
-                    <td className={stick('left-[7rem]', false)}>
+                    <td className={`${stick(false)} overflow-hidden`} style={STICKY[1].style} title={r.name}>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={r.name} className="size-7 text-[10px]" />
-                        <span className="font-medium">{r.name}</span>
+                        <span className="truncate font-medium">{r.name}</span>
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>

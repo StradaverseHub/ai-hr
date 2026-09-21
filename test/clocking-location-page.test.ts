@@ -458,6 +458,58 @@ describe('f9afd1ce rev 2 — Save lands on the list at the row; a refusal keeps 
   });
 });
 
+/**
+ * 0fe1ca2e (r322) — THE LINK SURVIVES A PLAIN SAVE, WHICH IS THE ONLY REASON THE FIELD IS STILL POSTED.
+ *
+ * The form no longer OFFERS the company-location link: a clocking point is a physical place, and that
+ * field was the one thing making the form look company-based. But the column stays, the admin register
+ * groups on it, and `updateClockingLocation` writes `locationId` on every save with whatever
+ * `resolveLocationLink` returned — and that is NULL for an absent field. So a form that merely deleted
+ * the control would have cleared the link on the next unrelated edit, silently, on any tenant using it.
+ *
+ * Production has no such row today (both points have location_id NULL), which is exactly why this has to
+ * be a test rather than an observation: nothing on this deployment would have failed if it were wrong.
+ */
+describe('0fe1ca2e · removing the control must not unlink anything', () => {
+  it('an edit that changes only the name keeps the link', async () => {
+    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+    const { id } = await createClockingLocation(ADMIN, {
+      name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA',
+    });
+
+    // Exactly what the rendered form posts: every field, with the hidden locationId carrying the link.
+    await runAction(updateClockingLocationAction, {
+      ...FULL, clockingLocationId: id, name: 'Gate A (renamed)', locationId: loc,
+    });
+
+    const [row] = await owner.db
+      .select({ name: schema.clockingLocation.name, locationId: schema.clockingLocation.locationId })
+      .from(schema.clockingLocation)
+      .where(eq(schema.clockingLocation.id, id));
+    expect(row.name).toBe('Gate A (renamed)');
+    expect(row.locationId, 'the link the operator never saw must still be there').toBe(loc);
+  });
+
+  /**
+   * THE REGRESSION ARM — what would have happened had the control simply been deleted. Posting WITHOUT
+   * the field is the unlink, and it must be reachable only by actually omitting it, never by default.
+   */
+  it('and omitting the field is what clears it — which is why the form must render it', async () => {
+    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ2', name: 'Second' });
+    const { id } = await createClockingLocation(ADMIN, {
+      name: 'Gate B', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GB',
+    });
+
+    await runAction(updateClockingLocationAction, { ...FULL, clockingLocationId: id, name: 'Gate B' });
+
+    const [row] = await owner.db
+      .select({ locationId: schema.clockingLocation.locationId })
+      .from(schema.clockingLocation)
+      .where(eq(schema.clockingLocation.id, id));
+    expect(row.locationId, 'an absent field resolves to NULL — the silent unlink, reproduced').toBeNull();
+  });
+});
+
 describe('f9afd1ce rev 2 — the pages render', () => {
   it('the NEW page: two section headings in order, Save, Cancel to the list, the pre-picked link, and the keyless map', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
@@ -470,7 +522,19 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(count(html, '>cancel<')).toBe(1);
     expect(count(html, 'backToLocations</a>'), 'the way back, once').toBe(1);
     expect(html).toContain('newClockingTitle');
-    expect(html).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
+    /**
+     * 0fe1ca2e (r322) — UPDATED, NOT DELETED, because it pins a decision that was reversed. This read
+     *
+     *   expect(html).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
+     *
+     * back when the link was a <select>. That control is gone: a Clocking Location is a physical place
+     * and the link was the one field that made the form look company-based. What must NOT change is the
+     * property the old line actually protected — that `?addPoint=` still carries its location through —
+     * so it is asserted on the hidden field that now carries it, and the control's absence is asserted
+     * beside it so the two cannot both drift back.
+     */
+    expect(html).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
+    expect(html, 'the picker itself is gone').not.toContain('<select name="locationId"');
     expect(html).toContain('name="reportLabel"');
     /**
      * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. This line used to read
@@ -514,7 +578,10 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(html, 'still no embed — an <iframe> map needs the key that does not exist').not.toContain('<iframe');
     // A junk or unknown addPoint pre-picks nothing.
     const plain = visible(await renderNew({ addPoint: 'not-a-uuid' }));
-    expect(plain).not.toMatch(/<option value="[0-9a-f-]{36}"[^>]*selected/);
+    // With no link there is no field AT ALL — not an empty one. An empty `locationId` would post as ''
+    // and resolve to NULL, which is the same outcome here, but rendering nothing is what makes the form
+    // say plainly that a clocking point has no company.
+    expect(plain, 'nothing pre-picked').not.toContain('name="locationId"');
   });
 
   it('the EDIT page: what is on file, Back and Cancel to the row, hidden id; junk and unknown ids are notFound()', async () => {
@@ -527,7 +594,13 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(html).toContain('Lot 1');
     expect(html).toContain('value="200"');
     expect(html).toContain(`<input type="hidden" name="clockingLocationId" value="${id}"`);
-    expect(html).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
+    // 0fe1ca2e — the link is READ-ONLY now, but it is still on the form and still posted. This is the
+    // load-bearing half: `resolveLocationLink` maps an absent field to NULL and the update sets it
+    // unconditionally, so a form that merely dropped the control would unlink this row on the next
+    // plain Save, with no message and no event.
+    expect(html).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
+    expect(html, 'no picker').not.toContain('<select name="locationId"');
+    expect(html, 'and it says which location, rather than just hiding it').toContain('Headquarters');
     // Back and Cancel both land on the row (renderToStaticMarkup escapes & in attributes; there is none here).
     expect(count(html, `href="${clockingRowHref(id)}"`)).toBe(2);
     expect(count(html, 'sectionInfo')).toBe(1);
@@ -541,7 +614,7 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     // An archived link the picker cannot offer stays selected rather than silently unlinking on Save.
     await archiveLocation(ADMIN, { locationId: loc });
     const archived = visible(await renderEdit(id));
-    expect(archived).toMatch(new RegExp(`<option value="${loc}"[^>]*selected`));
+    expect(archived).toContain(`<input type="hidden" name="locationId" value="${loc}"`);
     expect(archived).toContain('statusArchived');
   });
 
