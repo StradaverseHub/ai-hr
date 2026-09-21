@@ -491,6 +491,10 @@ describe('93249794 · E. every computed message key resolves in all six locales'
       'earned_method',
       'no_entitlement',
       'pack_blocked',
+      // 508d3acd (r315) — the leave type's own identity conditions exclude this employee. Declared here
+      // so the two assertions below cover it: the union really was parsed, and a label exists in all six
+      // locales (the key is COMPUTED, so a missing one renders the raw key path behind a green suite).
+      'not_eligible',
     ]);
   });
 

@@ -1199,12 +1199,15 @@ function onProbationAsOf(emp: ProbationEmp | undefined, asOf: string): boolean {
 /** The employee facts the two eligibility gates read. The eight org-assignment columns are OPTIONAL so a
  *  chokepoint that doesn't fetch them (or an employment with them all NULL) simply carries no org restriction —
  *  the value the gate compares against is `emp[key] ?? ''`, which no non-empty configured list ever matches. */
-type EligibilityEmp = {
+/**
+ * 508d3acd — the IDENTITY facts, split out so `isProfileEligible`'s signature states what it cannot do.
+ * There is no date here, which is the point: a predicate that cannot see `hiredOn` or a confirmation
+ * date cannot accidentally grow a timing rule, and a caller that has no date (the reversal sweep reading
+ * historic rows) is not forced to invent one.
+ */
+export type ProfileEligibilityEmp = {
   gender: string | null;
   marital: string | null;
-  hiredOn: string;
-  confirmationDate?: string | null;
-  finalConfirmationDate?: string | null;
   orgDivision?: string | null;
   orgBranch?: string | null;
   orgRegion?: string | null;
@@ -1213,6 +1216,12 @@ type EligibilityEmp = {
   orgTeam?: string | null;
   orgBase?: string | null;
   employmentCategory?: string | null;
+};
+
+type EligibilityEmp = ProfileEligibilityEmp & {
+  hiredOn: string;
+  confirmationDate?: string | null;
+  finalConfirmationDate?: string | null;
 };
 
 /** True when `elig` carries ANY restriction — gender / marital / min-service / probation OR one of the eight
@@ -1465,18 +1474,54 @@ export function maternityAllowanceEligibility(
   return { eligible: true, qualifyingService: true };
 }
 
+/**
+ * 508d3acd — THE IDENTITY HALF OF THE GATE, ON ITS OWN: who this leave type is FOR, with no question of
+ * when they may take it. Gender, marital status and the organisation-assignment criteria — the facts that
+ * say "this type is not for this person at all".
+ *
+ * ⚠️ WHY IT IS SPLIT OUT, AND WHY MIN-SERVICE AND PROBATION ARE DELIBERATELY NOT IN IT. Those two are
+ * TIMING rules about taking leave ("you must have served three months first"), not statements about who
+ * the type belongs to. Two callers need the identity half without the timing half and would otherwise
+ * each have grown their own copy of the matching logic:
+ *
+ *   · THE YEAR-OPEN GRANT. Granting Maternity Leave to a man is wrong on the day he joins and wrong
+ *     forever; granting Annual Leave to somebody with three weeks' service is not wrong at all, and
+ *     applying the timing rule there would silently skip every new joiner at the year boundary.
+ *   · THE BALANCE READ's no-activity tail. The reporter asked, in these words, that minimum service must
+ *     NOT hide a leave card.
+ *
+ * `isLeaveEligible` below is this plus the timing rules, so there is ONE definition of each half and the
+ * apply gate keeps the exact behaviour it has always had.
+ */
+export function isProfileEligible(
+  elig: LeaveEligibility | null | undefined,
+  emp: ProfileEligibilityEmp | undefined,
+): boolean {
+  if (!elig) return true;
+  // Multi-select (#badc5966): qualify on ANY selected value within a field, AND across fields. `asList`
+  // normalizes a legacy scalar. An unrecorded attribute reads as '' and therefore does NOT match a
+  // configured list — see the note in leaveBalances about what that means for an incomplete profile.
+  const genders = asList(elig.gender);
+  if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) return false;
+  const maritals = asList(elig.maritalStatus);
+  if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const allowed = asList(elig[c.key]);
+    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) return false;
+  }
+  return true;
+}
+
 /** Boolean form of the eligibility gate (assertEligible throws; this just answers). Used by reads to
- *  show an employee only the leave types they could actually take (2F-1 / R18). */
+ *  show an employee only the leave types they could actually take (2F-1 / R18). Identity half +
+ *  the timing rules; see isProfileEligible for why the split exists. */
 export function isLeaveEligible(
   elig: LeaveEligibility | null | undefined,
   emp: EligibilityEmp | undefined,
   asOf: string,
 ): boolean {
   if (!elig) return true;
-  const genders = asList(elig.gender);
-  if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) return false;
-  const maritals = asList(elig.maritalStatus);
-  if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
+  if (!isProfileEligible(elig, emp)) return false;
   if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths))
     return false;
   // Probation gate (d6bdbd55) — mirrors assertEligible so reads hide a type the employee can't take.
@@ -1485,11 +1530,8 @@ export function isLeaveEligible(
     if (elig.probation === 'confirmed_only' && onProbation) return false;
     if (elig.probation === 'probation_only' && !onProbation) return false;
   }
-  // Organisation Assignment criteria — mirrors assertEligible (OR within a field, AND across fields).
-  for (const c of ORG_ASSIGNMENT_CRITERIA) {
-    const allowed = asList(elig[c.key]);
-    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) return false;
-  }
+  // Organisation Assignment criteria are the identity half and live in isProfileEligible above — checked
+  // there, once, so this function and the grant gate cannot drift on what "in scope" means.
   return true;
 }
 
@@ -7135,6 +7177,18 @@ export const CARRY_FORFEIT_REASON_EXPIRY = 'sys:carry_forward_expiry';
  * row, so it remains visible in reports.
  */
 export const AGED_FORFEIT_REASON = 'sys:leave_type_expiry';
+
+/**
+ * 508d3acd — the reason stamped on a compensating adjustment that REVERSES an entitlement grant the leave
+ * type's own identity conditions should never have produced. `sys:`-prefixed like every other machine
+ * reason: no human types it, so it can never collide with an operator's own adjustment reason.
+ *
+ * ⚠️ IT REVERSES, IT DOES NOT DELETE. The wrong accrual row stays exactly where it is and a negative
+ * `adjustment` is posted beside it, so the ledger still says what happened and when — 6574c6b4's rule
+ * that the ledger is the record, not a working figure to be tidied. An operator reading the balance sees
+ * both lines and the reason, which is the only way a 98-day correction is explainable six months later.
+ */
+export const INELIGIBLE_GRANT_REVERSAL_REASON = 'sys:ineligible_grant_reversal';
 /**
  * Configurable Earned Leave Entitlement Rules (feedback 49809272) — reason PREFIX stamped on the
  * compensating `adjustment` rows `reprojectEntitlementForPolicy` posts when an admin corrects an
@@ -7349,7 +7403,18 @@ export type LeaveYearGrantOutcome =
   /** The composition resolved 0 days or fewer, so nothing is owed and no row is written. */
   | 'no_entitlement'
   /** ADR-0077 slice 6: the company's country pack is not active, so nothing can be computed. */
-  | 'pack_blocked';
+  | 'pack_blocked'
+  /**
+   * 508d3acd — the leave type's own "Who is eligible" conditions exclude this employee, so nothing is
+   * granted. Identity only (gender / marital status / organisation assignment): a type they may not have
+   * AT ALL. Minimum service and probation are deliberately NOT part of this verdict — they govern when
+   * somebody may TAKE leave, and applying them here would skip every new joiner at the year boundary.
+   *
+   * Counted in `skipped`, and it is the verdict the reporter will see most: their Maternity Leave is
+   * configured for female and married employees, and a run before this gate existed credited it to all
+   * 79 employments — 6,566 days of it to 67 people the gender rule excludes.
+   */
+  | 'not_eligible';
 
 /** One line of the per-employee generation log — the same row the preview shows and the CSV downloads. */
 export type LeaveYearGrantRow = {
@@ -7528,6 +7593,12 @@ export async function openLeaveYear(
         // (`isEarnedAccrualType` asks the role first). Nothing about the grant reads it.
         role: leaveType.role,
         yearCycleOverride: leaveType.yearCycleOverride,
+        // 508d3acd — WHO THE TYPE IS FOR. Read here so the grant loop can refuse a pair the type's own
+        // "Who is eligible" conditions exclude. Until 783bf55a/baea8e5b this sweep only ever granted the
+        // three standing codes, none of which carries an identity condition; widening it to every type
+        // is what made this reachable, and it went unnoticed because the conditions were being honoured
+        // everywhere else — the submit guard, the apply menu and the balance read all consult them.
+        eligibility: leaveType.eligibility,
         ...leaveTypeRuleColumns,
       })
       .from(leaveType)
@@ -7579,9 +7650,24 @@ export async function openLeaveYear(
         country: company.country,
         gradeId: employment.gradeId,
         companyId: employment.companyId,
+        // 508d3acd — the facts the IDENTITY gate reads. Joined here rather than fetched per pair: the
+        // sweep already walks every (employment, type) pair, and a second query per pair would be the
+        // same question asked N times. `person` is joined for gender and marital status; the eight
+        // organisation-assignment keys already live on `employment`.
+        gender: person.gender,
+        marital: person.maritalStatus,
+        orgDivision: employment.orgDivision,
+        orgBranch: employment.orgBranch,
+        orgRegion: employment.orgRegion,
+        orgLine: employment.orgLine,
+        orgSection: employment.orgSection,
+        orgTeam: employment.orgTeam,
+        orgBase: employment.orgBase,
+        employmentCategory: employment.employmentCategory,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(person, eq(person.id, employment.personId))
       .where(
         and(
           // ⚠️ r193 FAULT 2 — THIS WAS `lt(employment.hiredOn, yearStart)`, STRICTLY BEFORE THE YEAR.
@@ -7712,6 +7798,26 @@ export async function openLeaveYear(
         if (frozenSet.has(key)) {
           skipped += 1; // ADR-0069: leave balance frozen for encashment
           rows.push(logRow(e.employmentId, t.id, 'frozen'));
+          continue;
+        }
+        /**
+         * 508d3acd — WHO THE TYPE IS FOR, asked before anything is granted.
+         *
+         * This sweep honoured no identity condition at all. That was harmless while it only granted the
+         * three standing codes (783bf55a/baea8e5b widened it to every type), and it stopped being
+         * harmless the moment a tenant configured Maternity Leave for female married employees: a single
+         * run credited it to every employment on the account.
+         *
+         * `isProfileEligible`, not `isLeaveEligible`: minimum service and probation say when somebody may
+         * TAKE leave, not whose leave it is. Applying them here would refuse a brand-new joiner the
+         * Annual Leave grant they are owed — and the year-open runs once, so they would never get it.
+         *
+         * Dated at `effectiveOn` like every other decision in this loop, though none of the identity
+         * criteria is time-varying today; that keeps the pair consistent if one ever becomes so.
+         */
+        if (!isProfileEligible(t.eligibility as LeaveEligibility | null, e)) {
+          skipped += 1;
+          rows.push(logRow(e.employmentId, t.id, 'not_eligible'));
           continue;
         }
         // Leave Entitlement Rules Engine: `years` (service at year-open) drives band upgrades here, same

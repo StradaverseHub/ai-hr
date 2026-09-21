@@ -7711,7 +7711,8 @@
       "cancelApprovedApprovalHelp": "Phê duyệt lại đi qua cùng các cấp duyệt, theo cùng thứ tự, như đơn xin nghỉ ban đầu. Tự động phê duyệt sẽ hủy nghỉ phép và hoàn lại ngày nghỉ ngay lập tức.",
       "cancelApprovedReplacementNote": "Việc hủy Nghỉ bù luôn cần người duyệt phê duyệt lại, vì trả lại ngày nghỉ cũng trả lại tín chỉ của nó.",
       "cancelApprovedNotifyLabel": "Thông báo cho người duyệt và HR khi có yêu cầu hủy",
-      "cancelApprovedNotifyHelp": "Thông báo hiển thị ở chuông thông báo. Hệ thống không gửi email."
+      "cancelApprovedNotifyHelp": "Thông báo hiển thị ở chuông thông báo. Hệ thống không gửi email.",
+      "generateOutcome_not_eligible": "Không đủ điều kiện — điều kiện của loại nghỉ phép này loại trừ nhân viên"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

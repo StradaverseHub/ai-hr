@@ -7711,7 +7711,8 @@
       "cancelApprovedApprovalHelp": "Kelulusan semula melalui peringkat kelulusan yang sama, mengikut susunan yang sama, seperti permohonan cuti asal. Diluluskan secara automatik membatalkan cuti dan memulangkan hari dengan serta-merta.",
       "cancelApprovedReplacementNote": "Pembatalan Cuti Gantian sentiasa memerlukan kelulusan semula pelulus, kerana memulangkan cuti turut memulangkan kreditnya.",
       "cancelApprovedNotifyLabel": "Maklumkan pelulus dan HR apabila pembatalan diminta",
-      "cancelApprovedNotifyHelp": "Pemberitahuan dipaparkan dalam loceng pemberitahuan. Sistem tidak menghantar e-mel."
+      "cancelApprovedNotifyHelp": "Pemberitahuan dipaparkan dalam loceng pemberitahuan. Sistem tidak menghantar e-mel.",
+      "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut"
     },
     "holidays": {
       "pageTitle": "Cuti umum",

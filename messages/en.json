@@ -7711,7 +7711,8 @@
       "cancelApprovedApprovalHelp": "Re-approval goes through the same approval levels, in the same order, as the original leave request. Approved automatically cancels the leave and returns the days straight away.",
       "cancelApprovedReplacementNote": "Replacement Leave cancellations always need the approver's re-approval, because giving the leave back returns its credit.",
       "cancelApprovedNotifyLabel": "Notify the approver and HR when a cancellation is requested",
-      "cancelApprovedNotifyHelp": "Notifications appear in the notification bell. The system does not send email."
+      "cancelApprovedNotifyHelp": "Notifications appear in the notification bell. The system does not send email.",
+      "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee"
     },
     "holidays": {
       "pageTitle": "Public holidays",
