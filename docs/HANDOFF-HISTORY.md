@@ -1,3 +1,21 @@
+## r317 (2026-09-21) — the menu stops offering what the page refuses. `main@d21ff2df`, **no migration**.
+
+Closed and DEPLOYED: `1661123d`. Gate: **930 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` d21ff2df, active, `GET /` 401.
+
+### WHAT IT FIXES
+
+`app/attendance/import/page.tsx` calls `requireAdmin()`, which redirects a non-admin to `/`, while its Manage row was `managerUp`. So the row advertised a screen every manager was bounced out of. r314 found it while relocating both rows, pinned it, and put it to the reporter instead of fixing it on our own judgement — the opposite fix (let managers import) widens who can write other people's attendance, because `importAttendancePunches` writes for every employment the file names and the page guard is not what scopes that. **They chose to remove the row.**
+
+**Nobody lost a function.** No manager could import before; the menu simply stopped saying they could. Import stays where r314 put it for administrators. **Roster is untouched** — its page is `scopedSession`, so its `managerUp` row is a true statement. That asymmetry is the whole reason the two rows had to be judged separately rather than as a pair, and r314's own test arm is what made it visible.
+
+### THREE DECLARATIONS, RATHER THAN THREE EDITED NUMBERS
+
+- **`PAIRED_HREFS`** loses `/attendance/import`: it is an ordinary single `adminOnly` row again, so the "appears exactly once" branch covers it — the stronger statement, which is why the entry was removed rather than exempted.
+- **`REGATED`** is new. The frozen pre-retrofit capture declares Import as a `managerUp` row, and that row is gone while the href survives with a different gate. `RETIRED` would say the function left (it did not) and `MOVED_OUT` would say the pack lost it (it did not), so the parity loop judges these against their `ADDED_SINCE` declaration and asserts the new gate positively.
+- **`LABEL_KEY_EXEMPT`** records why `nav.attendanceImport` keeps its namespaced key now that its Manage twin is gone: `nav` is one flat namespace shared by every module, `import` there says nothing about what is imported, and it is a reserved word besides.
+
+The "Import last in the Manage list" assertion lost its subject — one row cannot be last — so the f60cd403 ordering is now asserted only in the node, where both rows actually live together.
+
 ## r316 (2026-09-21) — a missing profile field is not a failed qualification. `main@90b6fa6e`, **no migration**.
 
 Gate: **930 files — equal to the suite file count — 14,205 tests**, 14 chunks, every chunk exit 0 and counted in full. `next build` exit 0. Deployed: `exit_code=0`, `built_ref` 90b6fa6e.

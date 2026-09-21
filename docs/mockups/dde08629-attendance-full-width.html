@@ -1,0 +1,95 @@
+<meta charset="utf-8">
+<title>dde08629 — Employee Attendance at full width</title>
+<!--
+  Mockup for dde08629 (Employee Attendance full-width layout).
+
+  MEASURED IN THE SOURCE 2026-09-21:
+    app/attendance/page.tsx            mx-auto max-w-6xl   (72rem)   16 table columns
+    app/attendance/daily/page.tsx      mx-auto max-w-6xl   (72rem)
+    app/attendance/individual/page.tsx mx-auto max-w-6xl   (72rem)
+    components/ui.tsx                  pageWideCls = 'w-full space-y-6'   — the house full-width idiom
+    test/attendance-screens-layout.test.ts WIDE_LIST_SCREENS lists 8 attendance screens that already use
+      it; /attendance and its two sibling tabs are NOT among them, which is the whole of this item.
+
+  THE POINT THE PICTURE EXISTS TO MAKE: this is not a new design. Eight attendance screens already use
+  the full-width layout, pinned by a guard; these three were simply never added. The 72rem cap is what
+  leaves the empty margin the reporter is describing — on a 1920px window, roughly a third of the
+  content area.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - A filter panel. The screen has a month stepper and two action links, not a bank of filters, so
+      the reporter's point 3 has nothing to collapse; the plan says so in words instead of drawing a
+      control that would not exist.
+    - Real figures. The columns and their order are real (read from the source); the values are
+      illustrative and the caption says so.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--newbg:#eef2ff;--newfg:#4338ca;--dead:#e9eaf2}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 8px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .note{font-size:11.5px;color:var(--mf);margin:8px 0 0}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;
+        background:var(--newbg);color:var(--newfg)}
+  .frame{border:1px dashed var(--border);border-radius:10px;padding:8px;background:#fbfbfe}
+  .gutter{background:repeating-linear-gradient(45deg,var(--dead),var(--dead) 6px,#f3f4fa 6px,#f3f4fa 12px);
+          border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--mf)}
+  .row{display:flex;gap:6px}
+  table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 6px;background:var(--muted);white-space:nowrap}
+  td{padding:6px;border-top:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stick{background:#eef2ff}
+</style>
+
+<div class="card">
+  <h1>ADMIN &rsaquo; Attendance &rsaquo; Employee Attendance — today, on a wide monitor</h1>
+  <p class="sub">The page is capped at 72rem and centred, so the sixteen-column table is squeezed into
+    the middle while the space either side is unused.</p>
+  <div class="row">
+    <div class="gutter" style="flex:0 0 150px;min-height:120px">unused</div>
+    <div class="frame" style="flex:1">
+      <table>
+        <tr><th>Employee</th><th>Days</th><th>Present</th><th>Late</th><th>OT</th><th>Status</th></tr>
+        <tr><td>1001 &mdash; A&hellip;</td><td>21</td><td>20</td><td>2</td><td>6.5</td><td>OK</td></tr>
+        <tr><td>1002 &mdash; B&hellip;</td><td>21</td><td>21</td><td>0</td><td>1.0</td><td>OK</td></tr>
+      </table>
+      <p class="note">sixteen columns compressed into ~72rem; the rest scroll sideways</p>
+    </div>
+    <div class="gutter" style="flex:0 0 150px;min-height:120px">unused</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>After <span class="pill">proposed</span></h2>
+  <p class="sub">The same layout eight other Attendance screens already use, and the same one the guard
+    already pins for them. Employee ID and Name stay put while the rest scrolls.</p>
+  <div class="frame">
+    <table>
+      <tr>
+        <th class="stick">Employee ID</th><th class="stick">Employee Name</th>
+        <th>Working Days</th><th>Present</th><th>Absent</th><th>Late</th><th>Early Out</th>
+        <th>Under</th><th>OT Total</th><th>OT 1.0</th><th>OT 1.5</th><th>Leave</th>
+        <th>Rest</th><th>Holiday</th><th>Flags</th><th>Status</th>
+      </tr>
+      <tr>
+        <td class="stick">1001</td><td class="stick">Ahmad bin Ali</td>
+        <td>21</td><td>20</td><td>1</td><td>2</td><td>0</td><td>0.5</td><td>6.50</td><td>4.00</td>
+        <td>2.50</td><td>1</td><td>4</td><td>1</td><td>&mdash;</td><td>OK</td>
+      </tr>
+      <tr>
+        <td class="stick">1002</td><td class="stick">Siti binti Rahman</td>
+        <td>21</td><td>21</td><td>0</td><td>0</td><td>0</td><td>0.00</td><td>1.00</td><td>1.00</td>
+        <td>0.00</td><td>0</td><td>4</td><td>1</td><td>&mdash;</td><td>OK</td>
+      </tr>
+    </table>
+    <p class="note">Figures are illustrative; the columns and their order are the screen's own.</p>
+  </div>
+  <p class="note"><strong>Nothing else about the screen changes.</strong> Same data, same filters, same
+    permissions — only the container it is drawn in.</p>
+</div>
