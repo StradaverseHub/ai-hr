@@ -2781,7 +2781,13 @@
     "breakdownView": "查看",
     "breakdownReset": "重置",
     "breakdownPickEmployee": "请选择员工和日期范围以查看明细。",
-    "breakdownNoTrace": "未记录"
+    "breakdownNoTrace": "未记录",
+    "panel": {
+      "hide": "隐藏列表",
+      "show": "选择员工",
+      "heading": "员工",
+      "hint": "按姓名或工号搜索，然后选择一位员工查看其考勤分解。"
+    }
   },
   "org": {
     "title": "组织架构图",

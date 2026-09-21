@@ -2781,7 +2781,13 @@
     "breakdownView": "View",
     "breakdownReset": "Reset",
     "breakdownPickEmployee": "Select an employee and a date range to view the breakdown.",
-    "breakdownNoTrace": "not recorded"
+    "breakdownNoTrace": "not recorded",
+    "panel": {
+      "hide": "Hide list",
+      "show": "Select employee",
+      "heading": "Employees",
+      "hint": "Search by name or employee ID, then pick someone to see their breakdown."
+    }
   },
   "org": {
     "title": "Org chart",
