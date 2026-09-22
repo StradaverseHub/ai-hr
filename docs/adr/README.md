@@ -38,5 +38,6 @@ decision, add a new ADR that supersedes the old one.
 | [0082](0082-ai-assistant-access-scoped-tool-calling.md) | The AI Assistant (north-star Phase B): read-only tool calling over the governed read layer inside the caller's own session — RLS is the retrieval filter, not a vector store | Proposed |
 | [0083](0083-hr-operations-control-plane.md) | HR operations as a control plane: closed-loop automation with graduated per-action agent autonomy; supersedes 0074's operating model (keeps its invariant) | Proposed |
 | [0084](0084-propose-adjudicate-learn.md) | Propose · adjudicate · learn: a model emits a structured proposal into a closed vocabulary, the kernel's own validators adjudicate it, and the outcome is recorded so accuracy is measured rather than claimed — plus initiative (scheduled agents) and the ledger that earns 0083's per-action autonomy | Proposed |
+| [0085](0085-signed-statutory-deltas-and-month-restatement.md) | Signed statutory deltas: a month may correct itself while it is still being assembled, and may not once a return has been filed — lifts ADR-0024 §6's reversal exclusion, closes the EPF step-down over-contribution, and is the precondition for processing payroll cycles in any order | Proposed |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
