@@ -1,3 +1,72 @@
+## r329 (2026-09-22) — three items, three agents, and three briefs of mine that were wrong the same way. `main@c97d3584`, **migration 0480**.
+
+Closed and DEPLOYED: `65b22c00`, `8cd601d0`, `df35d60d` (STAGE 1 ONLY). Gate: **950 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, **zero red chunks**. `tsc` 0, `next build` 0, shadow **PASS 394/394** (applied 393 → 394). Render check on the merged tree: five new/changed routes 200, **zero** MISSING_MESSAGE / FORMATTING_ERROR / IntlError.
+
+Also shipped, not a board item: **ADR-0085** and its step-1 inventory (below).
+
+### ⚠️ THE ROUND'S REAL LESSON IS ABOUT ME, NOT THE AGENTS
+
+**Three of my three briefs asserted something the source contradicted, and each agent caught it.**
+
+1. I told the `8cd601d0` agent to build a Schedule Assignment screen. **It shipped in r209** (`8059d2ed`), got an inline panel in r263, and became list + detail in r265 *after the reporter contested the panel twice*. The agent refused: "building a second would have been the r263 mistake a third time."
+2. I told the `df35d60d` agent to extract the TP1 relief taxonomy into one module. **It was already extracted** — `MY_TP1_2026_ITEMS` in `localization/my/statutory-tables.ts`, shipped by 7ad37961 / ADR-0081. Doing it again would have created the second source of truth the instruction existed to prevent.
+3. My own plan for `65b22c00` promised the reporter one Save covering "company details, contact details, **statutory reference numbers** and the default payroll cycle". SSM/MyInvois are on a DIFFERENT TAB and a save scope cannot span two panes.
+
+**One root cause: I wrote each brief from the approved plan without checking the plan's premise against the source.** The plan is a hypothesis — CLAUDE.md §9 says so about tickets and it is just as true of our own plans a week later. The discipline that is now explicit: verify every "this does not exist yet" claim before briefing, not after.
+
+### 65b22c00 — the classification document was the deliverable, and it changed the build
+
+Committed FIRST (`31cf7ae0`), before a single form moved, per `docs/audits/420ebab5-personnel-save-classification.md`'s argument that a tab-wide Save implies a tab-wide Discard and **Discard is the dangerous half**. Counted with comments stripped by a real parser: **13 bindings over 12 actions**, ~28 buttons on screen. Buckets confirmed: 4 field edits under one Save, 9 record-lifecycle acts keeping their own controls.
+
+Seven findings the plan did not have; four changed the build:
+- **`archiveCompanyAction` is also bound on the company LIST**, so a naive repoint would make archiving a row OPEN that company. Pinned.
+- **`deleteCompany` cannot stay on the page** — the row is gone and the scope guard `notFound()`s.
+- **A redirect resets the tab** (it is client state), so every save landed on General. The tab now rides as a second `&` parameter, never concatenated in front of the query key — the r287→r301 defect, reproduced verbatim as a mutation.
+- ⚠️ **CORRECTION OWED TO THE REPORTER:** the statutory reference numbers are NOT under the one Save, and cannot be. Same answer, same reason, as r255 gave for Family/Qualification.
+
+`TabSaveScope` went from `employmentId: string` to `identity: Record<string,string>` across 10 call sites — a company under the name `employmentId` would be a lie in the wire format. All five personnel tab-save suites verified green afterwards.
+
+### 8cd601d0 — four of five deliverables already existed; the gap was bulk
+
+The service-side refusal (870b79e2), the single-employment writer and its card (f513ec02), the screen (r209/r263/r265) and "two entry points, one record" were all already built and guarded. **Measured: 1 of 75 employments had a Schedule Group**, so a correct guard was a designed no-op for 74 people. The item was never the validation — it was that nobody could put people in a group at scale.
+
+Bulk assignment is N calls of the SAME extracted `setEmploymentScheduleGroupTx` inside ONE `withTenant`: **the whole batch is the transaction**, because the refusal fires on a contradiction between group and stored shift and a half-applied batch leaves the operator unable to say which of 74 rows moved. Ids deduplicated and sorted for a deterministic lock order and a deterministic first refusal.
+
+⚠️ **A SECOND CORRECTION OWED, and the plan is wrong twice over.** It told the reporter "A02 has no shifts in it… choosing a group will offer the same five shifts either way". **An empty group REFUSES EVERYTHING, deliberately** (`core/roster.ts` says so in caps — "empty means allow anything" is silently permissive on exactly the misconfiguration the guard catches), so it would offer ZERO. And **A02 is not empty**: it holds AM4, measured 2026-09-22. Either way the sentence is wrong.
+
+Survives 07ebd04d's coming split: a test strips comments and fails on a quoted group name, and another moves a shift between groups mid-test and re-renders — the split in miniature, with the offered list changing and zero source change.
+
+### df35d60d — Form TP3 stage 1, and Section D IS the TP1 schedule by reference
+
+`MY_TP3_2026.sectionD` **is `MY_TP1_2026_ITEMS`**, asserted with `toBe` not `toEqual`, so a second transcription that is equal today fails the test. Labels are the TP1's own message keys in all six locales. One catalogue, one label set, two forms. The printed numbering differs (TP1 C1–C17, TP3 D1–D17) and `tp3LineNumber()` derives it from POSITION, so inserting an item renumbers both forms together. Persisted codes stay `c1…c17` because they are live `tp1_relief.categories` JSONB keys — renaming them would rewrite live tax records to change a letter on a printout.
+
+Migration 0480: `CREATE TABLE` + explicit GRANT + RLS + policy, unique on (tenant, person, year). **No backfill, and not one of the five existing columns touched** — `core/payroll.ts` is unmodified and still reads `tp3Applies = e.tp3Year === pYear`. Stage 2 (Section D into the PCB computation) is NOT started, and two tests pin that from both sides.
+
+**Six corrections to the form inventory, from reading the PDF rather than the plan:** the form has DEDUCTION MONTH and DEDUCTION YEAR boxes nobody had recorded; C1 includes "gifts / taxable benefits"; Section D's banner is "REMUNERATION DEDUCTION"; **C2 and C4 have NO group box on the paper form** — found by rendering the PDF and reading it back, not by any test, after the first render printed a figure where the agency has no box; the form carries an agency typo ("toll fees for toll fees for official duties") transcribed by sense; and C4(i) is NOT the TP1's zakat rebate line.
+
+**A deviation from my brief, flagged under the fight-back rule and accepted:** Section D stored as JSONB in the identical shape `tp1_relief.categories.items` uses, rather than child rows. One payload type, one validator, the whole record in the event's before/after, inherited RLS, and in-repo precedent at `employee_statutory_my.child_relief_table` (0250).
+
+### ADR-0085 — signed statutory deltas, and a defect it found today
+
+The codebase asked for this by name: `localization/my/multicycle.ts` says closing the EPF gap "needs the reversals ADR, not a code change here". **The clamp is already producing a wrong figure** — the EPF Third Schedule steps the employer column DOWN 13%→12% at RM5,000, so RM5,000 alone is RM650 and RM5,050 alone is RM612, but RM5,000 then RM50 clamps to RM650 + RM0 and ends **RM38 OVER the published table**. The same clamp is what makes `23e7dac3` unbuildable. **One clamp, two problems.**
+
+The decision leans on a seam that exists: `pay_period.status` separates assembling from closed, `statutory_report.ack_ref` / `pcb_payment` record what was filed. **A delta may go negative while unfiled; once filed it is an amendment and is refused by name.** No payslip prints a negative statutory line; banked net pay is never reduced.
+
+⚠️ **STEP 1 FOUND A DEFECT LIVE TODAY.** `docs/audits/0085-delta-keys-sign-inventory.md`: four sites render a statutory line only when `> 0` (`lib/payslip-pdf.ts:675` and the three payslip screens), so a negative would make the line **VANISH** rather than print wrong. All four are `socsoSkbbk` — and `subject_to_skbbk` is a real boolean election, so `> 0` is standing in for "this employee does not have it". **An employee who HAS SKBBK and contributed 0.00 is indistinguishable from one who does not.** Wrong today, independent of the ADR. Negative results recorded too: no unsigned column, no `CHECK (>= 0)`, no stray `Math.abs`.
+
+### WHAT WAS NOT DONE
+
+- **TP3 stage 2.** Not started, nothing stubbed. Also: no `/me` self-service surface, no bulk TP3 import, and frequency rules ("2 claims in a lifetime") are captured and printed but never enforced — the TP1's own documented position, since enforcing them needs LHDN's claim history.
+- **`TabSaveScope` finding 7**: it infers "refresh landed" from `children` identity, which inside a client tab shell also changes on a tab switch. Reduced, not closed; closing it means an explicit signal five personnel tabs depend on.
+- **Three now-unused keys** (`saveDetails`, `saveDefaultPayrollCycle`, `setParent`) left in six catalogues per repo precedent, flagged not removed.
+- **No DOM test drives the company panel's own Save bar** — the client half is pinned against the shared component; recorded in the audit as the next thing to add.
+- **Bulk group assignment does not refuse terminated employments** (neither does the single writer; adding it at one door only would be a second definition) and does not re-examine future-dated roster rows — the same disclosed limit the single writer carries.
+- **ADR-0085 itself is Proposed, not built.** Only the ADR and its step-1 inventory shipped.
+
+### AN OPERATIONAL FINDING WORTH KEEPING
+
+Agents share the session scratchpad, and two of one agent's log redirects were **overwritten by a sibling's vitest output**. It reported a red it had seen in the clobbered file; the file's real owner was green (verified: 12/12 plus all five personnel tab-save suites). Nobody was wrong — the log was. **Future briefs give each agent its own log subdirectory.**
+
 ## r328 (2026-09-22) — five items, five agents, one gate. `main@fc847ef4`, **migration 0479**.
 
 Closed and DEPLOYED: `a57f0584`, `a96d320c`, `72b100cd`, `05d2709a`. **`0fe1ca2e` is ROUND A ONLY and is NOT closed** — see below. Gate: **946 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 393/393** (applied 392 → 393).
