@@ -1,3 +1,41 @@
+## r325 (2026-09-22) — the last date-from-an-instant, and the answer to the Saturday question. `main@329b128a`, **no migration**.
+
+Closed and DEPLOYED: `fc88ba08`. Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
+
+### THE THIRD AND LAST OF THE FAMILY
+
+`core/employment-review.ts` stamped `decidedOn` from an instant in UTC, so a decision recorded between midnight and 08:00 MYT read back as the previous day. r299 fixed `approvedOn` in `core/toil.ts`; r324 fixed `requestedOn` at two sites in `core/attendance.ts`. A sweep of `core/`, `packs/`, `lib/` and `test/` found this one and nothing else — every other `toISOString().slice(0, 10)` is calendar arithmetic on a Z-anchored midnight, which carries no timezone at all.
+
+⚠️ **THE GUARD PINS THE TIMEZONE, NOT JUST A DATE, and that is the whole lesson of all three.** The existing tests compared the read against a value derived the SAME wrong way, so they agreed with the bug for sixteen hours out of twenty-four. Every case now uses an instant whose UTC and KL dates DIFFER, plus a file-wide arm refusing any `<x>At/On.toISOString().slice(0, 10)` — verified against the old line, the new line and a legitimate arithmetic line, so it is neither vacuous nor over-broad.
+
+### THE QUESTION THE REPORTER ASKED US, ANSWERED FROM THE ENGINE
+
+They unblocked `07ebd04d` with a full design and one question back: *"'Saturday not at all' and 'Saturday Off Day' may produce different attendance/roster behaviour in your system."*
+
+**They do, and the difference is paid.** `shiftDayKindFor` is a four-way classifier — a weekday in `weekly_pattern` is FULL, in `half_pattern` HALF, in `off_pattern` OFF, and one in NONE of the three is REST (rest is the complement, which is what "not ticked" has always meant). Both rest and off are non-working, but `core/attendance.ts` ~980 routes an OFF day through `policyBranch('workday')` with zero scheduled minutes while REST goes through `policyBranch('rest_day')` — and the rate table is workday 1.5, rest_day 2.0, holiday 3.0.
+
+So merging a Saturday-rest shift with a Saturday-off shift into one Schedule Group would change somebody's Saturday overtime rate with nobody deciding it. Their instinct to keep them apart was right.
+
+### AND THE BLAST RADIUS IS SMALL, WHICH IS THE USEFUL PART
+
+Their answer set seven conditions, and step 4 is **get confirmation before migration**. So this round ships steps 2 and 3 and nothing else: `scripts/report-schedule-group-split.ts` is READ-ONLY and prints each shift's week AS THE ENGINE READS IT, so the distinction is visible rather than asserted.
+
+Measured on production: **"Standard" splits into 3 groups, and 5 employees hold an open arrangement across them.** Group 1 (Sat=rest) has AARON AZIZ, Arjun Kumar and LSL; group 2 (Sat=off) has Aisyah Rahman and Eee Lee Yong — **those two are the whole population whose Saturday rate is at stake**; group 3 (Sat=half) has nobody. `A02` needs no split and has nobody on it.
+
+### THE DRIFT RATCHET CAUGHT ME, WHICH IS THE RATCHET WORKING
+
+The new script imported `core/attendance` directly for `shiftDayKindFor`. `test/attendance-pack-drift.test.ts` refused it, and its allowlist **only ever shrinks** — so the fix was the pack facade, not an exemption. Same discipline `scripts/report-a2c-hire-year-deltas.ts` already follows for the leave engine.
+
+### THE MACHINE, RECORDED BECAUSE IT COST AN HOUR
+
+The gate ran with **~0.1 GB free RAM and 33 GB of 33.8 GB swap used**, and the 8 GB RAM disk — unused, the cluster having been rebuilt on SSD — **refused to detach**: `Resource busy` through `diskutil eject`, `unmount`, `unmount force` and `hdiutil detach -force`, with `lsof` showing no holder (most likely the endpoint-security agent's volume reference). Escalating further was declined in favour of not touching the machine.
+
+`VITEST_MAX_WORKERS=1` made every chunk reliable at ~250s instead of ~120s. Four chunks first reported red; **all four had ZERO AssertionErrors** and passed on a foreground re-run with an identical test count. §4's rule held for the third round running: assertion count first, and a chunk with none is not evidence about the code.
+
+### NOT DONE
+
+`8cd601d0` stays behind `07ebd04d` — the reporter says so themselves: *"the earlier Schedule Group/Shift data needs to be cleaned or restructured before building Schedule Assignment."* Three items are contested (`72b100cd`, `a57f0584`, `0fe1ca2e`) and one approved (`27605faa`, revision 2); none was started, because a half-built round beside a mid-flight gate is how both get lost.
+
 ## r324 (2026-09-22) — TP1 Relief, and a date bug that only exists before breakfast. `main@8665c6e2`, **no migration**.
 
 Closed and DEPLOYED: `27605faa`. Gate: **939 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
