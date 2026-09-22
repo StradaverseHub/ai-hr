@@ -1,3 +1,62 @@
+## r328 (2026-09-22) — five items, five agents, one gate. `main@fc847ef4`, **migration 0479**.
+
+Closed and DEPLOYED: `a57f0584`, `a96d320c`, `72b100cd`, `05d2709a`. **`0fe1ca2e` is ROUND A ONLY and is NOT closed** — see below. Gate: **946 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 393/393** (applied 392 → 393).
+
+### THE THING ONLY THE MERGED TREE COULD SEE
+
+One genuine red, in chunk 11, and it is the argument for the parent owning the single gate. `a57f0584` lifted the exceptions listing off the foot of `/roster` onto its own screen, and the `core/toil` import travelled with it. That fired the ADR-0080 D9 leave ratchet **in both directions at once**: `app/roster/page.tsx` became a stale allowlist entry (the debt shrank) and `app/roster/exceptions/page.tsx` became a new unaudited violation (the debt grew).
+
+**Every agent ran `test/leave-pack-drift.test.ts` green in its own worktree**, because in isolation neither half of the move exists. Fixed through the FACADE — `packs/leave/service` already re-exports `core/toil` wholesale — never by widening the audited list. Leave entries **25 → 24**.
+
+### ADVERSARIAL VERIFY FOUND WHAT A GREEN REPORT DID NOT
+
+Every agent's non-vacuity claim was re-derived here rather than accepted. Four held. One did not:
+
+**`a96d320c`'s two OT equality gates were UNGUARDED.** They decide whether a payslip may print "2 hours × MYR 18.75" beside an overtime figure. Replacing the copy gate (`core/payroll.ts` ~5887) with `true` left **11/11 green**; dropping the write gate (~2775) left **61/61 green**. The agent had sincerely proved the derivation is WRITTEN and is READ — neither is a proof that the gate REFUSES. Sent back; now pinned by 7 new guards across `overtime-provenance` and `pay-component-1a`, tests-only (0 lines under `core/ lib/ localization/ db/ messages/`).
+
+⚠️ **CONSEQUENCE THE REPORTER WILL SEE, and it is not a defect:** `minutes/60` survives 2-dp rounding only when the minute count is a **multiple of three**. Quarter-hours keep their caption; OT derived from raw clock-in/out times usually will not. The gate refuses rather than lies and no money moves, so "the payslip shows the hours and the rate" is not universally true on day one. **Do not loosen the gate.** Storing `qty` at higher precision does not fix it either — printing "1.67 hours × 18.75" still fails to reconcile to 31.25 on the page. The honest fix is to print **1 h 40 m × MYR 18.75/h**, where the product is exact. Not done; recorded.
+
+### A LIVE STATUTORY DEFECT FROM r323, FOUND WHILE CHECKING SOMETHING ELSE
+
+`localization/my/pcb2ii.ts` took the employer's **E-number, months and receipts** from `p.companyId` but the **legal name and address** from the employment's CURRENT company. Identical for anyone who never transferred — which is why it shipped green — and different for exactly the case the parameter exists for. **After an entity transfer, company A's PCB 2(II) printed A's deducted months and A's employer number under B's letterhead**: a statement of tax filed under a name that did not deduct it. `eaStatement` gets this right two files away and says so; PCB 2(II) had not copied it. Fixed, plus a refusal — an employer that neither employs the person now nor paid them in the year returns `null`, which both routes turn into a bare 404. Reverting the fix turns **8 of 23** tests red.
+
+### PRODUCTION ANSWERED TWO QUESTIONS THE AGENTS COULD NOT REACH
+
+The auto-mode classifier refuses agents production reads, so both flagged their gaps honestly. One hypothesis held, one did not:
+
+- **`a96d320c`: confirmed.** No lateness pay component exists (nothing in `pay_component` matches late/lewat), and `late_deduct_minutes > 0` on **0 of 299** attendance rows. Its generic `payRuleQuantityAndRate` design was right, and its finding that the kernel never reads `late_deduct_minutes` holds in the data as well as the grep.
+- **`05d2709a`: overturned, and what is really there is worse.** Its guess was that duplicates are created with the IC left blank because the unique index refuses it. Measured: 29 of 32 duplicate records HAVE an IC (9% blank vs 10.7% across all active employments). Every duplicate group shares **name, hire date AND date of birth**, with ICs identical except the **last two digits** — and a MyKad opens with the birth date, which matches the DOB column in all seven groups. **Somebody worked around the unique index by nudging the trailing digits, so production holds wrong national identity numbers on records that file EPF, SOCSO and LHDN returns.** That is a finding for the merge round, not a tidiness note.
+
+So the IC stopped being excluded and became the strongest evidence on the screen — not as equality (which the index makes impossible) but as **birth-date near-identity**, resolved through the country-pack seam (`packFor`, never a `localization/my` import; fail-closed to `not_comparable` on an unknown or mixed jurisdiction). Asked whether it can fire on genuinely different people, the agent answered **yes — twins** and wrote that into the docblock and the screen rather than hiding it.
+
+### `0fe1ca2e` IS ROUND A AND THE ITEM IS NOT DELIVERED
+
+What shipped: a read-only dry-run report, a work-state carry script (dry-run by default, writing through `setEmploymentHolidayCalendar`, never raw SQL), and the holiday memo key collapsed into ONE exported function. `holidayDatesByEmployment` and `holidayKeyOf` had spelled the same key **twice by hand, in two files, in two notations** — "they must move together" was something a person had to remember, and now cannot be forgotten. Breaking it hands one employee another's public holidays.
+
+**Nothing the reporter asked for is visible to them yet**, so the item is NOT marked deployed. Three reasons round B is a separate round:
+1. `work_state` must carry the site's state on production BEFORE the location leaves the resolver, and the carry cannot run until these scripts are deployed.
+2. ⚠️ **A DATA QUESTION, not a deletion.** `ORG_DATED_ASSIGNMENT_CRITERIA` carries `locationIds`, stored as JSONB on `notice.criteria`, `leave_adjustment_batch.criteria` and entitlement/leave-approval templates. **Removing the axis silently changes who an already-published notice targets.**
+3. `effectiveHolidayState` is a SECOND location reader the approved plan never named, feeding the s.60D completeness guard; plus a whole branch-mapping feature on `location.branch`, and movement history that already carries `locationId`.
+
+**DECISION (mine, recorded): `location` survives as a bare table for `clocking_location.location_id`.** The agent read the plan as "drop the table" and found it conflicts with "keep `clocking_location` untouched". The plan says remove the table's **USE** in `holidayKeyOf`/`holidayDatesFor`. The site REGISTER goes; the TABLE stays; r322's clocking guard is never touched. The ambiguity was mine.
+
+⚠️ **KEEP THIS, it nearly produced a false all-clear:** run the report for a year with no gazette loaded and it printed "BEFORE (0) / AFTER (0) / NOTHING MOVES" for every employee — a perfectly reassuring report about nothing. Now counted and flagged. **Check `EMPTY calendar both sides : 0` before any output reaches the reporter.**
+
+### TWO ITEMS BLOCKED, ON A QUESTION MEASUREMENT FOUND
+
+`07ebd04d` and `8cd601d0` were approved and are now **blocked**, not built. Inside the reporter's ONE "Standard" schedule group, Saturday already means three different things: AM02 half day (0 employees), MB28 off day (2 employees), and AM01/AM03/SemiFlex01 not applicable (4). Moving the pattern up to the group forces one Saturday on everybody — and off day vs not-applicable pay **different overtime rates**. The plan's own words: whose pattern the group inherits "is the reporter's call, not a default". Also recorded: the plan said group A02 was empty; **it now holds shift AM4** (nobody assigned).
+
+### WHAT WAS NOT DONE
+
+- **`a57f0584`**: the five out-of-scope defects it found are recorded, not fixed — `roster.varianceTitle` still says "This week's exceptions" on a monthly screen; `/roster/exceptions` carries `bu`/`dept`/`q` in the URL without applying them (making them bite would change what an exception IS and desync the button's count); the roster and its export now disagree about which columns exist; `sp.error` is reflected into `ErrorBanner` (repo-wide, pre-existing); and **`pnpm db:seed` plants ZERO shifts**, so a fresh-seed render check of `/roster` never exercises the grid at all.
+- **`a96d320c`**: the deduction box is still not itemised (`other_deductions` is a composite with no stored sub-total for deduction pay items, so itemising it needs its own reconciliation design), and the OT legs are NOT wired into the two payslip SCREENS. **Consequence: the downloaded PDF now shows more OT detail than the screen beside it.** The reverse of the 5c198931 complaint, and a parity gap worth its own item.
+- **`72b100cd`**: `db/seed.ts` still plants no demo payroll. Tempting, but it is a product decision about what the demo tenant asserts and the seeder TRUNCATEs 24 tables.
+- **The roster cap bounds columns, not payload.** `ALL_ROW_CEILING` is 2,000 and `cells` is serialised for every FILTERED employee, not every DRAWN one. Rows × days decides the payload; 92 days bounds one factor. True at 31 days too — worse in degree, not in kind.
+
+### CORRECTION OWED TO THE REPORTER
+
+`72b100cd`'s diagnosis of the empty PCB 2(II) picker — "the demo tenant has no payroll, run that year's payroll first" — is **wrong on production and must not be sent**. Demo Sdn Bhd has **27 payslips in 2026** across 5 processed batches and 1 closed, and `loadYearRows` has no status filter. Their picker returns 27 people. The agent derived it from the seeder and a local reproduction because it could not read the box. Three of their four points were already built; the fourth (Preview) is what shipped.
+
 ## r327 (2026-09-22) — The statutory bodies become one list, and SOCSO+EIS one GROUP rather than one setting. `main@46366c14`, **no migration**.
 
 Closed and DEPLOYED: `efe424b0`. Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0. Shadow **not run and not needed**: `git diff --name-only main..HEAD` matches nothing under `db/migrations`.
