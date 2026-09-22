@@ -146,10 +146,29 @@ describe('a57f0584 · what must NOT have widened', () => {
     expect(PAGE, 'companies[0] was the whole fault').not.toContain('companies[0].id');
   });
 
+  /**
+   * UPDATED BY a57f0584 REV 2 (r328), NOT LOOSENED. The property is unchanged — nothing behind the grid
+   * may narrow to fewer companies than the grid itself — but two of the three reads it named have MOVED.
+   * `rosterVariance` and `listToilPolicies` went to /roster/exceptions with the listing they fed (the
+   * TOIL read only ever existed to decide whether a rest-worked row got a "Bank in lieu" button), and the
+   * roster keeps a count. So the assertion follows the reads onto the screen that now makes them: had it
+   * simply been deleted, an exceptions screen scoped to one company would be a silent under-report on a
+   * twelve-company roster, which is the exact fault this file was written for.
+   */
   it('every dependent read takes the same set, so nothing narrows behind the grid', () => {
-    for (const call of ['companyIds, today: todayIso', 'listToilPolicies(s, companyIds)', 'listDepartments(s, { companyIds })']) {
+    for (const call of ['companyIds, today: todayIso', 'listDepartments(s, { companyIds })']) {
       expect(PAGE, `${call} must use the widened set`).toContain(call);
     }
+    const exceptions = src('app/roster/exceptions/page.tsx');
+    expect(exceptions, 'the exceptions screen resolves the company set the same way').toContain(
+      'const companyIds = companyId ? [companyId] : companies.map((c) => c.id);',
+    );
+    for (const call of ['rosterVariance(s, { from, to, companyIds, today: todayIso })', 'listToilPolicies(s, companyIds)']) {
+      expect(exceptions, `${call} must use the widened set`).toContain(call);
+    }
+    expect(exceptions, 'and from the scoped company list, never a wider one').toContain(
+      'const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));',
+    );
   });
 
   /** The export re-reads the SAME view the screen renders — its own header says so — so it widens too, or
@@ -185,23 +204,64 @@ describe('a57f0584 · the write affordances still take one company', () => {
   });
 });
 
-describe('a57f0584 · the Company column earns its place', () => {
-  it('is dropped from the sticky order entirely when one company is on screen', () => {
-    // Not rendered empty — dropped, so every offset after it closes up. The grid derives left from width.
-    expect(GRID).toContain("filter((k) => k !== 'company' || showCompany)");
-    expect(GRID).toContain('const showCompany = employees.some((e) => (e.company ?? \'\') !== \'\');');
-  });
-
-  it('carries a width in the shared table, like every other pinned column', () => {
-    expect(GRID).toMatch(/PINNED_W = \{[^}]*company: \d+/);
+/**
+ * ⚠️ UPDATED BY a57f0584 REV 2 (r328), NOT DELETED — AND IT REVERSES WHAT r322 DECIDED HERE.
+ *
+ * This block used to read "the Company column earns its place": r322's plan said a Company column
+ * appears whenever more than one company is on screen, and these cases pinned the column, its width in
+ * PINNED_W, its entry in both ORDER arrays, and the page filling it only across companies. The reporter
+ * has since asked for Company AND Department OUT of the roster entirely. The decision is reversed, so
+ * the assertions are reversed with it rather than removed: a deleted guard says nothing about which way
+ * the screen is meant to be, and the next round would not know a reversal had happened.
+ *
+ * WHAT THE REVERSAL COSTS, recorded here because it is the honest half: a roster spanning every company
+ * no longer says whose employee a row is. The Company FILTER is the answer — it is still on the screen
+ * and still narrows the same read — and that trade was stated in the plan before this was built.
+ *
+ * WHAT DID NOT CHANGE, and is still pinned by everything above: `RosterMonthEmployee` keeps
+ * `company` / `companyId`. The COLUMN went; the READ did not. It is shared with the export, whose
+ * columns nobody has asked about, and the first describe block in this file asserts a row still names
+ * its own company.
+ */
+describe('a57f0584 rev 2 · Company and Department are OUT of the roster grid', () => {
+  it('the grid declares no company and no department column at all', () => {
+    // Not "rendered empty" and not "kept as a dead key": absent from the width table, so there is no
+    // offset for anybody to trust. A key nothing draws is arithmetic nothing checks.
+    expect(GRID, 'no company width').not.toMatch(/PINNED_W = \{[^}]*company:/);
+    expect(GRID, 'no department width').not.toMatch(/PINNED_W = \{[^}]*dept:/);
     for (const order of ['EDIT_ORDER', 'VIEW_ORDER']) {
       const line = GRID.slice(GRID.indexOf(`const ${order}`), GRID.indexOf('\n', GRID.indexOf(`const ${order}`)));
-      expect(line, `${order} must place company`).toContain("'company'");
+      expect(line, `${order} must not place company`).not.toContain("'company'");
+      expect(line, `${order} must not place dept`).not.toContain("'dept'");
+    }
+    // The conditional that used to drop the column when one company was on screen goes with it — it was
+    // the thing that made the offsets depend on the data, and now nothing does.
+    expect(GRID).not.toContain("filter((k) => k !== 'company' || showCompany)");
+    expect(GRID, 'showCompany is gone from the grid').not.toContain('showCompany');
+  });
+
+  it('the page stops computing and stops sending both fields', () => {
+    expect(PAGE, 'showCompany is gone from the page').not.toContain('showCompany');
+    expect(PAGE).not.toContain('company: showCompany ? e.company : null,');
+    // The grid's employee payload carries identity and occupation only. Pinned as the WHOLE mapping, so
+    // a field quietly re-added would fail here rather than ride along unnoticed in every RSC payload.
+    const mapStart = PAGE.indexOf('employees={view.employees.map((e) => ({');
+    expect(mapStart, 'the grid mapping must exist').toBeGreaterThan(-1);
+    const mapping = PAGE.slice(mapStart, PAGE.indexOf('}))}', mapStart));
+    for (const field of ['employmentId:', 'name:', 'code:', 'occupation:']) {
+      expect(mapping, `${field} stays`).toContain(field);
+    }
+    for (const field of ['department:', 'company:']) {
+      expect(mapping, `${field} must be gone`).not.toContain(field);
     }
   });
 
-  it('the page only fills it when the roster actually spans companies', () => {
-    expect(PAGE).toContain('company: showCompany ? e.company : null,');
-    expect(PAGE).toContain('const showCompany = companyIds.length > 1;');
+  /** THE READ IS NOT THE COLUMN. The export and the Excel template both still need these fields. */
+  it('the core read still carries company and department for everything else', () => {
+    const core = src('core/roster.ts');
+    expect(core, 'RosterMonthEmployee keeps company').toMatch(/export type RosterMonthEmployee = \{[\s\S]*?company: string \| null;/);
+    expect(core, 'and departmentId, which the filters use').toMatch(
+      /export type RosterMonthEmployee = \{[\s\S]*?departmentId: string \| null;/,
+    );
   });
 });

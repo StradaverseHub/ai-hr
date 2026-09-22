@@ -46,7 +46,8 @@ vi.mock('@/lib/session', () => ({ getSession: async () => SCOPE.s }));
 
 import RosterPage from '../app/roster/page';
 import { copyRosterAction, generateRosterAction } from '../app/roster/actions';
-import { RosterTemplateButton } from '../components/roster-grid';
+import { RosterGrid, RosterTemplateButton } from '../components/roster-grid';
+import { ROSTER_MAX_RANGE_DAYS } from '../lib/roster-month';
 
 /** The company seedBase creates — printed by the page when there is only one to choose from. */
 const COMPANY = 'Acme Sdn Bhd';
@@ -234,5 +235,117 @@ describe('…and offers a supervisor none of them', () => {
     // there: hide the door, keep the directions. Without this assertion a later tidy-up could delete the
     // whole card and the "not.toContain('manageShiftsLink')" above would stay trivially green.
     expect(labels).toContain('manageShiftsHint');
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * a57f0584 rev 2 — THE THREE VIEWS, ON THE RENDERED PAGE.
+ *
+ * The window arithmetic is pinned in test/a57f0584-roster-views.test.ts. What only a RENDER can show is
+ * that the screen actually offers all three, that the control belonging to each view is the one on
+ * screen, and — the case that matters most — that the dates drawn are the WINDOW'S dates. A resolver
+ * that is correct and a page that ignores it look identical to a unit test.
+ * ───────────────────────────────────────────────────────────────────────────────────────────────── */
+
+/** The GridDate[] the page handed the grid — the columns a reader would actually see. */
+const gridDatesOf = (tree: unknown): string[] => {
+  const grid = elementsIn(tree).find((el: any) => el.type === RosterGrid);
+  return ((grid?.props?.dates ?? []) as { iso: string }[]).map((d) => d.iso);
+};
+/** Every href anywhere in the tree — Export, Exceptions, the view switcher and the steppers. */
+const hrefsIn = (tree: unknown): string[] =>
+  elementsIn(tree)
+    .map((el: any) => el?.props?.href)
+    .filter((h: unknown): h is string => typeof h === 'string');
+
+describe('a57f0584 rev 2 · Month, Week and a Custom range', () => {
+  it('offers all three views, with the one on screen marked as current', async () => {
+    const tree = await renderAs(admin);
+    const labels = stringsIn(tree);
+    for (const k of ['viewLabel', 'viewMonth', 'viewWeek', 'viewCustom']) expect(labels, k).toContain(k);
+    const current = elementsIn(tree).filter((el: any) => el?.props?.['aria-current'] === 'page');
+    expect(current, 'exactly one view is current').toHaveLength(1);
+  });
+
+  it('the MONTH view draws the whole month and offers the month picker', async () => {
+    const tree = await renderAs(admin, { view: 'month', month: MONTH });
+    expect(gridDatesOf(tree)).toHaveLength(31);
+    expect(gridDatesOf(tree)[0]).toBe('2026-08-01');
+    const labels = stringsIn(tree);
+    expect(labels, 'the month picker').toContain('filterMonth');
+    expect(labels, 'and not the range fields').not.toContain('filterFrom');
+    expect(labels).not.toContain('filterWeekOf');
+  });
+
+  /** SEVEN COLUMNS, Monday to Sunday, snapped from a Wednesday — the property a month view cannot fake. */
+  it('the WEEK view draws seven days snapped to the Monday, and swaps in its own control', async () => {
+    const tree = await renderAs(admin, { view: 'week', from: '2026-08-12' });
+    expect(gridDatesOf(tree)).toEqual([
+      '2026-08-10',
+      '2026-08-11',
+      '2026-08-12',
+      '2026-08-13',
+      '2026-08-14',
+      '2026-08-15',
+      '2026-08-16',
+    ]);
+    const labels = stringsIn(tree);
+    expect(labels).toContain('filterWeekOf');
+    expect(labels, 'the month picker is gone rather than sitting there inert').not.toContain('filterMonth');
+    expect(labels).not.toContain('filterFrom');
+  });
+
+  it('the CUSTOM view draws exactly the range asked for, with From and To', async () => {
+    const tree = await renderAs(admin, { view: 'custom', from: '2026-08-03', to: '2026-08-16' });
+    const dates = gridDatesOf(tree);
+    expect(dates).toHaveLength(14);
+    expect([dates[0], dates[dates.length - 1]], 'both ends of the window are drawn').toEqual(['2026-08-03', '2026-08-16']);
+    const labels = stringsIn(tree);
+    expect(labels).toContain('filterFrom');
+    expect(labels).toContain('filterTo');
+    expect(labels).not.toContain('filterMonth');
+  });
+
+  /**
+   * THE CAP, AS THE OPERATOR MEETS IT: the screen still renders, it shows the capped window starting at
+   * the From that was typed, and it SAYS what it did. A roster that failed to draw because somebody put
+   * 2027 in the To box would be a worse bug than the one this prevents.
+   */
+  it('a range wider than the cap renders clamped, and the screen says so', async () => {
+    const tree = await renderAs(admin, { view: 'custom', from: '2026-03-01', to: '2026-12-31' });
+    const dates = gridDatesOf(tree);
+    expect(dates.length, 'clamped to the cap').toBe(ROSTER_MAX_RANGE_DAYS);
+    expect(dates[0], 'and it honours the From that was typed').toBe('2026-03-01');
+    expect(stringsIn(tree), 'the notice names what happened').toContain('rangeTooWide');
+  });
+
+  it('a backwards range renders the From date alone, and says so', async () => {
+    const tree = await renderAs(admin, { view: 'custom', from: '2026-08-20', to: '2026-08-01' });
+    expect(gridDatesOf(tree)).toEqual(['2026-08-20']);
+    expect(stringsIn(tree)).toContain('rangeBackwards');
+  });
+
+  /** EVERY WAY OFF THE SCREEN CARRIES THE WINDOW, or Export on a week silently downloads a month. */
+  it('Export, Exceptions and each row Edit all carry the window on screen', async () => {
+    const tree = await renderAs(admin, { view: 'week', from: '2026-08-12' });
+    const hrefs = hrefsIn(tree);
+    const exportHref = hrefs.find((h) => h.startsWith('/roster/export'));
+    const exceptionsHref = hrefs.find((h) => h.startsWith('/roster/exceptions'));
+    for (const [name, href] of [['export', exportHref], ['exceptions', exceptionsHref]] as const) {
+      expect(href, `${name} link exists`).toBeDefined();
+      expect(href, `${name} carries the view`).toContain('view=week');
+      expect(href, `${name} carries the window`).toContain('from=2026-08-10');
+      expect(href).toContain('to=2026-08-16');
+    }
+    const grid = elementsIn(tree).find((el: any) => el.type === RosterGrid);
+    expect(grid?.props?.editQuery, 'and the grid builds its Edit links from the same string').toContain('view=week');
+    expect(grid?.props?.editQuery).toContain('from=2026-08-10');
+  });
+
+  /** A LINK WRITTEN BEFORE THIS ROUND carried `month=` alone. It must still mean the month view. */
+  it('an old month-only link still resolves to the month view', async () => {
+    const tree = await renderAs(admin, { month: '2026-08' });
+    expect(gridDatesOf(tree)).toHaveLength(31);
+    expect(stringsIn(tree)).toContain('filterMonth');
   });
 });

@@ -156,6 +156,46 @@ export async function rowAssignAction(input: {
   }
 }
 
+/**
+ * a57f0584 rev 2 — SAVE, from the per-employee Edit SCREEN.
+ *
+ * The row editor used to be a panel at the foot of /roster that called `rowAssignAction` from the client
+ * and patched the grid optimistically. It is now a page of its own, so the save is a FORM POST that
+ * redirects back to the roster (the "own page, return to the list" shape of the TP1 declaration form and
+ * app/admin/attendance/schedule-assignment/[employmentId]). Nothing about WHO may write or WHAT is
+ * written changes: this is a thin wrapper over `rowAssignAction`, which is still the only entry point and
+ * still re-checks the administrator right and the past-date right through `assignRosterRow`.
+ *
+ * A REFUSAL COMES BACK TO THE EDIT SCREEN, not to the roster, and carries the reason plus what was
+ * ticked — the administrator does not re-tick eleven dates because the save was refused. Same contract as
+ * shift-actions.ts's errTarget.
+ */
+export async function saveRosterRowAction(formData: FormData) {
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const brush = String(formData.get('brush') ?? '');
+  const shiftDates = formData.getAll('shiftDates').map(String).filter(Boolean);
+  // The roster's own query string (month + filters), round-tripped so both ways out land where the
+  // administrator was. Parsed through URLSearchParams rather than concatenated: it arrives from a form
+  // field and ends up in a Location header.
+  const listQuery = new URLSearchParams(String(formData.get('listQuery') ?? ''));
+  const editQuery = new URLSearchParams(listQuery);
+
+  // Outside the try on purpose: redirect() signals by throwing, and a catch here would swallow it.
+  if (shiftDates.length === 0) {
+    editQuery.set('error', 'noDates');
+    redirect(`/roster/edit/${employmentId}?${editQuery.toString()}`);
+  }
+  const r = await rowAssignAction({ employmentId, shiftDates, brush });
+  if (!r.ok) {
+    editQuery.set('error', r.error);
+    for (const d of shiftDates) editQuery.append('picked', d);
+    editQuery.set('brush', brush);
+    redirect(`/roster/edit/${employmentId}?${editQuery.toString()}`);
+  }
+  listQuery.set('rowSaved', String(shiftDates.length));
+  redirect(`/roster?${listQuery.toString()}`);
+}
+
 /** R7 Phase 2 — generate a roster window from a shift's weekly pattern: shift + scope (explicit employees
  *  or a whole department; department wins when both are posted) + date range → the thin generator over the
  *  existing bulk primitives. Success redirects to the window's first week with a summary banner.

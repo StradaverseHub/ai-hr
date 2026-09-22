@@ -3,14 +3,22 @@ import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
-import { rosterMonthView, rosterVariance } from '@/core/roster';
-import { listToilPolicies } from '@/core/toil';
+import { rosterExceptionCount, rosterWindowView } from '@/core/roster';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
-import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { addDaysIso, addMonths, buildRosterTemplate, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
+import {
+  ROSTER_MAX_RANGE_DAYS,
+  addDaysIso,
+  addMonths,
+  buildRosterTemplate,
+  monthOf,
+  resolveRosterWindow,
+  rosterDateLocale,
+  shiftCodeOf,
+  stepRosterWindow,
+  type RosterViewKind,
+} from '@/lib/roster-month';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -33,13 +41,19 @@ export default async function RosterPage({
 }: {
   searchParams: Promise<{
     companyId?: string;
+    /** a57f0584 rev 2 — which of the three views, and the dates it needs. `month` alone still works, and
+     *  still means the month view: every link and bookmark written before this round keeps resolving. */
+    view?: string;
     month?: string;
+    from?: string;
+    to?: string;
     bu?: string;
     dept?: string;
     q?: string;
     error?: string;
     generated?: string;
     copied?: string;
+    rowSaved?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedSession();
@@ -73,23 +87,45 @@ export default async function RosterPage({
    */
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
-  /** The Company column earns its place only when more than one company can appear in the rows. */
-  const showCompany = companyIds.length > 1;
   const todayIso = todayInKualaLumpur();
-  const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
   const admin = isAdmin(s);
 
-  const view = await rosterMonthView(s, {
+  /**
+   * a57f0584 rev 2 — MONTH, WEEK OR A CUSTOM RANGE, resolved to ONE pair of dates before anything reads.
+   *
+   * The plan's binding sentence is "The Week and Custom range views read the same roster the Month view
+   * does, so a date cannot show one shift in one view and another in another". So there is no
+   * view-specific branch below this line: the three views differ ONLY in what `resolveRosterWindow`
+   * returns, and `rosterWindowView` takes it from there. Everything downstream — the grid, the export
+   * link, the exceptions count, the Edit screen — reads `win` and cannot disagree with itself.
+   *
+   * A refused window (backwards, or wider than the cap) still RENDERS: the resolver clamps and says what
+   * it did in the banner below, because a roster that fails to draw because somebody typed 2027 in the To
+   * box is worse than one that explains itself. The service refuses independently — see
+   * `assertRosterWindow` — so this is the message, not the guard.
+   */
+  const resolved = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso });
+  const win = resolved.window;
+  const month = win.month;
+
+  const view = await rosterWindowView(s, {
     companyIds,
-    month,
+    from: win.from,
+    to: win.to,
     ...(sp.bu ? { businessUnitId: sp.bu } : {}),
     ...(sp.dept ? { departmentId: sp.dept } : {}),
     ...(sp.q ? { q: sp.q } : {}),
   });
 
-  const [variance, toilPolicies, departments] = await Promise.all([
-    rosterVariance(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
-    listToilPolicies(s, companyIds),
+  /**
+   * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of
+   * this screen; it is now the Exceptions button below, and the rows live on /roster/exceptions. The
+   * roster therefore reads a number, and the TOIL policy read that only ever existed to decide whether a
+   * rest-worked row got a "Bank in lieu" button went WITH the rows — it belongs to the screen that draws
+   * them.
+   */
+  const [exceptionCount, departments] = await Promise.all([
+    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
     listDepartments(s, { companyIds }),
   ]);
 
@@ -97,38 +133,63 @@ export default async function RosterPage({
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
   const copiedCount = sp.copied && /^\d+$/.test(sp.copied) ? Number(sp.copied) : null;
-  const exceptions = variance.filter((v) => v.kind !== 'on_track');
-  // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
-  const toilOn = isModuleEnabledOrFalse(s, 'toil') && (toilPolicies[0]?.enabled ?? false);
-  const kindBadge: Record<string, string> = {
-    no_show: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
-    late: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    short: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
-    rest_worked: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400',
-  };
-  const kindLabel: Record<string, string> = {
-    no_show: t('kindNoShow'),
-    late: t('kindLate'),
-    short: t('kindShort'),
-    rest_worked: t('kindRestWorked'),
-  };
-
-  const dowFmt = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
-  const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
-  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  // a57f0584 rev 2 — "comes back to the roster with your change already showing". The Edit SCREEN redirects
+  // here after a save; `rowAssignAction` revalidated /roster, so the grid below is the saved month and this
+  // line says how many dates it covers. Without it the administrator lands on a page that looks unchanged.
+  const rowSaved = sp.rowSaved && /^\d+$/.test(sp.rowSaved) ? Number(sp.rowSaved) : null;
+  /**
+   * a57f0584 rev 2 — `rosterDateLocale` maps `en` to en-GB for THIS SCREEN'S date formatters and leaves
+   * the other five alone. The reason is on the helper: `en` resolves to en-US, which writes a short date
+   * month-first ("Sep 01"), Malaysia writes dates day-first, and the approved plan's own example is
+   * "01 Sept". It is still Intl choosing the words — no month table is hardcoded — and it is deliberately
+   * scoped to the roster rather than to the app.
+   */
+  const dateLocale = rosterDateLocale(locale);
+  const dowFmt = new Intl.DateTimeFormat(dateLocale, { weekday: 'short', timeZone: 'UTC' });
+  /**
+   * a57f0584 rev 2 — THE DATE HEADING, CHANGED IN THE FORMATTER AND NOWHERE ELSE.
+   *
+   * It read `01/09`, which a reader has to be told whether to parse as day-month or month-day, and the
+   * reporter asked for the month to be named. `{ day: '2-digit', month: 'short' }` through Intl in the
+   * VIEWER'S locale, never a hardcoded ['Jan','Feb',…]: that array is the trap the Excel template header
+   * (lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS) records from the other direction, and it would print
+   * English months on a Malay screen. The grid renders what it is handed, so there is still exactly ONE
+   * rendition of a date on this screen and the export cannot drift from it.
+   *
+   * ⚠️ ORDER IS THE LOCALE'S, NOT OURS. `en` is en-US here and yields "Sep 01"; en-GB would yield
+   * "01 Sept", which is the spelling in the plan. Reordering the parts by hand would be exactly the
+   * hardcoding this avoids — if day-first English is wanted, the answer is an en-GB locale, not a
+   * formatter that knows better than Intl.
+   */
+  const dayFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', timeZone: 'UTC' });
+  const monthFmt = new Intl.DateTimeFormat(dateLocale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  /** Week and Custom span dates rather than naming a month, so their label is the two ends — with the
+   *  year, because a window can cross one and "29 Dec – 04 Jan" is otherwise ambiguous. */
+  const edgeFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const onDay = (iso: string) => new Date(`${iso}T00:00:00Z`);
   const gridDates = view.dates.map((iso) => {
     const d = new Date(`${iso}T00:00:00Z`);
     return { iso, dow: dowFmt.format(d), day: dayFmt.format(d) };
   });
-  const monthLabel = monthFmt.format(new Date(`${view.from}T00:00:00Z`));
+  const windowLabel =
+    win.kind === 'month' ? monthFmt.format(onDay(view.from)) : `${edgeFmt.format(onDay(view.from))} – ${edgeFmt.format(onDay(view.to))}`;
 
   // Filter dropdown values come from the employees this session can already see, so a Business Group
   // with nobody in it never appears and a supervisor is never offered somebody else's department.
   const buOptions = dedupe(view.allEmployees.map((e) => ({ id: e.businessUnitId, name: e.businessUnit })));
   const deptOptions = dedupe(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.department })));
 
+  /**
+   * THE WINDOW RIDES EVERY LINK OFF THIS SCREEN. Export, Exceptions, Upload and each row's Edit all take
+   * this string, so a week view exports a week and comes back to a week. It carries the RESOLVED window
+   * rather than what was typed: a clamped range must not be handed on as the range that was refused.
+   */
   const qs = (over: Record<string, string | undefined>) => {
-    const p = new URLSearchParams({ month });
+    const p = new URLSearchParams({ view: win.kind, month: win.month });
+    if (win.kind !== 'month') {
+      p.set('from', win.from);
+      p.set('to', win.to);
+    }
     if (companyId) p.set('companyId', companyId);
     if (sp.bu) p.set('bu', sp.bu);
     if (sp.dept) p.set('dept', sp.dept);
@@ -139,7 +200,18 @@ export default async function RosterPage({
     }
     return p.toString();
   };
-  const monthHref = (m: string) => `/roster?${qs({ month: m })}`;
+  /** Switching view keeps the filters and hands the NEW view the window currently on screen as its
+   *  anchor, so Month → Week lands on a week inside the month you were looking at rather than on today. */
+  const viewHref = (kind: RosterViewKind) =>
+    `/roster?${qs({ view: kind, from: kind === 'month' ? undefined : win.from, to: kind === 'custom' ? win.to : undefined })}`;
+  const stepHref = (direction: 1 | -1) => {
+    const next = stepRosterWindow(win, direction);
+    return `/roster?${qs({ view: next.kind, month: next.month, from: next.kind === 'month' ? undefined : next.from, to: next.kind === 'custom' ? next.to : undefined })}`;
+  };
+  const todayHref = () => {
+    const anchor = resolveRosterWindow({ view: win.kind, month: monthOf(todayIso), from: todayIso, to: todayIso, today: todayIso }).window;
+    return `/roster?${qs({ view: anchor.kind, month: anchor.month, from: anchor.kind === 'month' ? undefined : anchor.from, to: anchor.kind === 'custom' ? anchor.to : undefined })}`;
+  };
   const navBtn = 'rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted';
 
   // The Excel template is the month grid PRE-FILLED WITH WHAT IS ROSTERED — never with the grey ghosts.
@@ -159,6 +231,17 @@ export default async function RosterPage({
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
+      {/* a57f0584 rev 2 — WHAT THE RESOLVER DID INSTEAD, said out loud. A window that was clamped or
+          reversed still renders (the dates on screen are real), so this is a NOTICE rather than an error:
+          the screen tells the operator what it is showing and why it is not what they typed. Silence here
+          would be a roster quietly showing three months of a six-month request. */}
+      {!resolved.ok && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+          {resolved.reason === 'too_wide'
+            ? t('rangeTooWide', { days: ROSTER_MAX_RANGE_DAYS, asked: resolved.askedDays })
+            : t('rangeBackwards')}
+        </div>
+      )}
       {gen && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('generated', { employees: gen[0], working: gen[1], rest: gen[2] })}
@@ -167,6 +250,11 @@ export default async function RosterPage({
       {copiedCount != null && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {copiedCount > 0 ? t('copiedDone', { rows: copiedCount }) : t('copiedEmpty')}
+        </div>
+      )}
+      {rowSaved != null && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {t('rowApplied', { count: rowSaved })}
         </div>
       )}
 
@@ -218,18 +306,66 @@ export default async function RosterPage({
               />
             </>
           )}
+          {/* a57f0584 rev 2 — EXCEPTIONS IS A BUTTON WITH A COUNT, not a listing bolted to the bottom of
+              the roster. The count is what the reporter needs on this screen ("so you still know there
+              are any"); the rows are a screen of their own, reached from here with the same month and the
+              same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
+              cannot tell you there is nothing wrong, it can only look like a missing feature. */}
+          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
+            {t('exceptionsButton', { count: exceptionCount })}
+          </Link>
           <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
         </div>
       </div>
 
-      {/* Filters — Business Group, Department, Employee, Month, and a Query button, exactly the row the
-          reporter's own screen carries. A plain GET form: the URL is the state, so a filtered month is
-          shareable and the export link below carries the same narrowing. */}
+      {/* a57f0584 rev 2 — THE THREE VIEWS. Three links, not a <select>: the view is in the URL, so each
+          one is a real address the operator can bookmark and send, and switching costs no form submit.
+          Switching carries the window on screen as the new view's anchor — Month → Week lands inside the
+          month you were reading, not on today. */}
       <Card>
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('viewLabel')}</span>
+          <span className="inline-flex overflow-hidden rounded-md border border-border">
+            {(['month', 'week', 'custom'] as const).map((kind) => (
+              <Link
+                key={kind}
+                href={viewHref(kind)}
+                aria-current={win.kind === kind ? 'page' : undefined}
+                className={`px-3 py-1 text-sm ${
+                  win.kind === kind ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                }`}
+              >
+                {t(kind === 'month' ? 'viewMonth' : kind === 'week' ? 'viewWeek' : 'viewCustom')}
+              </Link>
+            ))}
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            <Link href={stepHref(-1)} className={navBtn} aria-label={t(win.kind === 'month' ? 'prevMonth' : win.kind === 'week' ? 'prevWeek' : 'prevRange')}>
+              ‹
+            </Link>
+            <span className="text-sm text-muted-foreground">{windowLabel}</span>
+            <Link href={stepHref(1)} className={navBtn} aria-label={t(win.kind === 'month' ? 'nextMonth' : win.kind === 'week' ? 'nextWeek' : 'nextRange')}>
+              ›
+            </Link>
+            {/* No "today" shortcut on a Custom range: From and To are right there in the form, and any
+                one-click meaning for "this range" would have to be invented rather than derived. */}
+            {win.kind !== 'custom' && (
+              <Link href={todayHref()} className={navBtn}>
+                {t(win.kind === 'month' ? 'thisMonth' : 'thisWeek')}
+              </Link>
+            )}
+          </span>
+        </div>
+
+        {/* Filters — Business Group, Department, Employee, the window, and a Query button, exactly the row
+            the reporter's own screen carries. A plain GET form: the URL is the state, so a filtered window
+            is shareable and the export link below carries the same narrowing. */}
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
           {companyId && <input type="hidden" name="companyId" value={companyId} />}
+          {/* The view is posted back with the filters, or Query would drop the operator to Month. */}
+          <input type="hidden" name="view" value={win.kind} />
           <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t('filterBusinessGroup')}
             <select name="bu" defaultValue={sp.bu ?? ''} className={inputCls}>
@@ -256,23 +392,37 @@ export default async function RosterPage({
             {t('filterEmployee')}
             <input name="q" defaultValue={sp.q ?? ''} placeholder={t('filterEmployeePlaceholder')} className={inputCls} />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {t('filterMonth')}
-            <input type="month" name="month" defaultValue={month} className={inputCls} />
-          </label>
+          {/* ONE control per view, and only the one the view uses. A month picker sitting inert beside a
+              From/To pair is a control that does nothing, which is worse than a control that is absent. */}
+          {win.kind === 'month' && (
+            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {t('filterMonth')}
+              <input type="month" name="month" defaultValue={win.month} className={inputCls} />
+            </label>
+          )}
+          {win.kind === 'week' && (
+            /* ANY date in the week identifies it and the resolver snaps to the Monday. NOT
+               `<input type="week">`: it posts `YYYY-Www`, whose week-numbering year disagrees with the
+               calendar year at the turn of January — a defect nobody would ever reproduce on purpose. */
+            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {t('filterWeekOf')}
+              <input type="date" name="from" defaultValue={win.from} className={inputCls} />
+            </label>
+          )}
+          {win.kind === 'custom' && (
+            <>
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t('filterFrom')}
+                <input type="date" name="from" defaultValue={win.from} className={inputCls} />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t('filterTo')}
+                <input type="date" name="to" defaultValue={win.to} className={inputCls} />
+              </label>
+            </>
+          )}
           <button className={btnPrimary}>{t('query')}</button>
-          <span className="ml-auto flex items-center gap-2">
-            <Link href={monthHref(addMonths(month, -1))} className={navBtn} aria-label={t('prevMonth')}>
-              ‹
-            </Link>
-            <span className="text-sm text-muted-foreground">{monthLabel}</span>
-            <Link href={monthHref(addMonths(month, 1))} className={navBtn} aria-label={t('nextMonth')}>
-              ›
-            </Link>
-            <Link href={monthHref(monthOf(todayIso))} className={navBtn}>
-              {t('thisMonth')}
-            </Link>
-          </span>
+          <span className="ml-auto text-xs text-muted-foreground">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
         </form>
       </Card>
 
@@ -313,17 +463,14 @@ export default async function RosterPage({
                 employmentId: e.employmentId,
                 name: e.name,
                 code: e.code,
-                department: e.department,
                 occupation: e.occupation,
-                // Only when the roster actually spans companies — the grid drops the column otherwise.
-                company: showCompany ? e.company : null,
               }))}
               shifts={view.shifts}
               initial={view.cells}
               usual={view.usual}
               isAdmin={admin}
               today={todayIso}
-              companyName={companyId ? (companies.find((c) => c.id === companyId)?.name ?? '') : ''}
+              editQuery={qs({})}
             />
           )}
         </div>
@@ -451,30 +598,6 @@ export default async function RosterPage({
         </Card>
       )}
 
-      {exceptions.length > 0 && (
-        <Card>
-          <SectionHeader title={t('varianceTitle')} count={exceptions.length} />
-          <ul className="divide-y divide-border">
-            {exceptions.map((v) => (
-              <li key={`${v.employmentId}|${v.shiftDate}`} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
-                <div className="min-w-0">
-                  <span className="font-medium">{v.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {v.shiftDate} · {v.shiftName ?? t('rest')}
-                  </span>
-                </div>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${kindBadge[v.kind]}`}>{kindLabel[v.kind]}</span>
-                  {toilOn && v.kind === 'rest_worked' && (
-                    <ToilElectButton employmentId={v.employmentId} workedDate={v.shiftDate} />
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">{t('varianceHint')}</p>
-        </Card>
-      )}
     </div>
   );
 }

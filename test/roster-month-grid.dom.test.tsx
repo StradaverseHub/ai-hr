@@ -55,9 +55,9 @@ const SHIFTS: ShiftLite[] = [
 ];
 
 const EMPLOYEES: GridEmployee[] = [
-  { employmentId: 'e1', name: 'Ahmad Zulkifli', code: 'A0001', department: 'Site Operations', occupation: 'DEPARTMENT HEAD' },
-  { employmentId: 'e2', name: 'Nurul Ain', code: 'A0002', department: 'Finance', occupation: 'EXECUTIVE' },
-  { employmentId: 'e3', name: 'Wan Nurhaliza', code: 'A0008', department: 'Site Operations', occupation: 'EXECUTIVE' },
+  { employmentId: 'e1', name: 'Ahmad Zulkifli', code: 'A0001', occupation: 'DEPARTMENT HEAD' },
+  { employmentId: 'e2', name: 'Nurul Ain', code: 'A0002', occupation: 'EXECUTIVE' },
+  { employmentId: 'e3', name: 'Wan Nurhaliza', code: 'A0008', occupation: 'EXECUTIVE' },
 ];
 
 function renderGrid(over?: {
@@ -75,7 +75,7 @@ function renderGrid(over?: {
         usual={over?.usual ?? {}}
         isAdmin={over?.isAdmin ?? true}
         today={TODAY}
-        companyName="ISEDECOR BINA SDN BHD"
+        editQuery="month=2026-08"
       />
     </NextIntlClientProvider>,
   );
@@ -161,7 +161,11 @@ describe('monthly roster grid (23390097)', () => {
   it('an HR administrator keeps every one of those affordances, today and earlier included', () => {
     renderGrid({ isAdmin: true });
     const row = rowFor('Ahmad Zulkifli');
-    const dateCells = within(row).getAllByRole('button').slice(1); // the row Edit button comes first
+    // a57f0584 rev 2 — NO `.slice(1)` any more. Edit used to be the row's first <button> (it toggled a
+    // panel); it is now a LINK to that person's own screen, so every button left in the row is a date
+    // cell. Counting from a fixed offset would have quietly dropped a real date column the day the Edit
+    // affordance changed shape — which is exactly what it did before this line was updated.
+    const dateCells = within(row).getAllByRole('button');
     expect(dateCells).toHaveLength(DATES.length);
     expect(dateCells[DATES.indexOf(TODAY)]).toBeEnabled();
     expect(dateCells[DATES.indexOf(TODAY) - 1]).toBeEnabled();
@@ -172,7 +176,7 @@ describe('monthly roster grid (23390097)', () => {
   it('shows every date of the chosen month as a column', () => {
     renderGrid();
     expect(DATES).toHaveLength(31);
-    expect(within(rowFor('Ahmad Zulkifli')).getAllByRole('button').slice(1)).toHaveLength(31);
+    expect(within(rowFor('Ahmad Zulkifli')).getAllByRole('button')).toHaveLength(31);
   });
 });
 

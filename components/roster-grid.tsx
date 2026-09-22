@@ -7,14 +7,14 @@
  * rest day, or Clear) from the legend and click a cell to assign it; each click calls a server action and
  * optimistically updates. What is new:
  *
- *   · one column per DATE of the chosen month, horizontally scrollable, with Employee No / Name /
- *     Department / Occupation pinned to the left and Saturday+Sunday tinted;
+ *   · one column per DATE of the chosen month, horizontally scrollable, with the employee and their
+ *     occupation pinned to the left and Saturday+Sunday tinted;
  *   · cells print the shift's short CODE (RD for a rostered rest day, OFF for a day the usual shift does
  *     not work) instead of the shift's long name — a 48-character name cut off mid-word told nobody
  *     anything;
  *   · an un-rostered date shows the person's USUAL shift in grey, so the month reads as covered without
  *     rostering every day by hand. The precedence is lib/roster-month.ts's, which mirrors the engine's;
- *   · an Edit link per row opens that person's month for a tick-several-dates-set-them-all edit;
+ *   · an Edit link per row opens that person's month on ITS OWN SCREEN (a57f0584 rev 2 — see below);
  *   · a date today or earlier prompts the administrator to confirm before it saves.
  *
  * WHO MAY CHANGE ANYTHING: only an HR administrator, and the grid now says so instead of implying
@@ -31,20 +31,58 @@
  * shift?" — on a 31-column month that is almost never true, so the warning would have silently stopped
  * firing at exactly the moment the screen got bigger. It is now the rolling any-seven-consecutive-days
  * form in lib/roster-month.ts#breachesRestDayRule.
+ *
+ * ── a57f0584 REV 2 — WHY THE PINNED BLOCK LOOKS DIFFERENT ──────────────────────────────────────────
+ *
+ * 1. THE OVERLAP WAS OURS, and it is the f728826a family: an offset derived from a width that nothing
+ *    enforced. Every `<th>` took `sty(k)` — left + width + minWidth and NO maxWidth — while only some
+ *    `<td>`s took `styTrunc(k)`. On a `border-collapse` table with no `table-layout`, a heading wider
+ *    than its declared width GROWS the column, while every sticky `left` after it stays at the PINNED_W
+ *    arithmetic; the frozen columns then paint on top of one another. It showed up while scrolling
+ *    sideways and changed with the window size, which is why it read as a scrolling bug.
+ *
+ *    THE FIX IS THREE THINGS, and each of them alone is insufficient:
+ *      · ONE accessor. `sty` and `styTrunc` are gone; `pinnedLayout().col()` is the only way to get a
+ *        pinned cell's geometry and it always returns width, minWidth AND maxWidth (the f728826a
+ *        three-way pin — a bare `width` is advisory on an auto-layout table). Header and body cannot
+ *        take different halves of the contract because there are no longer two halves to take.
+ *      · `table-layout: fixed` + a `<colgroup>` built from the SAME PINNED_W / DATE_W numbers, so the
+ *        declared width is the used width and content can no longer widen a column at all.
+ *      · `truncate` on every pinned cell INCLUDING the headings, so an over-long heading clips inside
+ *        its own column instead of demanding room. A locale is what makes a heading long: "Employee"
+ *        is eight characters in en and considerably more in ta and th.
+ *
+ * 2. ONE EMPLOYEE CELL. Employee No and Employee Name were two pinned columns saying one thing; they are
+ *    now `AARON AZIZ (X003)` in a single cell. PINNED_W plus the two ORDER arrays remain the single
+ *    source of the geometry, so this is ONE entry, not two.
+ *    ⚠️ The parenthesised-code-AFTER-the-name order is the reporter's own words for this screen, and it
+ *    runs the other way from `components/ui#EmployeeName` (38668d9b: id first, no brackets). The shared
+ *    component is deliberately NOT used here for that reason; if the convention is ever reconciled, this
+ *    is the call site that has to change with it.
+ *
+ * 3. COMPANY AND DEPARTMENT ARE GONE FROM THE ROSTER. ⚠️ THIS REVERSES r322's OWN PLAN, which said "A
+ *    Company column appears whenever more than one company is on screen" — the reporter has since asked
+ *    for both columns out. They are removed from PINNED_W and from both ORDER arrays rather than left as
+ *    dead keys, because a key nothing renders is an offset nobody can check. `RosterMonthEmployee` keeps
+ *    company / companyId (core/roster.ts): that read is shared with the export, whose columns are a
+ *    separate decision nobody has asked about. A roster spanning every company no longer says whose
+ *    employee a row is — the Company FILTER is the answer, and the plan said so before this was built.
  */
 import { useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { assignCellAction, bulkAssignAction, rowAssignAction } from '@/app/roster/actions';
+import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass } from '@/lib/shift-visual';
 import {
   ROSTER_TEMPLATE_ID_COLUMNS,
   breachesRestDayRule,
   cellKey,
+  rosterCellLabel,
   isWeekendDate,
   resolveRosterCell,
   shiftCodeOf,
@@ -64,14 +102,15 @@ export type ShiftLite = {
   endTime: string;
   color?: string | null;
 };
+/** a57f0584 rev 2 — `department` and `company` are NOT on this type any more. The grid stopped drawing
+ *  those columns, and a field the grid cannot render is a field the page would keep serialising into the
+ *  RSC payload for nothing. The columns the EXPORT and the Excel template need are read from
+ *  `RosterMonthEmployee`, which still carries all four. */
 export type GridEmployee = {
   employmentId: string;
   name: string;
   code?: string | null;
-  department?: string | null;
   occupation?: string | null;
-  /** a57f0584 — set ONLY when the roster spans more than one company; absent/blank hides the column. */
-  company?: string | null;
 };
 export type GridDate = { iso: string; dow: string; day: string };
 type Brush = string; // shiftId | 'rest' | 'clear'
@@ -90,33 +129,46 @@ const AUTO_SHIFT_COLORS = [
 
 const hhmm = (t: string) => t.slice(0, 5);
 
-/** The pinned block. Widths are explicit because sticky columns need a known left offset each. */
-const PINNED_W = { check: 36, no: 96, name: 190, company: 170, dept: 132, occ: 132, edit: 54 } as const;
+/**
+ * The pinned block. Widths are explicit because sticky columns need a known left offset each, and THIS
+ * OBJECT IS THE ONLY PLACE ANY OF THOSE NUMBERS IS WRITTEN — the offsets are the running sum of it and
+ * the `<colgroup>` is built from it, so the three can never disagree (f728826a).
+ *
+ * a57f0584 rev 2: `no` + `name` merged into `employee`; `company` and `dept` removed outright.
+ */
+const PINNED_W = { check: 36, employee: 248, occ: 132, edit: 60 } as const;
 type PinnedKey = keyof typeof PINNED_W;
-const EDIT_ORDER: PinnedKey[] = ['check', 'no', 'name', 'company', 'dept', 'occ', 'edit'];
+const EDIT_ORDER: PinnedKey[] = ['check', 'employee', 'occ', 'edit'];
 /** Read-only drops the two columns that exist only in order to change something. */
-const VIEW_ORDER: PinnedKey[] = ['no', 'name', 'company', 'dept', 'occ'];
-const DATE_W = 78;
-const HEAD_CLS = 'bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
+const VIEW_ORDER: PinnedKey[] = ['employee', 'occ'];
+/** a57f0584 rev 2 — wider than the 78 it was, because a date heading now reads "01 Sep" rather than
+ *  "01/09", and in ta / th / vi the localised short month is longer again. */
+const DATE_W = 88;
+const HEAD_CLS = 'truncate bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
 const CELL_MUTED = 'truncate bg-background px-2 py-1.5 text-xs text-muted-foreground';
 
 /**
  * Sticky left offsets, recomputed rather than constant because the read-only grid has fewer columns.
  *
- * a57f0584 — and fewer again when the roster is ONE company's: the Company column is dropped from the
- * order entirely rather than rendered empty, so every offset after it closes up. A column that says the
- * same thing on every row is noise, and the screen is only cross-company when nothing is filtering it.
+ * ONE ACCESSOR, ON PURPOSE (a57f0584 rev 2). There used to be two — `sty` without a maxWidth and
+ * `styTrunc` with one — and the headers took the first while the body took the second. That drift IS the
+ * overlap: the heading grew its column and every `left` after it stayed where the arithmetic put it. A
+ * single `col()` that always pins width three ways makes the two halves unable to disagree, and
+ * test/a57f0584-roster-rev2.test.ts asserts that no second accessor comes back.
  */
-function pinnedLayout(canEdit: boolean, showCompany: boolean) {
+function pinnedLayout(canEdit: boolean) {
+  const order = canEdit ? EDIT_ORDER : VIEW_ORDER;
   const left = {} as Record<PinnedKey, number>;
   let x = 0;
-  const order = (canEdit ? EDIT_ORDER : VIEW_ORDER).filter((k) => k !== 'company' || showCompany);
   for (const k of order) {
     left[k] = x;
     x += PINNED_W[k];
   }
-  const w = (k: PinnedKey) => ({ left: left[k], width: PINNED_W[k], minWidth: PINNED_W[k] });
-  return { width: x, sty: w, styTrunc: (k: PinnedKey) => ({ ...w(k), maxWidth: PINNED_W[k] }) };
+  return {
+    width: x,
+    order,
+    col: (k: PinnedKey) => ({ left: left[k], width: PINNED_W[k], minWidth: PINNED_W[k], maxWidth: PINNED_W[k] }),
+  };
 }
 
 export function RosterGrid({
@@ -127,7 +179,7 @@ export function RosterGrid({
   usual,
   isAdmin,
   today,
-  companyName,
+  editQuery,
 }: {
   dates: GridDate[];
   employees: GridEmployee[];
@@ -139,13 +191,15 @@ export function RosterGrid({
    *  the whole month read-only rather than offering cells whose write RLS refuses. */
   isAdmin: boolean;
   today: string;
-  companyName: string;
+  /** a57f0584 rev 2 — the roster's own query string (month + filters), so Edit opens on the same month
+   *  and Back returns to the same narrowing. A STRING and not a href-builder: a server component may hand
+   *  a client island data or a server action, never an ordinary function. */
+  editQuery: string;
 }) {
   const t = useTranslations('roster');
   const [cells, setCells] = useState<Record<string, AssignedCell>>(initial);
   const [brush, setBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<string | null>(null);
   const [, startTx] = useTransition();
 
   const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
@@ -166,8 +220,17 @@ export function RosterGrid({
   /** Only an HR administrator can change the roster AT ALL — the database, not this flag, is the guard. */
   const canEdit = isAdmin;
   const isPast = (iso: string) => iso <= today;
-  /** The half of the past-date requirement that does work: confirm before overwriting a day that has
-   *  probably already been attended. Only ever reached by an administrator. */
+  /**
+   * The half of the past-date requirement that does work: confirm before overwriting a day that has
+   * probably already been attended. Only ever reached by an administrator.
+   *
+   * a57f0584 rev 2 KEPT THIS `window.confirm` DELIBERATELY. The confirm that went away with the row
+   * editor was the EDIT flow's ("set N dates for this employee?"), and it went away because the edit
+   * moved to a screen of its own where the Apply button says what it will do. This one is the PAST-DATE
+   * rule (requirement 9), it fires on a single click on a cell that is already painted, and there is no
+   * screen to move it to: a page transition per painted cell is not a confirmation, it is a different
+   * product. Replacing it with a dialog component is a separate change to make on purpose.
+   */
   const confirmPast = (isoDates: string[]): boolean => {
     const past = isoDates.filter(isPast);
     if (past.length === 0) return true;
@@ -209,28 +272,6 @@ export function RosterGrid({
     });
   };
 
-  const applyRow = (employmentId: string, writable: string[], rowBrush: Brush) => {
-    if (!canEdit || writable.length === 0) return;
-    if (!window.confirm(t('rowConfirm', { count: writable.length }))) return;
-    if (!confirmPast(writable)) return;
-    const snapshot = cells;
-    setCells((c) => {
-      const n = { ...c };
-      for (const d of writable) n[cellKey(employmentId, d)] = cellFromBrush(rowBrush);
-      return n;
-    });
-    startTx(async () => {
-      const r = await rowAssignAction({ employmentId, shiftDates: writable, brush: rowBrush });
-      if (!r.ok) {
-        setCells(snapshot);
-        toast.error(r.error);
-      } else {
-        toast.success(t('rowApplied', { count: writable.length }));
-        setEditing(null);
-      }
-    });
-  };
-
   const toggle = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -250,6 +291,12 @@ export function RosterGrid({
       dates.map((d) => d.iso),
       (iso) => resolve(employmentId, iso),
     );
+
+  /** a57f0584 rev 2 — Edit is a LINK to that person's own screen, not a panel toggled at the foot of this
+   *  page. The month and the filters ride along so the screen opens on what is in front of the
+   *  administrator, and its Back / Save both come back here. */
+  const editHref = (employmentId: string) =>
+    `/roster/edit/${employmentId}${editQuery ? `?${editQuery}` : ''}`;
 
   /** A chip is a BRUSH for an administrator and just the key-to-the-codes for everybody else — the
    *  read-only grid keeps the legend (the codes still have to be readable) but not the palette. */
@@ -280,9 +327,7 @@ export function RosterGrid({
     );
   };
 
-  const editingEmployee = canEdit ? (employees.find((e) => e.employmentId === editing) ?? null) : null;
-  const showCompany = employees.some((e) => (e.company ?? '') !== '');
-  const pinned = pinnedLayout(canEdit, showCompany);
+  const pinned = pinnedLayout(canEdit);
 
   return (
     <div className="space-y-3">
@@ -318,11 +363,27 @@ export function RosterGrid({
 
       {/* Grid */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="border-collapse text-sm" style={{ minWidth: pinned.width + dates.length * DATE_W }}>
+        <table
+          className="border-collapse text-sm"
+          style={{ tableLayout: 'fixed', minWidth: pinned.width + dates.length * DATE_W }}
+        >
+          {/* a57f0584 — THE HALF OF THE OVERLAP FIX A STYLE ATTRIBUTE CANNOT DO ALONE. On an auto-layout
+              table the browser may still grow a column to fit its content; with `table-layout: fixed`
+              these declared widths ARE the used widths, so a long heading or a long name clips instead of
+              pushing every sticky offset after it out of place. Built from PINNED_W and DATE_W — the same
+              numbers the offsets are summed from, never a second list. */}
+          <colgroup>
+            {pinned.order.map((k) => (
+              <col key={k} style={{ width: PINNED_W[k] }} />
+            ))}
+            {dates.map((d) => (
+              <col key={d.iso} style={{ width: DATE_W }} />
+            ))}
+          </colgroup>
           <thead>
             <tr className="bg-muted/50">
               {canEdit && (
-                <th className="sticky z-20 bg-muted/50 px-2 py-2 text-left font-medium" style={pinned.sty('check')}>
+                <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('check')}>
                   <input
                     type="checkbox"
                     aria-label={t('selectAll')}
@@ -331,25 +392,14 @@ export function RosterGrid({
                   />
                 </th>
               )}
-              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('no')}>
-                {t('colEmployeeNo')}
+              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.col('employee')}>
+                {t('colEmployee')}
               </th>
-              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('name')}>
-                {t('colEmployeeName')}
-              </th>
-              {showCompany && (
-                <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('company')}>
-                  {t('colCompany')}
-                </th>
-              )}
-              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('dept')}>
-                {t('colDepartment')}
-              </th>
-              <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.sty('occ')}>
+              <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.col('occ')}>
                 {t('colOccupation')}
               </th>
               {canEdit && (
-                <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.sty('edit')}>
+                <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.col('edit')}>
                   {t('colEdit')}
                 </th>
               )}
@@ -359,12 +409,12 @@ export function RosterGrid({
                   <th
                     key={d.iso}
                     className={`px-1 py-2 text-center font-medium ${weekend ? 'bg-amber-50 dark:bg-amber-500/10' : ''}`}
-                    style={{ width: DATE_W, minWidth: DATE_W }}
+                    style={{ width: DATE_W, minWidth: DATE_W, maxWidth: DATE_W }}
                   >
-                    <div className="text-[11px] tabular-nums">{d.day}</div>
-                    <div className="text-[10px] font-normal text-muted-foreground">{d.dow}</div>
+                    <div className="truncate text-[11px] tabular-nums">{d.day}</div>
+                    <div className="truncate text-[10px] font-normal text-muted-foreground">{d.dow}</div>
                     {d.iso === today && (
-                      <div className="text-[9px] font-semibold uppercase text-primary">{t('todayLabel')}</div>
+                      <div className="truncate text-[9px] font-semibold uppercase text-primary">{t('todayLabel')}</div>
                     )}
                   </th>
                 );
@@ -375,7 +425,7 @@ export function RosterGrid({
             {pageEmployees.map((e) => (
               <tr key={e.employmentId}>
                 {canEdit && (
-                  <td className="sticky z-10 bg-background px-2 py-1.5" style={pinned.sty('check')}>
+                  <td className="sticky z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
                     <input
                       type="checkbox"
                       aria-label={e.name}
@@ -384,12 +434,20 @@ export function RosterGrid({
                     />
                   </td>
                 )}
-                <td className="sticky z-10 bg-background px-2 py-1.5" style={pinned.sty('no')}>
-                  <EmployeeCode code={e.code} />
-                </td>
-                <td className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium" style={pinned.styTrunc('name')}>
-                  <span className="flex items-center gap-1.5">
+                {/* ONE cell for the person: AARON AZIZ (X003). See note 2 in the file header for why the
+                    code reads after the name here and not before it as EmployeeName has it elsewhere. */}
+                <td
+                  className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium"
+                  style={pinned.col('employee')}
+                  title={e.code ? `${e.name} (${e.code})` : e.name}
+                >
+                  <span className="flex min-w-0 items-baseline gap-1">
                     <span className="truncate">{e.name}</span>
+                    {e.code && (
+                      <span className="shrink-0 font-normal text-muted-foreground">
+                        (<EmployeeCode code={e.code} />)
+                      </span>
+                    )}
                     {noRestDay(e.employmentId) && (
                       <span
                         title={t('noRestWarningHint')}
@@ -400,38 +458,33 @@ export function RosterGrid({
                     )}
                   </span>
                 </td>
-                {showCompany && (
-                  <td className={`sticky z-10 ${CELL_MUTED}`} style={pinned.styTrunc('company')} title={e.company ?? ''}>
-                    {e.company ?? '—'}
-                  </td>
-                )}
-                <td className={`sticky z-10 ${CELL_MUTED}`} style={pinned.styTrunc('dept')}>
-                  {e.department ?? '—'}
-                </td>
-                <td className={`sticky z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.styTrunc('occ')}>
+                <td
+                  className={`sticky z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`}
+                  style={pinned.col('occ')}
+                  title={e.occupation ?? ''}
+                >
                   {e.occupation ?? '—'}
                 </td>
                 {canEdit && (
-                  <td className="sticky z-10 border-r border-border bg-background px-2 py-1.5" style={pinned.sty('edit')}>
-                    <button
-                      type="button"
-                      onClick={() => setEditing(editing === e.employmentId ? null : e.employmentId)}
+                  <td className="sticky z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
+                    <Link
+                      href={editHref(e.employmentId)}
                       className="text-xs font-medium text-primary underline-offset-2 hover:underline"
                     >
                       {t('colEdit')}
-                    </button>
+                    </Link>
                   </td>
                 )}
                 {dates.map((d) => {
                   const cell = resolve(e.employmentId, d.iso);
                   const weekend = isWeekendDate(d.iso);
-                  const label = cellLabel(cell, codeOf, t('rdCode'), t('offCode'));
+                  const label = rosterCellLabel(cell, codeOf, t('rdCode'), t('offCode'));
                   const box = `min-h-[26px] w-full truncate rounded px-0.5 py-1 text-[11px] font-medium ${cellClass(cell, shiftColor)}`;
                   return (
                     <td
                       key={d.iso}
                       className={`p-0.5 text-center ${weekend ? 'bg-amber-50 dark:bg-amber-500/10' : ''}`}
-                      style={{ width: DATE_W, minWidth: DATE_W }}
+                      style={{ width: DATE_W, minWidth: DATE_W, maxWidth: DATE_W }}
                     >
                       {canEdit ? (
                         <button
@@ -456,19 +509,6 @@ export function RosterGrid({
         </table>
       </div>
       <ClientPager state={state} />
-
-      {editingEmployee && (
-        <RowEditor
-          employee={editingEmployee}
-          dates={dates}
-          shifts={shifts}
-          resolve={(iso) => resolve(editingEmployee.employmentId, iso)}
-          codeOf={codeOf}
-          onCancel={() => setEditing(null)}
-          onApply={(isoDates, rowBrush) => applyRow(editingEmployee.employmentId, isoDates, rowBrush)}
-          companyName={companyName}
-        />
-      )}
     </div>
   );
 }
@@ -489,143 +529,7 @@ function cellClass(cell: ResolvedCell, shiftColor: (id: string) => string): stri
   }
 }
 
-function cellLabel(cell: ResolvedCell, codeOf: (id: string) => string, rd: string, off: string): string {
-  switch (cell.kind) {
-    case 'shift':
-      return codeOf(cell.shiftId);
-    case 'rest':
-      return rd;
-    case 'usual':
-      return codeOf(cell.shiftId);
-    case 'off':
-      return off;
-    default:
-      return '—';
-  }
-}
 
-/**
- * One person's month: tick several dates, choose one shift, confirm, save.
- *
- * It exists because the reporter's own screen has an Edit link per row, and because setting eight
- * Saturdays for one person by clicking eight cells is eight round trips. The write goes through
- * rowAssignAction → assignRosterRow, which loops the PER-DATE primitives so the Audit Trail gets one
- * reversible entry per date with the shift before and after — the bulk primitives would have written a
- * single summary with no previous shift in it.
- *
- * ADMINISTRATORS ONLY by construction: the Edit affordance that opens it is not rendered for anybody
- * else, so every date in it is writable and there is no half-disabled state to explain.
- */
-function RowEditor({
-  employee,
-  dates,
-  shifts,
-  resolve,
-  codeOf,
-  onCancel,
-  onApply,
-  companyName,
-}: {
-  employee: GridEmployee;
-  dates: GridDate[];
-  shifts: ShiftLite[];
-  resolve: (iso: string) => ResolvedCell;
-  codeOf: (id: string) => string;
-  onCancel: () => void;
-  onApply: (isoDates: string[], brush: Brush) => void;
-  companyName: string;
-}) {
-  const t = useTranslations('roster');
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [rowBrush, setRowBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
-
-  return (
-    <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">
-          {t('rowEditTitle', { name: employee.name })}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">{companyName}</span>
-        </h3>
-        <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">
-          {t('rowEditClose')}
-        </button>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{t('rowEditHint')}</p>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {dates.map((d) => {
-          const on = picked.has(d.iso);
-          return (
-            <label
-              key={d.iso}
-              className={`flex min-w-[68px] cursor-pointer flex-col items-center rounded border px-1.5 py-1 text-[11px] ${
-                on ? 'border-primary bg-primary/15' : 'border-border bg-background'
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={on}
-                onChange={() =>
-                  setPicked((s) => {
-                    const n = new Set(s);
-                    if (n.has(d.iso)) n.delete(d.iso);
-                    else n.add(d.iso);
-                    return n;
-                  })
-                }
-              />
-              <span className="tabular-nums">{d.day}</span>
-              <span className="text-[10px] text-muted-foreground">{d.dow}</span>
-              <span className="truncate text-[10px] text-muted-foreground">
-                {cellLabel(resolve(d.iso), codeOf, t('rdCode'), t('offCode'))}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setPicked(new Set(dates.map((d) => d.iso)))}
-          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-        >
-          {t('selectAllDates')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setPicked(new Set())}
-          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-        >
-          {t('clearDates')}
-        </button>
-        <select
-          value={rowBrush}
-          onChange={(ev) => setRowBrush(ev.target.value)}
-          aria-label={t('legend')}
-          className="h-8 rounded-md border border-input bg-card px-2 text-xs"
-        >
-          {shifts.map((s) => (
-            <option key={s.id} value={s.id}>
-              {codeOf(s.id)} · {s.name}
-            </option>
-          ))}
-          <option value="rest">{t('restDay')}</option>
-          <option value="clear">{t('clear')}</option>
-        </select>
-        <button
-          type="button"
-          disabled={picked.size === 0}
-          onClick={() => onApply([...picked], rowBrush)}
-          className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"
-        >
-          {t('applyRow', { count: picked.size })}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /**
  * "Download Template" — the month as a REAL .xlsx workbook, built in the browser.
