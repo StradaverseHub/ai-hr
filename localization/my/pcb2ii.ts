@@ -13,6 +13,11 @@
  *   3. WHAT WAS PAID AND WHEN is `pcb_payment` (r321, migration 0476), through `pcbPaymentsForYear`.
  *      That table exists precisely because `statutory_report.ack_ref` is ONE acknowledgement for the
  *      RETURN, while this form wants a receipt per PAYMENT, split MTD/CP38, per month.
+ *   4. WHICH EMPLOYER THE SHEET SPEAKS FOR is `companyId` — and r328 made every box about that employer
+ *      come from that ONE company row. r323 read the E number, the months and the receipts from it and
+ *      the NAME AND ADDRESS from the employment's CURRENT company, which is the same company for
+ *      everybody who has never transferred and a different one for exactly the case the parameter exists
+ *      for. See the block by `employerId` below, and `eaStatement`, which got this right first.
  *
  * ⚠️ AN ABSENT MONTH STAYS ABSENT ALL THE WAY THROUGH. A month with no payslip yields `null`, never 0 —
  * see lib/pcb2ii-form.ts on why an empty box and a zero are different statements to LHDN. This read must
@@ -86,6 +91,37 @@ export async function pcb2iiStatement(
         taxNo: employeeStatutoryMy.taxNumber,
         staffNo: employment.employeeCode,
         companyId: employment.companyId,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      // The employment's OWN company, joined but no longer SELECTED (r328). It stays because it is part of
+      // this read's visibility: an employment whose company the caller cannot see has never resolved here,
+      // and dropping the join would quietly widen that. The employer BLOCK is read separately, below.
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!info) return null;
+
+    /**
+     * ⚠️ r328 — THE EMPLOYER THIS FORM SPEAKS FOR, AND EVERY BOX ABOUT IT COMES FROM THAT ONE COMPANY.
+     *
+     * r323 read the E number from `employerId` and the NAME AND ADDRESS from the employment's CURRENT
+     * company. Those are the same company for everyone who has never transferred, which is why it shipped
+     * green — and they are different companies for exactly the case `companyId` was added for. Print
+     * company A's PCB 2(II) for an employee who moved to B in July and the sheet carried A's employer
+     * number, A's deducted months and **B's letterhead**: a statement of tax filed under a name that did
+     * not deduct it. That is the same defect `eaStatement` names two files away ("a form carrying one
+     * company's name and another's employer number is worse than either alone") — the EA got this right
+     * and this form did not copy it.
+     *
+     * ONE ROW, so the name, the address and the E number cannot come from two places. No row — an employer
+     * outside the caller's company scope, or an id that is not a company — is `null`, not a form with an
+     * empty letterhead.
+     */
+    const employerId = p.companyId ?? info.companyId;
+    const [employer] = await tx
+      .select({
         legalName: company.legalName,
         addressLine1: company.addressLine1,
         addressLine2: company.addressLine2,
@@ -93,21 +129,13 @@ export async function pcb2iiStatement(
         city: company.city,
         state: company.state,
         postcode: company.postcode,
+        eNumber: companyStatutoryMy.lhdnEmployerNo,
       })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(eq(employment.id, p.employmentId))
+      .from(company)
+      .leftJoin(companyStatutoryMy, eq(companyStatutoryMy.companyId, company.id))
+      .where(eq(company.id, employerId))
       .limit(1);
-    if (!info) return null;
-
-    const employerId = p.companyId ?? info.companyId;
-    const [emp] = await tx
-      .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
-      .from(companyStatutoryMy)
-      .where(eq(companyStatutoryMy.companyId, employerId))
-      .limit(1);
+    if (!employer) return null;
 
     // THE YEAR'S PAYSLIPS FOR THIS EMPLOYMENT, at this employer. `like('YYYY-%')` is the same filter
     // `loadYearRows` uses; the batch's pay period is what the dating rule below consumes.
@@ -122,6 +150,24 @@ export async function pcb2iiStatement(
           like(payrollBatch.payPeriod, `${p.year}-%`),
         ),
       );
+
+    /**
+     * ⚠️ r328 — AN EMPLOYER THAT NEVER EMPLOYED THIS PERSON GETS NO FORM AT ALL.
+     *
+     * `companyId` arrives from a URL. Before this check, ANY company the caller could reach produced a
+     * statement: the employee's name, identity card number and tax number under that company's letterhead
+     * and E number, with that company's PCB receipts beside twelve empty months — a document asserting a
+     * relationship that does not exist, assembled out of two companies' facts.
+     *
+     * THE TEST IS THE TWO FACTS THIS READ ALREADY HAS, so it is not a third population to keep in step
+     * with `eaCompaniesInYear`: an employer is legitimate when it is where the employment SITS, or when it
+     * PAID this employment in the year. Anything else is `null`, which the routes turn into the same bare
+     * 404 a malformed id gets — so the URL cannot be used to test which companies a person has worked for.
+     *
+     * An employment that currently sits here and has never been paid still gets its (empty) form: that is
+     * a legitimate statement and this file's header says so.
+     */
+    if (employerId !== info.companyId && slips.length === 0) return null;
 
     const months = emptyPcb2iiMonths();
     for (const s of slips) {
@@ -167,14 +213,15 @@ export async function pcb2iiStatement(
       newIcOrPassport: (info.ic ?? '').trim() || (info.passport ?? '').trim(),
       employeeTaxNo: (info.taxNo ?? '').trim(),
       staffNo: (info.staffNo ?? '').trim(),
-      employerNo: (emp?.eNumber ?? '').trim(),
+      employerNo: (employer.eNumber ?? '').trim(),
       months,
       // Section 3 — always empty; see lib/pcb2ii-form.ts for why this is a refusal and not a gap.
       priorYearRows: [],
       officerName: '',
       officerDesignation: '',
       officerPhone: '',
-      employerNameAddress: addressOf(info),
+      // r328 — the EMPLOYER's own row, not the employment's current company. See the block above.
+      employerNameAddress: addressOf(employer),
     } satisfies Pcb2iiForm;
   });
 }

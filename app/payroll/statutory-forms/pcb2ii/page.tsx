@@ -22,7 +22,9 @@ import { MAX_EA_SELECTION } from '../ea/limits';
  * is therefore the EA's: company + year (no month — the form has none) on `open/page.tsx`, then this.
  *
  * ⚠️ IT GENERATES NOTHING ON ARRIVAL. This page reads the year's population and renders a list. The forms
- * are produced by `download/route.ts` when the button is pressed.
+ * are produced by `download/route.ts` when the button is pressed, or by `preview/route.ts` when the
+ * Preview button is — the SAME document, served `inline` so the browser opens it instead of saving it.
+ * r328 added the second button; both go through `./shared.ts`, so there is one gate and one renderer.
  *
  * THE POPULATION IS THE PACK'S, NOT THIS FILE'S. The shelf entries declare `populationReportId`
  * (`my.cp8d` for Malaysia) and this screen resolves it — the question "who did this employer pay in this
@@ -123,6 +125,7 @@ export default async function Pcb2iiEmployeeSelectionPage({
             <EaEmployeePicker
               rows={rows}
               action="/payroll/statutory-forms/pcb2ii/download"
+              previewAction="/payroll/statutory-forms/pcb2ii/preview"
               hidden={[
                 { name: 'companyId', value: companyId },
                 { name: 'year', value: year },
@@ -136,7 +139,13 @@ export default async function Pcb2iiEmployeeSelectionPage({
                 selectAll: t('eaSelectAll'),
                 clear: t('eaClear'),
                 selectedTemplate: t('eaSelectedCount', { count: '{count}' }),
-                generate: t('eaGenerate'),
+                /* ⚠️ THE BUTTON NAMES THIS FORM, NOT THE EA'S. r323 passed `eaGenerate` here, which reads
+                   "Generate C.P.8A (EA)" — the WRONG statutory document's name on the PCB 2(II) screen,
+                   the same defect this file's empty state already refuses two blocks down. Both keys are
+                   PCB 2(II)'s own now. It says DOWNLOAD because that is what the button does: the route
+                   answers `Content-Disposition: attachment`. */
+                generate: t('pcb2iiGenerate'),
+                preview: t('pcb2iiPreview'),
                 colSelect: t('eaColSelect'),
                 colCode: t('eaColCode'),
                 colName: t('colEmployee'),
