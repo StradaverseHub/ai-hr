@@ -464,6 +464,7 @@
       "adminTitle": "员工管理",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
       "importCsv": "导入员工",
+      "duplicateRecords": "重复记录",
       "profileChangeRequests": "资料变更申请",
       "pendingCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
       "profileChangeHint": "批准后将把变更应用到员工的法定资料（银行 / PCB）。您不能批准自己的申请。",
@@ -1844,6 +1845,68 @@
         "compensation": "基本薪资"
       },
       "draftStatus": "草稿 — 待启用"
+    },
+    "duplicates": {
+      "title": "可能重复的员工记录",
+      "description": "以独立人员记录形式出现多次的员工。本页面不会更改任何记录。",
+      "backToPersonnel": "返回人事管理",
+      "howToReadTitle": "如何阅读此列表",
+      "howToReadSuggestion": "这是提示，而非结论。这些记录之所以列出，是因为姓名和入职日期相同——两个不同的人也可能如此，而姓名拼写有误的重复记录根本不会出现在这里。",
+      "howToReadMultiEmployment": "共用同一记录字母的行属于同一个人担任多个职位。这是正常情况，不是重复。",
+      "howToReadNothingChanged": "目前没有任何更改，也无法从此页面进行更改。在您确认哪些是同一个人之前，不会合并或删除任何人。",
+      "statNames": "需查看的姓名",
+      "statExtraRecords": "多余的人员记录",
+      "statChecked": "已检查的在职员工",
+      "activeOnlyNote": "仅检查目前在职的员工。已离职人员的记录不会列出。",
+      "sharedDifferentDates": "另有 {n} 个姓名由多个人员记录共用，但入职日期不同。姓名相同很常见，因此未在此列出。",
+      "noneFound": "没有员工与其他独立人员记录同时在姓名和入职日期上相同。已检查 {n} 名在职员工。",
+      "groupSubtitle": "{persons} 个人员记录 · {employments} 个雇佣 · 入职 {joined} · {companies}",
+      "mayBeDifferentPeople": "可能不是同一个人——记录在以下项目上不一致：{fields}",
+      "hasBeenPaid": "其中至少一条记录已发放过工资",
+      "acrossCompanies": "涉及 {n} 家公司",
+      "colRecord": "记录",
+      "colEmployeeId": "员工编号",
+      "colCompany": "公司",
+      "colJoined": "入职日期",
+      "colIc": "身份证号",
+      "colPassport": "护照",
+      "colDob": "出生日期",
+      "colEmail": "工作邮箱",
+      "colBank": "银行账户",
+      "colPayslips": "工资单",
+      "colLeaveEntries": "休假记录",
+      "openRecord": "打开记录",
+      "notRecorded": "—",
+      "evidenceTitle": "这些记录的一致之处与不一致之处",
+      "stateSame": "相同",
+      "stateDiffers": "不同",
+      "stateNotRecorded": "未记录",
+      "statePartiallyRecorded": "仅 {of} 条中的 {n} 条",
+      "icPointsAtOnePerson": "身份证号显示这是同一个人",
+      "icNotComparable": "仅记录了 {n} 个身份证号——无从比较",
+      "icTrailingDigits": "除最后 {n} 位数字外完全相同",
+      "icStatutoryNote": "这些身份证号包含相同的出生日期，仅末尾不同——正是为绕过“两名员工不得共用同一号码”规则而被改动过的形态。公积金局、社险机构和税务局都依据此号码申报，因此其中至少一条记录正以并非本人的身份证号进行申报。本页面不会更改任何内容。",
+      "field": {
+        "icNumber": "身份证号",
+        "passportNumber": "护照号码",
+        "dateOfBirth": "出生日期",
+        "fullNameExact": "姓名拼写",
+        "primaryEmail": "工作邮箱",
+        "personalEmail": "个人邮箱",
+        "gender": "性别",
+        "maritalStatus": "婚姻状况",
+        "bankAccountNo": "银行账户"
+      },
+      "notCounted": {
+        "assigned_by_employer": "由雇主分配，而非本人决定",
+        "cosmetic_only": "仅在大小写或空格上不同"
+      },
+      "icVerdict": {
+        "same_birth_date": "两个身份证号包含相同的出生日期（{inIc}），且与记录的出生日期一致",
+        "same_birth_date_unverified": "两个身份证号包含相同的出生日期（{inIc}）；没有记录的出生日期可供核对",
+        "birth_date_contradicts_profile": "两个身份证号都显示 {inIc}，但记录显示 {onProfile}",
+        "different_birth_dates": "身份证号显示的出生日期不同（{inIc}）"
+      }
     }
   },
   "leave": {
@@ -7928,7 +7991,8 @@
         "payComponents": "薪资项目",
         "payrollPermissions": "薪资与休假权限",
         "leaveEmployeeBalances": "員工結餘",
-        "leaveEmployeeRecords": "員工休假記錄"
+        "leaveEmployeeRecords": "員工休假記錄",
+        "duplicatePersonRecords": "重复员工记录"
       },
       "scope": {
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
@@ -7941,7 +8005,8 @@
         "performance": "经理及以上；显示内容取决于你实际的汇报线。",
         "leaveApproval": "经理和管理员；显示内容取决于你实际的汇报线。",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
-        "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。"
+        "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。",
+        "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。"
       },
       "status": {
         "active": "启用",

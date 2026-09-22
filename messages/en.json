@@ -464,6 +464,7 @@
       "adminTitle": "Personnel Management",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
       "importCsv": "Import employees",
+      "duplicateRecords": "Duplicate records",
       "profileChangeRequests": "Profile change requests",
       "pendingCount": "{count, plural, one {# pending} other {# pending}}",
       "profileChangeHint": "Approving applies the change to the employee’s statutory profile (bank / PCB). You cannot approve your own request.",
@@ -1844,6 +1845,68 @@
         "compensation": "Basic Salary"
       },
       "draftStatus": "Draft — pending activation"
+    },
+    "duplicates": {
+      "title": "Possible duplicate employee records",
+      "description": "Employees who appear more than once as separate person records. Nothing on this page changes a record.",
+      "backToPersonnel": "Back to Personnel Management",
+      "howToReadTitle": "How to read this list",
+      "howToReadSuggestion": "This is a suggestion, not a conclusion. Records are listed because they share a name and a joining date — two different people can do that, and a record typed with a spelling mistake will not appear here at all.",
+      "howToReadMultiEmployment": "Rows sharing a Record letter are one person holding more than one job. That is normal and is not a duplicate.",
+      "howToReadNothingChanged": "Nothing has been changed and nothing can be changed from here. Nobody will be merged or removed until you say which of these are the same person.",
+      "statNames": "names to look at",
+      "statExtraRecords": "extra person records",
+      "statChecked": "active employees checked",
+      "activeOnlyNote": "Only employees who are currently employed are checked. Records of people who have left are not listed.",
+      "sharedDifferentDates": "{n} further name(s) are shared by more than one person record but with different joining dates. Sharing a name is common, so they are not listed here.",
+      "noneFound": "No employee shares a name and a joining date with a separate person record. {n} active employees were checked.",
+      "groupSubtitle": "{persons} person records · {employments} employments · joined {joined} · {companies}",
+      "mayBeDifferentPeople": "These may be different people — the records disagree on: {fields}",
+      "hasBeenPaid": "At least one of these records has been paid",
+      "acrossCompanies": "Across {n} companies",
+      "colRecord": "Record",
+      "colEmployeeId": "Employee ID",
+      "colCompany": "Company",
+      "colJoined": "Joined",
+      "colIc": "IC number",
+      "colPassport": "Passport",
+      "colDob": "Date of birth",
+      "colEmail": "Work email",
+      "colBank": "Bank account",
+      "colPayslips": "Payslips",
+      "colLeaveEntries": "Leave entries",
+      "openRecord": "Open record",
+      "notRecorded": "—",
+      "evidenceTitle": "What these records agree and disagree on",
+      "stateSame": "Same",
+      "stateDiffers": "Differs",
+      "stateNotRecorded": "Not recorded",
+      "statePartiallyRecorded": "Only on {n} of {of}",
+      "icPointsAtOnePerson": "The IC numbers point at one person",
+      "icNotComparable": "Only {n} IC number recorded — nothing to compare",
+      "icTrailingDigits": "identical except the last {n} digit(s)",
+      "icStatutoryNote": "These IC numbers carry the same date of birth and differ only at the end — the shape of an IC number edited to get past the rule that stops two employees sharing one. EPF, SOCSO and LHDN all file against this number, so at least one of these records is being reported under an IC that is not that person's. Nothing is changed from this screen.",
+      "field": {
+        "icNumber": "IC number",
+        "passportNumber": "Passport number",
+        "dateOfBirth": "Date of birth",
+        "fullNameExact": "Name spelling",
+        "primaryEmail": "Work email",
+        "personalEmail": "Personal email",
+        "gender": "Gender",
+        "maritalStatus": "Marital status",
+        "bankAccountNo": "Bank account"
+      },
+      "notCounted": {
+        "assigned_by_employer": "given by the employer, not by the person",
+        "cosmetic_only": "differs only in capitals or spacing"
+      },
+      "icVerdict": {
+        "same_birth_date": "Same date of birth ({inIc}) in both IC numbers, and it agrees with the recorded date of birth",
+        "same_birth_date_unverified": "Same date of birth ({inIc}) in both IC numbers; no date of birth is recorded to check it against",
+        "birth_date_contradicts_profile": "The IC numbers both give {inIc}, but the records say {onProfile}",
+        "different_birth_dates": "The IC numbers give DIFFERENT dates of birth ({inIc})"
+      }
     }
   },
   "leave": {
@@ -7928,7 +7991,8 @@
         "payComponents": "Pay Items",
         "payrollPermissions": "Payroll & leave permissions",
         "leaveEmployeeBalances": "Employee Balances",
-        "leaveEmployeeRecords": "Employee Leave Record"
+        "leaveEmployeeRecords": "Employee Leave Record",
+        "duplicatePersonRecords": "Duplicate employee records"
       },
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
@@ -7941,7 +8005,8 @@
         "performance": "Managers and above; what appears follows your actual reporting lines.",
         "leaveApproval": "Managers and admins; what appears follows your actual reporting lines.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
-        "delegations": "HR and admins see every delegation; you see only ones you delegated or cover."
+        "delegations": "HR and admins see every delegation; you see only ones you delegated or cover.",
+        "duplicatePersonRecords": "Lists only employees in companies you administer, so half of a pair spanning two companies may not be visible to you. Read-only — no record can be changed from this screen."
       },
       "status": {
         "active": "Active",

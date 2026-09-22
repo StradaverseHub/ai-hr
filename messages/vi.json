@@ -464,6 +464,7 @@
       "adminTitle": "Quản lý Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
       "importCsv": "Nhập nhân viên",
+      "duplicateRecords": "Hồ sơ trùng",
       "profileChangeRequests": "Yêu cầu thay đổi hồ sơ",
       "pendingCount": "{count, plural, one {# chờ duyệt} other {# chờ duyệt}}",
       "profileChangeHint": "Phê duyệt sẽ áp dụng thay đổi vào hồ sơ pháp lý của nhân viên (ngân hàng / PCB). Bạn không thể tự duyệt yêu cầu của chính mình.",
@@ -1844,6 +1845,68 @@
         "compensation": "Lương cơ bản"
       },
       "draftStatus": "Nháp — chờ kích hoạt"
+    },
+    "duplicates": {
+      "title": "Hồ sơ nhân viên có thể bị trùng",
+      "description": "Những nhân viên xuất hiện nhiều hơn một lần dưới dạng các hồ sơ cá nhân riêng biệt. Không có thao tác nào trên trang này làm thay đổi hồ sơ.",
+      "backToPersonnel": "Quay lại Quản lý nhân sự",
+      "howToReadTitle": "Cách đọc danh sách này",
+      "howToReadSuggestion": "Đây là gợi ý, không phải kết luận. Các hồ sơ được liệt kê vì trùng tên và trùng ngày vào làm — hai người khác nhau cũng có thể như vậy, và một hồ sơ nhập sai chính tả sẽ hoàn toàn không xuất hiện ở đây.",
+      "howToReadMultiEmployment": "Các dòng cùng chung một chữ cái Hồ sơ là một người giữ nhiều vị trí. Đó là điều bình thường và không phải là trùng lặp.",
+      "howToReadNothingChanged": "Chưa có gì bị thay đổi và không thể thay đổi bất cứ điều gì từ đây. Sẽ không hợp nhất hay xóa ai cho đến khi bạn xác nhận những hồ sơ nào là cùng một người.",
+      "statNames": "tên cần xem xét",
+      "statExtraRecords": "hồ sơ cá nhân dư thừa",
+      "statChecked": "nhân viên đang làm việc đã kiểm tra",
+      "activeOnlyNote": "Chỉ kiểm tra những nhân viên hiện đang làm việc. Hồ sơ của người đã nghỉ việc không được liệt kê.",
+      "sharedDifferentDates": "Còn {n} tên nữa được dùng bởi nhiều hồ sơ cá nhân nhưng có ngày vào làm khác nhau. Trùng tên là chuyện thường gặp nên không được liệt kê ở đây.",
+      "noneFound": "Không có nhân viên nào trùng cả tên lẫn ngày vào làm với một hồ sơ cá nhân riêng biệt. Đã kiểm tra {n} nhân viên đang làm việc.",
+      "groupSubtitle": "{persons} hồ sơ cá nhân · {employments} việc làm · vào làm {joined} · {companies}",
+      "mayBeDifferentPeople": "Có thể là những người khác nhau — các hồ sơ không khớp về: {fields}",
+      "hasBeenPaid": "Ít nhất một trong các hồ sơ này đã được trả lương",
+      "acrossCompanies": "Thuộc {n} công ty",
+      "colRecord": "Hồ sơ",
+      "colEmployeeId": "Mã nhân viên",
+      "colCompany": "Công ty",
+      "colJoined": "Ngày vào làm",
+      "colIc": "Số CMND/CCCD",
+      "colPassport": "Hộ chiếu",
+      "colDob": "Ngày sinh",
+      "colEmail": "Email công việc",
+      "colBank": "Tài khoản ngân hàng",
+      "colPayslips": "Phiếu lương",
+      "colLeaveEntries": "Bản ghi nghỉ phép",
+      "openRecord": "Mở hồ sơ",
+      "notRecorded": "—",
+      "evidenceTitle": "Những điểm các hồ sơ này khớp và không khớp",
+      "stateSame": "Giống nhau",
+      "stateDiffers": "Khác nhau",
+      "stateNotRecorded": "Chưa ghi nhận",
+      "statePartiallyRecorded": "Chỉ có ở {n} trên {of}",
+      "icPointsAtOnePerson": "Các số CMND/CCCD cho thấy đây là một người",
+      "icNotComparable": "Chỉ có {n} số CMND/CCCD được ghi nhận — không có gì để so sánh",
+      "icTrailingDigits": "giống nhau trừ {n} chữ số cuối",
+      "icStatutoryNote": "Các số CMND/CCCD này mang cùng một ngày sinh và chỉ khác nhau ở phần cuối — đúng dạng của một số bị sửa để vượt qua quy tắc không cho hai nhân viên dùng chung một số. EPF, SOCSO và LHDN đều khai báo theo số này, nên ít nhất một trong các hồ sơ đang được báo cáo dưới một số không thuộc về người đó. Không có gì bị thay đổi từ màn hình này.",
+      "field": {
+        "icNumber": "Số CMND/CCCD",
+        "passportNumber": "Số hộ chiếu",
+        "dateOfBirth": "Ngày sinh",
+        "fullNameExact": "Cách viết tên",
+        "primaryEmail": "Email công việc",
+        "personalEmail": "Email cá nhân",
+        "gender": "Giới tính",
+        "maritalStatus": "Tình trạng hôn nhân",
+        "bankAccountNo": "Tài khoản ngân hàng"
+      },
+      "notCounted": {
+        "assigned_by_employer": "do người sử dụng lao động cấp, không phải do cá nhân",
+        "cosmetic_only": "chỉ khác nhau ở chữ hoa hoặc khoảng trắng"
+      },
+      "icVerdict": {
+        "same_birth_date": "Cùng ngày sinh ({inIc}) trong cả hai số CMND/CCCD, và khớp với ngày sinh đã ghi nhận",
+        "same_birth_date_unverified": "Cùng ngày sinh ({inIc}) trong cả hai số CMND/CCCD; không có ngày sinh ghi nhận để đối chiếu",
+        "birth_date_contradicts_profile": "Cả hai số CMND/CCCD đều cho {inIc}, nhưng hồ sơ ghi {onProfile}",
+        "different_birth_dates": "Các số CMND/CCCD cho ngày sinh KHÁC NHAU ({inIc})"
+      }
     }
   },
   "leave": {
@@ -7928,7 +7991,8 @@
         "payComponents": "Khoản mục lương",
         "payrollPermissions": "Quyền tính lương và nghỉ phép",
         "leaveEmployeeBalances": "Số dư của nhân viên",
-        "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên"
+        "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên",
+        "duplicatePersonRecords": "Hồ sơ nhân viên trùng"
       },
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
@@ -7941,7 +8005,8 @@
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
-        "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận."
+        "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
+        "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này."
       },
       "status": {
         "active": "Đang hoạt động",
