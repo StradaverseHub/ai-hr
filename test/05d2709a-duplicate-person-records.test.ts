@@ -10,12 +10,16 @@
  *     pinned structurally, because a later "helpful" addition is exactly how it would arrive.
  *  3. IT MUST BE ABLE TO SAY "THESE ARE PROBABLY TWO DIFFERENT PEOPLE". A detector that can only ever
  *     argue one way is not evidence. This is the failure mode that matters most.
- *  4. THREE FIELDS CANNOT COUNT AS A DISAGREEMENT, each for its own reason: the IC (the database FORCES
- *     it to differ — employee_statutory_my_ic_uq, migration 0214), the work email (the employer gives it,
- *     not the person) and the exact name spelling (inside a group it can differ only in capitals and
- *     spacing). Counting any of them fires the "may be different people" warning on nearly every pair,
- *     which is how a warning stops being read — and the spelling one said the OPPOSITE of the truth.
- *  5. IT MUST NOT WRITE, and it must not show half a pair as if it were a whole one.
+ *  4. THE IC IS THE STRONGEST EVIDENCE AND MUST ARGUE BOTH WAYS. `employee_statutory_my_ic_uq` makes two
+ *     records' ICs differ by construction, so "Differs" says nothing; what says a great deal is whether
+ *     they encode the SAME DATE OF BIRTH and whether that agrees with the recorded one. Same ⇒ evidence
+ *     of one person whose IC was edited past the rule; different ⇒ evidence of two people, reported as a
+ *     contradiction. Named and checkable, never a similarity band.
+ *  5. TWO FIELDS CANNOT COUNT AS A DISAGREEMENT: the work email (the employer gives it, not the person)
+ *     and the exact name spelling (inside a group it can differ only in capitals and spacing — and the
+ *     first build had that one saying the OPPOSITE of the truth, found only by rendering the page).
+ *  6. IT MUST NOT WRITE — no repair, no flag-for-repair, no proposed IC — and it must not show half a
+ *     pair as if it were a whole one.
  *
  * ⚠️ TWO SEPARATE FENCES, TESTED SEPARATELY AND LABELLED. `assertMayReadDuplicates` is THIS module's
  * guard; RLS is the data fence. A refusal test that only proves "another tenant sees nothing" pins
@@ -32,8 +36,10 @@ import type { SessionContext } from '../db/client';
 import {
   DUPLICATE_EVIDENCE_FIELDS,
   DUPLICATE_FIELD_NOT_A_CONTRADICTION,
+  IC_VERDICTS_INDICATING_ONE_PERSON,
   DuplicatePersonAccessError,
   duplicatePersonCandidates,
+  compareIcNumbers,
   groupDuplicateCandidates,
   namesHeldByMultiplePersons,
   normalizeFullName,
@@ -265,61 +271,165 @@ describe('05d2709a — suspected duplicate person records', () => {
 
   // ── 4. The constraint that changes what a difference MEANS ────────────────────────────────────────
 
-  it('a different IC is shown but is NOT a disagreement — the database forces it to differ', async () => {
-    // FACT: employee_statutory_my_ic_uq (migration 0214) makes a non-null IC unique per tenant, so two
-    // person records CANNOT carry the same one. Counting that as evidence would fire the "may be
-    // different people" warning on nearly every fully-recorded pair.
+  it('the digit-nudge signature: same encoded birth date, trailing digits apart ⇒ ONE person', async () => {
+    // THE PRODUCTION SHAPE, measured 2026-09-22. Every duplicated name carries ICs identical except the
+    // last two digits, whose leading birth-date component agrees with the recorded date of birth —
+    // somebody hit `employee_statutory_my_ic_uq` and edited the tail until the insert went through.
+    // An earlier build discounted the IC entirely on a guessed "the duplicate was left blank" mechanism
+    // that production disproved (29 with an IC vs 3 blank among the duplicated names).
     const a = await hire({ code: 'DUP-A' });
     const b = await hire({ code: 'DUP-B' });
-    await setStatutory(a.personId, { icNumber: '880304101234' });
-    await setStatutory(b.personId, { icNumber: '880304101235' });
+    await setPerson(a.personId, { dateOfBirth: '1982-07-06' });
+    await setPerson(b.personId, { dateOfBirth: '1982-07-06' });
+    await setStatutory(a.personId, { icNumber: '820706101161' });
+    await setStatutory(b.personId, { icNumber: '820706101173' });
 
     const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
-    expect(agreementFor(g, 'icNumber').state).toBe('differs');
-    expect(agreementFor(g, 'icNumber').values).toEqual(['880304101234', '880304101235']);
+    expect(g.icEvidence.verdict).toBe('same_birth_date');
+    expect(g.icEvidence.birthDatesInIc).toEqual(['1982-07-06']);
+    expect(g.icEvidence.birthDatesOnProfile).toEqual(['1982-07-06']);
+    // The count is DERIVED, not asserted from the fixture's intent: these two agree on their first ten
+    // digits, so "identical except the last 2" is a fact the reader can check against the table.
+    expect(g.icEvidence.differingTrailingDigits).toBe(2);
+    expect(g.icEvidence.values).toEqual(['820706101161', '820706101173']);
+    // It is EVIDENCE OF SAMENESS, so it must not land in the "may be different people" list.
     expect(g.contradictions).not.toContain('icNumber');
-    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.icNumber).toBe('unique_by_constraint');
+    expect(IC_VERDICTS_INDICATING_ONE_PERSON).toContain(g.icEvidence.verdict);
+
+    // …and the count follows the data rather than the fixture: a pair differing in ONE digit reads 1.
+    const oneDigit = compareIcNumbers(
+      [
+        { icNumber: '820706101161', dateOfBirth: '1982-07-06', companyCountry: 'MY' },
+        { icNumber: '820706101163', dateOfBirth: '1982-07-06', companyCountry: 'MY' },
+      ],
+      new Date('2026-09-22T23:59:59+08:00'),
+    );
+    expect(oneDigit.differingTrailingDigits).toBe(1);
+    expect(oneDigit.verdict).toBe('same_birth_date');
   });
 
-  it('a different WORK EMAIL is not a disagreement either — the employer gives it, not the person', async () => {
-    // `person.primary_email` is NOT NULL and is a fact about the EMPLOYMENT: one person at two companies
-    // in a group has two work addresses. It would therefore resolve on every single pair, and counting it
-    // would make the "may be different people" warning permanent and meaningless. Its values are still
-    // shown — a reader recognises a name in an address — it simply carries no verdict.
-    await hire({ code: 'DUP-A' });
-    await hire({ second: true, code: 'DUP-B' });
-
-    const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
-    expect(agreementFor(g, 'primaryEmail').state).toBe('differs');
-    expect(agreementFor(g, 'primaryEmail').values).toHaveLength(2);
-    expect(g.contradictions).toEqual([]);
-    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.primaryEmail).toBe('assigned_by_employer');
-    // …and the PERSONAL email is deliberately NOT excluded: that one belongs to the human.
-    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.personalEmail).toBeUndefined();
-  });
-
-  it('…and the non-vacuity half: an UNCONSTRAINED field differing IS a disagreement', async () => {
-    // Without this, the case above would pass for the wrong reason — a `contradictions` array that is
-    // simply always empty.
+  it('ICs encoding DIFFERENT birth dates ARE a contradiction — the comparison argues both ways', async () => {
+    // The non-vacuity half, and the property that makes this evidence rather than advocacy: a comparison
+    // that could only ever say "these look the same" would be useless to somebody deciding a merge.
     const a = await hire({ code: 'DUP-A' });
     const b = await hire({ code: 'DUP-B' });
-    await setStatutory(a.personId, { passportNumber: 'A1234567' });
-    await setStatutory(b.personId, { passportNumber: 'B7654321' });
+    await setStatutory(a.personId, { icNumber: '820706101161' });
+    await setStatutory(b.personId, { icNumber: '950214075521' });
 
     const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
-    expect(g.contradictions).toEqual(['passportNumber']);
+    expect(g.icEvidence.verdict).toBe('different_birth_dates');
+    expect(g.icEvidence.birthDatesInIc).toEqual(['1982-07-06', '1995-02-14']);
+    expect(g.icEvidence.differingTrailingDigits).toBeNull();
+    expect(g.contradictions).toContain('icNumber');
+    expect(IC_VERDICTS_INDICATING_ONE_PERSON).not.toContain(g.icEvidence.verdict);
   });
 
-  it('the IC constraint still permits the blank-second-record shape, and reads as UNKNOWN', async () => {
-    // The plausible MECHANISM behind these records: an IC that is already taken is refused, so the second
-    // record tends to be created with it left blank. That is not a disagreement, and the module says so.
+  it('says so plainly when there is no recorded date of birth to corroborate the ICs', async () => {
+    // Three states again, at the IC: "same birth date, but nothing on file to check it against" is a
+    // weaker statement than "same birth date, corroborated", and collapsing them would overstate it.
+    const a = await hire({ code: 'DUP-A' });
+    const b = await hire({ code: 'DUP-B' });
+    await setStatutory(a.personId, { icNumber: '820706101161' });
+    await setStatutory(b.personId, { icNumber: '820706101163' });
+
+    const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
+    expect(g.icEvidence.verdict).toBe('same_birth_date_unverified');
+    expect(g.icEvidence.birthDatesOnProfile).toEqual([]);
+    expect(g.contradictions).not.toContain('icNumber');
+  });
+
+  it('flags an IC whose birth date contradicts the date of birth on the record', async () => {
+    const a = await hire({ code: 'DUP-A' });
+    const b = await hire({ code: 'DUP-B' });
+    await setPerson(a.personId, { dateOfBirth: '1990-01-01' });
+    await setPerson(b.personId, { dateOfBirth: '1990-01-01' });
+    await setStatutory(a.personId, { icNumber: '820706101161' });
+    await setStatutory(b.personId, { icNumber: '820706101163' });
+
+    const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
+    expect(g.icEvidence.verdict).toBe('birth_date_contradicts_profile');
+    expect(g.icEvidence.birthDatesInIc).toEqual(['1982-07-06']);
+    expect(g.icEvidence.birthDatesOnProfile).toEqual(['1990-01-01']);
+    // Still the nudge signature, so the statutory consequence is still stated.
+    expect(IC_VERDICTS_INDICATING_ONE_PERSON).toContain(g.icEvidence.verdict);
+  });
+
+  it('one IC, or none, is NOT COMPARABLE — never silently "the same"', async () => {
     const a = await hire({ code: 'DUP-A' });
     await hire({ code: 'DUP-B' });
-    await setStatutory(a.personId, { icNumber: '880304101234' });
+    await setStatutory(a.personId, { icNumber: '820706101161' });
 
     const g = only((await duplicatePersonCandidates(adminCtx(base))).groups);
-    expect(agreementFor(g, 'icNumber')).toMatchObject({ state: 'unknown', recordedBy: 1 });
-    expect(g.contradictions).toEqual([]);
+    expect(g.icEvidence.verdict).toBe('not_comparable');
+    expect(g.icEvidence.readableCount).toBe(1);
+    expect(g.icEvidence.differingTrailingDigits).toBeNull();
+    expect(g.contradictions).not.toContain('icNumber');
+  });
+
+  it('resolves the birth-date rule through the COUNTRY PACK, and refuses an unregistered jurisdiction', async () => {
+    // ADR-0080 D3: never assume a jurisdiction. `compareIcNumbers` is driven directly so the fallback is
+    // provable without inventing a second country pack in the database.
+    const now = new Date('2026-09-22T23:59:59+08:00');
+    const my = compareIcNumbers(
+      [
+        { icNumber: '820706101161', dateOfBirth: '1982-07-06', companyCountry: 'MY' },
+        { icNumber: '820706101163', dateOfBirth: '1982-07-06', companyCountry: 'MY' },
+      ],
+      now,
+    );
+    expect(my.verdict).toBe('same_birth_date');
+
+    // No pack for 'SG' → unreadable, and it fails CLOSED rather than being read under Malaysian rules.
+    const unregistered = compareIcNumbers(
+      [
+        { icNumber: '820706101161', dateOfBirth: '1982-07-06', companyCountry: 'SG' },
+        { icNumber: '820706101163', dateOfBirth: '1982-07-06', companyCountry: 'SG' },
+      ],
+      now,
+    );
+    expect(unregistered.verdict).toBe('not_comparable');
+    expect(unregistered.readableCount).toBe(0);
+    // …and the values are still shown, because a reader can compare them by eye even when we cannot.
+    expect(unregistered.values).toEqual(['820706101161', '820706101163']);
+
+    // Two DIFFERENT jurisdictions in one group is also not comparable: comparing one country's identity
+    // document under another country's rule is the silent wrong answer the seam exists to prevent.
+    const mixed = compareIcNumbers(
+      [
+        { icNumber: '820706101161', dateOfBirth: '1982-07-06', companyCountry: 'MY' },
+        { icNumber: '820706101163', dateOfBirth: '1982-07-06', companyCountry: 'SG' },
+      ],
+      now,
+    );
+    expect(mixed.verdict).toBe('not_comparable');
+
+    // A value that is not 12 digits is unreadable — no partial credit, no guessing.
+    const junk = compareIcNumbers(
+      [
+        { icNumber: '8207', dateOfBirth: null, companyCountry: 'MY' },
+        { icNumber: '820706101163', dateOfBirth: null, companyCountry: 'MY' },
+      ],
+      now,
+    );
+    expect(junk.verdict).toBe('not_comparable');
+    expect(junk.readableCount).toBe(1);
+  });
+
+  it('the IC comparison yields no number that could pass for a score', async () => {
+    // `differingTrailingDigits` is the ONLY number it produces, it is a count of digits a reader can see
+    // in the table, and it is NULL whenever the ICs disagree on the birth date — so it can never be read
+    // as "how similar are these".
+    const now = new Date('2026-09-22T23:59:59+08:00');
+    const unrelated = compareIcNumbers(
+      [
+        { icNumber: '820706101161', dateOfBirth: null, companyCountry: 'MY' },
+        { icNumber: '950214075521', dateOfBirth: null, companyCountry: 'MY' },
+      ],
+      now,
+    );
+    expect(unrelated.differingTrailingDigits).toBeNull();
+    const numeric = Object.entries(unrelated).filter(([, v]) => typeof v === 'number');
+    expect(numeric.map(([k]) => k).sort()).toEqual(['readableCount']);
   });
 
   // ── 5. The operational evidence the plan promised ─────────────────────────────────────────────────
@@ -532,6 +642,16 @@ describe('05d2709a — suspected duplicate person records', () => {
       // Looked up as `notCounted.<reason>` from the map, so nothing static can see them. Driven off the
       // map itself: a field given a NEW reason with no translation fails here rather than on screen.
       ...[...new Set(Object.values(DUPLICATE_FIELD_NOT_A_CONTRADICTION))].map((r) => `notCounted.${r}`),
+      'icPointsAtOnePerson',
+      'icNotComparable',
+      'icTrailingDigits',
+      'icStatutoryNote',
+      // `icVerdict.<verdict>` is looked up from the verdict at render time. 'not_comparable' renders
+      // through `icNotComparable` (it needs the readable count), so it has no icVerdict entry.
+      'icVerdict.same_birth_date',
+      'icVerdict.same_birth_date_unverified',
+      'icVerdict.birth_date_contradicts_profile',
+      'icVerdict.different_birth_dates',
     ];
     for (const loc of LOCALES) {
       const cat = JSON.parse(readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
@@ -570,6 +690,7 @@ describe('05d2709a — suspected duplicate person records', () => {
       employeeCode: 'X',
       companyId: 'c1',
       company: 'Acme',
+      companyCountry: 'MY',
       fullName: 'Din Bin Ahmad',
       hiredOn: '2025-08-04',
       joinDate: null,
@@ -585,11 +706,14 @@ describe('05d2709a — suspected duplicate person records', () => {
       leaveLedgerEntries: 0,
       ...over,
     });
-    const { groups } = groupDuplicateCandidates([
-      rowOf({ employmentId: 'e1', personId: 'p1', employeeCode: 'A' }),
-      rowOf({ employmentId: 'e2', personId: 'p2', employeeCode: 'B' }),
-      rowOf({ employmentId: 'e3', personId: 'p1', employeeCode: 'C' }),
-    ]);
+    const { groups } = groupDuplicateCandidates(
+      [
+        rowOf({ employmentId: 'e1', personId: 'p1', employeeCode: 'A' }),
+        rowOf({ employmentId: 'e2', personId: 'p2', employeeCode: 'B' }),
+        rowOf({ employmentId: 'e3', personId: 'p1', employeeCode: 'C' }),
+      ],
+      new Date('2026-09-22T23:59:59+08:00'),
+    );
     const g = only(groups);
     expect(g.personIds).toEqual(['p1', 'p2']);
     expect(g.records.map((r) => r.personLabel)).toEqual(['A', 'B', 'A']);

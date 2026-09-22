@@ -1859,6 +1859,10 @@
       "stateDiffers": "Berbeza",
       "stateNotRecorded": "Tidak direkodkan",
       "statePartiallyRecorded": "Hanya pada {n} daripada {of}",
+      "icPointsAtOnePerson": "Nombor KP menunjukkan satu orang yang sama",
+      "icNotComparable": "Hanya {n} nombor KP direkodkan — tiada apa-apa untuk dibandingkan",
+      "icTrailingDigits": "serupa kecuali {n} digit terakhir",
+      "icStatutoryNote": "Nombor KP ini membawa tarikh lahir yang sama dan hanya berbeza di hujung — bentuk nombor KP yang diubah untuk melepasi peraturan yang menghalang dua pekerja berkongsi satu. KWSP, PERKESO dan LHDN semuanya memfailkan berdasarkan nombor ini, jadi sekurang-kurangnya satu daripada rekod ini dilaporkan di bawah KP yang bukan milik orang itu. Tiada apa-apa diubah dari skrin ini.",
       "field": {
         "icNumber": "No. KP",
         "passportNumber": "No. pasport",
@@ -1871,9 +1875,14 @@
         "bankAccountNo": "Akaun bank"
       },
       "notCounted": {
-        "unique_by_constraint": "sistem menetapkan ini mesti unik, jadi perbezaan memang dijangka",
         "assigned_by_employer": "diberikan oleh majikan, bukan oleh individu",
         "cosmetic_only": "berbeza hanya pada huruf besar atau jarak"
+      },
+      "icVerdict": {
+        "same_birth_date": "Tarikh lahir yang sama ({inIc}) dalam kedua-dua nombor KP, dan ia sepadan dengan tarikh lahir yang direkodkan",
+        "same_birth_date_unverified": "Tarikh lahir yang sama ({inIc}) dalam kedua-dua nombor KP; tiada tarikh lahir direkodkan untuk disemak",
+        "birth_date_contradicts_profile": "Kedua-dua nombor KP memberikan {inIc}, tetapi rekod menyatakan {onProfile}",
+        "different_birth_dates": "Nombor KP memberikan tarikh lahir yang BERBEZA ({inIc})"
       }
     }
   },

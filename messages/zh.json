@@ -1859,6 +1859,10 @@
       "stateDiffers": "不同",
       "stateNotRecorded": "未记录",
       "statePartiallyRecorded": "仅 {of} 条中的 {n} 条",
+      "icPointsAtOnePerson": "身份证号显示这是同一个人",
+      "icNotComparable": "仅记录了 {n} 个身份证号——无从比较",
+      "icTrailingDigits": "除最后 {n} 位数字外完全相同",
+      "icStatutoryNote": "这些身份证号包含相同的出生日期，仅末尾不同——正是为绕过“两名员工不得共用同一号码”规则而被改动过的形态。公积金局、社险机构和税务局都依据此号码申报，因此其中至少一条记录正以并非本人的身份证号进行申报。本页面不会更改任何内容。",
       "field": {
         "icNumber": "身份证号",
         "passportNumber": "护照号码",
@@ -1871,9 +1875,14 @@
         "bankAccountNo": "银行账户"
       },
       "notCounted": {
-        "unique_by_constraint": "系统要求此项唯一，因此出现差异属于预期",
         "assigned_by_employer": "由雇主分配，而非本人决定",
         "cosmetic_only": "仅在大小写或空格上不同"
+      },
+      "icVerdict": {
+        "same_birth_date": "两个身份证号包含相同的出生日期（{inIc}），且与记录的出生日期一致",
+        "same_birth_date_unverified": "两个身份证号包含相同的出生日期（{inIc}）；没有记录的出生日期可供核对",
+        "birth_date_contradicts_profile": "两个身份证号都显示 {inIc}，但记录显示 {onProfile}",
+        "different_birth_dates": "身份证号显示的出生日期不同（{inIc}）"
       }
     }
   },

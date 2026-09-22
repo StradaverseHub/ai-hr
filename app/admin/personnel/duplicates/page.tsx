@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import {
   DUPLICATE_EVIDENCE_FIELDS,
   DUPLICATE_FIELD_NOT_A_CONTRADICTION,
+  IC_VERDICTS_INDICATING_ONE_PERSON,
   duplicatePersonCandidates,
   type DuplicateEvidenceField,
 } from '@/core/duplicate-person';
@@ -143,6 +144,16 @@ export default async function DuplicatePersonRecordsPage() {
                     {t('hasBeenPaid')}
                   </p>
                 )}
+                {/* ⚠️ THE IC FINDING, AND IT OUTRANKS EVERYTHING ELSE ON THE CARD. Same encoded date of
+                    birth with only the trailing digits apart is the shape of an IC edited to get past the
+                    system's own uniqueness rule — and EPF, SOCSO and LHDN all file against that number,
+                    so one of these records is filing under an identity that is not the holder's. It says
+                    the consequence; it offers no correction, because this round corrects nothing. */}
+                {IC_VERDICTS_INDICATING_ONE_PERSON.includes(g.icEvidence.verdict) && (
+                  <p className="rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-700 dark:text-rose-300">
+                    {t('icPointsAtOnePerson')}
+                  </p>
+                )}
                 {g.companies.length > 1 && (
                   <p className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                     {t('acrossCompanies', { n: g.companies.length })}
@@ -208,6 +219,48 @@ export default async function DuplicatePersonRecordsPage() {
                       A field that silently vanished when it was blank would read as corroboration. */}
                   {DUPLICATE_EVIDENCE_FIELDS.map((f) => {
                     const a = g.agreement.find((x) => x.field === f)!;
+                    // ⚠️ THE IC DOES NOT SAY "Differs". `employee_statutory_my_ic_uq` guarantees two
+                    // records cannot show the same one, so "Differs" is literally true and materially
+                    // misleading — it is the answer the column is built to give. This row says what the
+                    // two numbers MEAN instead: the date of birth they encode, whether the records agree
+                    // with it, and how many trailing digits apart they are. Named, checkable, unscored.
+                    if (f === 'icNumber') {
+                      const ic = g.icEvidence;
+                      return (
+                        <li key={f} className="flex flex-wrap items-baseline gap-2 text-xs">
+                          <span className="text-muted-foreground">{t(FIELD_KEY[f])}</span>
+                          <span
+                            className={
+                              ic.verdict === 'different_birth_dates'
+                                ? 'font-medium text-amber-700 dark:text-amber-300'
+                                : ic.verdict === 'same_birth_date'
+                                  ? 'font-medium text-emerald-700 dark:text-emerald-400'
+                                  : 'text-muted-foreground'
+                            }
+                          >
+                            {ic.verdict === 'not_comparable'
+                              ? t('icNotComparable', { n: ic.readableCount })
+                              : t(`icVerdict.${ic.verdict}`, {
+                                  inIc: ic.birthDatesInIc.join(' / '),
+                                  onProfile: ic.birthDatesOnProfile.join(' / '),
+                                })}
+                          </span>
+                          {ic.differingTrailingDigits != null && (
+                            // A COUNT OF DIGITS the reader can verify against the table above, not a
+                            // measure of closeness: it is null whenever the numbers disagree on the
+                            // birth date, so it can never stand in for a similarity figure.
+                            <span className="text-[11px] text-muted-foreground">
+                              {t('icTrailingDigits', { n: ic.differingTrailingDigits })}
+                            </span>
+                          )}
+                          {ic.values.length > 0 && (
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              {ic.values.join(' \u00b7 ')}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    }
                     return (
                       <li key={f} className="flex flex-wrap items-baseline gap-2 text-xs">
                         <span className="text-muted-foreground">{t(FIELD_KEY[f])}</span>
@@ -252,6 +305,13 @@ export default async function DuplicatePersonRecordsPage() {
                     );
                   })}
                 </ul>
+                {IC_VERDICTS_INDICATING_ONE_PERSON.includes(g.icEvidence.verdict) && (
+                  // The consequence, spelled out where the reader is already looking at the two IC
+                  // numbers. It states what is true and stops: no repair, no proposed value, no button.
+                  <p className="mt-2 rounded-md bg-rose-500/5 p-2 text-[11px] text-rose-800 dark:text-rose-300">
+                    {t('icStatutoryNote')}
+                  </p>
+                )}
               </div>
             </div>
           </Card>

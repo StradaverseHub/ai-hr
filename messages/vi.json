@@ -1859,6 +1859,10 @@
       "stateDiffers": "Khác nhau",
       "stateNotRecorded": "Chưa ghi nhận",
       "statePartiallyRecorded": "Chỉ có ở {n} trên {of}",
+      "icPointsAtOnePerson": "Các số CMND/CCCD cho thấy đây là một người",
+      "icNotComparable": "Chỉ có {n} số CMND/CCCD được ghi nhận — không có gì để so sánh",
+      "icTrailingDigits": "giống nhau trừ {n} chữ số cuối",
+      "icStatutoryNote": "Các số CMND/CCCD này mang cùng một ngày sinh và chỉ khác nhau ở phần cuối — đúng dạng của một số bị sửa để vượt qua quy tắc không cho hai nhân viên dùng chung một số. EPF, SOCSO và LHDN đều khai báo theo số này, nên ít nhất một trong các hồ sơ đang được báo cáo dưới một số không thuộc về người đó. Không có gì bị thay đổi từ màn hình này.",
       "field": {
         "icNumber": "Số CMND/CCCD",
         "passportNumber": "Số hộ chiếu",
@@ -1871,9 +1875,14 @@
         "bankAccountNo": "Tài khoản ngân hàng"
       },
       "notCounted": {
-        "unique_by_constraint": "hệ thống yêu cầu giá trị này là duy nhất nên khác biệt là điều đương nhiên",
         "assigned_by_employer": "do người sử dụng lao động cấp, không phải do cá nhân",
         "cosmetic_only": "chỉ khác nhau ở chữ hoa hoặc khoảng trắng"
+      },
+      "icVerdict": {
+        "same_birth_date": "Cùng ngày sinh ({inIc}) trong cả hai số CMND/CCCD, và khớp với ngày sinh đã ghi nhận",
+        "same_birth_date_unverified": "Cùng ngày sinh ({inIc}) trong cả hai số CMND/CCCD; không có ngày sinh ghi nhận để đối chiếu",
+        "birth_date_contradicts_profile": "Cả hai số CMND/CCCD đều cho {inIc}, nhưng hồ sơ ghi {onProfile}",
+        "different_birth_dates": "Các số CMND/CCCD cho ngày sinh KHÁC NHAU ({inIc})"
       }
     }
   },

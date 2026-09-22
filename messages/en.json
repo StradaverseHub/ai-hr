@@ -1859,6 +1859,10 @@
       "stateDiffers": "Differs",
       "stateNotRecorded": "Not recorded",
       "statePartiallyRecorded": "Only on {n} of {of}",
+      "icPointsAtOnePerson": "The IC numbers point at one person",
+      "icNotComparable": "Only {n} IC number recorded — nothing to compare",
+      "icTrailingDigits": "identical except the last {n} digit(s)",
+      "icStatutoryNote": "These IC numbers carry the same date of birth and differ only at the end — the shape of an IC number edited to get past the rule that stops two employees sharing one. EPF, SOCSO and LHDN all file against this number, so at least one of these records is being reported under an IC that is not that person's. Nothing is changed from this screen.",
       "field": {
         "icNumber": "IC number",
         "passportNumber": "Passport number",
@@ -1871,9 +1875,14 @@
         "bankAccountNo": "Bank account"
       },
       "notCounted": {
-        "unique_by_constraint": "the system requires this to be unique, so a difference is expected",
         "assigned_by_employer": "given by the employer, not by the person",
         "cosmetic_only": "differs only in capitals or spacing"
+      },
+      "icVerdict": {
+        "same_birth_date": "Same date of birth ({inIc}) in both IC numbers, and it agrees with the recorded date of birth",
+        "same_birth_date_unverified": "Same date of birth ({inIc}) in both IC numbers; no date of birth is recorded to check it against",
+        "birth_date_contradicts_profile": "The IC numbers both give {inIc}, but the records say {onProfile}",
+        "different_birth_dates": "The IC numbers give DIFFERENT dates of birth ({inIc})"
       }
     }
   },
