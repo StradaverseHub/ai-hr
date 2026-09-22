@@ -1859,8 +1859,6 @@
       "stateDiffers": "不同",
       "stateNotRecorded": "未记录",
       "statePartiallyRecorded": "仅 {of} 条中的 {n} 条",
-      "uniqueByConstraintNote": "{fields}：系统本就要求此项唯一，因此两条记录不可能显示相同的值。此处的差异属于预期情况，本身并不能证明是两个不同的人。",
-      "assignedByEmployerNote": "{fields}：此项由雇主分配而非由本人决定，因此同一人在集团内两家公司任职就会有两个。此处的差异本身并不能证明是两个不同的人。",
       "field": {
         "icNumber": "身份证号",
         "passportNumber": "护照号码",
@@ -1871,6 +1869,11 @@
         "gender": "性别",
         "maritalStatus": "婚姻状况",
         "bankAccountNo": "银行账户"
+      },
+      "notCounted": {
+        "unique_by_constraint": "系统要求此项唯一，因此出现差异属于预期",
+        "assigned_by_employer": "由雇主分配，而非本人决定",
+        "cosmetic_only": "仅在大小写或空格上不同"
       }
     }
   },

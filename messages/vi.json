@@ -1859,8 +1859,6 @@
       "stateDiffers": "Khác nhau",
       "stateNotRecorded": "Chưa ghi nhận",
       "statePartiallyRecorded": "Chỉ có ở {n} trên {of}",
-      "uniqueByConstraintNote": "{fields}: hệ thống vốn đã yêu cầu giá trị này là duy nhất, nên hai hồ sơ không thể hiển thị cùng một giá trị. Sự khác biệt ở đây là điều đương nhiên và tự nó không phải bằng chứng cho thấy đây là hai người khác nhau.",
-      "assignedByEmployerNote": "{fields}: mục này do người sử dụng lao động cấp chứ không phải do cá nhân, nên một người làm việc cho hai công ty trong tập đoàn sẽ có hai. Sự khác biệt ở đây tự nó không phải bằng chứng cho thấy đây là hai người khác nhau.",
       "field": {
         "icNumber": "Số CMND/CCCD",
         "passportNumber": "Số hộ chiếu",
@@ -1871,6 +1869,11 @@
         "gender": "Giới tính",
         "maritalStatus": "Tình trạng hôn nhân",
         "bankAccountNo": "Tài khoản ngân hàng"
+      },
+      "notCounted": {
+        "unique_by_constraint": "hệ thống yêu cầu giá trị này là duy nhất nên khác biệt là điều đương nhiên",
+        "assigned_by_employer": "do người sử dụng lao động cấp, không phải do cá nhân",
+        "cosmetic_only": "chỉ khác nhau ở chữ hoa hoặc khoảng trắng"
       }
     }
   },

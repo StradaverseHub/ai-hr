@@ -1859,8 +1859,6 @@
       "stateDiffers": "Differs",
       "stateNotRecorded": "Not recorded",
       "statePartiallyRecorded": "Only on {n} of {of}",
-      "uniqueByConstraintNote": "{fields}: the system already requires this to be unique, so two records can never show the same one. A difference here is expected and is not by itself evidence of two different people.",
-      "assignedByEmployerNote": "{fields}: this is given by the employer, not by the person, so one person working for two companies in the group will have two. A difference here is not by itself evidence of two different people.",
       "field": {
         "icNumber": "IC number",
         "passportNumber": "Passport number",
@@ -1871,6 +1869,11 @@
         "gender": "Gender",
         "maritalStatus": "Marital status",
         "bankAccountNo": "Bank account"
+      },
+      "notCounted": {
+        "unique_by_constraint": "the system requires this to be unique, so a difference is expected",
+        "assigned_by_employer": "given by the employer, not by the person",
+        "cosmetic_only": "differs only in capitals or spacing"
       }
     }
   },

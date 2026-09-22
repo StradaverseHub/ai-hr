@@ -100,11 +100,11 @@ export const DUPLICATE_EVIDENCE_FIELDS = [
 export type DuplicateEvidenceField = (typeof DUPLICATE_EVIDENCE_FIELDS)[number];
 
 /**
- * ⚠️ TWO FIELDS WHOSE DIFFERENCE MEANS NOTHING, FOR TWO COMPLETELY DIFFERENT REASONS.
+ * ⚠️ THREE FIELDS WHOSE DIFFERENCE MEANS NOTHING, FOR THREE COMPLETELY DIFFERENT REASONS.
  *
- * Both are still SHOWN — their values are exactly what a human compares — but neither counts towards
+ * All three are still SHOWN — their values are exactly what a human compares — but none counts towards
  * `contradictions`, the list that raises "these may be different people". A warning that fires on almost
- * every pair is a warning nobody reads, and both of these would.
+ * every pair is a warning nobody reads, and each of these would fire on almost every pair.
  *
  * `icNumber` → **unique_by_constraint**. FACT, verified in the schema and in migration 0214:
  *   `uniqueIndex('employee_statutory_my_ic_uq').on(tenantId, icNumber).where(ic_number is not null)`
@@ -123,24 +123,31 @@ export type DuplicateEvidenceField = (typeof DUPLICATE_EVIDENCE_FIELDS)[number];
  * therefore resolve on every single pair. `personalEmail` is deliberately NOT in this set — that one IS a
  * fact about the person, and a disagreement there is a real disagreement.
  *
+ * `fullNameExact` → **cosmetic_only**, AND THIS ONE WAS A LIVE DEFECT CAUGHT BY RENDERING THE SCREEN.
+ * The group key IS the normalised name, so within a group two spellings can differ ONLY in capitalisation
+ * and spacing — by construction, never substantively. The first build counted that as a disagreement, and
+ * the rendered page duly told a reader that "LEE CHOO HONG" and "Lee  Choo Hong" MAY BE DIFFERENT PEOPLE.
+ * That is the exact opposite of what a cosmetic difference suggests: it points at two data-entry events
+ * for one human. The spelling is still shown, because which record was typed how is useful; it simply
+ * carries no verdict.
+ *
  * Nothing else is excluded: passport number, personal email, date of birth, gender, marital status and
  * the bank account carry no constraint and belong to the human, so a difference there is a difference.
  */
-export type DuplicateNonContradictionReason = 'unique_by_constraint' | 'assigned_by_employer';
+export type DuplicateNonContradictionReason = 'unique_by_constraint' | 'assigned_by_employer' | 'cosmetic_only';
 
+/**
+ * THE ONE SOURCE. The screen explains each exclusion INLINE, beside the field it is about, by looking the
+ * reason up here — so a note can never name a different set than the rule, and a field added to this map
+ * without a matching explanation is a missing i18n key the tests catch rather than a silent omission.
+ */
 export const DUPLICATE_FIELD_NOT_A_CONTRADICTION: Readonly<
   Partial<Record<DuplicateEvidenceField, DuplicateNonContradictionReason>>
 > = {
   icNumber: 'unique_by_constraint',
   primaryEmail: 'assigned_by_employer',
+  fullNameExact: 'cosmetic_only',
 };
-
-const fieldsExcludedFor = (reason: DuplicateNonContradictionReason): readonly DuplicateEvidenceField[] =>
-  DUPLICATE_EVIDENCE_FIELDS.filter((f) => DUPLICATE_FIELD_NOT_A_CONTRADICTION[f] === reason);
-
-/** Derived from the map above — one source, so a screen note can never name a different set than the rule. */
-export const DUPLICATE_FIELDS_UNIQUE_BY_CONSTRAINT = fieldsExcludedFor('unique_by_constraint');
-export const DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER = fieldsExcludedFor('assigned_by_employer');
 
 /**
  * Three states, and the third one is the point.

@@ -166,7 +166,7 @@ async function main() {
     'Nothing here has been changed, and nothing will be merged until somebody who knows the business has',
     'said which of these are the same person.',
     '',
-    'TWO FACTS THAT CHANGE HOW TO READ THE EVIDENCE.',
+    'THREE FACTS THAT CHANGE HOW TO READ THE EVIDENCE.',
     '  1. The database already forces the IC number to be unique within a customer',
     '     (employee_statutory_my_ic_uq, migration 0214), so two person records can NEVER carry the same',
     '     IC. A difference there is the only shape the data can take and is NOT counted as a disagreement',
@@ -174,6 +174,8 @@ async function main() {
     '     a second record for the same human tends to be created with the IC left blank.',
     '  2. The work email is given by the employer, not by the person. Somebody employed by two companies',
     '     in one group legitimately has two, so a difference there is not counted either.',
+    '  3. The exact SPELLING of the name can differ only in capitals and spacing — the grouping key is the',
+    '     folded name — so it too is not counted. A cosmetic difference points AT one person entered twice.',
     '',
     `Active employments read : ${rows.length}`,
     `Tenants                 : ${byTenant.size}`,
@@ -231,7 +233,9 @@ async function main() {
             ? '   (the system forces this to be unique — a difference here proves nothing)'
             : reason === 'assigned_by_employer'
               ? '   (given by the employer, not the person — a difference here proves nothing)'
-              : '';
+              : reason === 'cosmetic_only'
+                ? '   (can differ only in capitals or spacing — a difference here proves nothing)'
+                : '';
         lines.push(`      ${FIELD_LABEL[a.field].padEnd(26)} ${state}${detail}${note}`);
       }
       lines.push('');

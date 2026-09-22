@@ -3,8 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import {
   DUPLICATE_EVIDENCE_FIELDS,
-  DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER,
-  DUPLICATE_FIELDS_UNIQUE_BY_CONSTRAINT,
+  DUPLICATE_FIELD_NOT_A_CONTRADICTION,
   duplicatePersonCandidates,
   type DuplicateEvidenceField,
 } from '@/core/duplicate-person';
@@ -231,31 +230,28 @@ export default async function DuplicatePersonRecordsPage() {
                         </span>
                         {a.values.length > 0 && (
                           <span className="font-mono text-[11px] text-muted-foreground">
-                            {a.values.join(' · ')}
+                            {a.values.join(' \u00b7 ')}
+                          </span>
+                        )}
+                        {/* WHY THIS FIELD CARRIES NO VERDICT, said INLINE and beside the field it is
+                            about rather than as a footnote under the list — a reader looking at "Name
+                            spelling: Differs" needs the caveat there, not three lines further down. The
+                            reasons differ per field and collapsing them would make one of them wrong:
+                            · IC — FACT, migration 0214: `employee_statutory_my_ic_uq` makes a non-null
+                              IC unique per tenant, so two records CANNOT show the same one.
+                            · Work email — a fact about the EMPLOYMENT, not the human.
+                            · Name spelling — the group key IS the normalised name, so two spellings here
+                              can differ only in capitalisation and spacing. That points AT one human
+                              entered twice, and the first build wrongly listed it as evidence against. */}
+                        {DUPLICATE_FIELD_NOT_A_CONTRADICTION[f] && (
+                          <span className="text-[11px] text-muted-foreground">
+                            ({t(`notCounted.${DUPLICATE_FIELD_NOT_A_CONTRADICTION[f]}`)})
                           </span>
                         )}
                       </li>
                     );
                   })}
                 </ul>
-                {/* The two fields whose difference means nothing, each said for its OWN reason — because
-                    the reasons are not the same and collapsing them would make one of them wrong.
-                    · IC: FACT from the schema and migration 0214 — `employee_statutory_my_ic_uq` makes a
-                      non-null IC unique per tenant, so two person records CANNOT show the same one.
-                    · Work email: a fact about the EMPLOYMENT, not the human; one person at two companies
-                      in a group legitimately has two.
-                    Without these lines a reader takes the inevitable difference for evidence — which is
-                    also why neither field appears in the "may be different people" warning above. */}
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t('uniqueByConstraintNote', {
-                    fields: DUPLICATE_FIELDS_UNIQUE_BY_CONSTRAINT.map((f) => t(FIELD_KEY[f])).join(', '),
-                  })}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {t('assignedByEmployerNote', {
-                    fields: DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER.map((f) => t(FIELD_KEY[f])).join(', '),
-                  })}
-                </p>
               </div>
             </div>
           </Card>

@@ -10,9 +10,11 @@
  *     pinned structurally, because a later "helpful" addition is exactly how it would arrive.
  *  3. IT MUST BE ABLE TO SAY "THESE ARE PROBABLY TWO DIFFERENT PEOPLE". A detector that can only ever
  *     argue one way is not evidence. This is the failure mode that matters most.
- *  4. A DIFFERENT IC IS NOT A DISAGREEMENT, because the database FORCES it (employee_statutory_my_ic_uq,
- *     migration 0214). Counting it would fire the "may be different people" warning on nearly every
- *     fully-recorded pair, which is how a warning stops being read.
+ *  4. THREE FIELDS CANNOT COUNT AS A DISAGREEMENT, each for its own reason: the IC (the database FORCES
+ *     it to differ — employee_statutory_my_ic_uq, migration 0214), the work email (the employer gives it,
+ *     not the person) and the exact name spelling (inside a group it can differ only in capitals and
+ *     spacing). Counting any of them fires the "may be different people" warning on nearly every pair,
+ *     which is how a warning stops being read — and the spelling one said the OPPOSITE of the truth.
  *  5. IT MUST NOT WRITE, and it must not show half a pair as if it were a whole one.
  *
  * ⚠️ TWO SEPARATE FENCES, TESTED SEPARATELY AND LABELLED. `assertMayReadDuplicates` is THIS module's
@@ -29,8 +31,7 @@ import { hireEmployee, terminateEmployment } from '../core/org';
 import type { SessionContext } from '../db/client';
 import {
   DUPLICATE_EVIDENCE_FIELDS,
-  DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER,
-  DUPLICATE_FIELDS_UNIQUE_BY_CONSTRAINT,
+  DUPLICATE_FIELD_NOT_A_CONTRADICTION,
   DuplicatePersonAccessError,
   duplicatePersonCandidates,
   groupDuplicateCandidates,
@@ -205,6 +206,13 @@ describe('05d2709a — suspected duplicate person records', () => {
     expect(g.records).toHaveLength(2);
     expect(agreementFor(g, 'fullNameExact').state).toBe('differs');
     expect(agreementFor(g, 'fullNameExact').values).toEqual(['LEE CHOO HONG', 'Lee  Choo Hong']);
+    // ⚠️ AND IT IS NOT EVIDENCE AGAINST. Caught by RENDERING the screen, not by a unit test: the page
+    // told a reader that "LEE CHOO HONG" and "Lee  Choo Hong" MAY BE DIFFERENT PEOPLE. Within a group the
+    // key IS the folded name, so two spellings can differ ONLY in capitals and spacing — which points AT
+    // one human entered twice, the exact opposite of what the warning claimed.
+    expect(g.contradictions).not.toContain('fullNameExact');
+    expect(g.contradictions).toEqual([]);
+    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.fullNameExact).toBe('cosmetic_only');
   });
 
   it('ignores a terminated employment: a leaver is not a record to go and reconcile', async () => {
@@ -270,7 +278,7 @@ describe('05d2709a — suspected duplicate person records', () => {
     expect(agreementFor(g, 'icNumber').state).toBe('differs');
     expect(agreementFor(g, 'icNumber').values).toEqual(['880304101234', '880304101235']);
     expect(g.contradictions).not.toContain('icNumber');
-    expect(DUPLICATE_FIELDS_UNIQUE_BY_CONSTRAINT).toEqual(['icNumber']);
+    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.icNumber).toBe('unique_by_constraint');
   });
 
   it('a different WORK EMAIL is not a disagreement either — the employer gives it, not the person', async () => {
@@ -285,9 +293,9 @@ describe('05d2709a — suspected duplicate person records', () => {
     expect(agreementFor(g, 'primaryEmail').state).toBe('differs');
     expect(agreementFor(g, 'primaryEmail').values).toHaveLength(2);
     expect(g.contradictions).toEqual([]);
-    expect(DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER).toEqual(['primaryEmail']);
+    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.primaryEmail).toBe('assigned_by_employer');
     // …and the PERSONAL email is deliberately NOT excluded: that one belongs to the human.
-    expect(DUPLICATE_FIELDS_ASSIGNED_BY_EMPLOYER).not.toContain('personalEmail');
+    expect(DUPLICATE_FIELD_NOT_A_CONTRADICTION.personalEmail).toBeUndefined();
   });
 
   it('…and the non-vacuity half: an UNCONSTRAINED field differing IS a disagreement', async () => {
@@ -520,8 +528,10 @@ describe('05d2709a — suspected duplicate person records', () => {
       'stateDiffers',
       'stateNotRecorded',
       'statePartiallyRecorded',
-      'uniqueByConstraintNote',
       ...DUPLICATE_EVIDENCE_FIELDS.map((f) => `field.${f}`),
+      // Looked up as `notCounted.<reason>` from the map, so nothing static can see them. Driven off the
+      // map itself: a field given a NEW reason with no translation fails here rather than on screen.
+      ...[...new Set(Object.values(DUPLICATE_FIELD_NOT_A_CONTRADICTION))].map((r) => `notCounted.${r}`),
     ];
     for (const loc of LOCALES) {
       const cat = JSON.parse(readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
@@ -533,6 +543,21 @@ describe('05d2709a — suspected duplicate person records', () => {
     expect(typeof dotted(en, 'people.list.duplicateRecords')).toBe('string');
     expect(typeof dotted(en, 'admin.users.screen.duplicatePersonRecords')).toBe('string');
     expect(typeof dotted(en, 'admin.users.scope.duplicatePersonRecords')).toBe('string');
+
+    // ⚠️ AND THE PLACEHOLDERS MATCH, IN EVERY LOCALE. A key that EXISTS but whose translation renamed or
+    // dropped a placeholder throws FORMATTING_ERROR at render time in that locale only — invisible to
+    // tsc, to `next build` and to a render check done in English. `{n}` vs `{count}` is a one-character
+    // mistake that takes a screen down for Malay readers alone.
+    const placeholders = (s: string) => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
+    const enCat = JSON.parse(readFileSync(path.join(ROOT, 'messages', 'en.json'), 'utf8'));
+    for (const loc of LOCALES) {
+      const cat = JSON.parse(readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
+      for (const k of keys) {
+        const a = [...placeholders(dotted(enCat, `people.duplicates.${k}`) as string)].sort();
+        const b = [...placeholders(dotted(cat, `people.duplicates.${k}`) as string)].sort();
+        expect(b, `${loc}: people.duplicates.${k} placeholders`).toEqual(a);
+      }
+    }
   });
 
   it('groupDuplicateCandidates is the ONE definition the script and the screen share', async () => {

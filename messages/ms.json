@@ -1859,8 +1859,6 @@
       "stateDiffers": "Berbeza",
       "stateNotRecorded": "Tidak direkodkan",
       "statePartiallyRecorded": "Hanya pada {n} daripada {of}",
-      "uniqueByConstraintNote": "{fields}: sistem sudah menetapkan ini mesti unik, jadi dua rekod tidak mungkin menunjukkan yang sama. Perbezaan di sini memang dijangka dan bukan dengan sendirinya bukti dua orang yang berbeza.",
-      "assignedByEmployerNote": "{fields}: ini diberikan oleh majikan, bukan oleh individu itu, jadi seorang yang bekerja dengan dua syarikat dalam kumpulan akan mempunyai dua. Perbezaan di sini bukan dengan sendirinya bukti dua orang yang berbeza.",
       "field": {
         "icNumber": "No. KP",
         "passportNumber": "No. pasport",
@@ -1871,6 +1869,11 @@
         "gender": "Jantina",
         "maritalStatus": "Status perkahwinan",
         "bankAccountNo": "Akaun bank"
+      },
+      "notCounted": {
+        "unique_by_constraint": "sistem menetapkan ini mesti unik, jadi perbezaan memang dijangka",
+        "assigned_by_employer": "diberikan oleh majikan, bukan oleh individu",
+        "cosmetic_only": "berbeza hanya pada huruf besar atau jarak"
       }
     }
   },
