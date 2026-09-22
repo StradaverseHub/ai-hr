@@ -1,0 +1,104 @@
+<meta charset="utf-8">
+<title>Organization Edit — one Save, and it stays put</title>
+<!--
+  65b22c00. BEFORE / AFTER of the save behaviour on Organization > company > Edit.
+  BEFORE is real: app/admin/actions.ts updateCompanyAction ends ok(ORG), and _redirects.ts ok() is
+  revalidatePath + redirect to '/admin/organization' (line 141) — the list.
+  The card names are the REAL sections on components/company-panel.tsx, which r327 reshaped hours ago
+  (statutory bodies are one divided list, SOCSO+EIS grouped, koperasi retired).
+  The bucket split is drawn as PROPOSED, and labelled so — the classification document decides it.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--good:#067647;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+ .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .col h2 b{font-weight:700}
+ .screen{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .screen.before{border-color:#e4c2bd}
+ .screen.after{border-color:#bcdccb}
+ .bar{padding:8px 13px;border-bottom:1px solid var(--border);background:var(--muted);font-size:11.5px;color:var(--mf);display:flex;justify-content:space-between;align-items:center}
+ .bar b{color:var(--fg);font-size:12.5px}
+ .body{padding:13px}
+ .sec{border:1px solid var(--border);border-radius:7px;margin-bottom:8px;overflow:hidden}
+ .sec .h{padding:6px 10px;font-size:11px;font-weight:600;background:#fbfbfd;border-bottom:1px solid #eceef5;display:flex;justify-content:space-between;align-items:center}
+ .sec .c{padding:8px 10px;font-size:11.5px;color:var(--mf)}
+ .btn{border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;border:1px solid var(--border);background:#fff;color:var(--fg)}
+ .btn.p{background:var(--primary);border-color:transparent;color:#fff}
+ .btn.sm{font-size:10px;padding:2px 8px}
+ .own{color:var(--warn);font-size:10px;font-weight:600}
+ .savebar{margin-top:10px;padding:9px 11px;border-radius:7px;background:color-mix(in srgb,var(--primary) 8%,white);border:1px solid color-mix(in srgb,var(--primary) 30%,white);display:flex;justify-content:space-between;align-items:center}
+ .savebar span{font-size:11.5px;color:var(--primary);font-weight:600}
+ .toast{margin:0 13px 12px;padding:8px 11px;border-radius:7px;background:color-mix(in srgb,var(--good) 10%,white);border:1px solid color-mix(in srgb,var(--good) 32%,white);color:var(--good);font-size:11.5px;font-weight:600}
+ .flow{padding:10px 13px;border-top:1px solid #eceef5;background:#fbfbfd;font-size:11.5px;color:var(--mf)}
+ .chain{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+ .pill{border-radius:999px;padding:2px 9px;font-size:11px;background:#fff;border:1px solid var(--border)}
+ .pill.bad{background:color-mix(in srgb,#b42318 10%,white);border-color:transparent;color:#b42318;font-weight:600}
+ .pill.g{background:color-mix(in srgb,var(--good) 11%,white);border-color:transparent;color:var(--good);font-weight:600}
+ .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+</style>
+
+<div class="wrap">
+  <h1>Organization &rsaquo; Demo Sdn Bhd &rsaquo; Edit</h1>
+  <p class="sub">Where Save leaves you, and how many buttons the screen asks you to press</p>
+
+  <div class="pair">
+    <div class="col">
+      <h2><b>Before</b> &mdash; today</h2>
+      <div class="screen before">
+        <div class="bar"><b>Demo Sdn Bhd</b><span>13 separate save controls</span></div>
+        <div class="body">
+          <div class="sec"><div class="h">Company Information <button class="btn sm">Save</button></div><div class="c">Name, registration number, industry, website</div></div>
+          <div class="sec"><div class="h">Contact Information <button class="btn sm">Save</button></div><div class="c">Address, city, state, phone, fax</div></div>
+          <div class="sec"><div class="h">Statutory Information <button class="btn sm">Save</button></div><div class="c">EPF, SOCSO &amp; EIS, LHDN reference numbers</div></div>
+          <div class="sec"><div class="h">Bank Information <button class="btn sm">Save</button></div><div class="c">Payment accounts</div></div>
+          <div class="sec"><div class="h">Default Payroll Cycle <button class="btn sm">Save</button></div><div class="c">Monthly</div></div>
+        </div>
+        <div class="flow">Pressing any Save:
+          <div class="chain"><span class="pill">Save</span><span>&rarr;</span><span class="pill bad">back to the Organization list</span><span>&rarr;</span><span class="pill">find the company again</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>After</b> &mdash; what we propose</h2>
+      <div class="screen after">
+        <div class="bar"><b>Demo Sdn Bhd</b><span>one Save for the fields</span></div>
+        <div class="toast">&#10003; Company saved</div>
+        <div class="body">
+          <div class="sec"><div class="h">Company Information</div><div class="c">Name, registration number, industry, website</div></div>
+          <div class="sec"><div class="h">Contact Information</div><div class="c">Address, city, state, phone, fax</div></div>
+          <div class="sec"><div class="h">Statutory Information</div><div class="c">EPF, SOCSO &amp; EIS, LHDN reference numbers</div></div>
+          <div class="sec"><div class="h">Default Payroll Cycle</div><div class="c">Monthly</div></div>
+          <div class="savebar"><span>One Save Changes for everything above</span><span><button class="btn">Discard</button> <button class="btn p">Save Changes</button></span></div>
+          <div class="sec" style="margin-top:12px"><div class="h">Bank Information <span class="own">keeps its own controls</span></div><div class="c">Add / remove a payment account</div></div>
+          <div class="sec"><div class="h">Statutory Bodies <span class="own">keeps its own controls</span></div><div class="c">Add / remove a body</div></div>
+          <div class="sec"><div class="h">Archive or Delete Company <span class="own">keeps its own controls</span></div><div class="c">Actions, not fields</div></div>
+        </div>
+        <div class="flow">Pressing Save Changes:
+          <div class="chain"><span class="pill">Save</span><span>&rarr;</span><span class="pill g">stays on this company</span><span>&rarr;</span><span class="pill g">confirmation shown</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Why three things sit outside the one Save</h3>
+    <p>A single <b>Save Changes</b> implies a single <b>Discard Changes</b> beside it. Adding a bank
+    account, removing a statutory body, archiving or deleting a company are <b>actions</b>, not fields
+    you type into &mdash; a Discard that looked like it would undo a deleted company, and then did not,
+    would be a button lying about what it does. The Employment Information screen leaves its emergency
+    contact list outside its own single Save for exactly this reason.</p>
+    <p>Which control sits in which group is written down and shown to you before anything moves. Sketch
+    only &mdash; wording, spacing and colours will differ from the finished screen.</p>
+  </div>
+</div>
