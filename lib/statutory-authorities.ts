@@ -20,7 +20,14 @@ export const STATUTORY_AUTHORITIES = [
   'zakat', // State religious council — zakat via salary deduction
   'ptptn', // National Higher Education Fund loan repayments
   'tabung_haji', // Lembaga Tabung Haji savings deduction
-  'koperasi', // Co-operative loan / savings deduction
+  // efe424b0 (r327) — 'koperasi' STOOD HERE and is deliberately gone. The reporter asked for
+  // Co-operative to be removed, and it cost nothing to do: measured on production 2026-09-22,
+  // `company_statutory_authority` is the ONLY table in the schema with an `authority` column and it held
+  // ZERO koperasi rows across the single tenant. This list is controlled in CODE rather than a pgEnum
+  // (see the header), so removing one is a one-line change with no migration — exactly as adding one is.
+  //
+  // `isStatutoryAuthority` now rejects the string, which is what makes a stale value from anywhere
+  // unreachable rather than rendered as a nameless tile.
 ] as const;
 
 export type StatutoryAuthority = (typeof STATUTORY_AUTHORITIES)[number];

@@ -14,7 +14,6 @@ import {
   PiggyBank,
   ShieldPlus,
   Umbrella,
-  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
@@ -46,16 +45,58 @@ import { CurrencySelect } from './currency-select';
 type TabKey = 'general' | 'bank' | 'statutory';
 
 /**
- * The visual mark on each statutory-body card (3c2f55d7 rev 2).
+ * The visual mark on each statutory body's ROW.
  *
- * The request asked for each body's official logo. We deliberately do NOT ship EPF/PERKESO/LHDN
- * trademarks: this repo bundles no remote assets, and reproducing a government agency's mark inside a
- * product needs permission we do not have on file. A distinct, recognisable ICON per body does the job
- * the request actually described — "primarily for visual identification" — with no licensing question,
- * and swapping in a licensed mark later is a one-line change here.
+ * ⚠️ THIS REVERSES 3c2f55d7 rev 2, AND THE REASON IT GAVE IS THE REASON IT CAN BE REVERSED. That round
+ * refused the official logos in these words: "this repo bundles no remote assets, and reproducing a
+ * government agency's mark inside a product needs permission we do not have on file… swapping in a
+ * licensed mark later is a one-line change here."
  *
- * Keyed by the same strings as lib/statutory-authorities.ts. A body with no entry falls back to Landmark,
- * so adding an authority can never render a blank tile.
+ * efe424b0 (r327) — the reporter ATTACHED all seven marks to the request themselves (KWSP, PERKESO,
+ * LHDN, Zakat, PTPTN, Tabung Haji, HRDF). That is the condition the old comment named, and they are the
+ * owner of the deployment these identify. The files are committed under public/statutory/ rather than
+ * fetched, so the "bundles no remote assets" half still holds exactly as before.
+ *
+ * ⚠️ THE ICON FALLBACK STAYS, and it is not vestigial: a body with no logo file falls back to its Lucide
+ * mark, so adding an authority can never render a blank tile. That property is why AUTHORITY_ICON had a
+ * default in the first place and it survives the change.
+ */
+/**
+ * ⚠️ efe424b0 — WHY "SOCSO & EIS" CANNOT BE ONE CONFIGURATION, ONLY ONE ROW.
+ *
+ * The request says: consolidate SOCSO and EIS. The EIS card has said for some time that EIS has no
+ * filing number of its own because it files under SOCSO's PERKESO employer code, which makes the merge
+ * sound free. It is not, and the data says so.
+ *
+ * MEASURED ON PRODUCTION 2026-09-22, `company_statutory_authority` holds a SEPARATE row per body with
+ * its own payment account, bank profile and signatory — and they DIFFER:
+ *
+ *     eis   | bank=d7347908… | acct=SMSB_EIS        socso | bank=d7347908… | acct=SMSB_SOCSO
+ *     eis   | bank=(none)    | acct=E1400003148V    socso | (no counterpart)
+ *     socso | sig=af6dfdc1…                          eis   | (no counterpart)
+ *
+ * So a company can pay EIS on a different account from SOCSO, and one already does. Drawing ONE card
+ * backed by SOCSO's row would leave `SMSB_EIS` on file with no screen that can edit it — a setting that
+ * still governs a payment, quietly unreachable. That is the failure this note exists to prevent.
+ *
+ * WHAT CONSOLIDATION THEREFORE MEANS HERE: one ROW in the list, named for both bodies and carrying the
+ * PERKESO mark once — and, when opened, BOTH configurations. The filing code stays stated once, because
+ * that genuinely is shared; the payment details stay two, because they genuinely are not.
+ */
+const AUTHORITY_LOGO: Record<string, string> = {
+  epf: '/statutory/kwsp.png',
+  socso: '/statutory/perkeso.png',
+  // EIS files under PERKESO and is drawn with SOCSO in one row — see the consolidation note below.
+  eis: '/statutory/perkeso.png',
+  lhdn: '/statutory/lhdn.png',
+  hrdf: '/statutory/hrdf.png',
+  zakat: '/statutory/zakat.png',
+  ptptn: '/statutory/ptptn.png',
+  tabung_haji: '/statutory/tabunghaji.png',
+};
+
+/**
+ * The fallback mark, keyed by the same strings as lib/statutory-authorities.ts.
  */
 const AUTHORITY_ICON: Record<string, LucideIcon> = {
   epf: PiggyBank, // retirement savings
@@ -66,7 +107,6 @@ const AUTHORITY_ICON: Record<string, LucideIcon> = {
   zakat: HandCoins, // religious contribution
   ptptn: BookOpen, // study loan
   tabung_haji: Moon, // pilgrimage savings
-  koperasi: Users, // co-operative
 };
 
 /** One tab trigger — mirrors the claims-tabs styling (border-b, active = border-primary text-primary). */
@@ -455,6 +495,8 @@ function StatutoryAuthorityCard({
   const r = row;
   const configured = !!r;
   const Icon = AUTHORITY_ICON[authority] ?? Landmark;
+  /** efe424b0 — the body's own mark when we have the file; the Lucide fallback when we do not. */
+  const logo = AUTHORITY_LOGO[authority];
   // r226 — this body's FILING identity (the number on its filed form), where it has one. Distinct from
   // `accountNo` below, which is the employer account on the PAYMENT SLIP. See MY_FILING_FIELD.
   const filing = filingCountry === 'MY' ? MY_FILING_FIELD[authority] : undefined;
@@ -484,13 +526,26 @@ function StatutoryAuthorityCard({
         open && 'sm:col-span-2 xl:col-span-3',
       )}
     >
-      {/* The card FACE — icon, name, description, status. Visible without any interaction. */}
+      {/* The ROW FACE — mark, name, description, status. Visible without any interaction. */}
       <div className="flex flex-1 items-start gap-3 p-3">
+        {/* efe424b0 — the body's OWN mark, from public/statutory/, with the Lucide icon as the fallback
+            for a body whose file we do not have. `object-contain` on a fixed box because the seven marks
+            are different shapes (a 59px square for Tabung Haji, a 400x312 block for LHDN): letting each
+            set its own height would make the rows jump. Decorative, so it carries an empty alt and the
+            body's NAME is the text beside it. */}
         <span
-          className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+          className={cn(
+            'grid size-10 shrink-0 place-items-center rounded-lg',
+            logo ? 'bg-background' : 'bg-primary/10 text-primary',
+          )}
           aria-hidden
         >
-          <Icon className="size-5" />
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a bundled static mark, not content
+            <img src={logo} alt="" className="max-h-8 max-w-9 object-contain" />
+          ) : (
+            <Icon className="size-5" />
+          )}
         </span>
         <div className="min-w-0 flex-1 space-y-1">
           {/* Dynamic message keys (`authority_epf` / `authorityDesc_epf`, …) — one pair per entry in

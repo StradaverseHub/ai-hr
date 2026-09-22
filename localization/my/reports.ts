@@ -102,7 +102,7 @@ export type ReportParams = { companyId: string; periodKey: string };
  *
  * The vocabulary is deliberately COARSER than lib/statutory-authorities.ts, and lines up with it rather
  * than competing: `perkeso` is the one body that administers both `socso` and `eis` — the reporter's own
- * "SOCSO / EIS (PERKESO)" shelf — and the smaller authorities (hrdf, zakat, ptptn, tabung_haji, koperasi)
+ * "SOCSO / EIS (PERKESO)" shelf — and the smaller authorities (hrdf, zakat, ptptn, tabung_haji)
  * all land under `other`, which is exactly the shelf the reporter called "Other Statutory". When one of
  * them grows a real form, it declares `other` and appears there with no screen change; if it ever earns
  * its own shelf, that is one key and one heading.
