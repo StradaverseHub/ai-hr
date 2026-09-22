@@ -87,7 +87,9 @@ export default async function RosterEditPage({
   if (!employee) {
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('rowEditTitle', { name: '—' })} back={{ href: listHref, label: t('exceptionsBack') }} />
+        {/* NOT `rowEditTitle` with a placeholder name: "Edit month — —" reads as a rendering fault. The
+            screen has no employee, so it is the roster's own title plus the sentence and the way back. */}
+        <PageHeader title={t('title')} back={{ href: listHref, label: t('exceptionsBack') }} />
         <Card>
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('rowEditMissing')}</p>
         </Card>
@@ -141,7 +143,10 @@ export default async function RosterEditPage({
           <p className="text-xs text-muted-foreground">{t('rowEditHint')}</p>
 
           {view.shifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
+            /* NOT `createShiftFirst` — it says "Create a shift ABOVE", which is true on the roster and
+               false here: there is nothing above on this screen. This line says where shifts actually
+               live, which is the useful answer on either. */
+            <p className="text-sm text-muted-foreground">{t('manageShiftsHint')}</p>
           ) : (
             <form action={saveRosterRowAction} className="space-y-4">
               <input type="hidden" name="employmentId" value={employmentId} />
