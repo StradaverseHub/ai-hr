@@ -433,7 +433,10 @@ const ROW_H = 15;
 const LINE_H = 10.5;
 const BOX_HEAD_H = 20;
 const BOX_TOTAL_H = 21;
-/** Height the YTD table needs (caption + column header + six rows). */
+/** Height the YTD table needs. a96d320c turned it into a ruled box and the number did not move:
+ *  BOX_HEAD_H (20, the header band) + 14 (the column-header row) + 6 × 15 (the rows) = 124, the same
+ *  total the loose caption + column header + six rows occupied. `drawYtd` derives `h` from those same
+ *  constants rather than repeating the literal, so the two cannot drift. */
 const YTD_H = 124;
 /** Height reserved at the foot of EVERY page for the one "system-generated" line. f35f758a took the
  *  prorated and provenance sentences off the document, which is why this is 24 and not 46. */
@@ -593,7 +596,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       r.lines.forEach((line, i) => at(pg, line, x + 10, ry - 10.5 - i * LINE_H, 8.5, font, color));
       atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
       ry -= r.h;
-      pg.drawLine({ start: { x: x + 6, y: ry }, end: { x: x + p.w - 6, y: ry }, thickness: 0.5, color: HAIR });
+      // a96d320c — EDGE TO EDGE. This rule was inset 6pt either side, so it read as a floating divider
+      // between two rows rather than as the line between two cells of one ruled box. The reporter asked
+      // for full borders; a box whose own outer border does not meet its row rules is the half-ruled
+      // thing they were looking at. Same rule, same colour, same y — it simply reaches the border now.
+      pg.drawLine({ start: { x, y: ry }, end: { x: x + p.w, y: ry }, thickness: 0.5, color: HAIR });
     }
 
     let by = top - BOX_HEAD_H - bodyH;
@@ -651,9 +658,17 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // f35f758a — the WHOLE account number, not the last four. See PayslipPdfData.bankAccount.
     ...(d.bankAccount ? [{ label: t.bankAccount, text: d.bankAccount }] : []),
   ];
+  // a96d320c — THE PAY CODE COMES OFF THE EMPLOYEE'S DOCUMENT (site 1 of 2; the other is in
+  // `earningsRowsOf`). `sub` carried `l.code`, so every line printed "Petrol card · A0031". The code is
+  // an internal reconciliation key: the operator reconciles by it on the admin screens, which still show
+  // it, and the employee has nothing to reconcile it against. The NAME is what the line is.
+  //
+  // THE `sub` SLOT ITSELF STAYS, and that is the whole care in this change: the deduction box uses the
+  // same slot for `absenceDaysLabel` ("2 days" beside an unpaid-leave line), which is employee-readable
+  // and is the opposite of what the reporter objected to. Removing the mechanism would have taken that
+  // with it.
   const nonPayableRows: Row[] = (d.nonPayableLines ?? []).map((l) => ({
     label: l.name,
-    sub: l.code,
     amount: l.amount,
   }));
   const nonPayableTotal = round2((d.nonPayableLines ?? []).reduce((s, l) => s + l.amount, 0));
@@ -953,6 +968,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       ...(d.epfNumber ? ([[t.epfNumber, d.epfNumber]] as [string, string][]) : []),
       ...(d.socsoNumber ? ([[t.socsoNumber, d.socsoNumber]] as [string, string][]) : []),
     ];
+    // a96d320c — the identity fields sit in a RULED GRID, not in loose label-over-value pairs. Nothing
+    // about which fields are printed changes; `drawGrid` draws the box and the cell rules it always
+    // measured for.
     const leftH = headH + drawGrid(pg, idCells, M, top - headH, leftW, 2);
 
     const infoCells: [string, string][] = [
@@ -965,12 +983,18 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     ];
     let rightH = 0;
     if (infoCells.length > 0) {
-      const pillW = bold.widthOfTextAtSize(safe(t.employmentInfo.toUpperCase()), 7.5) + 20;
-      pg.drawRectangle({ x: rightX, y: top - 17, width: pillW, height: 17, color: PRIMARY });
+      // a96d320c — the floating PILL becomes a full-width HEADER BAND over a ruled grid, which is exactly
+      // the shape `paintBox` gives Earnings, Deductions and every other section. One visual language for
+      // every block on the document was the reporter's point; a heading that only covers its own text
+      // width, sitting above unruled rows, was the odd one out. The band keeps PRIMARY + white text, so
+      // the accent survives — what changes is that it is the top of a box rather than a label beside one.
+      const bandH = 17;
+      pg.drawRectangle({ x: rightX, y: top - bandH, width: rightW, height: bandH, color: PRIMARY });
       at(pg, t.employmentInfo.toUpperCase(), rightX + 10, top - 12.5, 7.5, bold, WHITE);
       // TWO columns, not three: a position title ("Senior Business Analyst") does not fit a third of this
       // panel and would print truncated on an official document.
-      rightH = 25 + drawGrid(pg, infoCells, rightX, top - 25, rightW, 2);
+      const gridH = drawGrid(pg, infoCells, rightX, top - bandH, rightW, 2);
+      rightH = bandH + gridH;
     }
 
     const h = Math.max(leftH, rightH, 40);
@@ -988,21 +1012,47 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   function drawGrid(pg: PDFPage, cells: [string, string][], x: number, top: number, w: number, cols: number): number {
     if (cells.length === 0) return 0;
     const cw = w / cols;
+    // a96d320c — cell text is INSET from the rules that now surround it. `CELL_PAD` is subtracted from
+    // both sides of the wrap width, so a value still wraps rather than running under the rule beside it
+    // (nothing on this document clips — see `wrap`); a long field label simply takes one more line, and
+    // the row grows with it exactly as it already did.
+    const CELL_PAD = 6;
+    const textW = cw - 2 * CELL_PAD;
     const planned = cells.map(([k, v]) => ({
-      k: wrap(k.toUpperCase(), font, 6.5, cw - 6),
-      v: wrap(v, bold, 8.5, cw - 6),
+      k: wrap(k.toUpperCase(), font, 6.5, textW),
+      v: wrap(v, bold, 8.5, textW),
     }));
-    let used = 0;
+    // Measured FIRST, drawn second, for the same reason `planBox` measures before `paintBox` draws: the
+    // outer border has to know the height of the thing it encloses before the first row is put down.
+    const rowHs: number[] = [];
     for (let r = 0; r * cols < planned.length; r += 1) {
       const rowCells = planned.slice(r * cols, r * cols + cols);
-      const rowH = Math.max(25, ...rowCells.map((c) => c.k.length * 8 + c.v.length * 10.5 + 6.5));
+      rowHs.push(Math.max(25, ...rowCells.map((c) => c.k.length * 8 + c.v.length * 10.5 + 6.5)));
+    }
+    const used = rowHs.reduce((s, h) => s + h, 0);
+
+    // The box, then the column rules, then the row rules — all before the text, so no rule can be drawn
+    // over a glyph. The LAST row gets no rule under it: that is the outer border.
+    pg.drawRectangle({ x, y: top - used, width: w, height: used, borderColor: RULE, borderWidth: 0.8 });
+    for (let i = 1; i < cols; i += 1) {
+      pg.drawLine({ start: { x: x + i * cw, y: top }, end: { x: x + i * cw, y: top - used }, thickness: 0.5, color: HAIR });
+    }
+    let ruleY = top;
+    for (let r = 0; r < rowHs.length - 1; r += 1) {
+      ruleY -= rowHs[r];
+      pg.drawLine({ start: { x, y: ruleY }, end: { x: x + w, y: ruleY }, thickness: 0.5, color: HAIR });
+    }
+
+    let drawn = 0;
+    for (let r = 0; r * cols < planned.length; r += 1) {
+      const rowCells = planned.slice(r * cols, r * cols + cols);
       rowCells.forEach((c, i) => {
-        const cx = x + i * cw;
-        const cy = top - used;
+        const cx = x + i * cw + CELL_PAD;
+        const cy = top - drawn;
         c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, font, MUTED));
         c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, bold));
       });
-      used += rowH;
+      drawn += rowHs[r];
     }
     return used;
   }
@@ -1018,23 +1068,37 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     ];
     const c2 = M + CONTENT_W * 0.62;
     const c3 = A4_W - M;
-    at(pg, t.ytdHeading.toUpperCase(), M, top - 9, 7.5, bold, MUTED);
-    let ry = top - 20;
-    at(pg, t.ytdItem.toUpperCase(), M, ry - 8, 6.5, font, MUTED);
-    atR(pg, t.ytdCurrent.toUpperCase(), c2, ry - 8, 6.5, font, MUTED);
-    atR(pg, t.ytdToDate.toUpperCase(), c3, ry - 8, 6.5, font, MUTED);
+    // a96d320c — YEAR TO DATE BECOMES A BOX. It was the last block on the document still drawn as a
+    // caption over loose rules, and it is the one an employee reads hardest against the boxes above it.
+    // Same three columns, same six rows, same figures, same 15pt row pitch — and the SAME total height:
+    // BOX_HEAD_H (20) + the column-header row (14) + 6 × 15 = 124 = YTD_H, which is what the page flow
+    // reserves for it. The header band and title are drawn exactly as `paintBox` draws a section head, so
+    // this block and the Earnings box beside it are now the same object.
+    const h = BOX_HEAD_H + 14 + rows.length * 15;
+    pg.drawRectangle({ x: M, y: top - h, width: CONTENT_W, height: h, borderColor: RULE, borderWidth: 0.8 });
+    pg.drawRectangle({ x: M, y: top - BOX_HEAD_H, width: CONTENT_W, height: BOX_HEAD_H, color: BAND });
+    pg.drawLine({
+      start: { x: M, y: top - BOX_HEAD_H }, end: { x: c3, y: top - BOX_HEAD_H },
+      thickness: 0.8, color: RULE,
+    });
+    at(pg, t.ytdHeading.toUpperCase(), M + 10, top - 13.5, 7.5, bold, INK);
+    let ry = top - BOX_HEAD_H;
+    at(pg, t.ytdItem.toUpperCase(), M + 10, ry - 9, 6.5, font, MUTED);
+    atR(pg, t.ytdCurrent.toUpperCase(), c2, ry - 9, 6.5, font, MUTED);
+    atR(pg, t.ytdToDate.toUpperCase(), c3 - 10, ry - 9, 6.5, font, MUTED);
     ry -= 14;
     pg.drawLine({ start: { x: M, y: ry }, end: { x: c3, y: ry }, thickness: 0.8, color: RULE });
     rows.forEach(([label, cur, tot], i) => {
       const last = i === rows.length - 1;
       const f = last ? bold : font;
-      at(pg, label, M, ry - 11, 8.5, f);
+      at(pg, label, M + 10, ry - 11, 8.5, f);
       atR(pg, money(cur), c2, ry - 11, 8.5, f);
-      atR(pg, money(tot), c3, ry - 11, 8.5, f);
+      atR(pg, money(tot), c3 - 10, ry - 11, 8.5, f);
       ry -= 15;
+      // The last row's rule IS the outer border — drawing a hairline on top of it would double it.
       if (!last) pg.drawLine({ start: { x: M, y: ry }, end: { x: c3, y: ry }, thickness: 0.5, color: HAIR });
     });
-    return top - ry;
+    return h;
   }
 
   /**
@@ -1077,7 +1141,11 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels): Row[] {
   const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
     const named = lines ?? [];
     if (payItemLinesReconcile(named, total)) {
-      for (const l of named) rows.push({ label: l.name, sub: l.code, amount: l.amount });
+      // a96d320c — site 2 of 2: the pay code is off the EMPLOYEE's payslip (see `nonPayableRows` for the
+      // argument, and for why the `sub` slot itself is kept). `l.code` is still read from the stamp and
+      // still reaches the admin surfaces through `payItemLabel`; it is only this document that stops
+      // printing "Basic salary · BASIC" at somebody who has no use for the second half.
+      for (const l of named) rows.push({ label: l.name, amount: l.amount });
     } else {
       rows.push({ label: grouped, amount: total });
     }

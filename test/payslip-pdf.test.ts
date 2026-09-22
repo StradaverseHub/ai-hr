@@ -20,6 +20,10 @@ import {
   type PayslipPdfData,
   type PayslipPdfLabels,
 } from '../lib/payslip-pdf';
+// a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
+// the pay period to a month name. Imported directly so the formatter is pinned as a function rather than
+// through a label fixture the test writes itself.
+import { englishLongDate } from '../lib/payslip-pdf-strings';
 
 const labels: PayslipPdfLabels = {
   title: 'Payslip',
@@ -57,7 +61,9 @@ const labels: PayslipPdfLabels = {
   employerBorneTotal: 'Total borne by employer',
   employerBorneNote: 'Reported in full to the authorities; not deducted from your pay.',
   documentSubtitle: 'Payroll payslip',
-  paymentDate: 'Payment date: 2026-06-30',
+  // a96d320c — the shape the REAL caller now passes. `payslipPdfStrings` interpolates the localized
+  // `payDateLine` with `englishLongDate(payDate)`, so the fixture says what the document says.
+  paymentDate: 'Payment date: 30 June 2026',
   employmentInfo: 'Employment info',
   department: 'Department',
   position: 'Position',
@@ -228,6 +234,61 @@ function drawnPlacements(bytes: Uint8Array): { page: number; x: number; y: numbe
 /** Where a piece of drawn text landed, or undefined. First match wins — headings are drawn once. */
 const placed = (p: ReturnType<typeof drawnPlacements>, text: string) => p.find((r) => r.text === text);
 
+/**
+ * a96d320c — THE RECTANGLES, per page, so "bordered" is checkable rather than asserted.
+ *
+ * The reporter asked for full borders. "The YTD table is in a box" is a claim about geometry, and a
+ * document that draws the same words with no rules around them contains exactly the same text — which is
+ * the trap `drawnPlacements` was written for one item ago. pdf-lib emits a rectangle as a translate
+ * (`1 0 0 1 X Y cm`) followed by the four-segment path and a paint operator: `S` when it was given a
+ * `borderColor` (a ruled box) and `f` when it was given a `color` (a filled band). Both are captured;
+ * the tests below ask for `S`, because a filled band is not a border.
+ */
+function drawnRects(bytes: Uint8Array): { page: number; x: number; y: number; w: number; h: number; op: string }[] {
+  const buf = Buffer.from(bytes);
+  const out: { page: number; x: number; y: number; w: number; h: number; op: string }[] = [];
+  let i = 0;
+  let page = 0;
+  for (;;) {
+    const s = buf.indexOf('stream', i);
+    if (s < 0) break;
+    const e = buf.indexOf('endstream', s);
+    if (e < 0) break;
+    let b = s + 6;
+    if (buf[b] === 0x0d) b += 1;
+    if (buf[b] === 0x0a) b += 1;
+    const raw = buf.subarray(b, e);
+    let body: Buffer;
+    try {
+      body = zlib.inflateSync(raw);
+    } catch {
+      body = raw;
+    }
+    const src = body.toString('latin1');
+    if (/\bTj\b/.test(src)) {
+      page += 1;
+      for (const m of src.matchAll(
+        /1 0 0 1 (-?[\d.]+) (-?[\d.]+) cm[\s\S]{0,60}?0 0 m\s+0 (-?[\d.]+) l\s+(-?[\d.]+) -?[\d.]+ l\s+-?[\d.]+ 0 l\s+h\s+([SfB])/g,
+      )) {
+        out.push({ page, x: Number(m[1]), y: Number(m[2]), w: Number(m[4]), h: Number(m[3]), op: m[5] });
+      }
+    }
+    i = e + 9;
+  }
+  return out;
+}
+
+/** The RULED box that encloses a piece of drawn text, or undefined. A filled band (`f`) is not a border. */
+const enclosingRule = (
+  rects: ReturnType<typeof drawnRects>,
+  pt: { page: number; x: number; y: number } | undefined,
+) =>
+  pt == null
+    ? undefined
+    : rects.find(
+        (r) => r.op === 'S' && r.page === pt.page && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h,
+      );
+
 // A 1×1 PNG. Real bytes, because embedPng is what we are exercising — a fake buffer would only prove the
 // catch block works.
 const PNG_1x1 = Buffer.from(
@@ -390,7 +451,7 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
       ),
     );
     // Every one of these was ABSENT from the file the ticket complained about.
-    expect(text).toContain('Payment date: 2026-06-30');
+    expect(text).toContain('Payment date: 30 June 2026'); // a96d320c — in words; was the raw ISO
     expect(text).toContain('Payroll payslip · Regular');
     expect(text).toContain('900101011234'); // NRIC
     expect(text).toContain('SG1234567890'); // income tax number
@@ -438,8 +499,15 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
         labels,
       ),
     );
-    expect(text).toContain('Handphone allowance · A0027');
-    expect(text).toContain('Travel allowance · A0031');
+    // a96d320c — BY NAME, AND ONLY BY NAME. This assertion read `'Handphone allowance · A0027'` until
+    // the reporter pointed out that the second half is an internal reconciliation key with nothing on an
+    // employee's side to reconcile against. 6b134681's guard is untouched in substance — the lumped
+    // category word still gives way to the pay item — and what changed is that the item is now named
+    // without its code. The admin surfaces still print the code through `payItemLabel`.
+    expect(text).toContain('Handphone allowance');
+    expect(text).toContain('Travel allowance');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0027');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0031');
     expect(text).toContain('MYR 300.00');
     expect(text).toContain('MYR 200.00');
     expect(text).not.toContain('Allowances'); // the lump is gone, replaced by its parts
@@ -842,8 +910,12 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     ]);
     const text = drawnText(await renderPayslipPdf(d, labels));
     expect(text).toContain('NON-PAYABLE ITEMS');
-    expect(text).toContain('COMPANY CAR BENEFIT IN KIND · BIK01');
-    expect(text).toContain('ACCOMMODATION BENEFIT IN KIND · BIK02');
+    // a96d320c — the BIK lines are named, not coded. The builder still CARRIES `code` (asserted above,
+    // and Transaction View prints it), so what is pinned here is the DOCUMENT's choice, not a loss of data.
+    expect(text).toContain('COMPANY CAR BENEFIT IN KIND');
+    expect(text).toContain('ACCOMMODATION BENEFIT IN KIND');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('BIK01');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('BIK02');
     expect(text).toContain('TOTAL NON-PAYABLE');
     // No currency was supplied to the builder, so amounts print unlabelled — which is the honest
     // behaviour this file already pins elsewhere. The FIGURE is what matters here: 850 + 1200.
@@ -958,7 +1030,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
  * (additional remuneration ⇒ the Bonus box) was all the employee ever saw.
  */
 describe('6b134681 — bonus and overtime print by pay item, not by category', () => {
-  it('prints B0001 · ANGPOW in place of the lumped Bonus row', async () => {
+  it('prints ANGPOW in place of the lumped Bonus row — a96d320c took the code off', async () => {
     const text = drawnText(
       await renderPayslipPdf(
         {
@@ -972,7 +1044,10 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
       ),
     );
     expect(text, 'the pay item description reaches the page').toContain('ANGPOW');
-    expect(text, 'and so does its code').toContain('B0001');
+    // a96d320c — this read `toContain('B0001')`. 6b134681's point was that the CATEGORY must give way to
+    // the ITEM, and it still does; the reporter's point is that the item's internal code means nothing to
+    // the person reading their own payslip. Both are now pinned, in the same test.
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('B0001');
     // The grouped word is GONE from the earnings box: it was never the item's name.
     expect(text, 'a bare "Bonus" row must not stand where a named item exists').not.toContain('Bonus');
   });
@@ -1009,7 +1084,130 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
       ),
     );
     expect(text).toContain('OVERTIME 1.5');
-    expect(text).toContain('OT15');
+    // a96d320c — was `toContain('OT15')`. See the ANGPOW test above for why it inverted.
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('OT15');
     expect(text, 'the category word gives way to the item').not.toContain('Overtime');
+  });
+});
+
+/**
+ * a96d320c — THE FIVE THINGS THE REPORTER READ OFF THEIR OWN PAYSLIP.
+ *
+ * Three of them are this document's business: the payment date printed as a raw ISO string, the sections
+ * drawn as blocks rather than ruled boxes, and every line carrying an internal pay code the employee has
+ * nothing to reconcile against. The other two (the overtime rate and hours, and the rate and input behind
+ * a quantity-priced deduction) are figures the payroll RUN never wrote down — they are stamped by the
+ * kernel and read back here, and their tests live beside the kernel that stamps them.
+ */
+describe('a96d320c — payment date in words, ruled boxes, no internal pay codes', () => {
+  it('prints the payment date as words, resolved from the ISO the batch stored', () => {
+    // The same idiom `englishMonthYear` uses for the period line: Intl, timeZone UTC, no month table.
+    expect(englishLongDate('2026-09-30')).toBe('30 September 2026');
+    expect(englishLongDate('2026-01-01')).toBe('1 January 2026');
+    // Day-first, because that is how Malaysia writes a date and it is the form the approved plan shows.
+    expect(englishLongDate('2026-06-30')).not.toContain(',');
+  });
+
+  it('never invents a date it was not given', () => {
+    // Not a date we recognise ⇒ print what was stored. A payslip may not guess when someone was paid.
+    expect(englishLongDate('2026-09')).toBe('2026-09');
+    expect(englishLongDate('')).toBe('');
+    expect(englishLongDate('not a date')).toBe('not a date');
+    // `Date.UTC` rolls an impossible day FORWARD — 2026-02-31 would otherwise print as "3 March 2026",
+    // a payment date the payroll never used. The round-trip check refuses it.
+    expect(englishLongDate('2026-02-31')).toBe('2026-02-31');
+  });
+
+  it('puts the employee identity fields inside a RULED box, not loose under a heading', async () => {
+    const bytes = await renderPayslipPdf(
+      { ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', department: 'Finance' },
+      labels,
+    );
+    const rects = drawnRects(bytes);
+    const places = drawnPlacements(bytes);
+    // The NRIC VALUE, not the heading: the heading could sit above a box the value is not in.
+    const nric = placed(places, '900101011234');
+    expect(nric, 'the identity number reaches the page').toBeDefined();
+    expect(enclosingRule(rects, nric), 'the identity grid is enclosed by a ruled box').toBeDefined();
+    // …and so is the employment-info half, whose heading used to be a pill floating over unruled rows.
+    const dept = placed(places, 'Finance');
+    expect(enclosingRule(rects, dept), 'the employment-info grid is enclosed by a ruled box').toBeDefined();
+    // NON-VACUITY CONTROL. `enclosingRule` searching a document with any box at all would answer "yes"
+    // for every point inside that box, so the two assertions above are only worth something if the
+    // helper can still say no. The footer line is deliberately NOT in a box — it is one sentence under a
+    // rule at the foot of every sheet — so it is the honest negative.
+    expect(
+      enclosingRule(rects, placed(places, labels.generatedNote)),
+      'the footer sentence is not in a box, and the helper says so',
+    ).toBeUndefined();
+  });
+
+  it('puts the YEAR TO DATE table inside a ruled box, and does not move the page flow doing it', async () => {
+    const full = {
+      ...data,
+      ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
+      ytdYear: '2026',
+    };
+    const bytes = await renderPayslipPdf(full, labels);
+    const rects = drawnRects(bytes);
+    const places = drawnPlacements(bytes);
+    const ytdGross = placed(places, 'MYR 21,360.00');
+    expect(ytdGross, 'the YTD gross reaches the page').toBeDefined();
+    expect(enclosingRule(rects, ytdGross), 'the YTD table is enclosed by a ruled box').toBeDefined();
+    // The block is the SAME height it always was (BOX_HEAD_H + 14 + 6 × 15 = YTD_H = 124), which is what
+    // keeps a payslip that fitted one sheet still fitting one sheet.
+    expect(await pageCount(bytes)).toBe(1);
+  });
+
+  it('keeps the `sub` slot: the day count still rides beside an unpaid-leave line', async () => {
+    // THE CARE IN THE CODE REMOVAL. The two sites that pushed `sub: l.code` are gone; the slot itself is
+    // not, because the deduction box uses it for `absenceDaysLabel` — which is the OPPOSITE of what the
+    // reporter objected to. Deleting the mechanism would have taken "2 days" off the payslip with it.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          otherDeductions: 420,
+          totalDeductions: 1519.65,
+          net: 5600.35,
+          absence: {
+            unpaidLeave: { days: 2, amount: 420 },
+            absent: null,
+            residual: 0,
+            showResidual: false,
+            any: true,
+          },
+        },
+        labels,
+      ),
+    );
+    expect(text).toContain('Unpaid leave · 2 days');
+  });
+
+  it('prints no internal pay code anywhere on a document made entirely of coded items', async () => {
+    // The blanket version of the two per-site assertions above: every itemised box at once.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          allowance: 500,
+          bonus: 300,
+          overtime: 120,
+          gross: 7420,
+          earningLines: [{ code: 'A0027', name: 'Handphone allowance', amount: 500 }],
+          bonusLines: [{ code: 'B0001', name: 'ANGPOW', amount: 300 }],
+          overtimeLines: [{ code: 'OT15', name: 'OVERTIME 1.5', amount: 120 }],
+          nonPayableLines: [{ code: 'BIK01', name: 'COMPANY CAR', amount: 850 }],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    for (const name of ['Handphone allowance', 'ANGPOW', 'OVERTIME 1.5', 'COMPANY CAR']) {
+      expect(text, `${name} is still named`).toContain(name);
+    }
+    for (const code of ['A0027', 'B0001', 'OT15', 'BIK01']) {
+      expect(text, `${code} is an internal key, not something an employee can use`).not.toContain(code);
+    }
   });
 });

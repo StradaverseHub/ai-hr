@@ -72,6 +72,48 @@ function englishPeriodLabel(payPeriod: string, segment: { from: string; to: stri
   return `${base} (${short(segment.from)} - ${short(segment.to)})`;
 }
 
+/**
+ * a96d320c — "30 September 2026", not "2026-09-30".
+ *
+ * `payDate` is the raw ISO out of `payroll_batch.batch_date` and the document printed it exactly as
+ * stored. This is the SAME idiom `englishMonthYear` above uses for the pay period, and deliberately the
+ * same one: `Intl.DateTimeFormat` over `Date.UTC(...)` with `timeZone: 'UTC'`, so no date can shift by
+ * one in a negative-offset render. There is no month table here and there must never be one — twelve
+ * hardcoded month names would be a second source of truth for something the platform already knows, and
+ * it is the copy that rots.
+ *
+ * ENGLISH, FOR THE SAME REASON THE PERIOD LINE IS — and this is the one place the approved plan's build
+ * note is overruled by the source. The note asked for the date resolved "in the request locale". The
+ * document embeds Helvetica, which is WinAnsi (Latin-1), and `safe()` in the renderer folds anything
+ * outside it to '?': a Thai, Tamil or Chinese month name would print "30 ?????? 2026" on a payslip. The
+ * SCREENS already show the reader their own language; the file cannot until a Unicode font is embedded
+ * (the deferred half of ADR-0036). Only the VALUE is English — `payDateLine` ("Payment date: {date}")
+ * stays localized exactly as it was, in all six locales, and is not touched by this item.
+ *
+ * `en-GB`, not `en`: Malaysia writes the day first, and the approved plan's own worked example is
+ * "30 September 2026". `englishMonthYear` can stay on `en` because month+year reads identically in both.
+ *
+ * A value that is not an ISO calendar date is returned UNTOUCHED. Printing what was stored is a fact; a
+ * date this function invented from a malformed one would be a claim about when someone was paid.
+ */
+export function englishLongDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
+  if (!m) return iso ?? '';
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  // `Date.UTC` rolls an impossible day FORWARD (2026-02-31 ⇒ 3 March), which would print a payment date
+  // the payroll never used. Round-trip the three fields and refuse anything that did not survive.
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return iso;
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(dt);
+}
+
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
@@ -159,7 +201,9 @@ export async function payslipPdfStrings(p: {
       employerBorneTotal: t('employerBorneTotal'),
       employerBorneNote: t('employerBorneNote'),
       documentSubtitle: tIp('pdfSubtitle'),
-      paymentDate: p.payDate ? tIp('payDateLine', { date: p.payDate }) : '',
+      // a96d320c — the DATE is resolved to words here (see `englishLongDate`); the sentence around it is
+      // still `payDateLine` in the reader's own language, unchanged in all six locales.
+      paymentDate: p.payDate ? tIp('payDateLine', { date: englishLongDate(p.payDate) }) : '',
       employmentInfo: tIp('employmentInfoHeading'),
       department: tIp('fieldDepartment'),
       position: tIp('fieldPosition'),
