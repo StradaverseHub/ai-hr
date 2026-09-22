@@ -5027,7 +5027,7 @@
           "title": "Sejarah transaksi",
           "subtitle": "Satu baris bagi setiap tahun taksiran — perisytiharan semasa pekerja bagi tahun tersebut.",
           "empty": "Belum ada pelepasan TP1 diisytiharkan.",
-          "colYear": "Tahun taksiran",
+          "colYear": "Tahun",
           "colAmount": "Jumlah pelepasan",
           "colStatus": "Status",
           "colLastSaved": "Kali terakhir disimpan",
@@ -5046,7 +5046,14 @@
           "status_submitted": "Dihantar",
           "status_approved": "Diluluskan",
           "status_rejected": "Ditolak",
-          "status_cancelled": "Dibatalkan"
+          "status_cancelled": "Dibatalkan",
+          "delete": "Buang",
+          "deleteConfirmTitle": "Buang rekod TP1 ini?",
+          "deleteConfirmBody": "Ia akan dikeluarkan daripada senarai ini dan tidak lagi dikira dalam gaji atau jumlah TP1. Satu rekod disimpan untuk audit, seperti yang diperlukan bagi rekod cukai — anda boleh melihatnya dengan Tunjuk yang dibuang.",
+          "deleteConfirm": "Buang",
+          "deleteCancel": "Batal",
+          "showDeleted": "Tunjuk yang dibuang ({count})",
+          "hideDeleted": "Sembunyikan yang dibuang"
         },
         "applied": {
           "title": "Digunakan dalam gaji",
@@ -5071,7 +5078,11 @@
         "addMonthApply": "Tetapkan",
         "discardButton": "Buang draf",
         "discardTitle": "Buang draf ini. Tiada apa-apa telah diisytiharkan, jadi tiada yang hilang.",
-        "submitApproveButton": "Hantar dan luluskan"
+        "submitApproveButton": "Hantar dan luluskan",
+        "addStepTitle": "Pengisytiharan ini untuk bila?",
+        "addStepHint": "Pilih tahun taksiran dan bulan potongan, kemudian masukkan jumlahnya.",
+        "addStepContinue": "Teruskan",
+        "assessmentYear": "Tahun taksiran"
       },
       "zakat": {
         "title": "Zakat",

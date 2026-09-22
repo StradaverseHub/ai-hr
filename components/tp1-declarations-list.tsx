@@ -61,9 +61,21 @@ export type Tp1DeclarationListRow = {
   href: string;
   /** A closed assessment year is a read-only historical view, so the action reads View, not View / Edit. */
   readOnly: boolean;
+  /**
+   * 27605faa rev 2 — where Delete goes: a LINK to a server-rendered confirmation, never an action.
+   *
+   * A STRING, and that is the point. This is a client island, and a server action handed across that
+   * boundary as a prop returns a 500 on every request while tsc, the suite and next build all stay green
+   * (r123's defect, recorded on the TP1 declaration form too). An href also gives the reporter the
+   * confirmation step they asked for, and works with no JavaScript at all.
+   *
+   * NULL for a row that cannot be deleted — a rejected declaration, which both services refuse: the
+   * screen must not offer an action that can only end in a refusal.
+   */
+  deleteHref: string | null;
 };
 
-type SortKey = 'month' | 'amount' | 'status' | 'lastSaved';
+type SortKey = 'year' | 'month' | 'amount' | 'status' | 'lastSaved';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -95,6 +107,8 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
     const dir = sortDir === 'asc' ? 1 : -1;
     const val = (r: Tp1DeclarationListRow): string | number => {
       switch (sortKey) {
+        case 'year':
+          return r.assessmentYear;
         case 'amount':
           return Number(r.amount);
         case 'status':
@@ -124,7 +138,8 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
     else {
       setSortKey(key);
       // Dates open newest-first; months open in calendar order; anything else reads as an accident.
-      setSortDir(key === 'lastSaved' ? 'desc' : 'asc');
+      // Dates and YEARS open newest-first; months open in calendar order.
+      setSortDir(key === 'lastSaved' || key === 'year' ? 'desc' : 'asc');
     }
   };
   const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
@@ -155,6 +170,9 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
+              {/* 27605faa rev 2 — the YEAR is a COLUMN now, not a filter you must set before anything
+                  appears. Sortable like the rest, and it opens newest-first. */}
+              {sortTh('year', t('history.colYear'))}
               {sortTh('month', t('history.colMonth'))}
               {sortTh('amount', t('history.colAmount'), 'text-right')}
               {sortTh('status', t('history.colStatus'))}
@@ -165,6 +183,7 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
           <tbody className="divide-y divide-border">
             {pageRows.map((r) => (
               <tr key={r.id}>
+                <td className="px-4 py-2.5 tabular-nums font-medium">{r.assessmentYear}</td>
                 <td className="px-4 py-2.5 font-medium">{r.monthLabel}</td>
                 <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.amount)}</td>
                 <td className="px-4 py-2.5">
@@ -179,18 +198,31 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
                 </td>
                 <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.lastSaved}</td>
                 <td className="px-4 py-2.5 text-right">
-                  <Link
-                    href={r.href}
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    {r.readOnly ? t('history.view') : t('history.viewEdit')}
-                  </Link>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Link
+                      href={r.href}
+                      className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      {r.readOnly ? t('history.view') : t('history.viewEdit')}
+                    </Link>
+                    {/* 27605faa rev 2 — DELETE, beside View, in the Actions column that already existed.
+                        A LINK to a confirmation, not a submit: the reporter asked to be asked first, and a
+                        server action cannot cross into this client island as a prop without 500ing. */}
+                    {r.deleteHref && (
+                      <Link
+                        href={r.deleteHref}
+                        className="rounded-md border border-destructive/30 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        {t('history.delete')}
+                      </Link>
+                    )}
+                  </span>
                 </td>
               </tr>
             ))}
             {pageRows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   {/* Empty is the state a reader sees FIRST here: production carries 2 declarations in
                       total. It must read as empty, not as an error. */}
                   {rows.length === 0 ? t('history.empty') : t('history.noMatches')}

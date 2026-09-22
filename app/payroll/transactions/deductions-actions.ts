@@ -213,6 +213,38 @@ export async function adminSubmitAndApproveTp1(formData: FormData) {
   backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted+and+approved');
 }
 
+/**
+ * 27605faa rev 2 — DELETE A TP1 RECORD FROM THE TRANSACTION HISTORY, whatever state it is in.
+ *
+ * ONE ACTION ON THE SCREEN, TWO SERVICES BEHIND IT, CHOSEN BY STATUS — and that is deliberate rather
+ * than a convenience. `discardTp1DraftForPerson` accepts only a draft; `cancelTp1ForPerson` accepts only
+ * a submitted or approved row. Each refusal is the audit meaning of that state, so widening either
+ * service to cover both would erase a distinction the records rely on: nobody was ever told about a
+ * draft, whereas a cancelled declaration was declared and then withdrawn. The SCREEN does not need that
+ * distinction, so it routes; the services keep it.
+ *
+ * ⚠️ STILL NOT A ROW DELETE, and the reporter was told so in plain words before approving. tp1_relief is
+ * a tax record: it is what somebody's PCB was reduced by, and if LHDN asks why a month's tax was lower
+ * the answer has to still exist. "Delete" here means status 'cancelled' — which `tp1CountableWhere`
+ * already excludes from every figure (it requires 'approved'), so the row stops feeding payroll the
+ * moment it is written, with no second exclusion to keep in step.
+ *
+ * A REJECTED row is refused by both services, which is correct: rejection is already an ending, and the
+ * screen does not offer Delete on one.
+ */
+export async function adminDeleteTp1(formData: FormData) {
+  const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);
+  const status = String(formData.get('status') ?? '');
+  try {
+    if (status === 'draft') await discardTp1DraftForPerson(s, input);
+    else await cancelTp1ForPerson(s, input);
+  } catch (e) {
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, assessmentYear, 'toast=TP1+record+deleted');
+}
+
 /** 27605faa — discard a DRAFT. Distinct from cancel, which is for a submitted or approved row. */
 export async function adminDiscardTp1Draft(formData: FormData) {
   const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);

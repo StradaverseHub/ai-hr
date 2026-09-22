@@ -5027,7 +5027,7 @@
           "title": "Transaction history",
           "subtitle": "One row per assessment year — the employee's current declaration for that year.",
           "empty": "No TP1 relief declared yet.",
-          "colYear": "Assessment year",
+          "colYear": "Year",
           "colAmount": "Total relief",
           "colStatus": "Status",
           "colLastSaved": "Last saved",
@@ -5046,7 +5046,14 @@
           "status_submitted": "Submitted",
           "status_approved": "Approved",
           "status_rejected": "Rejected",
-          "status_cancelled": "Cancelled"
+          "status_cancelled": "Cancelled",
+          "delete": "Delete",
+          "deleteConfirmTitle": "Delete this TP1 record?",
+          "deleteConfirmBody": "It will be removed from this list and will no longer count towards payroll or the TP1 total. A record is kept for audit, as tax records must be — you can see removed records with Show deleted.",
+          "deleteConfirm": "Delete",
+          "deleteCancel": "Cancel",
+          "showDeleted": "Show deleted ({count})",
+          "hideDeleted": "Hide deleted"
         },
         "applied": {
           "title": "Applied in payroll",
@@ -5071,7 +5078,11 @@
         "addMonthApply": "Set",
         "discardButton": "Discard draft",
         "discardTitle": "Remove this draft. Nothing has been declared, so nothing is lost.",
-        "submitApproveButton": "Submit and approve"
+        "submitApproveButton": "Submit and approve",
+        "addStepTitle": "Which declaration is this for?",
+        "addStepHint": "Choose the assessment year and the deduction month, then enter the amounts.",
+        "addStepContinue": "Continue",
+        "assessmentYear": "Assessment year"
       },
       "zakat": {
         "title": "Zakat",

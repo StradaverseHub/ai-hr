@@ -1075,12 +1075,27 @@ export type Tp1MonthDeclaration = Tp1DeclarationSummary & {
   approvedMonth: number | null;
 };
 
+/**
+ * Every declaration for a person, one row per (year, month), newest year first.
+ *
+ * 27605faa — `assessmentYear` IS NOW OPTIONAL, and omitting it returns EVERY year. The reporter's point:
+ * the Transaction History is a history, and being made to pick an Assessment Year before any record
+ * appears is a filter masquerading as a precondition. Passing a year still behaves exactly as before.
+ *
+ * ⚠️ THE COLLAPSE KEY HAD TO GAIN THE YEAR, and this is the trap the change turns on. The append-only
+ * table holds several rows per month (a correction is another row; the newest wins and the rest are
+ * counted as `versions`). That collapse used to key on the MONTH alone, which is sound while the query
+ * is fenced to one year — and silently wrong the moment it is not: January 2025 and January 2026 would
+ * land in the same bucket, one of them would be reported as a "version" of the other, and a whole year's
+ * declaration would vanish from the list while inflating another's version count.
+ */
 export async function listTp1DeclarationsForPersonYear(
   ctx: SessionContext,
-  p: { personId: string; assessmentYear: number },
+  p: { personId: string; assessmentYear?: number },
 ): Promise<Tp1MonthDeclaration[]> {
   const personId = requireAdminTarget(ctx, p.personId);
-  const year = validateYear(p.assessmentYear);
+  // Validated only when supplied: an absent year is "every year", not year zero.
+  const year = p.assessmentYear == null ? null : validateYear(p.assessmentYear);
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -1095,21 +1110,31 @@ export async function listTp1DeclarationsForPersonYear(
         approvedMonth: tp1Relief.approvedMonth,
       })
       .from(tp1Relief)
-      .where(and(eq(tp1Relief.personId, personId), eq(tp1Relief.assessmentYear, year)))
+      .where(
+        year == null
+          ? eq(tp1Relief.personId, personId)
+          : and(eq(tp1Relief.personId, personId), eq(tp1Relief.assessmentYear, year)),
+      )
       .orderBy(desc(tp1Relief.createdAt), desc(tp1Relief.id));
-    const byMonth = new Map<number, Tp1MonthDeclaration>();
+    // KEYED ON YEAR **AND** MONTH — see the header on why the month alone is unsound once the query is
+    // not fenced to one year. `0` is the bucket for a month-less legacy row: a real month is 1–12, so it
+    // cannot collide with one.
+    const byYearMonth = new Map<string, Tp1MonthDeclaration>();
     for (const r of rows) {
-      // 0 is the bucket for a month-less legacy row: a real month is 1–12, so it cannot collide.
-      const key = r.deductionMonth ?? 0;
-      const won = byMonth.get(key);
+      const key = `${r.assessmentYear}|${r.deductionMonth ?? 0}`;
+      const won = byYearMonth.get(key);
       if (won) {
         won.versions += 1; // an older, superseded row for the SAME month — counted, never listed
         continue;
       }
-      byMonth.set(key, { ...r, tp1Amount: Number(r.tp1Amount), versions: 1 });
+      byYearMonth.set(key, { ...r, tp1Amount: Number(r.tp1Amount), versions: 1 });
     }
-    // January first, and the month-less legacy line last rather than ahead of January.
-    return [...byMonth.values()].sort((a, b) => (a.deductionMonth ?? 99) - (b.deductionMonth ?? 99));
+    // Newest YEAR first, then January first within it, and the month-less legacy line last rather than
+    // ahead of January. For a single-year call this is the same order it has always produced.
+    return [...byYearMonth.values()].sort(
+      (a, b) =>
+        b.assessmentYear - a.assessmentYear || (a.deductionMonth ?? 99) - (b.deductionMonth ?? 99),
+    );
   });
 }
 

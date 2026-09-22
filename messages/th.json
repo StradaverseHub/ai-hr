@@ -5027,7 +5027,7 @@
           "title": "ประวัติธุรกรรม",
           "subtitle": "หนึ่งแถวต่อหนึ่งปีภาษี — แบบแจ้งปัจจุบันของพนักงานสำหรับปีนั้น",
           "empty": "ยังไม่มีการแจ้งลดหย่อน TP1",
-          "colYear": "ปีภาษี",
+          "colYear": "ปี",
           "colAmount": "ยอดลดหย่อนรวม",
           "colStatus": "สถานะ",
           "colLastSaved": "บันทึกล่าสุด",
@@ -5046,7 +5046,14 @@
           "status_submitted": "ส่งแล้ว",
           "status_approved": "อนุมัติแล้ว",
           "status_rejected": "ปฏิเสธแล้ว",
-          "status_cancelled": "ยกเลิกแล้ว"
+          "status_cancelled": "ยกเลิกแล้ว",
+          "delete": "ลบ",
+          "deleteConfirmTitle": "ลบรายการ TP1 นี้หรือไม่",
+          "deleteConfirmBody": "รายการนี้จะถูกนำออกจากรายการและจะไม่นับรวมในเงินเดือนหรือยอด TP1 อีก ระบบยังเก็บบันทึกไว้เพื่อการตรวจสอบตามที่เอกสารภาษีกำหนด — ดูได้จาก แสดงรายการที่ลบ",
+          "deleteConfirm": "ลบ",
+          "deleteCancel": "ยกเลิก",
+          "showDeleted": "แสดงรายการที่ลบ ({count})",
+          "hideDeleted": "ซ่อนรายการที่ลบ"
         },
         "applied": {
           "title": "ใช้ในเงินเดือนแล้ว",
@@ -5071,7 +5078,11 @@
         "addMonthApply": "ตั้งค่า",
         "discardButton": "ทิ้งฉบับร่าง",
         "discardTitle": "ลบฉบับร่างนี้ ยังไม่มีการแจ้งใด ๆ จึงไม่มีสิ่งใดสูญหาย",
-        "submitApproveButton": "ส่งและอนุมัติ"
+        "submitApproveButton": "ส่งและอนุมัติ",
+        "addStepTitle": "การแจ้งนี้สำหรับช่วงใด",
+        "addStepHint": "เลือกปีประเมินและเดือนที่หัก แล้วกรอกจำนวนเงิน",
+        "addStepContinue": "ต่อไป",
+        "assessmentYear": "ปีประเมิน"
       },
       "zakat": {
         "title": "ซะกาต",

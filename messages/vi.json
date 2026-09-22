@@ -5027,7 +5027,7 @@
           "title": "Lịch sử giao dịch",
           "subtitle": "Mỗi năm tính thuế một dòng — bản khai hiện tại của nhân viên cho năm đó.",
           "empty": "Chưa khai miễn trừ TP1 nào.",
-          "colYear": "Năm tính thuế",
+          "colYear": "Năm",
           "colAmount": "Tổng miễn trừ",
           "colStatus": "Trạng thái",
           "colLastSaved": "Lưu lần cuối",
@@ -5046,7 +5046,14 @@
           "status_submitted": "Đã nộp",
           "status_approved": "Đã duyệt",
           "status_rejected": "Bị từ chối",
-          "status_cancelled": "Đã hủy"
+          "status_cancelled": "Đã hủy",
+          "delete": "Xoá",
+          "deleteConfirmTitle": "Xoá bản ghi TP1 này?",
+          "deleteConfirmBody": "Bản ghi sẽ được loại khỏi danh sách này và không còn tính vào bảng lương hay tổng TP1. Một bản ghi vẫn được lưu để kiểm toán, như yêu cầu đối với hồ sơ thuế — xem bằng Hiện bản đã xoá.",
+          "deleteConfirm": "Xoá",
+          "deleteCancel": "Huỷ",
+          "showDeleted": "Hiện bản đã xoá ({count})",
+          "hideDeleted": "Ẩn bản đã xoá"
         },
         "applied": {
           "title": "Đã áp dụng trong lương",
@@ -5071,7 +5078,11 @@
         "addMonthApply": "Đặt",
         "discardButton": "Huỷ bản nháp",
         "discardTitle": "Xoá bản nháp này. Chưa có gì được kê khai nên không mất gì.",
-        "submitApproveButton": "Gửi và phê duyệt"
+        "submitApproveButton": "Gửi và phê duyệt",
+        "addStepTitle": "Bản kê này cho kỳ nào?",
+        "addStepHint": "Chọn năm tính thuế và tháng khấu trừ, sau đó nhập số tiền.",
+        "addStepContinue": "Tiếp tục",
+        "assessmentYear": "Năm tính thuế"
       },
       "zakat": {
         "title": "Zakat",

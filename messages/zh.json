@@ -5027,7 +5027,7 @@
           "title": "交易历史",
           "subtitle": "每个课税年度一行 — 该年度员工的当前申报。",
           "empty": "尚未申报 TP1 减免。",
-          "colYear": "课税年度",
+          "colYear": "年度",
           "colAmount": "减免总额",
           "colStatus": "状态",
           "colLastSaved": "最后保存",
@@ -5046,7 +5046,14 @@
           "status_submitted": "已提交",
           "status_approved": "已批准",
           "status_rejected": "已拒绝",
-          "status_cancelled": "已取消"
+          "status_cancelled": "已取消",
+          "delete": "删除",
+          "deleteConfirmTitle": "删除此 TP1 记录？",
+          "deleteConfirmBody": "该记录将从此列表中移除，并不再计入薪资或 TP1 总额。出于审计需要，税务记录会保留副本——可通过“显示已删除”查看。",
+          "deleteConfirm": "删除",
+          "deleteCancel": "取消",
+          "showDeleted": "显示已删除（{count}）",
+          "hideDeleted": "隐藏已删除"
         },
         "applied": {
           "title": "已在薪资中应用",
@@ -5071,7 +5078,11 @@
         "addMonthApply": "设定",
         "discardButton": "丢弃草稿",
         "discardTitle": "移除此草稿。尚未申报任何内容，不会有任何损失。",
-        "submitApproveButton": "提交并批准"
+        "submitApproveButton": "提交并批准",
+        "addStepTitle": "这份申报属于哪个期间？",
+        "addStepHint": "请选择评税年度与扣除月份，然后填写金额。",
+        "addStepContinue": "继续",
+        "assessmentYear": "评税年度"
       },
       "zakat": {
         "title": "天课",

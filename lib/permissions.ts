@@ -979,6 +979,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // Same scopedAdmin guard as the list: it is the same data, one month at a time. (The PDF route
       // beside it is a route.ts, not a page, and route handlers are deliberately not on this matrix.)
       '/payroll/transactions/tp1/[year]/[month]',
+      // 27605faa rev 2: Add New TP1's first step — which assessment year and which deduction month. Same
+      // scopedAdmin key as the three routes above, and it needs one on its own account: it names the
+      // selected employee in its header. It WRITES NOTHING (it redirects to the declaration form above),
+      // but the reverse-completeness check in test/function-access.test.ts walks page.tsx files and a
+      // guarded page with no matrix column fails the suite rather than becoming a screen nobody can
+      // grant or revoke.
+      '/payroll/transactions/tp1/new',
       '/payroll/transactions/zakat',
       // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
       // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.

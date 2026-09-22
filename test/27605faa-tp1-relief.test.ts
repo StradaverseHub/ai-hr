@@ -33,6 +33,7 @@ import {
   discardTp1DraftForPerson,
   getTp1ByIdForPerson,
   saveTp1DraftForPerson,
+  listTp1DeclarationsForPersonYear,
   submitTp1ForPerson,
   TaxReliefError,
 } from '../core/tax-relief';
@@ -56,6 +57,9 @@ const src = (p: string) =>
 const LIST = src('app/payroll/transactions/tp1/page.tsx');
 const ACTIONS = src('app/payroll/transactions/deductions-actions.ts');
 const FORM = src('components/tp1-declaration-form.tsx');
+const NEW = src('app/payroll/transactions/tp1/new/page.tsx');
+const PAGE_SRC = src('app/payroll/transactions/tp1/page.tsx');
+const FORM_LIST = src('components/tp1-declarations-list.tsx');
 const CORE = src('core/tax-relief.ts');
 
 let b: Base;
@@ -258,30 +262,174 @@ describe('27605faa · submit and approve in one press', () => {
   });
 });
 
-describe('27605faa · the Add button asks which month', () => {
-  it('no longer hardcodes the current month as the only answer', () => {
-    // The constant that WAS the whole fault.
-    expect(LIST, 'the old one-line rule must be gone').not.toMatch(
-      /const addMonth = selectedYear === currentYear \? Number\(todayInKualaLumpur\(\)\.slice\(5, 7\)\) : 1;/,
+/**
+ * 27605faa REVISION 2 — the year and month moved OFF the viewing screen and INTO Add New TP1.
+ *
+ * ⚠️ THESE FOUR CASES WERE UPDATED, NOT DELETED, because they pinned a decision the reporter then
+ * contested. r324 put a month picker on app/payroll/transactions/tp1/page.tsx beside the Add button, and
+ * asserted it there. Their words: "The Assessment Year and Deduction Month selection is currently
+ * displayed on the TP1 viewing page. This is not the correct workflow because these fields are relevant
+ * when creating a new TP1 transaction, not when viewing existing transaction history."
+ *
+ * They were right, and the fault was narrower than either report suggested: the month was never fixed to
+ * the current month — any month was reachable by opening it — but the CONTROL for choosing one sat on the
+ * viewing screen. So what the assertions protect is unchanged (a month is chosen, not assumed; a month
+ * outside 1-12 is refused; the names come from Intl); WHERE they protect it has moved.
+ */
+/**
+ * 27605faa rev 2 — THE COLLAPSE KEY, which is where showing every year could have gone quietly wrong.
+ *
+ * `listTp1DeclarationsForPersonYear` collapses the append-only rows to one per month (a correction is
+ * another row; the newest wins, the rest are counted as `versions`). That collapse keyed on the MONTH
+ * alone — sound while the query was fenced to one year, and silently wrong the moment it is not:
+ * January 2025 and January 2026 would share a bucket, one would be reported as a "version" of the other,
+ * and a whole year's declaration would vanish from the history while inflating another's count.
+ *
+ * These cases are the reason the key gained the year. Both would pass against the old code for a
+ * single-year call, which is exactly why the cross-year one has to exist.
+ */
+describe('27605faa rev 2 · every year at once, without two Januaries colliding', () => {
+  it('keeps the same month in different years as separate records', async () => {
+    const { personId } = await hire();
+    const a = await saveTp1DraftForPerson(adminCtx(b), {
+      personId, assessmentYear: 2025, deductionMonth: 1, tp1Amount: 500,
+    });
+    const c = await saveTp1DraftForPerson(adminCtx(b), {
+      personId, assessmentYear: 2026, deductionMonth: 1, tp1Amount: 900,
+    });
+    expect(a.id).not.toBe(c.id);
+
+    const all = await listTp1DeclarationsForPersonYear(adminCtx(b), { personId });
+    const januaries = all.filter((r) => r.deductionMonth === 1);
+    expect(januaries, 'two Januaries, two records').toHaveLength(2);
+    expect(januaries.map((r) => r.assessmentYear).sort()).toEqual([2025, 2026]);
+    // …and NEITHER is reported as a superseded version of the other.
+    for (const j of januaries) expect(j.versions, 'no cross-year version inflation').toBe(1);
+  });
+
+  it('newest year first, January first within a year', async () => {
+    const { personId } = await hire();
+    for (const [y, m] of [[2025, 3], [2026, 2], [2026, 1]] as const) {
+      await saveTp1DraftForPerson(adminCtx(b), {
+        personId, assessmentYear: y, deductionMonth: m, tp1Amount: 100,
+      });
+    }
+    const all = await listTp1DeclarationsForPersonYear(adminCtx(b), { personId });
+    expect(all.map((r) => `${r.assessmentYear}-${r.deductionMonth}`)).toEqual(['2026-1', '2026-2', '2025-3']);
+  });
+
+  /** Passing a year still behaves exactly as it always did — the existing callers must not shift. */
+  it('a single-year call is unchanged', async () => {
+    const { personId } = await hire();
+    await saveTp1DraftForPerson(adminCtx(b), { personId, assessmentYear: 2025, deductionMonth: 1, tp1Amount: 500 });
+    await saveTp1DraftForPerson(adminCtx(b), { personId, assessmentYear: 2026, deductionMonth: 1, tp1Amount: 900 });
+
+    const only2026 = await listTp1DeclarationsForPersonYear(adminCtx(b), { personId, assessmentYear: 2026 });
+    expect(only2026).toHaveLength(1);
+    expect(only2026[0].assessmentYear).toBe(2026);
+  });
+
+  it('a malformed year is still refused rather than read as every year', async () => {
+    const { personId } = await hire();
+    await expect(
+      listTp1DeclarationsForPersonYear(adminCtx(b), { personId, assessmentYear: 1899 }),
+      'an out-of-range year must throw, not silently widen to all years',
+    ).rejects.toThrow();
+  });
+});
+
+describe('27605faa rev 2 · Add New TP1 asks for the year and month, on its own step', () => {
+  it('the viewing screen no longer carries the control at all', () => {
+    expect(LIST, 'the month picker has left the history screen').not.toContain('name="addMonth"');
+    expect(LIST, 'and so has its resolution').not.toContain('defaultAddMonth');
+    // Add now opens the step rather than a month directly.
+    expect(LIST).toContain('/payroll/transactions/tp1/new?employmentId=');
+  });
+
+  it('the step asks for both, and neither is assumed', () => {
+    expect(NEW).toContain('name="year"');
+    expect(NEW).toContain('name="month"');
+    expect(NEW).toContain("t('tp1.addStepContinue')");
+  });
+
+  it('keeps today as the DEFAULT, which is what a reader usually means', () => {
+    expect(NEW).toContain('const currentYear = Number(todayIso.slice(0, 4));');
+    expect(NEW).toContain('const currentMonth = Number(todayIso.slice(5, 7));');
+    expect(NEW).toContain('defaultValue={String(month)}');
+    expect(NEW).toContain('defaultValue={String(year)}');
+  });
+
+  /** Untrusted url values: month 13 or year 3000 must fall back rather than reach the redirect. */
+  it('refuses a month outside 1-12 and a year outside 2000-2100', () => {
+    expect(NEW).toContain('askedMonth >= 1 && askedMonth <= 12');
+    expect(NEW).toContain('askedYear >= YEAR_MIN && askedYear <= YEAR_MAX');
+    expect(NEW).toContain('Number.isInteger(askedMonth)');
+    expect(NEW).toContain('Number.isInteger(askedYear)');
+  });
+
+  it('names the months through Intl, never a hardcoded list', () => {
+    expect(NEW).toContain('monthFmt.format(');
+    expect(NEW, 'no second calendar').not.toMatch(/'January'|'Januari'/);
+  });
+
+  /**
+   * ⚠️ IT CREATES NOTHING. The step resolves a year and a month and redirects to the declaration form
+   * that already exists. A second write path to tp1_relief is the one thing this must not become.
+   */
+  it('writes nothing — it resolves and redirects', () => {
+    expect(NEW).toContain('redirect(');
+    expect(NEW).toContain('/payroll/transactions/tp1/${year}/${month}');
+    for (const f of ['saveTp1Draft', 'submitTp1', 'db.insert', '.update(tp1Relief']) {
+      expect(NEW, `${f} would make this a second writer`).not.toContain(f);
+    }
+  });
+
+  it('is scoped and re-guards the employment, like the screen it returns to', () => {
+    expect(NEW).toContain('scopedAdmin');
+    expect(NEW).toContain('requireAdmin()');
+    expect(NEW).toContain('employees.find((e) => e.employmentId === sp.employmentId)');
+    expect(NEW, 'an unknown or out-of-scope employee is the same bare 404').toContain('notFound()');
+  });
+});
+
+describe('27605faa rev 2 · Delete lives in the Transaction History', () => {
+  it('every deletable row offers it, and a rejected one does not', () => {
+    expect(PAGE_SRC).toContain("d.status === 'rejected'");
+    expect(PAGE_SRC).toContain('deleteHref:');
+    expect(FORM_LIST).toContain("t('history.delete')");
+    expect(FORM_LIST, 'a link, never an action prop across the client boundary').toContain('href={r.deleteHref}');
+  });
+
+  it('asks before it deletes, server-rendered', () => {
+    expect(PAGE_SRC).toContain("t('tp1.history.deleteConfirmTitle')");
+    expect(PAGE_SRC).toContain('action={adminDeleteTp1}');
+    expect(PAGE_SRC, 'the status routes the service, and rides a hidden field').toContain('name="status"');
+  });
+
+  it('the action routes by status so neither service loosens', () => {
+    const fn = ACTIONS.slice(
+      ACTIONS.indexOf('export async function adminDeleteTp1'),
+      ACTIONS.indexOf('export async function adminDiscardTp1Draft'),
     );
-    expect(LIST).toContain('const defaultAddMonth =');
-    expect(LIST).toContain("name=\"addMonth\"");
-    expect(LIST, 'and the chosen month is what Add opens').toContain('monthHref(selectedYear, addMonth)');
+    expect(fn).toContain("status === 'draft'");
+    expect(fn).toContain('discardTp1DraftForPerson');
+    expect(fn).toContain('cancelTp1ForPerson');
+    // Still not a row delete: tp1_relief is a tax record.
+    for (const f of ['.delete(', 'DELETE FROM']) {
+      expect(fn, `${f} would destroy a tax record`).not.toContain(f);
+    }
   });
 
-  it('keeps the current month as the DEFAULT, which is what a reader usually means', () => {
-    expect(LIST).toContain('selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1');
-    expect(LIST).toContain('defaultValue={String(addMonth)}');
+  it('a deleted record leaves the list but stays reachable', () => {
+    expect(PAGE_SRC).toContain("r.status !== 'cancelled'");
+    expect(PAGE_SRC).toContain("t('tp1.history.showDeleted'");
   });
 
-  /** An untrusted url value: month 13, a word, or nothing must fall back rather than be honoured. */
-  it('refuses a month outside 1–12 rather than passing it on', () => {
-    expect(LIST).toContain('askedAddMonth >= 1 && askedAddMonth <= 12');
-    expect(LIST).toContain('Number.isInteger(askedAddMonth)');
-  });
-
-  it('names the months through the screen’s own formatter, never a hardcoded list', () => {
-    expect(LIST).toContain('label: monthFmt.format(');
-    expect(LIST, 'no second calendar on this screen').not.toMatch(/'January'|'Januari'/);
+  it('the history spans every year, with the year as a column', () => {
+    expect(PAGE_SRC, 'no year filter on the read').toContain(
+      'listTp1DeclarationsForPersonYear(s, { personId: selectedEmp.personId })',
+    );
+    expect(FORM_LIST).toContain("sortTh('year', t('history.colYear'))");
+    expect(FORM_LIST).toContain('{r.assessmentYear}');
   });
 });

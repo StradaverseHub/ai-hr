@@ -20,6 +20,7 @@ import {
   EmployeeScopePanel,
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
+import { adminDeleteTp1 } from '../deductions-actions';
 import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
 import { Tp1DeclarationsList, type Tp1DeclarationListRow } from '@/components/tp1-declarations-list';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
@@ -92,9 +93,10 @@ export default async function Tp1DeclarationPage({
     /** The selected assessment year. Server-owned (see the header); also written by adminSaveTp1Draft /
      *  adminSubmitTp1, which redirect back here after a save. */
     year?: string;
-    /** 27605faa — which month "+ Add New TP1" should open. 1–12; anything else falls back to the
-     *  current month, so a hand-edited URL cannot land a declaration in month 13. */
-    addMonth?: string;
+    /** 27605faa rev 2 — the record a Delete confirmation is about, and whether deleted rows are shown. */
+    confirmDelete?: string;
+    showDeleted?: string;
+
     // Two independently paged listings sit below the header, so each carries its own page/size pair.
     dPage?: string;
     dSize?: string;
@@ -151,10 +153,11 @@ export default async function Tp1DeclarationPage({
     selectedEmp
       ? await Promise.all([
           listTp1YearsForPerson(s, { personId: selectedEmp.personId }),
-          listTp1DeclarationsForPersonYear(s, {
-            personId: selectedEmp.personId,
-            assessmentYear: selectedYear,
-          }),
+          // 27605faa rev 2 — NO assessmentYear: the Transaction History is a history, and being made to
+          // pick a year before any record appears is a filter masquerading as a precondition. The year
+          // is a COLUMN in the list now. `selectedYear` still drives the Add flow and the applied-
+          // deduction panel below, which genuinely are per-year.
+          listTp1DeclarationsForPersonYear(s, { personId: selectedEmp.personId }),
           // Narrowed IN THE QUERY, over the same company fence the employee read uses — and it fails
           // closed on an empty set, so an admin who can see no company sees no rows.
           listAppliedTp1Deductions(s, { companyIds: scopeIds, employmentId: selectedEmp.employmentId }),
@@ -174,6 +177,27 @@ export default async function Tp1DeclarationPage({
 
   const monthHref = (year: number, month: number) =>
     `/payroll/transactions/tp1/${year}/${month}?employmentId=${encodeURIComponent(selectedEmploymentId ?? '')}`;
+  /**
+   * 27605faa rev 2 — a link BACK TO THIS SCREEN with some parameters changed and the rest kept.
+   *
+   * The url is this screen's state (employee, year, both pagers), so a Delete link or a Show-deleted
+   * toggle must carry what is already there rather than resetting it — pressing Delete on page three of
+   * the history and landing back on page one is the kind of small wrong that makes a screen feel broken.
+   */
+  const listHref = (over: Record<string, string | undefined>) => {
+    const qp = new URLSearchParams();
+    if (selectedEmploymentId) qp.set('employmentId', selectedEmploymentId);
+    qp.set('year', String(selectedYear));
+    for (const k of ['dPage', 'dSize', 'aPage', 'aSize', 'showDeleted'] as const) {
+      const v = sp[k as keyof typeof sp];
+      if (typeof v === 'string' && v !== '') qp.set(k, v);
+    }
+    for (const [k, v] of Object.entries(over)) {
+      if (v == null || v === '') qp.delete(k);
+      else qp.set(k, v);
+    }
+    return `/payroll/transactions/tp1?${qp.toString()}`;
+  };
   const declarationRows: Tp1DeclarationListRow[] = declarations.map((d) => ({
     id: d.id,
     assessmentYear: d.assessmentYear,
@@ -192,7 +216,37 @@ export default async function Tp1DeclarationPage({
     href: monthHref(d.assessmentYear, d.deductionMonth ?? 1),
     // A past assessment year opens read-only, exactly as it did on the old screen.
     readOnly: d.assessmentYear < currentYear,
+    /**
+     * 27605faa rev 2 — Delete goes to a CONFIRMATION on this same screen, carrying the id and the
+     * status. The status rides the url because the action routes on it (draft ⇒ discard, submitted or
+     * approved ⇒ cancel), and it is re-read from the ROW server-side before anything is written — a url
+     * value decides which button is drawn, never which service runs.
+     *
+     * NULL for a rejected row: both services refuse one, and offering an action that can only end in a
+     * refusal is worse than not offering it.
+     */
+    deleteHref:
+      d.status === 'rejected'
+        ? null
+        : listHref({ confirmDelete: d.id }),
   }));
+  /**
+   * 27605faa rev 2 — A DELETED RECORD LEAVES THE LIST, which is what the reporter means by "deleted".
+   *
+   * The ROW is kept — tp1_relief is a tax record and `cancelTp1ForPerson` writes a status rather than
+   * removing anything — so the honest reading of "removed from the transaction history" is that it stops
+   * appearing HERE, with a way to look. `showDeleted` is that way, and it is a url flag rather than
+   * client state so the choice survives a refresh and can be linked.
+   */
+  const showDeleted = sp.showDeleted === '1';
+  const visibleDeclarationRows = showDeleted
+    ? declarationRows
+    : declarationRows.filter((r) => r.status !== 'cancelled');
+  const deletedCount = declarationRows.length - declarationRows.filter((r) => r.status !== 'cancelled').length;
+  /** The record the confirmation is about, re-resolved from the ROWS rather than trusted from the url. */
+  const pendingDelete = sp.confirmDelete
+    ? declarationRows.find((r) => r.id === sp.confirmDelete && r.status !== 'rejected') ?? null
+    : null;
   // Cycle and batch-status labels are resolved HERE (the shared table takes them pre-translated) — see the
   // one-namespace note in the header.
   const appliedRows: AppliedInPayrollRow[] = applied.map((r) => ({
@@ -207,35 +261,6 @@ export default async function Tp1DeclarationPage({
     createdOn: r.createdOn,
   }));
 
-  /**
-   * 27605faa — "+ Add New TP1" now ASKS WHICH MONTH instead of assuming this one.
-   *
-   * THE REPORTED FAULT WAS NARROWER THAN THE TICKET SAID, and the plan said so before this was built. The
-   * deduction month was never fixed to the current month: each declaration belongs to a month, the form
-   * takes it from the `[month]` path segment, and any month is reachable by opening it. The one place it
-   * was imposed is HERE — this line read
-   *
-   *   const addMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
-   *
-   * so pressing Add went straight to the current month (or January on any other year) with nothing to
-   * change it. Keying March in April meant going the long way round. That constant WAS the whole fault.
-   *
-   * The current month is still the DEFAULT, because it is what a reader means most of the time; it is no
-   * longer the only reachable answer. A month already declared still opens as an Edit through its own
-   * row, so Add never silently overwrites.
-   */
-  const defaultAddMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
-  const askedAddMonth = Number(sp.addMonth ?? '');
-  const addMonth =
-    Number.isInteger(askedAddMonth) && askedAddMonth >= 1 && askedAddMonth <= 12
-      ? askedAddMonth
-      : defaultAddMonth;
-  /** The month names for the picker — through the screen's OWN `monthFmt`, so the Add control and the
-   *  list below can never name the same month two different ways. */
-  const addMonthOptions = Array.from({ length: 12 }, (_, i) => ({
-    value: i + 1,
-    label: monthFmt.format(new Date(Date.UTC(2000, i, 1))),
-  }));
 
   return (
     <div className={pageWideCls}>
@@ -266,31 +291,18 @@ export default async function Tp1DeclarationPage({
                   {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
                 </p>
               </div>
-              {/* 27605faa — the month rides a plain GET form beside the button. A form, not an onChange
-                  handler: the URL is the state on this screen already (year, employee and both pagers all
-                  live there), so the chosen month is shareable and survives a refresh like everything
-                  else. Submitting returns HERE with `addMonth` set; the button then opens that month. */}
-              <form method="get" className="flex items-end gap-2">
-                <input type="hidden" name="year" value={selectedYear} />
-                {selectedEmploymentId && (
-                  <input type="hidden" name="employmentId" value={selectedEmploymentId} />
-                )}
-                <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {t('tp1.addMonthLabel')}
-                  <select name="addMonth" defaultValue={String(addMonth)} className={inputCls}>
-                    {addMonthOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button type="submit" variant="outline" size="sm">
-                  {t('tp1.addMonthApply')}
-                </Button>
-              </form>
+              {/* 27605faa rev 2 — Add opens its OWN step, which asks for the year and the month. r324
+                  put that control here, beside the button, on the VIEWING screen; the reporter's point
+                  was that those fields belong where a record is created. The step then redirects to the
+                  declaration form, so there is still exactly one place a declaration is written. */}
               <Button asChild size="sm">
-                <Link href={monthHref(selectedYear, addMonth)}>{t('tp1.addButton')}</Link>
+                <Link
+                  href={`/payroll/transactions/tp1/new?employmentId=${encodeURIComponent(
+                    selectedEmploymentId ?? '',
+                  )}&year=${selectedYear}`}
+                >
+                  {t('tp1.addButton')}
+                </Link>
               </Button>
             </>
           ) : undefined
@@ -342,7 +354,50 @@ export default async function Tp1DeclarationPage({
             <Card className="overflow-hidden">
               <SectionHeader title={t('tp1.history.title')} count={declarationRows.length} />
               <p className="px-4 pt-2 text-xs text-muted-foreground">{t('tp1.history.subtitle')}</p>
-              <Tp1DeclarationsList rows={declarationRows} />
+              {/**
+                * 27605faa rev 2 — THE CONFIRMATION, server-rendered above the list it is about.
+                *
+                * A form on the SERVER rather than a dialog in the client island: the island cannot be
+                * handed a server action as a prop (r123 — a 500 on every request with tsc, the suite and
+                * next build all green), and this also works with JavaScript off. The status rides a
+                * hidden field so the action can route draft-vs-declared, and it is re-read from the row
+                * server-side before anything is written.
+                */}
+              {pendingDelete && (
+                <div className="mx-4 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+                  <p className="text-sm font-semibold">{t('tp1.history.deleteConfirmTitle')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {pendingDelete.assessmentYear} · {pendingDelete.monthLabel} · RM {pendingDelete.amount}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">{t('tp1.history.deleteConfirmBody')}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <form action={adminDeleteTp1}>
+                      <input type="hidden" name="employmentId" value={selectedEmploymentId ?? ''} />
+                      <input type="hidden" name="tp1ReliefId" value={pendingDelete.id} />
+                      <input type="hidden" name="assessmentYear" value={pendingDelete.assessmentYear} />
+                      <input type="hidden" name="status" value={pendingDelete.status} />
+                      <Button type="submit" variant="destructive" size="sm">
+                        {t('tp1.history.deleteConfirm')}
+                      </Button>
+                    </form>
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={listHref({ confirmDelete: undefined })}>{t('tp1.history.deleteCancel')}</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <Tp1DeclarationsList rows={visibleDeclarationRows} />
+              {/* 27605faa rev 2 — the way back to a deleted record. Only offered when there IS one, so
+                  the control never advertises a state the employee's history does not have. */}
+              {(deletedCount > 0 || showDeleted) && (
+                <div className="border-t border-border px-4 py-2 text-xs">
+                  <Link href={listHref({ showDeleted: showDeleted ? undefined : '1' })} className="font-medium text-primary hover:underline">
+                    {showDeleted
+                      ? t('tp1.history.hideDeleted')
+                      : t('tp1.history.showDeleted', { count: deletedCount })}
+                  </Link>
+                </div>
+              )}
             </Card>
 
             {/* ── Applied in payroll — the TP1 figure each processed run actually carried ── */}
