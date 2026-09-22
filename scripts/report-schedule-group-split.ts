@@ -41,7 +41,12 @@ import { writeFileSync } from 'node:fs';
 import { and, eq, isNull } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { attendanceRule, employment, employmentShiftArrangement, person, shift } from '../db/schema';
-import { shiftDayKindFor } from '../core/attendance';
+// ADR-0080 D9 — through the PACK FACADE, not core/attendance. The drift ratchet
+// (test/attendance-pack-drift.test.ts) refuses a NEW file importing the attendance pack's
+// implementation directly, and its allowlist only ever shrinks: adding an entry for this script is
+// exactly what that file says not to do. Same discipline as scripts/report-a2c-hire-year-deltas.ts,
+// which reaches the leave engine through packs/leave/service for the same reason.
+import { shiftDayKindFor } from '../packs/attendance/service';
 
 const OUT = `/var/tmp/schedule-group-split-${new Date().toISOString().slice(0, 10)}.txt`;
 
