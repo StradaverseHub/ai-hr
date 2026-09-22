@@ -310,6 +310,33 @@ function personLabelAt(index: number): string {
 }
 
 /**
+ * The normalised names held by MORE THAN ONE person record — the shortlist rule, stated ONCE.
+ *
+ * ⚠️ IT IS DELIBERATELY EXPORTED AND SHARED, and the reason is a defect this round nearly shipped. The
+ * reader narrows query 2 to these names (so the heavy evidence joins run over twenty employments rather
+ * than every active one) and `groupDuplicateCandidates` skips the same names (a name held by one person
+ * record is the supported shape and is not a candidate). Written out twice, the narrowing and the rule
+ * were free to drift: a mutation that broke the rule in one of them left every test green, because the
+ * other one was still quietly enforcing it. One function, both callers, no drift possible — and a test
+ * that breaks this breaks BOTH sides at once, which is what makes it testable at all.
+ *
+ * `rows` only has to carry the two fields the rule reads, so the script (which holds a tenant column the
+ * screen does not) can call it with its own row shape.
+ */
+export function namesHeldByMultiplePersons(
+  rows: readonly { fullName: string; personId: string }[],
+): ReadonlySet<string> {
+  const byName = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const key = normalizeFullName(r.fullName);
+    const s = byName.get(key) ?? new Set<string>();
+    s.add(r.personId);
+    byName.set(key, s);
+  }
+  return new Set([...byName.entries()].filter(([, persons]) => persons.size >= 2).map(([name]) => name));
+}
+
+/**
  * Turn raw candidate rows into ordered, evidenced groups.
  *
  * EXPORTED, and rendered pure, so the SCRIPT and the SCREEN share one definition of what a candidate is
@@ -332,11 +359,13 @@ export function groupDuplicateCandidates(
 
   const groups: DuplicateCandidateGroup[] = [];
   let sharedNamesWithDifferentHireDates = 0;
+  // One person record holding several employments under one name is the SUPPORTED shape and is not a
+  // candidate — decided by the SHARED rule above, which is also what the reader narrows its second query
+  // by, so the two can never come to disagree about who is even in scope.
+  const shared = namesHeldByMultiplePersons(rows);
 
   for (const [nameKey, nameRows] of byName) {
-    const personsForName = new Set(nameRows.map((r) => r.personId));
-    // One person record holding several employments under one name is the SUPPORTED shape. Not a candidate.
-    if (personsForName.size < 2) continue;
+    if (!shared.has(nameKey)) continue;
 
     // ── Pass 2: within the name, split by joining date. Same name AND same date is the candidate. ──
     const byDate = new Map<string, Omit<DuplicateEmploymentRecord, 'personLabel'>[]>();
@@ -435,18 +464,13 @@ export async function duplicatePersonCandidates(ctx: SessionContext): Promise<Du
     // The shortlist for query 2: every employment whose NAME is held by ≥2 person records — deliberately
     // the NAME rule, not the narrower name+date one the groups use. The view reports how many names are
     // shared with DIFFERENT joining dates, and that count is derived by the same grouping function from
-    // the same rows; handing it only the date-matched rows would make it structurally zero. Narrowing
-    // happens in ONE place (`groupDuplicateCandidates`), so the rule cannot be stated twice and drift.
-    const nameCount = new Map<string, Set<string>>();
-    for (const r of all) {
-      const key = normalizeFullName(r.fullName);
-      const s = nameCount.get(key) ?? new Set<string>();
-      s.add(r.personId);
-      nameCount.set(key, s);
-    }
-    const wanted = all
-      .filter((r) => (nameCount.get(normalizeFullName(r.fullName))?.size ?? 0) >= 2)
-      .map((r) => r.employmentId);
+    // the same rows; handing it only the date-matched rows would make it structurally zero.
+    //
+    // ⚠️ THE RULE IS NOT RESTATED HERE. `namesHeldByMultiplePersons` is the one definition, shared with
+    // `groupDuplicateCandidates` — a second copy of it in this function is what let a broken rule pass a
+    // green suite once already, because whichever copy still worked hid the other.
+    const shared = namesHeldByMultiplePersons(all);
+    const wanted = all.filter((r) => shared.has(normalizeFullName(r.fullName))).map((r) => r.employmentId);
 
     if (wanted.length === 0) {
       return {

@@ -34,6 +34,7 @@ import {
   DuplicatePersonAccessError,
   duplicatePersonCandidates,
   groupDuplicateCandidates,
+  namesHeldByMultiplePersons,
   normalizeFullName,
   type DuplicateEvidenceField,
 } from '../core/duplicate-person';
@@ -167,6 +168,29 @@ describe('05d2709a — suspected duplicate person records', () => {
     // Stated as a number so the reader knows the edge of the rule rather than assuming the list is all
     // there is. A LIST here would bury the candidates under everybody with a common name.
     expect(view.sharedNamesWithDifferentHireDates).toBe(1);
+  });
+
+  it('never counts a name only ONE person record holds — not even one person with two jobs', async () => {
+    // ⚠️ THE CASE A MUTATION SLIPPED PAST. "Names shared with different joining dates" is printed on the
+    // screen, and if the ≥2-person-records rule stops applying to it, a tenant of 500 uniquely-named
+    // employees reports 500 shared names. The rule lives in ONE function
+    // (`namesHeldByMultiplePersons`) precisely so this can be asserted once and hold on both sides.
+    const solo = await hire({ name: 'Solo Person', code: 'DUP-S1' });
+    await hire({ personId: solo.personId, second: true, hiredOn: '2024-05-01', code: 'DUP-S2' });
+    await hire({ name: 'Another Name', code: 'DUP-N1' });
+
+    const view = await duplicatePersonCandidates(adminCtx(base));
+    expect(view.activeEmployments).toBe(3);
+    expect(view.groups).toEqual([]);
+    expect(view.sharedNamesWithDifferentHireDates).toBe(0);
+    // Pinned on the shared rule itself as well, so it cannot be satisfied by the reader's narrowing alone.
+    expect([...namesHeldByMultiplePersons([
+      { fullName: 'Solo Person', personId: 'p1' },
+      { fullName: 'Solo Person', personId: 'p1' },
+      { fullName: 'Another Name', personId: 'p2' },
+      { fullName: 'Din Bin Ahmad', personId: 'p3' },
+      { fullName: 'din bin  ahmad', personId: 'p4' },
+    ])]).toEqual(['DIN BIN AHMAD']);
   });
 
   it('folds case and repeated spaces, and shows the spelling difference as evidence', async () => {
