@@ -489,7 +489,18 @@ export function reviewLetterData(ctx: SessionContext, reviewId: string): Promise
       .where(eq(employmentReview.id, reviewId))
       .limit(1);
     if (!row || row.status !== 'completed' || !row.decision) return null;
-    const decidedOn = (row.decidedAt ?? row.createdAt).toISOString().slice(0, 10);
+    // ⚠️ THE KUALA LUMPUR DATE, NOT THE UTC ONE (fc88ba08 / r325). This read `.toISOString()`, which is
+    // a DATE DERIVED FROM AN INSTANT IN UTC — what CLAUDE.md §8 forbids. Malaysia is UTC+8, so between
+    // midnight and 08:00 local the two disagree and a decision recorded in that window READ BACK as the
+    // previous day. Display only: `decidedOn` is assembled into the read model below and never written,
+    // which is why r324 raised it rather than folding it into an unrelated round.
+    //
+    // THE THIRD AND LAST OF THIS FAMILY. r299 fixed `approvedOn` in core/toil.ts; r324 fixed
+    // `requestedOn` at two sites in core/attendance.ts, where it was stamping a leave credit's Request
+    // Date a day early. A sweep of core/, packs/, lib/ and test/ found this one and nothing else — every
+    // other `toISOString().slice(0, 10)` is calendar arithmetic on a Z-anchored midnight, which carries
+    // no timezone at all.
+    const decidedOn = todayInKualaLumpur(row.decidedAt ?? row.createdAt);
     return {
       id: row.id,
       reviewType: row.reviewType,
