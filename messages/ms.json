@@ -3926,6 +3926,7 @@
       "link_pcb2ii_hint": "Satu penyata bagi setiap pekerja: cukai yang dipotong setiap bulan dan resitnya.",
       "desc_pcb2ii_en": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Inggeris. Pilih tahun, kemudian pekerja.",
       "desc_pcb2ii_ms": "Penyata Bayaran Cukai Oleh Majikan, dalam Bahasa Malaysia. Pilih tahun, kemudian pekerja.",
+      "pcb2iiPickPeople": "{company} · {year} · tandakan pekerja yang memerlukan penyata PCB 2(II), kemudian pratonton atau muat turun",
       "pcb2iiSelectHint": "Tandakan pekerja yang memerlukan penyata. Setiap seorang mendapat halaman sendiri.",
       "pcb2iiPreview": "Pratonton",
       "pcb2iiGenerate": "Muat turun PCB 2(II)",

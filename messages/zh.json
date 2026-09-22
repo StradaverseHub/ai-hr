@@ -3926,6 +3926,7 @@
       "link_pcb2ii_hint": "每位员工一份报表：每月扣缴的税款及其收据。",
       "desc_pcb2ii_en": "雇主缴税报表（英文版）。先选择年份，再选择员工。",
       "desc_pcb2ii_ms": "雇主缴税报表（马来文版）。先选择年份，再选择员工。",
+      "pcb2iiPickPeople": "{company} · {year} · 勾选需要 PCB 2(II) 报表的员工，然后预览或下载",
       "pcb2iiSelectHint": "勾选需要出具报表的员工。每位员工各占一页。",
       "pcb2iiPreview": "预览",
       "pcb2iiGenerate": "下载 PCB 2(II)",

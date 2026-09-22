@@ -105,7 +105,11 @@ export default async function Pcb2iiEmployeeSelectionPage({
       <PageHeader
         back={{ href: backHref, label: t('criteria_back') }}
         title={heading}
-        description={t('eaPickPeople', { company: companyName, year })}
+        /* ⚠️ ITS OWN SENTENCE, NOT THE EA'S — r328. `eaPickPeople` reads "tick the people whose EA you
+           need", which is the WRONG statutory document's name on the PCB 2(II) screen. Third instance of
+           the same defect on this one page (the button and the empty state were the others), and the
+           reason the empty state got its own key in r323 in the first place. */
+        description={t('pcb2iiPickPeople', { company: companyName, year })}
       />
 
       <Card className="overflow-hidden">

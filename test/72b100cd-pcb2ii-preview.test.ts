@@ -310,6 +310,25 @@ describe('72b100cd · the button names THIS form', () => {
     );
     expect(SCREEN).toMatch(/t\('pcb2iiGenerate'\)/);
     expect(SCREEN).toMatch(/t\('pcb2iiPreview'\)/);
+    // The page's own subtitle too: `eaPickPeople` reads "tick the people whose EA you need".
+    expect(code(SCREEN), 'the header sentence must not name the EA either').not.toMatch(/t\('eaPickPeople'/);
+    expect(SCREEN).toMatch(/t\('pcb2iiPickPeople'/);
+  });
+
+  /**
+   * THE RULE, APPLIED TO THE WHOLE SCREEN RATHER THAN TO THE THREE KEYS THAT WERE WRONG. Every string the
+   * PCB 2(II) screen still borrows from the EA must be FORM-AGNOSTIC — "Select all", "Department",
+   * "{count} selected". A borrowed string that names a document names the WRONG document here, which is
+   * CLAUDE.md §8's shared-caption rule ("may say only what is true of every member") on a tax form.
+   */
+  it('no EA-named key the screen still borrows mentions a statutory document', () => {
+    const en = JSON.parse(src('messages/en.json')).payroll.statutoryForms as Record<string, string>;
+    const borrowed = [...new Set([...code(SCREEN).matchAll(/t\('(ea[A-Za-z]+)'/g)].map((m) => m[1]))];
+    expect(borrowed.length, 'the screen does share the EA picker’s strings').toBeGreaterThan(5);
+    for (const k of borrowed) {
+      expect(en[k], `messages/en.json is missing ${k}`).toBeTypeOf('string');
+      expect(en[k], `${k} names the EA on the PCB 2(II) screen`).not.toMatch(/\bEA\b|C\.P\.8A/);
+    }
   });
 
   it('both new keys exist in all six locales, and the download one names PCB 2(II), never the EA', () => {
@@ -317,6 +336,9 @@ describe('72b100cd · the button names THIS form', () => {
       const m = JSON.parse(src(`messages/${loc}.json`)).payroll.statutoryForms as Record<string, string>;
       expect(typeof m.pcb2iiPreview, `${loc}.pcb2iiPreview`).toBe('string');
       expect(m.pcb2iiPreview.trim(), `${loc}.pcb2iiPreview`).not.toBe('');
+      expect(m.pcb2iiPickPeople, `${loc}.pcb2iiPickPeople must name this form`).toContain('PCB 2(II)');
+      expect(m.pcb2iiPickPeople, `${loc}.pcb2iiPickPeople keeps both placeholders`).toContain('{company}');
+      expect(m.pcb2iiPickPeople, `${loc}.pcb2iiPickPeople keeps both placeholders`).toContain('{year}');
       expect(typeof m.pcb2iiGenerate, `${loc}.pcb2iiGenerate`).toBe('string');
       // The form CODE is the same in every language; the wrong document's name is the defect.
       expect(m.pcb2iiGenerate, `${loc}.pcb2iiGenerate must name this form`).toContain('PCB 2(II)');

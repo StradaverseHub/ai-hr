@@ -3926,6 +3926,7 @@
       "link_pcb2ii_hint": "Mỗi nhân viên một bản kê: thuế khấu trừ hằng tháng và biên lai tương ứng.",
       "desc_pcb2ii_en": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Anh. Chọn năm, rồi chọn nhân viên.",
       "desc_pcb2ii_ms": "Bản kê nộp thuế của người sử dụng lao động, bằng tiếng Mã Lai. Chọn năm, rồi chọn nhân viên.",
+      "pcb2iiPickPeople": "{company} · {year} · chọn những nhân viên cần bản kê PCB 2(II), rồi xem trước hoặc tải xuống",
       "pcb2iiSelectHint": "Chọn những nhân viên cần bản kê. Mỗi người có một trang riêng.",
       "pcb2iiPreview": "Xem trước",
       "pcb2iiGenerate": "Tải xuống PCB 2(II)",
