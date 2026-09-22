@@ -3026,7 +3026,14 @@
       "claim": "Tuntutan",
       "employerBorneHeading": "Dibayar oleh majikan bagi pihak anda",
       "employerBorneTotal": "Jumlah dibayar oleh majikan bagi pihak anda",
-      "employerBorneNote": "Ini ialah caruman statutori anda yang ditanggung oleh majikan. Ia tetap dilaporkan sepenuhnya kepada pihak berkuasa, dan ia TIDAK dipotong daripada gaji anda — sebab itu ia menunjukkan RM 0.00 di bawah Potongan di atas."
+      "employerBorneNote": "Ini ialah caruman statutori anda yang ditanggung oleh majikan. Ia tetap dilaporkan sepenuhnya kepada pihak berkuasa, dan ia TIDAK dipotong daripada gaji anda — sebab itu ia menunjukkan RM 0.00 di bawah Potongan di atas.",
+      "hourUnit": "jam",
+      "hoursUnit": "jam",
+      "otLegWorkday": "Kerja lebih masa — hari bekerja biasa",
+      "otLegRestDay": "Kerja lebih masa — hari rehat",
+      "otLegRestDayExcess": "Kerja lebih masa — hari rehat, melebihi waktu biasa",
+      "otLegHoliday": "Kerja lebih masa — cuti umum",
+      "otLegHolidayExcess": "Kerja lebih masa — cuti umum, melebihi waktu biasa"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",

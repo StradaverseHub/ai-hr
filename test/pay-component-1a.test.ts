@@ -212,3 +212,104 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     expect((await listPayComponents(a, { includeArchived: true })).some((c) => c.id === unusedId)).toBe(false);
   });
 });
+
+/**
+ * a96d320c — THE QUANTITY AND THE UNIT RATE A PAY RULE MULTIPLIED, AND WHEN THE KERNEL REFUSES TO SAY.
+ *
+ * `earningsOf` stamps `detail: { qty, rate, unit }` onto a component line so a quantity-priced item can
+ * print "18 days × MYR 25.00" on a payslip instead of one unexplained figure. It stamps it ONLY when
+ * `round2(qty × rate)` IS the amount on that line.
+ *
+ * THAT EQUALITY IS THE WHOLE GUARANTEE AND IT IS WHAT THESE THREE HOLD DOWN. Two things routinely move
+ * `applied` away from the product and neither is exotic: the EA-1955 tenure factor (a mid-period joiner)
+ * and the item's own rounding method (ADR-0035 1A, the feature this very file exists for). With the
+ * equality gone, a payslip would print a quantity, a rate, and a product that is not the money paid —
+ * which is the defect the board item was raised about, reintroduced in a new place.
+ *
+ * The POSITIVE case is first and is load-bearing: without it, "no detail" in the two refusals could mean
+ * the stamp never works at all, and both would pass vacuously.
+ */
+describe('a96d320c — the pay-rule quantity/rate stamp, and the equality that gates it', () => {
+  /** One employee on BASIC + a `qty_rate` item worth 3 × 10.40 = 31.20, varying only what should break it. */
+  async function runWith(p: {
+    email: string;
+    ic: string;
+    hiredOn: string;
+    prorates: boolean;
+    roundingMethod: 'none' | 'nearest';
+  }) {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'QtyRate', primaryEmail: p.email },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: p.hiredOn,
+    });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: p.ic });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: p.hiredOn });
+    await seedPayComponentCatalog(a);
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: p.hiredOn });
+    await upsertPayComponent(a, {
+      code: 'QR_ALLOW', name: 'Site visit allowance', kind: 'allowance',
+      includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
+      isNonPayable: false, prorates: p.prorates, roundingMethod: p.roundingMethod,
+      // "a quantity multiplied by a rate" — the one rule kind that carries BOTH operands and is, by
+      // validatePayRule's own note, compatible with `prorates`. That compatibility is what makes the
+      // proration case below reachable rather than contrived.
+      rule: { kind: 'qty_rate', qty: 3, rate: 10.4 },
+    });
+    // 999, deliberately, and it is never paid: a `qty_rate` rule supplies BOTH operands, so
+    // `resolvePayRule` returns qty × rate and the stored amount is inert. The assignment row still has to
+    // carry a positive figure (the amount>0 invariant on the aggregate), and picking an absurd one means
+    // the 31.20 asserted below can only have come from the RULE.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'QR_ALLOW'), amount: 999, effectiveFrom: p.hiredOn });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    await generatePayslips(await entitledCtx(base), { batchId });
+    const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    const lines = (ps.statutory as {
+      componentLines?: { code: string; amount: number; detail?: { qty: number; rate: number; unit: string | null } }[];
+    }).componentLines ?? [];
+    return { line: lines.find((l) => l.code === 'QR_ALLOW'), ps };
+  }
+
+  it('stamps the quantity and the rate when they ARE the amount on the line', async () => {
+    const { line } = await runWith({
+      email: 'qr_exact@acme.test', ic: '900101011201', hiredOn: '2026-01-01',
+      prorates: false, roundingMethod: 'none',
+    });
+    expect(line, 'the item reached the payslip at all').toBeTruthy();
+    expect(line!.amount).toBeCloseTo(31.2, 2);
+    // `unit` is null for qty_rate — a bare keyed count, so the document prints no unit word beside it.
+    expect(line!.detail).toEqual({ qty: 3, rate: 10.4, unit: null });
+    expect(Math.round(line!.detail!.qty * line!.detail!.rate * 100) / 100).toBe(line!.amount);
+  });
+
+  it('REFUSES the stamp when the item ROUNDS to a figure the factors do not produce', async () => {
+    // 'nearest' takes 31.20 to a whole ringgit. 3 × 10.40 is still 31.20, so the factors would explain
+    // twenty sen the employee was not paid. The line keeps its name and its amount; only the caption goes.
+    const { line } = await runWith({
+      email: 'qr_round@acme.test', ic: '900101011202', hiredOn: '2026-01-01',
+      prorates: false, roundingMethod: 'nearest',
+    });
+    expect(line, 'the item reached the payslip at all').toBeTruthy();
+    expect(line!.amount, 'precondition: the rounding really moved the figure').toBe(31);
+    expect(line!.detail, '3 × 10.40 does not produce 31.00, so nothing is claimed').toBeUndefined();
+  });
+
+  it('REFUSES the stamp when the EA tenure factor PRORATED the figure', async () => {
+    // A mid-month joiner. `applied` is `resolved × factor`, so the stored quantity and rate no longer
+    // multiply out — and a payslip that told this employee "3 × MYR 10.40" beside a prorated amount
+    // would be arithmetic they could check and find wrong.
+    const { line } = await runWith({
+      email: 'qr_prorate@acme.test', ic: '900101011203', hiredOn: '2026-05-16',
+      prorates: true, roundingMethod: 'none',
+    });
+    expect(line, 'the item reached the payslip at all').toBeTruthy();
+    expect(line!.amount, 'precondition: proration really moved the figure').toBeLessThan(31.2);
+    expect(line!.amount).toBeGreaterThan(0);
+    expect(line!.detail, 'a prorated amount is not the product of the stored factors').toBeUndefined();
+  });
+});

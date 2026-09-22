@@ -100,7 +100,12 @@ import { TP1_COUNTABLE_COLUMNS, tp1CountForYear } from './tax-relief';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
-import { payItemFeedsUnpaidLeaveOrp, resolvePayComponentSet, type PayRuleScope } from './pay-rule';
+import {
+  payItemFeedsUnpaidLeaveOrp,
+  payRuleQuantityAndRate,
+  resolvePayComponentSet,
+  type PayRuleScope,
+} from './pay-rule';
 // Feedback 3c473773 — the payslip-box vocabulary. PRESENTATION ONLY: nothing imported here reaches a
 // statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
 import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
@@ -2132,6 +2137,19 @@ export async function setPayrollInput(
           // Fix-5 (M#17): stamp OT provenance ('manual') unless the caller asked to preserve it; a
           // 'preserve' (deduction-only / bonus-enact) round-trip leaves the existing ot_source untouched.
           ...(otSource !== undefined ? { otSource } : {}),
+          // ── a96d320c — A HAND-KEYED OT FIGURE HAS NO STATUTORY DECOMPOSITION ────────────────────────
+          // `ot_derivation` (0479) explains the number the attendance engine produced. This is the manual
+          // save path, so the number is now the operator's, and a decomposition left behind would caption
+          // it with hours and rates that produced a different figure. Cleared on exactly the writes that
+          // stamp ot_source='manual'; a 'preserve' round-trip (TP1/zakat only, bonus enact) does not touch
+          // the OT figure and so does not touch its derivation either — the same conditional spread, for
+          // the same reason.
+          //
+          // The read side does not DEPEND on this: generatePayslips stamps the payslip only when the
+          // derivation's own total still equals the overtime figure being printed, so retyping the same
+          // number would be caught there too. Clearing it here means the row itself stops claiming an
+          // origin it no longer has, which is what an auditor reads.
+          ...(otSource !== undefined ? { otDerivation: null } : {}),
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
@@ -2740,6 +2758,23 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       }
       const prior = existingBy.get(employmentId);
       const bonusAmount = prior ? Number(prior.bonus) : 0;
+      // ── a96d320c (migration 0479) — THE DECOMPOSITION, STAMPED WHERE IT HAPPENS ────────────────────
+      //
+      // `result` already carries the ordinary rate of pay, the hourly rate and the five EA legs with their
+      // own quantities; every one of those numbers was thrown away here and the RM total alone was kept.
+      // The reporter's payslip could therefore not say how many hours it paid for or at what rate, and the
+      // hours could not be fetched back at render time without answering with TODAY's attendance about a
+      // month already paid (r322 made mid-month correction a one-press action).
+      //
+      // THE SUM GATE IS THE HONESTY GUARANTEE, not a defensive nicety. Each leg's `amount` is computed from
+      // its ROUNDED quantity, so a quantity that rounding moved can make the legs miss `result.total` by a
+      // sen. A decomposition that does not add up to the figure it explains is not stamped at all, and the
+      // payslip prints the overtime line exactly as it does today. An absent detail asserts nothing.
+      const legTotal = round2(result.lines.reduce((s, l) => s + l.amount, 0));
+      const otDerivation =
+        result.lines.length > 0 && legTotal === round2(result.total)
+          ? { version: 1 as const, orp: result.orp, hourly: result.hourly, total: round2(result.total), lines: result.lines }
+          : null;
       if (prior) {
         await tx
           .update(payrollInput)
@@ -2748,7 +2783,11 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           // downstream reads ot_breakdown, so NULL is harmless and avoids the mismatch.
           // Fix-5 (M#17): stamp ot_source='attendance' so the editor knows this row is engine-derived and
           // warns before a casual manual Save overwrites it.
-          .set({ overtimeAmount: result.total.toFixed(2), otBreakdown: null, otSource: 'attendance', updatedAt: sql`now()` })
+          // a96d320c — `otDerivation` is written UNCONDITIONALLY (null included) on this path, unlike
+          // `otBreakdown`'s conditional spread elsewhere: this statement is replacing the OT figure, so a
+          // decomposition left behind from a previous prefill would explain a number that is no longer
+          // there. Null is the correct value when the legs did not add up.
+          .set({ overtimeAmount: result.total.toFixed(2), otBreakdown: null, otDerivation, otSource: 'attendance', updatedAt: sql`now()` })
           .where(eq(payrollInput.id, prior.id));
       } else {
         await tx.insert(payrollInput).values({
@@ -2759,6 +2798,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           bonusAmount: bonusAmount.toFixed(2),
           // Fix-5 (M#17): attendance-derived provenance.
           otSource: 'attendance',
+          // a96d320c — the hours and the rate behind the figure on the line above.
+          otDerivation,
         });
       }
       await appendEvent(tx, {
@@ -3410,6 +3451,10 @@ export async function generatePayslips(
         // filter by eligible day type / re-rate the workday leg. NULL ⇒ a flat figure (caps degrade to the
         // total-only ceilings: maxAmount). Nothing else downstream reads it.
         otBreakdown: payrollInput.otBreakdown,
+        // a96d320c (migration 0479) — the statutory engine's own decomposition of the OT figure. Read
+        // here and copied onto the payslip below, under a total-equality gate; nothing in the run's
+        // arithmetic touches it.
+        otDerivation: payrollInput.otDerivation,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
@@ -3418,6 +3463,7 @@ export async function generatePayslips(
     // figure (the payslip snapshot is plain jsonb, so the wider type is safe end-to-end).
     const otSourceByEmp = new Map<string, string | null>(inputRows.map((r) => [r.employmentId, r.otSource ?? null]));
     const otBreakdownByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otBreakdown ?? null]));
+    const otDerivationByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otDerivation ?? null]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
@@ -4345,6 +4391,18 @@ export async function generatePayslips(
       pcb: boolean;
       /** included_in_hrdf_base. */
       hrdf: boolean;
+      /**
+       * a96d320c — THE QUANTITY AND THE UNIT RATE THE ITEM'S RULE MULTIPLIED, stamped at generate time.
+       *
+       * Present ONLY when `round2(qty × rate)` is the `amount` beside it, so the two factors always
+       * explain the figure on the same line. Absent on every payslip written before this shipped, on
+       * every item with no rule or a `fixed` / `percent_of` / `flat_capped` / `formula` rule, and on any
+       * line where proration or a rounding method moved the amount away from the product.
+       *
+       * `unit` is null for `qty_rate` (a bare count the operator keyed); 'hours' / 'days' name the scope
+       * input a `per_hour` / `per_day` rule consumed.
+       */
+      detail?: { qty: number; rate: number; unit: 'hours' | 'days' | null };
     };
 
     // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
@@ -4594,7 +4652,27 @@ export async function generatePayslips(
         const prorate = c.prorateOverride ?? c.prorates;
         const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
         // 2333b7fb/0253dc7c — the ticks ride the line from the row this run folded (see the type).
-        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf };
+        // ── a96d320c — THE RATE AND THE INPUT, WHERE THE RULE ACTUALLY MULTIPLIED THEM ──────────────
+        //
+        // The reporter's lateness deduction prints one amount, because one amount is all the payslip has
+        // ever recorded: `resolvePayRule` multiplies a quantity by a rate and returns the product, and the
+        // two factors are gone before `applied` exists. They cannot be recovered afterwards — reading
+        // today's `pay_component.rule` to caption an old payslip is the same mistake as re-deriving
+        // `recordLines.nonPayable`, and the catalogue's rate is edited precisely when a rate changes.
+        //
+        // THE EQUALITY IS THE PERMISSION TO PRINT. Stamped only when the rounded quantity times the rate
+        // IS the amount on the line, which is the reader's own arithmetic. That single condition rules out
+        // every case where the factors would not explain the figure, without enumerating them: a prorated
+        // item (`applied` is `resolved × factor`), a component whose rounding method moved it to a whole
+        // ringgit, a `per_hour` item on an employee with no attendance hours. No detail ⇒ the line prints
+        // as it does today.
+        const qr = payRuleQuantityAndRate(c.rule, rscope);
+        const qrQty = qr ? round2(qr.qty) : 0;
+        const rateDetail =
+          qr && qrQty > 0 && round2(qrQty * qr.rate) === applied
+            ? { qty: qrQty, rate: qr.rate, unit: qr.unit }
+            : null;
+        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────
@@ -5786,6 +5864,28 @@ export async function generatePayslips(
           zakatInTotal: true,
           ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
             ? { otSource: otSourceByEmp.get(e.employmentId) }
+            : {}),
+          // ── a96d320c — THE HOURS AND THE RATE BEHIND THIS SLIP'S OVERTIME FIGURE ────────────────────
+          //
+          // Copied from `payroll_input.ot_derivation` (migration 0479), which the attendance prefill
+          // stamped at the moment the statutory engine computed the figure. Copied, not recomputed: the
+          // hours live in attendance and attendance is correctable after a run, so deriving them here — or
+          // worse, when the payslip is opened — would answer with a later month's attendance about the
+          // money this slip paid. The same refusal the non-payable record lines already carry.
+          //
+          // THE GATE IS AN EQUALITY, AND IT IS THE WHOLE SAFETY PROPERTY. The detail is stamped ONLY when
+          // the decomposition's own total is still exactly the overtime figure this payslip prints. That
+          // one condition disqualifies every way the two can part company, without needing to enumerate
+          // them: a figure an operator re-keyed, an OT cap that clipped the total (2.1.1), a converted OT
+          // excess rerouted to a pay item (f3148da1 step 4), a one-off overtime transaction added on top
+          // (f1564110 phase 3), and an additional/off-cycle run, whose `slipOvertime` is 0. In every one
+          // of those the key is simply absent and the payslip prints the overtime line it prints today —
+          // which is the correct answer, not a degraded one. An absent detail asserts nothing; a caption
+          // that disagrees with the amount above it asserts something false.
+          ...(slipOvertime > 0 &&
+          otDerivationByEmp.get(e.employmentId) != null &&
+          round2(Number(otDerivationByEmp.get(e.employmentId)!.total)) === round2(slipOvertime)
+            ? { otDetail: otDerivationByEmp.get(e.employmentId) }
             : {}),
           // 3c88d593 — THE ENTITY SEGMENT THIS SLIP COVERS, stamped ONLY when the month was split.
           //

@@ -5871,6 +5871,30 @@ export const payrollInput = pgTable(
     // via setPayrollInput; NULL = legacy / no OT write recorded. Mirrors the tp1_source pattern above and
     // is snapshotted onto the payslip statutory blob so an auditor can see how the OT figure was derived.
     otSource: text('ot_source').$type<'attendance' | 'manual' | null>(),
+    /**
+     * a96d320c (migration 0479) — THE HOURS AND THE RATE BEHIND `overtime_amount`, written at the moment
+     * the statutory engine computed them.
+     *
+     * `ot_breakdown` above is a different thing and the two must not be confused: that is four RM amounts
+     * an operator typed into four rate-labelled boxes, persisted so the boxes can be re-prefilled. This is
+     * the statutory engine's own decomposition — per leg, a quantity (hours, or days of ordinary rate of
+     * pay), the unit rate it was paid at, and the money that produced. `{ version, orp, hourly, total,
+     * lines[] }`, written ONLY by `prefillOvertimeFromAttendance` from `overtimePay`'s result.
+     *
+     * NULL on every row that exists today, on every hand-keyed figure (`setPayrollInput` clears it — an
+     * amount somebody typed is not an amount this decomposition explains) and on every insert that merely
+     * carries OT forward. NULL ⇒ the payslip prints the overtime line exactly as it does now.
+     *
+     * `generatePayslips` copies it onto the payslip's own snapshot as `statutory.otDetail`, and only when
+     * `total` still equals the overtime figure that payslip is about to print.
+     */
+    otDerivation: jsonb('ot_derivation').$type<{
+      version: 1;
+      orp: number;
+      hourly: number;
+      total: number;
+      lines: { kind: string; qty: number; unit: 'hours' | 'days'; rate: number; amount: number }[];
+    } | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

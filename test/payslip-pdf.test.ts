@@ -20,6 +20,10 @@ import {
   type PayslipPdfData,
   type PayslipPdfLabels,
 } from '../lib/payslip-pdf';
+// a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
+// the pay period to a month name. Imported directly so the formatter is pinned as a function rather than
+// through a label fixture the test writes itself.
+import { englishLongDate } from '../lib/payslip-pdf-strings';
 
 const labels: PayslipPdfLabels = {
   title: 'Payslip',
@@ -57,7 +61,9 @@ const labels: PayslipPdfLabels = {
   employerBorneTotal: 'Total borne by employer',
   employerBorneNote: 'Reported in full to the authorities; not deducted from your pay.',
   documentSubtitle: 'Payroll payslip',
-  paymentDate: 'Payment date: 2026-06-30',
+  // a96d320c — the shape the REAL caller now passes. `payslipPdfStrings` interpolates the localized
+  // `payDateLine` with `englishLongDate(payDate)`, so the fixture says what the document says.
+  paymentDate: 'Payment date: 30 June 2026',
   employmentInfo: 'Employment info',
   department: 'Department',
   position: 'Position',
@@ -89,6 +95,18 @@ const labels: PayslipPdfLabels = {
   nonPayable: 'Non-payable items',
   nonPayableTotal: 'Total non-payable',
   nonPayableNote: 'Recorded for your reference only - these do not affect your gross or net pay.',
+  // a96d320c — the rate-and-input vocabulary. REQUIRED on the type, and tsc caught this fixture the
+  // moment the keys were added, which is the mechanism that stops one PDF route printing a block the
+  // other one does not.
+  hourUnit: 'hour',
+  hoursUnit: 'hours',
+  otLegs: {
+    workday: 'Overtime - normal working day',
+    rest_day: 'Overtime - rest day',
+    rest_day_excess: 'Overtime - rest day, beyond normal hours',
+    holiday: 'Overtime - public holiday',
+    holiday_excess: 'Overtime - public holiday, beyond normal hours',
+  },
 };
 const data: PayslipPdfData = {
   employee: 'Aisyah Rahman',
@@ -227,6 +245,61 @@ function drawnPlacements(bytes: Uint8Array): { page: number; x: number; y: numbe
 
 /** Where a piece of drawn text landed, or undefined. First match wins — headings are drawn once. */
 const placed = (p: ReturnType<typeof drawnPlacements>, text: string) => p.find((r) => r.text === text);
+
+/**
+ * a96d320c — THE RECTANGLES, per page, so "bordered" is checkable rather than asserted.
+ *
+ * The reporter asked for full borders. "The YTD table is in a box" is a claim about geometry, and a
+ * document that draws the same words with no rules around them contains exactly the same text — which is
+ * the trap `drawnPlacements` was written for one item ago. pdf-lib emits a rectangle as a translate
+ * (`1 0 0 1 X Y cm`) followed by the four-segment path and a paint operator: `S` when it was given a
+ * `borderColor` (a ruled box) and `f` when it was given a `color` (a filled band). Both are captured;
+ * the tests below ask for `S`, because a filled band is not a border.
+ */
+function drawnRects(bytes: Uint8Array): { page: number; x: number; y: number; w: number; h: number; op: string }[] {
+  const buf = Buffer.from(bytes);
+  const out: { page: number; x: number; y: number; w: number; h: number; op: string }[] = [];
+  let i = 0;
+  let page = 0;
+  for (;;) {
+    const s = buf.indexOf('stream', i);
+    if (s < 0) break;
+    const e = buf.indexOf('endstream', s);
+    if (e < 0) break;
+    let b = s + 6;
+    if (buf[b] === 0x0d) b += 1;
+    if (buf[b] === 0x0a) b += 1;
+    const raw = buf.subarray(b, e);
+    let body: Buffer;
+    try {
+      body = zlib.inflateSync(raw);
+    } catch {
+      body = raw;
+    }
+    const src = body.toString('latin1');
+    if (/\bTj\b/.test(src)) {
+      page += 1;
+      for (const m of src.matchAll(
+        /1 0 0 1 (-?[\d.]+) (-?[\d.]+) cm[\s\S]{0,60}?0 0 m\s+0 (-?[\d.]+) l\s+(-?[\d.]+) -?[\d.]+ l\s+-?[\d.]+ 0 l\s+h\s+([SfB])/g,
+      )) {
+        out.push({ page, x: Number(m[1]), y: Number(m[2]), w: Number(m[4]), h: Number(m[3]), op: m[5] });
+      }
+    }
+    i = e + 9;
+  }
+  return out;
+}
+
+/** The RULED box that encloses a piece of drawn text, or undefined. A filled band (`f`) is not a border. */
+const enclosingRule = (
+  rects: ReturnType<typeof drawnRects>,
+  pt: { page: number; x: number; y: number } | undefined,
+) =>
+  pt == null
+    ? undefined
+    : rects.find(
+        (r) => r.op === 'S' && r.page === pt.page && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h,
+      );
 
 // A 1×1 PNG. Real bytes, because embedPng is what we are exercising — a fake buffer would only prove the
 // catch block works.
@@ -390,7 +463,7 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
       ),
     );
     // Every one of these was ABSENT from the file the ticket complained about.
-    expect(text).toContain('Payment date: 2026-06-30');
+    expect(text).toContain('Payment date: 30 June 2026'); // a96d320c — in words; was the raw ISO
     expect(text).toContain('Payroll payslip · Regular');
     expect(text).toContain('900101011234'); // NRIC
     expect(text).toContain('SG1234567890'); // income tax number
@@ -438,8 +511,15 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
         labels,
       ),
     );
-    expect(text).toContain('Handphone allowance · A0027');
-    expect(text).toContain('Travel allowance · A0031');
+    // a96d320c — BY NAME, AND ONLY BY NAME. This assertion read `'Handphone allowance · A0027'` until
+    // the reporter pointed out that the second half is an internal reconciliation key with nothing on an
+    // employee's side to reconcile against. 6b134681's guard is untouched in substance — the lumped
+    // category word still gives way to the pay item — and what changed is that the item is now named
+    // without its code. The admin surfaces still print the code through `payItemLabel`.
+    expect(text).toContain('Handphone allowance');
+    expect(text).toContain('Travel allowance');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0027');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0031');
     expect(text).toContain('MYR 300.00');
     expect(text).toContain('MYR 200.00');
     expect(text).not.toContain('Allowances'); // the lump is gone, replaced by its parts
@@ -842,8 +922,12 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     ]);
     const text = drawnText(await renderPayslipPdf(d, labels));
     expect(text).toContain('NON-PAYABLE ITEMS');
-    expect(text).toContain('COMPANY CAR BENEFIT IN KIND · BIK01');
-    expect(text).toContain('ACCOMMODATION BENEFIT IN KIND · BIK02');
+    // a96d320c — the BIK lines are named, not coded. The builder still CARRIES `code` (asserted above,
+    // and Transaction View prints it), so what is pinned here is the DOCUMENT's choice, not a loss of data.
+    expect(text).toContain('COMPANY CAR BENEFIT IN KIND');
+    expect(text).toContain('ACCOMMODATION BENEFIT IN KIND');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('BIK01');
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('BIK02');
     expect(text).toContain('TOTAL NON-PAYABLE');
     // No currency was supplied to the builder, so amounts print unlabelled — which is the honest
     // behaviour this file already pins elsewhere. The FIGURE is what matters here: 850 + 1200.
@@ -958,7 +1042,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
  * (additional remuneration ⇒ the Bonus box) was all the employee ever saw.
  */
 describe('6b134681 — bonus and overtime print by pay item, not by category', () => {
-  it('prints B0001 · ANGPOW in place of the lumped Bonus row', async () => {
+  it('prints ANGPOW in place of the lumped Bonus row — a96d320c took the code off', async () => {
     const text = drawnText(
       await renderPayslipPdf(
         {
@@ -972,7 +1056,10 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
       ),
     );
     expect(text, 'the pay item description reaches the page').toContain('ANGPOW');
-    expect(text, 'and so does its code').toContain('B0001');
+    // a96d320c — this read `toContain('B0001')`. 6b134681's point was that the CATEGORY must give way to
+    // the ITEM, and it still does; the reporter's point is that the item's internal code means nothing to
+    // the person reading their own payslip. Both are now pinned, in the same test.
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('B0001');
     // The grouped word is GONE from the earnings box: it was never the item's name.
     expect(text, 'a bare "Bonus" row must not stand where a named item exists').not.toContain('Bonus');
   });
@@ -1009,7 +1096,314 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
       ),
     );
     expect(text).toContain('OVERTIME 1.5');
-    expect(text).toContain('OT15');
+    // a96d320c — was `toContain('OT15')`. See the ANGPOW test above for why it inverted.
+    expect(text, 'the internal pay code is off the employee’s document').not.toContain('OT15');
     expect(text, 'the category word gives way to the item').not.toContain('Overtime');
+  });
+});
+
+/**
+ * a96d320c — THE FIVE THINGS THE REPORTER READ OFF THEIR OWN PAYSLIP.
+ *
+ * Three of them are this document's business: the payment date printed as a raw ISO string, the sections
+ * drawn as blocks rather than ruled boxes, and every line carrying an internal pay code the employee has
+ * nothing to reconcile against. The other two (the overtime rate and hours, and the rate and input behind
+ * a quantity-priced deduction) are figures the payroll RUN never wrote down — they are stamped by the
+ * kernel and read back here, and their tests live beside the kernel that stamps them.
+ */
+describe('a96d320c — payment date in words, ruled boxes, no internal pay codes', () => {
+  it('prints the payment date as words, resolved from the ISO the batch stored', () => {
+    // The same idiom `englishMonthYear` uses for the period line: Intl, timeZone UTC, no month table.
+    expect(englishLongDate('2026-09-30')).toBe('30 September 2026');
+    expect(englishLongDate('2026-01-01')).toBe('1 January 2026');
+    // Day-first, because that is how Malaysia writes a date and it is the form the approved plan shows.
+    expect(englishLongDate('2026-06-30')).not.toContain(',');
+  });
+
+  it('never invents a date it was not given', () => {
+    // Not a date we recognise ⇒ print what was stored. A payslip may not guess when someone was paid.
+    expect(englishLongDate('2026-09')).toBe('2026-09');
+    expect(englishLongDate('')).toBe('');
+    expect(englishLongDate('not a date')).toBe('not a date');
+    // `Date.UTC` rolls an impossible day FORWARD — 2026-02-31 would otherwise print as "3 March 2026",
+    // a payment date the payroll never used. The round-trip check refuses it.
+    expect(englishLongDate('2026-02-31')).toBe('2026-02-31');
+  });
+
+  it('puts the employee identity fields inside a RULED box, not loose under a heading', async () => {
+    const bytes = await renderPayslipPdf(
+      { ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', department: 'Finance' },
+      labels,
+    );
+    const rects = drawnRects(bytes);
+    const places = drawnPlacements(bytes);
+    // The NRIC VALUE, not the heading: the heading could sit above a box the value is not in.
+    const nric = placed(places, '900101011234');
+    expect(nric, 'the identity number reaches the page').toBeDefined();
+    expect(enclosingRule(rects, nric), 'the identity grid is enclosed by a ruled box').toBeDefined();
+    // …and so is the employment-info half, whose heading used to be a pill floating over unruled rows.
+    const dept = placed(places, 'Finance');
+    expect(enclosingRule(rects, dept), 'the employment-info grid is enclosed by a ruled box').toBeDefined();
+    // NON-VACUITY CONTROL. `enclosingRule` searching a document with any box at all would answer "yes"
+    // for every point inside that box, so the two assertions above are only worth something if the
+    // helper can still say no. The footer line is deliberately NOT in a box — it is one sentence under a
+    // rule at the foot of every sheet — so it is the honest negative.
+    expect(
+      enclosingRule(rects, placed(places, labels.generatedNote)),
+      'the footer sentence is not in a box, and the helper says so',
+    ).toBeUndefined();
+  });
+
+  it('puts the YEAR TO DATE table inside a ruled box, and does not move the page flow doing it', async () => {
+    const full = {
+      ...data,
+      ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
+      ytdYear: '2026',
+    };
+    const bytes = await renderPayslipPdf(full, labels);
+    const rects = drawnRects(bytes);
+    const places = drawnPlacements(bytes);
+    const ytdGross = placed(places, 'MYR 21,360.00');
+    expect(ytdGross, 'the YTD gross reaches the page').toBeDefined();
+    expect(enclosingRule(rects, ytdGross), 'the YTD table is enclosed by a ruled box').toBeDefined();
+    // The block is the SAME height it always was (BOX_HEAD_H + 14 + 6 × 15 = YTD_H = 124), which is what
+    // keeps a payslip that fitted one sheet still fitting one sheet.
+    expect(await pageCount(bytes)).toBe(1);
+  });
+
+  it('keeps the `sub` slot: the day count still rides beside an unpaid-leave line', async () => {
+    // THE CARE IN THE CODE REMOVAL. The two sites that pushed `sub: l.code` are gone; the slot itself is
+    // not, because the deduction box uses it for `absenceDaysLabel` — which is the OPPOSITE of what the
+    // reporter objected to. Deleting the mechanism would have taken "2 days" off the payslip with it.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          otherDeductions: 420,
+          totalDeductions: 1519.65,
+          net: 5600.35,
+          absence: {
+            unpaidLeave: { days: 2, amount: 420 },
+            absent: null,
+            residual: 0,
+            showResidual: false,
+            any: true,
+          },
+        },
+        labels,
+      ),
+    );
+    expect(text).toContain('Unpaid leave · 2 days');
+  });
+
+  it('prints no internal pay code anywhere on a document made entirely of coded items', async () => {
+    // The blanket version of the two per-site assertions above: every itemised box at once.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          allowance: 500,
+          bonus: 300,
+          overtime: 120,
+          gross: 7420,
+          earningLines: [{ code: 'A0027', name: 'Handphone allowance', amount: 500 }],
+          bonusLines: [{ code: 'B0001', name: 'ANGPOW', amount: 300 }],
+          overtimeLines: [{ code: 'OT15', name: 'OVERTIME 1.5', amount: 120 }],
+          nonPayableLines: [{ code: 'BIK01', name: 'COMPANY CAR', amount: 850 }],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    for (const name of ['Handphone allowance', 'ANGPOW', 'OVERTIME 1.5', 'COMPANY CAR']) {
+      expect(text, `${name} is still named`).toContain(name);
+    }
+    for (const code of ['A0027', 'B0001', 'OT15', 'BIK01']) {
+      expect(text, `${code} is an internal key, not something an employee can use`).not.toContain(code);
+    }
+  });
+});
+
+/**
+ * a96d320c — THE RATE AND THE INPUT REACH THE PAGE, AND ONLY WHEN THEY EXPLAIN THE FIGURE BESIDE THEM.
+ *
+ * This is the half of the item that needed something the payslip did not record. The hours behind an
+ * overtime figure live in attendance, and attendance is correctable after a run — so a document that
+ * fetched them when it was opened would answer with a later month's attendance about money already paid.
+ * The kernel stamps them instead (migration 0479, `statutory.otDetail`), and this file's job is to prove
+ * the renderer PRINTS what it was given and DERIVES nothing.
+ *
+ * Every assertion below is about a document, not about a database: `buildPayslipPdfData` is handed a
+ * statutory blob of exactly the shape the kernel writes, and the drawn text is read back.
+ */
+describe('a96d320c — the overtime rate and the hours behind it', () => {
+  /** A payslip whose whole overtime figure is one attendance-derived leg: 2h at 1.5 × MYR 12.50. */
+  const otSlip = (otDetail: unknown, overtime = 37.5) =>
+    buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '0', overtime: String(overtime), bonus: '0',
+        gross: String(2600 + overtime), otherDeductions: '0', totalDeductions: '0',
+        net: String(2600 + overtime), employerCost: String(2600 + overtime), daysWorked: '31',
+        statutory: { otDetail },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+
+  const WORKDAY_2H = {
+    version: 1,
+    orp: 100,
+    hourly: 12.5,
+    total: 37.5,
+    lines: [{ kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 }],
+  };
+
+  /**
+   * The drawn text with its LINE BREAKS FLATTENED to spaces.
+   *
+   * A row label wraps inside a half-width column — that is the whole reason `wrap()` exists — so
+   * "Overtime - normal working day · 2 hours × MYR 18.75" legitimately reaches the page as two drawn
+   * runs. Asserting on the raw join would be asserting on the column width. `wrap` splits on whitespace
+   * and the reader reads it back the same way, so joining with a space reconstructs the label.
+   */
+  const flat = (bytes: Uint8Array) => drawnText(bytes).replace(/\n/g, ' ');
+
+  it('prints the leg, its hours and its rate in place of the bare "Overtime" row', async () => {
+    const bytes = await renderPayslipPdf(otSlip(WORKDAY_2H), labels);
+    expect(flat(bytes)).toContain('Overtime - normal working day · 2 hours × MYR 18.75');
+    expect(flat(bytes)).toContain('MYR 37.50');
+    // The category word gave way to the rule that paid it, exactly as a named pay item replaces it.
+    // Checked on the PLACEMENTS, because 'Overtime' is a substring of every leg label above.
+    expect(
+      placed(drawnPlacements(bytes), labels.overtime),
+      'no bare grouped Overtime row survives beside the legs',
+    ).toBeUndefined();
+  });
+
+  it('prints a RATE at the precision it actually has, so the multiplication works out', async () => {
+    // A rate of MYR 36.045 is what 1.5 × an hourly rate of MYR 24.03 IS. Rounded to the sen for display
+    // it would read "10 hours × MYR 36.05 = MYR 360.45" — a payslip that does not multiply out, on the
+    // one document whose whole purpose is that its arithmetic can be checked.
+    const detail = {
+      version: 1, orp: 192.24, hourly: 24.03, total: 360.45,
+      lines: [{ kind: 'workday', qty: 10, unit: 'hours', rate: 36.045, amount: 360.45 }],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 360.45), labels));
+    expect(text).toContain('10 hours × MYR 36.045');
+    expect(text).toContain('MYR 360.45');
+  });
+
+  it('names the day-rate legs in DAYS, and the singular in the singular', async () => {
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 250,
+      lines: [
+        { kind: 'rest_day', qty: 1, unit: 'days', rate: 100, amount: 100 },
+        { kind: 'holiday', qty: 1.5, unit: 'days', rate: 100, amount: 150 },
+      ],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 250), labels));
+    expect(text).toContain('Overtime - rest day · 1 day × MYR 100.00');
+    expect(text).toContain('Overtime - public holiday · 1.5 days × MYR 100.00');
+  });
+
+  it('REFUSES the whole itemisation when the legs do not add up to the stored overtime figure', async () => {
+    // The same money-safety guard the allowance and bonus itemisations live under. Rows on a payslip that
+    // fall short of the total beside them is the one failure this document may never commit.
+    const text = flat(await renderPayslipPdf(otSlip(WORKDAY_2H, 50), labels));
+    expect(text).toContain('Overtime');
+    expect(text, 'a leg that does not reconcile is not printed at all').not.toContain('2 hours ×');
+  });
+
+  it('DROPS a leg it does not understand — which costs the itemisation its reconciliation', async () => {
+    // A payslip stamped by a later version that added a sixth leg. Printing the legs this version knows
+    // would print a breakdown that silently omits part of the money; dropping the unknown one makes the
+    // remainder fall short, and the grouped row stands. Three independent failures, one safe answer.
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 87.5,
+      lines: [
+        { kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 },
+        { kind: 'night_shift_from_the_future', qty: 4, unit: 'hours', rate: 12.5, amount: 50 },
+      ],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 87.5), labels));
+    expect(text).toContain('Overtime');
+    expect(text).not.toContain('2 hours ×');
+  });
+
+  it('REFUSES a leg whose own quantity and rate do not produce its own amount', async () => {
+    // The check the kernel made at write time, made again on read, because a jsonb blob is not a type.
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 37.5,
+      lines: [{ kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 99 }],
+    };
+    const d = otSlip(detail, 37.5);
+    expect(d.overtimeLines, 'a leg that does not multiply out is not a leg').toEqual([]);
+  });
+
+  it('a payslip whose run recorded nothing prints the overtime line exactly as it does today', async () => {
+    const d = otSlip(undefined, 37.5);
+    expect(d.overtimeLines).toEqual([]);
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Overtime');
+    expect(text).not.toContain('×');
+  });
+
+  it('prints the quantity and rate a PAY ITEM rule multiplied, straight off the component stamp', async () => {
+    // The generic half of the same mechanism, and the one that answers for a quantity-priced deduction or
+    // allowance rather than for statutory overtime: `earningsOf` stamps `detail` onto the component line
+    // when `round2(qty × rate)` is the amount, and it rides through to the page from there.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '450.00', overtime: '0', bonus: '0',
+        gross: '3050.00', otherDeductions: '0', totalDeductions: '0', net: '3050.00',
+        employerCost: '3050.00', daysWorked: '31',
+        statutory: {
+          componentLines: [
+            {
+              code: 'A0044', name: 'Site allowance', amount: 450,
+              buckets: [{ bucket: 'wage', amount: 450 }],
+              detail: { qty: 18, rate: 25, unit: 'days' },
+            },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Site allowance · 18 days × MYR 25.00');
+    expect(text, 'the internal pay code is still off the document').not.toContain('A0044');
+  });
+
+  it('drops the caption when the row prints only PART of what the factors explain', async () => {
+    // A pay item whose money split across buckets (09b554e9: an exempt portion paid untaxed plus a
+    // taxable remainder) contributes part of itself to the allowance line. The factors describe the WHOLE
+    // item, so captioning the partial row with them would print a multiplication that does not produce
+    // the figure beside it. Name and amount survive; only the caption is dropped.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '300.00', overtime: '0', bonus: '0',
+        gross: '2900.00', otherDeductions: '0', totalDeductions: '0', net: '2900.00',
+        employerCost: '2900.00', daysWorked: '31',
+        statutory: {
+          componentLines: [
+            {
+              code: 'A0044', name: 'Site allowance', amount: 450,
+              buckets: [{ bucket: 'wage', amount: 300 }, { bucket: 'bonus', amount: 150 }],
+              detail: { qty: 18, rate: 25, unit: 'days' },
+            },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+    expect(d.earningLines).toEqual([{ code: 'A0044', name: 'Site allowance', amount: 300 }]);
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Site allowance');
+    expect(text).not.toContain('18 days ×');
   });
 });
