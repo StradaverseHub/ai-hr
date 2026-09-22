@@ -70,6 +70,7 @@ import type {
   StatutoryBody,
   StatutoryRuleset,
   Tp1CatalogueItem,
+  Tp3MoneyLine,
 } from './my/statutory-tables';
 import type {
   ActiveResolution,
@@ -399,6 +400,28 @@ export interface CountryPack {
       readonly formCode: string;
       readonly items: readonly Tp1CatalogueItem[];
       readonly rebates: readonly Tp1CatalogueItem[];
+    };
+    /**
+     * item df35d60d — the PREVIOUS-EMPLOYMENT form (MY: LHDN TP3 (1/2026)): the accumulated money
+     * lines the agency's own Section C asks for, and the relief schedule its Section D asks for.
+     *
+     * ⚠️ `sectionD` IS THE SAME ARRAY AS `taxReliefCatalogue.items` ABOVE, BY REFERENCE, and the
+     * contract is written as two slots onto one object rather than as two lists precisely so a pack
+     * CAN satisfy it that way. The two forms ask for one taxonomy from two employers; a jurisdiction
+     * whose previous-employment form carries a different schedule may supply a different array, but it
+     * may never supply a COPY of this one — a second transcription of a statutory limit table is the
+     * competing source of truth CLAUDE.md §1 forbids, and a cap that moves in one and not the other is
+     * a wrong tax figure with nothing to report it.
+     *
+     * OPTIONAL ON THE CONTRACT: a jurisdiction with no previous-employment form declares nothing and
+     * the screen, the catalog entry and the renderer are simply absent for it.
+     */
+    tp3Catalogue?: {
+      readonly formCode: string;
+      readonly sectionC: readonly Tp3MoneyLine[];
+      readonly sectionD: readonly Tp1CatalogueItem[];
+      /** How many previous employers the printed form is RULED FOR. MY: two (A1/A2, A3/A4). */
+      readonly maxEmployers: number;
     };
     /** Active-ruleset loader (ADR-0019): DB override or the verified default, as of a date. */
     loadRuleset: (tx: Tx, p: { asOf: string }) => Promise<StatutoryRuleset>;

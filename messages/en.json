@@ -1585,7 +1585,9 @@
       "payComponentClosedRun": "Pay run {period} is closed, so the {code} pay component can no longer be changed for that period.",
       "payComponentOpenEnded": "no end date",
       "recalcColGrade": "Job grade",
-      "recalcGradeUnchanged": "No change"
+      "recalcGradeUnchanged": "No change",
+      "tp3OpenForm": "Open the full Form TP3",
+      "tp3FormNote": "These four figures are what the monthly PCB reads, and they stay that way. The full TP3 — the previous employers, the gross / exempt / EPF boxes the form asks for separately, and its seventeen relief categories — is kept on its own screen, where the form can also be printed."
     },
     "import": {
       "title": "Import employees",
@@ -4337,8 +4339,6 @@
       "planned_perkeso_sip_hint": "The Employment Insurance System forms. Not built.",
       "planned_perkeso_employee_registration": "Employee Registration Forms",
       "planned_perkeso_employee_registration_hint": "PERKESO registration for a new employee. Not built.",
-      "planned_lhdn_tp3": "Form TP3",
-      "planned_lhdn_tp3_hint": "Previous-employer figures for a mid-year joiner. The figures are already captured on the employee’s payroll tab — the printable TP3 form is not built.",
       "planned_lhdn_cp21": "CP21 — employee leaving Malaysia",
       "planned_lhdn_cp21_hint": "Notification that an employee is leaving Malaysia. Not built.",
       "planned_lhdn_cp22a": "CP22A — tax clearance on cessation",
@@ -4388,7 +4388,10 @@
       "pcb2iiSelectHint": "Tick the employees whose statement you need. Each one gets its own page.",
       "pcb2iiPreview": "Preview",
       "pcb2iiGenerate": "Download PCB 2(II)",
-      "pcb2iiNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no tax to declare on a PCB 2(II). Run that year’s payroll first."
+      "pcb2iiNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no tax to declare on a PCB 2(II). Run that year’s payroll first.",
+      "link_tp3": "Form TP3",
+      "link_tp3_hint": "Previous-employer figures for a mid-year joiner. Choose a person and an assessment year to open, correct or print theirs.",
+      "desc_tp3": "LHDN's TP3 (1/2026), drawn from the previous-employment record on file — Sections A to E, the C1 to C5 money lines and the D1 to D17 relief schedule, in the form's own numbering, wording and column order, on our own page. One form per employee per assessment year; nothing on it is recalculated here, and nothing on it changes the monthly tax deduction."
     },
     "ea": {
       "backToReports": "Reports",
@@ -4736,7 +4739,10 @@
         "adjustmentsCta": "Open payroll inputs",
         "componentImportTitle": "Import Pay Components (CSV)",
         "componentImportDesc": "Bulk-add one-off allowances, deductions, overtime or bonuses to a draft run from a CSV file, previewed before anything is written.",
-        "componentImportCta": "Open import"
+        "componentImportCta": "Open import",
+        "tp3Title": "Form TP3",
+        "tp3Desc": "Previous-employer figures for a mid-year joiner, in the official form's own sections — and the printable TP3.",
+        "tp3Cta": "Open Form TP3"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -11254,6 +11260,86 @@
           "b": "Exemption levy for Umrah travel / travel for religious purposes"
         }
       }
+    },
+    "tp3": {
+      "title": "Form TP3 — previous employment",
+      "intro": "The previous employment's figures for an employee who joined part-way through the year, laid out in the official form's own sections so a paper TP3 can be worked down in order. Stage 1: this record is captured and printed. It changes no tax — the monthly PCB still reads the four opening-balance figures on the employee's Payroll tab.",
+      "stageNote": "Stage 1 of two. Nothing on this screen changes the monthly tax deduction. Section D's reliefs are connected to the PCB calculation in stage 2, together with the across-both-employers limit check.",
+      "sectionA": "Section A — Employer information",
+      "sectionAFootnote": "*Please use additional attachment for the next employment",
+      "sectionB": "Section B — Employee information",
+      "sectionC": "Section C — Remuneration information / EPF / Zakat / PCB",
+      "sectionCHelp": "(Please state the total amount from previous employment(s) during the current year)",
+      "sectionD": "Section D — Remuneration deduction",
+      "sectionDHelp": "(Please state the total amount from previous employment)",
+      "sectionE": "Section E — Employee declaration",
+      "employerNameSlot": "Previous Employer Name {n}",
+      "employerTinSlot": "Tax Identification Number (TIN)",
+      "maxEmployersNote": "The form is ruled for {max} previous employers. The next employment goes on an additional attachment, as the form's own note says.",
+      "note": "NOTE:",
+      "noteRequest": "The employer must request the employee to submit this form if the employee has previously worked with other employers during the current year.",
+      "noteKeep": "The employer is only required to keep this form for a period of 7 years. The form must be submitted if requested by HASiL.",
+      "noteExplanatory": "Please refer to the TP3 Explanatory Notes for further information on how to complete the form.",
+      "dateLabel": "Date:",
+      "signatureLabel": "Signature",
+      "declarationTick": "The employee has signed the Section E declaration.",
+      "money": {
+        "c1": {
+          "label": "Total monthly gross remuneration and additional remuneration including allowances / perquisites / gifts / taxable benefits"
+        },
+        "c2": {
+          "label": "Total allowances / perquisites / gifts / benefits that are tax-exempt",
+          "sub": {
+            "i": "Travel allowance, petrol card or petrol allowance and toll fees for official duties",
+            "ii": "Child-care allowance",
+            "iii": "Products produced by the employer's business that are given free or at a discounted price",
+            "iv": "Perquisites in the form of cash / items related to past service achievements, excellent service awards, innovation awards, productivity awards or long-service awards, provided the employee has served more than 10 years",
+            "v": "Other tax-exempt allowances / perquisites / gifts / benefits. Please refer to the explanatory notes of Form BE"
+          }
+        },
+        "c3": {
+          "label": "Total approved EPF contributions or other approved fund contributions on all remuneration (monthly salary and additional remuneration)"
+        },
+        "c4": {
+          "label": "Zakat and departure levy relief",
+          "sub": {
+            "i": "Total Zakat",
+            "ii": "Relief for departure levy for Umrah / travel for other religious purposes"
+          }
+        },
+        "c5": {
+          "label": "Total PCB (excluding CP38)"
+        }
+      },
+      "reconcileHeading": "Against the figures the tax calculation uses",
+      "reconcileNote": "The monthly PCB reads the four opening-balance figures on the employee's Payroll tab, and it still does. These are the same four worked out from the boxes above — gross less the exempt allowances less EPF. They are shown so the two can be compared; nothing here is copied into the tax calculation, and a difference is not an error.",
+      "reconcileDerived": "From this form",
+      "reconcileStored": "Used by the tax calculation",
+      "reconcileNet": "Accumulated net remuneration",
+      "reconcileEpf": "EPF claimed",
+      "reconcilePcb": "PCB already deducted",
+      "reconcileZakat": "Zakat already deducted",
+      "reconcileNoStored": "No opening balances are recorded for this year on the employee's Payroll tab.",
+      "reconcileStoredOtherYear": "The opening balances on the employee's Payroll tab are recorded against {year}, not this year.",
+      "reconcileDiffers": "Differs",
+      "reconcileAgrees": "Agrees",
+      "selectEmployeePrompt": "Choose an employee to open their Form TP3.",
+      "noRecordYet": "No Form TP3 has been recorded for this employee for {year}.",
+      "lastSaved": "Last saved {at}",
+      "save": "Save",
+      "saved": "Form TP3 saved.",
+      "deleted": "Form TP3 record removed.",
+      "downloadPdf": "Download Form TP3 (English)",
+      "downloadPdfMs": "Download Form TP3 (Bahasa Malaysia)",
+      "deleteRecord": "Delete record",
+      "confirmDeleteTitle": "Delete this Form TP3 record?",
+      "confirmDeleteBody": "The record for {year} is removed from this screen. The paper form the employee handed in is unaffected, and the change is kept in the audit log.",
+      "confirmDeleteYes": "Delete",
+      "cancel": "Cancel",
+      "openFromPayrollTab": "Open Form TP3",
+      "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
+      "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
+      "backToTransactions": "Transaction Entry"
     }
   },
   "payRule": {

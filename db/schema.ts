@@ -5188,6 +5188,129 @@ export const tp1Relief = pgTable(
   ],
 );
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * LHDN TP3 (1/2026) — THE PREVIOUS-EMPLOYMENT RECORD (item df35d60d, migration 0480, STAGE 1)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ── WHY THIS TABLE EXISTS, STATED AS THE ARITHMETIC ────────────────────────────────────────────────
+ *
+ * `employee_statutory_my` already holds five TP3 columns, and they are NOT replaced by this table and
+ * NOT re-interpreted by it. What they cannot do is render the form. `tp3_net_remuneration` is LHDN's
+ * accumulated (Y − K), i.e. **(C1 − ΣC2) − C3** — one number, already combined. The paper form asks for
+ * C1, C2(i)…C2(v) and C3 as SEVEN SEPARATE BOXES, and
+ *
+ *     (C1 - (C2i+C2ii+C2iii+C2iv+C2v)) - C3   is not invertible.
+ *
+ * No arithmetic recovers seven figures from one. That is the reporter's complaint, exactly: the section
+ * is "insufficient" not because a figure is wrong but because the form cannot be filled from it.
+ *
+ * ── ⚠️ WHAT IS AUTHORITATIVE FOR TAX, AND IT IS NOT THIS TABLE (STAGE 1) ───────────────────────────
+ *
+ * `core/payroll.ts` seeds the PCB accumulators from `employee_statutory_my.tp3_*` — `tp3Applies =
+ * e.tp3Year === pYear`, then netRemuneration / epfClaimed / pcbPaid / zakatPaid — and it STILL DOES.
+ * Nothing in this table is read by the kernel. Stage 1 captures and prints the form; stage 2 connects
+ * Section D to the computation with the cross-employer limit check, and decides then — deliberately,
+ * once — which side owns the accumulator seed. Until it does, the five columns are the single source of
+ * truth for the monthly MTD and this row is the single source of truth for the printed form.
+ *
+ * That overlap is REAL and is made VISIBLE rather than left silent: `deriveAccumulatorSeed`
+ * (core/tp3.ts) computes (C1 − ΣC2) − C3, K, X and Z from these boxes and the screen shows them beside
+ * the stored columns, so an operator can see whether the two agree. A disagreement is information, not
+ * an error, and nothing acts on it.
+ *
+ * ── GRAIN: ONE ROW PER (PERSON, ASSESSMENT YEAR), UPDATED IN PLACE ─────────────────────────────────
+ *
+ * PERSON-keyed, not employment-keyed — the precedent `tp1_relief` (0102), `employee_statutory_my` (0004)
+ * and `employee_dependent` (0137) all set, and for the reason 0137 records: this codebase supports
+ * concurrent employments, so employment-keying would orphan the record when that employment ends.
+ *
+ * UNIQUE on (tenant, person, assessment_year) and UPDATEd, where `tp1_relief` APPENDS. That difference
+ * is deliberate. A TP1 is a DECLARATION with a status, a submission, an employer consent and a
+ * correction trail, so its history has to be rows. A TP3 is a RECORD OF FACT about a previous employer,
+ * maintained by HR from a paper form the employee hands in; its history is the before/after of the
+ * `employee.tp3form.updated` domain event, which is where every other HR-maintained statutory fact in
+ * this schema keeps its history. Two history idioms for one concept would be the duplication, not the
+ * discipline.
+ *
+ * ── WHY JSONB AND NOT THREE CHILD TABLES ───────────────────────────────────────────────────────────
+ *
+ * `section_d` is stored in EXACTLY the shape `tp1_relief.categories.items` is stored in
+ * (`Record<code, Tp1ItemAmounts>`), because it is the same taxonomy — so one validator reads both, one
+ * payload type describes both, and the whole thing lands in the domain event's before/after in one
+ * piece. A child table would be a SECOND storage idiom for the identical seventeen categories, needing
+ * its own GRANT, its own policy and an ORDER BY on every read — and the two idioms would drift exactly
+ * where the limits must not. The precedent is recorded on `employee_statutory_my.child_relief_table`
+ * (migration 0250): a column rather than a child table, inheriting this row's RLS unchanged.
+ */
+export type Tp3PreviousEmployer = {
+  /** A1 / A3 — the previous employer's name, as the employee wrote it on the form. */
+  name: string;
+  /** A2 / A4 — their TIN. Null when the employee left it blank; an absent box asserts nothing. */
+  tin: string | null;
+};
+
+/**
+ * The TP3 payload. `sectionC` is keyed c1…c5 against the pack's OWN Section C lines; `sectionD` is
+ * keyed c1…c17 against the SHARED relief schedule — the same keys, the same sub-item letters and the
+ * same limits `tp1_relief` uses, because it is the same taxonomy read for a different employer.
+ *
+ * `form` is the DISCRIMINATOR, following `Tp1Categories2026`: a payload without it is not this shape.
+ */
+export type Tp3Payload = {
+  form: 'tp3-2026';
+  /** C1–C5, with C2's five roman-numeral boxes and C4's two under `subItems`. */
+  sectionC: Record<string, Tp1ItemAmounts>;
+  /** D1–D17 — keyed by the SHARED schedule's codes (c1…c17), never by the printed D-number. */
+  sectionD: Record<string, Tp1ItemAmounts>;
+  remarks?: string | null;
+};
+
+export const employeeTp3 = pgTable(
+  'employee_tp3',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    /** The form's DEDUCTION YEAR — the assessment year the previous employment's figures belong to. */
+    assessmentYear: integer('assessment_year').notNull(),
+    /**
+     * The form's own DEDUCTION MONTH box (1–12), or NULL when the employee left it blank. NULL is not
+     * January: the box is genuinely optional on the paper form and an invented month on a statutory
+     * document is exactly what CLAUDE.md §8 forbids. Same treatment as `tp1_relief.deduction_month`.
+     */
+    deductionMonth: smallint('deduction_month'),
+    /**
+     * SECTION A — the previous employers, in the form's own order (A1/A2 then A3/A4). An ARRAY and not
+     * four columns: the section REPEATS, and four columns would make "how many employers does the form
+     * hold" a fact spread over four column names instead of one number the pack declares
+     * (`tp3Catalogue.maxEmployers`). The service refuses more than that number rather than silently
+     * dropping one — the form's own footnote says the next employment goes on an attachment.
+     */
+    previousEmployers: jsonb('previous_employers').$type<Tp3PreviousEmployer[] | null>(),
+    /** SECTIONS C and D. One payload, one shape, written and read only through core/tp3.ts. */
+    payload: jsonb('payload').$type<Tp3Payload | null>(),
+    /**
+     * SECTION E — the employee's declaration. A TIMESTAMP and not a boolean, for the reason
+     * `tp1_relief.declared_at` records: "who confirmed it and when" is what the paper form's Date /
+     * Signature pair asks, and a bare tick cannot answer it. Stamped by the SERVER; the tick itself is
+     * an explicit on/off form value, never read by presence (a hidden input is always submitted).
+     */
+    declaredAt: timestamp('declared_at', { withTimezone: true }),
+    /** HR's own note. Never printed on the form — the agency's form has no box for it. */
+    remarks: text('remarks'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // ONE record per person per assessment year — the grain, enforced by the database rather than by
+    // the service remembering to check. See the header on why this UPDATEs where tp1_relief appends.
+    uniqueIndex('employee_tp3_person_year_uq').on(t.tenantId, t.personId, t.assessmentYear),
+  ],
+);
+
 // ─────────────── Personnel — Family / Dependents (phase 1, migration 0137) ───────────────
 // A per-PERSON register of family members / dependents for BENEFITS / INSURANCE only. Person-keyed
 // (concurrent-employment-safe, like tp1_relief / employee_statutory_my) and gated with app.can_see_person

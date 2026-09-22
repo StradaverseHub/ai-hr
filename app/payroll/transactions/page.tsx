@@ -65,6 +65,20 @@ export default async function PayrollTransactionsPage() {
           </Link>
         </Card>
 
+        {/* df35d60d — Form TP3. Beside TP1 on purpose: the two forms ask for the SAME seventeen relief
+            categories, TP1 for what the employee claims through THIS employer and TP3 for what they
+            already claimed through the previous one. */}
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.tp3Title')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.tp3Desc')}</p>
+          <Link
+            href="/payroll/transactions/tp3"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.tp3Cta')}
+          </Link>
+        </Card>
+
         <Card className="flex flex-col p-5">
           <h2 className="text-base font-semibold">{t('hub.zakatTitle')}</h2>
           <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.zakatDesc')}</p>

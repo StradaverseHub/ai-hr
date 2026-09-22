@@ -3298,6 +3298,24 @@ export default async function EmployeePage({
           </Field>
         </div>
       </form>
+      {/* df35d60d — THE DOOR TO THE FULL FORM, AND THE SENTENCE THAT SAYS WHY THERE ARE TWO PLACES.
+          These four columns are what `core/payroll.ts` seeds the PCB accumulators from, and stage 1
+          deliberately leaves them exactly that. What they cannot do is fill the paper TP3: the second
+          of them is (C1 - sum of C2) - C3 already combined, and the form asks for those as seven
+          separate boxes. The full record — Sections A to E, including the seventeen reliefs — lives on
+          its own screen, which also prints the form. The note is not decoration: an operator looking at
+          four boxes needs to know the other thirteen exist and where they are. */}
+      <div className="border-t border-border px-4 py-3">
+        <p className="text-xs text-muted-foreground">{t('tp3FormNote')}</p>
+        <Link
+          href={`/payroll/transactions/tp3?employmentId=${encodeURIComponent(emp.employmentId)}${
+            statutory?.tp3Year ? `&year=${statutory.tp3Year}` : ''
+          }`}
+          className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+        >
+          {t('tp3OpenForm')}
+        </Link>
+      </div>
     </Card>
   ) : null;
 

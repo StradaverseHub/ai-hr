@@ -15,6 +15,7 @@ import {
   MY_PCB_EXEMPTION_CODES,
   MY_RELIEFS,
   MY_TP1_2026,
+  MY_TP3_2026,
   PCB_REMUNERATION_TYPES,
   pcbExemptionCodesFor,
 } from './statutory-tables';
@@ -139,6 +140,10 @@ export const myPack: CountryPack = {
     // figure is transcribed from the agency's own form (STATUTORY-SOURCES.md §9); an item the form
     // prints no figure against carries `limit: null` and is never blocked on (ADR-0008).
     taxReliefCatalogue: MY_TP1_2026,
+    // df35d60d — LHDN TP3 (1/2026). Its `sectionD` IS `MY_TP1_2026.items`, the same array object: one
+    // relief taxonomy, consumed by the TP1 (claimed through THIS employer) and by the TP3 (claimed
+    // through the PREVIOUS one). See the header over MY_TP3_2026 in ./statutory-tables.
+    tp3Catalogue: MY_TP3_2026,
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.
     loadRuleset: getActiveStatutoryMY,

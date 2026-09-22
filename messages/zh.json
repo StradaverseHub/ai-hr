@@ -1585,7 +1585,9 @@
       "payComponentClosedRun": "薪资批次 {period} 已关账，因此 {code} 薪资组成在该期间不能再更改。",
       "payComponentOpenEnded": "无结束日期",
       "recalcColGrade": "职级",
-      "recalcGradeUnchanged": "无变化"
+      "recalcGradeUnchanged": "无变化",
+      "tp3OpenForm": "打开完整的 TP3 表格",
+      "tp3FormNote": "这四个数字正是每月 PCB 所读取的，并且维持不变。完整的 TP3 — 前任雇主、表格分开询问的薪酬总额 / 免税 / 公积金栏位，以及十七项减免类别 — 保存在独立页面，也可在该页打印表格。"
     },
     "import": {
       "title": "导入员工",
@@ -3972,8 +3974,6 @@
       "planned_perkeso_sip_hint": "就业保险计划表单。尚未构建。",
       "planned_perkeso_employee_registration": "员工登记表单",
       "planned_perkeso_employee_registration_hint": "为新员工办理 PERKESO 登记。尚未构建。",
-      "planned_lhdn_tp3": "TP3 表格",
-      "planned_lhdn_tp3_hint": "年中入职员工的前雇主数据。这些数据已记录在员工的薪资页签中——可打印的 TP3 表格尚未构建。",
       "planned_lhdn_cp21": "CP21 — 员工离开马来西亚",
       "planned_lhdn_cp21_hint": "员工即将离开马来西亚的通知。尚未构建。",
       "planned_lhdn_cp22a": "CP22A — 离职税务清缴",
@@ -4023,7 +4023,10 @@
       "pcb2iiSelectHint": "勾选需要出具报表的员工。每位员工各占一页。",
       "pcb2iiPreview": "预览",
       "pcb2iiGenerate": "下载 PCB 2(II)",
-      "pcb2iiNoneForYear": "{company} 在 {year} 年没有任何薪资数据，因此 PCB 2(II) 上没有可申报的税款。请先运行该年度的薪资。"
+      "pcb2iiNoneForYear": "{company} 在 {year} 年没有任何薪资数据，因此 PCB 2(II) 上没有可申报的税款。请先运行该年度的薪资。",
+      "link_tp3": "TP3 表格",
+      "link_tp3_hint": "年中入职员工在前任雇主处的数字。选择员工与课税年度，即可打开、更正或打印其表格。",
+      "desc_tp3": "依据已存档的前任受雇记录绘制的 LHDN TP3（1/2026）表格 — A 至 E 节、C1 至 C5 金额行以及 D1 至 D17 减免明细，采用表格本身的编号、措辞与栏位顺序，呈现在我们自己的页面上。每位员工每个课税年度一份；此处不重新计算任何数字，也不会改变每月扣税。"
     },
     "ea": {
       "backToReports": "报表",
@@ -4736,7 +4739,10 @@
         "adjustmentsCta": "打开薪资输入",
         "componentImportTitle": "导入薪资组成项（CSV）",
         "componentImportDesc": "从 CSV 文件批量添加一次性津贴、扣款、加班或奖金到草稿运行，写入前先预览。",
-        "componentImportCta": "打开导入"
+        "componentImportCta": "打开导入",
+        "tp3Title": "TP3 表格",
+        "tp3Desc": "年中入职员工在前任雇主处的数字，按官方表格本身的章节呈现 — 并可打印 TP3 表格。",
+        "tp3Cta": "打开 TP3 表格"
       },
       "fixed": {
         "title": "固定交易",
@@ -11254,6 +11260,86 @@
           "b": "副朝／宗教旅程的豁免税"
         }
       }
+    },
+    "tp3": {
+      "title": "TP3 表格 — 前任雇主受雇记录",
+      "intro": "年中入职员工在前任雇主处的数字，按官方表格本身的章节排列，方便对照纸本 TP3 逐项填写。第一阶段：记录并打印此表格，不改变任何税额 — 每月 PCB 仍读取员工薪酬页签上的四个期初余额。",
+      "stageNote": "两个阶段中的第一阶段。本页面不会改变每月扣税。D 节的税务减免将在第二阶段接入 PCB 计算，并同时加入跨雇主的上限校验。",
+      "sectionA": "A 节 — 雇主资料",
+      "sectionAFootnote": "*下一份受雇记录请使用附加附件",
+      "sectionB": "B 节 — 员工资料",
+      "sectionC": "C 节 — 薪酬资料 / 公积金 / 天课 / PCB",
+      "sectionCHelp": "（请填写本年度前任雇主的累计总额）",
+      "sectionD": "D 节 — 薪酬扣除",
+      "sectionDHelp": "（请填写前任雇主的累计总额）",
+      "sectionE": "E 节 — 员工声明",
+      "employerNameSlot": "前任雇主名称 {n}",
+      "employerTinSlot": "税务识别号码（TIN）",
+      "maxEmployersNote": "此表格设有 {max} 位前任雇主的栏位。再多的受雇记录请按表格附注另附附件。",
+      "note": "附注：",
+      "noteRequest": "若员工在本年度曾受雇于其他雇主，雇主必须要求员工提交此表格。",
+      "noteKeep": "雇主只需保存此表格 7 年。若 HASiL 要求，必须提交此表格。",
+      "noteExplanatory": "填写方式的进一步说明，请参阅 TP3 填表说明。",
+      "dateLabel": "日期：",
+      "signatureLabel": "签名",
+      "declarationTick": "员工已签署 E 节声明。",
+      "money": {
+        "c1": {
+          "label": "每月薪酬总额及额外薪酬总额，包括津贴 / 额外福利 / 馈赠 / 应课税福利"
+        },
+        "c2": {
+          "label": "获免税的津贴 / 额外福利 / 馈赠 / 福利总额",
+          "sub": {
+            "i": "公务用途的交通津贴、油卡或汽油津贴及过路费",
+            "ii": "托儿津贴",
+            "iii": "雇主本身业务所生产、免费或折价提供的产品",
+            "iv": "以现金或实物形式发放的额外福利，涉及过往服务表现、优秀服务奖、创新奖、生产力奖或长期服务奖，且员工服务已满 10 年",
+            "v": "其他获免税的津贴 / 额外福利 / 馈赠 / 福利。请参阅 BE 表格的填表说明"
+          }
+        },
+        "c3": {
+          "label": "全部薪酬（每月薪金及额外薪酬）所缴付的核准公积金或其他核准基金供款总额"
+        },
+        "c4": {
+          "label": "天课与离境税减免",
+          "sub": {
+            "i": "天课总额",
+            "ii": "副朝 / 其他宗教用途旅行的离境税减免"
+          }
+        },
+        "c5": {
+          "label": "PCB 总额（不含 CP38）"
+        }
+      },
+      "reconcileHeading": "与税务计算所用数字的对照",
+      "reconcileNote": "每月 PCB 读取员工薪酬页签上的四个期初余额，目前仍然如此。以下是依据上方栏位推算出的同样四个数字 — 薪酬总额减免税津贴再减公积金。列出是为了方便比对；此处没有任何数字会写入税务计算，出现差异并非错误。",
+      "reconcileDerived": "来自本表格",
+      "reconcileStored": "税务计算所用",
+      "reconcileNet": "累计净薪酬",
+      "reconcileEpf": "已申报公积金",
+      "reconcilePcb": "已扣缴 PCB",
+      "reconcileZakat": "已扣缴天课",
+      "reconcileNoStored": "员工薪酬页签上没有记录本年度的期初余额。",
+      "reconcileStoredOtherYear": "员工薪酬页签上的期初余额记录于 {year} 年，并非本年度。",
+      "reconcileDiffers": "有差异",
+      "reconcileAgrees": "一致",
+      "selectEmployeePrompt": "请选择员工以打开其 TP3 表格。",
+      "noRecordYet": "此员工在 {year} 年没有 TP3 表格记录。",
+      "lastSaved": "最后保存于 {at}",
+      "save": "保存",
+      "saved": "TP3 表格已保存。",
+      "deleted": "TP3 表格记录已删除。",
+      "downloadPdf": "下载 TP3 表格（英文）",
+      "downloadPdfMs": "下载 TP3 表格（马来文）",
+      "deleteRecord": "删除记录",
+      "confirmDeleteTitle": "要删除此 TP3 表格记录吗？",
+      "confirmDeleteBody": "{year} 年的记录将从本页面移除。员工提交的纸本表格不受影响，此变更会保留在审计日志中。",
+      "confirmDeleteYes": "删除",
+      "cancel": "取消",
+      "openFromPayrollTab": "打开 TP3 表格",
+      "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
+      "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
+      "backToTransactions": "交易录入"
     }
   },
   "payRule": {

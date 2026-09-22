@@ -913,3 +913,139 @@ export const MY_TP1_2026 = {
   items: MY_TP1_2026_ITEMS,
   rebates: MY_TP1_2026_REBATES,
 } as const;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// LHDN TP3 (1/2026) — PREVIOUS EMPLOYMENT (item df35d60d, stage 1)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// PCB FORM /TP3 (1/2026) — "Individual Tax Deduction and Rebate Claim Form for Monthly Tax Deduction
+// Purposes (PCB)", prescribed under s.152 ITA 1967, Income Tax (Deductions from Remuneration)
+// Regulations 1994. Transcribed field by field from the reporter's own attachment (feedback_attachment
+// 696af02f-2a08-4c60-8fbc-670fb90c2ebd, 3 pages, read 2026-09-22).
+//
+// ── ⚠️ SECTION D IS NOT A NEW TABLE. IT IS `MY_TP1_2026_ITEMS`, THE SAME ARRAY OBJECT ───────────────
+//
+// The TP3's Section D asks for the SAME seventeen reliefs, in the SAME order, with the SAME annual
+// limits, the SAME lettered sub-lines and the SAME "(Limited RM…)" sub-limits as the TP1's Section C.
+// Every figure was re-read off the TP3 PDF against the TP1 catalogue above and every one of them
+// matches. They are not the same DATA — a TP1 is claimed through THIS employer and a TP3's Section D
+// through the PREVIOUS one, and both count toward the same annual limit — but they are one TAXONOMY.
+//
+// So `sectionD` below is `MY_TP1_2026_ITEMS` BY REFERENCE, not a copy of it. A second transcription of
+// a statutory limit table is exactly the competing source of truth CLAUDE.md §1 forbids: a cap that
+// moved in one list and not the other would be a wrong tax figure with nothing to report it, and the
+// two lists would agree only for as long as somebody kept them agreeing. `test/df35d60d-tp3-form.test.ts`
+// asserts the IDENTITY (`toBe`, not `toEqual`), so replacing the reference with a copy fails the suite
+// rather than passing it.
+//
+// THE NUMBERING DIFFERS AND THE CODES DELIBERATELY DO NOT. TP1 prints these as C1–C17, TP3 as D1–D17,
+// one-for-one in the same order. The item CODE stays `c1`…`c17` because it is the persisted JSONB key
+// on `tp1_relief.categories` and the i18n key in `messages/*.json`; renaming it would rewrite live tax
+// records to change a letter on a printout. `tp3LineNumber` is the whole of the difference, and the
+// test pins the 1:1 correspondence so a future divergence cannot arrive silently.
+//
+// ── SECTION C IS TP3'S OWN, AND IT IS THE REASON THIS ITEM EXISTS ──────────────────────────────────
+//
+// The five Section C lines have no TP1 counterpart: they are the previous employment's accumulated
+// money. `employee_statutory_my` already holds a `tp3_net_remuneration`, but that column is
+// (C1 − ΣC2) − C3 already combined, and that combination is NOT INVERTIBLE — which is precisely why the
+// form could not be rendered from what was stored. These are the form's own separate boxes.
+//
+// NO `limit` ON ANY SECTION C LINE, and that is the form's own answer: its Section C prints a single
+// "ACCUMULATED DEDUCTION (RM)" column and no annual-limit column at all. C4(ii) carries the only
+// restriction the form states, and it states it in words, so it rides `frequency` exactly as the
+// Section D frequency rules do — captured and printed, never enforced (ADR-0008 / the TP1 catalogue's
+// own reasoning above).
+
+/** One lettered sub-line of a TP3 Section C money line — a box on the paper form. */
+export type Tp3MoneyLineSubItem = {
+  /** The numeral the form prints ('i', 'ii', …). Stable: it is the persisted JSONB key. */
+  readonly code: string;
+  /** A restriction the form states in words. Captured and printed, never enforced. */
+  readonly frequency?: string;
+};
+
+/** One numbered TP3 Section C line (C1–C5). */
+export type Tp3MoneyLine = {
+  /** 'c1'…'c5'. Stable: it is the persisted JSONB key and the i18n key. */
+  readonly code: string;
+  /** Roman-numeral sub-lines with their own box. Empty when the line is a single box on the form. */
+  readonly subItems: readonly Tp3MoneyLineSubItem[];
+};
+
+/**
+ * TP3 Section C — REMUNERATION INFORMATION / EPF / ZAKAT / PCB, in the form's own order.
+ *
+ * The form's own caption over this section: "Please state the total amount from previous employment(s)
+ * during the current year."
+ */
+export const MY_TP3_2026_SECTION_C: readonly Tp3MoneyLine[] = [
+  // C1 — total monthly gross remuneration AND additional remuneration, including allowances /
+  // perquisites / gifts / benefits. This is LHDN's Y before anything is taken off it.
+  { code: 'c1', subItems: [] },
+  // C2 — the tax-exempt allowances / perquisites / gifts / benefits, in five separate boxes.
+  {
+    code: 'c2',
+    subItems: [
+      { code: 'i' }, // travel allowance, petrol card or petrol allowance, and toll fees, for official duties
+      { code: 'ii' }, // child-care allowance
+      { code: 'iii' }, // products of the employer's own business given free or at a discount
+      { code: 'iv' }, // past-service / excellent-service / innovation / productivity / long-service awards (>10 years' service)
+      { code: 'v' }, // other tax-exempt allowances — the form points at the Form BE explanatory notes
+    ],
+  },
+  // C3 — total approved EPF or other approved fund contributions on ALL remuneration (monthly salary
+  // AND additional remuneration). This is LHDN's K.
+  { code: 'c3', subItems: [] },
+  // C4 — zakat and the Umrah / religious-travel departure levy relief.
+  //
+  // ⚠️ C4(i) IS NOT THE TP1'S REBATE LINE D1(a). The TP1 rebate is zakat OTHER THAN that paid through
+  // monthly salary deductions — the exclusion is the whole point of that line. This is the previous
+  // employment's TOTAL zakat, salary deductions included, because the employer it is accumulated from
+  // is not this one. They share no label and no key, deliberately.
+  {
+    code: 'c4',
+    subItems: [
+      { code: 'i' }, // Total Zakat
+      // The form prints "(Limited to 2 claims in a lifetime)" — the same restriction, and the same
+      // MESSAGE KEY, as the TP1's own Umrah rebate line. One statutory rule, one string.
+      { code: 'ii', frequency: 'twoClaimsLifetime' },
+    ],
+  },
+  // C5 — total PCB, EXCLUDING CP38. This is LHDN's X. CP38 is a separate instalment direction and the
+  // form excludes it in its own words; nothing here infers or nets it.
+  { code: 'c5', subItems: [] },
+] as const;
+
+/**
+ * The maximum number of previous employers the form is RULED FOR — two (A1/A2 and A3/A4).
+ *
+ * A NUMBER, NOT A GUESS. The form's own footnote under A4 reads "*Please use additional attachment for
+ * the next employment", so two is what the printed form can carry and a third is an attachment rather
+ * than a third pair of boxes. The service refuses a third rather than silently dropping it; the screen
+ * says why and points at the attachment, which is the form's own answer.
+ */
+export const MY_TP3_2026_MAX_EMPLOYERS = 2;
+
+/**
+ * TP3 line number for a shared-taxonomy item code — `c1` → 1, printed as "D1" on the TP3.
+ *
+ * THE ONE PLACE THE TWO FORMS' NUMBERING IS RECONCILED. It is derived from the item's POSITION in the
+ * shared schedule rather than from parsing its code, so an item inserted into the schedule renumbers
+ * both forms together instead of only the one whose renderer someone remembered to edit. Returns null
+ * for a code that is not in the schedule, which is what a Section D renderer must refuse to print.
+ */
+export function tp3LineNumber(code: string): number | null {
+  const i = MY_TP1_2026_ITEMS.findIndex((x) => x.code === code);
+  return i < 0 ? null : i + 1;
+}
+
+/** The whole TP3 (1/2026) form definition as the pack exposes it. */
+export const MY_TP3_2026 = {
+  /** The agency's own revision string — printed on the generated form. */
+  formCode: 'PCB FORM /TP3 (1/2026)',
+  sectionC: MY_TP3_2026_SECTION_C,
+  /** ⚠️ THE SAME ARRAY OBJECT as `MY_TP1_2026.items`. See the header. Never a copy. */
+  sectionD: MY_TP1_2026_ITEMS,
+  maxEmployers: MY_TP3_2026_MAX_EMPLOYERS,
+} as const;
