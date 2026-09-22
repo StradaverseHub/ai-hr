@@ -1,3 +1,42 @@
+## r327 (2026-09-22) — The statutory bodies become one list, and SOCSO+EIS one GROUP rather than one setting. `main@46366c14`, **no migration**.
+
+Closed and DEPLOYED: `efe424b0`. Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0. Shadow **not run and not needed**: `git diff --name-only main..HEAD` matches nothing under `db/migrations`.
+
+### WHAT THE TICKET ASKED FOR, AND THE ONE PART OF IT I REFUSED
+
+The item asked to consolidate the company statutory settings. SOCSO and EIS look like one thing on that screen — same authority, same employer code, filed together — and the obvious reading is "make them one configuration".
+
+**I measured the data before agreeing, and that reading is wrong.** EIS carries its own payment row, and on this tenant it DIFFERS from SOCSO's: `SMSB_EIS` against `SMSB_SOCSO`. Merging the two configurations would have stranded a live payment setting — silently, because the surviving row would look complete.
+
+So they became one ROW, not one CONFIGURATION: SOCSO is the row, EIS is a subordinate line beneath it (`pl-6`, a `⌟` glyph rather than a second authority mark), and both keep their own settings behind their own controls. The consultant gets the grouping they asked to see; the payment account nobody mentioned stays where it is.
+
+### THE REST OF THE SCREEN
+
+- The bodies stop being a grid and become **one divided list** (`divide-y` inside a single bordered block), which is what made the subordinate row legible in the first place — a grid has no way to say "this belongs under that".
+- **Seven authority logos** ship as real files under `public/statutory/`, each referenced and each serving 200 at its exact byte count on a dev server before the gate ran.
+- **LHDN is renamed "Income Tax (LHDN)"**, in all six locales. The authority's initials are not what the consultant calls the thing.
+- **`koperasi` is retired** from `lib/statutory-authorities.ts`, with the measurement that justified it recorded in the comment beside the deletion rather than in a commit message nobody re-reads.
+
+### TWO RED CHUNKS, BOTH GENUINE — AND ONE OF THEM BREAKS MY OWN HEURISTIC
+
+**Chunk 1 had ZERO AssertionErrors and was still a real failure.** `Error: Unknown statutory authority: koperasi`, thrown by a fixture that still named the authority I had just retired. The standing rule in §4 — zero assertion errors means the environment, not the code — has exactly this exception, and it is worth keeping written down: a THROWN error is a real failure that the AssertionError count cannot see. Fixed by swapping the fixture to `ptptn` and adding a case that pins the refusal itself, so retiring an authority now makes it unwritable by test as well as by type.
+
+**Chunk 7 had one AssertionError, and it was the rename.** The new label is `SOCSO & EIS (PERKESO)`; React escapes a text child, so the markup carries `SOCSO &amp; EIS (PERKESO)`, and the six-locale render check compared the raw catalogue value. The browser shows the ampersand — the dev-server render check had already confirmed that — but the test could never match. **Escaped the EXPECTED side rather than unescaping the received one**, so the assertion stays exact, and proved it non-vacuous by truncating the component's label at `" & "` and watching the same assertion fail. Applied to the descriptions and the Open-control count too: any of them can gain an ampersand tomorrow.
+
+### GUARDS UPDATED, NONE DELETED
+
+- `test/statutory-authority.test.ts` — fixture `koperasi` → `ptptn`, plus a new case refusing retired, nonsense and empty authorities.
+- `test/company-panel-bank-statutory-layout.test.ts` — the grid assertion becomes a divided-list assertion. **The negation was also NARROWED**: it had forbidden a bare `sm:col-span-2`, which caught legitimate in-form field layouts that have nothing to do with the statutory block. It now targets `xl:col-span-3`, which is the thing that actually means "back to a grid".
+
+### WHAT WAS NOT DONE
+
+- **The 153-line statutory form was not extracted.** Grouping the rows achieved what the ticket asked for; extracting the form is a refactor the ticket did not ask for and would have put a large untested move inside a round about presentation.
+- **No migration, so no shadow run.** If a later round gives EIS its own first-class configuration, that IS a migration and this round's grouping is the thing it has to keep working.
+
+### THE GATE GOT 2.7× FASTER MID-ROUND, AND THE REASON IS WORTH RECORDING
+
+Chunks 1–9 ran at `VITEST_MAX_WORKERS=1` at ~260s each, because an 8GB RAM disk was pinned by a process `lsof` could not name and would not release to `eject`, `unmount`, `unmount force` or `hdiutil detach -force`, leaving the machine at ~0.2GB free and 34GB of 35.8GB swap. The owner rebooted between chunks 9 and 10. Chunks 10–14 then ran at 3 workers in ~110s each. `CHUNKS=14` was deliberately held constant across the reboot: changing it repartitions the file list and voids the chunks already counted.
+
 ## r326 (2026-09-22) — TP1 Relief, rebuilt where the reporter actually works. `main@adc173da`, **no migration**.
 
 Closed and DEPLOYED: `27605faa` (revision 2). Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, **no false reds this round**. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
