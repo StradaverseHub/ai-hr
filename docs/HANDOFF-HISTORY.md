@@ -1,3 +1,41 @@
+## r326 (2026-09-22) — TP1 Relief, rebuilt where the reporter actually works. `main@adc173da`, **no migration**.
+
+Closed and DEPLOYED: `27605faa` (revision 2). Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, **no false reds this round**. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
+
+### THEY CONTESTED r324 AND THEY WERE RIGHT TWICE
+
+r324 built a Discard on the per-month EDIT screen, and only for drafts. It built a month picker and put it on the VIEWING screen beside Add. From where the reporter sits there was no Delete at all, and the year and month sat where records are read rather than created. Both are ours; neither needed explaining twice.
+
+### DELETE, IN THE COLUMN THAT ALREADY EXISTED
+
+The Transaction History's Actions column has held a View link all along. Delete joins it as a **LINK to a server-rendered confirmation** — not a submit. Two reasons, and the second is the load-bearing one: the reporter asked to be asked first, and a server action handed to that client island as a prop returns a 500 on every request while tsc, the suite and `next build` all stay green (r123's defect, already recorded on the TP1 form). It also works with no JavaScript at all.
+
+ONE ACTION ON THE SCREEN, TWO SERVICES BEHIND IT, CHOSEN BY STATUS. A draft goes to `discardTp1DraftForPerson`; a submitted or approved row to `cancelTp1ForPerson`. Each service's refusal IS the audit meaning of that state — nobody was ever told about a draft, whereas a declared row was declared and then withdrawn — so the screen routes and neither contract loosens. A rejected row offers no Delete: both services refuse one, and an action that can only end in a refusal is worse than none.
+
+⚠️ **STILL NOT A ROW DELETE**, and they were told so in the plan before approving. `tp1CountableWhere` already requires `'approved'`, so a cancelled row stops feeding payroll the moment it is written — no second exclusion to keep in step. "Removed from the transaction history" means it leaves the LIST, with a Show-deleted toggle carried on the url so the choice survives a refresh.
+
+### THE COLLAPSE KEY, WHICH IS WHERE THIS COULD HAVE GONE QUIETLY WRONG
+
+Showing every year meant `listTp1DeclarationsForPersonYear` lost its year fence. That read collapses the append-only rows to one per month, counting the rest as `versions` — and it keyed on the MONTH ALONE. Sound while fenced to one year; silently wrong the moment it is not: **January 2025 and January 2026 share a bucket, one is reported as a "version" of the other, and a whole year's declaration vanishes from the history while inflating another's count.**
+
+The key gained the year. Verified by putting the old one back and watching a January disappear.
+
+### ADD NEW TP1 ASKS FIRST, AND WRITES NOTHING
+
+A step that resolves a year and a month and then **redirects** to the declaration form that already exists. A second write path to `tp1_relief` is the one thing it must not become, and that is pinned. A year and month that already has a record opens THAT record, because the destination is the same href the history links each row to — which makes "Add never overwrites" a property of the destination rather than a promise.
+
+### SEVEN GUARD ASSERTIONS UPDATED, NONE DELETED
+
+Four of r324's own cases pinned the month control on the viewing screen. Three in `test/tp1-relief-redesign.test.ts` pinned the rest of the old shape, one of them commented *"because the list is now scoped to one year by the selector"* — the exact sentence the reporter contested. In every case what the assertion protects is unchanged and still asserted; where it protects it has moved. The one-row-per-month case GAINED the cross-year half, so the collapse key is now pinned from the screen as well as from the service.
+
+### THE MACHINE, STILL
+
+`VITEST_MAX_WORKERS=1` throughout, ~240s a chunk. That setting is what bought a clean 14-chunk run: at 2 workers the previous two rounds lost four chunks apiece to zero-AssertionError timeouts. ~0.8 GB free RAM and 35 GB of 35.8 GB swap; the 8 GB RAM disk still refuses to detach.
+
+### NOT DONE
+
+Six items are approved and unbuilt: `07ebd04d` and `8cd601d0` (the Schedule Group restructuring, now unblocked with the reporter's three-group answer), `72b100cd`, `a57f0584`, `0fe1ca2e` and `efe424b0`. `fdfd8ec7` remains blocked on how they want the 55-employee list delivered.
+
 ## r325 (2026-09-22) — the last date-from-an-instant, and the answer to the Saturday question. `main@329b128a`, **no migration**.
 
 Closed and DEPLOYED: `fc88ba08`. Gate: **940 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow PASS 392/392. Deployed first attempt: `exit_code=0`, `stale_build=0`, §3 dry-run zero lines, `GET /` 401.
