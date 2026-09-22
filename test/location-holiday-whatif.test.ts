@@ -23,13 +23,14 @@
  *
  * Window is a HISTORICAL year (2025): no hardcoded future dates, and nothing here moves when the clock does.
  */
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
 import { createHolidayGroup } from '../core/admin';
-import { holidayDatesByEmployment, holidayDatesFor } from '../core/holidays';
+import { holidayDatesByEmployment, holidayDatesFor, holidayMemoKey } from '../core/holidays';
 import { createLocation } from '../core/location';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -155,6 +156,34 @@ describe('0fe1ca2e — previewing the site register removal', () => {
     const after = await resolve(onCalendarSite, { dropLocation: true, workState: 'Kuala Lumpur' });
     expect(after.has(SITE_CALENDAR_DAY)).toBe(false);
     expect(sorted(after)).toEqual([KL_ONLY, NATIONAL]);
+  });
+
+  it('ONE KEY, TWO MEMOS: both call sites go through holidayMemoKey', () => {
+    // The brief for this item, verbatim: "Removing locations changes that key's shape, so both must move
+    // together or the memo and the resolver disagree — the class of defect r209 spent two rounds undoing."
+    // Two hand-written copies of the key made "together" a thing a person had to remember. One exported
+    // function makes it structural: a determining input cannot leave one key and stay in the other,
+    // because there is only one key. This guard pins that, so the copies cannot come back.
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    // The four inputs may be spelled into a key EXACTLY ONCE in the whole kernel: inside holidayMemoKey.
+    const HAND_ROLLED = /JSON\.stringify\(\[[^\]]*companyId|\$\{[\w.]*companyId\}\|/g;
+    const counts: Record<string, number> = {};
+    for (const f of ['../core/holidays.ts', '../core/absence-days.ts']) {
+      const src = stripComments(readFileSync(new URL(f, import.meta.url), 'utf8'));
+      expect(src, `${f} must key its holiday memo through holidayMemoKey`).toContain('holidayMemoKey(');
+      counts[f] = (src.match(HAND_ROLLED) ?? []).length;
+    }
+    // core/holidays.ts holds THE one definition; core/absence-days.ts must hold no copy of it.
+    expect(counts['../core/holidays.ts'], 'holidayMemoKey is the only place the key is spelled out').toBe(1);
+    expect(counts['../core/absence-days.ts'], 'core/absence-days.ts re-expresses the memo key by hand').toBe(0);
+    // The key itself: JSON, so null and '' stay distinct and no value can forge a separator.
+    const base = { companyId: 'c', workState: null, holidayGroupId: null, locationId: null };
+    expect(holidayMemoKey(base)).not.toEqual(holidayMemoKey({ ...base, workState: '' }));
+    expect(holidayMemoKey({ ...base, workState: 'a|b' })).not.toEqual(
+      holidayMemoKey({ ...base, workState: 'a', holidayGroupId: 'b' }),
+    );
+    expect(holidayMemoKey(base)).toEqual(holidayMemoKey({ ...base }));
   });
 
   it('THE MEMOS ARE UNTOUCHED: the batch resolver still answers the LIVE calendar', async () => {

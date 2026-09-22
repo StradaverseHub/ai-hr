@@ -83,7 +83,7 @@ import {
   type PayrollPolicyConfig,
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { holidayDatesFor } from './holidays';
+import { holidayDatesFor, holidayMemoKey } from './holidays';
 // b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
@@ -385,10 +385,20 @@ export async function absenceBreakdownByEmployment(
     openCount.set(a.employmentId, (openCount.get(a.employmentId) ?? 0) + 1);
     locationByEmp.set(a.employmentId, a.locationId ?? null);
   }
+  // 0fe1ca2e — the key itself is `holidayMemoKey` in core/holidays.ts, NOT a second expression of the
+  // four inputs written out here. This file and holidayDatesByEmployment used to spell the same key two
+  // different ways; a determining input could then leave one and stay in the other, and the memo would
+  // hand one employee another's public holidays. Read that function's header before changing what a
+  // calendar depends on.
   const holidayKeyOf = (e: (typeof emps)[number]): string | null =>
     (openCount.get(e.employmentId) ?? 0) > 1
       ? null // ambiguous open assignment — resolve this one alone rather than guess which row wins
-      : `${e.companyId}|${e.workState ?? ''}|${e.holidayGroupId ?? ''}|${locationByEmp.get(e.employmentId) ?? ''}`;
+      : holidayMemoKey({
+          companyId: e.companyId,
+          workState: e.workState,
+          holidayGroupId: e.holidayGroupId,
+          locationId: locationByEmp.get(e.employmentId) ?? null,
+        });
   const holidayMemo = new Map<string, Set<string>>();
 
   const recordedByEmp = new Map<string, Set<string>>();

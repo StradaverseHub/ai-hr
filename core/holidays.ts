@@ -633,6 +633,40 @@ export async function holidayDatesFor(
  * Every requested id (duplicates collapsed) has an entry, and each entry is its OWN Set: mutating one
  * employment's calendar can never change another's.
  */
+/**
+ * THE DETERMINING INPUTS of `holidayDatesFor`, named once — the four employment-level values that fully
+ * decide an employment's calendar for a window. See the resolver's own header for what each one reaches.
+ */
+export type HolidayMemoInputs = {
+  companyId: string;
+  workState: string | null;
+  holidayGroupId: string | null;
+  /** The OPEN assignment's location. Null = none, and NOT the same key as an employment that has one. */
+  locationId: string | null;
+};
+
+/**
+ * THE memo key for a resolved holiday calendar — ONE function, deliberately, because there are TWO memos.
+ *
+ * `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts both hand every employment
+ * sharing these four inputs the answer of ONE resolver call. Until 0fe1ca2e they expressed that key TWICE,
+ * in two files, by hand: a JSON tuple here and a pipe-joined string there. Two copies of a key are two
+ * things to edit when a determining input changes, and the failure mode is silent and severe — the memo
+ * and the resolver disagree, and one employee is handed another's public holidays, which reaches the
+ * frozen attendance day-type (OT class = money) and the working-day leave count. r209 spent two rounds
+ * undoing that class of defect. One function means an input cannot leave one key and stay in the other.
+ *
+ * JSON, not a joined string: null and '' stay distinct, and no value can forge a separator. (The
+ * pipe-joined copy this replaces could not distinguish a work_state of '' from none — unreachable today
+ * because the setters trim to null, and exactly the kind of "unreachable today" that a refactor reaches.)
+ *
+ * NOT A CACHE, and it must never become one: it is keyed per CALL, inside one transaction and one window.
+ * The window is not part of the key because both callers memoize within a single window.
+ */
+export function holidayMemoKey(i: HolidayMemoInputs): string {
+  return JSON.stringify([i.companyId, i.workState, i.holidayGroupId, i.locationId]);
+}
+
 export async function holidayDatesByEmployment(
   tx: Tx,
   { employmentIds, startDate, endDate }: { employmentIds: readonly string[]; startDate: string; endDate: string },
@@ -676,8 +710,12 @@ export async function holidayDatesByEmployment(
       out.set(id, await holidayDatesFor(tx, one));
       continue;
     }
-    // JSON, not a joined string: null and '' stay distinct, and no value can forge a separator.
-    const key = JSON.stringify([e.companyId, e.workState, e.holidayGroupId, locationByEmp.get(id) ?? null]);
+    const key = holidayMemoKey({
+      companyId: e.companyId,
+      workState: e.workState,
+      holidayGroupId: e.holidayGroupId,
+      locationId: locationByEmp.get(id) ?? null,
+    });
     let dates = memo.get(key);
     if (!dates) {
       dates = await holidayDatesFor(tx, one);
