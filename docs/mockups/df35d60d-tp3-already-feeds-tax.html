@@ -1,0 +1,122 @@
+<meta charset="utf-8">
+<title>TP3 — what already exists, and who is missing it</title>
+<!--
+  df35d60d. TWO panels, both factual, neither speculative.
+  LEFT  — the TP3 card that ALREADY exists on Personnel > Employee > Payroll, drawn from
+          app/admin/personnel/[employmentId]/page.tsx ~3279 with the REAL field labels out of
+          messages/en.json (appliesToYear, tp3NetRemuneration, tp3EpfClaimed, tp3PcbPaid) and the
+          real section description. The arrow to PCB is the real path: core/payroll.ts ~3891.
+  RIGHT — the read-only checking list this plan actually proposes. Counts are MEASURED on production
+          2026-09-22 (74 statutory rows, 1 with TP3, 24 active 2026 hires). Employee names are
+          illustrative placeholders, NOT real people, and the caption says so.
+  Deliberately NOT drawn: the printable Form TP3. No PDF exists; drawing it would be inventing a
+  statutory form, which is the one thing the reporter asked us not to do.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#c9cad6;--good:#067647;--warn:#b54708}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .hdr{margin:0 0 4px;font-size:16px;font-weight:700}
+  .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+  .col h2 b{font-weight:700}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .card.ok{border-color:#bcdccb}
+  .ch{padding:9px 14px;border-bottom:1px solid var(--border);background:var(--muted);
+      font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+  .cb{padding:14px}
+  .desc{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.5}
+  .g{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .f .lab{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);margin-bottom:3px}
+  .f .val{border:1px solid var(--border);border-radius:6px;padding:6px 9px;background:#fff;
+          font-size:12.5px;font-variant-numeric:tabular-nums}
+  .flow{margin-top:13px;border-top:1px dashed var(--border);padding-top:11px;font-size:11.5px;color:var(--mf)}
+  .flow .chain{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:6px}
+  .pill{border-radius:999px;padding:2px 10px;font-size:11.5px;background:#fff;border:1px solid var(--border)}
+  .pill.n{background:color-mix(in srgb,var(--primary) 10%,white);border-color:transparent;
+          color:var(--primary);font-weight:600}
+  .pill.g{background:color-mix(in srgb,var(--good) 11%,white);border-color:transparent;
+          color:var(--good);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     padding:7px 10px;border-bottom:1px solid var(--border);background:var(--muted);font-weight:600}
+  td{padding:7px 10px;border-bottom:1px solid #eceef5}
+  tr:last-child td{border-bottom:0}
+  .miss{color:var(--warn);font-weight:600;font-size:11.5px}
+  .has{color:var(--good);font-weight:600;font-size:11.5px}
+  .stat{display:flex;gap:22px;padding:11px 14px;border-bottom:1px solid var(--border);background:#fbfbfd}
+  .stat div span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf)}
+  .stat div b{font-size:19px;font-variant-numeric:tabular-nums}
+  .cap{font-size:11px;color:var(--mf);padding:9px 14px;background:#fbfbfd;border-top:1px solid #eceef5}
+  .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+  .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+  .foot p:last-child{margin-bottom:0}
+</style>
+
+<div class="wrap">
+  <div class="hdr">Form TP3 &mdash; where the information already lives</div>
+  <p class="sub">Personnel Management &rsaquo; Employee &rsaquo; Payroll &nbsp;&middot;&nbsp; measured on your live system, 22 September 2026</p>
+
+  <div class="pair">
+    <div class="col">
+      <h2><b>This already exists</b> &mdash; and already changes the tax</h2>
+      <div class="card ok">
+        <div class="ch">Previous employment this year (TP3 / opening balances)</div>
+        <div class="cb">
+          <p class="desc">From the employee's Form TP3 (or pre-migration payroll): seeds the tax
+          accumulators when the year matches the pay period. Never shown on payslips or the EA.</p>
+          <div class="g">
+            <div class="f"><div class="lab">Applies to year</div><div class="val">2026</div></div>
+            <div class="f"><div class="lab">Accumulated net remuneration</div><div class="val">48,200.00</div></div>
+            <div class="f"><div class="lab">EPF claimed toward relief</div><div class="val">4,000.00</div></div>
+            <div class="f"><div class="lab">PCB already deducted</div><div class="val">2,145.00</div></div>
+          </div>
+          <div class="flow">
+            These four figures are read straight into the monthly tax calculation:
+            <div class="chain">
+              <span class="pill n">TP3 figures</span><span>&rarr;</span>
+              <span class="pill n">LHDN monthly deduction</span><span>&rarr;</span>
+              <span class="pill g">PCB / MTD</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>What we propose</b> &mdash; a checking list, read only</h2>
+      <div class="card">
+        <div class="ch">Mid-year joiners with no previous-employment figures</div>
+        <div class="stat">
+          <div><span>Joined during 2026</span><b>24</b></div>
+          <div><span>Have TP3 figures</span><b>1</b></div>
+          <div><span>To check</span><b style="color:#b54708">23</b></div>
+        </div>
+        <table>
+          <tr><th>Employee</th><th>Joined</th><th>TP3 figures</th></tr>
+          <tr><td>Employee A</td><td>15 Sep 2026</td><td class="miss">none recorded</td></tr>
+          <tr><td>Employee B</td><td>01 Aug 2026</td><td class="miss">none recorded</td></tr>
+          <tr><td>Employee C</td><td>17 Jun 2026</td><td class="has">recorded</td></tr>
+          <tr><td>Employee D</td><td>02 May 2026</td><td class="miss">none recorded</td></tr>
+          <tr><td>Employee E</td><td>10 Mar 2026</td><td class="miss">none recorded</td></tr>
+        </table>
+        <div class="cap">The three counts are real, read from your system. The names are placeholders &mdash;
+        the real list names your actual people and is delivered to you, not shown here.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What the picture does not show &mdash; and why</h3>
+    <p>The printable Form TP3 is not drawn here. The TP3 PDF is not among the 560 files attached to this
+    system, and we will not draw or build a statutory form submitted to LHDN from guesswork. Send us the
+    PDF and we will match it.</p>
+    <p>Sketch only &mdash; wording, spacing and colours will differ from the finished screen.</p>
+  </div>
+</div>
