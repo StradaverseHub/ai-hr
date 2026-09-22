@@ -210,9 +210,33 @@ describe('company statutory authority (R46 orgbank)', () => {
 
   it('removes a row and appends a removed event', async () => {
     const ctx = adminCtx(b);
-    const { id } = await upsertCompanyStatutoryAuthority(ctx, { companyId: b.companyId, authority: 'koperasi' });
+    // efe424b0 (r327) — this fixture was 'koperasi' until that authority was retired. The authority is
+    // INCIDENTAL to what the case tests (a row goes, an event is appended), so it takes another small
+    // one rather than the case being weakened.
+    const { id } = await upsertCompanyStatutoryAuthority(ctx, { companyId: b.companyId, authority: 'ptptn' });
     await removeCompanyStatutoryAuthority(ctx, { id });
     expect(await listCompanyStatutoryAuthorities(ctx, b.companyId)).toHaveLength(0);
     expect(await eventTypesFor(b.tenantId, id)).toContain('company-statutory-authority.removed');
+  });
+
+  /**
+   * efe424b0 (r327) — RETIRING AN AUTHORITY MUST MAKE IT UNWRITABLE, and that is the property this case
+   * exists for rather than 'koperasi' in particular.
+   *
+   * Removing a body from STATUTORY_AUTHORITIES is a one-line change with no migration (the list is
+   * controlled in code, not a pgEnum — see lib/statutory-authorities.ts). What makes that safe is that
+   * `isStatutoryAuthority` then rejects the string at the service door, so a stale value from an old
+   * form post, a bookmark or an import cannot write a row nothing can render. The gate found this the
+   * moment koperasi went: a fixture using it stopped working, which is the guard doing its job.
+   */
+  it('refuses an authority that is not in the controlled set', async () => {
+    const ctx = adminCtx(b);
+    for (const authority of ['koperasi', 'nonsense', '']) {
+      await expect(
+        upsertCompanyStatutoryAuthority(ctx, { companyId: b.companyId, authority }),
+        `${authority || '(empty)'} must be refused at the door`,
+      ).rejects.toThrow(/Unknown statutory authority/i);
+    }
+    expect(await listCompanyStatutoryAuthorities(ctx, b.companyId), 'and nothing was written').toHaveLength(0);
   });
 });
