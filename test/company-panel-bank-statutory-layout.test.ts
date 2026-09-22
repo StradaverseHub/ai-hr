@@ -358,11 +358,45 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
  * an icon, the body's name, a one-line description of what it is, and whether it has been configured —
  * and the form opens underneath on request.
  */
-describe('Statutory tab: each body is a card (3c2f55d7 rev 2)', () => {
-  it('renders a grid of cards, not a stack of forms', () => {
-    expect(panel, 'the authority list is a responsive grid').toMatch(/grid grid-cols-1 gap-3 sm:grid-cols-2/);
-    // An opened card takes the whole row so the form has somewhere to lay out.
-    expect(CARD_SRC).toContain('sm:col-span-2');
+describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe424b0)', () => {
+  /**
+   * efe424b0 (r327) — UPDATED, NOT DELETED. This asserted a responsive GRID of cards, which is what
+   * 3c2f55d7 rev 2 built and what this file has pinned since. The reporter asked for the opposite in
+   * these words: "displayed as a structured list rather than individual large boxes, allowing
+   * administrators to quickly identify, access, and manage each statutory setting."
+   *
+   * The claim the describe block is really about is unchanged and still asserted below — each body is a
+   * FACE you can read before clicking (mark, name, description, status) with its form opening on
+   * request, rather than fourteen identical field blocks stacked up. What changed is that the faces are
+   * rows in one divided list instead of tiles in a grid, so the border and the rounding moved from each
+   * entry to the list, and an opened entry no longer needs to span columns it no longer has.
+   */
+  it('renders one divided list of rows, not a grid and not a stack of forms', () => {
+    expect(panel, 'the authority list is one divided list').toMatch(/divide-y divide-border\/60 rounded-lg border/);
+    expect(panel, 'the grid is gone').not.toMatch(/grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3/);
+    // No column spanning on the ROW WRAPPER, because there are no columns to span. Targeted at the
+    // card's own `open && 'sm:col-span-2 xl:col-span-3'` rather than the bare string: `sm:col-span-2`
+    // is also how a wide FIELD lays out inside the three-column form, and that is untouched.
+    expect(CARD_SRC, 'the row no longer spans grid columns').not.toContain('xl:col-span-3');
+  });
+
+  /**
+   * ⚠️ SOCSO AND EIS READ AS ONE GROUP AND STAY TWO RECORDS, which is the whole of efe424b0's
+   * consolidation. Measured on production: their payment accounts genuinely differ (one company pays
+   * SMSB_EIS and SMSB_SOCSO), so a single card backed by SOCSO's row would leave EIS's account on file
+   * with no screen able to edit it.
+   */
+  it('draws EIS beneath SOCSO as a subordinate row, still with its own editor', () => {
+    expect(panel, 'EIS is marked subordinate, not filtered out').toContain(
+      "subordinate={c.country === 'MY' && a === 'eis'}",
+    );
+    // NOT removed from the controlled set: the services and the payroll feed still know it.
+    expect(STATUTORY_AUTHORITIES).toContain('eis');
+    // Indented, and without a second copy of the mark its group head already carries.
+    expect(CARD_SRC).toContain("subordinate && 'pl-6'");
+    expect(CARD_SRC).toContain('{subordinate ? (');
+    // Its own authority value still posts, so its own record is what the form writes.
+    expect(CARD_SRC).toContain('<input type="hidden" name="authority" value={authority} />');
   });
 
   it('gives every authority in the controlled set its own icon', () => {

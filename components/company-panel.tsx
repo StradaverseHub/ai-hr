@@ -466,6 +466,7 @@ function StatutoryAuthorityCard({
   authority,
   row,
   statutory,
+  subordinate = false,
   filingCountry,
   companyId,
   bankProfiles,
@@ -481,6 +482,15 @@ function StatutoryAuthorityCard({
   // posts only that one field, never the others.
   statutory: PanelStatutory;
   /** ISO code of the company. 'MY' is the only pack with a filing identity today. */
+  /**
+   * efe424b0 — draw this body as part of the group ABOVE it rather than as its own entry: indented, and
+   * without a second copy of the mark its group head already carries. Only EIS under SOCSO today.
+   *
+   * It is a presentation flag and nothing else. The row keeps its own editor, its own authority value
+   * and its own record — which is the point, because EIS's payment account genuinely differs from
+   * SOCSO's on this tenant (see the note on AUTHORITY_LOGO).
+   */
+  subordinate?: boolean;
   filingCountry: string;
   companyId: string;
   bankProfiles: PanelBankProfile[];
@@ -521,9 +531,10 @@ function StatutoryAuthorityCard({
   return (
     <li
       className={cn(
-        'flex flex-col rounded-lg border border-border/60 bg-background',
-        // An opened card takes the whole row so its form has the width to lay out in three columns.
-        open && 'sm:col-span-2 xl:col-span-3',
+        'flex flex-col bg-background',
+        // efe424b0 — rows in a divided list: the border and the rounding belong to the <ul> now, not to
+        // each entry, which is what turns seven boxes into one list.
+        subordinate && 'pl-6',
       )}
     >
       {/* The ROW FACE — mark, name, description, status. Visible without any interaction. */}
@@ -533,20 +544,29 @@ function StatutoryAuthorityCard({
             are different shapes (a 59px square for Tabung Haji, a 400x312 block for LHDN): letting each
             set its own height would make the rows jump. Decorative, so it carries an empty alt and the
             body's NAME is the text beside it. */}
-        <span
-          className={cn(
-            'grid size-10 shrink-0 place-items-center rounded-lg',
-            logo ? 'bg-background' : 'bg-primary/10 text-primary',
-          )}
-          aria-hidden
-        >
-          {logo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a bundled static mark, not content
-            <img src={logo} alt="" className="max-h-8 max-w-9 object-contain" />
-          ) : (
-            <Icon className="size-5" />
-          )}
-        </span>
+        {/* efe424b0 — a SUBORDINATE row shows no mark at all: the group head above it already carries
+            the body's logo, and a second copy of PERKESO's would read as a second organisation rather
+            than as the same one. The indent and the name carry the relationship instead. */}
+        {subordinate ? (
+          <span className="mt-1 w-10 shrink-0 text-center text-muted-foreground" aria-hidden>
+            &#8735;
+          </span>
+        ) : (
+          <span
+            className={cn(
+              'grid size-10 shrink-0 place-items-center rounded-lg',
+              logo ? 'bg-background' : 'bg-primary/10 text-primary',
+            )}
+            aria-hidden
+          >
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a bundled static mark, not content
+              <img src={logo} alt="" className="max-h-8 max-w-9 object-contain" />
+            ) : (
+              <Icon className="size-5" />
+            )}
+          </span>
+        )}
         <div className="min-w-0 flex-1 space-y-1">
           {/* Dynamic message keys (`authority_epf` / `authorityDesc_epf`, …) — one pair per entry in
               STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
@@ -1246,12 +1266,28 @@ export function CompanyPanel({
             {bankProfiles.length === 0 && (
               <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
             )}
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {/* efe424b0 — A ROW-BASED LIST, not a grid of cards. The reporter's words: "displayed as a
+                structured list rather than individual large boxes, allowing administrators to quickly
+                identify, access, and manage each statutory setting." Seven bodies at three columns took
+                three rows of tall boxes for what is mostly a name and a reference number.
+
+                ⚠️ SOCSO AND EIS ARE ONE GROUP, NOT ONE SETTING, and the difference is the whole of the
+                consolidation note on AUTHORITY_LOGO: their payment configurations genuinely differ on
+                this tenant. So SOCSO's row is named for both bodies and carries the PERKESO mark, and
+                EIS follows it as a SUBORDINATE row — indented, no second mark, its own editor intact.
+
+                Reading as one entry while staying two records is the only shape that satisfies the
+                request without leaving SMSB_EIS on file with no screen able to edit it. Nothing is
+                filtered out: `eis` remains a real authority that the services, the reports and the
+                payroll feed all still know. */}
+            <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
               {STATUTORY_AUTHORITIES.map((a) => (
                 <StatutoryAuthorityCard
                   key={a}
                   authority={a}
                   row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
+                  /** efe424b0 — EIS is drawn beneath SOCSO as part of one PERKESO group. */
+                  subordinate={c.country === 'MY' && a === 'eis'}
                   statutory={statutory}
                   filingCountry={c.country}
                   companyId={c.id}
