@@ -1,0 +1,88 @@
+<meta charset="utf-8">
+<title>Individual Payslip — readable dates, full borders, no internal codes</title>
+<!--
+  a96d320c. Five changes to the employee-facing payslip. Drawn as the PDF's own shape
+  (boxed sections, two columns) rather than as a web screen, because that is the artefact.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#c9cad6}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .sheet{background:#fff;border:1px solid var(--border);border-radius:10px;padding:22px;max-width:780px;margin:0 auto}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+  .co{font-weight:700;font-size:14px}
+  .ttl{font-size:11px;color:var(--mf)}
+  .pay{text-align:right;font-size:11.5px}
+  .pay b{display:block;font-size:12.5px}
+  .box{border:1px solid var(--border);border-radius:6px;margin-bottom:12px}
+  .box h3{margin:0;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+          color:var(--mf);background:var(--muted);border-bottom:1px solid var(--border)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .grid > div{padding:7px 10px;font-size:12px;border-bottom:1px solid #eceef5}
+  .grid > div:nth-child(odd){border-right:1px solid #eceef5}
+  .k{color:var(--mf);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td{padding:6px 10px;border-bottom:1px solid #eceef5}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .qty{color:var(--mf);font-size:11px}
+  .tot{font-weight:700;background:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600;
+        background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);vertical-align:middle}
+  .was{color:#b42318;text-decoration:line-through}
+  .note{max-width:780px;margin:12px auto 0;font-size:11.5px;color:var(--mf)}
+</style>
+
+<div class="sheet">
+  <div class="top">
+    <div><div class="co">Chin Hin Construction Engineering Sdn Bhd</div><div class="ttl">Payslip</div></div>
+    <div class="pay">
+      <b>September 2026</b>
+      Payment date: 30 September 2026 <span class="chip">readable</span><br>
+      <span class="qty">was: 2026-09-30</span>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Employee <span class="chip">fully bordered</span></h3>
+    <div class="grid">
+      <div><div class="k">Name</div>Aisyah Rahman</div>
+      <div><div class="k">Employee no.</div>EMP-0001</div>
+      <div><div class="k">Designation</div>Site Supervisor</div>
+      <div><div class="k">Department</div>Operations</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Earnings <span class="chip">codes removed · rate and hours shown</span></h3>
+    <table>
+      <tr><td>Basic salary <span class="was">· BASIC</span></td><td class="r">4,500.00</td></tr>
+      <tr><td>Fixed allowance <span class="was">· ALLOWANCE</span></td><td class="r">300.00</td></tr>
+      <tr><td>Overtime &mdash; normal<div class="qty">6.00 hours &times; RM 25.96 (1.5&times;)</div></td><td class="r">155.76</td></tr>
+      <tr><td>Overtime &mdash; rest day<div class="qty">4.00 hours &times; RM 34.62 (2.0&times;)</div></td><td class="r">138.48</td></tr>
+      <tr class="tot"><td>Gross pay</td><td class="r">5,094.24</td></tr>
+    </table>
+  </div>
+
+  <div class="box">
+    <h3>Deductions <span class="chip">rate and input shown</span></h3>
+    <table>
+      <tr><td>EPF (employee)</td><td class="r">560.00</td></tr>
+      <tr><td>SOCSO (employee)</td><td class="r">19.75</td></tr>
+      <tr><td>Income tax (PCB)</td><td class="r">412.35</td></tr>
+      <tr><td>Late deduction<div class="qty">45 minutes &times; RM 0.43 per minute</div></td><td class="r">19.35</td></tr>
+      <tr class="tot"><td>Total deductions</td><td class="r">1,011.45</td></tr>
+    </table>
+  </div>
+
+  <div class="box">
+    <h3>Net pay</h3>
+    <table><tr class="tot"><td>Net pay</td><td class="r">4,082.79</td></tr></table>
+  </div>
+</div>
+
+<p class="note">Struck-through text shows what goes: the internal pay codes. The grey lines under
+  Overtime and Late deduction are the new rate-and-input detail.</p>
+<p class="note">Sketch only &mdash; wording, spacing and colours will differ from the finished payslip.
+  Figures are illustrative.</p>
