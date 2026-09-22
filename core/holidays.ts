@@ -62,7 +62,50 @@ const locationCalendar = alias(holidayGroup, 'location_calendar');
 const locationCalendarParent = alias(holidayGroup, 'location_calendar_parent');
 const empGroupParent = alias(holidayGroup, 'emp_group_parent');
 
-export type HolidayWindow = { employmentId: string; startDate: string; endDate: string };
+/**
+ * r328 (board 0fe1ca2e) — the READ-ONLY "what would this employment's calendar be WITHOUT the site
+ * register" preview, and nothing else.
+ *
+ * WHY IT IS A PARAMETER ON THE REAL RESOLVER rather than a second function. The approved plan promises
+ * the reporter a BEFORE and an AFTER holiday list for every employee whose open assignment carries a
+ * `location`, demonstrated rather than asserted, because the figure drives attendance and leave. AFTER
+ * means "once employment.work_state carries the state the site was supplying and the site input is
+ * gone". Re-expressing the precedence in a report script to compute that would be a SECOND definition of
+ * the arithmetic this function exists to own — the drift the header above spends forty lines preventing.
+ * So the report asks THIS resolver, with the site inputs blanked, exactly as
+ * scripts/report-a2c-hire-year-deltas.ts asks the real accrual engine with `dryRun: true`.
+ *
+ * IT WRITES NOTHING. The override is applied to the row this function has already READ, in memory, after
+ * the single SELECT and before any branch; no statement changes. `scripts/report-location-holiday-deltas.ts`
+ * runs the whole report inside a `SET TRANSACTION READ ONLY` transaction, so even a mistake here errors
+ * rather than moves a holiday.
+ *
+ * EVERY EXISTING CALLER IS BYTE-IDENTICAL: the field is optional and no caller in app/, core/ or packs/
+ * passes it, so `whatIf === undefined` leaves the row exactly as the SELECT returned it.
+ *
+ * THE TWO MEMOS ARE NOT AFFECTED, and must not be taught about this. `holidayDatesByEmployment` below and
+ * `holidayKeyOf` in core/absence-days.ts key on the four DETERMINING INPUTS read from the database; a
+ * what-if is a property of the CALL, not of the employment, and the report makes one call per employment
+ * with no memo of its own. A memo that cached a what-if answer under a real employment's key is precisely
+ * the defect the key exists to prevent, which is why this type is carried on the window and not on a row.
+ *
+ * IT IS TEMPORARY. It is the preview half of removing `location` from holiday resolution; when
+ * `assignment.location_id` and the `location` join leave this function, this goes with them.
+ */
+export type HolidayWhatIf = {
+  /** Resolve as though the open assignment carried NO location: no state overlay, no mapped calendar. */
+  dropLocation: true;
+  /** The `employment.work_state` the preview should read — the `ws` rung the site currently outranks. */
+  workState: string | null;
+};
+
+export type HolidayWindow = {
+  employmentId: string;
+  startDate: string;
+  endDate: string;
+  /** r328 — READ-ONLY preview override; omitted by every production caller. See HolidayWhatIf. */
+  whatIf?: HolidayWhatIf;
+};
 
 // ── Holiday completeness guard (Phase-B #15) ────────────────────────────────────────────────────────
 // EA 1955 s.60D entitles every employee to at least ELEVEN gazetted public holidays a year (5 named +
@@ -273,8 +316,11 @@ export async function warnIfHolidaysIncomplete(
  *  key on precisely those — `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts —
  *  and hand every employment sharing them the same answer. Reading a new employment- or assignment-level
  *  input here without adding it to BOTH keys silently gives one employee another's calendar. */
-export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate }: HolidayWindow): Promise<Set<string>> {
-  const [emp] = await tx
+export async function holidayDatesFor(
+  tx: Tx,
+  { employmentId, startDate, endDate, whatIf }: HolidayWindow,
+): Promise<Set<string>> {
+  const [row] = await tx
     .select({
       companyId: employment.companyId,
       country: company.country,
@@ -320,7 +366,27 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
     .leftJoin(locationCalendarParent, eq(locationCalendarParent.id, locationCalendar.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  if (!emp) return new Set<string>();
+  if (!row) return new Set<string>();
+
+  // r328 — the READ-ONLY what-if (see HolidayWhatIf). Applied to the row already read, before any branch,
+  // so the ONE decision block below serves both the live answer and the preview and there is no second
+  // copy of the precedence. Undefined for every production caller ⇒ `emp` IS the row the SELECT returned.
+  // Every site-derived input is blanked together — `state` AND the mapped calendar and its parent —
+  // because dropping the location drops all three; blanking only the state would preview a world that
+  // never exists and would silently keep a location calendar alive in the AFTER figure.
+  const emp = whatIf?.dropLocation
+    ? {
+        ...row,
+        locationState: null,
+        mappedCalendar: null,
+        calArchetype: null,
+        calStates: null,
+        calParentId: null,
+        calParentArchetype: null,
+        calParentStates: null,
+        ws: whatIf.workState,
+      }
+    : row;
 
   // ── R18 a519a96e — group INHERITANCE + group-scoped "additional days" ─────────────────────────────
   // Effective substitution: when the ACTIVE group (location calendar or directly-assigned group) has a
