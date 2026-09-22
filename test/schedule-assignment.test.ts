@@ -615,10 +615,17 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     expect(selected(html, 'shiftId'), 'backup shift: what was typed').toBe(shiftB);
     expect(html, 'effective date: what was typed').toMatch(/name="effectiveFrom"[^>]*value="2026-04-01"/);
     // …and the reason sits immediately above those fields: after the "In force today" block, before the
-    // form — not under the page header two cards away.
+    // ARRANGEMENT form — not under the page header two cards away.
+    //
+    // r329 (8cd601d0) added a Schedule Group card, with its own form, ABOVE the arrangement — so the
+    // FIRST `<form` on the page is no longer the one this banner is about. The guard now names the
+    // arrangement form by a field only it has. The property is unchanged and is in fact stated more
+    // precisely than before: the reason is beside the fields it refuses, whatever else the page grows.
     const reasonAt = html.indexOf('shiftBackInsertRefused');
     expect(reasonAt).toBeGreaterThan(html.indexOf('summaryTitle'));
-    expect(reasonAt).toBeLessThan(html.indexOf('<form'));
+    const arrangementFieldsAt = html.indexOf('name="shiftType"');
+    expect(arrangementFieldsAt, 'the arrangement form is on the page').toBeGreaterThan(-1);
+    expect(reasonAt).toBeLessThan(arrangementFieldsAt);
     expect(html.indexOf('<form'), 'a form is on the page').toBeGreaterThan(-1);
 
     // A malformed echo (a forged or mangled url) is ignored field by field: what is on file comes back.
@@ -801,10 +808,21 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
     expect(links, 'Back (page header) and Cancel (beside Save) both point at that exact url').toBe(2);
     expect(html, 'Back reads the page’s own key').toContain('detailBack');
     expect(html, 'Cancel reads its own key').toContain('detailCancel');
-    // The way back is a link, not a form: the only forms on the page are Save and Remove.
-    expect(html.match(/<form /g)?.length ?? 0, 'one form — Save (no history to remove yet)').toBe(1);
-    // …and the form posts THIS page as its returnTo, filters riding along, so a refusal lands back here.
-    expect(html).toContain(`name="returnTo" value="${LIST_URL}/${emp}?q=Quin&amp;shiftType=fixed&amp;status=current"`);
+    // The way back is a LINK, not a form. r329 (8cd601d0) added the Schedule Group card, which has a form
+    // of its own — deliberately, because the group and the arrangement are two records with two writers
+    // and two transactions, and posting them together would half-apply a refused arrangement after an
+    // accepted group change. So the page now carries TWO forms (Schedule Group, then Save) and still no
+    // history Remove. The count stays pinned, and each is named, so a third form cannot arrive unnoticed.
+    expect(html.match(/<form /g)?.length ?? 0, 'two forms — Schedule Group and Save').toBe(2);
+    expect(html, 'the first is the Schedule Group').toContain('<select name="attendanceRuleId"');
+    expect(html, 'the second is the arrangement').toContain('name="shiftType"');
+    expect(
+      html.indexOf('name="attendanceRuleId"'),
+      'the group is chosen FIRST — it is what narrows the shift list below it',
+    ).toBeLessThan(html.indexOf('name="shiftType"'));
+    // …and BOTH forms post THIS page as their returnTo, filters riding along, so a refusal lands back here.
+    const returnTo = `name="returnTo" value="${LIST_URL}/${emp}?q=Quin&amp;shiftType=fixed&amp;status=current"`;
+    expect(html.split(returnTo).length - 1, 'both forms come back to this page').toBe(2);
   });
 
   it('an older change cannot be removed — only the newest, which is the only one that can be put back', async () => {
@@ -1065,17 +1083,26 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     const permissions = read('lib/permissions.ts');
     expect(permissions).toContain("'/admin/attendance/schedule-assignment'");
     expect(permissions).toContain("'/admin/attendance/schedule-assignment/[employmentId]'");
-    // Exactly the two pages: a third page.tsx under this screen would need its own entry, so the folder
-    // shape is pinned. status-chip.tsx is the ONE chip both pages render (a page.tsx may export nothing
-    // but its default, and a second copy of the class map is the drift this file exists to refuse).
+    // r329 (8cd601d0) added the BULK screen — putting many employments in a Schedule Group in one action,
+    // which is what makes r277's allowed-shift refusal bite (1 of 75 production employments was in a
+    // group, and the guard is a no-op on an employment in none). It is registered on the same column in
+    // the same commit, exactly as '[employmentId]' was.
+    expect(permissions).toContain("'/admin/attendance/schedule-assignment/bulk'");
+    // Exactly the three pages: a FOURTH page.tsx under this screen would need its own entry, so the folder
+    // shape is pinned. status-chip.tsx is the ONE chip the list and the detail page render (a page.tsx may
+    // export nothing but its default, and a second copy of the class map is the drift this file refuses).
     const dir = path.join(root, 'app/admin/attendance/schedule-assignment');
-    expect(fs.readdirSync(dir).sort(), 'the screen is a list, its actions, one chip and one sub-route').toEqual([
+    expect(fs.readdirSync(dir).sort(), 'the screen is a list, its actions, one chip and two sub-routes').toEqual([
       '[employmentId]',
       'actions.ts',
+      'bulk',
       'page.tsx',
       'status-chip.tsx',
     ]);
     expect(fs.readdirSync(path.join(dir, '[employmentId]')).sort()).toEqual(['page.tsx']);
+    // The bulk screen is a page plus ONE client island — the ticking. Everything it decides is on the
+    // server, and the island imports its server action rather than being handed one as a prop.
+    expect(fs.readdirSync(path.join(dir, 'bulk')).sort()).toEqual(['bulk-form.tsx', 'page.tsx']);
     expect(list, 'the list renders the shared chip').toContain('<StatusChip');
     expect(detail, 'and so does the detail page').toContain('<StatusChip');
   });

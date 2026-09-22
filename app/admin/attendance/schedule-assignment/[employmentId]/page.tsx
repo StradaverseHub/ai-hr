@@ -11,9 +11,11 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   Card,
   ErrorBanner,
+  Field,
   PageHeader,
   SectionHeader,
   btnPrimary,
+  inputCls,
   pageWideCls,
   tableWrapCls,
   tbodyCls,
@@ -22,7 +24,15 @@ import {
 } from '@/components/ui';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { removeScheduleArrangementAction, saveScheduleAssignmentAction } from '../actions';
+// 8cd601d0 — the Schedule Group picker's options. The tenant's attendance_rule library IS the Schedule
+// Group library (870b79e2); there is no second table behind the name. Taken from the PACK FACADE, the
+// same import the personnel card uses, so this screen and that card read one list.
+import { listAttendanceRules } from '@/packs/attendance/service';
+import {
+  removeScheduleArrangementAction,
+  saveScheduleAssignmentAction,
+  setScheduleGroupAssignmentAction,
+} from '../actions';
 import { StatusChip } from '../status-chip';
 
 /**
@@ -82,8 +92,10 @@ export default async function ShiftArrangementPage({
     shiftType?: string;
     shiftId?: string;
     status?: string;
+    scheduleGroupId?: string;
     error?: string;
     removed?: string;
+    groupSaved?: string;
     typedShiftType?: string;
     typedShiftId?: string;
     typedEffectiveFrom?: string;
@@ -101,9 +113,10 @@ export default async function ShiftArrangementPage({
   const status =
     sp.status === 'current' || sp.status === 'scheduled' || sp.status === 'notRecorded' ? sp.status : undefined;
   const shiftId = sp.shiftId?.trim() || undefined;
+  const scheduleGroupId = sp.scheduleGroupId?.trim() || undefined;
   const hrefWith = (pathname: string, extra: Record<string, string | undefined>, fragment = '') => {
     const p = new URLSearchParams();
-    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, ...extra })) {
+    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, scheduleGroupId, ...extra })) {
       if (v) p.set(k, v);
     }
     const qs = p.toString();
@@ -133,14 +146,53 @@ export default async function ShiftArrangementPage({
     );
   }
 
-  const [history, libraryShifts] = await Promise.all([
+  const [history, libraryShifts, scheduleGroups] = await Promise.all([
     shiftArrangementHistory(s, row.employmentId),
     // WITH archived rows, then filtered: a currently-assigned-but-later-archived shift must still render
     // as the selected option (instead of silently showing the placeholder), exactly as the personnel
     // card loads it. New assignments of archived shifts are refused by the service.
     listShiftsForTenant(s, { includeArchived: true }),
+    listAttendanceRules(s),
   ]);
-  const shifts = libraryShifts.filter((sh) => !sh.archivedAt || sh.id === row.shiftId);
+  const liveShifts = libraryShifts.filter((sh) => !sh.archivedAt || sh.id === row.shiftId);
+
+  /**
+   * 8cd601d0 — THE NARROWED ASSIGNED-SHIFT LIST. The reporter's chain is Employee → Schedule Group →
+   * Assigned Shift, and this is the third link: with a group chosen, the list offers that group's shifts
+   * and nothing else.
+   *
+   * ⚠️ THE GROUP'S SHIFTS ARE READ OFF `shift.rule_id` AT RENDER TIME, DYNAMICALLY. No group name, no group
+   * count and no shift's membership is written down anywhere in this file. Item 07ebd04d is about to split
+   * the single "Standard" group into three because its shifts disagree about Saturday — and `off` vs `rest`
+   * pay different overtime rates — so anything hardcoded here would keep showing the pre-split answer while
+   * every static check stayed green. Reading the column backwards is what makes this screen survive the
+   * split untouched.
+   *
+   * ⚠️ AND IT IS ONLY A COURTESY. The GUARANTEE is `core/roster.ts assertShiftsAllowedForEmploymentsTx`,
+   * which `assignEmployeeShiftDated` calls on every save — a hand-crafted post naming a shift outside the
+   * group is refused there, by all four writers of "which shift is this person on", not here. This select
+   * exists so an administrator does not have to discover the rule by tripping over it.
+   *
+   * THE SHIFT ON FILE IS ALWAYS OFFERED, even when it is outside the group — the same reason an archived
+   * shift is kept above. A select that cannot render what is stored shows the placeholder and quietly
+   * re-poses "what shift is this person on" as "choose one". That state IS reachable: a group assigned
+   * after a future-dated arrangement was written is not re-examined (see the service header), and saving
+   * that shift again would then be refused with a message naming the allowed list — which is the honest
+   * outcome, and better than a blank control.
+   *
+   * AN EMPTY GROUP OFFERS NOTHING, deliberately and consistently with the service: a group with no shifts
+   * pointing at it permits none, so the control is empty and the note underneath names the screen that
+   * fixes it rather than leaving a broken-looking picker.
+   */
+  const groupId = row.scheduleGroupId;
+  const shifts = groupId
+    ? liveShifts.filter((sh) => sh.ruleId === groupId || sh.id === row.shiftId)
+    : liveShifts;
+  const narrowedOut = liveShifts.length - shifts.length;
+  // ACTIVE groups plus the one already assigned — the rule library's own convention is that an inactive
+  // rule stays assigned but is hidden from the picker (db/schema.ts attendance_rule.status), and the same
+  // convention the personnel card follows. Ordered by listAttendanceRules (default first, then by name).
+  const scheduleGroupOptions = scheduleGroups.filter((r) => r.status === 'active' || r.id === groupId);
 
   const SHIFT_TYPE_LABEL: Record<ShiftArrangementListRow['shiftType'], string> = {
     fixed: t('shiftTypeFixed'),
@@ -184,11 +236,20 @@ export default async function ShiftArrangementPage({
           {t('removedNote')}
         </p>
       ) : null}
+      {!sp.error && sp.groupSaved ? (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('groupSavedNote')}
+        </p>
+      ) : null}
 
-      {/* IN FORCE TODAY — read-only, and the same four cells the list row shows for this employee. */}
+      {/* IN FORCE TODAY — read-only, and the same cells the list row shows for this employee. */}
       <Card>
         <SectionHeader title={t('summaryTitle')} />
         <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground">{t('colScheduleGroup')}</dt>
+            <dd className="mt-1">{row.scheduleGroupName ?? t('noScheduleGroup')}</dd>
+          </div>
           <div>
             <dt className="text-xs font-medium text-muted-foreground">{t('colShiftType')}</dt>
             <dd className="mt-1">{SHIFT_TYPE_LABEL[row.shiftType]}</dd>
@@ -209,6 +270,49 @@ export default async function ShiftArrangementPage({
             </dd>
           </div>
         </dl>
+      </Card>
+
+      {/* 8cd601d0 — THE SCHEDULE GROUP, chosen FIRST. This is the middle link of the reporter's
+          Employee → Schedule Group → Assigned Shift chain, and it sits ABOVE the arrangement because
+          choosing it is what narrows the Assigned Shift list directly below.
+
+          ⚠️ ITS OWN FORM, ON PURPOSE. The group and the arrangement are two records with two writers and
+          two transactions; posted together, an arrangement refused after the group was accepted would
+          leave a half-applied save at the one door built to prove the two doors agree. Saving here comes
+          straight back to this page with the shift list re-narrowed. The personnel Attendance tab's
+          Schedule Group card uses the same shape and — the part that matters — the SAME service,
+          core/roster.ts setEmploymentScheduleGroup. Nothing here decides what is stored. */}
+      <Card id="section-schedule-group">
+        <SectionHeader title={t('groupTitle')} />
+        <form action={setScheduleGroupAssignmentAction} className="space-y-3 p-4">
+          <input type="hidden" name="employmentId" value={row.employmentId} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label={t('colScheduleGroup')}>
+              {/* The blank option is FIRST and its value is the empty string, which the service maps to
+                  NULL in one place. Blank is a real answer — "in no Schedule Group, and therefore
+                  constrained by nothing" — never a placeholder and never "leave as it was". */}
+              <select name="attendanceRuleId" defaultValue={groupId ?? ''} className={inputCls}>
+                <option value="">{t('noScheduleGroup')}</option>
+                {scheduleGroupOptions.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.status === 'active' ? g.name : t('groupInactiveOption', { name: g.name })}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button className={btnPrimary}>{t('groupSave')}</button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('groupHint')}</p>
+          {scheduleGroupOptions.length === 0 && (
+            <p className="text-xs text-muted-foreground">{t('groupLibraryEmpty')}</p>
+          )}
+        </form>
+        <div className="border-t border-border px-4 py-3 text-xs">
+          <Link href="/admin/attendance/schedule#schedule-groups" className="text-primary hover:underline">
+            {t('groupManage')}
+          </Link>
+        </div>
       </Card>
 
       {/* CHANGE THE ARRANGEMENT — the personnel card's own control, from the same file, posting to the
@@ -242,6 +346,17 @@ export default async function ShiftArrangementPage({
             </Link>
           </div>
         </form>
+        {/* 8cd601d0 — say WHY the list is short. A picker that silently drops options reads as a bug;
+            naming the group (and, when it allows nothing, the screen that fixes that) makes the
+            constraint legible. Both sentences are derived from the data read above — never from a group
+            name written into this file. */}
+        {groupId && row.scheduleGroupName ? (
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            {shifts.length === 0
+              ? t('groupAllowsNothing', { group: row.scheduleGroupName })
+              : t('narrowedByGroup', { group: row.scheduleGroupName, hidden: narrowedOut })}
+          </p>
+        ) : null}
         <p className="px-4 pb-3 text-xs text-muted-foreground">{t('panelHint')}</p>
       </Card>
 

@@ -30,7 +30,10 @@
 import { and, asc, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, company, employment, employmentShiftArrangement, person, shift } from '../db/schema';
+// 8cd601d0 — `attendanceRule` is the SCHEDULE GROUP table (870b79e2 named it; there is no second table
+// behind the name). The table is imported from db/schema, never core/attendance-rule: this file is not on
+// the attendance pack's import allowlist and a schema import is not a pack import (ADR-0080 D9).
+import { attendanceRule, appUser, company, employment, employmentShiftArrangement, person, shift } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   arrangementsForEmploymentTx,
@@ -498,6 +501,18 @@ export type ShiftArrangementListRow = {
   shiftId: string | null;
   shiftCode: string | null;
   shiftName: string | null;
+  /**
+   * 8cd601d0 — THE EMPLOYEE'S SCHEDULE GROUP (`employment.attendance_rule_id`), null when they are in none.
+   *
+   * ⚠️ IT IS NOT READ OFF THE ARRANGEMENT, AND IT MUST NOT BE. The group is a property of the EMPLOYMENT;
+   * the shift belongs to a group of its own (`shift.rule_id`). Storing the group on the arrangement row
+   * would be a second copy of a fact two other columns already carry, which is how the two come to
+   * disagree — the approved plan says so in as many words ("do NOT add a group column to
+   * employment_shift_arrangement"). Null here is a real answer: "in no group, and therefore constrained by
+   * nothing" (core/roster.ts assertShiftsAllowedForEmploymentsTx).
+   */
+  scheduleGroupId: string | null;
+  scheduleGroupName: string | null;
   /** valid_from of the period shown. Null for 'notRecorded' — there is no dated period to name. */
   effectiveFrom: string | null;
   /**
@@ -525,6 +540,14 @@ export type ShiftArrangementListFilters = {
   /** Backup shift of the arrangement SHOWN (the resolved one), not of every period the employee has. */
   shiftId?: string;
   status?: ShiftArrangementListRow['status'];
+  /**
+   * 8cd601d0 — narrow to one Schedule Group, or to the employees in NONE.
+   *
+   * `UNGROUPED` is a SENTINEL, not a rule id: "no Schedule Group" is the state 74 of 75 production
+   * employments are in and the one an administrator opening this screen is looking for, so it has to be
+   * selectable. A rule id is a uuid, so the sentinel can never collide with one.
+   */
+  scheduleGroupId?: string;
   /** Today in the tenant's calendar. Defaults to todayInKualaLumpur(); injectable so a test can pin it. */
   today?: string;
 };
@@ -533,6 +556,14 @@ export type ShiftArrangementListFilters = {
 function likeLiteral(v: string): string {
   return v.replace(/([\\%_])/g, '\\$1');
 }
+
+/**
+ * 8cd601d0 — the `scheduleGroupId` filter value that means "employees in NO Schedule Group".
+ *
+ * Exported so the screen, the bulk screen and the test all name the same constant rather than three copies
+ * of the same string literal. Not a uuid, so it can never be mistaken for a rule id.
+ */
+export const UNGROUPED = 'none';
 
 /**
  * Every ACTIVE employee's shift arrangement as it stands, for the Schedule Assignment screen.
@@ -580,12 +611,18 @@ export function listShiftArrangements(
         // everyone else would put a stale answer on screen the moment a future-dated change is saved.
         cachedShiftType: employment.shiftType,
         cachedShiftId: employment.defaultShiftId,
+        // 8cd601d0 — the employee's Schedule Group, straight off the employment. Not joined to
+        // attendance_rule here: the NAMES are read once for the whole page below, the same batched shape
+        // the shift library already uses, rather than a join that repeats every name per row.
+        scheduleGroupId: employment.attendanceRuleId,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(and(...conds))
-      .orderBy(asc(person.fullName));
+      // ORDER BY on the only list this screen asserts. Name alone is not a total order — two employees may
+      // share one — so employment.id breaks the tie and the list cannot re-order itself between two reads.
+      .orderBy(asc(person.fullName), asc(employment.id));
 
     // ONE batched read of the ladder for the whole page, and one of the shift library, rather than a
     // query per row.
@@ -593,8 +630,19 @@ export function listShiftArrangements(
       tx,
       emps.map((e) => e.employmentId),
     );
-    const shifts = await tx.select({ id: shift.id, code: shift.code, name: shift.name }).from(shift);
+    const shifts = await tx
+      .select({ id: shift.id, code: shift.code, name: shift.name })
+      .from(shift)
+      .orderBy(asc(shift.name), asc(shift.id));
     const shiftById = new Map(shifts.map((s) => [s.id, s]));
+    // 8cd601d0 — the Schedule Group NAMES, read once for the page. The tenant's rule library is a handful
+    // of rows; reading it whole is cheaper than a join that repeats a name per employee, and it keeps the
+    // group's name resolved HERE rather than in the screen (a uuid on a list is not an answer).
+    const groups = await tx
+      .select({ id: attendanceRule.id, name: attendanceRule.name })
+      .from(attendanceRule)
+      .orderBy(asc(attendanceRule.name), asc(attendanceRule.id));
+    const groupById = new Map(groups.map((g) => [g.id, g.name]));
 
     const rows: ShiftArrangementListRow[] = emps.map((e) => {
       const periods = periodsByEmployment.get(e.employmentId);
@@ -618,6 +666,8 @@ export function listShiftArrangements(
         shiftId: shiftId ?? null,
         shiftCode: sh?.code ?? null,
         shiftName: sh?.name ?? null,
+        scheduleGroupId: e.scheduleGroupId ?? null,
+        scheduleGroupName: e.scheduleGroupId ? (groupById.get(e.scheduleGroupId) ?? null) : null,
         effectiveFrom: inForce ? inForce.validFrom : null,
         status,
       };
@@ -630,7 +680,14 @@ export function listShiftArrangements(
       (r) =>
         (!filters.shiftType || r.shiftType === filters.shiftType) &&
         (!filters.shiftId || r.shiftId === filters.shiftId) &&
-        (!filters.status || r.status === filters.status),
+        (!filters.status || r.status === filters.status) &&
+        // 8cd601d0. UNGROUPED is checked against null, never against the string: an employment whose group
+        // is literally the word 'none' is not representable (the column is a uuid FK), so the sentinel and
+        // a real id can never both match.
+        (!filters.scheduleGroupId ||
+          (filters.scheduleGroupId === UNGROUPED
+            ? r.scheduleGroupId === null
+            : r.scheduleGroupId === filters.scheduleGroupId)),
     );
   });
 }

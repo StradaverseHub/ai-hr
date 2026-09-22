@@ -175,8 +175,11 @@ describe('a485afa1 rev 2 — the page of its own', () => {
     // returnTo is trusted for its QUERY only, and only on this list's two paths.
     expect(code).toContain('DETAIL_RE.test(raw)');
     expect(code, 'the pathname is never taken from the posted field').not.toMatch(/redirect\(\s*raw/);
-    expect(code, 'only the four filters ride from one screen to the other').toContain(
-      "const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status'] as const;",
+    // r329 (8cd601d0) added the FIFTH filter, `scheduleGroupId`. The guard is an EXACT SET on purpose and
+    // stays one: a filter the list honours but this whitelist drops is a filter that silently resets on
+    // every save, which is the r263 complaint in miniature. Widened deliberately, not loosened.
+    expect(code, 'exactly the list’s filters ride from one screen to the other').toContain(
+      "const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status', 'scheduleGroupId'] as const;",
     );
   });
 });

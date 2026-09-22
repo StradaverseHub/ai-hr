@@ -1460,57 +1460,174 @@ export function employmentScheduleGroupId(
  * assigned but are hidden from the picker" (db/schema.ts attendance_rule.status). Refusing an inactive id
  * here would mean an employment whose group was deactivated could not have its own card saved at all.
  */
-export async function setEmploymentScheduleGroup(
+export function setEmploymentScheduleGroup(
+  ctx: SessionContext,
+  p: { employmentId: string; attendanceRuleId: string | null },
+): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  return withTenant(ctx, (tx) => setEmploymentScheduleGroupTx(tx, ctx, p));
+}
+
+/**
+ * 8cd601d0 (r329) — THE ONE WRITER OF `employment.attendance_rule_id`, extracted so the BULK path and the
+ * single-employment path cannot become two.
+ *
+ * ⚠️ WHY THIS IS AN EXTRACTION AND NOT A SECOND FUNCTION. r329 had to put many employments in a Schedule
+ * Group in one action (74 of the reporter's 75 active employments are in none, which is why the refusal
+ * above is a no-op on almost everybody). The obvious shape — loop `setEmploymentScheduleGroup` — gives each
+ * employment ITS OWN transaction, so a refusal on row 40 leaves rows 1-39 moved and the administrator with
+ * no idea which. Extracting the body lets `setEmploymentScheduleGroupBulk` run the whole batch inside ONE
+ * transaction while still executing, per employment, the identical validation, the identical REVERSE CHECK
+ * and the identical DomainEvent. Nothing about the rule is stated twice; delete this function and both
+ * doors stop compiling.
+ *
+ * Runs inside the caller's transaction, exactly like `assertShiftsAllowedForEmploymentsTx` below it: RLS has
+ * already pinned the tenant, and the reverse check must see the same snapshot as the UPDATE it guards.
+ */
+export async function setEmploymentScheduleGroupTx(
+  tx: Tx,
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
   const ruleId = p.attendanceRuleId?.trim() || null;
-  return withTenant(ctx, async (tx) => {
-    const [emp] = await tx
-      .select({ id: employment.id, before: employment.attendanceRuleId })
-      .from(employment)
-      .where(eq(employment.id, p.employmentId))
+  const [emp] = await tx
+    .select({ id: employment.id, before: employment.attendanceRuleId })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) throw new Error('Employment not found');
+  if ((emp.before ?? null) === ruleId) {
+    return { id: p.employmentId, attendanceRuleId: ruleId, changed: false };
+  }
+
+  if (ruleId) {
+    // RLS scopes the read, so a rule id from another tenant simply is not found.
+    const [rule] = await tx
+      .select({ id: attendanceRule.id })
+      .from(attendanceRule)
+      .where(eq(attendanceRule.id, ruleId))
       .limit(1);
-    if (!emp) throw new Error('Employment not found');
-    if ((emp.before ?? null) === ruleId) {
-      return { id: p.employmentId, attendanceRuleId: ruleId, changed: false };
+    if (!rule) throw new ScheduleGroupNotFoundError();
+  }
+
+  await tx
+    .update(employment)
+    .set({ attendanceRuleId: ruleId })
+    .where(eq(employment.id, p.employmentId));
+
+  // THE REVERSE CHECK. Written above, asserted here, in that order on purpose: the shared refusal reads
+  // `employment.attendance_rule_id` out of the transaction's own snapshot, so it judges the group being
+  // assigned without needing a second signature or a second copy of the rule. A throw rolls the UPDATE
+  // back. Clearing (`ruleId === null`) cannot refuse — an employment in no group is unconstrained.
+  const shiftIds = await currentShiftIdsForEmploymentTx(tx, p.employmentId, todayInKualaLumpur());
+  await assertShiftsAllowedForEmploymentsTx(
+    tx,
+    shiftIds.map((shiftId) => ({ employmentId: p.employmentId, shiftId })),
+  );
+
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: p.employmentId,
+    eventType: 'employment.schedule-group.changed',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: { before: emp.before ?? null, after: ruleId },
+  });
+  return { id: p.employmentId, attendanceRuleId: ruleId, changed: true };
+}
+
+/** Nothing was ticked. A form-shaped mistake, refused in the service so no door can post an empty batch. */
+export class NoEmploymentsSelectedError extends Error {
+  constructor() {
+    super('Select at least one employee before assigning a Schedule Group.');
+    this.name = 'NoEmploymentsSelectedError';
+  }
+}
+
+/**
+ * 8cd601d0 — ONE employment in the batch was refused, so NONE of them moved.
+ *
+ * The underlying refusal (`ShiftNotInScheduleGroupError`) names the shift and the group but not the PERSON,
+ * because its four original callers are all about one employee the operator is already looking at. In a
+ * batch that is not enough to act on: the administrator needs to know which of the forty they ticked is the
+ * one holding the batch up. This wraps it with the name and says, in the first sentence, that nothing was
+ * saved — the sentence that stops somebody re-ticking the other thirty-nine to "finish the job".
+ *
+ * `cause` keeps the original refusal, so a caller that wants to branch on the class still can.
+ */
+export class ScheduleGroupBulkRefusedError extends Error {
+  constructor(
+    readonly employeeName: string,
+    readonly employeeCode: string | null,
+    readonly reason: Error,
+  ) {
+    const who = employeeCode ? `${employeeName} (${employeeCode})` : employeeName;
+    super(`Nobody was moved. ${who} cannot join this Schedule Group: ${reason.message}`);
+    this.name = 'ScheduleGroupBulkRefusedError';
+    this.cause = reason;
+  }
+}
+
+/**
+ * 8cd601d0 (r329) — PUT MANY EMPLOYMENTS IN A SCHEDULE GROUP IN ONE ACTION.
+ *
+ * ⚠️ THIS IS THE THING THAT MAKES THE EXISTING GUARD MEAN ANYTHING. 870b79e2 (r277) shipped a correct
+ * service-side refusal — a grouped employee cannot be put on a shift their group forbids — and f513ec02
+ * (r281) shipped a screen that puts ONE employment in a group at a time. Measured on production on
+ * 2026-09-22: 1 of 75 active employments has a group. For the other 74 the refusal is a no-op by its own
+ * header ("employments with NO group are not constrained at all"). The missing piece was never the
+ * validation; it was that seating seventy-four people one personnel page at a time is why nobody did.
+ *
+ * ⚠️ THE TRANSACTION BOUNDARY IS THE WHOLE BATCH, AND THAT IS A DECISION, NOT A DEFAULT. The alternative —
+ * commit each employment and report the failures — is wrong here for a reason specific to this rule: the
+ * refusal fires on a CONTRADICTION between the group and the shift the employee is already working, so a
+ * half-applied batch leaves some people in a group whose shifts they are not on and others not, and the
+ * operator cannot tell which without re-reading seventy-four rows. One transaction means the answer is
+ * always "all of them" or "none of them, and here is the one that blocked it". A batch is also small and
+ * operator-initiated: this is not a sweep that must make progress.
+ *
+ * NO NEW EVENT TYPE. Each employment still gets its own `employment.schedule-group.changed` from the shared
+ * writer, which is what the Others-tab Change History reads; a batch-level event would be a second record of
+ * the same fact and would need lib/audit-format.ts taught a new shape for nothing.
+ *
+ * IDS ARE DEDUPLICATED AND SORTED — deterministic lock order across concurrent batches, and a deterministic
+ * FIRST refusal, so the same batch names the same blocking employee on every run (CLAUDE.md §8).
+ *
+ * WHAT IT DOES NOT DO, disclosed rather than hidden: it does not refuse a terminated employment, does not
+ * re-examine future-dated roster rows and does not touch anybody's shift. It is exactly N calls of the
+ * single-employment writer, with one commit.
+ */
+export async function setEmploymentScheduleGroupBulk(
+  ctx: SessionContext,
+  p: { employmentIds: readonly string[]; attendanceRuleId: string | null },
+): Promise<{ requested: number; changed: number; unchanged: number }> {
+  const ids = [...new Set(p.employmentIds.map((v) => v.trim()).filter(Boolean))].sort();
+  if (ids.length === 0) throw new NoEmploymentsSelectedError();
+  return withTenant(ctx, async (tx) => {
+    let changed = 0;
+    for (const employmentId of ids) {
+      try {
+        const r = await setEmploymentScheduleGroupTx(tx, ctx, {
+          employmentId,
+          attendanceRuleId: p.attendanceRuleId,
+        });
+        if (r.changed) changed += 1;
+      } catch (e) {
+        if (e instanceof ShiftNotInScheduleGroupError) {
+          // Name the person. The read is inside the same transaction that is about to roll back, which is
+          // fine — it is a read, and the rollback is what makes the message true.
+          const [who] = await tx
+            .select({ name: person.fullName, code: employment.employeeCode })
+            .from(employment)
+            .innerJoin(person, eq(person.id, employment.personId))
+            .where(eq(employment.id, employmentId))
+            .limit(1);
+          throw new ScheduleGroupBulkRefusedError(who?.name ?? employmentId, who?.code ?? null, e);
+        }
+        throw e;
+      }
     }
-
-    if (ruleId) {
-      // RLS scopes the read, so a rule id from another tenant simply is not found.
-      const [rule] = await tx
-        .select({ id: attendanceRule.id })
-        .from(attendanceRule)
-        .where(eq(attendanceRule.id, ruleId))
-        .limit(1);
-      if (!rule) throw new ScheduleGroupNotFoundError();
-    }
-
-    await tx
-      .update(employment)
-      .set({ attendanceRuleId: ruleId })
-      .where(eq(employment.id, p.employmentId));
-
-    // THE REVERSE CHECK. Written above, asserted here, in that order on purpose: the shared refusal reads
-    // `employment.attendance_rule_id` out of the transaction's own snapshot, so it judges the group being
-    // assigned without needing a second signature or a second copy of the rule. A throw rolls the UPDATE
-    // back. Clearing (`ruleId === null`) cannot refuse — an employment in no group is unconstrained.
-    const shiftIds = await currentShiftIdsForEmploymentTx(tx, p.employmentId, todayInKualaLumpur());
-    await assertShiftsAllowedForEmploymentsTx(
-      tx,
-      shiftIds.map((shiftId) => ({ employmentId: p.employmentId, shiftId })),
-    );
-
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employment',
-      aggregateId: p.employmentId,
-      eventType: 'employment.schedule-group.changed',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: { before: emp.before ?? null, after: ruleId },
-    });
-    return { id: p.employmentId, attendanceRuleId: ruleId, changed: true };
+    return { requested: ids.length, changed, unchanged: ids.length - changed };
   });
 }
 

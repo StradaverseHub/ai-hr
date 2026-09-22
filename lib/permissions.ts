@@ -694,6 +694,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     // guard is scopedSession — function-access checks guard-derived access in both directions, and
     // registering an admin-only page under scopedSession would tell every role it can reach it.
     // Registered in the SAME commit as its page.tsx; the test fails in both directions.
+    // 8cd601d0 (r329): '/admin/attendance/schedule-assignment/bulk' — putting MANY employments in a
+    // Schedule Group in one action, which is what makes r277's allowed-shift refusal bite (1 of 75
+    // production employments was in a group; the guard is a no-op on an employment that is in none).
+    // requireAdmin, the same guard and the same admin surface as the list it hangs off, so it RIDES this
+    // column rather than minting a screen key — a bulk view of a screen is not a second screen. A STATIC
+    // segment, so Next resolves it ahead of the '[employmentId]' sibling either way. Registered in the
+    // SAME commit as its page.tsx: test/function-access.test.ts fails in BOTH directions.
     // 44bc1c33 (r306): '/admin/card-assignment' — the employee↔Card/Clocking ID mapping a physical
     // terminal needs. requireAdmin, the same guard and the same admin device-configuration surface as the
     // shift library beside it, so it RIDES this column rather than minting a screen key. Registered in the
@@ -704,6 +711,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/attendance/new',
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
+      '/admin/attendance/schedule-assignment/bulk',
       '/admin/attendance/schedule-assignment/[employmentId]',
       '/admin/attendance/[shiftId]',
       '/attendance/import',

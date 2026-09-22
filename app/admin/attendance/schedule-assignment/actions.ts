@@ -14,7 +14,18 @@ import {
   ShiftBackInsertError,
   ShiftEffectiveBeforeStartError,
 } from '@/core/shift-arrangement';
-import { ArchivedShiftError, BackupShiftRequiredError, ShiftHasNoWorkingPatternError } from '@/core/roster';
+import {
+  ArchivedShiftError,
+  BackupShiftRequiredError,
+  NoEmploymentsSelectedError,
+  ScheduleGroupBulkRefusedError,
+  ScheduleGroupNotFoundError,
+  ShiftHasNoWorkingPatternError,
+  ShiftNotInScheduleGroupError,
+  setEmploymentScheduleGroup,
+  setEmploymentScheduleGroupBulk,
+} from '@/core/roster';
+import { UNGROUPED } from '@/core/shift-arrangement';
 
 /**
  * a485afa1 — the Schedule Assignment screens' own Save and Remove (posted from ./[employmentId]/page.tsx
@@ -51,8 +62,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** The detail page's own URL: PAGE/<uuid>, optionally with the list's filters as a query. */
 const DETAIL_RE = /^\/admin\/attendance\/schedule-assignment\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?|$)/i;
-/** The only query keys carried from one screen to the other: the list's four filters. */
-const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status'] as const;
+/**
+ * The only query keys carried from one screen to the other: the list's filters.
+ *
+ * 8cd601d0 adds `scheduleGroupId`. It is added HERE and not only on the pages because this whitelist is
+ * what decides which of an untrusted `returnTo`'s query survives: a filter the list honours but this list
+ * drops is a filter that silently resets on every save, which is the r263 complaint in miniature.
+ */
+const FILTER_KEYS = ['q', 'shiftType', 'shiftId', 'status', 'scheduleGroupId'] as const;
 
 /**
  * WHERE EACH OUTCOME LANDS (a485afa1 rev 2, r265 — the shift library's shift-actions.ts idiom: success
@@ -138,7 +155,14 @@ async function messageFor(e: unknown): Promise<string> {
   if (
     e instanceof ArchivedShiftError ||
     e instanceof BackupShiftRequiredError ||
-    e instanceof ShiftHasNoWorkingPatternError
+    e instanceof ShiftHasNoWorkingPatternError ||
+    // 8cd601d0 — the Schedule Group refusals. Written for a person and carrying the facts the operator
+    // needs (which group, which shifts it allows, and for a batch WHO blocked it), so they are shown as
+    // they are, exactly as the three above. Named one by one on purpose — see the whitelist note above.
+    e instanceof ShiftNotInScheduleGroupError ||
+    e instanceof ScheduleGroupNotFoundError ||
+    e instanceof ScheduleGroupBulkRefusedError ||
+    e instanceof NoEmploymentsSelectedError
   ) {
     return e.message;
   }
@@ -224,4 +248,114 @@ export async function removeScheduleArrangementAction(formData: FormData) {
   revalidateBothDoors(employmentId);
   // Removed: stay on the page — the administrator is looking at the history they just changed.
   redirect(backTo(formData, { list: false, employmentId }, { removed: '1' }));
+}
+
+// ── 8cd601d0 (r329) · THE SCHEDULE GROUP — the middle of the reporter's Employee → Group → Shift chain ──
+
+/**
+ * PUT ONE EMPLOYEE IN A SCHEDULE GROUP from the Schedule Assignment detail page.
+ *
+ * ⚠️ THIS IS AN ADAPTER, NOT A WRITER — the same rule the two actions above follow, and the reason the two
+ * doors onto this record cannot drift. The personnel Attendance tab's Schedule Group card
+ * (app/admin/personnel/[employmentId]/actions.ts setEmploymentScheduleGroupAction) and this one call the
+ * SAME service, `core/roster.ts setEmploymentScheduleGroup` — not two functions that happen to UPDATE
+ * `employment.attendance_rule_id`. Everything that decides WHAT is stored, including the reverse refusal
+ * that stops somebody being seated in a group that forbids the shift they are already working, stays there.
+ * test/schedule-assignment-group.test.ts asserts that no third writer of that column exists.
+ *
+ * ⚠️ WHY IT IS ITS OWN FORM AND NOT A FIELD ON THE ARRANGEMENT FORM. The group and the arrangement are two
+ * records with two writers and two transactions. Posted together, a refused arrangement after an accepted
+ * group change would leave the group moved and the shift not — a half-applied save at the one door built to
+ * prove the two doors agree. Two forms means each save is atomic on its own, which is also exactly the shape
+ * the personnel Attendance tab already uses for this field and for the Holiday Calendar beside it.
+ *
+ * Choosing the group FIRST is what narrows the shift list: the page re-reads the stored group on the way
+ * back, so the Assigned Shift select on the next render offers only that group's shifts.
+ */
+export async function setScheduleGroupAssignmentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId') ?? '').trim();
+  // Blank is a REAL value here — "no Schedule Group", the state 74 of 75 production employments are in —
+  // and the service maps '' to null in one place. It is never read as "leave whatever was there".
+  const attendanceRuleId = String(formData.get('attendanceRuleId') ?? '').trim() || null;
+  if (!UUID_RE.test(employmentId)) {
+    redirect(backTo(formData, { list: true, employmentId: null }, { error: await badField('badEmployment') }));
+  }
+  try {
+    await setEmploymentScheduleGroup(s, { employmentId, attendanceRuleId });
+  } catch (e) {
+    redirect(backTo(formData, { list: false, employmentId }, { error: await messageFor(e) }));
+  }
+  revalidateBothDoors(employmentId);
+  // Stay on the detail page: the whole point of choosing the group is what it does to the shift list
+  // directly underneath it, and the administrator is about to use it.
+  redirect(backTo(formData, { list: false, employmentId }, { groupSaved: '1' }));
+}
+
+/** The bulk screen's own URL, and the filters it shares with the list. */
+const BULK = `${PAGE}/bulk`;
+const BULK_RE = /^\/admin\/attendance\/schedule-assignment\/bulk(\?|$)/;
+
+/**
+ * Where a bulk outcome lands: the BULK page, filters intact, with the outcome appended.
+ *
+ * `returnTo` is untrusted exactly as it is for the two actions above — only its QUERY is read, only when
+ * its path IS the bulk page, and only the filter keys survive, which also strips the previous outcome so a
+ * second batch cannot land on a page still reporting the first one's.
+ */
+function bulkBackTo(formData: FormData, outcome: Record<string, string>): string {
+  const raw = String(formData.get('returnTo') ?? '');
+  const query = BULK_RE.test(raw) ? (raw.split('#')[0].split('?')[1] ?? '') : '';
+  const posted = new URLSearchParams(query);
+  const params = new URLSearchParams();
+  for (const k of FILTER_KEYS) {
+    const v = posted.get(k);
+    if (v) params.set(k, v);
+  }
+  for (const [k, v] of Object.entries(outcome)) params.set(k, v);
+  const qs = params.toString();
+  return `${BULK}${qs ? `?${qs}` : ''}`;
+}
+
+/**
+ * PUT MANY EMPLOYEES IN A SCHEDULE GROUP IN ONE ACTION (8cd601d0, r329).
+ *
+ * ⚠️ THE ADAPTER RULE HOLDS HERE TOO, AND IT IS THE POINT. This runs `core/roster.ts
+ * setEmploymentScheduleGroupBulk`, which is N calls of the SAME per-employment writer the single door uses,
+ * inside ONE transaction. There is no bulk UPDATE, no second definition of the rule, and no way for a batch
+ * to reach the column without passing the reverse refusal one employee at a time. A batch is all-or-nothing:
+ * the service's refusal names the employee who blocked it and says in its first sentence that nobody moved.
+ *
+ * ⚠️ MALFORMED IDS ARE DROPPED, NOT FORWARDED. `employmentId` is a posted field addressing a uuid column;
+ * a junk value would otherwise reach `eq(employment.id, …)` and Postgres would throw with the statement and
+ * its bound parameters in the message — which this file then puts in a URL (see `messageFor`). A checkbox
+ * list that arrives with junk in it is a forged form, and every well-formed id in it is still refused,
+ * because dropping the junk and saving the rest would half-apply the operator's actual selection.
+ */
+export async function bulkAssignScheduleGroupAction(formData: FormData) {
+  const s = await requireAdmin();
+  const posted = formData.getAll('employmentId').map((v) => String(v).trim()).filter(Boolean);
+  const raw = String(formData.get('attendanceRuleId') ?? '').trim();
+  // The bulk picker's blank option means "take these people OUT of every Schedule Group" — the one change
+  // that can never be refused (core/roster.ts: the way out of a contradiction must not itself be blocked).
+  const attendanceRuleId = raw === '' || raw === UNGROUPED ? null : raw;
+  if (posted.some((id) => !UUID_RE.test(id)) || (attendanceRuleId !== null && !UUID_RE.test(attendanceRuleId))) {
+    redirect(bulkBackTo(formData, { error: await badField('badEmployment') }));
+  }
+  let result: { requested: number; changed: number; unchanged: number };
+  try {
+    result = await setEmploymentScheduleGroupBulk(s, { employmentIds: posted, attendanceRuleId });
+  } catch (e) {
+    redirect(bulkBackTo(formData, { error: await messageFor(e) }));
+  }
+  revalidatePath(PAGE);
+  revalidatePath(BULK);
+  // Every employee in the batch has a personnel page whose cached render still shows the old group.
+  for (const id of posted) revalidatePath(`/admin/personnel/${id}`);
+  redirect(
+    bulkBackTo(formData, {
+      bulkChanged: String(result.changed),
+      bulkUnchanged: String(result.unchanged),
+    }),
+  );
 }
