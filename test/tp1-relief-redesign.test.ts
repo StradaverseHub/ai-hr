@@ -354,16 +354,28 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
     const tree = await render({ employmentId: aisha.employmentId });
     expect(byType(tree, Tp1DeclarationForm), 'the form lives on its own page now').toEqual([]);
     expect(writingForms(tree), 'nothing on this screen writes').toEqual([]);
-    // 7ad37961 — the destination gained a MONTH segment: a declaration is now per deduction month, so
-    // "+ Add New TP1" opens the current month of the selected year. The claim is unchanged — one button,
-    // and it LEAVES this screen rather than unfolding a form on it.
+    // 7ad37961 — the destination gained a MONTH segment: a declaration is per deduction month.
+    //
+    // 27605faa rev 2 (r326) — AND "+ Add New TP1" NOW OPENS A STEP THAT ASKS FOR THE YEAR AND MONTH
+    // FIRST, so it is `/tp1/new?...` rather than a month url this screen chose. The reporter contested
+    // the earlier shape in these words: "The Assessment Year and Deduction Month selection is currently
+    // displayed on the TP1 viewing page. This is not the correct workflow because these fields are
+    // relevant when creating a new TP1 transaction, not when viewing existing transaction history."
+    //
+    // THE CLAIM THIS CASE MAKES IS UNCHANGED and is what the assertion still pins: every route off this
+    // screen goes to the declaration flow, carrying the selected employee, and this screen never unfolds
+    // a form of its own. What changed is that ONE of those routes is now the step rather than a month.
     const toDeclaration = hrefsIn(tree).filter((h) => h.startsWith('/payroll/transactions/tp1/'));
     expect(toDeclaration.length, 'exactly one route off this screen per listed record, plus Add').toBeGreaterThan(0);
+    const addStep = new RegExp(`^/payroll/transactions/tp1/new\\?employmentId=${aisha.employmentId}&year=\\d{4}$`);
+    const aMonth = new RegExp(`^/payroll/transactions/tp1/\\d{4}/\\d{1,2}\\?employmentId=${aisha.employmentId}$`);
     for (const h of toDeclaration) {
-      expect(h).toMatch(
-        new RegExp(`^/payroll/transactions/tp1/${CURRENT_YEAR}/\\d{1,2}\\?employmentId=${aisha.employmentId}$`),
+      expect(h, `${h} must be the Add step or a declaration month`).toMatch(
+        new RegExp(`${addStep.source}|${aMonth.source}`),
       );
     }
+    // …and the Add step is present exactly once: one button, not one per row.
+    expect(toDeclaration.filter((h) => addStep.test(h)), 'one Add, and it is the step').toHaveLength(1);
     // The selected employee is named at the top of the workspace, as on Fixed Transaction.
     expect(textIn(tree)).toContain('Aisha Rahman');
   });
@@ -389,10 +401,28 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
       href: string;
       readOnly: boolean;
     }[];
-    // January and February of the SELECTED year — and last year's draft is NOT here, because the list is
-    // now scoped to one year by the selector rather than spanning every year at once.
-    expect(rows.map((r) => r.deductionMonth)).toEqual([1, 2]);
-    expect(rows.every((r) => r.assessmentYear === CURRENT_YEAR)).toBe(true);
+    /**
+     * 27605faa rev 2 (r326) — UPDATED, NOT LOOSENED. This asserted that last year's draft was ABSENT,
+     * "because the list is now scoped to one year by the selector". The reporter contested exactly that:
+     * "The View/Transaction History page should only display the Assessment Year and Deduction Month
+     * associated with existing TP1 records and should not require the user to select these values before
+     * viewing the records." The history spans EVERY year now, with the year as a column.
+     *
+     * The claim this case is really about — ONE ROW PER DEDUCTION MONTH, the newest within each month
+     * winning and the superseded ones counted — is unchanged and still asserted below. What it gains is
+     * the cross-year half: last year's month-less draft is now present AS ITS OWN ROW, which is the
+     * property that would break if the collapse key ever went back to keying on the month alone.
+     */
+    expect(rows.map((r) => r.deductionMonth), 'this year Jan, Feb — then last year').toEqual([1, 2, null]);
+    expect(rows.map((r) => r.assessmentYear), 'newest year first').toEqual([
+      CURRENT_YEAR,
+      CURRENT_YEAR,
+      LAST_YEAR,
+    ]);
+    // ⚠️ AND LAST YEAR'S ROW IS ITS OWN RECORD, not a "version" of anything in this year. Keyed on the
+    // month alone it would have collided with a same-month row and been counted instead of listed.
+    expect(rows[2].versions, 'no cross-year version inflation').toBe(1);
+    expect(rows[2].readOnly, 'a closed assessment year is still read-only').toBe(true);
     const jan = rows[0];
     expect(jan.amount, 'the correction wins, not the original').toBe('4000.00');
     expect(jan.status).toBe('submitted');
@@ -407,20 +437,31 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
 
   // The year the reader picked is SERVER-OWNED, in the URL beside employmentId — so last year's draft is
   // reachable, and it still opens read-only.
-  it('the year selector narrows the list, and a closed year is still read-only', async () => {
+  /**
+   * 27605faa rev 2 (r326) — the year selector NO LONGER NARROWS THE LIST, and that is the point of the
+   * change rather than a regression: the history shows every year. The selector still drives the Add
+   * step and the applied-in-payroll panel, which genuinely are per-year.
+   *
+   * So this case keeps the half that is still true and still matters — a pre-7ad37961 declaration is
+   * MONTH-LESS rather than being given a January it never had, and a closed assessment year opens
+   * read-only — and stops asserting the filtering that was removed on the reporter's instruction.
+   */
+  it('a month-less legacy declaration keeps no month, and a closed year is still read-only', async () => {
     const tree = await render({ employmentId: aisha.employmentId, year: String(LAST_YEAR) });
     const rows = lists(tree).declarations[0].props.rows as {
+      assessmentYear: number;
       deductionMonth: number | null;
       amount: string;
       status: string;
       readOnly: boolean;
     }[];
-    expect(rows).toHaveLength(1);
-    expect(rows[0].amount).toBe('500.00');
-    expect(rows[0].status).toBe('draft');
+    const legacy = rows.find((r) => r.assessmentYear === LAST_YEAR);
+    expect(legacy, "last year's declaration is listed whatever year is selected").toBeTruthy();
+    expect(legacy!.amount).toBe('500.00');
+    expect(legacy!.status).toBe('draft');
     // Written before the form had a month box, so it has none — and is not given one.
-    expect(rows[0].deductionMonth, 'a pre-7ad37961 declaration is month-less, not January').toBeNull();
-    expect(rows[0].readOnly, 'a closed assessment year opens read-only').toBe(true);
+    expect(legacy!.deductionMonth, 'a pre-7ad37961 declaration is month-less, not January').toBeNull();
+    expect(legacy!.readOnly, 'a closed assessment year opens read-only').toBe(true);
   });
 
   it('the history is narrowed to the selected employee — in the QUERY, not over rows already read', async () => {
