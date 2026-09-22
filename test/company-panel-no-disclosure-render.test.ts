@@ -186,6 +186,25 @@ function render(locale: string, props: unknown): string {
   );
 }
 
+/**
+ * THE CATALOGUE STRING AS IT APPEARS IN MARKUP. r327 renamed authority_socso to "SOCSO & EIS
+ * (PERKESO)" and this file went red on it — not because the label was missing, but because React
+ * escapes a text child, so the markup carries "SOCSO &amp; EIS (PERKESO)". A browser shows the
+ * ampersand; a raw `toContain` of the catalogue value does not.
+ *
+ * Escaping the EXPECTED side rather than unescaping the received one keeps the assertion exact: it
+ * still pins that this precise label reached the markup, and a label that is genuinely absent still
+ * fails. Loosening it to a substring before the "&" would have let a half-rendered heading pass.
+ * The five characters are the ones renderToStaticMarkup escapes in a text child.
+ */
+const inMarkup = (s: string) =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+
 describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalogues', () => {
   for (const locale of LOCALES) {
     for (const [label, props] of [
@@ -228,11 +247,11 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     for (const a of STATUTORY_AUTHORITIES) {
-      expect(html, `authority_${a}`).toContain(en[`authority_${a}`]);
-      expect(html, `authorityDesc_${a}`).toContain(en[`authorityDesc_${a}`]);
+      expect(html, `authority_${a}`).toContain(inMarkup(en[`authority_${a}`]));
+      expect(html, `authorityDesc_${a}`).toContain(inMarkup(en[`authorityDesc_${a}`]));
     }
     // One Open/Edit per body, and nothing native about it.
-    const opens = html.split(en.authorityOpen).length - 1;
+    const opens = html.split(inMarkup(en.authorityOpen)).length - 1;
     expect(opens, 'one Open-settings control per statutory body').toBe(STATUTORY_AUTHORITIES.length);
   });
 
