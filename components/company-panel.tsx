@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
@@ -17,6 +17,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
+import { type CompanyPanelTab } from '@/lib/company-panel-tabs';
+import { type TabSaveResult } from '@/lib/tab-save-sections';
+import { firstDirtyGuard } from '@/lib/unsaved-changes';
+import { TabSaveScope } from './tab-save-scope';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 import { Button, Field, inputCls } from './ui';
@@ -42,7 +46,18 @@ import { CurrencySelect } from './currency-select';
 // The guard that pinned the REMOVAL (test/company-panel-bank-statutory-layout.test.ts) was updated with
 // this change, not deleted — the half of it that is still true (Bank Account content stays whole, wherever
 // it lives) is still asserted.
-type TabKey = 'general' | 'bank' | 'statutory';
+// 65b22c00 — the three keys are declared once, in lib/company-panel-tabs.ts, because the page and the
+// server actions need the same closed list and neither can read a value out of a 'use client' module.
+type TabKey = CompanyPanelTab;
+
+/**
+ * 65b22c00 — THE FIELD THAT TELLS A SERVER ACTION WHICH TAB IT WAS SUBMITTED FROM.
+ *
+ * Injected into whichever form is submitting by the capture-phase listener in CompanyPanel, exactly as
+ * components/personnel-tabs.tsx does it (feedback bd2f0bb2): the alternative is a hidden input hand-added
+ * to thirteen forms across two files, one of which would be forgotten.
+ */
+const TAB_TRACKER_ATTR = 'data-company-tab-tracker';
 
 /**
  * The visual mark on each statutory body's ROW.
@@ -151,6 +166,11 @@ function CrossLinkTab({ text, href, action }: { text: string; href: string; acti
 }
 
 type Action = (fd: FormData) => void | Promise<void>;
+/**
+ * 65b22c00 — the consolidated General-tab Save. It RETURNS rather than redirecting, which is what lets
+ * it report which of the three cards failed; see lib/company-tab-sections.ts.
+ */
+type TabSaveAction = (fd: FormData) => Promise<TabSaveResult>;
 
 export type PanelCompany = {
   id: string;
@@ -760,6 +780,9 @@ function StatutoryAuthorityCard({
         {r && (
           <form action={removeAction}>
             <input type="hidden" name="id" value={r.id} />
+            {/* 65b22c00 — as with the bank profile: `id` is the authority ROW, `companyId` is where the
+                save came from and therefore where it returns to. */}
+            <input type="hidden" name="companyId" value={companyId} />
             <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
               {t('authorityClear')}
             </button>
@@ -808,6 +831,7 @@ export function CompanyPanel({
   signatories = [],
   stateOptions = [],
   activeCycleNames = [],
+  initialTab,
   actions,
 }: {
   company: PanelCompany;
@@ -827,6 +851,16 @@ export function CompanyPanel({
   // the Default Payroll Cycle form is not drawn at all. Distinct from `[]` (Payroll, but no active cycle),
   // which draws the form disabled with its warning.
   activeCycleNames?: string[] | null;
+  /**
+   * 65b22c00 — the tab to open on, read off `?tab=` by the page.
+   *
+   * Every save on this screen now returns to THIS screen (app/admin/_redirects.ts okCompany), and a
+   * redirect re-initialises this component's `tab` state. Without the round trip through the URL an
+   * administrator who saved a statutory body would stop being thrown to the company LIST and start being
+   * thrown to the General tab instead — the same fault, smaller. Feedback bd2f0bb2 is the personnel
+   * screen learning this; `ClientTabs` has carried the identical pair of moves ever since.
+   */
+  initialTab?: TabKey;
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -840,10 +874,18 @@ export function CompanyPanel({
     setCompanyLogo: Action;
     removeCompanyLogo: Action;
     updateCompanyDefaultCycle: Action;
+    /**
+     * 65b22c00 — ONE Save for the General tab's three FIELD-EDIT cards (bucket (a) of
+     * docs/audits/65b22c00-organization-save-classification.md). The three actions above it stay bound to
+     * their own forms — not as a no-JavaScript fallback, but because a bound form is what each writer is
+     * wired to, because it is what TabSaveScope's submit guard intercepts, and because a `<form>` with no
+     * action at all would POST to the current URL.
+     */
+    saveGeneralTab: TabSaveAction;
   };
 }) {
   const t = useTranslations('admin.organization');
-  const [tab, setTab] = useState<TabKey>('general');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'general');
   const c = company;
   const isMY = c.country === 'MY';
   // Readiness for the monthly filings: the three agency identifiers reports key on.
@@ -851,13 +893,83 @@ export function CompanyPanel({
     ? [statutory?.epfEmployerNo, statutory?.socsoEmployerCode, statutory?.lhdnEmployerNo].filter((v) => !v).length
     : 0;
 
+  /**
+   * 65b22c00 — KEEPING THE TAB ACROSS A SAVE, which is two moves and needs both.
+   *
+   * (a) Reflect the active tab into the URL on every switch, with `replaceState` — no RSC refetch, no
+   *     scroll jump, and a native reload already lands on the right tab. It is also what makes the tab
+   *     linkable, which the three-tab panel never was.
+   * (b) A capture-phase `submit` listener on the panel injects the current tab into whichever form is
+   *     submitting, so the action can append `&tab=<key>` to its redirect. The alternative — a hidden
+   *     input in all thirteen forms, two of which live in components/company-logo.tsx — is thirteen
+   *     chances to forget one, and a forgotten one is a save that silently lands on General.
+   *
+   * `tabRef` mirrors `tab` so the once-registered listener always reads the latest value rather than the
+   * value it closed over. The listener runs in the CAPTURE phase for the same reason personnel-tabs.tsx
+   * does: React 19 dispatches a form's `action` in the bubble phase, so the field has to be in the DOM
+   * before the event gets there.
+   */
+  const tabRef = useRef<TabKey>(tab);
+  tabRef.current = tab;
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const commitTab = (key: TabKey) => {
+    setTab(key);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', key);
+    // Every other param survives (?error= is read by the page's ErrorBanner); replaceState keeps the
+    // scroll position and costs no server round trip.
+    window.history.replaceState(window.history.state, '', url.toString());
+  };
+
+  /**
+   * 65b22c00 — a tab with unsaved edits asks before it is left, exactly as the personnel tab strip does.
+   *
+   * The panes stay MOUNTED when hidden, so a switch does not itself lose anything; what it loses is the
+   * reader's sight of the edit, and with a consolidated Save the whole point is that an edit is not
+   * written until Save is pressed. TabSaveScope and this tab bar are the same component here rather than
+   * siblings, but they still meet through lib/unsaved-changes.ts — the scope registers itself there on
+   * mount and this has no other way to reach it. With nothing registered, or nothing dirty, this is the
+   * identical immediate switch it always was.
+   */
+  const selectTab = (key: TabKey) => {
+    if (key === tab) return;
+    const guard = firstDirtyGuard();
+    if (guard) {
+      guard.prompt(() => commitTab(key));
+      return;
+    }
+    commitTab(key);
+  };
+
+  useEffect(() => {
+    const root = panelRef.current;
+    if (!root) return;
+    const onSubmit = (e: Event) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement) || !root.contains(form)) return;
+      let input = form.querySelector<HTMLInputElement>(`input[${TAB_TRACKER_ATTR}]`);
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'tab';
+        input.setAttribute(TAB_TRACKER_ATTR, '');
+        form.appendChild(input);
+      }
+      input.value = tabRef.current;
+    };
+    root.addEventListener('submit', onSubmit, true);
+    return () => root.removeEventListener('submit', onSubmit, true);
+  }, []);
+
   // defd4644: this panel is no longer one row of a client-side list. It is the whole body of
   // /admin/organization/[companyId], mounted once per page, which is what retired the Flight-lazy
   // hazard the old comment here described — the listing used to serialise EVERY company's panel (the
   // full company array, the state catalog and twelve action references each) into one client payload,
   // overflowing the row budget so rows 2..N arrived as lazies. One panel per page cannot do that.
   return (
-    <div className={c.archivedAt ? 'opacity-60' : undefined}>
+    <div ref={panelRef} className={c.archivedAt ? 'opacity-60' : undefined}>
       {/* Identity strip. It is a plain row, not a toggle: the reader arrived here by opening THIS
           company, so the one thing this screen must never do is hide it again behind a click. The logo
           and the statutory-readiness badge live here because the page header above cannot show them. */}
@@ -882,15 +994,15 @@ export function CompanyPanel({
       <div className="border-t border-border/60 bg-muted/20 px-4 py-4">
         {/* Tab bar — groups the company detail sections so the panel reads as tabs, not one long scroll. */}
         <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
-          <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
+          <TabButton active={tab === 'general'} onClick={() => selectTab('general')}>
             {t('tabGeneral')}
           </TabButton>
           {/* Slot two, restored by r226. `tabBankAccount` had been sitting unused in all six catalogues
               since 3c2f55d7 rev 2 removed the tab; it is the same string, back in the same place. */}
-          <TabButton active={tab === 'bank'} onClick={() => setTab('bank')}>
+          <TabButton active={tab === 'bank'} onClick={() => selectTab('bank')}>
             {t('tabBankAccount')}
           </TabButton>
-          <TabButton active={tab === 'statutory'} onClick={() => setTab('statutory')}>
+          <TabButton active={tab === 'statutory'} onClick={() => selectTab('statutory')}>
             {t('tabStatutory')}
           </TabButton>
         </div>
@@ -924,8 +1036,40 @@ export function CompanyPanel({
           />
         </div>
 
-        {/* Company master data — Company Information + Contact Information (bc5d4891). One form, one save. */}
-        <form action={actions.updateCompany} className="space-y-4 rounded-lg bg-background p-3">
+        {/* 65b22c00 — ONE "Save Changes" for the General tab's field-edit cards. TabSaveScope wraps
+            bucket (a) only: the company master data, the default payroll cycle and the group parent —
+            plain columns on the `company` row, which is what a single Save, and therefore a single
+            Discard, can honestly cover. The logo card ABOVE and the archive / delete row BELOW are
+            bucket (b) and are rendered outside the scope, so the tab's Discard cannot reach them; see
+            docs/audits/65b22c00-organization-save-classification.md.
+
+            WHAT THE BAR SAYS IT COVERS is required, not decorative: the scope is not the whole tab, so a
+            bar reading only "Save Changes" would appear to cover the logo and the delete button too. The
+            Default Payroll Cycle name is dropped for a tenant without Payroll, where that card is not
+            drawn at all — a bar must not name a card the reader cannot find (r256 shipped that fault
+            twice before it was caught by rendering the screen).
+
+            ⚠️ THE STATUTORY REGISTRATIONS CARD IS BUCKET (a) AND IS DELIBERATELY NOT HERE. It is drawn on
+            the Statutory tab and a scope cannot span two panes; moving it to General to tidy the button
+            would reverse r226's placement, which test/company-panel-bank-statutory-layout.test.ts pins.
+            Finding 1 of the audit has the argument, and the reporter is owed that sentence. */}
+        <TabSaveScope
+          tabKey="general"
+          identity={{ companyId: c.id }}
+          saveAction={actions.saveGeneralTab}
+          covers={[
+            t('sectionCompanyInfo'),
+            t('sectionContactInfo'),
+            ...(activeCycleNames !== null ? [t('defaultPayrollCycle')] : []),
+            t('groupParent'),
+          ]}
+        >
+        {/* Company master data — Company Information + Contact Information (bc5d4891). */}
+        <form
+          action={actions.updateCompany}
+          data-save-section="company"
+          className="space-y-4 rounded-lg bg-background p-3"
+        >
           <input type="hidden" name="id" value={c.id} />
 
           {/* Company Information */}
@@ -1020,12 +1164,6 @@ export function CompanyPanel({
               </Field>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button type="submit" size="sm">
-              {t('saveDetails')}
-            </Button>
-          </div>
         </form>
 
         {/* ── Relocated here by r226 ──────────────────────────────────────────────────────────
@@ -1040,7 +1178,11 @@ export function CompanyPanel({
             renamed), an inline note flags it and the admin re-points — no silent invalid selection.
             r298 (ceb1c560) — absent altogether for a tenant without Payroll (`activeCycleNames === null`). */}
         {activeCycleNames !== null && (
-        <form action={actions.updateCompanyDefaultCycle} className="space-y-2.5 rounded-lg bg-background p-3">
+        <form
+          action={actions.updateCompanyDefaultCycle}
+          data-save-section="cycle"
+          className="space-y-2.5 rounded-lg bg-background p-3"
+        >
           <SubHeader>{t('defaultPayrollCycle')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
           {(() => {
@@ -1071,43 +1213,51 @@ export function CompanyPanel({
                 ) : (
                   <p className="text-xs text-muted-foreground">{t('defaultPayrollCycleHint')}</p>
                 )}
-                <Button type="submit" size="sm" variant="outline" disabled={activeCycleNames.length === 0}>
-                  {t('saveDefaultPayrollCycle')}
-                </Button>
               </>
             );
           })()}
         </form>
         )}
 
-        {/* Group parent + archive/delete */}
+        {/* Group parent — the third and last bucket (a) card, so the scope encloses a CONTIGUOUS run.
+            r226 drew it in a two-column grid beside archive/delete; it is lifted out of that grid here
+            because the archive and delete controls are bucket (b) and have to sit outside the Save.
+            Nothing about the card itself changed — same form, same action, same audit trail. */}
+        <form action={actions.setParent} data-save-section="parent" className="space-y-2.5 rounded-lg bg-background p-3">
+          <SubHeader>{t('groupParent')}</SubHeader>
+          <input type="hidden" name="companyId" value={c.id} />
+          <Field label={t('parentCompany')}>
+            <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
+              <option value="">{t('noneGroupRoot')}</option>
+              {companies
+                .filter((o) => o.id !== c.id)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        </form>
+        </TabSaveScope>
+
+        {/* Archive / delete — bucket (b), BELOW and OUTSIDE the scope. A single Save implies a single
+            Discard, and a Discard that appeared to undo a deleted company would be a control lying about
+            what it does. Both keep their own immediate controls, and Delete keeps its confirmation. */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="space-y-3">
-            <form action={actions.setParent} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>{t('groupParent')}</SubHeader>
-              <input type="hidden" name="companyId" value={c.id} />
-              <Field label={t('parentCompany')}>
-                <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
-                  <option value="">{t('noneGroupRoot')}</option>
-                  {companies
-                    .filter((o) => o.id !== c.id)
-                    .map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <Button type="submit" size="sm" variant="outline">
-                {t('setParent')}
-              </Button>
-            </form>
-
             <div className="flex items-center gap-1.5 rounded-lg bg-background p-3">
               {c.archivedAt ? (
                 <form action={actions.archiveCompany}>
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="archived" value="false" />
+                  {/* 65b22c00 — archiveCompanyAction is bound BOTH here and on every row of the company
+                      list, and only this one should leave the reader on the company. The marker is an
+                      explicit input rather than a client-injected field precisely because the destination
+                      depends on it: injected, an un-hydrated page would quietly go back to bouncing to the
+                      list, which is the fault this item exists to fix. A fixed value against a closed
+                      list — never a path echoed into a redirect. */}
+                  <input type="hidden" name="returnTo" value="company" />
                   <Button type="submit" size="sm" variant="ghost">
                     {t('unarchive')}
                   </Button>
@@ -1116,6 +1266,7 @@ export function CompanyPanel({
                 <form action={actions.archiveCompany}>
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="archived" value="true" />
+                  <input type="hidden" name="returnTo" value="company" />
                   <Button type="submit" size="sm" variant="ghost">
                     {t('archiveCompany')}
                   </Button>
@@ -1179,6 +1330,9 @@ export function CompanyPanel({
                       <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
                       <form action={actions.removeBankProfile} className="mt-2">
                         <input type="hidden" name="id" value={bp.id} />
+                        {/* 65b22c00 — identity is the ROW, so `id` is the profile's. The company rides
+                            alongside it because the action has to name the screen to return to. */}
+                        <input type="hidden" name="companyId" value={c.id} />
                         <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
                           {t('bankProfileRemove')}
                         </button>

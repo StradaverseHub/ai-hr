@@ -1002,7 +1002,7 @@ export default async function EmployeePage({
           and it gains data-save-section so the scope can pack it. */}
       <TabSaveScope
         tabKey="profile"
-        employmentId={emp.employmentId}
+        identity={{ employmentId: emp.employmentId }}
         saveAction={saveProfileTabAction}
         covers={tabSaveCovers.profile}
       >
@@ -4742,7 +4742,7 @@ export default async function EmployeePage({
         {admin && (
           <TabSaveScope
             tabKey="job"
-            employmentId={emp.employmentId}
+            identity={{ employmentId: emp.employmentId }}
             saveAction={saveJobTabAction}
             covers={tabSaveCovers.job}
           >
@@ -4793,7 +4793,7 @@ export default async function EmployeePage({
         {admin && (
           <TabSaveScope
             tabKey="attendance"
-            employmentId={emp.employmentId}
+            identity={{ employmentId: emp.employmentId }}
             saveAction={saveAttendanceTabAction}
             covers={tabSaveCovers.attendance}
           >
@@ -4828,7 +4828,7 @@ export default async function EmployeePage({
         {admin && (
           <TabSaveScope
             tabKey="bankStatutory"
-            employmentId={emp.employmentId}
+            identity={{ employmentId: emp.employmentId }}
             saveAction={saveBankStatutoryTabAction}
             covers={tabSaveCovers.bankStatutory}
           >
@@ -4881,7 +4881,7 @@ export default async function EmployeePage({
         {admin && (
           <TabSaveScope
             tabKey="payroll"
-            employmentId={emp.employmentId}
+            identity={{ employmentId: emp.employmentId }}
             saveAction={savePayrollTabAction}
             covers={tabSaveCovers.payroll}
           >

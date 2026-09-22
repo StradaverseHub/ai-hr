@@ -109,7 +109,7 @@ import {
   type FieldChange,
   type TabSnapshot,
 } from '@/lib/tab-save-dom';
-import type { TabSaveResult } from '@/lib/personnel-tab-sections';
+import type { TabSaveResult } from '@/lib/tab-save-sections';
 
 /**
  * The marker our own history entry carries, so a `popstate` can be told from a router navigation and the
@@ -143,14 +143,27 @@ function sameChanges(a: FieldChange[], b: FieldChange[]): boolean {
 
 export function TabSaveScope({
   tabKey,
-  employmentId,
+  identity,
   saveAction,
   covers,
   children,
 }: {
   /** The tab this scope belongs to — submitted so the action can land the reader back on it. */
   tabKey: string;
-  employmentId: string;
+  /**
+   * THE TOP-LEVEL IDENTITY OF THE RECORD BEING EDITED, set once on the consolidated payload.
+   *
+   * It was `employmentId: string` until 65b22c00 gave the Organization company panel a consolidated
+   * Save; the company's key is `companyId`, and passing a company under the name `employmentId` would be
+   * a lie in the wire format that the server would then have to un-tell. The shape is a record because
+   * the reason this exists at all is that the id must arrive ONCE, at the top level, rather than being
+   * trusted from each section's own hidden copy — n hidden copies of an id are n chances for a crafted
+   * payload to point one write at a different record (see `sectionFormData`).
+   *
+   * Read through a ref inside `save` rather than closed over, so a caller that renders this scope inside
+   * a CLIENT component (the company panel does) does not rebuild every listener on every keystroke.
+   */
+  identity: Record<string, string>;
   /** The consolidated server action, handed down by the RSC page (the established RSC→client pattern). */
   saveAction: (formData: FormData) => Promise<TabSaveResult>;
   /**
@@ -169,6 +182,9 @@ export function TabSaveScope({
 }) {
   const t = useTranslations('components.tabSave');
   const router = useRouter();
+  // See `identity`: the live value, so `save` need not close over a prop the caller may rebuild.
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
   const contentRef = useRef<HTMLDivElement>(null);
   const snapshotRef = useRef<TabSnapshot>({});
   const [nonce, setNonce] = useState(0);
@@ -303,7 +319,7 @@ export function TabSaveScope({
         if (!dirtySections.includes(form.getAttribute('data-save-section') ?? '')) continue;
         if (!form.reportValidity()) return;
       }
-      const payload = buildTabPayload(root, dirtySections, { employmentId, tab: tabKey });
+      const payload = buildTabPayload(root, dirtySections, { ...identityRef.current, tab: tabKey });
       setError(null);
       startTransition(async () => {
         const result = await saveAction(payload);
@@ -325,7 +341,7 @@ export function TabSaveScope({
         onDone?.();
       });
     },
-    [blankLabel, employmentId, rebaselineSections, router, saveAction, t, tabKey],
+    [blankLabel, rebaselineSections, router, saveAction, t, tabKey],
   );
 
   const endDiscardWait = useCallback(() => {
