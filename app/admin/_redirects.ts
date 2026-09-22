@@ -135,3 +135,59 @@ export function failEntitlements(e: unknown, leaveTypeId: string): never {
     `${ENTITLEMENTS}?error=${encodeURIComponent((e as Error).message)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`,
   );
 }
+
+/**
+ * ─── 65b22c00 · STAY ON THE COMPANY, AND THE TAB IT WAS SAVED ON ─────────────────────────────────────
+ *
+ * The Organization detail screen is `/admin/organization/<companyId>` and EVERY save on it used to end
+ * `ok('/admin/organization')` — the LIST. An administrator correcting a company's address had to find the
+ * company again and reopen it after each save. That is the whole of item 65b22c00.
+ *
+ * These are okEntitlements' shape, for the same reason it has one: the URL contract is fiddly enough that
+ * re-deriving it at a dozen call sites is how one of them ends up wrong.
+ *
+ *   · THE TAB RIDES AFTER THE QUERY KEY, NOT BEFORE IT. `fail()` and `ok()` build `${path}?error=…` by
+ *     plain concatenation, so handing either of them a path that ALREADY carries `?tab=` produces
+ *     `…?tab=statutory?toast=Saved` — `tab` read as "statutory?toast=Saved" and the toast never parsed.
+ *     That exact defect shipped twice on the attendance schedule screen (r287 → r301, see SCHEDULE_TAB in
+ *     app/admin/actions.ts), so the tab is appended here as a second `&` parameter and these helpers are
+ *     the only place a company path and a query string meet.
+ *   · ToastFromQuery (app/layout.tsx) strips only `toast` and `error` and `router.replace`s whatever is
+ *     left, so `?tab=` survives the toast being shown and the reader stays on the tab they saved from.
+ *   · LOCALISE BEFORE CALLING. ToastFromQuery renders the raw string; an i18n key in the URL would be
+ *     shown to the reader as an i18n key.
+ *   · AN EMPTY companyId DEGRADES TO THE LIST rather than emitting `/admin/organization/`, the same way
+ *     okEntitlements degrades when a form carried no leave type.
+ *
+ * BOTH PATHS ARE REVALIDATED. The company row on the LIST carries the name, the country and the archived
+ * badge, so a save that revalidated only the detail page would leave the list showing the old name until
+ * something else invalidated it. `ok(ORG)` used to get that for free by virtue of going there.
+ */
+export const ORGANIZATION = '/admin/organization';
+
+/** The detail screen for one company; an empty id degrades to the list. */
+export function companyPath(companyId: string): string {
+  return companyId ? `${ORGANIZATION}/${companyId}` : ORGANIZATION;
+}
+
+export function okCompany(companyId: string, msg: string, tab = ''): never {
+  const path = companyPath(companyId);
+  revalidatePath(ORGANIZATION);
+  if (path !== ORGANIZATION) revalidatePath(path);
+  redirect(`${path}?toast=${encodeURIComponent(msg)}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`);
+}
+
+/**
+ * okCompany's failure twin, and it matters more here than the success half does.
+ *
+ * A REFUSED save is the case where being thrown back to the list hurts most: `fail(ORG, e)` showed the
+ * refusal on a screen that no longer held the form it was about, with the operator's typing gone. The
+ * refusals these carry are real and reachable — "Select a bank from the Malaysian bank list", "Choose a
+ * signatory who is an active employee of this company", the InUseError behind Delete.
+ */
+export function failCompany(e: unknown, companyId: string, tab = ''): never {
+  const path = companyPath(companyId);
+  redirect(
+    `${path}?error=${encodeURIComponent((e as Error).message)}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`,
+  );
+}

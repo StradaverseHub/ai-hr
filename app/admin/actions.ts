@@ -128,6 +128,7 @@ import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { isMyBankKey } from '@/lib/my-banks';
+import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
 import {
   upsertCompanyStatutoryAuthority,
   removeCompanyStatutoryAuthority,
@@ -136,9 +137,58 @@ import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
 // async functions, so these helpers could never be exported from here).
-import { COMPANY_RULES, ENTITLEMENTS, GENERATE, SPECIAL_SETTING, SYSTEM_LABELS, fail, ok, okToast, okEntitlements } from './_redirects';
+import {
+  COMPANY_RULES,
+  ENTITLEMENTS,
+  GENERATE,
+  ORGANIZATION,
+  SPECIAL_SETTING,
+  SYSTEM_LABELS,
+  fail,
+  failCompany,
+  ok,
+  okCompany,
+  okToast,
+  okEntitlements,
+} from './_redirects';
 
-const ORG = '/admin/organization';
+// One path, one owner. `ORGANIZATION` is the constant okCompany/failCompany build on; the short local
+// alias is what the ~40 org-catalog actions below have always read, so nothing else in this file moves.
+const ORG = ORGANIZATION;
+
+/**
+ * 65b22c00 — THE COMPANY PANEL'S OWN TAB, as a CLOSED LIST.
+ *
+ * components/company-panel.tsx injects its active tab into every form it hosts (the same capture-phase
+ * trick components/personnel-tabs.tsx uses, and for the same reason feedback bd2f0bb2 gave: a redirect
+ * back to a tab-less URL re-initialises the client tab state to the FIRST tab, so a statutory save that
+ * stopped being thrown to the list would instead be thrown to the General tab).
+ *
+ * Closed list, never the posted string: this value goes into a redirect URL, and echoing an arbitrary
+ * one back would be a query-injection hole in the one place a path and a query string meet.
+ */
+function companyTab(fd: FormData): string {
+  const tab = fd.get('tab');
+  return isCompanyPanelTab(tab) ? tab : '';
+}
+
+/**
+ * 65b22c00 — "was this submitted from a company's OWN screen?", as a closed list.
+ *
+ * Needed by exactly ONE action, and the exception is the point. `archiveCompanyAction` is bound in TWO
+ * places: the company panel, and the Archive / Unarchive button on every row of the company LIST
+ * (app/admin/organization/page.tsx → components/company-rows.tsx). Repointing the action itself at
+ * `/admin/organization/<id>` would have meant archiving a row from the list now opens that company —
+ * a regression on a screen this item does not touch. So the destination comes from the FORM.
+ *
+ * It is an EXPLICIT hidden input in the panel's two archive forms rather than a client-injected marker,
+ * so it does not depend on hydration; and it is a fixed value compared against a literal, never a path
+ * echoed into a redirect. The other eleven company actions need no marker: the company detail page is
+ * their only binding site (pinned by test/organization-stay-on-save.test.ts).
+ */
+function fromCompanyScreen(fd: FormData): boolean {
+  return String(fd.get('returnTo') ?? '') === 'company';
+}
 // a6fe37fc ROUND 5 (cutover) — REPOINTED. This named `/admin/leave`, itself a redirect stub to the leave
 // TYPE screen, so a leave-type archive/delete used to land after two hops; the type screen moved to
 // `/admin/leave-config/types` in this commit and both stubs now point there, so the constant names the
@@ -213,16 +263,19 @@ export async function createCompanyAction(formData: FormData) {
  */
 export async function updateCompanyDefaultCycleAction(formData: FormData) {
   const s = await getSession();
+  const companyId = String(formData.get('companyId'));
   try {
     await setCompanyDefaultPayrollCycle(s, {
-      companyId: String(formData.get('companyId')),
+      companyId,
       cycleName: String(formData.get('defaultPayrollCycle') ?? ''),
     });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
   const t = await getTranslations('admin.organization');
-  okToast(ORG, t('defaultPayrollCycleSaved'));
+  // 65b22c00 — the toast is unchanged; where it is SHOWN is not. This was the only save on the screen
+  // that already confirmed itself, and it confirmed itself on the list the reader had just been thrown to.
+  okCompany(companyId, t('defaultPayrollCycleSaved'), companyTab(formData));
 }
 
 /**
@@ -241,6 +294,7 @@ const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 export async function setCompanyLogoAction(formData: FormData) {
   const s = await getSession();
+  const companyId = String(formData.get('companyId'));
   try {
     const file = formData.get('logo');
     if (!(file instanceof File) || file.size === 0) throw new Error('Choose a logo image to upload');
@@ -250,40 +304,42 @@ export async function setCompanyLogoAction(formData: FormData) {
     const mimeType = sniffImageMime(content);
     if (!mimeType) throw new Error('Only PNG or JPG images are allowed');
     await setCompanyLogo(s, {
-      companyId: String(formData.get('companyId')),
+      companyId,
       content,
       fileName: file.name,
       mimeType,
       sizeBytes: content.byteLength,
     });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('savedToast'), companyTab(formData));
 }
 
 export async function removeCompanyLogoAction(formData: FormData) {
   const s = await getSession();
+  const companyId = String(formData.get('companyId'));
   try {
-    await removeCompanyLogo(s, { companyId: String(formData.get('companyId')) });
+    await removeCompanyLogo(s, { companyId });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('removedToast'), companyTab(formData));
 }
 
 export async function setCompanyParentAction(formData: FormData) {
   const s = await getSession();
   const parent = String(formData.get('parentCompanyId') ?? '');
+  const companyId = String(formData.get('companyId'));
   try {
-    await setCompanyParent(s, {
-      companyId: String(formData.get('companyId')),
-      parentCompanyId: parent || null,
-    });
+    await setCompanyParent(s, { companyId, parentCompanyId: parent || null });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('savedToast'), companyTab(formData));
 }
 
 /**
@@ -309,6 +365,7 @@ function postedHrdfStatus(formData: FormData): 'not_registered' | 'mandatory' | 
 export async function setCompanyStatutoryAction(formData: FormData) {
   const s = await getSession();
   const country = String(formData.get('country') ?? 'MY');
+  const companyId = String(formData.get('companyId'));
   try {
     const pack = packFor(country);
     if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${country}`);
@@ -317,7 +374,7 @@ export async function setCompanyStatutoryAction(formData: FormData) {
     // list (the rest moved onto their own body's card) — and this action still serves BOTH shapes, which
     // is why it keeps reading all five names rather than shrinking to two.
     await pack.companyStatutory.set(s, {
-      companyId: String(formData.get('companyId')),
+      companyId,
       epfEmployerNo: postedField(formData, 'epfEmployerNo'),
       socsoEmployerCode: postedField(formData, 'socsoEmployerCode'),
       lhdnEmployerNo: postedField(formData, 'lhdnEmployerNo'),
@@ -326,14 +383,16 @@ export async function setCompanyStatutoryAction(formData: FormData) {
       hrdfStatus: postedHrdfStatus(formData),
     });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('savedToast'), companyTab(formData));
 }
 
 export async function setCompanyBankProfileAction(formData: FormData) {
   const s = await getSession();
   const bank = String(formData.get('bank') ?? '');
+  const companyId = String(formData.get('companyId'));
   try {
     // R46 orgbank (84719377): the bank set is the shared Malaysian master (lib/my-banks.ts), not a
     // 4-value enum. The service re-validates — this is the early, friendlier rejection.
@@ -341,7 +400,7 @@ export async function setCompanyBankProfileAction(formData: FormData) {
     await upsertCompanyBankProfile(s, {
       // Present ⇒ edit that account; absent ⇒ add another (a company may hold several, incl. per bank).
       id: (formData.get('id') as string) || null,
-      companyId: String(formData.get('companyId')),
+      companyId,
       bank: bank as DisbursementBank,
       corporateId: String(formData.get('corporateId') ?? ''),
       debitAccountNo: String(formData.get('debitAccountNo') ?? ''),
@@ -358,19 +417,24 @@ export async function setCompanyBankProfileAction(formData: FormData) {
       isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('savedToast'), companyTab(formData));
 }
 
 export async function removeCompanyBankProfileAction(formData: FormData) {
   const s = await getSession();
+  // 65b22c00 — the form posts the ROW id (identity is the row, not the company), so the panel now also
+  // carries the company id: without it this action cannot name the screen it was pressed on.
+  const companyId = String(formData.get('companyId'));
   try {
     await removeCompanyBankProfile(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('removedToast'), companyTab(formData));
 }
 
 // R46 orgbank (84719377) — per-authority statutory payment configuration. One form per authority; the
@@ -378,9 +442,10 @@ export async function removeCompanyBankProfileAction(formData: FormData) {
 // NEWLY chosen signatory is an active employee of it.
 export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
   const s = await getSession();
+  const companyId = String(formData.get('companyId'));
   try {
     await upsertCompanyStatutoryAuthority(s, {
-      companyId: String(formData.get('companyId')),
+      companyId,
       authority: String(formData.get('authority') ?? ''),
       accountNo: (formData.get('accountNo') as string) || null,
       bankProfileId: (formData.get('bankProfileId') as string) || null,
@@ -414,22 +479,26 @@ export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
     if (filingCountry && Object.values(filing).some((v) => v !== undefined)) {
       const pack = packFor(filingCountry);
       if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${filingCountry}`);
-      await pack.companyStatutory.set(s, { companyId: String(formData.get('companyId')), ...filing });
+      await pack.companyStatutory.set(s, { companyId, ...filing });
     }
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('savedToast'), companyTab(formData));
 }
 
 export async function removeCompanyStatutoryAuthorityAction(formData: FormData) {
   const s = await getSession();
+  // As with the bank profile above: the form posts the ROW id, so the company id rides alongside it.
+  const companyId = String(formData.get('companyId'));
   try {
     await removeCompanyStatutoryAuthority(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(ORG, e);
+    failCompany(e, companyId, companyTab(formData));
   }
-  ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(companyId, t('removedToast'), companyTab(formData));
 }
 
 export async function createDepartmentAction(formData: FormData) {
@@ -1429,12 +1498,15 @@ export async function archiveBusinessUnitAction(fd: FormData) {
 
 export async function updateCompanyAction(fd: FormData) {
   const s = await getSession();
+  // 65b22c00 — this form posts the company as `id`, not `companyId`; the destination reads the same one
+  // the write does, so a save and its confirmation can never name different companies.
+  const id = String(fd.get('id'));
   // Enhance Company General Tab (bc5d4891): read each new field, trim, and treat empty as an explicit
   // clear (empty string -> the service normalizes to null). Website format is validated in the service.
   const str = (k: string) => String(fd.get(k) ?? '').trim();
   try {
     await updateCompany(s, {
-      id: String(fd.get('id')),
+      id,
       legalName: String(fd.get('legalName') ?? '').trim(),
       registrationNo: (fd.get('registrationNo') as string) || undefined,
       country: (fd.get('country') as string) || undefined,
@@ -1455,18 +1527,58 @@ export async function updateCompanyAction(fd: FormData) {
       phone: str('phone'),
       fax: str('fax'),
     });
-  } catch (e) { fail(ORG, e); }
-  ok(ORG);
+  } catch (e) { failCompany(e, id, companyTab(fd)); }
+  const t = await getTranslations('admin.organization');
+  okCompany(id, t('savedToast'), companyTab(fd));
 }
+
+/**
+ * 65b22c00 — THE ONE COMPANY ACTION WITH TWO HOMES, so the destination comes from the form.
+ *
+ * This is bound on the company's own screen AND on every row of the company list
+ * (components/company-rows.tsx). Pressed on the list it must leave the reader on the list — opening a
+ * company because they archived its row would be a regression on a screen this item does not touch.
+ * `fromCompanyScreen` reads the closed-list marker the panel's two archive forms carry explicitly.
+ *
+ * Both destinations revalidate the list, so the row's Active/Archived badge is right either way.
+ */
 export async function archiveCompanyAction(fd: FormData) {
   const s = await getSession();
-  try { await archiveCompany(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(ORG, e); }
-  ok(ORG);
+  const id = String(fd.get('id'));
+  const toArchive = archived(fd);
+  const stay = fromCompanyScreen(fd);
+  try {
+    await archiveCompany(s, { id, archived: toArchive });
+  } catch (e) {
+    if (stay) failCompany(e, id, companyTab(fd));
+    fail(ORG, e);
+  }
+  if (!stay) ok(ORG);
+  const t = await getTranslations('admin.organization');
+  okCompany(id, t(toArchive ? 'archivedToast' : 'unarchivedToast'), companyTab(fd));
 }
+
+/**
+ * 65b22c00 — THE ONE SAVE ON THIS SCREEN THAT MUST NOT STAY, and finding 2 of
+ * docs/audits/65b22c00-organization-save-classification.md is why: after a successful delete the row the
+ * detail page reads is gone, `listCompanies` no longer contains it, and that page's own scope guard
+ * answers a missing id with notFound(). "Staying" would hand the reader a 404 for the company they just
+ * deleted. So success returns to the LIST, with the confirmation there.
+ *
+ * A REFUSAL is the opposite case and returns to the company: `deleteCompany` throws InUseError when a
+ * department, employment or subsidiary still points at it, and that message belongs on the screen that
+ * holds the button — where Archive is the next thing to press.
+ */
 export async function deleteCompanyAction(fd: FormData) {
   const s = await getSession();
-  try { await deleteCompany(s, { id: String(fd.get('id')) }); } catch (e) { fail(ORG, e); }
-  ok(ORG);
+  const id = String(fd.get('id'));
+  try {
+    await deleteCompany(s, { id });
+  } catch (e) {
+    failCompany(e, id, companyTab(fd));
+  }
+  const t = await getTranslations('admin.organization');
+  okToast(ORG, t('deletedToast'));
 }
 
 export async function updateLeaveTypeAction(fd: FormData) {

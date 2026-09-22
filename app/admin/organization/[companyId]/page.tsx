@@ -10,6 +10,7 @@ import { listPayrollCycles } from '@/packs/payroll/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { CompanyPanel } from '@/components/company-panel';
+import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
 import { resolveGroupTree } from '../group-tree';
 import {
   archiveCompanyAction,
@@ -52,11 +53,11 @@ export default async function CompanyMaintenancePage({
   searchParams,
 }: {
   params: Promise<{ companyId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; tab?: string }>;
 }) {
   const { s } = await scopedAdmin();
   const { companyId } = await params;
-  const { error } = await searchParams;
+  const { error, tab } = await searchParams;
   const t = await getTranslations('admin.organization');
 
   const [companies, tree] = await Promise.all([
@@ -153,6 +154,11 @@ export default async function CompanyMaintenancePage({
         signatories={signatories.filter((sg) => sg.companyId === companyId)}
         stateOptions={stateOpts.map((o) => ({ value: o.value, label: o.label }))}
         activeCycleNames={cycles ? cycles.map((r) => r.name) : null}
+        // 65b22c00 — the tab a save came from, VALIDATED against the closed list here rather than
+        // trusted: `?tab=` is reader-supplied, and an unrecognised value simply opens General. It is
+        // this half that makes "stay on the screen" mean the screen they were actually on; without it
+        // every statutory and bank save would land back on the General tab.
+        initialTab={isCompanyPanelTab(tab) ? tab : undefined}
         // 3c2f55d7 — `defaultExpanded` is gone, not defaulted: the panel no longer folds at all. This
         // was its only caller and it always passed the prop, so the flag could only ever have one
         // value; the same reasoning now applies to the three folds that were INSIDE the panel.

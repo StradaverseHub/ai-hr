@@ -6989,7 +6989,12 @@
       "actionArchive": "Arkibkan",
       "actionUnarchive": "Nyaharkib",
       "authorityRegistrationSection": "Pendaftaran",
-      "authorityRegistrationHint": "Sama ada syarikat ini berdaftar dengan HRD Corp. Ia menentukan sama ada levi dikenakan langsung - ia bukan nombor rujukan."
+      "authorityRegistrationHint": "Sama ada syarikat ini berdaftar dengan HRD Corp. Ia menentukan sama ada levi dikenakan langsung - ia bukan nombor rujukan.",
+      "savedToast": "Disimpan",
+      "removedToast": "Dibuang",
+      "archivedToast": "Syarikat diarkibkan",
+      "unarchivedToast": "Syarikat dinyaharkib",
+      "deletedToast": "Syarikat dipadam"
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

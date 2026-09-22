@@ -6989,7 +6989,12 @@
       "actionArchive": "Archive",
       "actionUnarchive": "Unarchive",
       "authorityRegistrationSection": "Registration",
-      "authorityRegistrationHint": "Whether this company is registered with HRD Corp. It decides if the levy is charged at all - it is not a reference number."
+      "authorityRegistrationHint": "Whether this company is registered with HRD Corp. It decides if the levy is charged at all - it is not a reference number.",
+      "savedToast": "Saved",
+      "removedToast": "Removed",
+      "archivedToast": "Company archived",
+      "unarchivedToast": "Company restored",
+      "deletedToast": "Company deleted"
     },
     "systemLabels": {
       "pageTitle": "System Labels",

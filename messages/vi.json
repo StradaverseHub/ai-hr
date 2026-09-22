@@ -6989,7 +6989,12 @@
       "actionArchive": "Lưu trữ",
       "actionUnarchive": "Bỏ lưu trữ",
       "authorityRegistrationSection": "Đăng ký",
-      "authorityRegistrationHint": "Công ty này có đăng ký với HRD Corp hay không. Nó quyết định khoản thu có được tính hay không - đây không phải là số tham chiếu."
+      "authorityRegistrationHint": "Công ty này có đăng ký với HRD Corp hay không. Nó quyết định khoản thu có được tính hay không - đây không phải là số tham chiếu.",
+      "savedToast": "Đã lưu",
+      "removedToast": "Đã xóa",
+      "archivedToast": "Đã lưu trữ công ty",
+      "unarchivedToast": "Đã bỏ lưu trữ công ty",
+      "deletedToast": "Đã xóa công ty"
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
