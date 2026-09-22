@@ -1,0 +1,112 @@
+<meta charset="utf-8">
+<title>Schedule Groups — three weeks, nobody's Saturday moves</title>
+<!--
+  07ebd04d rev 2. The split the REPORTER proposed, with the engine answer to the question they asked.
+  Shift names, patterns and employee counts are REAL, read from production 2026-09-22:
+    weekly {1,2,3,4,5} on all six; half {6} on AM02 only; off {6} on MB28 only.
+    open assignments: AM01 1, AM02 0, AM03 1, AM4 0, MB28 2, SemiFlex01 2.
+  The OT rates are the engine's: core/attendance.ts ~980 sends 'off' to policyBranch('workday')
+  (s.60A(3)(a), 1.5x) and 'rest' to policyBranch('rest_day') (s.60(3), 2.0x).
+  Deliberately NOT drawn: the migration screen. It does not exist yet and the reporter's own protocol
+  says nothing moves until they confirm.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--good:#067647;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 16px;font-size:12.5px;color:var(--mf)}
+ .ans{background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:8px;padding:12px 15px;margin-bottom:18px}
+ .ans h2{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn)}
+ .ans p{margin:0 0 6px;font-size:12.5px;line-height:1.55}
+ .ans p:last-child{margin:0}
+ .rate{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:700;background:color-mix(in srgb,var(--warn) 12%,white);color:var(--warn)}
+ .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+ .g{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .g .h{padding:10px 13px;border-bottom:1px solid var(--border);background:var(--muted)}
+ .g .h b{display:block;font-size:13px}
+ .g .h span{font-size:11px;color:var(--mf)}
+ .wk{display:flex;gap:3px;padding:11px 13px 6px}
+ .d{flex:1;text-align:center;border-radius:5px;padding:4px 0;font-size:10px;font-weight:600;border:1px solid var(--border);background:#fff;color:var(--mf)}
+ .d.w{background:color-mix(in srgb,var(--primary) 12%,white);border-color:transparent;color:var(--primary)}
+ .d.h{background:color-mix(in srgb,#b8860b 16%,white);border-color:transparent;color:#8a6508}
+ .d.o{background:color-mix(in srgb,var(--warn) 13%,white);border-color:transparent;color:var(--warn)}
+ .d.r{background:#f2f2f6;color:#9a9aa6}
+ .satnote{padding:2px 13px 9px;font-size:11px;color:var(--mf)}
+ .satnote b{color:var(--fg)}
+ .sh{padding:9px 13px;border-top:1px solid #eceef5}
+ .sh .k{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);margin-bottom:4px}
+ .sh ul{margin:0;padding-left:16px;font-size:12px}
+ .sh li{margin-bottom:2px}
+ .cnt{padding:8px 13px;border-top:1px solid #eceef5;background:#fbfbfd;font-size:11.5px}
+ .cnt b{font-size:15px}
+ .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .key{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--mf)}
+ .key span b{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+</style>
+
+<div class="wrap">
+  <h1>Schedule Groups &mdash; three working weeks, and nobody&rsquo;s Saturday moves</h1>
+  <p class="sub">Your shifts and employee numbers, read from your live system on 22 September 2026</p>
+
+  <div class="ans">
+    <h2>The question you asked us &mdash; answered from the calculation itself</h2>
+    <p>You asked whether &ldquo;Saturday not applicable&rdquo; and &ldquo;Saturday Off Day&rdquo; mean the
+    same thing. <b>They do not, and the difference is pay.</b></p>
+    <p><b>Saturday not applicable</b> makes it a rest day &mdash; working it is paid at rest-day rates,
+    <span class="rate">up to 2&times;</span> &nbsp;&middot;&nbsp; <b>Saturday Off Day</b> makes it a non-working day
+    that is not a rest day &mdash; working it is ordinary overtime,
+    <span class="rate">1.5&times;</span></p>
+    <p>Both look identical on a roster. They pay differently. That is why these cannot share one group.</p>
+  </div>
+
+  <div class="cols">
+    <div class="g">
+      <div class="h"><b>Standard 5 Day</b><span>Saturday not applicable &middot; rest day</span></div>
+      <div class="wk"><div class="d w">M</div><div class="d w">T</div><div class="d w">W</div><div class="d w">T</div><div class="d w">F</div><div class="d r">S</div><div class="d r">S</div></div>
+      <div class="satnote">Saturday: <b>rest day</b> &mdash; worked at up to 2&times;</div>
+      <div class="sh"><div class="k">Shifts in this group</div><ul><li>AM01</li><li>AM03</li><li>Semi Flexi Shift 01</li></ul></div>
+      <div class="cnt"><b>4</b> employees &middot; none move</div>
+    </div>
+
+    <div class="g">
+      <div class="h"><b>Standard 5.5 Day</b><span>Saturday half day</span></div>
+      <div class="wk"><div class="d w">M</div><div class="d w">T</div><div class="d w">W</div><div class="d w">T</div><div class="d w">F</div><div class="d h">S</div><div class="d r">S</div></div>
+      <div class="satnote">Saturday: <b>half day</b> &mdash; a working day</div>
+      <div class="sh"><div class="k">Shifts in this group</div><ul><li>AM02</li></ul></div>
+      <div class="cnt"><b>0</b> employees &middot; none move</div>
+    </div>
+
+    <div class="g">
+      <div class="h"><b>Standard 5 Day + Saturday Off</b><span>Saturday off day</span></div>
+      <div class="wk"><div class="d w">M</div><div class="d w">T</div><div class="d w">W</div><div class="d w">T</div><div class="d w">F</div><div class="d o">S</div><div class="d r">S</div></div>
+      <div class="satnote">Saturday: <b>off day</b> &mdash; worked at 1.5&times;</div>
+      <div class="sh"><div class="k">Shifts in this group</div><ul><li>SAG MORNING FULL (0800&ndash;1700)</li></ul></div>
+      <div class="cnt"><b>2</b> employees &middot; none move</div>
+    </div>
+  </div>
+
+  <div class="key">
+    <span><b style="background:color-mix(in srgb,#4f46e5 12%,white)"></b>Working</span>
+    <span><b style="background:color-mix(in srgb,#b8860b 16%,white)"></b>Half day</span>
+    <span><b style="background:color-mix(in srgb,#b54708 13%,white)"></b>Off day</span>
+    <span><b style="background:#f2f2f6"></b>Rest</span>
+  </div>
+
+  <div class="foot">
+    <h3>What happens before anything moves</h3>
+    <p>Exactly the order you set out: nothing about your shifts is changed automatically. We produce the
+    full list first &mdash; every shift, the group it would move into, and every employee affected
+    &mdash; and you confirm it before a single record changes. Historical rosters and attendance stay
+    exactly as they are.</p>
+    <p>Your other group <b>A02</b> holds one shift, AM4, with nobody assigned. It already agrees with
+    itself, so we leave it alone.</p>
+    <p>Sketch only &mdash; wording, spacing and colours will differ from the finished screen.</p>
+  </div>
+</div>
