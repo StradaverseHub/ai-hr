@@ -110,6 +110,49 @@ describe('Overtime rate configuration (rest-day / holiday excess multipliers) + 
     expect(res.holiday).toBe(237.5);
   });
 
+  /**
+   * a96d320c — THE SAME GOLDEN FIGURES, DECOMPOSED INTO WHAT WAS MULTIPLIED BY WHAT.
+   *
+   * The board item asked the payslip to show the overtime rate and the hours behind it. `total` is one
+   * number, so the engine now also returns the legs that produced it — and this test is the one that says
+   * they are the SAME money, not a parallel calculation that could drift. Every leg is checked against
+   * the reader's own arithmetic (`qty × rate === amount`), and the legs are checked to be the whole of
+   * `total` rather than a subset of it. Nothing about `total`, `restDay`, `holiday` or `workday` moved:
+   * guard (a) directly above still asserts the identical figures it always did.
+   */
+  it('(a2) the same run reports the legs behind the figure, and they are the whole of it', () => {
+    const wages = 2600; // orp = 100, hourly = 12.5
+    const res = overtimePay({
+      monthlyWages: wages,
+      days: [
+        { dayType: 'workday', minutes: 120 }, //            2h at 1.5 x 12.50 = 37.50
+        { dayType: 'rest_day', minutes: 480 + 120 }, //      1 day ORP (100) + 2h at 2 x 12.50 (50)
+        { dayType: 'holiday', minutes: 480 + 60 }, //        2 days ORP (200) + 1h at 3 x 12.50 (37.50)
+        { dayType: 'rest_day', minutes: 120 }, //            2h <= half a normal day => HALF a day's ORP
+      ],
+    });
+    expect(res.lines).toEqual([
+      { kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 },
+      // 1 full rest day + a half one: the day-FRACTIONS are summed, because that is how s.60(3)(b) pays.
+      { kind: 'rest_day', qty: 1.5, unit: 'days', rate: 100, amount: 150 },
+      { kind: 'rest_day_excess', qty: 2, unit: 'hours', rate: 25, amount: 50 },
+      { kind: 'holiday', qty: 2, unit: 'days', rate: 100, amount: 200 },
+      { kind: 'holiday_excess', qty: 1, unit: 'hours', rate: 37.5, amount: 37.5 },
+    ]);
+    // THE TWO PROPERTIES THE PAYSLIP LEANS ON, asserted here so no renderer has to re-derive them.
+    for (const l of res.lines) expect(round2(l.qty * l.rate)).toBe(l.amount);
+    expect(round2(res.lines.reduce((s, l) => s + l.amount, 0))).toBe(res.total);
+  });
+
+  it('(a3) an employee over the entitlement ceiling gets no legs, because there is no overtime to explain', () => {
+    // The First Schedule gate already returns a zero total for a >RM4,000 earner. A decomposition of
+    // nothing would be a set of hours beside no money, which is worse than silence.
+    const res = overtimePay({ monthlyWages: 5000, days: [{ dayType: 'workday', minutes: 120 }] });
+    expect(res.eligible).toBe(false);
+    expect(res.total).toBe(0);
+    expect(res.lines).toEqual([]);
+  });
+
   // (b) Changed excess multipliers ⇒ exact recomputed figures; only the excess leg moves.
   it('(b) configured excess multipliers move ONLY the excess leg (base-day + workday unchanged)', () => {
     const wages = 2600;

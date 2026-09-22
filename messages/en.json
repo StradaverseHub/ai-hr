@@ -3059,7 +3059,14 @@
       "claim": "Claim",
       "employerBorneHeading": "Paid by your employer on your behalf",
       "employerBorneTotal": "Total paid by employer on your behalf",
-      "employerBorneNote": "These are your statutory contributions, funded by your employer. They are still reported in full to the authorities, and they have NOT been deducted from your pay — which is why they read RM 0.00 under Deductions above."
+      "employerBorneNote": "These are your statutory contributions, funded by your employer. They are still reported in full to the authorities, and they have NOT been deducted from your pay — which is why they read RM 0.00 under Deductions above.",
+      "hourUnit": "hour",
+      "hoursUnit": "hours",
+      "otLegWorkday": "Overtime — normal working day",
+      "otLegRestDay": "Overtime — rest day",
+      "otLegRestDayExcess": "Overtime — rest day, beyond normal hours",
+      "otLegHoliday": "Overtime — public holiday",
+      "otLegHolidayExcess": "Overtime — public holiday, beyond normal hours"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",

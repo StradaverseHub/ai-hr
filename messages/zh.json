@@ -3026,7 +3026,14 @@
       "claim": "报销",
       "employerBorneHeading": "由雇主代您缴付",
       "employerBorneTotal": "雇主代您缴付合计",
-      "employerBorneNote": "这些是您应缴的法定供款，由雇主承担。它们仍会全额呈报给相关机构，并且没有从您的工资中扣除——这就是上方扣除项显示为 RM 0.00 的原因。"
+      "employerBorneNote": "这些是您应缴的法定供款，由雇主承担。它们仍会全额呈报给相关机构，并且没有从您的工资中扣除——这就是上方扣除项显示为 RM 0.00 的原因。",
+      "hourUnit": "小时",
+      "hoursUnit": "小时",
+      "otLegWorkday": "加班费 — 正常工作日",
+      "otLegRestDay": "加班费 — 休息日",
+      "otLegRestDayExcess": "加班费 — 休息日，超出正常工时",
+      "otLegHoliday": "加班费 — 公共假期",
+      "otLegHolidayExcess": "加班费 — 公共假期，超出正常工时"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",

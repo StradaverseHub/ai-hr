@@ -40,6 +40,29 @@ export function formatMoney(n: unknown, currency: CurrencyCode | null | undefine
 }
 
 /**
+ * a96d320c — A UNIT RATE, WHICH IS NOT AN AMOUNT AND MUST NOT BE ROUNDED LIKE ONE.
+ *
+ * A payslip line that says "10 hours × MYR 36.05 = MYR 360.45" is a payslip that does not multiply out.
+ * The rate an overtime hour is actually paid at is `1.5 × hourly`, and an hourly rate with odd cents
+ * gives that rate three decimals — so rounding it to the sen for display breaks the reader's own
+ * arithmetic on a document whose entire point is that the arithmetic can be checked.
+ *
+ * So: at least two decimals (a rate of exactly RM12 still reads "12.00", beside amounts that do), at most
+ * four, trailing zeros beyond the second dropped by `maximumFractionDigits`. Four is where the product of
+ * a two-decimal hourly rate and the EA multipliers terminates; a longer tail would be arithmetic noise,
+ * and `Intl` rounds it rather than lengthening the string.
+ *
+ * Same currency treatment as `formatMoney`, for the same reason: a prefix, never a localised symbol, and
+ * an absent currency prints the bare number rather than claiming one.
+ */
+export function formatRate(n: unknown, currency: CurrencyCode | null | undefined, locale = 'en-MY'): string {
+  const v = typeof n === 'string' ? Number(n) : typeof n === 'number' ? n : Number.NaN;
+  if (!Number.isFinite(v)) return '—';
+  const rate = v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return currency ? `${currency} ${rate}` : rate;
+}
+
+/**
  * The ONE currency shared by every row, or null when the rows disagree (or there are none).
  *
  * Null is the signal to show per-currency subtotals instead of a single total. Callers must branch on

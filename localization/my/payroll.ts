@@ -1028,6 +1028,41 @@ export { MY_OT_WAGE_CEILING };
 
 export type OtDay = { dayType: 'workday' | 'rest_day' | 'holiday'; minutes: number };
 
+/**
+ * a96d320c — WHICH RULE PAID WHICH PART, AS QUANTITY × UNIT RATE.
+ *
+ * The board item asked for "the overtime rate and the hours behind it". `total` is one number; the five
+ * legs below are what produced it, and each one is a genuine quantity times a genuine unit rate under the
+ * EA sections cited above — not a reconstruction. They are RETURNED, not printed: the kernel stamps them
+ * onto the payroll_input row the figure was written to, and the payslip reads them back (see
+ * `prefillOvertimeFromAttendance`). Nothing here changes a figure: `total` is composed exactly as it was.
+ *
+ * `kind` is a STORED CONTRACT, like `EarningBucket` — a reader maps it to a localized label and must never
+ * reinterpret it.
+ *
+ * WHY `rate` IS NOT ROUNDED TO THE SEN. A workday hour is paid at `1.5 × hourly`, which carries three
+ * decimals whenever the hourly rate's cents are odd. Rounding it here would stop `qty × rate` reproducing
+ * `amount`, and a payslip that prints a quantity, a rate and a product that do not multiply out is worse
+ * than one that prints the total alone. The rate is stored exactly and the document prints it at the
+ * precision it actually has.
+ *
+ * `qty` IS rounded to two places, because it is what a reader multiplies: the rounded quantity is the one
+ * `amount` is computed from, so the arithmetic on the page is the arithmetic that happened. A day count
+ * that rounding moved would make the legs stop summing to `total`, and the kernel refuses to stamp a
+ * decomposition that does not sum — see `prefillOvertimeFromAttendance`.
+ */
+export type OvertimeLineKind = 'workday' | 'rest_day' | 'rest_day_excess' | 'holiday' | 'holiday_excess';
+export type OvertimeLine = {
+  kind: OvertimeLineKind;
+  /** HOURS for the three hourly legs; DAYS of ordinary rate of pay for the two base-day legs. */
+  qty: number;
+  unit: 'hours' | 'days';
+  /** What ONE unit was paid at. Exact, not rounded — see the type's header. */
+  rate: number;
+  /** `round2(qty × rate)`. */
+  amount: number;
+};
+
 export type OvertimePayResult = {
   eligible: boolean;
   orp: number;
@@ -1036,6 +1071,9 @@ export type OvertimePayResult = {
   restDay: number;
   holiday: number;
   total: number;
+  /** a96d320c — the legs behind `total`. Empty when the employee is not entitled (no OT was computed).
+   *  ADDITIVE: every caller that only reads the totals is untouched. */
+  lines: OvertimeLine[];
 };
 
 /** Monetize a month of classified OT minutes (one entry per day — the rest-day ½/1-day
@@ -1055,30 +1093,53 @@ export function overtimePay(p: {
   const orp = round2(p.monthlyWages / 26);
   const hourly = round2(orp / hoursPerDay);
   const eligible = p.monthlyWages <= (p.wageCeiling ?? MY_OT_WAGE_CEILING);
-  const out: OvertimePayResult = { eligible, orp, hourly, workday: 0, restDay: 0, holiday: 0, total: 0 };
+  const out: OvertimePayResult = { eligible, orp, hourly, workday: 0, restDay: 0, holiday: 0, total: 0, lines: [] };
   if (!eligible) return out;
   // The two EXCESS-hours factors are HR-configurable (ADR-0019 ot ruleset); the workday 1.5× and the base-day
   // legs (rest-day ½/1-day ORP, holiday 2-days ORP) are EA-fixed and stay literal.
   const restExcess = p.restDayExcessMultiplier ?? 2;
   const holidayExcess = p.holidayExcessMultiplier ?? 3;
   const normalMin = hoursPerDay * 60;
+  // a96d320c — the QUANTITIES, accumulated alongside the money they produce. Every `+=` below sits beside
+  // the `out.*` line it belongs to, deliberately: an accumulator added anywhere else is how a quantity and
+  // an amount start describing different days. Nothing here feeds `out.total`.
+  let workdayHours = 0;
+  let restOrpDays = 0;
+  let restExcessHours = 0;
+  let holidayOrpDays = 0;
+  let holidayExcessHours = 0;
   for (const d of p.days) {
     const m = Math.max(0, d.minutes);
     if (m === 0) continue;
     if (d.dayType === 'workday') {
       out.workday += (m / 60) * 1.5 * hourly;
+      workdayHours += m / 60;
     } else if (d.dayType === 'rest_day') {
       const within = Math.min(m, normalMin);
       out.restDay += within <= normalMin / 2 ? 0.5 * orp : orp;
+      restOrpDays += within <= normalMin / 2 ? 0.5 : 1;
       out.restDay += (Math.max(0, m - normalMin) / 60) * restExcess * hourly;
+      restExcessHours += Math.max(0, m - normalMin) / 60;
     } else {
       out.holiday += 2 * orp;
+      holidayOrpDays += 2;
       out.holiday += (Math.max(0, m - normalMin) / 60) * holidayExcess * hourly;
+      holidayExcessHours += Math.max(0, m - normalMin) / 60;
     }
   }
   out.workday = round2(out.workday);
   out.restDay = round2(out.restDay);
   out.holiday = round2(out.holiday);
   out.total = round2(out.workday + out.restDay + out.holiday);
+  const leg = (kind: OvertimeLineKind, qty: number, unit: 'hours' | 'days', rate: number) => {
+    const q = round2(qty);
+    if (q <= 0) return;
+    out.lines.push({ kind, qty: q, unit, rate, amount: round2(q * rate) });
+  };
+  leg('workday', workdayHours, 'hours', 1.5 * hourly);
+  leg('rest_day', restOrpDays, 'days', orp);
+  leg('rest_day_excess', restExcessHours, 'hours', restExcess * hourly);
+  leg('holiday', holidayOrpDays, 'days', orp);
+  leg('holiday_excess', holidayExcessHours, 'hours', holidayExcess * hourly);
   return out;
 }

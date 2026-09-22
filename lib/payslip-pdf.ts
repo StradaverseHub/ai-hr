@@ -19,7 +19,7 @@
 // total beside them.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 
-import { formatMoney } from './money';
+import { formatMoney, formatRate } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
@@ -31,6 +31,9 @@ import {
   payItemLinesForBuckets,
   payItemLinesReconcile,
   storedComponentLines,
+  storedOvertimeLines,
+  type OtLegKind,
+  type PayItemRateDetail,
   type StoredComponentLine,
 } from '../core/payslip-earning-lines';
 
@@ -38,8 +41,18 @@ const n = (v: unknown) => Number(v ?? 0);
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 /** One named pay item as the run recorded it. `code` is the operator's pay-code; absent on nothing today,
- *  but optional so a line without one still prints its name. */
-export type PayslipEarningLine = { code: string | null; name: string; amount: number };
+ *  but optional so a line without one still prints its name.
+ *
+ *  a96d320c — `detail` and `otLeg` are the RATE AND THE INPUT the run recorded (core/payslip-earning-lines
+ *  .ts). Both absent on every payslip written before that shipped, which is what keeps those documents
+ *  printing exactly as they do now. The document DERIVES NEITHER: it prints what it is given, or nothing. */
+export type PayslipEarningLine = {
+  code: string | null;
+  name: string;
+  amount: number;
+  detail?: PayItemRateDetail | null;
+  otLeg?: OtLegKind | null;
+};
 
 /** Year-to-date totals for the payslip's own year. Summed by the CALLER from the same read that lists the
  *  employee's months (core/payroll-view.ts `sumPayslipYtd`), never recomputed here. */
@@ -269,6 +282,21 @@ export type PayslipPdfLabels = {
   nonPayableTotal: string;
   /** One line under it saying, in the employee's own words, that none of this reached their pay. */
   nonPayableNote: string;
+  // ─── a96d320c — the rate-and-input vocabulary. REQUIRED, like every label above, so tsc is what keeps
+  // the two PDF routes printing the same document. ───
+  /** The bare unit words appended to a quantity, composed exactly as `dayUnit`/`daysUnit` already are —
+   *  two static literals, never an ICU plural, because a placeholder called without its argument throws
+   *  at render behind a 200 and this file is generated rather than rendered. */
+  hourUnit: string;
+  hoursUnit: string;
+  /**
+   * The five legs of the statutory overtime calculation, by the kernel's own stored `kind`.
+   *
+   * A Record over `OtLegKind` rather than five flat keys: tsc then refuses a route that resolves four of
+   * them, and adding a sixth leg to the pack breaks both routes at compile time instead of printing an
+   * unlabelled row on somebody's payslip.
+   */
+  otLegs: Record<OtLegKind, string>;
 };
 
 /**
@@ -345,7 +373,14 @@ export function buildPayslipPdfData(
     // decides whether they may replace the grouped row; deriving them here keeps every "which lines
     // explain which figure" answer in one function.
     bonusLines: payItemLinesForBuckets(componentLines, ['bonus']),
-    overtimeLines: payItemLinesForBuckets(componentLines, ['ot']),
+    // a96d320c — AND THE STATUTORY OVERTIME LEGS, when the figure came from attendance rather than from a
+    // pay item. The two sources are mutually exclusive by construction: the `ot` bucket is fed by typed
+    // pay components, `statutory.otDetail` by `prefillOvertimeFromAttendance` — one run's overtime is one
+    // or the other. The component lines WIN when both somehow exist, because they carry the pay item's own
+    // name and the statutory legs do not; and `earningsRowsOf`'s reconciliation guard is what actually
+    // decides whether either may replace the grouped row, so a wrong guess here degrades to today's
+    // document rather than to a wrong one.
+    overtimeLines: overtimeLinesOf(componentLines, p.statutory),
     detailNotRecorded: componentLines.length === 0,
     nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
@@ -376,6 +411,20 @@ function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
   return (raw as StoredRecordLine[])
     .filter((l) => l?.nonPayable === true)
     .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
+}
+
+/**
+ * a96d320c — WHICH LINES EXPLAIN THE OVERTIME FIGURE, from whichever of the two places recorded them.
+ *
+ * `statutory.componentLines` explains an OT figure built out of typed pay items. `statutory.otDetail`
+ * explains one the attendance engine monetised under the EA — the case the board item is actually about,
+ * and the one that had nothing stored at all. A run produces one or the other, never both; the component
+ * lines are preferred when both are present because they carry the pay item's own description, which is
+ * strictly more informative than a rule name.
+ */
+function overtimeLinesOf(lines: StoredComponentLine[], statutory: unknown): PayslipEarningLine[] {
+  const fromComponents = payItemLinesForBuckets(lines, ['ot']);
+  return fromComponents.length > 0 ? fromComponents : storedOvertimeLines(statutory);
 }
 
 /**
@@ -472,6 +521,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   // 5c198931 — the ISO code is a PREFIX via lib/money.ts, so a company paid in SGD stops being told its
   // payroll is in ringgit. An absent currency prints the bare number: unlabelled is honest, "RM" is a claim.
   const money = (v: unknown) => formatMoney(v, d.currency ?? null);
+  // a96d320c — a RATE is not an amount: it keeps up to four decimals so `qty × rate` still produces the
+  // amount printed beside it. See `formatRate`.
+  const rate = (v: number) => formatRate(v, d.currency ?? null);
 
   const logo = await embedLogo(doc, d.logo);
 
@@ -616,7 +668,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   };
 
   // ─── the rows this payslip prints ───
-  const earnRows = earningsRowsOf(d, t);
+  const earnRows = earningsRowsOf(d, t, rate);
   const dedRows: Row[] = [
     { label: t.epf, amount: d.epfEmployee },
     { label: t.socso, amount: d.socsoEmployee },
@@ -1135,8 +1187,34 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
  * its OWN total, so bonus itemising while overtime does not (an attendance-derived OT figure has no
  * component line to explain it) is a normal outcome, not a special case.
  */
-function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels): Row[] {
+function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number) => string): Row[] {
   const rows: Row[] = [{ label: t.basicSalary, amount: d.basic }];
+  /**
+   * a96d320c — "10 hours × MYR 36.045", composed from what the RUN recorded and nothing else.
+   *
+   * The quantity and the rate are read off the line; this function does no arithmetic and derives no
+   * figure. Composed from static literals rather than an ICU message for the same reason
+   * `absenceDaysLabel` is (see core/payslip-absence-lines.ts): a placeholder called without its argument
+   * throws at render, behind a 200, on a document nobody re-renders.
+   *
+   * The multiplication sign is U+00D7, which IS in Latin-1 — `safe()` passes it through, where the
+   * typographic dashes and quotes it folds would not survive.
+   */
+  const detailSub = (l: PayslipEarningLine): string | null => {
+    const det = l.detail;
+    if (!det) return null;
+    const unit =
+      det.unit === 'hours'
+        ? det.qty === 1
+          ? t.hourUnit
+          : t.hoursUnit
+        : det.unit === 'days'
+          ? det.qty === 1
+            ? t.dayUnit
+            : t.daysUnit
+          : null;
+    return `${det.qty}${unit ? ` ${unit}` : ''} × ${rate(det.rate)}`;
+  };
   /** Named rows for a figure when they add up to it, otherwise the one grouped row, exactly as before. */
   const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
     const named = lines ?? [];
@@ -1145,7 +1223,13 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels): Row[] {
       // argument, and for why the `sub` slot itself is kept). `l.code` is still read from the stamp and
       // still reaches the admin surfaces through `payItemLabel`; it is only this document that stops
       // printing "Basic salary · BASIC" at somebody who has no use for the second half.
-      for (const l of named) rows.push({ label: l.name, amount: l.amount });
+      //
+      // …and the slot is now carrying the thing the reporter asked FOR. A statutory overtime leg takes
+      // its label from `otLegs` rather than from a stored name, because it is a rule of the Employment
+      // Act rather than a pay item somebody keyed.
+      for (const l of named) {
+        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub: detailSub(l), amount: l.amount });
+      }
     } else {
       rows.push({ label: grouped, amount: total });
     }

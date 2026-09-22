@@ -95,6 +95,18 @@ const labels: PayslipPdfLabels = {
   nonPayable: 'Non-payable items',
   nonPayableTotal: 'Total non-payable',
   nonPayableNote: 'Recorded for your reference only - these do not affect your gross or net pay.',
+  // a96d320c — the rate-and-input vocabulary. REQUIRED on the type, and tsc caught this fixture the
+  // moment the keys were added, which is the mechanism that stops one PDF route printing a block the
+  // other one does not.
+  hourUnit: 'hour',
+  hoursUnit: 'hours',
+  otLegs: {
+    workday: 'Overtime - normal working day',
+    rest_day: 'Overtime - rest day',
+    rest_day_excess: 'Overtime - rest day, beyond normal hours',
+    holiday: 'Overtime - public holiday',
+    holiday_excess: 'Overtime - public holiday, beyond normal hours',
+  },
 };
 const data: PayslipPdfData = {
   employee: 'Aisyah Rahman',
@@ -1209,5 +1221,189 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     for (const code of ['A0027', 'B0001', 'OT15', 'BIK01']) {
       expect(text, `${code} is an internal key, not something an employee can use`).not.toContain(code);
     }
+  });
+});
+
+/**
+ * a96d320c — THE RATE AND THE INPUT REACH THE PAGE, AND ONLY WHEN THEY EXPLAIN THE FIGURE BESIDE THEM.
+ *
+ * This is the half of the item that needed something the payslip did not record. The hours behind an
+ * overtime figure live in attendance, and attendance is correctable after a run — so a document that
+ * fetched them when it was opened would answer with a later month's attendance about money already paid.
+ * The kernel stamps them instead (migration 0479, `statutory.otDetail`), and this file's job is to prove
+ * the renderer PRINTS what it was given and DERIVES nothing.
+ *
+ * Every assertion below is about a document, not about a database: `buildPayslipPdfData` is handed a
+ * statutory blob of exactly the shape the kernel writes, and the drawn text is read back.
+ */
+describe('a96d320c — the overtime rate and the hours behind it', () => {
+  /** A payslip whose whole overtime figure is one attendance-derived leg: 2h at 1.5 × MYR 12.50. */
+  const otSlip = (otDetail: unknown, overtime = 37.5) =>
+    buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '0', overtime: String(overtime), bonus: '0',
+        gross: String(2600 + overtime), otherDeductions: '0', totalDeductions: '0',
+        net: String(2600 + overtime), employerCost: String(2600 + overtime), daysWorked: '31',
+        statutory: { otDetail },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+
+  const WORKDAY_2H = {
+    version: 1,
+    orp: 100,
+    hourly: 12.5,
+    total: 37.5,
+    lines: [{ kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 }],
+  };
+
+  /**
+   * The drawn text with its LINE BREAKS FLATTENED to spaces.
+   *
+   * A row label wraps inside a half-width column — that is the whole reason `wrap()` exists — so
+   * "Overtime - normal working day · 2 hours × MYR 18.75" legitimately reaches the page as two drawn
+   * runs. Asserting on the raw join would be asserting on the column width. `wrap` splits on whitespace
+   * and the reader reads it back the same way, so joining with a space reconstructs the label.
+   */
+  const flat = (bytes: Uint8Array) => drawnText(bytes).replace(/\n/g, ' ');
+
+  it('prints the leg, its hours and its rate in place of the bare "Overtime" row', async () => {
+    const bytes = await renderPayslipPdf(otSlip(WORKDAY_2H), labels);
+    expect(flat(bytes)).toContain('Overtime - normal working day · 2 hours × MYR 18.75');
+    expect(flat(bytes)).toContain('MYR 37.50');
+    // The category word gave way to the rule that paid it, exactly as a named pay item replaces it.
+    // Checked on the PLACEMENTS, because 'Overtime' is a substring of every leg label above.
+    expect(
+      placed(drawnPlacements(bytes), labels.overtime),
+      'no bare grouped Overtime row survives beside the legs',
+    ).toBeUndefined();
+  });
+
+  it('prints a RATE at the precision it actually has, so the multiplication works out', async () => {
+    // A rate of MYR 36.045 is what 1.5 × an hourly rate of MYR 24.03 IS. Rounded to the sen for display
+    // it would read "10 hours × MYR 36.05 = MYR 360.45" — a payslip that does not multiply out, on the
+    // one document whose whole purpose is that its arithmetic can be checked.
+    const detail = {
+      version: 1, orp: 192.24, hourly: 24.03, total: 360.45,
+      lines: [{ kind: 'workday', qty: 10, unit: 'hours', rate: 36.045, amount: 360.45 }],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 360.45), labels));
+    expect(text).toContain('10 hours × MYR 36.045');
+    expect(text).toContain('MYR 360.45');
+  });
+
+  it('names the day-rate legs in DAYS, and the singular in the singular', async () => {
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 250,
+      lines: [
+        { kind: 'rest_day', qty: 1, unit: 'days', rate: 100, amount: 100 },
+        { kind: 'holiday', qty: 1.5, unit: 'days', rate: 100, amount: 150 },
+      ],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 250), labels));
+    expect(text).toContain('Overtime - rest day · 1 day × MYR 100.00');
+    expect(text).toContain('Overtime - public holiday · 1.5 days × MYR 100.00');
+  });
+
+  it('REFUSES the whole itemisation when the legs do not add up to the stored overtime figure', async () => {
+    // The same money-safety guard the allowance and bonus itemisations live under. Rows on a payslip that
+    // fall short of the total beside them is the one failure this document may never commit.
+    const text = flat(await renderPayslipPdf(otSlip(WORKDAY_2H, 50), labels));
+    expect(text).toContain('Overtime');
+    expect(text, 'a leg that does not reconcile is not printed at all').not.toContain('2 hours ×');
+  });
+
+  it('DROPS a leg it does not understand — which costs the itemisation its reconciliation', async () => {
+    // A payslip stamped by a later version that added a sixth leg. Printing the legs this version knows
+    // would print a breakdown that silently omits part of the money; dropping the unknown one makes the
+    // remainder fall short, and the grouped row stands. Three independent failures, one safe answer.
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 87.5,
+      lines: [
+        { kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 },
+        { kind: 'night_shift_from_the_future', qty: 4, unit: 'hours', rate: 12.5, amount: 50 },
+      ],
+    };
+    const text = flat(await renderPayslipPdf(otSlip(detail, 87.5), labels));
+    expect(text).toContain('Overtime');
+    expect(text).not.toContain('2 hours ×');
+  });
+
+  it('REFUSES a leg whose own quantity and rate do not produce its own amount', async () => {
+    // The check the kernel made at write time, made again on read, because a jsonb blob is not a type.
+    const detail = {
+      version: 1, orp: 100, hourly: 12.5, total: 37.5,
+      lines: [{ kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 99 }],
+    };
+    const d = otSlip(detail, 37.5);
+    expect(d.overtimeLines, 'a leg that does not multiply out is not a leg').toEqual([]);
+  });
+
+  it('a payslip whose run recorded nothing prints the overtime line exactly as it does today', async () => {
+    const d = otSlip(undefined, 37.5);
+    expect(d.overtimeLines).toEqual([]);
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Overtime');
+    expect(text).not.toContain('×');
+  });
+
+  it('prints the quantity and rate a PAY ITEM rule multiplied, straight off the component stamp', async () => {
+    // The generic half of the same mechanism, and the one that answers for a quantity-priced deduction or
+    // allowance rather than for statutory overtime: `earningsOf` stamps `detail` onto the component line
+    // when `round2(qty × rate)` is the amount, and it rides through to the page from there.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '450.00', overtime: '0', bonus: '0',
+        gross: '3050.00', otherDeductions: '0', totalDeductions: '0', net: '3050.00',
+        employerCost: '3050.00', daysWorked: '31',
+        statutory: {
+          componentLines: [
+            {
+              code: 'A0044', name: 'Site allowance', amount: 450,
+              buckets: [{ bucket: 'wage', amount: 450 }],
+              detail: { qty: 18, rate: 25, unit: 'days' },
+            },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Site allowance · 18 days × MYR 25.00');
+    expect(text, 'the internal pay code is still off the document').not.toContain('A0044');
+  });
+
+  it('drops the caption when the row prints only PART of what the factors explain', async () => {
+    // A pay item whose money split across buckets (09b554e9: an exempt portion paid untaxed plus a
+    // taxable remainder) contributes part of itself to the allowance line. The factors describe the WHOLE
+    // item, so captioning the partial row with them would print a multiplication that does not produce
+    // the figure beside it. Name and amount survive; only the caption is dropped.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+        payPeriod: '2026-05', basic: '2600.00', allowance: '300.00', overtime: '0', bonus: '0',
+        gross: '2900.00', otherDeductions: '0', totalDeductions: '0', net: '2900.00',
+        employerCost: '2900.00', daysWorked: '31',
+        statutory: {
+          componentLines: [
+            {
+              code: 'A0044', name: 'Site allowance', amount: 450,
+              buckets: [{ bucket: 'wage', amount: 300 }, { bucket: 'bonus', amount: 150 }],
+              detail: { qty: 18, rate: 25, unit: 'days' },
+            },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+      { currency: 'MYR' },
+    );
+    expect(d.earningLines).toEqual([{ code: 'A0044', name: 'Site allowance', amount: 300 }]);
+    const text = flat(await renderPayslipPdf(d, labels));
+    expect(text).toContain('Site allowance');
+    expect(text).not.toContain('18 days ×');
   });
 });

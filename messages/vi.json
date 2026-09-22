@@ -3026,7 +3026,14 @@
       "claim": "Hoàn ứng",
       "employerBorneHeading": "Người sử dụng lao động trả thay bạn",
       "employerBorneTotal": "Tổng do người sử dụng lao động trả thay bạn",
-      "employerBorneNote": "Đây là phần đóng góp luật định của bạn, do người sử dụng lao động chi trả. Các khoản này vẫn được báo cáo đầy đủ cho cơ quan chức năng và KHÔNG bị trừ vào lương của bạn — đó là lý do chúng hiển thị RM 0.00 ở mục Khoản trừ phía trên."
+      "employerBorneNote": "Đây là phần đóng góp luật định của bạn, do người sử dụng lao động chi trả. Các khoản này vẫn được báo cáo đầy đủ cho cơ quan chức năng và KHÔNG bị trừ vào lương của bạn — đó là lý do chúng hiển thị RM 0.00 ở mục Khoản trừ phía trên.",
+      "hourUnit": "giờ",
+      "hoursUnit": "giờ",
+      "otLegWorkday": "Tăng ca — ngày làm việc bình thường",
+      "otLegRestDay": "Tăng ca — ngày nghỉ hằng tuần",
+      "otLegRestDayExcess": "Tăng ca — ngày nghỉ hằng tuần, vượt giờ bình thường",
+      "otLegHoliday": "Tăng ca — ngày lễ",
+      "otLegHolidayExcess": "Tăng ca — ngày lễ, vượt giờ bình thường"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",

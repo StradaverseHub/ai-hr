@@ -211,6 +211,109 @@ describe('Overtime provenance (ot_source) + eligibility surface', () => {
     expect(stat.otSource).toBe('manual');
   });
 
+  /**
+   * ── a96d320c — THE HOURS AND THE RATE, WRITTEN DOWN AT THE MOMENT THEY EXIST ──────────────────────
+   *
+   * The board item asked the payslip to show the overtime rate and the hours behind it. It could not,
+   * because nothing recorded them: the statutory engine produced an ordinary rate of pay, an hourly rate
+   * and five legs with their own quantities, and `prefillOvertimeFromAttendance` kept the RINGGIT TOTAL
+   * and discarded the rest. `payroll_input.ot_derivation` (migration 0479) is where they go now, and
+   * `statutory.otDetail` is the payslip's own copy.
+   *
+   * These four guards are the ones that make the figure trustworthy rather than merely present.
+   */
+  it('6. the prefill records the hours and the rate behind the OT figure, and they add up to it', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch(2600); // under the ceiling
+    // 2h on an ordinary working day. ORP = 2600/26 = 100.00; hourly = 100/8 = 12.50; a workday overtime
+    // hour is paid at 1.5 x hourly = 18.75, so 2 hours is 37.50 — EA s.60A(3)(a).
+    await owner.db.insert(schema.attendance).values({
+      tenantId: base.tenantId,
+      employmentId,
+      attendanceDate: '2026-05-05',
+      dayType: 'workday',
+      otMinutes: 120,
+    });
+    await prefillOvertimeFromAttendance(a, { batchId });
+
+    const row = await rowOf(batchId);
+    const det = row.otDerivation!;
+    expect(det, 'the derivation is stamped on the row whose figure it explains').toBeTruthy();
+    expect(det.orp).toBe(100);
+    expect(det.hourly).toBe(12.5);
+    expect(det.lines).toEqual([{ kind: 'workday', qty: 2, unit: 'hours', rate: 18.75, amount: 37.5 }]);
+    // THE PROPERTY THAT MAKES IT PRINTABLE, asserted rather than assumed: the reader's own arithmetic.
+    for (const l of det.lines) expect(Math.round(l.qty * l.rate * 100) / 100).toBe(l.amount);
+    // …and the legs are the whole of the figure, not a sample of it.
+    expect(det.lines.reduce((s, l) => s + l.amount, 0)).toBe(Number(row.overtimeAmount));
+    expect(det.total).toBe(Number(row.overtimeAmount));
+  });
+
+  it('7. generatePayslips copies the detail onto the payslip, and ONLY when it still explains the figure', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch(2600);
+    await owner.db.insert(schema.attendance).values({
+      tenantId: base.tenantId,
+      employmentId,
+      attendanceDate: '2026-05-05',
+      dayType: 'workday',
+      otMinutes: 120,
+    });
+    await prefillOvertimeFromAttendance(a, { batchId });
+    await generatePayslips(await entitledCtx(base), { batchId });
+
+    const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    const stat = ps.statutory as { otDetail?: { total: number; lines: { kind: string; qty: number; rate: number; amount: number }[] } };
+    expect(stat.otDetail, 'the payslip carries its own copy of the derivation').toBeTruthy();
+    // THE GATE. The copy is on the slip only because its total is still the overtime figure the slip
+    // prints — this is the assertion that a decomposition can never caption a figure it does not explain.
+    expect(stat.otDetail!.total).toBe(Number(ps.overtimePay));
+    expect(stat.otDetail!.lines.map((l) => l.kind)).toEqual(['workday']);
+  });
+
+  it('8. a hand-keyed overtime figure carries NO detail — neither on the input row nor on the payslip', async () => {
+    // A number an operator typed is not a number the statutory engine decomposed. Two independent
+    // mechanisms say so, and the test asserts BOTH, because either alone would be a single point of
+    // failure on a money document: `setPayrollInput` clears the stamp, and the copy at generate time is
+    // gated on an equality the cleared stamp cannot satisfy.
+    const { a, employmentId, batchId } = await hireWithBatch(2600);
+    await owner.db.insert(schema.attendance).values({
+      tenantId: base.tenantId,
+      employmentId,
+      attendanceDate: '2026-05-05',
+      dayType: 'workday',
+      otMinutes: 120,
+    });
+    await prefillOvertimeFromAttendance(a, { batchId });
+    expect((await rowOf(batchId)).otDerivation, 'precondition: the prefill did stamp one').toBeTruthy();
+
+    await setPayrollInput(a, { batchId, employmentId, overtimeAmount: 250 });
+    expect((await rowOf(batchId)).otDerivation, 'a manual save clears it').toBeNull();
+
+    await generatePayslips(await entitledCtx(base), { batchId });
+    const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    expect((ps.statutory as Record<string, unknown>).otDetail).toBeUndefined();
+    expect(Number(ps.overtimePay)).toBe(250);
+  });
+
+  it('9. a TP1-only write leaves the detail alone, exactly as it leaves the provenance alone', async () => {
+    // The mirror of guard 3. A deduction-only round-trip does not touch the OT figure, so it must not
+    // touch the explanation of it either — otherwise keying a TP1 relief would silently strip the hours
+    // off somebody's payslip.
+    const { a, employmentId, batchId } = await hireWithBatch(2600);
+    await owner.db.insert(schema.attendance).values({
+      tenantId: base.tenantId,
+      employmentId,
+      attendanceDate: '2026-05-05',
+      dayType: 'workday',
+      otMinutes: 120,
+    });
+    await prefillOvertimeFromAttendance(a, { batchId });
+    await setPayrollDeductionInput(a, { batchId, employmentId, tp1Deduction: 250 });
+    const row = await rowOf(batchId);
+    expect(row.otSource).toBe('attendance');
+    expect(row.otDerivation, 'the derivation survives a deduction-only write').toBeTruthy();
+    expect(row.otDerivation!.lines).toHaveLength(1);
+  });
+
   it('5. batchInputRows surfaces ORP/hourly basis and otEligible=false for a >RM4,000 earner', async () => {
     const { a, employmentId, batchId } = await hireWithBatch(5000); // 5000 > RM4,000 ceiling
     const rows = await batchInputRows(a, batchId);

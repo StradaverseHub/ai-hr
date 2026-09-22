@@ -386,6 +386,45 @@ export function payRuleInputUnit(rule: PayRule | null | undefined): 'hours' | 'd
 }
 
 /**
+ * a96d320c — THE QUANTITY AND THE UNIT RATE THIS RULE MULTIPLIED, when that is literally what it did.
+ *
+ * The board item asked for "the rate and the input" behind a quantity-priced line — the reporter's example
+ * is a lateness deduction — to reach the payslip. For three of the seven kinds the answer is already
+ * sitting in the rule and the scope, and `resolvePayRule` discards it the moment it returns the product:
+ *
+ *   qty_rate  →  rule.qty × rule.rate            the operator typed both
+ *   per_hour  →  scope.hours × rule.rate         the quantity is the employee's attendance hours
+ *   per_day   →  scope.daysWorked × rule.rate    the quantity is the prorated day count
+ *
+ * EVERY OTHER KIND RETURNS null, and none of them is a near miss. `fixed` and `flat_capped` have no
+ * quantity at all. `percent_of` is a percentage of another figure, and calling that figure a "rate" and
+ * the percentage a "quantity" would print a sentence nobody can check. `formula` is a fold whose steps are
+ * already disclosed, in full, by `formatPayRule` — reducing a six-step fold to one multiplication would
+ * assert that the other four steps did not happen.
+ *
+ * NOTHING HERE DECIDES WHETHER IT MAY BE PRINTED. This function reports what the rule multiplied; the
+ * kernel stamps it onto the component line only when `round2(qty × rate)` equals the amount that line
+ * actually contributed, so a prorated item, a rounding method, or a component whose money split across
+ * buckets simply yields no detail. A quantity and a rate that do not multiply out to the figure beside
+ * them are worse than no detail at all.
+ *
+ * Pure, and it reads the SAME `scope` object `resolvePayRule` was handed — never a second one assembled
+ * later, which is how a stated quantity and a paid amount start describing different months.
+ */
+export type PayRuleQuantityRate = { qty: number; rate: number; unit: 'hours' | 'days' | null };
+
+export function payRuleQuantityAndRate(
+  rule: PayRule | null | undefined,
+  scope: PayRuleScope,
+): PayRuleQuantityRate | null {
+  if (rule == null) return null;
+  if (rule.kind === 'qty_rate') return { qty: rule.qty, rate: rule.rate, unit: null };
+  if (rule.kind === 'per_hour') return { qty: scope.hours, rate: rule.rate, unit: 'hours' };
+  if (rule.kind === 'per_day') return { qty: scope.daysWorked, rate: rule.rate, unit: 'days' };
+  return null;
+}
+
+/**
  * c11e81aa — may a one-off transaction on this pay item be recorded DAY BY DAY?
  *
  * The day grid keeps one dated line per day, and the question it asks of each line is "what is THIS day

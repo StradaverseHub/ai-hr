@@ -237,6 +237,18 @@ export async function payslipPdfStrings(p: {
       nonPayable: t('nonPayableHeading'),
       nonPayableTotal: t('nonPayableTotal'),
       nonPayableNote: t('recordLinesNote'),
+      // a96d320c — the rate-and-input vocabulary. `hourUnit`/`hoursUnit` join the day words that already
+      // compose "2 days" beside an absence line; `otLegs` names the five legs of the statutory overtime
+      // calculation. Resolved here, once, like every other label — the two routes cannot differ.
+      hourUnit: t('hourUnit'),
+      hoursUnit: t('hoursUnit'),
+      otLegs: {
+        workday: t('otLegWorkday'),
+        rest_day: t('otLegRestDay'),
+        rest_day_excess: t('otLegRestDayExcess'),
+        holiday: t('otLegHoliday'),
+        holiday_excess: t('otLegHolidayExcess'),
+      },
     },
   };
 }

@@ -51,10 +51,42 @@ export type StoredComponentLine = {
   name?: string | null;
   amount?: unknown;
   buckets?: { bucket?: string | null; amount?: unknown }[] | null;
+  /** a96d320c — the quantity and unit rate the item's rule multiplied, stamped at run time by the kernel
+   *  (core/payroll.ts `earningsOf`). Absent on every line written before it shipped and on every item
+   *  whose rule is not literally quantity × rate. Read STRUCTURALLY, like the rest of this type. */
+  detail?: { qty?: unknown; rate?: unknown; unit?: unknown } | null;
 };
 
+/** a96d320c — WHICH LEG OF THE STATUTORY OVERTIME CALCULATION a line describes. A STORED contract (the
+ *  pack writes these strings — localization/my/payroll.ts `OvertimeLineKind`); a reader maps it to a
+ *  localized label and may never reinterpret it. A value outside this set is DROPPED rather than guessed,
+ *  which costs the whole itemisation its reconciliation and therefore prints the grouped row — the
+ *  correct outcome for a payslip a later version stamped in a shape this one does not understand. */
+export type OtLegKind = 'workday' | 'rest_day' | 'rest_day_excess' | 'holiday' | 'holiday_excess';
+export const OT_LEG_KINDS: readonly OtLegKind[] = [
+  'workday',
+  'rest_day',
+  'rest_day_excess',
+  'holiday',
+  'holiday_excess',
+];
+
+/** a96d320c — "10 hours × MYR 36.045": what was multiplied to reach the amount on this line. `unit` is
+ *  null for a bare keyed quantity (`qty_rate`), so the renderer prints the count with no unit word. */
+export type PayItemRateDetail = { qty: number; rate: number; unit: 'hours' | 'days' | null };
+
 /** A pay item as a renderer needs it: its own code, its own description, and what it contributed. */
-export type NamedPayItemLine = { code: string | null; name: string; amount: number };
+export type NamedPayItemLine = {
+  code: string | null;
+  name: string;
+  amount: number;
+  /** a96d320c — present ONLY when `round2(qty × rate)` is `amount`, so the factors always explain the
+   *  figure beside them. See `payItemLinesForBuckets`. */
+  detail?: PayItemRateDetail | null;
+  /** a96d320c — set only on a statutory overtime leg, whose NAME is a localized label the renderer owns
+   *  rather than a pay item's stored description. `name` is empty on those lines. */
+  otLeg?: OtLegKind | null;
+};
 
 const n = (v: unknown) => Number(v ?? 0);
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -184,7 +216,78 @@ export function payItemLinesForBuckets(
       (l.buckets ?? []).filter((b) => b?.bucket != null && want.has(b.bucket)).reduce((s, b) => s + n(b.amount), 0),
     );
     if (amount === 0) continue;
-    out.push({ code: l.code ?? null, name: l.name ?? '', amount });
+    // The key is OMITTED, not set to null, when there is no detail: a line off a payslip written before
+    // this shipped must be the object it has always been. These lines cross the RSC boundary to the
+    // client History table and are compared by value in several tests, so "absent" and "present but
+    // empty" are not the same answer.
+    const det = rateDetailFor(l, amount);
+    out.push({ code: l.code ?? null, name: l.name ?? '', amount, ...(det ? { detail: det } : {}) });
+  }
+  return out;
+}
+
+/**
+ * a96d320c — THE STORED QUANTITY AND RATE, BUT ONLY AGAINST THE AMOUNT THIS ROW PRINTS.
+ *
+ * The kernel stamps the detail against the component's WHOLE applied amount. What a row prints is that
+ * component's contribution to ONE summarised figure, and the two are not always the same number: a pay
+ * item whose money split across buckets — an exempt portion paid untaxed plus a taxable remainder
+ * (09b554e9) — contributes part of itself to the allowance line and the rest elsewhere. Captioning the
+ * partial row with the factors behind the whole item would print a multiplication that does not produce
+ * the figure beside it.
+ *
+ * So the check is repeated HERE, against the contribution actually being rendered. It is the same rule
+ * the itemisation itself lives under (rule c of this file's header: reconcile before replacing), applied
+ * one level down. A line that does not satisfy it keeps its name and its amount and loses only the
+ * caption, which is exactly the right amount of degradation.
+ */
+function rateDetailFor(l: StoredComponentLine, amount: number): PayItemRateDetail | null {
+  const d = l.detail;
+  if (!d) return null;
+  const unit = d.unit === 'hours' || d.unit === 'days' ? d.unit : d.unit == null ? null : undefined;
+  if (unit === undefined) return null; // a unit this version does not know ⇒ say nothing
+  const qty = round2(n(d.qty));
+  const rate = n(d.rate);
+  if (qty <= 0 || !Number.isFinite(rate)) return null;
+  if (round2(qty * rate) !== round2(amount)) return null;
+  return { qty, rate, unit };
+}
+
+/**
+ * a96d320c — THE STATUTORY OVERTIME LEGS THIS PAYSLIP'S OWN RUN RECORDED.
+ *
+ * `statutory.otDetail` is copied onto the payslip by `generatePayslips` from the `payroll_input` row the
+ * attendance prefill stamped (migration 0479), and only when its total still equals the overtime figure
+ * the payslip prints. This reads it back as ordinary named lines so the OVERTIME figure is itemised by
+ * exactly the mechanism the allowance and bonus figures already are — including the reconciliation guard,
+ * which is what makes the rows incapable of disagreeing with the total above them.
+ *
+ * EVERY LINE IS RE-CHECKED ON READ. `round2(qty × rate) === amount` was true when the kernel wrote it; it
+ * is asserted again here because this function is reading a jsonb blob, and a blob is not a type. A leg
+ * that fails, or carries a `kind` this version does not know, is DROPPED — which makes the remaining legs
+ * fall short of the overtime total, which makes `payItemLinesReconcile` refuse the itemisation, which
+ * prints the single grouped Overtime row. Three independent failures all landing on the same safe answer
+ * is the design, not a coincidence.
+ *
+ * Returns an empty list for every payslip issued before this shipped: those runs never recorded the
+ * detail and it cannot be recovered — the hours live in attendance, which is correctable after a run.
+ */
+export function storedOvertimeLines(statutory: unknown): NamedPayItemLine[] {
+  const st = (statutory ?? {}) as { otDetail?: unknown };
+  const detail = st.otDetail as { lines?: unknown } | null | undefined;
+  if (!detail || !Array.isArray(detail.lines)) return [];
+  const out: NamedPayItemLine[] = [];
+  for (const raw of detail.lines as { kind?: unknown; qty?: unknown; unit?: unknown; rate?: unknown; amount?: unknown }[]) {
+    const kind = OT_LEG_KINDS.find((k) => k === raw?.kind);
+    if (!kind) continue;
+    const unit = raw?.unit === 'hours' || raw?.unit === 'days' ? raw.unit : null;
+    if (unit == null) continue;
+    const amount = round2(n(raw?.amount));
+    const qty = round2(n(raw?.qty));
+    const rate = n(raw?.rate);
+    if (amount === 0 || qty <= 0 || !Number.isFinite(rate)) continue;
+    if (round2(qty * rate) !== amount) continue;
+    out.push({ code: null, name: '', amount, detail: { qty, rate, unit }, otLeg: kind });
   }
   return out;
 }
