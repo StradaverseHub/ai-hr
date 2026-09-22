@@ -80,6 +80,150 @@ export function addMonths(month: string, n: number): string {
 export const addDaysIso = (iso: string, n: number): string =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 
+/** Every ISO date from `from` to `to`, inclusive, in order. Empty when `to` is before `from`. */
+export function datesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let d = from; d <= to; d = addDaysIso(d, 1)) out.push(d);
+  return out;
+}
+
+/** How many days a window covers, counting BOTH ends — 01→01 is one day, not zero. */
+export const daysInWindow = (from: string, to: string): number =>
+  Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) + 1;
+
+/** The Monday–Sunday week containing `iso`. ISO weeks, matching `isoWeekdayOf` above and the EA 1955
+ *  s.59 check, so "this week" means the same thing everywhere on this screen. */
+export function weekRangeOf(iso: string): { from: string; to: string } {
+  const from = addDaysIso(iso, -(isoWeekdayOf(iso) - 1));
+  return { from, to: addDaysIso(from, 6) };
+}
+
+/**
+ * ── THE THREE VIEWS (a57f0584 rev 2) ────────────────────────────────────────────────────────────
+ *
+ * Month, Week and a Custom From/To range are THREE WINDOWS OVER ONE READ, not three reads. The plan is
+ * explicit about why: "a date cannot show one shift in one view and another in another". So the only
+ * thing that varies between the views is the pair of dates resolved here; `rosterWindowView` takes that
+ * pair and everything downstream — the grid, the export, the exceptions count, the Edit screen — is
+ * unchanged and cannot disagree with itself.
+ *
+ * THE CAP, AND WHY IT IS 92. The plan flagged the open question ("cap the range or paginate — and say
+ * which") and the answer is CAP, because the axis that is actually unbounded is COLUMNS. Rows are
+ * already bounded — `paginateRows`/`ClientPager` page the employees. A date column costs `DATE_W` = 88px
+ * of table plus one `<col>`, one `<th>` and one `<td>` per drawn row, and the widest window this screen
+ * has ever been proven at is a 31-day month: 476 + 31×88 = 3,204px. 92 days is one calendar QUARTER —
+ * the longest window an HR operator names in practice — and lands at 476 + 92×88 = 8,572px, about
+ * 2.7× the proven figure. A year would be 32,596px and 365 columns per drawn row, which is precisely the
+ * horizontal-scroll and pinned-offset pressure this round's `table-layout: fixed` + `<colgroup>` work
+ * exists to remove.
+ *
+ * ⚠️ WHAT THE CAP DOES NOT BOUND, stated rather than implied: the pager's own "All" ceiling is 2,000
+ * rows (lib/pagination#ALL_ROW_CEILING), and `cells` is serialised for every FILTERED employee rather
+ * than every DRAWN one. So rows × days is still the product that decides the payload, and the cap only
+ * bounds one of its two factors. That is true today at 31 days too; it is not made worse in kind, only
+ * in degree, and fixing it is a pagination change rather than a windowing one.
+ */
+export const ROSTER_MAX_RANGE_DAYS = 92;
+
+export type RosterViewKind = 'month' | 'week' | 'custom';
+export const isRosterViewKind = (v: string | undefined | null): v is RosterViewKind =>
+  v === 'month' || v === 'week' || v === 'custom';
+
+/** The window the screen is showing: which view asked for it, and the two dates it resolved to.
+ *  `month` is the month the window STARTS in — what the month picker and the export filename use. A
+ *  week that straddles a month boundary starts in exactly one of them, and this says which. */
+export type RosterWindow = { kind: RosterViewKind; from: string; to: string; month: string };
+
+/**
+ * A window, plus what was wrong with the request if anything. It ALWAYS yields a usable window: a screen
+ * that refuses a hand-typed date by failing to render is worse than one that says what it did instead,
+ * and `?from=2026-01-01&to=2026-12-31` must not be able to 500 the roster. The SERVICE refuses
+ * independently (`assertRosterWindow` in core/roster.ts) so a caller that skips this resolver is still
+ * stopped — a form is not a guard.
+ */
+export type ResolvedRosterWindow =
+  | { ok: true; window: RosterWindow }
+  | { ok: false; reason: 'backwards'; window: RosterWindow }
+  | { ok: false; reason: 'too_wide'; askedDays: number; window: RosterWindow };
+
+export function resolveRosterWindow(p: {
+  view?: string | null;
+  month?: string | null;
+  from?: string | null;
+  to?: string | null;
+  /** Today in the tenant's timezone — passed in, never read from the clock here (lib/hr-date owns that). */
+  today: string;
+}): ResolvedRosterWindow {
+  const monthWindow = (m: string, kind: RosterViewKind = 'month'): RosterWindow => {
+    const r = monthRange(m);
+    return { kind, from: r.from, to: r.to, month: m };
+  };
+  const kind: RosterViewKind = isRosterViewKind(p.view) ? p.view : 'month';
+  const fallbackMonth = isMonthParam(p.month) ? p.month : monthOf(p.today);
+
+  if (kind === 'week') {
+    // Any date in the week identifies it; the resolver snaps to Monday. `<input type="week">` is
+    // deliberately not used — it posts `YYYY-Www`, an ISO week-numbering year that disagrees with the
+    // calendar year in the first and last days of January, which is a bug nobody would ever find.
+    const anchor = isIsoDate(p.from ?? '') ? p.from! : p.today;
+    const r = weekRangeOf(anchor);
+    return { ok: true, window: { kind: 'week', from: r.from, to: r.to, month: monthOf(r.from) } };
+  }
+
+  if (kind === 'custom') {
+    // No dates yet (the operator has just switched to Custom): open on the month, which is both inside
+    // the cap and the window they were already looking at.
+    if (!isIsoDate(p.from ?? '') || !isIsoDate(p.to ?? '')) return { ok: true, window: monthWindow(fallbackMonth, 'custom') };
+    const from = p.from!;
+    const to = p.to!;
+    // Backwards: show the From date alone rather than guessing that the two were meant the other way
+    // round. Swapping them silently would show a window nobody typed.
+    if (to < from) return { ok: false, reason: 'backwards', window: { kind: 'custom', from, to: from, month: monthOf(from) } };
+    const askedDays = daysInWindow(from, to);
+    if (askedDays > ROSTER_MAX_RANGE_DAYS) {
+      // Clamp forward from the date they typed, rather than snapping to a month boundary: it honours the
+      // From they chose and the first day on screen is the first day they asked for.
+      const clamped = addDaysIso(from, ROSTER_MAX_RANGE_DAYS - 1);
+      return { ok: false, reason: 'too_wide', askedDays, window: { kind: 'custom', from, to: clamped, month: monthOf(from) } };
+    }
+    return { ok: true, window: { kind: 'custom', from, to, month: monthOf(from) } };
+  }
+
+  return { ok: true, window: monthWindow(fallbackMonth) };
+}
+
+/**
+ * The window shifted one step in its own units: a month by a month, a week by seven days, and a custom
+ * range by its OWN LENGTH — so ‹ on a fortnight gives the previous fortnight rather than an arbitrary
+ * number of days. One stepper for three views, because three steppers is three chances to disagree.
+ */
+export function stepRosterWindow(w: RosterWindow, direction: 1 | -1): RosterWindow {
+  if (w.kind === 'month') {
+    const m = addMonths(w.month, direction);
+    const r = monthRange(m);
+    return { kind: 'month', from: r.from, to: r.to, month: m };
+  }
+  const span = daysInWindow(w.from, w.to);
+  const from = addDaysIso(w.from, direction * span);
+  return { kind: w.kind, from, to: addDaysIso(from, span - 1), month: monthOf(from) };
+}
+
+/**
+ * THE LOCALE THE ROSTER FORMATS ITS DATES IN, and the one place the mapping is written.
+ *
+ * `en` in this app resolves to en-US, which orders a short date MONTH-FIRST: "Sep 01". Malaysia writes
+ * dates day-first, and the approved plan's own example is "01 Sept, 02 Sept - never 01/09". The en-US
+ * resolution is an accident of the catalogue being called `en`, not a product decision, so THIS
+ * FORMATTER pins the region — en-GB, which yields exactly "01 Sept" — and the other five locales resolve
+ * normally. It is still Intl deciding the words: no month table is hardcoded here or anywhere else.
+ *
+ * ⚠️ DELIBERATELY NARROW. It changes the roster's date formatters and nothing else. Whether `en` should
+ * resolve to en-GB APP-WIDE is a product-wide question (every screen, every export, every PDF) and is
+ * not this item's to answer. Shared by the roster, its Edit screen, its Exceptions screen and its export
+ * so those four cannot print a date four ways.
+ */
+export const rosterDateLocale = (locale: string): string => (locale === 'en' ? 'en-GB' : locale);
+
 /**
  * One cell, resolved. See the precedence note at the top of the file.
  */

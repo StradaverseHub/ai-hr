@@ -226,7 +226,19 @@
     "rowEditSave": "ใช้",
     "rowEditCancel": "ยกเลิก",
     "rowEditMissing": "ไม่พบพนักงานรายนี้ในตารางเวรนี้",
-    "rowEditNoDates": "เลือกอย่างน้อยหนึ่งวันที่ก่อนกดใช้"
+    "rowEditNoDates": "เลือกอย่างน้อยหนึ่งวันที่ก่อนกดใช้",
+    "viewLabel": "มุมมอง",
+    "viewMonth": "เดือน",
+    "viewWeek": "สัปดาห์",
+    "viewCustom": "ช่วงที่กำหนดเอง",
+    "filterFrom": "จาก",
+    "filterTo": "ถึง",
+    "filterWeekOf": "สัปดาห์ของ",
+    "prevRange": "ช่วงก่อนหน้า",
+    "nextRange": "ช่วงถัดไป",
+    "rangeCapHint": "แสดงได้สูงสุด {days} วันต่อครั้ง",
+    "rangeTooWide": "ช่วงวันที่ครอบคลุมได้สูงสุด {days} วัน แต่ช่วงนั้นขอ {asked} วัน กำลังแสดง {days} วันแรก",
+    "rangeBackwards": "วันที่ถึงอยู่ก่อนวันที่จาก กำลังแสดงเฉพาะวันที่จาก"
   },
   "common": {
     "appName": "Kingdee AI HR",

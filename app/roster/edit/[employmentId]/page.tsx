@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { rosterMonthView } from '@/core/roster';
+import { rosterWindowView } from '@/core/roster';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
-import { cellKey, isMonthParam, monthOf, resolveRosterCell, rosterCellLabel, shiftCodeOf } from '@/lib/roster-month';
+import { cellKey, resolveRosterCell, resolveRosterWindow, rosterCellLabel, rosterDateLocale, shiftCodeOf } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { saveRosterRowAction } from '../../actions';
 import { RosterEditDates, type EditDate } from './date-picker';
@@ -25,10 +25,12 @@ import { RosterEditDates, type EditDate } from './date-picker';
  * its own past-date confirm, because a single painted cell has no screen to move to — see the note on
  * `confirmPast` in components/roster-grid.tsx.
  *
- * IT IS THE SAME READ AS THE GRID. `rosterMonthView(..., { employmentIds: [id] })` — the same view,
- * narrowed to one person — so every tile resolves through `resolveRosterCell` at the same precedence the
- * roster behind it drew, and the date captions come from the same Intl formatter. A second read here is
- * how the editor comes to show RD on a day the grid shows OFF.
+ * IT IS THE SAME READ AS THE GRID, AND THE SAME WINDOW. `rosterWindowView(..., { employmentIds: [id] })`
+ * — the same view, narrowed to one person, over the SAME from/to the roster was showing — so every tile
+ * resolves through `resolveRosterCell` at the same precedence the roster behind it drew, and the date
+ * captions come from the same Intl formatter. A second read here is how the editor comes to show RD on a
+ * day the grid shows OFF; a different WINDOW is how an administrator on a week view edits dates they
+ * cannot see, and then cannot find the change they just made.
  *
  * AND THE SAME WRITE. Save posts to `saveRosterRowAction`, a thin wrapper over the unchanged
  * `rowAssignAction` → `assignRosterRow`, which loops the PER-DATE primitives so the Audit Trail gets one
@@ -52,7 +54,10 @@ export default async function RosterEditPage({
   params: Promise<{ employmentId: string }>;
   searchParams: Promise<{
     companyId?: string;
+    view?: string;
     month?: string;
+    from?: string;
+    to?: string;
     bu?: string;
     dept?: string;
     q?: string;
@@ -71,17 +76,22 @@ export default async function RosterEditPage({
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
   const todayIso = todayInKualaLumpur();
-  const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
+  /** The window the roster was showing, through the SAME resolver — see the header. */
+  const win = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
 
   /** The roster's own query string — what Back and Cancel return to, and what the action round-trips. */
-  const listQuery = new URLSearchParams({ month });
+  const listQuery = new URLSearchParams({ view: win.kind, month: win.month });
+  if (win.kind !== 'month') {
+    listQuery.set('from', win.from);
+    listQuery.set('to', win.to);
+  }
   if (companyId) listQuery.set('companyId', companyId);
   if (sp.bu) listQuery.set('bu', sp.bu);
   if (sp.dept) listQuery.set('dept', sp.dept);
   if (sp.q) listQuery.set('q', sp.q);
   const listHref = `/roster?${listQuery.toString()}`;
 
-  const view = await rosterMonthView(s, { companyIds, month, employmentIds: [employmentId] });
+  const view = await rosterWindowView(s, { companyIds, from: win.from, to: win.to, employmentIds: [employmentId] });
   const employee = view.employees.find((e) => e.employmentId === employmentId) ?? null;
 
   if (!employee) {
@@ -97,9 +107,11 @@ export default async function RosterEditPage({
     );
   }
 
-  const dowFmt = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
-  const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', timeZone: 'UTC' });
-  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const dateLocale = rosterDateLocale(locale);
+  const dowFmt = new Intl.DateTimeFormat(dateLocale, { weekday: 'short', timeZone: 'UTC' });
+  const dayFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', timeZone: 'UTC' });
+  const monthFmt = new Intl.DateTimeFormat(dateLocale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const edgeFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const shiftCodeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
   const codeOf = (id: string) => shiftCodeById.get(id) ?? '?';
 
@@ -124,7 +136,11 @@ export default async function RosterEditPage({
     <div className={pageWideCls}>
       <PageHeader
         title={t('rowEditTitle', { name: employee.name })}
-        description={monthFmt.format(new Date(`${view.from}T00:00:00Z`))}
+        description={
+          win.kind === 'month'
+            ? monthFmt.format(new Date(`${view.from}T00:00:00Z`))
+            : `${edgeFmt.format(new Date(`${view.from}T00:00:00Z`))} – ${edgeFmt.format(new Date(`${view.to}T00:00:00Z`))}`
+        }
         back={{ href: listHref, label: t('exceptionsBack') }}
       />
       <ErrorBanner message={errorMessage} />

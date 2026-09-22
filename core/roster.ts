@@ -28,7 +28,16 @@ import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan } fro
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
-import { cellKey, monthDates, monthRange, type AssignedCell, type UsualShift } from '../lib/roster-month';
+import {
+  ROSTER_MAX_RANGE_DAYS,
+  cellKey,
+  datesBetween,
+  daysInWindow,
+  isIsoDate,
+  monthRange,
+  type AssignedCell,
+  type UsualShift,
+} from '../lib/roster-month';
 import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
 // f513ec02 — the dated shift ladder, for the reverse check's "which shift is this person on TODAY".
 // core/shift-arrangement-resolve.ts is a declared LEAF (its only value import is db/schema), which is
@@ -1963,7 +1972,9 @@ export async function setRestDayBulk(
 }
 
 const DAY_MS = 86_400_000;
-const isIsoDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+// a57f0584 rev 2 — the local `const isIsoDate = /^\d{4}-\d{2}-\d{2}$/` that stood here was a
+// character-for-character copy of lib/roster-month's exported one, and this file now imports that module
+// anyway. Two identical predicates are two things to change when the shape of a date changes.
 
 /**
  * R7 Multi-Shift Phase 2 — generate a roster window from a shift's weekly pattern. A THIN date-splitter
@@ -2230,7 +2241,10 @@ export type RosterMonthEmployee = {
 };
 
 export type RosterMonthView = {
-  month: string;
+  /** a57f0584 rev 2 — `month` is GONE from this type, deliberately. The read is a WINDOW now, and a week
+   *  that straddles 31 August has no single month to report; a field that had to be filled with one of
+   *  the two would be a value every caller could read and none could trust. The screen knows which view
+   *  asked (lib/roster-month#RosterWindow carries it); the read only needs the two dates. */
   from: string;
   to: string;
   dates: string[];
@@ -2253,7 +2267,49 @@ export type RosterMonthView = {
  * only the people they are responsible for, and the Business Group / Department / Employee filters narrow
  * that further without a second query.
  */
-export async function rosterMonthView(
+/**
+ * a57f0584 rev 2 — WHAT THE ROSTER MAY BE ASKED FOR AT ONCE, refused in the SERVICE.
+ *
+ * `resolveRosterWindow` (lib/roster-month.ts) keeps the SCREEN inside the cap and explains itself when
+ * it clamps. This is the other half, and it is not the same half: the export route takes `from`/`to`
+ * straight off a query string, the edit screen takes them off its own, and a hand-crafted
+ * `?from=2026-01-01&to=2026-12-31` must not be able to ask this read for 365 columns × every employee
+ * because a form would have stopped it. A form is an affordance; this is the guard.
+ *
+ * The cap itself, and the arithmetic behind 92, is documented on ROSTER_MAX_RANGE_DAYS.
+ */
+export class RosterRangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RosterRangeError';
+  }
+}
+
+export function assertRosterWindow(from: string, to: string): void {
+  if (!isIsoDate(from) || !isIsoDate(to)) {
+    throw new RosterRangeError('The roster needs a From and a To date in YYYY-MM-DD form.');
+  }
+  if (to < from) throw new RosterRangeError('The roster window ends before it starts.');
+  const days = daysInWindow(from, to);
+  if (days > ROSTER_MAX_RANGE_DAYS) {
+    throw new RosterRangeError(
+      `The roster shows at most ${ROSTER_MAX_RANGE_DAYS} days at a time; that window asks for ${days}.`,
+    );
+  }
+}
+
+/**
+ * ONE READ, THREE VIEWS. Month, Week and a Custom From/To range differ ONLY in the pair of dates handed
+ * to this function — the plan's binding sentence is "The Week and Custom range views read the same
+ * roster the Month view does, so a date cannot show one shift in one view and another in another", and a
+ * second view-specific read is exactly how that promise gets broken six months from now.
+ *
+ * `rosterMonthView` below is the MONTH HELPER over this, not a second reader: it turns a `YYYY-MM` into
+ * the pair and calls straight through. Callers that genuinely mean a month (the Excel round trip, whose
+ * whole contract is "only dates inside {month} are saved") keep saying so; callers that mean a window
+ * say that instead.
+ */
+export async function rosterWindowView(
   ctx: SessionContext,
   p: {
     /**
@@ -2269,7 +2325,9 @@ export async function rosterMonthView(
      * own contract for an absent filter — it is not a request for nothing.
      */
     companyIds: string[];
-    month: string;
+    /** First and last date ON SCREEN, inclusive. Refused by `assertRosterWindow` before any query runs. */
+    from: string;
+    to: string;
     businessUnitId?: string;
     departmentId?: string;
     q?: string;
@@ -2285,8 +2343,10 @@ export async function rosterMonthView(
     employmentIds?: string[];
   },
 ): Promise<RosterMonthView> {
-  const { from, to } = monthRange(p.month);
-  const dates = monthDates(p.month);
+  // FIRST, before any query: an over-wide window must cost nothing to refuse.
+  assertRosterWindow(p.from, p.to);
+  const { from, to } = { from: p.from, to: p.to };
+  const dates = datesBetween(from, to);
   const [employeeRows, shiftRows] = await Promise.all([
     listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
     listShiftsForTenant(ctx),
@@ -2343,7 +2403,6 @@ export async function rosterMonthView(
   }
 
   return {
-    month: p.month,
     from,
     to,
     dates,
@@ -2361,6 +2420,31 @@ export async function rosterMonthView(
     usual,
     usualNames,
   };
+}
+
+/**
+ * THE MONTH HELPER over `rosterWindowView` — "one resolver, three callers" with month as the helper that
+ * produces the pair (a57f0584 rev 2's plan, item 6).
+ *
+ * It is NOT a second read and must never become one: it turns `YYYY-MM` into the window and calls
+ * straight through, so a month view and a custom range covering the same month return byte-identical
+ * cells. Kept because two callers genuinely mean a MONTH rather than a window — the Excel round trip
+ * (app/roster/import), whose contract is "only dates inside {month} are saved", and every test that was
+ * written against a month — and because a month is the one window this screen can name in one word.
+ */
+export function rosterMonthView(
+  ctx: SessionContext,
+  p: {
+    companyIds: string[];
+    month: string;
+    businessUnitId?: string;
+    departmentId?: string;
+    q?: string;
+    employmentIds?: string[];
+  },
+): Promise<RosterMonthView> {
+  const { month, ...rest } = p;
+  return rosterWindowView(ctx, { ...rest, ...monthRange(month) });
 }
 
 /**

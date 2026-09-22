@@ -226,7 +226,19 @@
     "rowEditSave": "Guna",
     "rowEditCancel": "Batal",
     "rowEditMissing": "Pekerja itu tiada dalam roster ini.",
-    "rowEditNoDates": "Tandakan sekurang-kurangnya satu tarikh sebelum menggunakannya."
+    "rowEditNoDates": "Tandakan sekurang-kurangnya satu tarikh sebelum menggunakannya.",
+    "viewLabel": "Paparan",
+    "viewMonth": "Bulan",
+    "viewWeek": "Minggu",
+    "viewCustom": "Julat tersuai",
+    "filterFrom": "Dari",
+    "filterTo": "Hingga",
+    "filterWeekOf": "Minggu bermula",
+    "prevRange": "Julat sebelumnya",
+    "nextRange": "Julat seterusnya",
+    "rangeCapHint": "Sehingga {days} hari boleh dipaparkan serentak.",
+    "rangeTooWide": "Julat tarikh boleh meliputi {days} hari sahaja, tetapi julat itu meminta {asked} hari. Memaparkan {days} hari pertama.",
+    "rangeBackwards": "Tarikh Hingga lebih awal daripada tarikh Dari. Memaparkan tarikh Dari sahaja."
   },
   "common": {
     "appName": "Kingdee AI HR",

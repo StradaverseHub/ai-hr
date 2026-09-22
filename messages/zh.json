@@ -226,7 +226,19 @@
     "rowEditSave": "应用",
     "rowEditCancel": "取消",
     "rowEditMissing": "该员工不在此排班表中。",
-    "rowEditNoDates": "请至少勾选一个日期再应用。"
+    "rowEditNoDates": "请至少勾选一个日期再应用。",
+    "viewLabel": "视图",
+    "viewMonth": "月",
+    "viewWeek": "周",
+    "viewCustom": "自定义范围",
+    "filterFrom": "起始",
+    "filterTo": "结束",
+    "filterWeekOf": "所在周",
+    "prevRange": "上一个范围",
+    "nextRange": "下一个范围",
+    "rangeCapHint": "一次最多显示 {days} 天。",
+    "rangeTooWide": "日期范围最多可覆盖 {days} 天，而该范围请求了 {asked} 天。正在显示前 {days} 天。",
+    "rangeBackwards": "结束日期早于起始日期。仅显示起始日期。"
   },
   "common": {
     "appName": "Kingdee AI HR",

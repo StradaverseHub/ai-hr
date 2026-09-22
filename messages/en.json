@@ -226,7 +226,19 @@
     "rowEditSave": "Apply",
     "rowEditCancel": "Cancel",
     "rowEditMissing": "That employee is not on this roster.",
-    "rowEditNoDates": "Tick at least one date before applying."
+    "rowEditNoDates": "Tick at least one date before applying.",
+    "viewLabel": "View",
+    "viewMonth": "Month",
+    "viewWeek": "Week",
+    "viewCustom": "Custom range",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "filterWeekOf": "Week of",
+    "prevRange": "Previous range",
+    "nextRange": "Next range",
+    "rangeCapHint": "Up to {days} days can be shown at once.",
+    "rangeTooWide": "A date range can cover at most {days} days, and that one asked for {asked}. Showing the first {days} days.",
+    "rangeBackwards": "The To date is before the From date. Showing the From date on its own."
   },
   "common": {
     "appName": "Kingdee AI HR",

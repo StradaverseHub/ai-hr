@@ -226,7 +226,19 @@
     "rowEditSave": "Áp dụng",
     "rowEditCancel": "Hủy",
     "rowEditMissing": "Nhân viên đó không có trong lịch trực này.",
-    "rowEditNoDates": "Hãy chọn ít nhất một ngày trước khi áp dụng."
+    "rowEditNoDates": "Hãy chọn ít nhất một ngày trước khi áp dụng.",
+    "viewLabel": "Chế độ xem",
+    "viewMonth": "Tháng",
+    "viewWeek": "Tuần",
+    "viewCustom": "Khoảng tùy chọn",
+    "filterFrom": "Từ",
+    "filterTo": "Đến",
+    "filterWeekOf": "Tuần của",
+    "prevRange": "Khoảng trước",
+    "nextRange": "Khoảng sau",
+    "rangeCapHint": "Hiển thị tối đa {days} ngày mỗi lần.",
+    "rangeTooWide": "Một khoảng ngày chỉ bao được tối đa {days} ngày, nhưng khoảng đó yêu cầu {asked} ngày. Đang hiển thị {days} ngày đầu.",
+    "rangeBackwards": "Ngày Đến sớm hơn ngày Từ. Đang hiển thị riêng ngày Từ."
   },
   "common": {
     "appName": "Kingdee AI HR",

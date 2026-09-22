@@ -63,9 +63,17 @@ describe('a57f0584 · a date heading names its month', () => {
     }
   });
 
+  /**
+   * UPDATED by the three-views increment, NOT loosened. It used to pin the whole `dayFmt` line, which
+   * named `locale` directly; the formatter now resolves through `rosterDateLocale`, which maps `en` to
+   * en-GB so a short date reads day-first ("01 Sept") as the plan's own example does. The PROPERTY is
+   * unchanged and still asserted — one formatter, `{ day: '2-digit', month: 'short' }`, no numeric
+   * month — and what the mapping does is pinned in test/a57f0584-roster-views.test.ts.
+   */
   it('the page changed the FORMATTER, and the grid still renders what it is handed', () => {
     expect(PAGE, 'the numeric month is gone').not.toContain("{ day: '2-digit', month: '2-digit', timeZone: 'UTC' }");
-    expect(PAGE).toContain("const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', timeZone: 'UTC' });");
+    expect(PAGE).toContain("const dayFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', timeZone: 'UTC' });");
+    expect(PAGE, 'and the locale it formats in is the shared roster mapping').toContain('const dateLocale = rosterDateLocale(locale);');
     expect(PAGE, 'the formatter is the only place a date is built').toContain('day: dayFmt.format(d)');
     // A second rendition inside the client component is the thing to prevent: the grid must own no
     // date formatting of its own, or the heading and the export can drift.

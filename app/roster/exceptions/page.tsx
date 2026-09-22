@@ -6,7 +6,7 @@ import { listToilPolicies } from '@/core/toil';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ToilElectButton } from '@/components/toil-elect-button';
-import { isMonthParam, monthOf, monthRange } from '@/lib/roster-month';
+import { resolveRosterWindow, rosterDateLocale } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -39,7 +39,16 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 export default async function RosterExceptionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; month?: string; bu?: string; dept?: string; q?: string }>;
+  searchParams: Promise<{
+    companyId?: string;
+    view?: string;
+    month?: string;
+    from?: string;
+    to?: string;
+    bu?: string;
+    dept?: string;
+    q?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('roster');
@@ -50,11 +59,22 @@ export default async function RosterExceptionsPage({
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
   const todayIso = todayInKualaLumpur();
-  const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
-  const { from, to } = monthRange(month);
+  /**
+   * a57f0584 rev 2 — THE SAME WINDOW THE ROSTER WAS SHOWING, through the same resolver. The Exceptions
+   * button hands over `view` / `month` / `from` / `to`, so a week view's button opens a week of
+   * exceptions and the count on it is the count of these rows. Resolving here rather than trusting the
+   * query string is what stops a hand-typed `?from=2026-01-01&to=2026-12-31` asking `rosterVariance` for
+   * a year across every company — the resolver clamps, exactly as it does on the roster.
+   */
+  const win = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
+  const { from, to } = win;
 
-  // The roster's own query string, rebuilt so Back lands on the month and narrowing this was opened from.
-  const back = new URLSearchParams({ month });
+  // The roster's own query string, rebuilt so Back lands on the window and narrowing this was opened from.
+  const back = new URLSearchParams({ view: win.kind, month: win.month });
+  if (win.kind !== 'month') {
+    back.set('from', win.from);
+    back.set('to', win.to);
+  }
   if (companyId) back.set('companyId', companyId);
   if (sp.bu) back.set('bu', sp.bu);
   if (sp.dept) back.set('dept', sp.dept);
@@ -83,8 +103,9 @@ export default async function RosterExceptionsPage({
 
   // The same formatter contract as the grid's date headings: Intl in the viewer's locale, never a
   // hardcoded month table. A year is included because this list is read away from the month picker.
-  const dateFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
-  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const dateLocale = rosterDateLocale(locale);
+  const dateFmt = new Intl.DateTimeFormat(dateLocale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const monthFmt = new Intl.DateTimeFormat(dateLocale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
   return (
     <div className={pageWideCls}>
@@ -94,7 +115,16 @@ export default async function RosterExceptionsPage({
         back={{ href: `/roster?${back.toString()}`, label: t('exceptionsBack') }}
       />
       <Card>
-        <SectionHeader title={monthFmt.format(new Date(`${from}T00:00:00Z`))} count={exceptions.length} />
+        {/* The heading names the WINDOW, not always a month: a week or a custom range says its two ends,
+            or a fortnight of exceptions would be filed under a month it only partly covers. */}
+        <SectionHeader
+          title={
+            win.kind === 'month'
+              ? monthFmt.format(new Date(`${from}T00:00:00Z`))
+              : `${dateFmt.format(new Date(`${from}T00:00:00Z`))} – ${dateFmt.format(new Date(`${to}T00:00:00Z`))}`
+          }
+          count={exceptions.length}
+        />
         {exceptions.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('exceptionsNone')}</p>
         ) : (
