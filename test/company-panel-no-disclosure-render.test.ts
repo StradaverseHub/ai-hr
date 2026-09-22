@@ -22,12 +22,40 @@ import { NextIntlClientProvider } from 'next-intl';
 import { CompanyPanel, type PanelCompany } from '../components/company-panel';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 
+/**
+ * ⚠️ UPDATED BY 65b22c00 — a MOCK ADDED, NOT AN ASSERTION LOOSENED, and the distinction is the point.
+ *
+ * The General tab's three field-edit cards are now wrapped in components/tab-save-scope.tsx (one
+ * "Save Changes" for the tab, per docs/audits/65b22c00-organization-save-classification.md). That
+ * component calls `useRouter()` from next/navigation, which THROWS — "invariant expected app router to
+ * be mounted" — outside an App Router context, so every case in this file went red on a render it had
+ * always been able to do. The router is the only thing it needs; nothing about what this file asserts
+ * changes, and every case below is the one it was before.
+ *
+ * It is also now a WIDER check than it was: the save bar and its "This Save covers: …" caption render
+ * through the real catalogues too, so a components.tabSave key missing from one of the six locales fails
+ * here as loudly as an admin.organization one always did.
+ */
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }),
+  usePathname: () => '/admin/organization/c1',
+  useSearchParams: () => new URLSearchParams(),
+  redirect: (p: string) => {
+    throw new Error(`NEXT_REDIRECT:${p}`);
+  },
+  notFound: () => {
+    throw new Error('NEXT_NOT_FOUND');
+  },
+}));
+
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const messagesFor = (l: string) =>
   JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${l}.json`), 'utf8'));
 
 const noop = () => undefined;
+const saveTab = async () => ({ ok: true, saved: [] });
 const actions = {
+  saveGeneralTab: saveTab,
   updateCompany: noop,
   archiveCompany: noop,
   deleteCompany: noop,

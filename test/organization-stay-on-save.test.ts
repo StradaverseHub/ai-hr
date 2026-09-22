@@ -50,6 +50,11 @@ vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NEXT_NOT_FOUND');
   },
+  // §5 renders the panel, which now hosts components/tab-save-scope.tsx; its useRouter() throws outside
+  // an App Router context.
+  useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }),
+  usePathname: () => '/admin/organization/c1',
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('next-intl/server', async () => {
   const { createTranslator: make } = await import('next-intl');
@@ -358,6 +363,7 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
 describe('§5 the panel posts what the actions read, and says it in six languages', () => {
   const noop = () => undefined;
   const actions = {
+    saveGeneralTab: async () => ({ ok: true, saved: [] }),
     updateCompany: noop,
     archiveCompany: noop,
     deleteCompany: noop,

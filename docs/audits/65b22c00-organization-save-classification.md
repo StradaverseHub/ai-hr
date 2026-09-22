@@ -255,3 +255,65 @@ a change to a component four other tabs depend on and is not this item's to make
 4. **Nothing in bucket (b) is moved**, and the guard for this classification asserts that — every one
    of the nine still stands on its own with its own submit control, and no `data-save-section` marker
    ever appears on one of them.
+
+---
+
+## r329 — what was actually built, and the two things measuring it corrected
+
+**Both halves shipped, and the shape is exactly the one authorised above.** Nothing in bucket (b) moved.
+
+| promise | where it lives | guarded by |
+|---|---|---|
+| a save keeps you on the company | `app/admin/_redirects.ts` `okCompany` / `failCompany`, called by eleven of the twelve company actions | `test/organization-stay-on-save.test.ts` §1 — every action RUN, its redirect parsed |
+| …and on the tab you saved from | `components/company-panel.tsx` (`replaceState` + a capture-phase submit listener) + `lib/company-panel-tabs.ts` | §2 |
+| delete still goes to the list | `deleteCompanyAction` | §4 |
+| archiving a LIST row still stays on the list | the closed-list `returnTo` marker | §3 |
+| one Save for the General tab's three field edits | `TabSaveScope` + `saveCompanyGeneralTabAction` + `lib/company-tab-sections.ts` | `test/organization-general-tab-save.test.ts` §1–§2 |
+| every bucket (b) control still stands on its own | the marker set, read off the RENDERED panel | §3 |
+
+### The correction owed to the reporter, in the words it should be said in
+
+**The statutory reference numbers did NOT come under the one Save, and the board plan said they would.**
+The SSM registration number and the MyInvois TIN are on the Statutory tab; the other three field-edit
+cards are on General; and one Save button can only cover cards that sit together on one tab. Moving that
+card to General would have taken those two numbers off the screen r226 deliberately put them on — the
+same screen two statutory files we produce read the SSM number from — to win a tidier button. So the
+Company Registrations card keeps its own Save, and the General tab's Save honestly names the four
+headings it does cover. This is the same answer, for the same reason, that the Employment Information
+screen's Family and Qualification tabs got in r255: not "not yet", but "this is what that card is".
+
+### The defect the marker guard found while it was being written, which is the reason it is written this way
+
+**The first version of the "exactly three sections are marked" case passed while a bucket (b) form
+carried a marker.** It rendered a company with no bank accounts and no configured statutory bodies, so
+the bank-remove and authority-clear forms were not in the markup it measured at all. Adding
+`data-save-section="bank"` to the bank-remove form — the precise regression the case exists to catch —
+did not fail it. The fixture now renders a company with one of each, and the same mutation fails with
+`expected [ Array(4) ] to deeply equal [ 'company', 'cycle', 'parent' ]`.
+
+It is worth recording because the personnel audit's closing constraint asks for exactly this guard, and
+a guard that cannot see half the screen satisfies the letter of it while protecting nothing.
+
+### Finding 7 stands, unfixed, and this is what it costs in the shipped code
+
+`TabSaveScope` infers "the refreshed payload has landed" from a change in `children` identity. Inside
+`CompanyPanel` — a client component — `children` is a fresh element whenever `CompanyPanel` re-renders,
+which is on a tab switch and on an RSC refresh. Typing does NOT re-render it (the inputs are
+uncontrolled and the scope's own state lives in the scope), so the practical exposure is narrower than
+the general statement: a reader must save on General, switch tabs and switch back, and press Discard,
+all inside one RSC round trip.
+
+Two things reduce it rather than leaving it bare. The tab bar now consults `firstDirtyGuard()` before
+switching, so leaving a dirty General tab asks first — the same prompt the personnel tab strip shows.
+And the Discard button is disabled and reads "Discarding…" for the whole of that window, so the reader
+is not invited to do anything during it. Closing it properly means giving the scope an explicit
+"payload landed" signal instead of inferring one from `children`, which is a change to a component five
+personnel tabs depend on and was not this item's to make.
+
+### What the tests do NOT pin, said plainly
+
+The consolidated save's CLIENT half on this screen — dirty tracking, the change summary, Discard, the
+leave-the-tab prompt — is pinned by `test/personnel-tab-save.dom.test.tsx` against the shared component,
+not against the company panel. What is pinned HERE is the contract the company screen adds: the marker
+set, the section vocabulary, the writers behind it, and the identity fence. A DOM test driving the
+company panel's own Save bar would be the next thing to add if this screen grows a second scope.

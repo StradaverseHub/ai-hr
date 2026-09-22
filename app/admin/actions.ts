@@ -129,6 +129,10 @@ import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacemen
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { isMyBankKey } from '@/lib/my-banks';
 import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
+// 65b22c00 — the consolidated General-tab Save. Both contracts live outside this file because a
+// `'use server'` module may only export async functions.
+import { COMPANY_GENERAL_TAB_SECTION_ORDER } from '@/lib/company-tab-sections';
+import { SECTION_FIELD_PREFIX, SECTIONS_FIELD, type TabSaveResult } from '@/lib/tab-save-sections';
 import {
   upsertCompanyStatutoryAuthority,
   removeCompanyStatutoryAuthority,
@@ -189,6 +193,9 @@ function companyTab(fd: FormData): string {
 function fromCompanyScreen(fd: FormData): boolean {
   return String(fd.get('returnTo') ?? '') === 'company';
 }
+
+/** The session the company writers run under — named once rather than re-spelled at each helper. */
+type Session = Awaited<ReturnType<typeof getSession>>;
 // a6fe37fc ROUND 5 (cutover) — REPOINTED. This named `/admin/leave`, itself a redirect stub to the leave
 // TYPE screen, so a leave-type archive/delete used to land after two hops; the type screen moved to
 // `/admin/leave-config/types` in this commit and both stubs now point there, so the constant names the
@@ -261,14 +268,23 @@ export async function createCompanyAction(formData: FormData) {
  * cycle later from the company's General settings. The core validates the name resolves to an active cycle in
  * that company and audits the before→after change; a successful save confirms via a localised toast.
  */
+/**
+ * 65b22c00 — the WRITE half, so the per-card action and the General tab's one Save reach the SAME code
+ * with the SAME payload. `runCompanyTabSave` hands each section a FormData indistinguishable from what
+ * that card would have posted alone, so nothing here can tell which door it came through.
+ */
+async function applyDefaultCycleSection(s: Session, formData: FormData): Promise<void> {
+  await setCompanyDefaultPayrollCycle(s, {
+    companyId: String(formData.get('companyId')),
+    cycleName: String(formData.get('defaultPayrollCycle') ?? ''),
+  });
+}
+
 export async function updateCompanyDefaultCycleAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId'));
   try {
-    await setCompanyDefaultPayrollCycle(s, {
-      companyId,
-      cycleName: String(formData.get('defaultPayrollCycle') ?? ''),
-    });
+    await applyDefaultCycleSection(s, formData);
   } catch (e) {
     failCompany(e, companyId, companyTab(formData));
   }
@@ -329,12 +345,20 @@ export async function removeCompanyLogoAction(formData: FormData) {
   okCompany(companyId, t('removedToast'), companyTab(formData));
 }
 
+/** 65b22c00 — see applyDefaultCycleSection. Empty ⇒ null, i.e. "this company is a group root". */
+async function applyParentSection(s: Session, formData: FormData): Promise<void> {
+  const parent = String(formData.get('parentCompanyId') ?? '');
+  await setCompanyParent(s, {
+    companyId: String(formData.get('companyId')),
+    parentCompanyId: parent || null,
+  });
+}
+
 export async function setCompanyParentAction(formData: FormData) {
   const s = await getSession();
-  const parent = String(formData.get('parentCompanyId') ?? '');
   const companyId = String(formData.get('companyId'));
   try {
-    await setCompanyParent(s, { companyId, parentCompanyId: parent || null });
+    await applyParentSection(s, formData);
   } catch (e) {
     failCompany(e, companyId, companyTab(formData));
   }
@@ -1496,17 +1520,16 @@ export async function archiveBusinessUnitAction(fd: FormData) {
   ok(ORG);
 }
 
-export async function updateCompanyAction(fd: FormData) {
-  const s = await getSession();
-  // 65b22c00 — this form posts the company as `id`, not `companyId`; the destination reads the same one
-  // the write does, so a save and its confirmation can never name different companies.
-  const id = String(fd.get('id'));
-  // Enhance Company General Tab (bc5d4891): read each new field, trim, and treat empty as an explicit
-  // clear (empty string -> the service normalizes to null). Website format is validated in the service.
+/**
+ * 65b22c00 — see applyDefaultCycleSection.
+ *
+ * Enhance Company General Tab (bc5d4891): read each field, trim, and treat empty as an explicit clear
+ * (empty string -> the service normalizes to null). Website format is validated in the service.
+ */
+async function applyCompanyDetailsSection(s: Session, fd: FormData): Promise<void> {
   const str = (k: string) => String(fd.get(k) ?? '').trim();
-  try {
-    await updateCompany(s, {
-      id,
+  await updateCompany(s, {
+      id: String(fd.get('id')),
       legalName: String(fd.get('legalName') ?? '').trim(),
       registrationNo: (fd.get('registrationNo') as string) || undefined,
       country: (fd.get('country') as string) || undefined,
@@ -1526,8 +1549,113 @@ export async function updateCompanyAction(fd: FormData) {
       postcode: str('postcode'),
       phone: str('phone'),
       fax: str('fax'),
-    });
-  } catch (e) { failCompany(e, id, companyTab(fd)); }
+  });
+}
+
+/**
+ * 65b22c00 — ONE "Save Changes" for Organization → a company → General.
+ *
+ * WHAT IT IS NOT. It is not a blanket write. Each of the three cards reaches a DIFFERENT service with a
+ * different payload, so this unpacks each card's OWN FormData — the same fields, the same hidden inputs,
+ * the same absences — and hands it to that card's own `apply*Section` helper, the very same one the
+ * per-card action calls, in the DECLARED order. Nothing here writes a table.
+ *
+ * ONLY DIRTY SECTIONS ARE WRITTEN. The client names them in `sections`; a card the administrator did not
+ * touch is not in the list, its service is never called, and no event is appended for it.
+ *
+ * A SECTION NAME THIS TAB DOES NOT OWN IS REFUSED OUTRIGHT, before anything is written. That is the
+ * bucket (b) fence expressed on the server: `COMPANY_GENERAL_TAB_SECTION_ORDER` is the whole vocabulary,
+ * so a crafted payload naming `delete` or `bank` cannot reach a writer through this door.
+ *
+ * IT RETURNS RATHER THAN REDIRECTS, unlike every per-card action on this screen. A redirect cannot say
+ * WHICH write failed, and the classification requires a per-section failure rather than one
+ * all-or-nothing error. It is also what makes "stay on the screen" free for these three: there is no
+ * redirect to stay on the right side of — `revalidatePath` plus the client's own `router.refresh()` is
+ * the whole of it.
+ */
+export async function saveCompanyGeneralTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId'));
+  const requested = String(formData.get(SECTIONS_FIELD) ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const order: readonly string[] = COMPANY_GENERAL_TAB_SECTION_ORDER;
+  const unknown = requested.filter((x) => !order.includes(x));
+  if (unknown.length > 0) {
+    return { ok: false, saved: [], failedSection: unknown[0], error: `Unknown section: ${unknown[0]}` };
+  }
+
+  const writers: Record<string, (s: Session, fd: FormData) => Promise<void>> = {
+    company: applyCompanyDetailsSection,
+    cycle: applyDefaultCycleSection,
+    parent: applyParentSection,
+  };
+
+  const saved: string[] = [];
+  for (const section of order) {
+    if (!requested.includes(section)) continue;
+    const write = writers[section];
+    // Unreachable while the map covers the order list (pinned by test/organization-general-tab-save.test.ts);
+    // refusing rather than skipping means a section that lost its writer can never report itself saved.
+    if (!write) {
+      return { ok: false, saved, failedSection: section, error: `No writer for section: ${section}` };
+    }
+    try {
+      await write(s, companySectionFormData(formData, section, companyId));
+      saved.push(section);
+    } catch (e) {
+      if (saved.length > 0) revalidateCompany(companyId);
+      return { ok: false, saved, failedSection: section, error: (e as Error).message };
+    }
+  }
+
+  revalidateCompany(companyId);
+  return { ok: true, saved };
+}
+
+/** The list carries the company's name and archived badge, so both paths are invalidated (okCompany). */
+function revalidateCompany(companyId: string): void {
+  revalidatePath(ORGANIZATION);
+  if (companyId) revalidatePath(`${ORGANIZATION}/${companyId}`);
+}
+
+/**
+ * Rebuild one card's own FormData out of the consolidated payload.
+ *
+ * THE COMPANY IS FORCED FROM THE ONE TRUSTED TOP-LEVEL VALUE, never taken from a section's own hidden
+ * copy: three hidden copies of the same id are three chances for a crafted payload to point one write at
+ * another company. Both spellings are dropped and re-set, because this screen calls it `id` on the
+ * details card and `companyId` on the other two, and all three sections mean the same company.
+ *
+ * Everything else is taken verbatim, INCLUDING absences — an unpacked section must be indistinguishable
+ * from what that card would have posted alone, or the "absent means leave as-is" contract breaks.
+ */
+function companySectionFormData(formData: FormData, section: string, companyId: string): FormData {
+  const prefix = `${SECTION_FIELD_PREFIX}.${section}.`;
+  const out = new FormData();
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    const field = key.slice(prefix.length);
+    if (field === 'companyId' || field === 'id') continue;
+    out.append(field, value);
+  }
+  out.set('companyId', companyId);
+  out.set('id', companyId);
+  return out;
+}
+
+export async function updateCompanyAction(fd: FormData) {
+  const s = await getSession();
+  // 65b22c00 — this form posts the company as `id`, not `companyId`; the destination reads the same one
+  // the write does, so a save and its confirmation can never name different companies.
+  const id = String(fd.get('id'));
+  try {
+    await applyCompanyDetailsSection(s, fd);
+  } catch (e) {
+    failCompany(e, id, companyTab(fd));
+  }
   const t = await getTranslations('admin.organization');
   okCompany(id, t('savedToast'), companyTab(fd));
 }

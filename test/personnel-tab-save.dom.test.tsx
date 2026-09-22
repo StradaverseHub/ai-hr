@@ -84,7 +84,7 @@ function Screen({
 }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
+      <TabSaveScope tabKey="profile" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} covers={['Personal Details']}>
         <form data-save-section="person">
           <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
           <input type="hidden" name="personId" defaultValue={PERSON_ID} />
@@ -681,7 +681,7 @@ describe('§9 a section that appears LATER has been edited zero times', () => {
     const [showIc, setShowIc] = useState(false);
     return (
       <NextIntlClientProvider locale="en" messages={messages}>
-        <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
+        <TabSaveScope tabKey="profile" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} covers={['Personal Details']}>
           <form data-save-section="person">
             <label>
               <span>Full Name</span>
@@ -999,7 +999,7 @@ function EmploymentScreen({
 }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="job" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Employment Information']}>
+      <TabSaveScope tabKey="job" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} covers={['Employment Information']}>
         {/* ONE card, two forms — exactly the shape of employmentInfoCard on the real page. */}
         <div data-testid="employment-info-card">
           {/* BUCKET (b): an audited company transfer with a pre-transaction gate. No marker, own button. */}
@@ -1128,7 +1128,7 @@ describe('§13 a bucket (b) form INSIDE a consolidated card is still fenced off,
 function RefreshableScreen({ save, serverName }: { save: SaveFn; serverName: string }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
+      <TabSaveScope tabKey="profile" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} covers={['Personal Details']}>
         <form data-save-section="person">
           <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
           <input type="hidden" name="personId" defaultValue={PERSON_ID} />
@@ -1255,7 +1255,7 @@ function PayrollScreen({ save, revise }: { save: SaveFn; revise: (fd: FormData) 
     <NextIntlClientProvider locale="en" messages={messages}>
       <TabSaveScope
         tabKey="payroll"
-        employmentId={EMPLOYMENT_ID}
+        identity={{ employmentId: EMPLOYMENT_ID }}
         saveAction={save}
         covers={['How This Employee Is Paid']}
       >

@@ -32,8 +32,11 @@
  * Address, so one flat bag would collide them, and a writer that reads an ABSENT field as "leave as-is"
  * would start seeing fields its own form deliberately no longer carries.
  */
-export const SECTION_FIELD_PREFIX = 'section';
-export const SECTIONS_FIELD = 'sections';
+// 65b22c00 — MOVED, not copied. The wire format and TabSaveResult were never about personnel, and the
+// Organization company panel now has a consolidated Save of its own; lib/tab-save-sections.ts owns them
+// and this re-export keeps every existing import site pointing at one declaration.
+export { SECTION_FIELD_PREFIX, SECTIONS_FIELD } from './tab-save-sections';
+export type { TabSaveResult } from './tab-save-sections';
 
 export const PROFILE_TAB_SECTION_ORDER = ['person', 'compliance', 'contact', 'ic', 'passport'] as const;
 
@@ -46,22 +49,6 @@ export type ProfileTabSection = (typeof PROFILE_TAB_SECTION_ORDER)[number];
  * A hand-written guard per tab was four chances for one to be forgotten on a new tab, which would let a
  * section name the tab does not own reach a writer.
  */
-
-/**
- * What a consolidated per-tab save reports back.
- *
- * NOT a redirect, unlike every per-card action on this screen. A redirect cannot say WHICH of five writes
- * failed, and the classification's own constraint is that the consolidated save "surface a per-section
- * failure rather than a single all-or-nothing error". `saved` names the sections that did commit — the
- * client marks exactly those clean and leaves the rest edited, so a partial failure never silently
- * discards the user's remaining changes.
- */
-export type TabSaveResult = {
-  ok: boolean;
-  saved: string[];
-  failedSection?: string;
-  error?: string;
-};
 
 /**
  * ── r255 · THE REMAINING TABS ────────────────────────────────────────────────────────────────────────

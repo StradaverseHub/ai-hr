@@ -23,6 +23,7 @@ import {
   setCompanyLogoAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
+  saveCompanyGeneralTabAction,
   updateCompanyAction,
   updateCompanyDefaultCycleAction,
 } from '../../actions';
@@ -175,6 +176,10 @@ export default async function CompanyMaintenancePage({
           setCompanyLogo: setCompanyLogoAction,
           removeCompanyLogo: removeCompanyLogoAction,
           updateCompanyDefaultCycle: updateCompanyDefaultCycleAction,
+          // 65b22c00 — the General tab's ONE Save. A server action handed to a client island as a prop
+          // is the r123 hazard, and this is the shape that is safe: the action is declared in a
+          // `'use server'` module and passed by reference, never wrapped in a closure built here.
+          saveGeneralTab: saveCompanyGeneralTabAction,
         }}
       />
     </div>

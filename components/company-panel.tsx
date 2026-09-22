@@ -18,6 +18,9 @@ import {
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
 import { type CompanyPanelTab } from '@/lib/company-panel-tabs';
+import { type TabSaveResult } from '@/lib/tab-save-sections';
+import { firstDirtyGuard } from '@/lib/unsaved-changes';
+import { TabSaveScope } from './tab-save-scope';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 import { Button, Field, inputCls } from './ui';
@@ -163,6 +166,11 @@ function CrossLinkTab({ text, href, action }: { text: string; href: string; acti
 }
 
 type Action = (fd: FormData) => void | Promise<void>;
+/**
+ * 65b22c00 — the consolidated General-tab Save. It RETURNS rather than redirecting, which is what lets
+ * it report which of the three cards failed; see lib/company-tab-sections.ts.
+ */
+type TabSaveAction = (fd: FormData) => Promise<TabSaveResult>;
 
 export type PanelCompany = {
   id: string;
@@ -866,6 +874,14 @@ export function CompanyPanel({
     setCompanyLogo: Action;
     removeCompanyLogo: Action;
     updateCompanyDefaultCycle: Action;
+    /**
+     * 65b22c00 — ONE Save for the General tab's three FIELD-EDIT cards (bucket (a) of
+     * docs/audits/65b22c00-organization-save-classification.md). The three actions above it stay bound to
+     * their own forms — not as a no-JavaScript fallback, but because a bound form is what each writer is
+     * wired to, because it is what TabSaveScope's submit guard intercepts, and because a `<form>` with no
+     * action at all would POST to the current URL.
+     */
+    saveGeneralTab: TabSaveAction;
   };
 }) {
   const t = useTranslations('admin.organization');
@@ -897,7 +913,7 @@ export function CompanyPanel({
   tabRef.current = tab;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const selectTab = (key: TabKey) => {
+  const commitTab = (key: TabKey) => {
     setTab(key);
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -905,6 +921,26 @@ export function CompanyPanel({
     // Every other param survives (?error= is read by the page's ErrorBanner); replaceState keeps the
     // scroll position and costs no server round trip.
     window.history.replaceState(window.history.state, '', url.toString());
+  };
+
+  /**
+   * 65b22c00 — a tab with unsaved edits asks before it is left, exactly as the personnel tab strip does.
+   *
+   * The panes stay MOUNTED when hidden, so a switch does not itself lose anything; what it loses is the
+   * reader's sight of the edit, and with a consolidated Save the whole point is that an edit is not
+   * written until Save is pressed. TabSaveScope and this tab bar are the same component here rather than
+   * siblings, but they still meet through lib/unsaved-changes.ts — the scope registers itself there on
+   * mount and this has no other way to reach it. With nothing registered, or nothing dirty, this is the
+   * identical immediate switch it always was.
+   */
+  const selectTab = (key: TabKey) => {
+    if (key === tab) return;
+    const guard = firstDirtyGuard();
+    if (guard) {
+      guard.prompt(() => commitTab(key));
+      return;
+    }
+    commitTab(key);
   };
 
   useEffect(() => {
@@ -1000,8 +1036,40 @@ export function CompanyPanel({
           />
         </div>
 
-        {/* Company master data — Company Information + Contact Information (bc5d4891). One form, one save. */}
-        <form action={actions.updateCompany} className="space-y-4 rounded-lg bg-background p-3">
+        {/* 65b22c00 — ONE "Save Changes" for the General tab's field-edit cards. TabSaveScope wraps
+            bucket (a) only: the company master data, the default payroll cycle and the group parent —
+            plain columns on the `company` row, which is what a single Save, and therefore a single
+            Discard, can honestly cover. The logo card ABOVE and the archive / delete row BELOW are
+            bucket (b) and are rendered outside the scope, so the tab's Discard cannot reach them; see
+            docs/audits/65b22c00-organization-save-classification.md.
+
+            WHAT THE BAR SAYS IT COVERS is required, not decorative: the scope is not the whole tab, so a
+            bar reading only "Save Changes" would appear to cover the logo and the delete button too. The
+            Default Payroll Cycle name is dropped for a tenant without Payroll, where that card is not
+            drawn at all — a bar must not name a card the reader cannot find (r256 shipped that fault
+            twice before it was caught by rendering the screen).
+
+            ⚠️ THE STATUTORY REGISTRATIONS CARD IS BUCKET (a) AND IS DELIBERATELY NOT HERE. It is drawn on
+            the Statutory tab and a scope cannot span two panes; moving it to General to tidy the button
+            would reverse r226's placement, which test/company-panel-bank-statutory-layout.test.ts pins.
+            Finding 1 of the audit has the argument, and the reporter is owed that sentence. */}
+        <TabSaveScope
+          tabKey="general"
+          identity={{ companyId: c.id }}
+          saveAction={actions.saveGeneralTab}
+          covers={[
+            t('sectionCompanyInfo'),
+            t('sectionContactInfo'),
+            ...(activeCycleNames !== null ? [t('defaultPayrollCycle')] : []),
+            t('groupParent'),
+          ]}
+        >
+        {/* Company master data — Company Information + Contact Information (bc5d4891). */}
+        <form
+          action={actions.updateCompany}
+          data-save-section="company"
+          className="space-y-4 rounded-lg bg-background p-3"
+        >
           <input type="hidden" name="id" value={c.id} />
 
           {/* Company Information */}
@@ -1096,12 +1164,6 @@ export function CompanyPanel({
               </Field>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button type="submit" size="sm">
-              {t('saveDetails')}
-            </Button>
-          </div>
         </form>
 
         {/* ── Relocated here by r226 ──────────────────────────────────────────────────────────
@@ -1116,7 +1178,11 @@ export function CompanyPanel({
             renamed), an inline note flags it and the admin re-points — no silent invalid selection.
             r298 (ceb1c560) — absent altogether for a tenant without Payroll (`activeCycleNames === null`). */}
         {activeCycleNames !== null && (
-        <form action={actions.updateCompanyDefaultCycle} className="space-y-2.5 rounded-lg bg-background p-3">
+        <form
+          action={actions.updateCompanyDefaultCycle}
+          data-save-section="cycle"
+          className="space-y-2.5 rounded-lg bg-background p-3"
+        >
           <SubHeader>{t('defaultPayrollCycle')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
           {(() => {
@@ -1147,38 +1213,39 @@ export function CompanyPanel({
                 ) : (
                   <p className="text-xs text-muted-foreground">{t('defaultPayrollCycleHint')}</p>
                 )}
-                <Button type="submit" size="sm" variant="outline" disabled={activeCycleNames.length === 0}>
-                  {t('saveDefaultPayrollCycle')}
-                </Button>
               </>
             );
           })()}
         </form>
         )}
 
-        {/* Group parent + archive/delete */}
+        {/* Group parent — the third and last bucket (a) card, so the scope encloses a CONTIGUOUS run.
+            r226 drew it in a two-column grid beside archive/delete; it is lifted out of that grid here
+            because the archive and delete controls are bucket (b) and have to sit outside the Save.
+            Nothing about the card itself changed — same form, same action, same audit trail. */}
+        <form action={actions.setParent} data-save-section="parent" className="space-y-2.5 rounded-lg bg-background p-3">
+          <SubHeader>{t('groupParent')}</SubHeader>
+          <input type="hidden" name="companyId" value={c.id} />
+          <Field label={t('parentCompany')}>
+            <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
+              <option value="">{t('noneGroupRoot')}</option>
+              {companies
+                .filter((o) => o.id !== c.id)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        </form>
+        </TabSaveScope>
+
+        {/* Archive / delete — bucket (b), BELOW and OUTSIDE the scope. A single Save implies a single
+            Discard, and a Discard that appeared to undo a deleted company would be a control lying about
+            what it does. Both keep their own immediate controls, and Delete keeps its confirmation. */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="space-y-3">
-            <form action={actions.setParent} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>{t('groupParent')}</SubHeader>
-              <input type="hidden" name="companyId" value={c.id} />
-              <Field label={t('parentCompany')}>
-                <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
-                  <option value="">{t('noneGroupRoot')}</option>
-                  {companies
-                    .filter((o) => o.id !== c.id)
-                    .map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <Button type="submit" size="sm" variant="outline">
-                {t('setParent')}
-              </Button>
-            </form>
-
             <div className="flex items-center gap-1.5 rounded-lg bg-background p-3">
               {c.archivedAt ? (
                 <form action={actions.archiveCompany}>
