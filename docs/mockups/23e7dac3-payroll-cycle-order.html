@@ -1,0 +1,112 @@
+<meta charset="utf-8">
+<title>Payroll Process — any cycle, any order</title>
+<!--
+  23e7dac3. BEFORE / AFTER of the Payroll Cycle selector on Payroll -> Payroll Process.
+  BEFORE is the real current behaviour, drawn from app/payroll/process/steps/step-period.tsx:
+  `disabled: c.runType === 'regular' ? regularExists : !regularExists`, with the real suffix
+  ` (unavailable)` from messages/en.json payroll.process.cycleDisabled. The four cycle names are
+  Demo Sdn Bhd's ACTUAL configured cycles, read from production 2026-09-22.
+  Deliberately NOT drawn: the restatement behaviour, which has no honest visual. It stays in words.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#c9cad6;--bad:#b42318;--good:#067647}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+  .col h2 b{font-weight:700}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px}
+  .card.before{border-color:#e4c2bd}
+  .card.after{border-color:#bcdccb}
+  .step{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);margin-bottom:12px}
+  .f{margin-bottom:12px}
+  .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);margin-bottom:4px}
+  .inp{border:1px solid var(--border);border-radius:6px;padding:7px 10px;background:#fff;font-size:12.5px}
+  .inp.sel{display:flex;justify-content:space-between;align-items:center}
+  .caret{color:var(--mf);font-size:10px}
+  .list{border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:5px}
+  .opt{padding:7px 10px;font-size:12.5px;border-bottom:1px solid #eceef5;display:flex;
+       justify-content:space-between;align-items:center;background:#fff}
+  .opt:last-child{border-bottom:0}
+  .opt.on{background:color-mix(in srgb,var(--primary) 9%,white);font-weight:600;color:var(--primary)}
+  .opt.off{color:#a3a3ad;background:#fafafc}
+  .tag{font-size:10px;letter-spacing:.03em}
+  .tag.no{color:var(--bad)}
+  .tag.yes{color:var(--good);font-weight:600}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+  .note b{color:var(--fg)}
+  .hdr{margin:0 0 4px;font-size:16px;font-weight:700}
+  .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+  .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+  .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+  .foot p:last-child{margin-bottom:0}
+  .seq{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .pill{border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:11.5px;background:#fff}
+  .pill.n{background:color-mix(in srgb,var(--primary) 10%,white);border-color:transparent;color:var(--primary);font-weight:600}
+</style>
+
+<div class="wrap">
+  <div class="hdr">Payroll &rsaquo; Payroll Process &mdash; Step 1</div>
+  <p class="sub">Company: Demo Sdn Bhd &nbsp;&middot;&nbsp; Payroll month: September 2026</p>
+
+  <div class="pair">
+    <div class="col">
+      <h2><b>Before</b> &mdash; what you see today</h2>
+      <div class="card before">
+        <div class="step">Choose the cycle to process</div>
+        <div class="f">
+          <div class="lab">Payroll cycle</div>
+          <div class="inp sel"><span>Monthly</span><span class="caret">&#9662;</span></div>
+          <div class="list">
+            <div class="opt on"><span>Monthly</span><span class="tag">&nbsp;</span></div>
+            <div class="opt off"><span>Bonus (unavailable)</span><span class="tag no">cannot pick</span></div>
+            <div class="opt off"><span>Advance (unavailable)</span><span class="tag no">cannot pick</span></div>
+            <div class="opt off"><span>Off-cycle (unavailable)</span><span class="tag no">cannot pick</span></div>
+          </div>
+        </div>
+        <p class="note">Every cycle except Monthly is switched off, because September has no
+        Monthly payroll yet. <b>Not</b> because of the Order setting &mdash; all four of these
+        cycles carry the same Order value today.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>After</b> &mdash; what we propose</h2>
+      <div class="card after">
+        <div class="step">Choose the cycle to process</div>
+        <div class="f">
+          <div class="lab">Payroll cycle</div>
+          <div class="inp sel"><span>Bonus</span><span class="caret">&#9662;</span></div>
+          <div class="list">
+            <div class="opt"><span>Monthly</span><span class="tag yes">available</span></div>
+            <div class="opt on"><span>Bonus</span><span class="tag yes">available</span></div>
+            <div class="opt"><span>Advance</span><span class="tag yes">available</span></div>
+            <div class="opt"><span>Off-cycle</span><span class="tag yes">available</span></div>
+          </div>
+        </div>
+        <p class="note">Every configured cycle can be picked and processed, whether or not the
+        Monthly payroll has been run. You choose the sequence:</p>
+        <div class="seq">
+          <span class="pill n">Bonus</span><span class="pill">&rarr;</span>
+          <span class="pill n">Advance</span><span class="pill">&rarr;</span>
+          <span class="pill n">Monthly</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What the picture does not show</h3>
+    <p>When you process an extra payment <b>before</b> the monthly salary, the system works the tax out
+    against the person's normal monthly salary taken from their salary record, and then re-works the whole
+    month once the Monthly payroll is run &mdash; so the month's totals land where they would have if you
+    had processed in the conventional order.</p>
+    <p>That re-working is the large part of this item and it has no honest picture, so it stays in words
+    rather than being drawn as though it were a screen.</p>
+  </div>
+</div>
