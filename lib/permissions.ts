@@ -275,7 +275,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/roster',
     labelKey: 'nav.roster',
     guard: 'scopedSession',
-    routes: ['/roster'],
+    // a57f0584 (r328): '/roster/exceptions' — the "rostered shifts that did not go to plan" listing,
+    // lifted off the foot of /roster onto its own screen. It RIDES this column: scopedSession, the same
+    // guard and the same audience as the roster (a supervisor who may read the month may read what went
+    // wrong on it), and `rosterVariance` is RLS-fenced either way. A second screen key would claim it is
+    // a different surface, which it is not — the same precedent as '/approvals/history' above.
+    // Its sibling '/roster/edit/[employmentId]' is deliberately NOT here: that one is admin-only and is
+    // registered on the requireAdmin column beside '/roster/import'. Registering an admin page on a
+    // scopedSession column makes test/function-access.test.ts report access this session does not have.
+    routes: ['/roster', '/roster/exceptions'],
     hasScopeNote: true,
   },
   {
@@ -660,6 +668,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     // test/function-access.test.ts fails in BOTH directions, so neither half may land alone. Another
     // STATIC segment declared ahead of '[shiftId]' for readability only; on disk Next resolves
     // app/admin/attendance/schedule/page.tsx ahead of the dynamic sibling either way.
+    // a57f0584 (r328): '/roster/edit/[employmentId]' — one employee's month on a screen of its own,
+    // replacing the panel that opened at the foot of the roster. It calls `scopedAdmin()`, which is
+    // `requireAdmin` plus the active company scope and derives the SAME two admin roles this column's
+    // guard does, so it rides HERE with '/roster/import' rather than on the '/roster' column, whose
+    // guard is scopedSession — function-access checks guard-derived access in both directions, and
+    // registering an admin-only page under scopedSession would tell every role it can reach it.
+    // Registered in the SAME commit as its page.tsx; the test fails in both directions.
     // 44bc1c33 (r306): '/admin/card-assignment' — the employee↔Card/Clocking ID mapping a physical
     // terminal needs. requireAdmin, the same guard and the same admin device-configuration surface as the
     // shift library beside it, so it RIDES this column rather than minting a screen key. Registered in the
@@ -674,6 +689,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/attendance/[shiftId]',
       '/attendance/import',
       '/roster/import',
+      '/roster/edit/[employmentId]',
       '/attendance/recompute',
     ],
   },

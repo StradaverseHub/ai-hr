@@ -215,7 +215,18 @@
     "moreSettingsHint": "描述、类别、日期类型、最早上班时间、最晚下班时间、第二段半日上班时间、全日请假、全日加班、正常时数取整、加班时段表和班次津贴 — 全部仍会保存，仍可编辑。",
     "allCompanies": "所有公司",
     "colCompany": "公司",
-    "pickCompanyToEdit": "请在上方选择公司，以生成、复制或上传排班表。"
+    "pickCompanyToEdit": "请在上方选择公司，以生成、复制或上传排班表。",
+    "colEmployee": "员工",
+    "exceptionsButton": "异常 ({count})",
+    "exceptionsTitle": "排班异常",
+    "exceptionsBack": "排班表",
+    "exceptionsNone": "本月没有任何偏离计划的情况。",
+    "pastWarning": "{count, plural, other {已勾选的 # 个日期}}为今天或更早，可能已经记录了考勤。",
+    "rowEditSection": "修改本月",
+    "rowEditSave": "应用",
+    "rowEditCancel": "取消",
+    "rowEditMissing": "该员工不在此排班表中。",
+    "rowEditNoDates": "请至少勾选一个日期再应用。"
   },
   "common": {
     "appName": "Kingdee AI HR",

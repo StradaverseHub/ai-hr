@@ -215,7 +215,18 @@
     "moreSettingsHint": "Penerangan, kategori, jenis hari, waktu masuk paling awal, waktu keluar paling lewat, waktu masuk separuh hari kedua, cuti sehari penuh, lebih masa sehari penuh, pembundaran waktu biasa, jadual lebih masa dan premium syif — semuanya masih disimpan dan boleh disunting.",
     "allCompanies": "Semua syarikat",
     "colCompany": "Syarikat",
-    "pickCompanyToEdit": "Pilih syarikat di atas untuk menjana, menyalin atau memuat naik roster."
+    "pickCompanyToEdit": "Pilih syarikat di atas untuk menjana, menyalin atau memuat naik roster.",
+    "colEmployee": "Pekerja",
+    "exceptionsButton": "Pengecualian ({count})",
+    "exceptionsTitle": "Pengecualian roster",
+    "exceptionsBack": "Roster",
+    "exceptionsNone": "Tiada yang tersasar daripada rancangan dalam bulan ini.",
+    "pastWarning": "{count, plural, other {# tarikh yang ditanda}} adalah hari ini atau lebih awal dan mungkin sudah dihadiri.",
+    "rowEditSection": "Ubah bulan ini",
+    "rowEditSave": "Guna",
+    "rowEditCancel": "Batal",
+    "rowEditMissing": "Pekerja itu tiada dalam roster ini.",
+    "rowEditNoDates": "Tandakan sekurang-kurangnya satu tarikh sebelum menggunakannya."
   },
   "common": {
     "appName": "Kingdee AI HR",

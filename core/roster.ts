@@ -2273,6 +2273,16 @@ export async function rosterMonthView(
     businessUnitId?: string;
     departmentId?: string;
     q?: string;
+    /**
+     * a57f0584 rev 2 — narrow to specific employments. The per-employee Edit screen
+     * (app/roster/edit/[employmentId]) is a WINDOW on this same view, not a read of its own: it must
+     * resolve every cell through the same precedence the grid behind it used, or a date shows one code
+     * on the roster and another in the editor that is about to overwrite it.
+     *
+     * It narrows what is ASKED FOR, never what is permitted: the rows still come from `listEmployees`,
+     * which is RLS-fenced, so an id this session may not see simply yields no row.
+     */
+    employmentIds?: string[];
   },
 ): Promise<RosterMonthView> {
   const { from, to } = monthRange(p.month);
@@ -2298,8 +2308,10 @@ export async function rosterMonthView(
     }));
 
   const needle = (p.q ?? '').trim().toLowerCase();
+  const wanted = p.employmentIds ? new Set(p.employmentIds) : null;
   const employees = allEmployees.filter(
     (e) =>
+      (!wanted || wanted.has(e.employmentId)) &&
       (!p.businessUnitId || e.businessUnitId === p.businessUnitId) &&
       (!p.departmentId || e.departmentId === p.departmentId) &&
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
@@ -2625,4 +2637,31 @@ export function rosterVariance(
     }
     return out.sort((a, b) => a.shiftDate.localeCompare(b.shiftDate) || a.name.localeCompare(b.name));
   });
+}
+
+/** An exception is a variance row that is NOT on track. One spelling, used by the Roster screen's count
+ *  and by the Exceptions screen's list, so the number on the button can never disagree with the number of
+ *  rows behind it. */
+export const isRosterException = (v: RosterVarianceRow): boolean => v.kind !== 'on_track';
+
+/**
+ * a57f0584 rev 2 — HOW MANY exceptions, for the Roster screen's Exceptions button.
+ *
+ * The listing moved off /roster onto /roster/exceptions; the roster keeps only the count, so it stops
+ * serialising rows it no longer draws into the RSC payload of every month view.
+ *
+ * ⚠️ THIS IS DELIBERATELY NOT A SECOND, CHEAPER SQL READ, and saying so is the point. What counts as an
+ * exception is decided in JavaScript above — approved full-day leave per date (ADR-0068 §4A), half/hourly
+ * leave spans, `shiftDate > today`, and `netScheduledMinutes` with the shift's own Normal-Hours Rounding
+ * (cf21e554). A `select count(*)` could not ask any of those questions, and a second implementation that
+ * approximated them would be a second source of truth for "is this an exception" — exactly the drift that
+ * once let /roster call a fully-worked rounded day 'short' while /attendance called it on track. The
+ * saving here is the PAYLOAD, not the query; buying the query back means moving the whole rule into SQL,
+ * which is a different change.
+ */
+export async function rosterExceptionCount(
+  ctx: SessionContext,
+  p: { from: string; to: string; companyIds?: string[]; today?: string },
+): Promise<number> {
+  return (await rosterVariance(ctx, p)).filter(isRosterException).length;
 }

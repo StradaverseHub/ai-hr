@@ -215,7 +215,18 @@
     "moreSettingsHint": "Mô tả, danh mục, loại ngày, giờ vào sớm nhất, giờ ra muộn nhất, giờ vào nửa ngày thứ hai, nghỉ cả ngày, tăng ca cả ngày, làm tròn giờ bình thường, bảng tăng ca và phụ cấp ca — tất cả vẫn được lưu và vẫn sửa được.",
     "allCompanies": "Tất cả công ty",
     "colCompany": "Công ty",
-    "pickCompanyToEdit": "Chọn một công ty ở trên để tạo, sao chép hoặc tải lên lịch làm việc."
+    "pickCompanyToEdit": "Chọn một công ty ở trên để tạo, sao chép hoặc tải lên lịch làm việc.",
+    "colEmployee": "Nhân viên",
+    "exceptionsButton": "Ngoại lệ ({count})",
+    "exceptionsTitle": "Ngoại lệ lịch trực",
+    "exceptionsBack": "Lịch trực",
+    "exceptionsNone": "Tháng này không có gì lệch kế hoạch.",
+    "pastWarning": "{count, plural, other {# ngày đã chọn}} là hôm nay hoặc trước đó và có thể đã được chấm công.",
+    "rowEditSection": "Thay đổi tháng này",
+    "rowEditSave": "Áp dụng",
+    "rowEditCancel": "Hủy",
+    "rowEditMissing": "Nhân viên đó không có trong lịch trực này.",
+    "rowEditNoDates": "Hãy chọn ít nhất một ngày trước khi áp dụng."
   },
   "common": {
     "appName": "Kingdee AI HR",

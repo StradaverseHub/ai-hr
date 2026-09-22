@@ -215,7 +215,18 @@
     "moreSettingsHint": "Description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in, full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift premium — all still saved, all still editable.",
     "allCompanies": "All companies",
     "colCompany": "Company",
-    "pickCompanyToEdit": "Choose a company above to generate, copy or upload a roster."
+    "pickCompanyToEdit": "Choose a company above to generate, copy or upload a roster.",
+    "colEmployee": "Employee",
+    "exceptionsButton": "Exceptions ({count})",
+    "exceptionsTitle": "Roster exceptions",
+    "exceptionsBack": "Roster",
+    "exceptionsNone": "Nothing went off plan in this month.",
+    "pastWarning": "{count, plural, =1 {# ticked date is} other {# ticked dates are}} today or earlier and may already have been attended.",
+    "rowEditSection": "Change this month",
+    "rowEditSave": "Apply",
+    "rowEditCancel": "Cancel",
+    "rowEditMissing": "That employee is not on this roster.",
+    "rowEditNoDates": "Tick at least one date before applying."
   },
   "common": {
     "appName": "Kingdee AI HR",

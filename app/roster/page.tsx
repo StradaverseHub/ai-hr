@@ -3,13 +3,10 @@ import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
-import { rosterMonthView, rosterVariance } from '@/core/roster';
-import { listToilPolicies } from '@/core/toil';
+import { rosterExceptionCount, rosterMonthView } from '@/core/roster';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
-import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { addDaysIso, addMonths, buildRosterTemplate, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -40,6 +37,7 @@ export default async function RosterPage({
     error?: string;
     generated?: string;
     copied?: string;
+    rowSaved?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedSession();
@@ -73,8 +71,6 @@ export default async function RosterPage({
    */
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
-  /** The Company column earns its place only when more than one company can appear in the rows. */
-  const showCompany = companyIds.length > 1;
   const todayIso = todayInKualaLumpur();
   const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
   const admin = isAdmin(s);
@@ -87,9 +83,15 @@ export default async function RosterPage({
     ...(sp.q ? { q: sp.q } : {}),
   });
 
-  const [variance, toilPolicies, departments] = await Promise.all([
-    rosterVariance(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
-    listToilPolicies(s, companyIds),
+  /**
+   * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of
+   * this screen; it is now the Exceptions button below, and the rows live on /roster/exceptions. The
+   * roster therefore reads a number, and the TOIL policy read that only ever existed to decide whether a
+   * rest-worked row got a "Bank in lieu" button went WITH the rows — it belongs to the screen that draws
+   * them.
+   */
+  const [exceptionCount, departments] = await Promise.all([
+    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
     listDepartments(s, { companyIds }),
   ]);
 
@@ -97,24 +99,27 @@ export default async function RosterPage({
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
   const copiedCount = sp.copied && /^\d+$/.test(sp.copied) ? Number(sp.copied) : null;
-  const exceptions = variance.filter((v) => v.kind !== 'on_track');
-  // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
-  const toilOn = isModuleEnabledOrFalse(s, 'toil') && (toilPolicies[0]?.enabled ?? false);
-  const kindBadge: Record<string, string> = {
-    no_show: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
-    late: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    short: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
-    rest_worked: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400',
-  };
-  const kindLabel: Record<string, string> = {
-    no_show: t('kindNoShow'),
-    late: t('kindLate'),
-    short: t('kindShort'),
-    rest_worked: t('kindRestWorked'),
-  };
-
+  // a57f0584 rev 2 — "comes back to the roster with your change already showing". The Edit SCREEN redirects
+  // here after a save; `rowAssignAction` revalidated /roster, so the grid below is the saved month and this
+  // line says how many dates it covers. Without it the administrator lands on a page that looks unchanged.
+  const rowSaved = sp.rowSaved && /^\d+$/.test(sp.rowSaved) ? Number(sp.rowSaved) : null;
   const dowFmt = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
-  const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+  /**
+   * a57f0584 rev 2 — THE DATE HEADING, CHANGED IN THE FORMATTER AND NOWHERE ELSE.
+   *
+   * It read `01/09`, which a reader has to be told whether to parse as day-month or month-day, and the
+   * reporter asked for the month to be named. `{ day: '2-digit', month: 'short' }` through Intl in the
+   * VIEWER'S locale, never a hardcoded ['Jan','Feb',…]: that array is the trap the Excel template header
+   * (lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS) records from the other direction, and it would print
+   * English months on a Malay screen. The grid renders what it is handed, so there is still exactly ONE
+   * rendition of a date on this screen and the export cannot drift from it.
+   *
+   * ⚠️ ORDER IS THE LOCALE'S, NOT OURS. `en` is en-US here and yields "Sep 01"; en-GB would yield
+   * "01 Sept", which is the spelling in the plan. Reordering the parts by hand would be exactly the
+   * hardcoding this avoids — if day-first English is wanted, the answer is an en-GB locale, not a
+   * formatter that knows better than Intl.
+   */
+  const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', timeZone: 'UTC' });
   const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const gridDates = view.dates.map((iso) => {
     const d = new Date(`${iso}T00:00:00Z`);
@@ -169,6 +174,11 @@ export default async function RosterPage({
           {copiedCount > 0 ? t('copiedDone', { rows: copiedCount }) : t('copiedEmpty')}
         </div>
       )}
+      {rowSaved != null && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {t('rowApplied', { count: rowSaved })}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         {companies.length > 1 ? (
@@ -218,6 +228,14 @@ export default async function RosterPage({
               />
             </>
           )}
+          {/* a57f0584 rev 2 — EXCEPTIONS IS A BUTTON WITH A COUNT, not a listing bolted to the bottom of
+              the roster. The count is what the reporter needs on this screen ("so you still know there
+              are any"); the rows are a screen of their own, reached from here with the same month and the
+              same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
+              cannot tell you there is nothing wrong, it can only look like a missing feature. */}
+          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
+            {t('exceptionsButton', { count: exceptionCount })}
+          </Link>
           <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
@@ -313,17 +331,14 @@ export default async function RosterPage({
                 employmentId: e.employmentId,
                 name: e.name,
                 code: e.code,
-                department: e.department,
                 occupation: e.occupation,
-                // Only when the roster actually spans companies — the grid drops the column otherwise.
-                company: showCompany ? e.company : null,
               }))}
               shifts={view.shifts}
               initial={view.cells}
               usual={view.usual}
               isAdmin={admin}
               today={todayIso}
-              companyName={companyId ? (companies.find((c) => c.id === companyId)?.name ?? '') : ''}
+              editQuery={qs({})}
             />
           )}
         </div>
@@ -451,30 +466,6 @@ export default async function RosterPage({
         </Card>
       )}
 
-      {exceptions.length > 0 && (
-        <Card>
-          <SectionHeader title={t('varianceTitle')} count={exceptions.length} />
-          <ul className="divide-y divide-border">
-            {exceptions.map((v) => (
-              <li key={`${v.employmentId}|${v.shiftDate}`} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
-                <div className="min-w-0">
-                  <span className="font-medium">{v.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {v.shiftDate} · {v.shiftName ?? t('rest')}
-                  </span>
-                </div>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${kindBadge[v.kind]}`}>{kindLabel[v.kind]}</span>
-                  {toilOn && v.kind === 'rest_worked' && (
-                    <ToilElectButton employmentId={v.employmentId} workedDate={v.shiftDate} />
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">{t('varianceHint')}</p>
-        </Card>
-      )}
     </div>
   );
 }
