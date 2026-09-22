@@ -93,6 +93,35 @@ export function resolveRosterCell(iso: string, assigned: AssignedCell, usual: Us
 export const cellIsWorking = (c: ResolvedCell): boolean => c.kind === 'shift' || c.kind === 'usual';
 
 /**
+ * WHAT A RESOLVED CELL PRINTS — the grid's cell, the Edit screen's date tile, and anything else that
+ * shows a day. It lives HERE, beside resolveRosterCell, for the reason the whole module exists: a second
+ * rendition somewhere else is how one date comes to read RD in the grid and OFF in the editor.
+ *
+ * It takes `rd` and `off` as ARGUMENTS rather than reaching for next-intl, so this file stays free of
+ * i18n and a server component and a client island can both call it (a57f0584 rev 2 — the Edit screen is
+ * a server component and may not import a function out of a 'use client' module).
+ */
+export function rosterCellLabel(
+  cell: ResolvedCell,
+  codeOf: (shiftId: string) => string,
+  rd: string,
+  off: string,
+): string {
+  switch (cell.kind) {
+    case 'shift':
+      return codeOf(cell.shiftId);
+    case 'rest':
+      return rd;
+    case 'usual':
+      return codeOf(cell.shiftId);
+    case 'off':
+      return off;
+    default:
+      return '—';
+  }
+}
+
+/**
  * EA 1955 s.59 — one rest day in every seven. The weekly grid could ask "does EVERY visible day carry a
  * shift?"; on a 31-column month that is almost never true, so the same question would silently stop
  * firing exactly when the screen got bigger. This is the rolling form: ANY seven CONSECUTIVE visible

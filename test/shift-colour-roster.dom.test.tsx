@@ -57,7 +57,7 @@ const PLAIN_SHIFT: ShiftLite = {
 const AUTO_SECOND = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300';
 
 const EMPLOYEES: GridEmployee[] = [
-  { employmentId: 'e1', name: 'Ahmad Zulkifli', code: 'A0001', department: 'Site Operations', occupation: 'EXECUTIVE' },
+  { employmentId: 'e1', name: 'Ahmad Zulkifli', code: 'A0001', occupation: 'EXECUTIVE' },
 ];
 
 function renderGrid(initial: Record<string, AssignedCell>) {
@@ -71,7 +71,7 @@ function renderGrid(initial: Record<string, AssignedCell>) {
         usual={{}}
         isAdmin
         today={TODAY}
-        companyName="ISEDECOR BINA SDN BHD"
+        editQuery="month=2026-08"
       />
     </NextIntlClientProvider>,
   );
