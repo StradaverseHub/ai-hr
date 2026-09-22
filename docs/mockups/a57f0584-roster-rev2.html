@@ -1,0 +1,79 @@
+<meta charset="utf-8">
+<title>Monthly Roster — compact employee cell, clearer dates, views</title>
+<!--
+  a57f0584 revision 2. Six changes the reporter asked for after r322 widened the roster.
+  The overlap is NOT redrawn (a picture cannot show a scroll bug); it is described in words.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  .seg span{padding:5px 12px;font-size:12px;background:#fff}
+  .seg span.on{background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);font-weight:600}
+  .btn{padding:6px 12px;border-radius:9px;font-size:12px;font-weight:600;background:#fff;color:var(--fg);
+       border:1px solid var(--border)}
+  .spacer{flex:1}
+  table{border-collapse:collapse;font-size:12.5px;width:100%}
+  th{background:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:6px 8px;text-align:left;white-space:nowrap}
+  td{padding:6px 8px;border-top:1px solid var(--border);white-space:nowrap}
+  .emp{font-weight:600}
+  .emp .code{color:var(--mf);font-weight:400}
+  .cell{text-align:center;font-size:11.5px}
+  .s1{background:#e0e7ff;color:#3730a3;border-radius:5px;padding:1px 5px}
+  .rd{color:var(--mf)}
+  .act{color:var(--primary);font-weight:600;font-size:12px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .gone{font-size:11.5px;color:var(--mf);border-top:1px dashed var(--border);margin-top:12px;padding-top:10px}
+</style>
+
+<div class="card">
+  <h2>Monthly Roster <span class="chip">rebuilt</span></h2>
+  <p class="sub">Name and employee number in one cell; Company and Department out of the roster; dates named, not numbered.</p>
+  <div class="bar">
+    <div class="seg"><span class="on">Month</span><span>Week</span><span>Custom range</span></div>
+    <button class="btn">‹ Sept 2026 ›</button>
+    <div class="spacer"></div>
+    <button class="btn">Exceptions (3)</button>
+    <button class="btn">Export</button>
+  </div>
+  <table>
+    <tr>
+      <th style="width:210px">Employee</th>
+      <th class="cell">01 Sept</th><th class="cell">02 Sept</th><th class="cell">03 Sept</th>
+      <th class="cell">04 Sept</th><th class="cell">05 Sept</th><th class="cell">06 Sept</th>
+      <th class="cell">07 Sept</th><th style="width:70px"></th>
+    </tr>
+    <tr><td class="emp">AARON AZIZ <span class="code">(X003)</span></td>
+      <td class="cell"><span class="s1">AM01</span></td><td class="cell"><span class="s1">AM01</span></td>
+      <td class="cell"><span class="s1">AM01</span></td><td class="cell"><span class="s1">AM01</span></td>
+      <td class="cell"><span class="s1">AM01</span></td><td class="cell rd">RD</td><td class="cell rd">RD</td>
+      <td><span class="act">Edit</span></td></tr>
+    <tr><td class="emp">Arjun Kumar <span class="code">(EMP-0004)</span></td>
+      <td class="cell"><span class="s1">SF01</span></td><td class="cell"><span class="s1">SF01</span></td>
+      <td class="cell"><span class="s1">SF01</span></td><td class="cell"><span class="s1">SF01</span></td>
+      <td class="cell"><span class="s1">SF01</span></td><td class="cell rd">RD</td><td class="cell rd">RD</td>
+      <td><span class="act">Edit</span></td></tr>
+    <tr><td class="emp">Aisyah Rahman <span class="code">(EMP-0001)</span></td>
+      <td class="cell"><span class="s1">MB28</span></td><td class="cell"><span class="s1">MB28</span></td>
+      <td class="cell"><span class="s1">MB28</span></td><td class="cell"><span class="s1">MB28</span></td>
+      <td class="cell"><span class="s1">MB28</span></td><td class="cell rd">OFF</td><td class="cell rd">RD</td>
+      <td><span class="act">Edit</span></td></tr>
+  </table>
+  <div class="gone"><strong>Out of the roster:</strong> the Company and Department columns, and the
+    &ldquo;This week&rsquo;s exceptions&rdquo; listing &mdash; which is now the Exceptions button above,
+    opening its own screen.</div>
+  <p class="note">Edit opens its own screen rather than a form at the foot of this page, and returns here
+    with the roster refreshed.</p>
+  <p class="note">Sketch only &mdash; wording, spacing and colours will differ from the finished screen.
+    The column-overlap fix cannot be drawn; it is described in the plan.</p>
+</div>
