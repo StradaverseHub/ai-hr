@@ -34,7 +34,6 @@
     "app/delegations/page.tsx",
     "app/me/actions.ts",
     "app/roster/actions.ts",
-    "app/roster/page.tsx",
     "components/earned-accrual-card.tsx",
     "core/admin.ts",
     "core/analytics.ts",

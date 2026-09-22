@@ -2,7 +2,12 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { isRosterException, rosterVariance } from '@/core/roster';
-import { listToilPolicies } from '@/core/toil';
+// ADR-0080 D9 — through the leave pack FACADE, not core/toil. This screen is NEW in r328 (the
+// exceptions listing lifted off the foot of /roster), and a new consumer joins by using the facade:
+// test/pack-drift-allowlist.json is audited kernel-contract debt that only ever SHRINKS, so adding
+// an entry for this file is the one fix that is not available. packs/leave/service re-exports
+// core/toil wholesale, so this is the same symbol reached the supported way.
+import { listToilPolicies } from '@/packs/leave/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ToilElectButton } from '@/components/toil-elect-button';
