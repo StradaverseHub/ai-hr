@@ -4291,7 +4291,10 @@
       "link_pcb2ii_hint": "One statement per employee: the tax deducted each month and the receipt for it.",
       "desc_pcb2ii_en": "Statement of Payment by Employer, in English. Choose a year, then the employees.",
       "desc_pcb2ii_ms": "Penyata Bayaran Cukai Oleh Majikan, in Bahasa Malaysia. Choose a year, then the employees.",
+      "pcb2iiPickPeople": "{company} · {year} · tick the people whose PCB 2(II) statement you need, then preview or download",
       "pcb2iiSelectHint": "Tick the employees whose statement you need. Each one gets its own page.",
+      "pcb2iiPreview": "Preview",
+      "pcb2iiGenerate": "Download PCB 2(II)",
       "pcb2iiNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no tax to declare on a PCB 2(II). Run that year’s payroll first."
     },
     "ea": {

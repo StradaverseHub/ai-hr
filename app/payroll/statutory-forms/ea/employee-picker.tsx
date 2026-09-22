@@ -54,6 +54,15 @@ export type EaPickerStrings = {
    *  page cannot interpolate it on the server. The ONE placeholder this component fills in itself. */
   selectedTemplate: string;
   generate: string;
+  /**
+   * 72b100cd (r328) — the SECOND submit's label ("Preview"), and OPTIONAL because the preview is.
+   *
+   * The C.P.8A (EA) screen passes neither this nor `previewAction` and is unchanged by r328: no button
+   * is rendered unless BOTH arrive. That is why the preview lands as two optional props on the shared
+   * picker rather than as a forked copy of it — a lookalike picker is the "six slightly different
+   * employee pickers" this repo keeps consolidating away from (r320).
+   */
+  preview?: string;
   colSelect: string;
   colCode: string;
   colName: string;
@@ -76,12 +85,21 @@ const STATUS_CLS: Record<string, string> = {
 export function EaEmployeePicker({
   rows,
   action,
+  previewAction,
   hidden,
   strings,
 }: {
   rows: EaPickerRow[];
   /** The download route. A plain href — never a callback: a closure crossing this boundary 500s. */
   action: string;
+  /**
+   * 72b100cd (r328) — the route that serves the SAME document `inline`, or nothing.
+   *
+   * ⚠️ A PLAIN HREF, for the same reason `action` is one. A server action handed to a client island as a
+   * prop typechecks, builds and then 500s at runtime; this is a string that ends up in a `formAction`
+   * attribute and never crosses the boundary as a function.
+   */
+  previewAction?: string;
   /** companyId / year / lang, carried through unchanged. */
   hidden: { name: string; value: string }[];
   strings: EaPickerStrings;
@@ -214,12 +232,33 @@ export function EaEmployeePicker({
           <span className="text-xs text-muted-foreground">{strings.selectedTemplate.replace('{count}', String(selected.length))}</span>
           {overLimit && <span className="text-xs font-medium text-destructive">{strings.tooMany}</span>}
         </div>
-        {/* Nothing selected is nothing to produce, so the button cannot be pressed — an empty EA download
-            is not a useful answer and the route refuses it a second time. Too many is the same story at the
-            other end: the request would be refused by the HTTP layer, so it is refused here with words. */}
-        <button className={btnPrimary} disabled={selected.length === 0 || overLimit}>
-          {strings.generate}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 72b100cd (r328) — LOOK BEFORE YOU SEND, and it is the same form either way.
+              `formAction` retargets THIS submit at the preview route, so the preview is generated from the
+              identical selection, year, company and language the download would use — there is no second
+              place a preview could be built from a slightly different set. It opens in a new tab so the
+              selection survives being looked at; the reporter's flow is select → preview → download, and a
+              preview that navigated away would empty the picker behind it.
+              Rendered only when the caller supplies both a route and a label (the EA screen supplies
+              neither), and refused in exactly the same two states as the download beside it. */}
+          {previewAction && strings.preview && (
+            <button
+              type="submit"
+              formAction={previewAction}
+              formTarget="_blank"
+              disabled={selected.length === 0 || overLimit}
+              className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {strings.preview}
+            </button>
+          )}
+          {/* Nothing selected is nothing to produce, so the button cannot be pressed — an empty EA download
+              is not a useful answer and the route refuses it a second time. Too many is the same story at the
+              other end: the request would be refused by the HTTP layer, so it is refused here with words. */}
+          <button className={btnPrimary} disabled={selected.length === 0 || overLimit}>
+            {strings.generate}
+          </button>
+        </div>
       </div>
     </form>
   );
