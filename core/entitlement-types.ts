@@ -170,6 +170,12 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
       // gates on no module, so the marker is a label on a cross-tenant maintenance run rather than a key
       // that opens anything.
       'scripts/backfill-mileage-flat-rate.ts',
+      // 0fe1ca2e — one-off: moves a site's holiday state DOWN one rung onto employment.work_state, so
+      // removing the per-company site register cannot take a public holiday off anybody. Same synthetic
+      // cross-tenant shape as the three above, and the marker is a LABEL rather than a key that opens
+      // anything: it writes through setEmploymentHolidayCalendar (core/org.ts), which gates on no
+      // module, and reads through holidayDatesFor, which gates on none either. Dry run by default.
+      'scripts/carry-location-state-to-work-state.ts',
     ],
   },
   /*
