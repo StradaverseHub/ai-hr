@@ -441,6 +441,7 @@
       "adminTitle": "Pengurusan Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
       "importCsv": "Import pekerja",
+      "duplicateRecords": "Rekod berganda",
       "profileChangeRequests": "Permohonan tukar profil",
       "pendingCount": "{count, plural, one {# tertangguh} other {# tertangguh}}",
       "profileChangeHint": "Meluluskan akan menggunakan perubahan pada profil berkanun pekerja (bank / PCB). Anda tidak boleh meluluskan permohonan sendiri.",
@@ -1821,6 +1822,56 @@
         "compensation": "Gaji Asas"
       },
       "draftStatus": "Draf — menunggu pengaktifan"
+    },
+    "duplicates": {
+      "title": "Rekod pekerja yang mungkin berganda",
+      "description": "Pekerja yang muncul lebih daripada sekali sebagai rekod orang yang berasingan. Tiada apa-apa di halaman ini yang mengubah rekod.",
+      "backToPersonnel": "Kembali ke Pengurusan Personel",
+      "howToReadTitle": "Cara membaca senarai ini",
+      "howToReadSuggestion": "Ini adalah cadangan, bukan kesimpulan. Rekod disenaraikan kerana berkongsi nama dan tarikh mula yang sama — dua orang yang berbeza juga boleh begitu, dan rekod yang tersalah eja tidak akan muncul di sini langsung.",
+      "howToReadMultiEmployment": "Baris yang berkongsi huruf Rekod yang sama ialah satu orang yang memegang lebih daripada satu jawatan. Itu perkara biasa dan bukan pertindihan.",
+      "howToReadNothingChanged": "Tiada apa-apa yang telah diubah dan tiada apa-apa yang boleh diubah dari sini. Tiada sesiapa akan digabungkan atau dibuang sehingga anda menyatakan yang mana satu orang yang sama.",
+      "statNames": "nama untuk disemak",
+      "statExtraRecords": "rekod orang tambahan",
+      "statChecked": "pekerja aktif disemak",
+      "activeOnlyNote": "Hanya pekerja yang masih bekerja disemak. Rekod pekerja yang telah berhenti tidak disenaraikan.",
+      "sharedDifferentDates": "{n} nama lagi dikongsi oleh lebih daripada satu rekod orang tetapi dengan tarikh mula yang berbeza. Berkongsi nama adalah perkara biasa, jadi ia tidak disenaraikan di sini.",
+      "noneFound": "Tiada pekerja berkongsi nama dan tarikh mula dengan rekod orang yang berasingan. {n} pekerja aktif telah disemak.",
+      "groupSubtitle": "{persons} rekod orang · {employments} pekerjaan · mula {joined} · {companies}",
+      "mayBeDifferentPeople": "Ini mungkin orang yang berbeza — rekod tidak sepadan pada: {fields}",
+      "hasBeenPaid": "Sekurang-kurangnya satu rekod ini telah dibayar",
+      "acrossCompanies": "Merentas {n} syarikat",
+      "colRecord": "Rekod",
+      "colEmployeeId": "ID Pekerja",
+      "colCompany": "Syarikat",
+      "colJoined": "Mula",
+      "colIc": "No. KP",
+      "colPassport": "Pasport",
+      "colDob": "Tarikh lahir",
+      "colEmail": "E-mel kerja",
+      "colBank": "Akaun bank",
+      "colPayslips": "Slip gaji",
+      "colLeaveEntries": "Entri cuti",
+      "openRecord": "Buka rekod",
+      "notRecorded": "—",
+      "evidenceTitle": "Apa yang sepadan dan tidak sepadan antara rekod ini",
+      "stateSame": "Sama",
+      "stateDiffers": "Berbeza",
+      "stateNotRecorded": "Tidak direkodkan",
+      "statePartiallyRecorded": "Hanya pada {n} daripada {of}",
+      "uniqueByConstraintNote": "{fields}: sistem sudah menetapkan ini mesti unik, jadi dua rekod tidak mungkin menunjukkan yang sama. Perbezaan di sini memang dijangka dan bukan dengan sendirinya bukti dua orang yang berbeza.",
+      "assignedByEmployerNote": "{fields}: ini diberikan oleh majikan, bukan oleh individu itu, jadi seorang yang bekerja dengan dua syarikat dalam kumpulan akan mempunyai dua. Perbezaan di sini bukan dengan sendirinya bukti dua orang yang berbeza.",
+      "field": {
+        "icNumber": "No. KP",
+        "passportNumber": "No. pasport",
+        "dateOfBirth": "Tarikh lahir",
+        "fullNameExact": "Ejaan nama",
+        "primaryEmail": "E-mel kerja",
+        "personalEmail": "E-mel peribadi",
+        "gender": "Jantina",
+        "maritalStatus": "Status perkahwinan",
+        "bankAccountNo": "Akaun bank"
+      }
     }
   },
   "leave": {
@@ -7895,7 +7946,8 @@
         "payComponents": "Item Gaji",
         "payrollPermissions": "Kebenaran gaji & cuti",
         "leaveEmployeeBalances": "Baki Pekerja",
-        "leaveEmployeeRecords": "Rekod Cuti Pekerja"
+        "leaveEmployeeRecords": "Rekod Cuti Pekerja",
+        "duplicatePersonRecords": "Rekod pekerja berganda"
       },
       "scope": {
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
@@ -7908,7 +7960,8 @@
         "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "leaveApproval": "Pengurus dan pentadbir; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
-        "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan."
+        "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan.",
+        "duplicatePersonRecords": "Menyenaraikan hanya pekerja dalam syarikat yang anda uruskan, jadi separuh daripada pasangan yang merentas dua syarikat mungkin tidak kelihatan kepada anda. Baca sahaja — tiada rekod boleh diubah dari skrin ini."
       },
       "status": {
         "active": "Aktif",

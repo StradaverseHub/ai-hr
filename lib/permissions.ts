@@ -330,6 +330,25 @@ export const SCREENS: readonly ScreenEntry[] = [
     ],
   },
   {
+    // 05d2709a — Possible duplicate employee records. Its OWN column, deliberately NOT a fifth route on
+    // personnelAdmin above: managing an employee and reviewing a cross-company list of people who may be
+    // the same person are not the same capability to describe, and the whole value of this grid is that it
+    // says where a screen actually lives. The guard MATCHES the page's own `requireAdmin()` — a column
+    // claiming a different guard from the page misreports who can reach it, which is the one thing a
+    // transparency screen must not do.
+    //
+    // The scope note is worth authoring rather than omitting: this screen is company-scoped by RLS like
+    // every other, and the CONSEQUENCE here is unusual — half of a pair spanning two companies can be
+    // invisible to a company-scoped administrator, so the list they see is shorter than the tenant's.
+    // It also states in the reader's own words that nothing on the screen can change a record.
+    screenKey: 'duplicatePersonRecords',
+    href: '/admin/personnel/duplicates',
+    labelKey: 'admin.users.screen.duplicatePersonRecords',
+    guard: 'requireAdmin',
+    routes: ['/admin/personnel/duplicates'],
+    hasScopeNote: true,
+  },
+  {
     screenKey: 'systemLabels',
     href: '/admin/settings/system-labels',
     labelKey: 'nav.systemLabels',

@@ -405,6 +405,21 @@ export default async function PeoplePage({
                 {t('importCsv')}
               </Link>
             )}
+            {/* 05d2709a — the way in to "Possible duplicate employee records". A LINK from this list, not
+                a rail row: `/admin/personnel/duplicates` sits below this screen's own href, and the rail's
+                flat rows match a segment PREFIX (components/nav-flyout.tsx isHrefActive), so a row of its
+                own would light Personnel Management AND itself on the same page — the two-lit-rows defect
+                388e53c2 was raised to fix. Reached the same way /admin/personnel/import and
+                /admin/personnel/new are, which is also where somebody looking at the employee list would
+                go asking "why is this person in here twice?". */}
+            {isAdmin && (
+              <Link
+                href="/admin/personnel/duplicates"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('duplicateRecords')}
+              </Link>
+            )}
             {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me

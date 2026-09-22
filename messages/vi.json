@@ -441,6 +441,7 @@
       "adminTitle": "Quản lý Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
       "importCsv": "Nhập nhân viên",
+      "duplicateRecords": "Hồ sơ trùng",
       "profileChangeRequests": "Yêu cầu thay đổi hồ sơ",
       "pendingCount": "{count, plural, one {# chờ duyệt} other {# chờ duyệt}}",
       "profileChangeHint": "Phê duyệt sẽ áp dụng thay đổi vào hồ sơ pháp lý của nhân viên (ngân hàng / PCB). Bạn không thể tự duyệt yêu cầu của chính mình.",
@@ -1821,6 +1822,56 @@
         "compensation": "Lương cơ bản"
       },
       "draftStatus": "Nháp — chờ kích hoạt"
+    },
+    "duplicates": {
+      "title": "Hồ sơ nhân viên có thể bị trùng",
+      "description": "Những nhân viên xuất hiện nhiều hơn một lần dưới dạng các hồ sơ cá nhân riêng biệt. Không có thao tác nào trên trang này làm thay đổi hồ sơ.",
+      "backToPersonnel": "Quay lại Quản lý nhân sự",
+      "howToReadTitle": "Cách đọc danh sách này",
+      "howToReadSuggestion": "Đây là gợi ý, không phải kết luận. Các hồ sơ được liệt kê vì trùng tên và trùng ngày vào làm — hai người khác nhau cũng có thể như vậy, và một hồ sơ nhập sai chính tả sẽ hoàn toàn không xuất hiện ở đây.",
+      "howToReadMultiEmployment": "Các dòng cùng chung một chữ cái Hồ sơ là một người giữ nhiều vị trí. Đó là điều bình thường và không phải là trùng lặp.",
+      "howToReadNothingChanged": "Chưa có gì bị thay đổi và không thể thay đổi bất cứ điều gì từ đây. Sẽ không hợp nhất hay xóa ai cho đến khi bạn xác nhận những hồ sơ nào là cùng một người.",
+      "statNames": "tên cần xem xét",
+      "statExtraRecords": "hồ sơ cá nhân dư thừa",
+      "statChecked": "nhân viên đang làm việc đã kiểm tra",
+      "activeOnlyNote": "Chỉ kiểm tra những nhân viên hiện đang làm việc. Hồ sơ của người đã nghỉ việc không được liệt kê.",
+      "sharedDifferentDates": "Còn {n} tên nữa được dùng bởi nhiều hồ sơ cá nhân nhưng có ngày vào làm khác nhau. Trùng tên là chuyện thường gặp nên không được liệt kê ở đây.",
+      "noneFound": "Không có nhân viên nào trùng cả tên lẫn ngày vào làm với một hồ sơ cá nhân riêng biệt. Đã kiểm tra {n} nhân viên đang làm việc.",
+      "groupSubtitle": "{persons} hồ sơ cá nhân · {employments} việc làm · vào làm {joined} · {companies}",
+      "mayBeDifferentPeople": "Có thể là những người khác nhau — các hồ sơ không khớp về: {fields}",
+      "hasBeenPaid": "Ít nhất một trong các hồ sơ này đã được trả lương",
+      "acrossCompanies": "Thuộc {n} công ty",
+      "colRecord": "Hồ sơ",
+      "colEmployeeId": "Mã nhân viên",
+      "colCompany": "Công ty",
+      "colJoined": "Ngày vào làm",
+      "colIc": "Số CMND/CCCD",
+      "colPassport": "Hộ chiếu",
+      "colDob": "Ngày sinh",
+      "colEmail": "Email công việc",
+      "colBank": "Tài khoản ngân hàng",
+      "colPayslips": "Phiếu lương",
+      "colLeaveEntries": "Bản ghi nghỉ phép",
+      "openRecord": "Mở hồ sơ",
+      "notRecorded": "—",
+      "evidenceTitle": "Những điểm các hồ sơ này khớp và không khớp",
+      "stateSame": "Giống nhau",
+      "stateDiffers": "Khác nhau",
+      "stateNotRecorded": "Chưa ghi nhận",
+      "statePartiallyRecorded": "Chỉ có ở {n} trên {of}",
+      "uniqueByConstraintNote": "{fields}: hệ thống vốn đã yêu cầu giá trị này là duy nhất, nên hai hồ sơ không thể hiển thị cùng một giá trị. Sự khác biệt ở đây là điều đương nhiên và tự nó không phải bằng chứng cho thấy đây là hai người khác nhau.",
+      "assignedByEmployerNote": "{fields}: mục này do người sử dụng lao động cấp chứ không phải do cá nhân, nên một người làm việc cho hai công ty trong tập đoàn sẽ có hai. Sự khác biệt ở đây tự nó không phải bằng chứng cho thấy đây là hai người khác nhau.",
+      "field": {
+        "icNumber": "Số CMND/CCCD",
+        "passportNumber": "Số hộ chiếu",
+        "dateOfBirth": "Ngày sinh",
+        "fullNameExact": "Cách viết tên",
+        "primaryEmail": "Email công việc",
+        "personalEmail": "Email cá nhân",
+        "gender": "Giới tính",
+        "maritalStatus": "Tình trạng hôn nhân",
+        "bankAccountNo": "Tài khoản ngân hàng"
+      }
     }
   },
   "leave": {
@@ -7895,7 +7946,8 @@
         "payComponents": "Khoản mục lương",
         "payrollPermissions": "Quyền tính lương và nghỉ phép",
         "leaveEmployeeBalances": "Số dư của nhân viên",
-        "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên"
+        "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên",
+        "duplicatePersonRecords": "Hồ sơ nhân viên trùng"
       },
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
@@ -7908,7 +7960,8 @@
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
-        "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận."
+        "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
+        "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này."
       },
       "status": {
         "active": "Đang hoạt động",
