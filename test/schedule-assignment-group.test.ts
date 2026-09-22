@@ -615,7 +615,30 @@ describe('§3 the Schedule Assignment screens', () => {
     expect(await storedGroup(emp)).toBeNull();
   });
 
-  it('(19) no screen writes a group NAME, a group COUNT or a shift’s membership into its source', () => {
+  /**
+   * BOTH DOORS NARROW THE SAME WAY. The personnel Shift arrangement card and the Attendance module's
+   * arrangement page are two doors onto ONE record; §2 pins that they share a writer, and this pins that
+   * they share the courtesy too — a picker that offers a different list at each door is how an
+   * administrator learns to trust one screen and distrust the other.
+   */
+  it('(19) the PERSONNEL card narrows to the same group, by the same rule', async () => {
+    const { a, group, allowed, forbidden } = await scenario();
+    const emp = await makeEmp('Ann');
+    await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
+    const card = read('app/admin/personnel/[employmentId]/page.tsx');
+    const line = card.slice(card.indexOf('const assignableShifts'), card.indexOf(');', card.indexOf('const assignableShifts')));
+    expect(line, 'it reads shift.rule_id, not a written-down membership').toContain('sh.ruleId === scheduleGroupCurrentId');
+    expect(line, 'and keeps the shift on file, as it already does for an archived one').toContain(
+      'sh.id === emp.defaultShiftId',
+    );
+    // …and it is the SAME rule the Attendance page applies, written once each but stated identically.
+    const detail = read('app/admin/attendance/schedule-assignment/[employmentId]/page.tsx');
+    expect(detail).toContain('sh.ruleId === groupId || sh.id === row.shiftId');
+    expect(forbidden.id).toBeTruthy();
+    expect(group.id).toBeTruthy();
+  });
+
+  it('(20) no screen writes a group NAME, a group COUNT or a shift’s membership into its source', () => {
     const files = [
       'app/admin/attendance/schedule-assignment/page.tsx',
       'app/admin/attendance/schedule-assignment/[employmentId]/page.tsx',
@@ -681,7 +704,7 @@ describe('§4 every new string resolves in all six locales', () => {
     bulkDoneNote: ['{changed,', '{unchanged,'],
   };
 
-  it('(20) keys exist, are non-empty, and keep their ICU arguments', () => {
+  it('(21) keys exist, are non-empty, and keep their ICU arguments', () => {
     for (const loc of LOCALES) {
       const s = JSON.parse(read(`messages/${loc}.json`)).admin.scheduleAssignment as Record<string, unknown>;
       for (const k of TOP) {
@@ -701,7 +724,7 @@ describe('§4 every new string resolves in all six locales', () => {
     }
   });
 
-  it('(21) the bulk screen is registered on the permission matrix', () => {
+  it('(22) the bulk screen is registered on the permission matrix', () => {
     expect(read('lib/permissions.ts')).toContain("'/admin/attendance/schedule-assignment/bulk'");
   });
 });
