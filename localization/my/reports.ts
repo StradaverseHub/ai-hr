@@ -2122,6 +2122,43 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     outputs: ['pdf'],
     shelfOrder: 1,
   },
+  /**
+   * df35d60d — FORM TP3, BUILT. It LEFT MY_PLANNED_FORMS and joined this list at the same shelfOrder 2 it
+   * held there, which is the fifth time a form has made that journey (after `perkeso.borang-8a`,
+   * `epf.borang-a`, `lhdn.tp1` and the two PCB 2(II) rows).
+   *
+   * ⚠️ THE PLANNED ROW'S HINT WAS HALF WRONG AND THE CORRECTION IS THE WHOLE ITEM. It read "the figures
+   * are already captured on the employee's payroll tab" — and four of them are, but the paper form asks
+   * for gross, five exempt allowances and EPF as SEVEN SEPARATE BOXES where that tab holds one
+   * already-combined (C1 - sum C2) - C3. The combination is not invertible, so the form could not have
+   * been printed from what was captured. `link_tp3_hint` no longer says it could.
+   *
+   * WHY A LINK AND NOT A REPORT, the same call the EA, TP1 and PCB 2(II) rows made: every ReportDef on
+   * this shelf produces ONE table for the WHOLE COMPANY for a period, and a TP3 is one employee's own
+   * previous-employment record. There is no company-wide TP3 to generate.
+   *
+   * THE HREF IS THE SCREEN, and `?year=` is already an accepted param there, so the shelf's own year
+   * selects the assessment year the operator lands on. `cadence: 'annual'` is that href's grain.
+   *
+   * `fidelity: 'agency-layout'`, never 'official'. lib/tp3-pdf.ts draws the form from scratch to LHDN's
+   * own wording, numbering (Sections A-E, C1-C5, D1-D17), legal reference, NOTE block and column layout
+   * — which is what this value means. The specimen it was checked against is the reporter's own
+   * attachment, and it is not in `public/forms/`, which still holds exactly one genuine artwork and it
+   * is the CP22's.
+   */
+  {
+    id: 'my.tp3',
+    labelKey: 'link_tp3',
+    hintKey: 'link_tp3_hint',
+    descriptionKey: 'desc_tp3',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/transactions/tp3?year={year}',
+    actionLabelKey: 'openEmployeeList',
+    fidelity: 'agency-layout',
+    outputs: ['pdf'],
+    shelfOrder: 2,
+  },
   // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
   // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
   // d3a9383c: the row now says "Open worklist" (which is what the href does) and carries a second action —
@@ -2191,7 +2228,10 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // /payroll/transactions/tp1 and the drawn form at lib/tp1-pdf.ts), so it left this list and joined
   // MY_STATUTORY_LINKS as `my.tp1` at the same shelfOrder 1, exactly as the two Borangs did before it.
   // Its two message keys went with it.
-  { id: 'lhdn.tp3', labelKey: 'planned_lhdn_tp3', hintKey: 'planned_lhdn_tp3_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 2 },
+  // df35d60d — `lhdn.tp3` STOOD HERE and is deliberately gone: it was BUILT (the previous-employment
+  // screen at /payroll/transactions/tp3 and the drawn form at lib/tp3-pdf.ts), so it left this list and
+  // joined MY_STATUTORY_LINKS as `my.tp3` at the same shelfOrder 2, exactly as TP1, PCB 2(II) and the two
+  // Borangs did before it. Its two planned_* message keys went with it.
   // 72b100cd (r323) — `lhdn.pcb2ii-en` and `lhdn.pcb2ii-ms` STOOD HERE and are deliberately gone: both
   // are BUILT now (the screen at /payroll/statutory-forms/pcb2ii and the drawn form at lib/pcb2ii-pdf.ts),
   // so they left this list and joined MY_STATUTORY_LINKS as `my.pcb2ii.en` / `my.pcb2ii.ms` at the SAME shelf

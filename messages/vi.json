@@ -1585,7 +1585,9 @@
       "payComponentClosedRun": "Kỳ lương {period} đã chốt, nên thành phần lương {code} không thể thay đổi cho kỳ đó nữa.",
       "payComponentOpenEnded": "không có ngày kết thúc",
       "recalcColGrade": "Bậc công việc",
-      "recalcGradeUnchanged": "Không thay đổi"
+      "recalcGradeUnchanged": "Không thay đổi",
+      "tp3OpenForm": "Mở Mẫu TP3 đầy đủ",
+      "tp3FormNote": "Bốn con số này là những gì PCB hằng tháng đọc, và vẫn sẽ như vậy. Mẫu TP3 đầy đủ — các người sử dụng lao động trước, các ô thù lao gộp / miễn thuế / EPF mà mẫu hỏi riêng, và mười bảy nhóm giảm trừ — được giữ trên màn hình riêng, nơi cũng có thể in mẫu."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -3972,8 +3974,6 @@
       "planned_perkeso_sip_hint": "Các biểu mẫu của Hệ thống Bảo hiểm Việc làm. Chưa xây dựng.",
       "planned_perkeso_employee_registration": "Biểu mẫu đăng ký nhân viên",
       "planned_perkeso_employee_registration_hint": "Đăng ký PERKESO cho nhân viên mới. Chưa xây dựng.",
-      "planned_lhdn_tp3": "Biểu mẫu TP3",
-      "planned_lhdn_tp3_hint": "Số liệu từ người sử dụng lao động trước của nhân viên vào giữa năm. Các số liệu đó đã được ghi nhận ở tab lương của nhân viên — biểu mẫu TP3 in được thì chưa xây dựng.",
       "planned_lhdn_cp21": "CP21 — nhân viên rời Malaysia",
       "planned_lhdn_cp21_hint": "Thông báo nhân viên sắp rời Malaysia. Chưa xây dựng.",
       "planned_lhdn_cp22a": "CP22A — thanh toán thuế khi chấm dứt hợp đồng",
@@ -4023,7 +4023,10 @@
       "pcb2iiSelectHint": "Chọn những nhân viên cần bản kê. Mỗi người có một trang riêng.",
       "pcb2iiPreview": "Xem trước",
       "pcb2iiGenerate": "Tải xuống PCB 2(II)",
-      "pcb2iiNoneForYear": "Không có nhân viên nào tại {company} có dữ liệu lương cho năm {year}, nên không có thuế để kê khai trên PCB 2(II). Hãy chạy bảng lương của năm đó trước."
+      "pcb2iiNoneForYear": "Không có nhân viên nào tại {company} có dữ liệu lương cho năm {year}, nên không có thuế để kê khai trên PCB 2(II). Hãy chạy bảng lương của năm đó trước.",
+      "link_tp3": "Mẫu TP3",
+      "link_tp3_hint": "Các con số từ nơi làm việc trước của nhân viên vào giữa năm. Chọn một người và một năm tính thuế để mở, sửa hoặc in mẫu của họ.",
+      "desc_tp3": "Mẫu TP3 (1/2026) của LHDN, dựng từ hồ sơ công việc trước đã lưu — các Mục A đến E, các dòng tiền C1 đến C5 và bảng giảm trừ D1 đến D17, theo đúng cách đánh số, câu chữ và thứ tự cột của chính mẫu, trên trang của chúng tôi. Mỗi nhân viên một mẫu cho mỗi năm tính thuế; không có gì được tính lại ở đây, và không có gì làm thay đổi khoản khấu trừ thuế hằng tháng."
     },
     "ea": {
       "backToReports": "Báo cáo",
@@ -4736,7 +4739,10 @@
         "adjustmentsCta": "Mở dữ liệu nhập bảng lương",
         "componentImportTitle": "Nhập thành phần lương (CSV)",
         "componentImportDesc": "Thêm hàng loạt phụ cấp, khoản trừ, làm thêm giờ hoặc thưởng một lần vào đợt chạy nháp từ tệp CSV, có xem trước trước khi ghi.",
-        "componentImportCta": "Mở nhập liệu"
+        "componentImportCta": "Mở nhập liệu",
+        "tp3Title": "Mẫu TP3",
+        "tp3Desc": "Các con số từ nơi làm việc trước của nhân viên vào giữa năm, theo đúng các mục của mẫu chính thức — và bản TP3 in được.",
+        "tp3Cta": "Mở Mẫu TP3"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -11286,6 +11292,86 @@
           "b": "Phí miễn trừ cho chuyến đi Umrah / chuyến đi vì mục đích tôn giáo"
         }
       }
+    },
+    "tp3": {
+      "title": "Mẫu TP3 — công việc trước đây",
+      "intro": "Các con số từ nơi làm việc trước của nhân viên vào giữa năm, trình bày theo đúng các mục của mẫu chính thức để có thể điền lần lượt theo bản giấy TP3. Giai đoạn 1: hồ sơ này được lưu và in ra. Nó không thay đổi thuế — PCB hằng tháng vẫn đọc bốn số dư đầu kỳ trên thẻ Bảng lương của nhân viên.",
+      "stageNote": "Giai đoạn 1 trên hai. Không có gì trên màn hình này làm thay đổi khoản khấu trừ thuế hằng tháng. Các khoản giảm trừ ở Mục D sẽ được nối vào phép tính PCB ở giai đoạn 2, cùng với kiểm tra hạn mức trên cả hai người sử dụng lao động.",
+      "sectionA": "Mục A — Thông tin người sử dụng lao động",
+      "sectionAFootnote": "*Vui lòng dùng phụ lục bổ sung cho công việc tiếp theo",
+      "sectionB": "Mục B — Thông tin nhân viên",
+      "sectionC": "Mục C — Thông tin thù lao / EPF / Zakat / PCB",
+      "sectionCHelp": "(Vui lòng ghi tổng số tiền từ (các) công việc trước trong năm hiện tại)",
+      "sectionD": "Mục D — Khấu trừ thù lao",
+      "sectionDHelp": "(Vui lòng ghi tổng số tiền từ công việc trước)",
+      "sectionE": "Mục E — Cam kết của nhân viên",
+      "employerNameSlot": "Tên người sử dụng lao động trước {n}",
+      "employerTinSlot": "Mã số thuế (TIN)",
+      "maxEmployersNote": "Mẫu này được kẻ cho {max} người sử dụng lao động trước. Công việc tiếp theo ghi vào phụ lục bổ sung, đúng như ghi chú của chính mẫu.",
+      "note": "GHI CHÚ:",
+      "noteRequest": "Người sử dụng lao động phải yêu cầu nhân viên nộp mẫu này nếu nhân viên đã làm việc cho người sử dụng lao động khác trong năm hiện tại.",
+      "noteKeep": "Người sử dụng lao động chỉ cần lưu mẫu này trong 7 năm. Phải nộp mẫu khi HASiL yêu cầu.",
+      "noteExplanatory": "Vui lòng tham khảo Ghi chú giải thích TP3 để biết thêm cách điền mẫu.",
+      "dateLabel": "Ngày:",
+      "signatureLabel": "Chữ ký",
+      "declarationTick": "Nhân viên đã ký cam kết ở Mục E.",
+      "money": {
+        "c1": {
+          "label": "Tổng thù lao gộp hằng tháng và thù lao bổ sung, bao gồm phụ cấp / lợi ích tăng thêm / quà tặng / phúc lợi chịu thuế"
+        },
+        "c2": {
+          "label": "Tổng phụ cấp / lợi ích tăng thêm / quà tặng / phúc lợi được miễn thuế",
+          "sub": {
+            "i": "Phụ cấp đi lại, thẻ xăng hoặc phụ cấp xăng và phí cầu đường cho công vụ",
+            "ii": "Phụ cấp trông giữ trẻ",
+            "iii": "Sản phẩm do chính doanh nghiệp của người sử dụng lao động sản xuất, được cấp miễn phí hoặc giảm giá",
+            "iv": "Lợi ích tăng thêm bằng tiền mặt / hiện vật liên quan đến thành tích công tác trước đây, giải thưởng phục vụ xuất sắc, giải thưởng đổi mới, giải thưởng năng suất hoặc thâm niên, với điều kiện nhân viên đã làm việc trên 10 năm",
+            "v": "Phụ cấp / lợi ích tăng thêm / quà tặng / phúc lợi được miễn thuế khác. Vui lòng xem ghi chú giải thích của Mẫu BE"
+          }
+        },
+        "c3": {
+          "label": "Tổng đóng góp EPF được phê duyệt hoặc quỹ được phê duyệt khác trên toàn bộ thù lao (lương tháng và thù lao bổ sung)"
+        },
+        "c4": {
+          "label": "Zakat và giảm trừ thuế xuất cảnh",
+          "sub": {
+            "i": "Tổng Zakat",
+            "ii": "Giảm trừ thuế xuất cảnh cho Umrah / chuyến đi vì mục đích tôn giáo khác"
+          }
+        },
+        "c5": {
+          "label": "Tổng PCB (không bao gồm CP38)"
+        }
+      },
+      "reconcileHeading": "So với các con số mà phép tính thuế dùng",
+      "reconcileNote": "PCB hằng tháng đọc bốn số dư đầu kỳ trên thẻ Bảng lương của nhân viên, và hiện vẫn vậy. Đây là chính bốn con số đó, tính ra từ các ô ở trên — thù lao gộp trừ phụ cấp miễn thuế trừ EPF. Chúng được hiển thị để so sánh; không con số nào ở đây được sao vào phép tính thuế, và chênh lệch không phải là lỗi.",
+      "reconcileDerived": "Từ mẫu này",
+      "reconcileStored": "Phép tính thuế đang dùng",
+      "reconcileNet": "Thù lao thuần luỹ kế",
+      "reconcileEpf": "EPF đã kê khai",
+      "reconcilePcb": "PCB đã khấu trừ",
+      "reconcileZakat": "Zakat đã khấu trừ",
+      "reconcileNoStored": "Chưa có số dư đầu kỳ nào cho năm nay trên thẻ Bảng lương của nhân viên.",
+      "reconcileStoredOtherYear": "Số dư đầu kỳ trên thẻ Bảng lương của nhân viên được ghi cho năm {year}, không phải năm nay.",
+      "reconcileDiffers": "Khác nhau",
+      "reconcileAgrees": "Khớp",
+      "selectEmployeePrompt": "Chọn một nhân viên để mở Mẫu TP3 của họ.",
+      "noRecordYet": "Chưa có Mẫu TP3 nào được ghi cho nhân viên này trong năm {year}.",
+      "lastSaved": "Lưu lần cuối {at}",
+      "save": "Lưu",
+      "saved": "Đã lưu Mẫu TP3.",
+      "deleted": "Đã xoá hồ sơ Mẫu TP3.",
+      "downloadPdf": "Tải Mẫu TP3 (tiếng Anh)",
+      "downloadPdfMs": "Tải Mẫu TP3 (tiếng Mã Lai)",
+      "deleteRecord": "Xoá hồ sơ",
+      "confirmDeleteTitle": "Xoá hồ sơ Mẫu TP3 này?",
+      "confirmDeleteBody": "Hồ sơ của năm {year} sẽ được gỡ khỏi màn hình này. Bản giấy nhân viên đã nộp không bị ảnh hưởng, và thay đổi được giữ trong nhật ký kiểm toán.",
+      "confirmDeleteYes": "Xoá",
+      "cancel": "Huỷ",
+      "openFromPayrollTab": "Mở Mẫu TP3",
+      "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
+      "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
+      "backToTransactions": "Nhập giao dịch"
     }
   },
   "payRule": {

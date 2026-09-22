@@ -164,6 +164,9 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // 72b100cd (r323) — `my.pcb2ii.en` / `my.pcb2ii.ms` JOINED this list, from MY_PLANNED_FORMS. They are
     // doors for the same reason the two EA rows are: PCB 2(II) is one person's statement for a year, so
     // there is no company-wide table for a ReportDef to generate.
+    // df35d60d — `my.tp3` JOINED this list, from MY_PLANNED_FORMS, and it is a door for the SAME reason
+    // `my.tp1` is: a TP3 is one person's record of their own previous employment for one assessment
+    // year, so there is no company-wide table for a ReportDef to generate.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
       'my.cp22',
@@ -172,6 +175,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       'my.pcb2ii.en',
       'my.pcb2ii.ms',
       'my.tp1',
+      'my.tp3',
     ]);
     for (const l of MY_STATUTORY_LINKS) {
       expect(l.body, `${l.id} needs a shelf`).toBeTruthy();
@@ -199,12 +203,13 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // document becomes a link — and either way it leaves this list, keeps its shelfOrder, and the screen
     // is not touched. It is pinned by name below, so deleting an entry from here without building it
     // cannot pass as this same migration.
+    // df35d60d — `lhdn.tp3` LEFT, the fifth form to take this path. It is pinned by name in the case
+    // below, so deleting an entry from here without building it cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
       'epf.borang-bbcb',
       'perkeso.borang-8b',
       'perkeso.sip',
       'perkeso.employee-registration',
-      'lhdn.tp3',
       'lhdn.cp21',
       'lhdn.cp22a',
       'lhdn.cp39a',
@@ -619,6 +624,10 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
       ['my.pcb2ii.ms', 'openForm'],
       ['my.borang-e', null],
       ['my.tp1', 'openEmployeeList'],
+      // df35d60d — TP3 says "Open employee list" for the SAME reason TP1 does and the EA does not: its
+      // href opens the screen where a person is chosen, and that screen IS the destination — the record
+      // is edited and printed there, not on a further page.
+      ['my.tp3', 'openEmployeeList'],
       ['my.cp22', 'openWorklist'],
     ]);
     // …and the shared key is REUSED rather than duplicated: no EA-only "Open form" wording of its own.
@@ -909,6 +918,8 @@ describe('the four pins', () => {
     // r323 — the two PCB 2(II) rows are 'agency-layout' on the same honest reasoning: lib/pcb2ii-pdf.ts is
     // OUR typesetting of LHDN's sheet from the specimens attached to 72b100cd, not a facsimile of their
     // PDF. The assertion above — exactly one 'official' entry, and it is my.cp22 — is what this protects.
+    // df35d60d — `my.tp3` is 'agency-layout' on the same honest reasoning: lib/tp3-pdf.ts is OUR
+    // typesetting of LHDN's TP3 from the specimen attached to the item, not a facsimile of their PDF.
     ).toEqual([
       'my.borang-8a',
       'my.borang-a',
@@ -918,6 +929,7 @@ describe('the four pins', () => {
       'my.pcb2ii.en',
       'my.pcb2ii.ms',
       'my.tp1',
+      'my.tp3',
     ]);
   });
 

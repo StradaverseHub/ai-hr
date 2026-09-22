@@ -1029,6 +1029,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // guarded page with no matrix column fails the suite rather than becoming a screen nobody can
       // grant or revoke.
       '/payroll/transactions/tp1/new',
+      // df35d60d: Form TP3 — ONE employee's PREVIOUS-employment record for ONE assessment year, in the
+      // official form's own five sections. Same `scopedAdmin` guard as the TP1 routes above and the same
+      // reason for its own line: this set is EXACT, and the reverse-completeness case in
+      // test/function-access.test.ts fails the build for a guarded page.tsx with no column rather than
+      // letting a screen exist that nobody can grant or revoke. (The PDF route beside it is a route.ts,
+      // and route handlers are deliberately not on this matrix.)
+      '/payroll/transactions/tp3',
       '/payroll/transactions/zakat',
       // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
       // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.

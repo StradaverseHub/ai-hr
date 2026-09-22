@@ -49,6 +49,9 @@ export * from '../../core/pay-rule-ai';
 export * from '../../core/cp38';
 export * from '../../core/ea-override';
 export * from '../../core/tax-relief';
+// df35d60d — LHDN TP3, the PREVIOUS-employment record. Beside tax-relief on purpose: its Section D is
+// the SAME relief schedule `tax-relief` exposes as TP1_ITEMS, read for a different employer.
+export * from '../../core/tp3';
 export * from '../../core/loans';
 export * from '../../core/loans-compute';
 export * from '../../core/statutory-authority';

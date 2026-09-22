@@ -1585,7 +1585,9 @@
       "payComponentClosedRun": "Larian gaji {period} telah ditutup, jadi komponen gaji {code} tidak boleh diubah bagi tempoh tersebut.",
       "payComponentOpenEnded": "tiada tarikh tamat",
       "recalcColGrade": "Gred pekerjaan",
-      "recalcGradeUnchanged": "Tiada perubahan"
+      "recalcGradeUnchanged": "Tiada perubahan",
+      "tp3OpenForm": "Buka Borang TP3 penuh",
+      "tp3FormNote": "Empat angka ini ialah apa yang dibaca oleh PCB bulanan, dan ia kekal begitu. Borang TP3 penuh — majikan terdahulu, kotak kasar / dikecualikan / KWSP yang diminta secara berasingan oleh borang itu, dan tujuh belas kategori pelepasannya — disimpan pada skrinnya sendiri, di mana borang itu juga boleh dicetak."
     },
     "import": {
       "title": "Import pekerja",
@@ -3972,8 +3974,6 @@
       "planned_perkeso_sip_hint": "Borang Sistem Insurans Pekerjaan. Belum dibina.",
       "planned_perkeso_employee_registration": "Borang Pendaftaran Pekerja",
       "planned_perkeso_employee_registration_hint": "Pendaftaran PERKESO bagi pekerja baharu. Belum dibina.",
-      "planned_lhdn_tp3": "Borang TP3",
-      "planned_lhdn_tp3_hint": "Angka majikan terdahulu bagi pekerja yang menyertai pertengahan tahun. Angka itu sudah direkodkan pada tab payroll pekerja — borang TP3 bercetak belum dibina.",
       "planned_lhdn_cp21": "CP21 — pekerja meninggalkan Malaysia",
       "planned_lhdn_cp21_hint": "Notis bahawa seorang pekerja akan meninggalkan Malaysia. Belum dibina.",
       "planned_lhdn_cp22a": "CP22A — pelepasan cukai apabila berhenti",
@@ -4023,7 +4023,10 @@
       "pcb2iiSelectHint": "Tandakan pekerja yang memerlukan penyata. Setiap seorang mendapat halaman sendiri.",
       "pcb2iiPreview": "Pratonton",
       "pcb2iiGenerate": "Muat turun PCB 2(II)",
-      "pcb2iiNoneForYear": "Tiada pekerja di {company} mempunyai angka gaji bagi {year}, jadi tiada cukai untuk diisytiharkan dalam PCB 2(II). Jalankan gaji tahun tersebut dahulu."
+      "pcb2iiNoneForYear": "Tiada pekerja di {company} mempunyai angka gaji bagi {year}, jadi tiada cukai untuk diisytiharkan dalam PCB 2(II). Jalankan gaji tahun tersebut dahulu.",
+      "link_tp3": "Borang TP3",
+      "link_tp3_hint": "Angka majikan terdahulu bagi pekerja yang menyertai pertengahan tahun. Pilih seseorang dan tahun taksiran untuk membuka, membetulkan atau mencetak borang mereka.",
+      "desc_tp3": "Borang TP3 (1/2026) LHDN, dilukis daripada rekod pekerjaan terdahulu yang ada — Seksyen A hingga E, baris wang C1 hingga C5 dan jadual pelepasan D1 hingga D17, mengikut penomboran, perkataan dan susunan lajur borang itu sendiri, pada halaman kami sendiri. Satu borang bagi setiap pekerja bagi setiap tahun taksiran; tiada apa-apa dikira semula di sini, dan tiada apa-apa mengubah potongan cukai bulanan."
     },
     "ea": {
       "backToReports": "Laporan",
@@ -4736,7 +4739,10 @@
         "adjustmentsCta": "Buka input gaji",
         "componentImportTitle": "Import Komponen Gaji (CSV)",
         "componentImportDesc": "Tambah secara pukal elaun, potongan, kerja lebih masa atau bonus sekali sahaja ke larian draf daripada fail CSV, dipratonton sebelum apa-apa ditulis.",
-        "componentImportCta": "Buka import"
+        "componentImportCta": "Buka import",
+        "tp3Title": "Borang TP3",
+        "tp3Desc": "Angka majikan terdahulu bagi pekerja yang menyertai pertengahan tahun, mengikut seksyen borang rasmi — serta borang TP3 yang boleh dicetak.",
+        "tp3Cta": "Buka Borang TP3"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -11286,6 +11292,86 @@
           "b": "Levi pengecualian bagi perjalanan Umrah / perjalanan bagi tujuan keagamaan"
         }
       }
+    },
+    "tp3": {
+      "title": "Borang TP3 — pekerjaan terdahulu",
+      "intro": "Angka pekerjaan terdahulu bagi pekerja yang menyertai pada pertengahan tahun, disusun mengikut seksyen borang rasmi supaya borang TP3 bercetak boleh diikuti mengikut urutan. Peringkat 1: rekod ini disimpan dan dicetak. Ia tidak mengubah cukai — PCB bulanan masih membaca empat angka baki pembukaan pada tab Payroll pekerja.",
+      "stageNote": "Peringkat 1 daripada dua. Tiada apa-apa pada skrin ini mengubah potongan cukai bulanan. Pelepasan Seksyen D disambungkan kepada pengiraan PCB pada peringkat 2, bersama semakan had merentasi kedua-dua majikan.",
+      "sectionA": "Seksyen A — Maklumat majikan",
+      "sectionAFootnote": "*Sila gunakan lampiran tambahan untuk pekerjaan seterusnya",
+      "sectionB": "Seksyen B — Maklumat pekerja",
+      "sectionC": "Seksyen C — Maklumat saraan / KWSP / Zakat / PCB",
+      "sectionCHelp": "(Sila nyatakan jumlah keseluruhan daripada pekerjaan terdahulu dalam tahun semasa)",
+      "sectionD": "Seksyen D — Potongan saraan",
+      "sectionDHelp": "(Sila nyatakan jumlah keseluruhan daripada pekerjaan terdahulu)",
+      "sectionE": "Seksyen E — Pengakuan pekerja",
+      "employerNameSlot": "Nama Majikan Terdahulu {n}",
+      "employerTinSlot": "Nombor Pengenalan Cukai (TIN)",
+      "maxEmployersNote": "Borang ini disediakan untuk {max} majikan terdahulu. Pekerjaan seterusnya diletakkan pada lampiran tambahan, seperti nota borang itu sendiri.",
+      "note": "NOTA:",
+      "noteRequest": "Majikan mesti meminta pekerja mengemukakan borang ini sekiranya pekerja pernah bekerja dengan majikan lain dalam tahun semasa.",
+      "noteKeep": "Majikan hanya perlu menyimpan borang ini selama tempoh 7 tahun. Borang ini mesti dikemukakan jika diminta oleh HASiL.",
+      "noteExplanatory": "Sila rujuk Nota Penerangan TP3 untuk maklumat lanjut tentang cara melengkapkan borang ini.",
+      "dateLabel": "Tarikh:",
+      "signatureLabel": "Tandatangan",
+      "declarationTick": "Pekerja telah menandatangani pengakuan Seksyen E.",
+      "money": {
+        "c1": {
+          "label": "Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun / perkuisit / hadiah / manfaat bercukai"
+        },
+        "c2": {
+          "label": "Jumlah elaun / perkuisit / hadiah / manfaat yang dikecualikan cukai",
+          "sub": {
+            "i": "Elaun perjalanan, kad petrol atau elaun petrol dan tol bagi tugas rasmi",
+            "ii": "Elaun penjagaan kanak-kanak",
+            "iii": "Produk keluaran perniagaan majikan yang diberi percuma atau pada harga diskaun",
+            "iv": "Perkuisit dalam bentuk tunai / barangan berkaitan pencapaian perkhidmatan lalu, anugerah perkhidmatan cemerlang, anugerah inovasi, anugerah produktiviti atau anugerah perkhidmatan panjang, dengan syarat pekerja telah berkhidmat lebih 10 tahun",
+            "v": "Elaun / perkuisit / hadiah / manfaat lain yang dikecualikan cukai. Sila rujuk nota penerangan Borang BE"
+          }
+        },
+        "c3": {
+          "label": "Jumlah caruman KWSP yang diluluskan atau caruman kumpulan wang diluluskan lain ke atas semua saraan (gaji bulanan dan saraan tambahan)"
+        },
+        "c4": {
+          "label": "Zakat dan pelepasan levi berlepas",
+          "sub": {
+            "i": "Jumlah Zakat",
+            "ii": "Pelepasan levi berlepas bagi Umrah / perjalanan bagi tujuan keagamaan lain"
+          }
+        },
+        "c5": {
+          "label": "Jumlah PCB (tidak termasuk CP38)"
+        }
+      },
+      "reconcileHeading": "Berbanding angka yang digunakan oleh pengiraan cukai",
+      "reconcileNote": "PCB bulanan membaca empat angka baki pembukaan pada tab Payroll pekerja, dan ia masih berbuat demikian. Ini ialah empat angka yang sama, dikira daripada kotak di atas — kasar tolak elaun dikecualikan tolak KWSP. Ia dipaparkan supaya kedua-duanya boleh dibandingkan; tiada apa-apa di sini disalin ke dalam pengiraan cukai, dan perbezaan bukan satu ralat.",
+      "reconcileDerived": "Daripada borang ini",
+      "reconcileStored": "Digunakan oleh pengiraan cukai",
+      "reconcileNet": "Saraan bersih terkumpul",
+      "reconcileEpf": "KWSP dituntut",
+      "reconcilePcb": "PCB telah dipotong",
+      "reconcileZakat": "Zakat telah dipotong",
+      "reconcileNoStored": "Tiada baki pembukaan direkodkan bagi tahun ini pada tab Payroll pekerja.",
+      "reconcileStoredOtherYear": "Baki pembukaan pada tab Payroll pekerja direkodkan bagi {year}, bukan tahun ini.",
+      "reconcileDiffers": "Berbeza",
+      "reconcileAgrees": "Sepadan",
+      "selectEmployeePrompt": "Pilih seorang pekerja untuk membuka Borang TP3 mereka.",
+      "noRecordYet": "Tiada Borang TP3 direkodkan untuk pekerja ini bagi {year}.",
+      "lastSaved": "Disimpan {at}",
+      "save": "Simpan",
+      "saved": "Borang TP3 disimpan.",
+      "deleted": "Rekod Borang TP3 dibuang.",
+      "downloadPdf": "Muat turun Borang TP3 (Bahasa Inggeris)",
+      "downloadPdfMs": "Muat turun Borang TP3 (Bahasa Malaysia)",
+      "deleteRecord": "Padam rekod",
+      "confirmDeleteTitle": "Padam rekod Borang TP3 ini?",
+      "confirmDeleteBody": "Rekod bagi {year} dibuang daripada skrin ini. Borang bercetak yang diserahkan pekerja tidak terjejas, dan perubahan ini disimpan dalam log audit.",
+      "confirmDeleteYes": "Padam",
+      "cancel": "Batal",
+      "openFromPayrollTab": "Buka Borang TP3",
+      "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
+      "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
+      "backToTransactions": "Kemasukan Transaksi"
     }
   },
   "payRule": {
