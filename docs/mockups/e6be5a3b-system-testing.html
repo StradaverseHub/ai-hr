@@ -1,0 +1,110 @@
+<meta charset="utf-8">
+<title>System Testing — the case, the run, and the link to the board</title>
+<!--
+  e6be5a3b. Two panels plus the link that is the point of the design.
+  The field names on the case are the reporter's own list. Expected Behaviour / Expected Function are
+  ALSO the existing feedback_request columns (db/schema.ts ~7866) — which is why the right panel shows
+  a failed run raising a board item rather than a typed-in Defect ID box.
+  Module list is illustrative; the plan says it should be DERIVED from the tenant's module catalogue.
+  Deliberately NOT drawn: automated execution, CI, screenshots — all out of scope and said so.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--good:#067647;--bad:#b42318;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 16px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start}
+ .card{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .ch{padding:9px 13px;border-bottom:1px solid var(--border);background:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;display:flex;justify-content:space-between}
+ .cb{padding:12px 13px}
+ .row{display:flex;gap:10px;margin-bottom:9px}
+ .f{flex:1}
+ .lab{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);margin-bottom:3px}
+ .val{border:1px solid var(--border);border-radius:6px;padding:6px 9px;background:#fff;font-size:12.5px}
+ .val.ro{background:#fbfbfd;color:var(--mf)}
+ ol{margin:0;padding-left:20px;font-size:12.5px}
+ ol li{margin-bottom:3px}
+ .chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:10.5px;font-weight:600}
+ .chip.p{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+ .chip.f{background:color-mix(in srgb,var(--bad) 11%,white);color:var(--bad)}
+ .chip.g{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+ .out{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+ .o{border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11.5px;background:#fff;color:var(--mf)}
+ .o.on{background:color-mix(in srgb,var(--bad) 10%,white);border-color:transparent;color:var(--bad);font-weight:700}
+ .raise{margin-top:11px;padding:11px;border-radius:8px;background:color-mix(in srgb,var(--primary) 7%,white);border:1px solid color-mix(in srgb,var(--primary) 28%,white)}
+ .raise b{display:block;font-size:12.5px;color:var(--primary);margin-bottom:3px}
+ .raise p{margin:0 0 8px;font-size:11.5px;color:var(--mf);line-height:1.5}
+ .btn{border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;border:1px solid transparent;background:var(--primary);color:#fff}
+ .hist{border-top:1px solid #eceef5;margin-top:10px;padding-top:9px}
+ .hist .k{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);margin-bottom:5px}
+ table{width:100%;border-collapse:collapse;font-size:12px}
+ td{padding:4px 0;border-bottom:1px solid #f2f2f6}
+ tr:last-child td{border-bottom:0}
+ .foot{margin-top:16px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+</style>
+
+<div class="wrap">
+  <h1>System Testing &mdash; a test you can run again, and a failure that becomes a request</h1>
+  <p class="sub">An optional module, off by default &mdash; your HR customers never see it</p>
+
+  <div class="pair">
+    <div class="card">
+      <div class="ch"><span>Test case TC-014</span><span class="chip p">Workflow</span></div>
+      <div class="cb">
+        <div class="row">
+          <div class="f"><div class="lab">Module</div><div class="val">Leave</div></div>
+          <div class="f"><div class="lab">Priority</div><div class="val">High</div></div>
+        </div>
+        <div class="f" style="margin-bottom:9px"><div class="lab">Title</div><div class="val">Annual leave request is approved by the manager</div></div>
+        <div class="f" style="margin-bottom:9px"><div class="lab">Precondition</div><div class="val ro">Employee has annual leave balance; a manager is assigned</div></div>
+        <div class="f" style="margin-bottom:9px">
+          <div class="lab">Test steps</div>
+          <ol><li>Log in as the employee</li><li>Open Leave</li><li>Select Annual Leave and the dates</li><li>Submit the request</li><li>Log in as the manager</li><li>Open Pending Approval</li><li>Approve the request</li></ol>
+        </div>
+        <div class="f" style="margin-bottom:9px"><div class="lab">Expected behaviour</div><div class="val ro">The request moves to Approved and the balance reduces by the days taken</div></div>
+        <div class="f"><div class="lab">Expected function</div><div class="val ro">Ledger records the debit; the employee is notified</div></div>
+        <div class="hist">
+          <div class="k">Every run is kept</div>
+          <table>
+            <tr><td>22 Sept 2026</td><td><span class="chip f">Fail</span></td><td style="text-align:right;color:#63636f">raised FB-241</td></tr>
+            <tr><td>14 Sept 2026</td><td><span class="chip g">Pass</span></td><td></td></tr>
+            <tr><td>02 Sept 2026</td><td><span class="chip g">Pass</span></td><td></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span>Run this test &mdash; 22 Sept 2026</span></div>
+      <div class="cb">
+        <div class="lab">Outcome</div>
+        <div class="out">
+          <span class="o">Pass</span><span class="o on">Fail</span><span class="o">Blocked</span><span class="o">Partial</span><span class="o">Not tested</span>
+        </div>
+        <div class="f" style="margin-top:11px"><div class="lab">What actually happened</div>
+          <div class="val" style="min-height:56px">Request stayed on Pending after the manager pressed Approve. Balance did not change.</div></div>
+
+        <div class="raise">
+          <b>Raise this as a request</b>
+          <p>The title, the steps and what actually happened are carried across. No re-typing, and the
+          link between the two is real rather than a number somebody keyed in.</p>
+          <button class="btn">Raise request from this failure</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What this deliberately does not do</h3>
+    <p>Nothing runs the steps for you. This records what a person did and what they saw. Automated
+    checking is a separate matter, and a large automatic test suite already runs before every release.</p>
+    <p>Sketch only &mdash; wording, spacing and colours will differ from the finished screen.</p>
+  </div>
+</div>
