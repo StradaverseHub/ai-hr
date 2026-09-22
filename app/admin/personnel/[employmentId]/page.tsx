@@ -486,7 +486,19 @@ export default async function EmployeePage({
   // later-archived shift still renders as the selected option (instead of silently showing "None"), then
   // filtered to live shifts + the assigned one. New assignments of archived shifts are rejected by the service.
   const libraryShifts = admin && !emp.terminatedOn ? await listShiftsForTenant(s, { includeArchived: true }) : [];
-  const assignableShifts = libraryShifts.filter((sh) => !sh.archivedAt || sh.id === emp.defaultShiftId);
+  // 8cd601d0 (r329) — AND NARROWED TO THE EMPLOYEE'S SCHEDULE GROUP, for the same reason and by the same
+  // rule as the Attendance module's Shift arrangement page: with a group set, only that group's shifts are
+  // offered. The group is `shift.rule_id` read backwards, at render time — no group name and no membership
+  // list is written down, so 07ebd04d's split of "Standard" into three lands here unaided. The shift ON
+  // FILE is always kept, exactly as an archived-but-assigned one is: a select that cannot render what is
+  // stored shows a placeholder and silently re-poses the question. This is a COURTESY; the guarantee is
+  // core/roster.ts assertShiftsAllowedForEmploymentsTx, which the writer behind this card already calls.
+  // An employment in NO group (74 of 75 on production) sees the whole library, exactly as before.
+  const assignableShifts = libraryShifts.filter(
+    (sh) =>
+      (!sh.archivedAt || sh.id === emp.defaultShiftId) &&
+      (!scheduleGroupCurrentId || sh.ruleId === scheduleGroupCurrentId || sh.id === emp.defaultShiftId),
+  );
   // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
   // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
   // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.

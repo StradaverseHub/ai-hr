@@ -2,8 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listShiftArrangements, type ShiftArrangementListRow } from '@/core/shift-arrangement';
+import { UNGROUPED, listShiftArrangements, type ShiftArrangementListRow } from '@/core/shift-arrangement';
 import { listShiftsForTenant } from '@/core/roster';
+// 8cd601d0 — the Schedule Group filter's options, through the pack facade (the same import the personnel
+// card and the detail page use). The tenant's attendance_rule library IS the Schedule Group library.
+import { listAttendanceRules } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   Card,
@@ -11,6 +14,7 @@ import {
   ErrorBanner,
   PageHeader,
   SectionHeader,
+  btnPrimary,
   pageWideCls,
   tableWrapCls,
   tbodyCls,
@@ -76,6 +80,7 @@ export default async function ScheduleAssignmentPage({
     shiftType?: string;
     shiftId?: string;
     status?: string;
+    scheduleGroupId?: string;
     focus?: string;
     assign?: string;
     error?: string;
@@ -92,6 +97,13 @@ export default async function ScheduleAssignmentPage({
   const status =
     sp.status === 'current' || sp.status === 'scheduled' || sp.status === 'notRecorded' ? sp.status : undefined;
   const shiftId = sp.shiftId?.trim() || undefined;
+  /**
+   * 8cd601d0 — the Schedule Group filter. `UNGROUPED` is a sentinel, not a rule id: "in no Schedule Group"
+   * is the state 74 of 75 production employments are in, so it has to be a choice on the list rather than
+   * something an administrator infers from an em-dash in a column. Read by VALUE like every other filter;
+   * a junk value simply matches no row (it is compared against resolved rows, never queried).
+   */
+  const scheduleGroupId = sp.scheduleGroupId?.trim() || undefined;
   // The row to land on and highlight after a trip to the detail page. Compared against row ids only —
   // it is never queried, so a junk value highlights nothing and harms nothing.
   const focus = sp.focus?.trim() || undefined;
@@ -103,7 +115,7 @@ export default async function ScheduleAssignmentPage({
    */
   const hrefWith = (pathname: string, extra: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
-    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, ...extra })) {
+    for (const [k, v] of Object.entries({ q, shiftType, shiftId, status, scheduleGroupId, ...extra })) {
       if (v) params.set(k, v);
     }
     const qs = params.toString();
@@ -111,6 +123,12 @@ export default async function ScheduleAssignmentPage({
   };
   /** The row action: the employee's own Shift arrangement page, filters riding along. */
   const editHref = (employmentId: string) => hrefWith(`${PAGE}/${employmentId}`, {});
+  /**
+   * 8cd601d0 — the bulk screen, with THESE filters. The filters are the selection: an administrator who
+   * has narrowed the list to "no Schedule Group" and clicks through gets exactly those people to tick,
+   * rather than starting again from seventy-five rows on a second screen.
+   */
+  const bulkHref = hrefWith(`${PAGE}/bulk`, {});
 
   // r263's `?assign=<id>` — a link written before r265 opens the same employee on the new page.
   const assign = sp.assign?.trim();
@@ -120,10 +138,11 @@ export default async function ScheduleAssignmentPage({
   // tenant's timezone (never the UTC date — between 00:00 and 08:00 MYT that names yesterday).
   const today = todayInKualaLumpur();
 
-  const [rows, shifts] = await Promise.all([
-    listShiftArrangements(s, { q, shiftType, shiftId, status, today }),
+  const [rows, shifts, scheduleGroups] = await Promise.all([
+    listShiftArrangements(s, { q, shiftType, shiftId, status, scheduleGroupId, today }),
     // Live shifts only: the backup-shift filter offers what can be assigned today.
     listShiftsForTenant(s),
+    listAttendanceRules(s),
   ]);
 
   const SHIFT_TYPE_LABEL: Record<ShiftArrangementListRow['shiftType'], string> = {
@@ -187,9 +206,30 @@ export default async function ScheduleAssignmentPage({
       ],
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.status') }),
     },
+    {
+      // 8cd601d0. The options are the tenant's rule library as it stands, PLUS the "in none" sentinel —
+      // never a written-down list of group names, so the 07ebd04d split into three groups shows up here
+      // by itself.
+      kind: 'select',
+      name: 'scheduleGroupId',
+      label: t('filters.scheduleGroup'),
+      ariaLabel: t('filters.scheduleGroup'),
+      allLabel: t('filters.allScheduleGroups'),
+      options: [
+        { value: UNGROUPED, label: t('filters.noScheduleGroup') },
+        ...scheduleGroups.map((g) => ({ value: g.id, label: g.name })),
+      ],
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.scheduleGroup') }),
+    },
   ];
-  const filterValues = { q: q ?? '', shiftType: shiftType ?? '', shiftId: shiftId ?? '', status: status ?? '' };
-  const activeCount = [q, shiftType, shiftId, status].filter(Boolean).length;
+  const filterValues = {
+    q: q ?? '',
+    shiftType: shiftType ?? '',
+    shiftId: shiftId ?? '',
+    status: status ?? '',
+    scheduleGroupId: scheduleGroupId ?? '',
+  };
+  const activeCount = [q, shiftType, shiftId, status, scheduleGroupId].filter(Boolean).length;
   const filterLabels = {
     filter: t('filters.filter'),
     apply: t('filters.apply'),
@@ -203,12 +243,18 @@ export default async function ScheduleAssignmentPage({
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          <FilterPanel
-            action={PAGE}
-            fields={filterFields}
-            values={filterValues}
-            labels={filterLabels}
-          />
+          <div className="flex items-center gap-2">
+            {/* 8cd601d0 — the way into the bulk screen, carrying the filters as the starting selection. */}
+            <Link href={bulkHref} className={btnPrimary}>
+              {t('bulkLink')}
+            </Link>
+            <FilterPanel
+              action={PAGE}
+              fields={filterFields}
+              values={filterValues}
+              labels={filterLabels}
+            />
+          </div>
         }
       />
       <FilterChips
@@ -240,6 +286,7 @@ export default async function ScheduleAssignmentPage({
                     <th className={thCls}>{t('colEmployeeId')}</th>
                     <th className={thCls}>{t('colName')}</th>
                     <th className={thCls}>{t('colCompany')}</th>
+                    <th className={thCls}>{t('colScheduleGroup')}</th>
                     <th className={thCls}>{t('colShiftType')}</th>
                     <th className={thCls}>{t('colBackupShift')}</th>
                     <th className={thCls}>{t('colEffectiveFrom')}</th>
@@ -259,6 +306,14 @@ export default async function ScheduleAssignmentPage({
                       </td>
                       <td className="px-3 py-2.5 font-medium">{r.name}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{r.company}</td>
+                      {/* 8cd601d0 — the group the employee is IN. Em-dash means "in none", which is not a
+                          gap in the data: it is the state that makes the allowed-shift refusal a no-op for
+                          that person, and it is what the bulk screen exists to change. */}
+                      <td className="px-3 py-2.5">
+                        {r.scheduleGroupName ?? (
+                          <span className="text-muted-foreground">{t('noScheduleGroup')}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5">{SHIFT_TYPE_LABEL[r.shiftType]}</td>
                       <td className="px-3 py-2.5">
                         {r.shiftName ? `${r.shiftCode ?? '—'} — ${r.shiftName}` : '—'}
