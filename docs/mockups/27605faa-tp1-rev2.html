@@ -1,0 +1,114 @@
+<meta charset="utf-8">
+<title>TP1 Relief — Delete in the history, and year/month on Add New</title>
+<!--
+  27605faa revision 2, after the reporter contested r324. Two corrections:
+    1. Delete belongs in the Transaction History's Actions column (which already exists),
+       not on the per-month edit screen where r324 put it.
+    2. Assessment Year + Deduction Month move OFF the history screen and INTO Add New TP1.
+  Drawn only where a picture can be honest. Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:5px}
+  input,select{padding:6px 9px;border:1px solid var(--border);border-radius:8px;font:inherit;background:#fff;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .ok{background:#d1fae5;color:#065f46}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .warn{background:#fef3c7;color:#92400e}
+  .btn{display:inline-block;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:600;
+       background:var(--primary);color:#fff;border:0}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .act{color:var(--primary);font-weight:600;font-size:12px}
+  .del{color:#b42318;font-weight:600;font-size:12px}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .dialog{margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:14px;
+          background:#fff;box-shadow:0 8px 24px rgba(20,20,40,.10);max-width:430px}
+  .dialog h3{margin:0 0 6px;font-size:13px}
+  .dialog p{margin:0 0 12px;font-size:12px;color:var(--mf)}
+  .steps{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:12px}
+  .step{border:1px solid var(--border);border-radius:999px;padding:4px 11px;background:#fff}
+  .step.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:var(--primary);color:var(--primary);font-weight:600}
+  .arrow{color:var(--mf)}
+  .spacer{flex:1}
+</style>
+
+<div class="card">
+  <h2>1 · Transaction History — every year at once, with Delete in Actions <span class="chip new">changing</span></h2>
+  <p class="sub">Today you must pick an Assessment Year before any record appears, and Actions holds only View.</p>
+  <div class="row" style="margin-bottom:10px">
+    <div>
+      <div class="lbl">Search</div>
+      <input value="" placeholder="Month, amount or status" style="width:220px">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn">+ Add New TP1</button>
+  </div>
+  <table>
+    <tr>
+      <th>Year <span class="chip new">new</span></th><th>Month</th><th class="r">Amount</th>
+      <th>Status</th><th>Last saved</th><th class="r">Actions</th>
+    </tr>
+    <tr><td>2026</td><td>March</td><td class="r">4,800.00</td><td><span class="chip ok">Approved</span></td>
+        <td>12 Feb 2026</td><td class="r"><span class="act">View</span> &nbsp;·&nbsp; <span class="del">Delete</span></td></tr>
+    <tr><td>2026</td><td>February</td><td class="r">1,200.00</td><td><span class="chip have">Submitted</span></td>
+        <td>04 Mar 2026</td><td class="r"><span class="act">View &amp; edit</span> &nbsp;·&nbsp; <span class="del">Delete</span></td></tr>
+    <tr><td>2025</td><td>December</td><td class="r">950.00</td><td><span class="chip warn">Draft</span></td>
+        <td>18 Dec 2025</td><td class="r"><span class="act">View &amp; edit</span> &nbsp;·&nbsp; <span class="del">Delete</span></td></tr>
+  </table>
+  <p class="note">The year is now a COLUMN, not a filter you must set first. Records from every year are
+    listed together, newest first, and the search box narrows them.</p>
+</div>
+
+<div class="card">
+  <h2>2 · Delete asks first <span class="chip new">changing</span></h2>
+  <p class="sub">And says plainly what it does — including the one thing we will not do.</p>
+  <div class="dialog">
+    <h3>Delete this TP1 record?</h3>
+    <p>March 2026 · RM 4,800.00 · Approved</p>
+    <p>It will be removed from this list and will no longer count towards payroll or the TP1 total.
+       A record is kept for audit, as tax records must be; you can see removed records with
+       <em>Show deleted</em>.</p>
+    <div class="row">
+      <button class="btn" style="background:#b42318">Delete</button>
+      <button class="btn ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · Add New TP1 asks for the year and month first <span class="chip new">changing</span></h2>
+  <p class="sub">Today these sit on the viewing screen. They belong here, where a record is created.</p>
+  <div class="steps">
+    <span class="step on">1 · Year &amp; month</span><span class="arrow">→</span>
+    <span class="step">2 · Amount &amp; details</span><span class="arrow">→</span>
+    <span class="step">3 · Save</span>
+  </div>
+  <div class="row">
+    <div>
+      <div class="lbl">Assessment year</div>
+      <select><option>2026</option><option>2025</option></select>
+    </div>
+    <div>
+      <div class="lbl">Deduction month</div>
+      <select><option>March</option><option>January</option><option>February</option><option>April</option></select>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn">Continue</button>
+  </div>
+  <p class="note">A year and month that already has a record opens that record instead of starting a
+    second one, so Add can never quietly overwrite what is there.</p>
+  <p class="note">Sketch only — wording, spacing and colours will differ from the finished screen.</p>
+</div>
