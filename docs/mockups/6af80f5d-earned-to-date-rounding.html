@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>Earned to Date — the rounding rule is configured but never applied</title>
+<!--
+  6af80f5d. Measured 2026-09-23 on main and on PRODUCTION.
+  The column is `ytdEntitled` (components/leave/leave-balance-row.ts:191 = `bd.currentYearEntitlement`),
+  rendered at app/leave/employee-balances/page.tsx:447 and components/leave/leave-balance-table.tsx:156.
+  It is passed through with NO rounding at the read layer.
+  The rule IS configured and IS applied elsewhere: core/leave-compute.ts:441 `applyRounding(value, method,
+  threshold, bands)` -> :614 `applyRoundingBands`, called at core/leave.ts:9332 (accrual process),
+  :7906 (grant), :8436, :9644 and core/org.ts:429.
+  ⚠️ PRODUCTION's ANNUAL bands are 0.00-0.38 -> 0.00 | 0.39-0.68 -> 0.50 | 0.69-0.99 -> 1.00, which is NOT
+  the four-row table quoted in the request. Both give 11.00 for 11.18, so the example stands either way.
+  accrual_method = 'earned_daily', rounding_method = 'custom'.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ table.grid{border-collapse:collapse;width:100%;font-size:11.5px}
+ table.grid th,table.grid td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+ table.grid th{background:#f6f7fb;font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em;text-align:right}
+ table.grid th:first-child,table.grid td:first-child{text-align:left}
+ td.hit{background:#fdf6f5;color:var(--bad);font-weight:700}
+ td.fix{background:#f4faf6;color:var(--ok);font-weight:700}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px;color:var(--mf)}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ table.bands{border-collapse:collapse;font-size:11.5px;width:100%}
+ table.bands th,table.bands td{border:1px solid var(--rule);padding:5px 9px}
+ table.bands th{background:#f6f7fb;font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ tr.live td{background:#eef0fb}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Earned to Date &mdash; the rounding rule is set up, and never asked</h1>
+  <p class="sub">Employee Balances shows the raw running total. Everything needed to round it is already there.</p>
+
+  <div class="sec">
+    <h2><b>The row</b> &mdash; EMP-0004, Annual Leave, as at 23/09/2026</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag">Before</p>
+          <table class="grid">
+            <tr><th>Leave type</th><th>Earned to Date</th><th>Taken</th><th>Balance</th></tr>
+            <tr><td>Annual Leave</td><td class="hit">11.18</td><td>5.00</td><td class="hit">6.18</td></tr>
+          </table>
+          <p class="note">The raw running total, to two decimals, exactly as the ledger holds it.</p>
+        </div>
+        <div>
+          <p class="tag">After</p>
+          <table class="grid">
+            <tr><th>Leave type</th><th>Earned to Date</th><th>Taken</th><th>Balance</th></tr>
+            <tr><td>Annual Leave</td><td class="fix">11.00</td><td>5.00</td><td class="fix">6.00</td></tr>
+          </table>
+          <p class="note">Rounded <b>once</b>, against the running total &mdash; and the Balance beside it
+            follows, so the row still adds up.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>⚠️ The table you quoted is not the table your system is using</b></h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag">What your request describes</p>
+          <table class="bands">
+            <tr><th>From</th><th>To</th><th>Rounds to</th></tr>
+            <tr><td>0.00</td><td>0.24</td><td>0.00</td></tr>
+            <tr><td>0.25</td><td>0.49</td><td>0.50</td></tr>
+            <tr><td>0.50</td><td>0.74</td><td>0.50</td></tr>
+            <tr><td>0.75</td><td>0.99</td><td>1.00</td></tr>
+          </table>
+        </div>
+        <div>
+          <p class="tag">What Annual Leave actually carries right now</p>
+          <table class="bands">
+            <tr><th>From</th><th>To</th><th>Rounds to</th></tr>
+            <tr class="live"><td>0.00</td><td>0.38</td><td>0.00</td></tr>
+            <tr class="live"><td>0.39</td><td>0.68</td><td>0.50</td></tr>
+            <tr class="live"><td>0.69</td><td>0.99</td><td>1.00</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="warnbox">
+        <b>Three rows, not four, and different boundaries.</b> We are not going to change your table &mdash;
+        we are going to start <i>using</i> it. Your worked example is unaffected: 0.18 falls in the first row
+        of both tables, so 11.18 becomes 11.00 either way. But if you meant the four-row version to be live,
+        that is a settings change on the Leave Type screen and you should make it (or tell us to).
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>One decision inside your request</b> &mdash; and you already answered it</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">If we round what is <i>displayed</i> but leave everything computed
+        from the raw figure, the row stops adding up: Earned 11.00, Taken 5.00, Balance 6.18. A column that
+        does not reconcile with the two beside it is worse than an unrounded one.</p>
+      <div class="okbox">
+        Your request says <b>&ldquo;Earned to Date (and anything calculated from it)&rdquo;</b>, so we are
+        taking that as the answer: the rounded figure is the real one, and the Balance, the export and the
+        Explain panel all use it. One number, everywhere.
+      </div>
+      <p class="note"><b>Rounded once, at the end</b> &mdash; against the running total, never against each
+        daily slice, exactly as you set out. And read from the leave type at run time, so changing the table
+        on the settings screen changes the column with no code change.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What does not change</h3>
+    <p><b>No ledger row is rewritten.</b> What the system recorded stays recorded; this is about which figure
+      the screen reports.</p>
+    <p><b>No other leave type changes</b> unless it has a rounding rule of its own, in which case its own
+      rule is applied &mdash; nothing is hardcoded.</p>
+    <p><b>A type with no rounding rule shows exactly what it shows today.</b></p>
+  </div>
+</div>
