@@ -440,14 +440,29 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
     expect(optionsBlock()).toContain('label: lt.name,');
   });
 
-  it('…and so is the Replacement Leave list, which is now its own array', () => {
-    const at = page.indexOf('const replacementLeaveTypeOptions =');
-    expect(at, 'the replacement dialog builds its own viewer-scoped list').toBeGreaterThan(-1);
+  /**
+   * UPDATED BY 2a237f5f (AGENTS rule 18) — THE SECOND DROPDOWN IS GONE, SO THE CLAIM IS STRONGER, NOT
+   * WEAKER. This case pinned that the Leave Credit request's own option list also rendered a bare
+   * `lt.name`, because the badge rule had to hold in both employee dropdowns or it would come back through
+   * the other one. That dialog has no dropdown now: a Leave Credit is always Replacement Leave, and its
+   * leave-type box is a fixed field reading the tenant's resolved type. What is asserted instead is that
+   * there is nothing left to re-badge — no option list in the page for it, and no `<option>` in the
+   * component — which is the only way the old claim can still fail.
+   */
+  it('…and the Replacement Leave dialog has no option list at all to put a badge in', () => {
+    expect(page.indexOf('const replacementLeaveTypeOptions =')).toBe(-1);
+    const at = page.indexOf('const replacementLeaveType = ');
+    expect(at, 'the page resolves ONE replacement type for that dialog').toBeGreaterThan(-1);
     const block = page.slice(at, page.indexOf(';', at));
-    expect(block).toContain('label: lt.name');
-    const code = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(code).not.toContain('documentRequiredBadge');
-    expect(code).not.toContain('requiresDocument');
+    expect(block).toContain('pickReplacementLeaveType(leaveTypes)');
+    const dialog = read('components/leave/replacement-leave-request-dialog.tsx');
+    const dialogCode = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    // The one remaining <select> in that dialog is the day/hour unit, which is not a leave type. A
+    // `<select name="leaveTypeId">` is the list coming back, and nothing else in this file can be.
+    expect(dialogCode).not.toMatch(/<select[\s\S]{0,300}name="leaveTypeId"/);
+    expect(dialogCode).toContain('<input type="hidden" name="leaveTypeId" value={replacementType.id} />');
+    expect(dialogCode).not.toContain('documentRequiredBadge');
+    expect(dialogCode).not.toContain('requiresDocument');
   });
 
   it('the label expression names neither the badge key nor the document flag', () => {

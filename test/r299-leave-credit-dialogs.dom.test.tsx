@@ -136,7 +136,8 @@ describe('The employee’s Leave Credit request', () => {
       const dayKindAction = vi.fn(async (d: string) => (d === '2026-08-03' ? 'workday' : 'off_day') as 'workday' | 'off_day');
       render(
         <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>
-          <ReplacementLeaveRequestDialog types={[{ id: 'rl', label: 'Replacement Leave' }]} submitAction={vi.fn()} today="2026-09-17" dayKindAction={dayKindAction} />
+          {/* 2a237f5f — ONE resolved type, not a list: the leave-type box is fixed. */}
+          <ReplacementLeaveRequestDialog replacementType={{ id: 'rl', name: 'Replacement Leave' }} submitAction={vi.fn()} today="2026-09-17" dayKindAction={dayKindAction} />
         </NextIntlClientProvider>,
       );
       const rr = (CATALOGUES[locale] as unknown as { replacementRequest: Record<string, unknown> }).replacementRequest;

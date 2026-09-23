@@ -199,6 +199,31 @@ export function isReplacementLeaveType(ref: LeaveTypeRef): boolean {
   return isReplacementLeaveCode(lt.code);
 }
 
+/**
+ * 2a237f5f — WHICH replacement leave type, when a catalogue holds more than one candidate. READ-ONLY.
+ *
+ * `isReplacementLeaveType` answers "is this row the replacement one" per row. That is not enough for a
+ * caller that has to NAME one: a tenant carrying both a classified row (`role = 'replacement'`, coded
+ * whatever the customer calls it) and an unclassified `REPLACEMENT`-coded row gets `true` twice, and
+ * picking off the head of an alphabetically sorted array would answer with whichever name sorted first.
+ *
+ * THE PRECEDENCE IS core/toil.ts `findReplacementLeaveTypeIdTx`', deliberately and to the letter: a row
+ * with the role wins, an unclassified row falls back to the seeded code, and the tie is broken role-first
+ * rather than by the planner. That function is what the ENGINE credits against
+ * (`ensureReplacementLeaveType` = it, plus an insert on a miss), so a screen resolving the type by any
+ * other rule would name one type while the credit landed on another. Stated twice — once in SQL over a
+ * tenant's rows, once here over rows already in memory — for the reason the file header gives: this
+ * module must stay importable by client components, and `core/toil.ts` is not.
+ *
+ * ⚠️ It never creates anything. `ensureReplacementLeaveType` INSERTS on a miss, which is correct at
+ * approval time and is not acceptable as a side effect of drawing a page; null here means "this tenant
+ * has no Replacement Leave type", and the caller decides what to render for that.
+ */
+export function pickReplacementLeaveType<T extends LeaveTypeIdent>(types: readonly T[]): T | null {
+  const matches = types.filter((t) => isReplacementLeaveType(t));
+  return matches.find((t) => t.role === REPLACEMENT_LEAVE_ROLE) ?? matches[0] ?? null;
+}
+
 /** The configurable key set for ONE leave type — the six columns for Replacement Leave, the nine summary
  *  rows for every other type. This is the single place the split is decided; nothing else branches on it. */
 export function essViewKeysForCode(ref: LeaveTypeRef): readonly string[] {

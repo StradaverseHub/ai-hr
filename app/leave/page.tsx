@@ -24,7 +24,7 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 // 5206539f — `leave.apply_on_behalf`, resolved by the SAME function requestLeave's own gate calls, so the
 // selector below and the refusal in the service can never answer differently.
 import { canApplyLeaveOnBehalf, todayInKualaLumpur } from '@/core/leave';
-import { isReplacementLeaveType } from '@/core/ess-view';
+import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
 // r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
 // who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.
 import {
@@ -331,9 +331,14 @@ export default async function LeavePage({
     // This used to append "· document required" (leave.documentRequiredBadge) for a type carrying
     // requiresDocument. Sitting inside the option it read as part of the type's NAME ("Caregiver Leave -
     // document required"), it made the list harder to scan, and it put an internal HR setting in front of
-    // the employee. The rule covers BOTH employee dropdowns — this array and `replacementLeaveTypeOptions`
-    // just below — and each renders `label` verbatim. (Until ad965821 rev 2 it was literally one array; the
-    // two now differ in WHICH ROWS they carry, never in what an option is.)
+    // the employee. The rule used to cover BOTH employee dropdowns — this array and the Leave Credit
+    // request's own list just below. (Until ad965821 rev 2 it was literally one array; rev 2 split them,
+    // and they differed in WHICH ROWS they carried, never in what an option is.)
+    //
+    // 2a237f5f — THIS IS THE ONLY EMPLOYEE LEAVE-TYPE DROPDOWN LEFT. The Leave Credit request no longer has
+    // one: its leave type is always Replacement Leave and is now a fixed field. So the rule has one place
+    // to hold rather than two, and the badge cannot come back through the other door because there is no
+    // other door.
     //
     // NOTHING ABOUT ENFORCEMENT MOVES. core/leave.ts still refuses a submission whose required document is
     // missing, app/me/actions.ts still raises that sentence (leave.documentRequired / documentRequiredAfter —
@@ -350,12 +355,29 @@ export default async function LeavePage({
     // controls once EL has been pointed at another type's balance — see LeaveTypeOption.borrowsBalance.
     borrowsBalance: lt.balanceSourceTypeId != null,
   }));
-  // ad965821 rev 2 — THE REPLACEMENT LEAVE LIST IS THE VIEWER'S OWN, and is a separate array for exactly one
-  // reason: that dialog has no employee selector. It asks to be CREDITED for time the SIGNED-IN employee
-  // already worked, so the union assembled above (which spans a manager's reports) would offer them credit
-  // targets belonging to somebody else. Same narrowing as the plan asked for — "the two ways into leave
-  // agree with each other" — applied to the one subject this form actually has.
-  const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));
+  // ── The Leave Credit request's leave type (2a237f5f) ──────────────────────────────────────────────────
+  //
+  // THERE IS NO LIST. This was `replacementLeaveTypeOptions` — every type the employee was eligible for,
+  // mapped into a <select> in the Leave Credit request dialog (ad965821 rev 2 had narrowed WHICH rows it
+  // carried, never how many). A Leave Credit is always Replacement Leave, and the choice was already dead
+  // on arrival: core/toil.ts credits `ensureReplacementLeaveType(tenant)` whatever the employee picked,
+  // and the reversal path reads the ledger row's own type. The form was collecting an answer the engine
+  // discards — the same defect class as the Shift form's working days (aec53564, r331).
+  //
+  // RESOLVED OFF THE FULL LIVE CATALOGUE, NOT `eligibleLeaveTypes`, and that is the whole point of reading
+  // it here. The engine's target is a TENANT's replacement type (`ensureReplacementLeaveType(tx, tenantId)`
+  // — tenant-scoped, non-archived), so anything narrower would let this screen name one type while the
+  // credit landed on another. `leaveTypes` is `listLeaveTypes(session, { locale, includeArchived: false })`:
+  // the same scope, the same archived filter, and localized, so the box reads the tenant's OWN name for
+  // their type rather than a translated constant.
+  //
+  // `pickReplacementLeaveType` is the in-memory twin of core/toil.ts `findReplacementLeaveTypeIdTx` — role
+  // first, the seeded `REPLACEMENT` code as the fallback for an unclassified row, ties broken role-first.
+  // Matching on the code alone would miss production's own type, which is coded `RL` under
+  // `role = 'replacement'` (5ff7daff). ⚠️ NOT `ensureReplacementLeaveType`: that one INSERTS a leave type
+  // on a miss, and creating a leave type as a side effect of drawing a page is not acceptable. Null here
+  // means the tenant has no Replacement Leave type, and the trigger below renders nothing.
+  const replacementLeaveType = pickReplacementLeaveType(leaveTypes);
 
   // ── The leave balance dashboard (r302 · 6c9802c9) ─────────────────────────────────────────────────────
   // Feedback 8ec63139: the ESS half of this page is self-service only; `ess` is the single gate and it suppresses
@@ -377,7 +399,13 @@ export default async function LeavePage({
   // read off the unfiltered `leaveTypes` above rather than the eligible/visible subsets — the notice must
   // survive the very configuration it is explaining, and BY ROLE with the seeded code as the fallback
   // (`isReplacementLeaveType`), because production's own replacement type is coded `RL` (5ff7daff).
-  const tenantHasReplacementLeave = leaveTypes.some(isReplacementLeaveType);
+  //
+  // 2a237f5f — DERIVED FROM THE RESOLVED TYPE rather than asked a second time. It was
+  // `leaveTypes.some(isReplacementLeaveType)`, which is the same question the resolver above already
+  // answered over the same rows; two expressions of one fact is how the two drift apart. The predicate is
+  // unchanged — `pickReplacementLeaveType` filters on `isReplacementLeaveType` — so which tenants see this
+  // notice is exactly what it was.
+  const tenantHasReplacementLeave = replacementLeaveType != null;
 
   // r302 — EVERY FIGURE ON THE DASHBOARD, PER LEAVE YEAR, from core/my-leave.ts: a pick off
   // leaveEntitlementBreakdown for the chosen year's cycle, and — for the cycle in force today — "You can apply
@@ -1010,13 +1038,24 @@ export default async function LeavePage({
                   Rendered only when the server says this employee may submit. With the switch off, or the
                   employee outside the eligibility criteria, there is no button — and the action refuses
                   the POST anyway. */}
-              {/* ad965821 rev 2 — …and only when there is a credit target to name. This dialog's type
-                  <select> carries neither `required` nor a placeholder row, so an empty list would render
-                  an empty control and post leaveTypeId='' — the same empty-form trap the Request Leave
-                  trigger above is guarded against, in the one dialog that would have failed silently. */}
-              {ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (
+              {/* ad965821 rev 2 — …and only when there is a credit target to name. THE GUARD STAYS; 2a237f5f
+                  CHANGED WHAT IT GUARDS AGAINST. Rev 2's reason was an empty eligible list: the dialog's
+                  type <select> carried neither `required` nor a placeholder row, so an empty list rendered
+                  an empty control and posted leaveTypeId=''. There is no <select> any more — the leave type
+                  is fixed — so the list that could be empty is now a single resolved type, and the case this
+                  guards is A TENANT WITH NO REPLACEMENT LEAVE TYPE IN ITS CATALOGUE. Without it the dialog
+                  would render a leave-type box with no name in it and post leaveTypeId='' — the same empty
+                  control, reached by the one route still open to it.
+
+                  KNOWN NARROWING, recorded rather than discovered later: `replacementRequestAvailability`
+                  never asks whether the type exists, so an employee in such a tenant loses a button that
+                  would have worked (the type is created at APPROVAL by `ensureReplacementLeaveType`). That
+                  is r219's own model — "a tenant that has never had a Replacement Leave type has nothing to
+                  explain: the request option was never on offer" — now true of the button as well as the
+                  notice. The alternative was drawing a page that creates a leave type, which is worse. */}
+              {ess && replacementRequest.allowed && replacementLeaveType != null && (
                 <ReplacementLeaveRequestDialog
-                  types={replacementLeaveTypeOptions}
+                  replacementType={{ id: replacementLeaveType.id, name: replacementLeaveType.name }}
                   submitAction={submitReplacementLeaveRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
