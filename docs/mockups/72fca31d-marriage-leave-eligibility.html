@@ -1,0 +1,165 @@
+<meta charset="utf-8">
+<title>Marriage Leave eligibility — three of five already exist</title>
+<!--
+  72fca31d. Measured 2026-09-23 on main at d9a5bb64 and on PRODUCTION.
+  P1 EXISTS AND IS SWITCHED ON: leave_type.eligibility is a jsonb gate {gender?, maritalStatus?,
+  minServiceMonths?} (db/schema.ts:1223). Production: code MRL "Marriage Leave" already carries
+  {"maritalStatus": ["single"]} with probation_eligibility = confirmed_only.
+  The dropdown narrows via isProfileEligible(..., 'exclude') at core/read.ts:2854; the submission is
+  refused by assertEligible (core/leave.ts:1250, called at :2951 and :6850), where a missing value
+  matches no configured list and throws. So UI and API are BOTH already enforced, including "not set".
+  P5 EXISTS: app/me/page.tsx:423 renders maritalStatus as a ReadField with a pending badge — the
+  employee proposes a change through profileChangeRequest and HR approves it.
+  Production marital spread across 88 people: 58 not set, 19 married, 11 single.
+  MARITAL_STATUSES = single|married|divorced|widowed|separated|other (lib/person-vocabulary.ts:35);
+  db/schema.ts:643's comment claiming single|married|other is stale.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--warn:#b54708;--bad:#a8453a;--muted:#f1f2f7}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1120px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px}
+ .pill.have{background:#e3f3ea;color:var(--ok)}
+ .pill.build{background:#fdeee2;color:var(--warn)}
+ .bd{padding:13px 14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+ .scr{border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+ .sb{padding:7px 11px;background:var(--muted);border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:600}
+ .tabs{display:flex;gap:0;border-bottom:1px solid var(--rule);font-size:10.5px}
+ .tb{padding:6px 10px;color:var(--mf);border-bottom:2px solid transparent}
+ .tb.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:700}
+ .row{display:flex;justify-content:space-between;gap:10px;padding:7px 11px;font-size:11.5px;border-bottom:1px solid #f2f3f8}
+ .row:last-child{border-bottom:none}
+ .row .k{color:var(--mf)}
+ .chip{display:inline-block;border:1px solid var(--primary);color:var(--primary);background:#eef0fb;border-radius:99px;padding:1px 9px;font-size:10.5px;font-weight:600}
+ .chip.off{border-color:var(--rule);color:#a3a3ae;background:#fafafc;font-weight:400}
+ .ro{background:var(--muted);color:var(--fg);border:1px solid var(--rule);border-radius:5px;padding:4px 8px;font-size:11px;display:flex;justify-content:space-between}
+ .ro .lock{color:var(--mf);font-size:10px}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .note.ok{color:var(--ok)}
+ .warnbox{margin-top:11px;padding:10px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:7px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .msg{margin-top:9px;border:1px solid #e4c2bd;background:#fdf6f5;border-radius:6px;padding:8px 10px;font-size:11.5px;color:var(--bad)}
+ .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:10px}
+ .n{border:1px solid var(--rule);border-radius:7px;padding:9px;text-align:center}
+ .n b{display:block;font-size:17px}
+ .n span{font-size:10.5px;color:var(--mf)}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Marriage Leave &mdash; three of your five points already exist</h1>
+  <p class="sub">And the first one is already switched on, on your live system, right now.</p>
+
+  <div class="sec">
+    <h2><span class="pill have">ALREADY BUILT &amp; ON</span><b>1.</b> Only &ldquo;Single&rdquo; may apply &mdash; UI and API</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <div class="scr">
+            <div class="sb">Leave Config &rsaquo; Leave Types &rsaquo; Marriage Leave</div>
+            <div class="tabs">
+              <div class="tb">Identity</div><div class="tb on">Eligibility</div><div class="tb">Entitlement</div>
+              <div class="tb">Application</div><div class="tb">Approvers</div>
+            </div>
+            <div class="row"><span class="k">Gender</span><span><span class="chip off">no restriction</span></span></div>
+            <div class="row"><span class="k">Marital status</span><span><span class="chip">Single</span></span></div>
+            <div class="row"><span class="k">Minimum service</span><span><span class="chip off">none</span></span></div>
+            <div class="row"><span class="k">Probation</span><span><span class="chip">Confirmed only</span></span></div>
+          </div>
+          <p class="note ok"><b>This screen exists and this is what it already says.</b> Your Marriage
+            Leave type is already restricted to Single, and already confirmed-staff-only. We did not set
+            that up for this request &mdash; it was already there.</p>
+        </div>
+        <div>
+          <div class="scr">
+            <div class="sb">What it already does</div>
+            <div class="row"><span class="k">Single</span><span style="color:var(--ok);font-weight:600">sees it &middot; can submit</span></div>
+            <div class="row"><span class="k">Married</span><span style="color:var(--bad);font-weight:600">hidden &middot; refused</span></div>
+            <div class="row"><span class="k">Divorced / Widowed / Separated</span><span style="color:var(--bad);font-weight:600">hidden &middot; refused</span></div>
+            <div class="row"><span class="k">Not set</span><span style="color:var(--bad);font-weight:600">hidden &middot; refused</span></div>
+          </div>
+          <p class="note"><b>Both halves you asked for are already there.</b> The dropdown hides it, and
+            the server refuses it independently &mdash; so it cannot be bypassed through the API either.</p>
+        </div>
+      </div>
+      <div class="warnbox">
+        <b>Two consequences of that live setting you may not have realised &mdash; both are settings, not code:</b>
+        <div class="nums">
+          <div class="n hot"><b>58</b><span>of 88 people have<br>NO marital status set</span></div>
+          <div class="n hot"><b>0</b><span>divorced / widowed<br>may apply</span></div>
+          <div class="n"><b>11</b><span>recorded Single<br>&mdash; the only ones eligible</span></div>
+        </div>
+        <div style="margin-top:9px">Because &ldquo;not set&rdquo; is treated as not-qualifying, <b>58 of your
+          people are already blocked from Marriage Leave today</b>. And someone remarrying after being
+          widowed or divorced is blocked too. If either is wrong, it is a two-click change on the screen
+          above &mdash; tell us and we will make it for you.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill have">ALREADY BUILT</span><b>5.</b> Employees cannot edit their own Marital Status</h2>
+    <div class="bd">
+      <div class="scr" style="max-width:420px">
+        <div class="sb">My Profile &rsaquo; Personal details</div>
+        <div class="row"><span class="k">Marital status</span><span style="flex:1;max-width:190px"><span class="ro">Single <span class="lock">read-only</span></span></span></div>
+      </div>
+      <p class="note ok"><b>It is already read-only to the employee</b> &mdash; and better than
+        &ldquo;HR only&rdquo;: the employee can <i>propose</i> a change, which sits in HR&rsquo;s approval
+        queue until someone approves it, and the request is kept. So the change is reviewed and recorded
+        rather than simply forbidden.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill build">TO BUILD</span><b>2.</b> Block a second application while one is pending</h2>
+    <div class="bd">
+      <div class="scr" style="max-width:520px">
+        <div class="sb">Request leave</div>
+        <div class="row"><span class="k">Leave type</span><span>Marriage Leave</span></div>
+        <div class="msg">You already have a Marriage Leave request pending approval.</div>
+      </div>
+      <p class="note">Real work, and small. Refused on the server as well as shown on the screen, for the
+        same reason as point 1.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill build">TO BUILD</span><b>3 &amp; 4.</b> Set Married on approval, and put it back if cancelled</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">We will build this as you described: on final approval, if the
+        status is still Single, it becomes Married in the same transaction, with an audit entry naming the
+        request, the approver and both values. Cancelling an approved Marriage Leave puts it back to
+        Single &mdash; but only if that same request is what changed it.</p>
+      <div class="warnbox">
+        <b>One thing we want to say before you approve it:</b> approval is not the wedding. Marriage Leave
+        is normally approved <i>weeks before</i> the event, so between approval and the wedding the system
+        will record someone as Married when they are not yet. Every figure we checked is unaffected &mdash;
+        tax is driven by its own PCB category field, not by this one &mdash; so the cost is that the record
+        is early, not that money moves. Your cancellation rule covers the wedding that does not happen.
+        If you would rather the change happened when the leave has actually been <i>taken</i>, reject this
+        and say so, and we will move the trigger.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What this means for the work</h3>
+    <p><b>Points 1 and 5 need no build at all.</b> We would rather tell you that than quietly re-implement
+      something you already own and bill you a round for it.</p>
+    <p><b>Points 2, 3 and 4 are real</b> and we will build them together.</p>
+    <p><b>Nothing here changes any other leave type</b>, and no existing leave request is altered.</p>
+  </div>
+</div>
