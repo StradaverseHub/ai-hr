@@ -1,0 +1,97 @@
+<meta charset="utf-8">
+<title>Attendance Schedule — list, then one screen per Schedule Group</title>
+<!--
+  665de026. BEFORE/AFTER of Attendance > Schedule.
+  BEFORE is the real shape: app/admin/attendance/schedule/ is FLAT (actions.ts, page.tsx, tabs.ts, no
+  sub-routes) and tabs.ts lists exactly six sections — general, holiday, overtime, attendance, request,
+  notification. The object is attendance_rule (page.tsx:132 names it the SCHEDULE GROUP, 870b79e2).
+  AFTER follows the in-repo precedent the reporter themselves forced: schedule-assignment/ has
+  [employmentId]/ and bulk/ after r263's inline panel was contested and r265 made it list + detail.
+  The SEVENTH section is drawn dashed on purpose — 07ebd04d creates it and it does not exist yet.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+ .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .col h2 b{font-weight:700}
+ .screen{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .screen.before{border-color:#e4c2bd}
+ .screen.after{border-color:#bcdccb}
+ .bar{padding:8px 13px;border-bottom:1px solid var(--border);background:var(--muted);font-size:12px;font-weight:600}
+ .bar span{float:right;font-weight:400;color:var(--mf);font-size:11px}
+ .body{padding:12px}
+ .row{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:7px;font-size:12.5px}
+ .row b{font-weight:600}
+ .acts span{border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:10.5px;margin-left:4px;color:var(--mf)}
+ .sec{border:1px solid var(--border);border-radius:6px;padding:6px 9px;margin-bottom:5px;font-size:11.5px;background:#fbfbfd}
+ .sec.new{border-style:dashed;border-color:var(--warn);color:var(--warn);background:color-mix(in srgb,var(--warn) 6%,white)}
+ .crowd{margin-top:9px;padding:9px;border:1px dashed #d9a9a2;border-radius:7px;background:#fdf6f5;font-size:11.5px;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:9px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .btn{border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;border:1px solid transparent;background:var(--primary);color:#fff}
+ .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+</style>
+<div class="wrap">
+  <h1>Attendance &rsaquo; Schedule &mdash; a list, then one screen per Schedule Group</h1>
+  <p class="sub">The same move we made for Schedule Assignment after you asked for it twice</p>
+  <div class="pair">
+    <div class="col">
+      <h2><b>Before</b> &mdash; everything on one page</h2>
+      <div class="screen before">
+        <div class="bar">Schedule<span>one page</span></div>
+        <div class="body">
+          <div class="row"><b>Standard</b><span class="acts"><span>View</span><span>Edit</span></span></div>
+          <div class="row"><b>A02</b><span class="acts"><span>View</span><span>Edit</span></span></div>
+          <div class="crowd">
+            …and the whole settings form opens <b>here</b>, in place:
+            <div style="margin-top:7px">
+              <div class="sec">General</div><div class="sec">Holiday</div><div class="sec">Overtime</div>
+              <div class="sec">Attendance</div><div class="sec">Request</div><div class="sec">Notification</div>
+            </div>
+          </div>
+          <p class="note">Add New, View and Edit all render into the same page, under the list.</p>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h2><b>After</b> &mdash; the list stays a list</h2>
+      <div class="screen after">
+        <div class="bar">Schedule<span>list only</span></div>
+        <div class="body">
+          <div class="row"><b>Standard</b><span class="acts"><span>View</span><span>Edit</span></span></div>
+          <div class="row"><b>A02</b><span class="acts"><span>View</span><span>Edit</span></span></div>
+          <div style="text-align:right;margin-top:8px"><button class="btn">Add New Schedule</button></div>
+        </div>
+      </div>
+      <div class="screen after" style="margin-top:12px">
+        <div class="bar">&lsaquo; Back &nbsp;·&nbsp; Edit Schedule &mdash; Standard<span>its own page</span></div>
+        <div class="body">
+          <div class="sec">General</div><div class="sec">Holiday</div><div class="sec">Overtime</div>
+          <div class="sec">Attendance</div><div class="sec">Request</div><div class="sec">Notification</div>
+          <div class="sec new">Working Day / Schedule Pattern &mdash; created by your other request</div>
+          <p class="note"><b>Save keeps you here</b>, with a confirmation. Back returns to the list.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <h3>Why the seventh section is dashed</h3>
+    <p>You listed a <b>Working Day / Schedule Pattern</b> section. It does not exist yet &mdash; it is
+    created by your other open request, the one splitting &ldquo;Standard&rdquo; into three because its
+    shifts disagree about Saturday. Both requests are the same object from two directions.</p>
+    <p>We would rather build this screen <b>after</b> that one, so it is built once with all seven
+    sections instead of being reopened a week later. If you would rather have the screens sooner, say so
+    &mdash; that is your call, not ours.</p>
+    <p>Sketch only &mdash; wording, spacing and colours will differ from the finished screen.</p>
+  </div>
+</div>
