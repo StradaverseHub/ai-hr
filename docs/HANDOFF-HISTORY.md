@@ -1,3 +1,51 @@
+## r331 (2026-09-23) — three items, and an agent finding the gap that would have made a promise false. `main@78745e66`, **migration 0483**.
+
+Closed: `72b100cd`, `a96d320c`, `07ebd04d`. Gate: **957 files — equal to the suite file count**, 14 chunks, **zero red chunks**, `tsc` 0, `next build` 0, shadow **PASS 396/396**. Render check clean.
+
+Not started this round and still approved: `0fe1ca2e`, `2a1a6f42`, `665de026` (the last waits for `07ebd04d` by its own plan's recommendation, which the reporter accepted).
+
+### THE FINDING THAT MATTERS MOST: `attendance_rule` IS ALSO THE PAY RULE
+
+The `07ebd04d` plan told the reporter, in plain words, *"We are not touching how anything is calculated."* Neither the plan nor my brief noticed that **`attendance_rule` is the Schedule Group AND the lateness / early-out / overtime rule** — `late_grace_period_minutes`, `deductions_effective_from` and the whole `attendance_rule_ot_row` band table hang off it.
+
+**Creating three bare groups would have silently re-priced all five shifts**, and that sentence would have been false the day it shipped. Migration 0483 now copies every calculation column and every OT band onto each new group, pinned by a mutation that fails when the copy is disabled. It also carries `deductions_effective_from`, unlike `copyAttendanceRule` which deliberately drops it — different case, and the reasoning is recorded in the migration header.
+
+Two more judgement calls the agent made rather than assumed: the tenant's `is_default` "Standard" rule keeps NULL patterns by explicit predicate (a week on it would be imposed on every ungrouped shift in the tenant), and a fourth unapproved working week, a name collision, or any employment left behind in the emptied group **aborts the whole block** rather than half-applying.
+
+### TWO DECISIONS RAISED TO THE REPORTER, NOT TAKEN HERE
+
+- **`aec53564` — the shift form will edit a week that no longer decides anything.** After 0483 the group's week wins and each shift's stored week is dead weight: open a shift, change its Saturday, press Save, and the system accepts it, stores it, and changes nothing. Proved, not inferred — a passing test shows a group that does not work Saturday makes Saturday a rest day *even though the shift works it*. Two owners of one money-bearing fact is what §1 says to stop for. Recommended: the week is edited on the group and the day fields come off the shift form.
+- **`048f1e9d` — the payslip identity panel.** The approved plan promised *"the employee details block is rebuilt"* and this round did not build it. Raised rather than left inside an item about to close. We did not guess at it on purpose: "make it more modern" does not say what it should look like, and a payslip is not a screen to redesign on a hunch.
+
+### THE PAYSLIP: ONE NOTCH REPORTED, THREE DEFECTS FOUND — AND ONE OF THEM WAS OURS
+
+⚠️ **CORRECTION OWED, AND IT REVERSES WHAT I TOLD THEM.** The rev-2 plan and commit `c1e84cd9` said the border notches were *"pre-existing, not an r328 regression"* and that `paintBox` *"was never touched"*. Verified against the source: **before r328** the row hairline was `x + 6 → x + p.w - 6`; **after r328** it is `x → x + p.w`. So r328 *did* touch `paintBox`, and widening that hairline turned a 0.5pt line over the 0.8pt bottom border from washing out the middle into washing out its whole length — **on Payment Information, which is one of the four boxes they circled**.
+
+So: the NOTCH predates r328; the WASHED-OUT BOTTOM BORDER does not. Both are fixed. The source comment that carried my wrong claim is corrected where the next reader meets it.
+
+Also found beyond the brief: **two bands per box, not one** (the header band and the total-row band, same construction) — reverting the fix reports **seven** offenders on a one-page payslip, not four. And `drawGrid` never had the defect at all; its band belongs to `drawEmployeePanel` and sits above the grid with no overlap.
+
+**A better design than my instruction.** I wrote "test the election, not the amount" for `socsoSkbbk`. Not possible from a payslip — `subject_to_skbbk` lives only on `employee_statutory_my` and the run stamped only who *funded* the leg. The agent added a kernel stamp and then refused election-alone reasoning, because `null` on every existing payslip would drop a real deduction off a historical document whose printed total still counts it, and reading today's row would let unticking a box today rewrite last January. Shipped `subject === true || amount !== 0`.
+
+### A LATENT BUG UNDER A READ I CALLED SOUND
+
+My `72b100cd` brief presented `pcbPaymentsForYear` as the year-at-a-time read that "already exists". It had **no `ORDER BY`** on main — and an existing test asserted key order off a `Map`'s *insertion* order, a planner-order coin toss that happened to pass on one row. Fixed. §8 says it outright: any asserted array from a query needs `ORDER BY`.
+
+Two more brief corrections: the one-writer guard I cited greps **raw** source, not comment-stripped — which matters exactly here, because the new files explain the one-writer rule in prose; and "new guarded page ⇒ new `SCREENS` column" overstates the rule, since the shelf's convention is to add the route to the existing column when the guard is identical (a separate column would let an admin grant PCB 2(II) while revoking the only place to maintain what it prints).
+
+### WHAT WAS NOT DONE
+
+- **`07ebd04d` has no UI.** The three groups carry working weeks that no screen shows or edits — which is what `aec53564` is about.
+- **5 of 11 pattern readers deliberately not rewired**: the four shift *editor* surfaces (routing a shift editor through a resolver that returns the *group's* week would make the form show one week and save another) and `app/attendance/clock/page.tsx` (byte-identical today, and a per-shift group read on a hot employee page).
+- ⚠️ **`gate:shadow` cannot validate 0483's data half.** `scripts/shadow-migrate.sh` restores the live schema *structure only, no rows*, so both DO blocks no-op there. Their first real data run is on the box during deploy. `test/schedule-group-split-migration.test.ts` is the only place the data path is exercised — and it reads the `.sql` off disk and executes it, so it runs whatever ships.
+- ⚠️ **Multi-tenant scope risk:** the split fires for any tenant holding a group named "Standard" with more than one working week. The unmatched-week guard means another tenant is only touched if its weeks are exactly the reporter's three — else it aborts loudly — but confirm before deploy if production is ever multi-tenant.
+- The rostered-off-day 2.0× defect, `resolveRosterCell`'s half-day→OFF rendering, and Transaction View's zero rows (deliberate — it is a reconciliation grid read column-wise and must match its own CSV) all stand.
+
+### RECORDED
+
+- `subject_to_skbbk` **defaults FALSE** for new rows while the scheme is documented mandatory from 1 June 2026 (0198 backfilled existing rows to true). A newly created employee gets no SKBBK unless somebody ticks it. The new payslip stamp makes that visible rather than fixing it.
+- The ADR index is **34 of 83**, missing ADR-0080 among others, and nothing guards it. Worth its own item with an exact-set test.
+
 ## r330 (2026-09-23) — four items, four agents, and the agents auditing MY documents. `main@2a0c5e0e`, **migration 0482**.
 
 Closed and DEPLOYED: `e6be5a3b` alone. **`07ebd04d`, `0fe1ca2e` and `23e7dac3` are NOT closed** — each shipped a read-only report or an internal predicate and is now back with the reporter. Gate: **955 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 395/395** (applied 394 → 395). Render check clean; `/admin/system-testing` 307 IS the ADR-0077 module gate.
