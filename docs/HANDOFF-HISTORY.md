@@ -1,3 +1,53 @@
+## r330 (2026-09-23) — four items, four agents, and the agents auditing MY documents. `main@2a0c5e0e`, **migration 0482**.
+
+Closed and DEPLOYED: `e6be5a3b` alone. **`07ebd04d`, `0fe1ca2e` and `23e7dac3` are NOT closed** — each shipped a read-only report or an internal predicate and is now back with the reporter. Gate: **955 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full. `tsc` 0, `next build` 0, shadow **PASS 395/395** (applied 394 → 395). Render check clean; `/admin/system-testing` 307 IS the ADR-0077 module gate.
+
+### THE ROUND'S PATTERN: AGENTS CHECKED MY DOCUMENTS AND FOUND EIGHT ERRORS
+
+r329's entry recorded three wrong briefs and promised I would verify premises before briefing. I did verify four this round — and the agents still found five more, because I verified what I thought to check rather than what the plan asserted in passing.
+
+1. **ADR-0085 keyed its predicate on `statutory_report.ack_ref`.** The OWNED definition is `STATUTORY_FILED_STATUSES` (`db/schema.ts:6514`), whose own comment says it lives in the schema so two modules resolve against ONE list — *"two hand-kept copies of 'which statuses count as filed' is how a further status ships that only half the codebase believes in."* My design was that second copy.
+2. **ADR-0085's "no new state machine" understated what exists.** `batchDownstreamWarnings` (`core/payroll.ts:874`) already computes `statutoryFiled` and feeds an amber banner on four screens. The step-2 predicate is deliberately wider, so **a month can read filed to the predicate and not-filed to the banner an operator is looking at** — a DECISION REQUIRED at step 4, now stated in the ADR.
+3. **The two filed-signals do not share a visibility rule.** `statutory_report` is RLS'd tenant AND `is_admin_for(company)` (0026); `pcb_payment` is tenant-only (0476). A naive predicate answers from half the evidence and **fails OPEN on a money guard**.
+4. **`scripts/report-schedule-group-split.ts` already existed** (r322 `142d049d`, amended r325). I briefed "write it". The agent upgraded it instead — it had never read `employment.attendance_rule_id`, missed the `default_shift_id` fallback, had no `ORDER BY`, and dated its filename off a UTC instant.
+5. **`shift.day_type` / `category` are NOT read by the derivation engine.** I repeated the plan's claim; a grep returns ZERO and `db/schema.ts:4200` says "RECORDED ONLY in stage 1". Those files read `attendance.day_type`, a different column on a different table. DECISION: they do not move.
+6. **`feedbackRequest` is at `db/schema.ts:7967`, not ~7847**, and **`raiseFeedback` is the operator CLI** (`scripts/improve/remote.ts`); the in-app writer is `submitFeedback`.
+7. **My plan told the agent to stamp `reporter_label`. It refused, correctly** — that column exists to show who WROTE an item when the improvement loop borrows a human's employment. Here a real person presses a real button, so stamping would hide the actual author.
+8. **The 0fe1ca2e headline was false** — see below.
+
+### TWO CORRECTIONS OWED TO THE REPORTER, BOTH MEASURED, BOTH DELIVERED
+
+**07ebd04d — I gave them a pay rate that is only conditionally true, in a plan AND in a picture.** `core/attendance.ts` ~1020's off-day → 1.5× branch sits in the DEFAULT-SHIFT step, reached only when the date has NO roster row. The rostered step at ~836 is two-way, `is_rest_day` is a **boolean** (`db/schema.ts:4326`), and `core/roster.ts:2172` says it outright: *"Rest and Off both generate a rest row."* So a rostered off-day pays **2.0×**. MEASURED on production: **3 rows in the past** (one employment, 2026-06-27 / 07-11 / 07-18), **0 on or after 2026-09-23**. So the rate was wrong three times historically and is right going forward. The split still stands, because AM02's half-day Saturday is a WORKING day regardless of rostering.
+
+**0fe1ca2e — the rev-3 headline was false, and false in our favour.** I told them removing the work-site axis "silently changes who an already-published notice targets" and called it the one thing blocking the work. `db/schema.ts` ~4758 states the opposite: publishing RESOLVES once and persists the employment ids; `notice.criteria` is kept *"purely for disclosure"*. A published notice cannot be retargeted. MEASURED: **0 of 10 entitlement rules, 0 of 1 notice, 0 of 20 generation runs** name the axis; **0 records to review**, and `EMPTY POPULATION 0` so it is a real all-clear. The blocker was never data — **it is ADR-0067** ("Configurable Public-Holiday Calendars by Location/Subsidiary", **Accepted 2026-06-29**), which the removal revokes in full. Unused is not unwanted, so the reporter's answer becomes a superseding ADR, not a code deletion.
+
+### TWO RED CHUNKS, BOTH GENUINE, BOTH INVISIBLE OUTSIDE THE MERGED TREE
+
+- **Chunk 1:** the TP3 journal guard looped every other entry and required a LOWER idx and `when` than 0480 — i.e. *"nothing may ever follow me"*. It passed in the worktree that wrote it because 0480 was newest there, and went red the moment 0482 landed. UPDATED with the reason, asserted in both directions now, proved non-vacuous.
+- **Chunk 12:** the ADR-0080 leave ratchet caught the new criteria report importing `core/leave` directly. Routed through the FACADE (`packs/leave/service` re-exports it wholesale); the allowlist was never widened. **This is the second `scripts/` file to need that comment** — the next report should start from `report-a2c-hire-year-deltas.ts` rather than from `core/`.
+
+Chunk 1 also carried **6 files failing with `Hook timed out` and ZERO AssertionErrors** — environment, confirmed by a re-run at half the duration with an identical 1033 test count.
+
+⚠️ I also hit the trap §10 records: `git checkout -- <file>` reverted my uncommitted journal-guard fix to HEAD and I had to redo it. That rule exists because of exactly this.
+
+### THE DEPLOY OOMed, AND THE DESIGN HELD
+
+`deploy.sh` exit **137** (SIGKILL) during type-checking on a 3.9 GB box. Production was untouched: `stale_build=1`, `.next` still r329's, service still serving the old build, **nothing marked deployed**. The cause was a **2.7 GB orphaned build process** (parent PID 1) left by the kill, holding the memory a retry needed. Identified positively against `systemctl show aihr -p MainPID` before touching it, killed that PID alone: available memory **203 MB → 2,860 MB**, service up throughout, retry clean.
+
+### WHAT WAS NOT DONE
+
+- **07ebd04d**: no migration 0481, the 11 pattern-column readers not rewired, no null-pattern write guard. All gated on the reporter confirming the list — their own seven-step protocol.
+- **0fe1ca2e**: the removal is not built, and correctly so — it is gated on the report AND on the ADR-0067 decision.
+- **23e7dac3**: ADR-0085 **step 2 only**. The clamps are byte-unchanged, the EPF step-down RM38 over-contribution is still live, order-independence is still unbuildable, and nothing calls the predicate. Steps 3–5 carry ADR-0024 §5's accountant sign-off.
+- **e6be5a3b**: no automated execution, CI, screenshots or scheduling. "Dashboard" and "Notice Board" have no `MODULE_CATALOG` row — they are screens, not things anyone buys — so the derived module list cannot offer them and they fall to Cross-Module. **DECISION REQUIRED.**
+- **The `socsoSkbbk > 0` Class B defect** (ADR-0085 step 1) is still live and belongs to `a96d320c`.
+
+### RECORDED FOR THE NEXT ROUND
+
+- **"Reserve a migration number" is meaningless.** r328/r329 reserved 0477/0478; they are now UNUSABLE, because `test/migration-journal-ordering.test.ts` asserts a strictly ascending `idx` with no grandfathering. Allocate at the moment of writing, from `max(idx)`.
+- `usualShiftsFor` (`core/roster.ts:2328`) selects only `weeklyPattern` and the grid does a two-way includes-or-off, so **AM02's half-day Saturday renders as OFF on the duty roster** while the engine treats it as a working half day. Pre-existing, display-only, and it will contradict the name "Standard 5.5 Day".
+- `system_testing` is the first catalogue row that is `packBacked:false` yet owns tables, so its tables read as unowned in the Dependency Explorer — the same trade ADR-0082 records for the assistant.
+
 ## r329 (2026-09-22) — three items, three agents, and three briefs of mine that were wrong the same way. `main@c97d3584`, **migration 0480**.
 
 Closed and DEPLOYED: `65b22c00`, `8cd601d0`, `df35d60d` (STAGE 1 ONLY). Gate: **950 files — equal to the suite file count**, 14 chunks, every chunk exit 0 and counted in full, **zero red chunks**. `tsc` 0, `next build` 0, shadow **PASS 394/394** (applied 393 → 394). Render check on the merged tree: five new/changed routes 200, **zero** MISSING_MESSAGE / FORMATTING_ERROR / IntlError.
