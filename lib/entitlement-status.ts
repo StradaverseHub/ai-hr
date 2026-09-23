@@ -496,7 +496,6 @@ export const ELIGIBILITY_AXIS_LABEL_KEY: Record<string, EligibilityAxisLabelKey>
   companyIds: { ns: 'criteria', key: 'company' },
   businessUnitIds: { ns: 'criteria', key: 'businessUnit' },
   departmentIds: { ns: 'criteria', key: 'department' },
-  locationIds: { ns: 'criteria', key: 'location' },
   employmentTypes: { ns: 'criteria', key: 'employmentType' },
   employmentStatuses: { ns: 'criteria', key: 'employeeStatus' },
   gradeIds: { ns: 'criteria', key: 'jobGrade' },

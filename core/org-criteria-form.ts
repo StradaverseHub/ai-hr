@@ -58,7 +58,6 @@ export type OrgCriteriaCatalogues = {
   positions: { id: string; title: string }[];
   costCenters: { id: string; code: string; name: string }[];
   businessUnits: { id: string; code: string; name: string }[];
-  locations: { id: string; code: string; name: string }[];
   profileOptions: Partial<Record<ProfileOptionCategory, ProfileOptionRow[]>>;
 };
 
@@ -113,7 +112,12 @@ export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteri
         org('orgSection'),
         org('orgTeam'),
         org('orgBranch'),
-        { name: 'locationIds', label: t.crit('location'), kind: 'multi', options: c.locations.map((l) => ({ value: l.id, label: `${l.code} — ${l.name}` })) },
+        // ADR-0086 (0fe1ca2e, r331) — the Work Site picker was HERE and is retired with the work-site
+        // register. Nothing on production narrowed by it (0 of 10 entitlement rules, 0 of 1 notice, 0 of 20
+        // generation runs; see core/org-criteria.ts ORG_DATED_ASSIGNMENT_CRITERIA for the full measurement).
+        // The axis it posted is gone from ORG_DATED_ASSIGNMENT_CRITERIA, so offering it here would put a
+        // control on a screen that narrows nobody — and test/r212-leave-type-inherited-conditions.test.ts
+        // pins the offered set against ELIGIBILITY_AXIS_LABEL_KEY, which lost its entry in the same change.
         // Region / Line / Base were narrowing options BEFORE 18103ba4 and are not on that reporter's list.
         // Dropping them to match a mock exactly would be a silent removal of working behaviour, so they
         // stay, in the group they belong to.

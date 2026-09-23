@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 
 import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
-import { listLocations } from '@/core/location';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import type { CriteriaSection } from '@/core/org-criteria-form';
@@ -203,7 +202,6 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     positions,
     costCenters,
     businessUnits,
-    locations,
     profileOptions,
     gradeGroups,
     deleteBlocks,
@@ -220,7 +218,9 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     listPositions(s),
     listCostCenters(s),
     listBusinessUnits(s),
-    companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
+    // ADR-0086 (0fe1ca2e, r331) — a `listLocations` read sat here for the Work Site criteria picker. The
+    // axis is retired, so it is gone, and it left the DESTRUCTURE ABOVE in the same edit — see the warning
+    // three lines down, which is exactly the failure mode this pair of deletions could have caused.
     listAllProfileOptions(s),
     // The Grade Group axis of Employee Eligibility. ⚠️ A NAME ADDED TO THE DESTRUCTURE ABOVE MUST BE
     // ADDED HERE IN THE SAME POSITION — a mismatch shifts every later variable by one slot and every
@@ -237,7 +237,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
   // no archived grade becomes newly pickable anywhere the shared builder renders.
   const activeGrades = grades.filter((g) => g.archivedAt == null);
   const criteriaSections = buildOrgCriteriaSections(
-    { companies, departments, grades: activeGrades, positions, costCenters, businessUnits, locations, profileOptions },
+    { companies, departments, grades: activeGrades, positions, costCenters, businessUnits, profileOptions },
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
   );
 

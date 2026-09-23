@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listDepartments, listJobGrades, listEmployees } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
-import { listLocations } from '@/core/location';
 import { listLeaveAdjustmentBatches } from '@/core/leave-adjustment';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listAllProfileOptions } from '@/core/profile-options';
@@ -89,7 +88,6 @@ export default async function LeaveConfigAdjustmentsPage({
     positions,
     costCenters,
     businessUnits,
-    locations,
     employments,
   ] = await Promise.all([
     listLeaveTypes(s, { includeArchived: false }),
@@ -100,16 +98,14 @@ export default async function LeaveConfigAdjustmentsPage({
     listPositions(s),
     listCostCenters(s),
     listBusinessUnits(s),
-    // The only list keyed by company rather than tenant. Empty scope ⇒ no locations, which is honest:
-    // an administrator who can see no company can narrow by no site either.
-    companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
     /**
      * r288 (8521e160) — STEP ②'s "Pick individually" picker, read ONCE for the page.
      *
      * `listEmployees` is the UNPAGINATED picker read (see its header: "Do NOT swap in the paginated
      * `listEmployeesPage`" — a checkbox set that silently drops people past a page boundary is the defect
-     * this screen cannot afford). Scoped to the administrator's own companies, exactly as the location
-     * list above is, and exactly as Generate Entitlement's identical read is.
+     * this screen cannot afford). Scoped to the administrator's own companies, exactly as Generate
+     * Entitlement's identical read is. (ADR-0086: a `listLocations` read sat beside it, feeding the Work
+     * Site criteria picker. The axis is retired, so the read is too.)
      *
      * ⚠️ NOT FILTERED TO ACTIVE EMPLOYMENTS, and that is a decision rather than an omission — the same
      * one r287 recorded. This list is the SECOND door onto the population the paste box has always
@@ -129,7 +125,7 @@ export default async function LeaveConfigAdjustmentsPage({
   const hasReplacementType = types.some(leftToLeaveCredit);
 
   const criteriaSections = buildOrgCriteriaSections(
-    { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
+    { companies, departments, grades, positions, costCenters, businessUnits, profileOptions },
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
   );
 

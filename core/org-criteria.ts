@@ -76,7 +76,21 @@ export const ORG_DATED_ASSIGNMENT_CRITERIA = [
   { key: 'businessUnitIds', column: 'businessUnitId' },
   { key: 'positionIds', column: 'positionId' },
   { key: 'costCenterIds', column: 'costCenterId' },
-  { key: 'locationIds', column: 'locationId' },
+  // ADR-0086 (item 0fe1ca2e, r331) — `{ key: 'locationIds', column: 'locationId' }` WAS the fourth entry
+  // here and is retired with the work-site register. Measured cross-tenant on production first
+  // (scripts/report-location-criteria-usage.ts, 2026-09-23): 0 of 10 entitlement eligibility rules, 0 of 1
+  // notice, 0 of 0 adjustment batches and 0 of 20 generation runs narrow by work site; 0 records to review;
+  // and EMPTY POPULATION 0, so it is a real all-clear rather than the missing-data illusion that check
+  // exists to catch. Removing an axis can only WIDEN a stored criteria object, never narrow it, and a
+  // published notice or a completed adjustment cannot be re-aimed at all — their audience is resolved once
+  // at publish and persisted (db/schema.ts on `notice_recipient`).
+  //
+  // ⚠️ AND IT WITHDRAWS A LIVE REFUSAL, which is the consequence that must not be silent:
+  // ASSIGNABLE_ELIGIBILITY_AXES in core/leave-approval-template.ts is { companyIds, employmentTypes,
+  // gradeIds } and never included `locationIds`, so a rule narrowing by work site is REFUSED for
+  // approval-template assignment TODAY. With the axis gone such a rule is no longer narrowed by a site, so
+  // the refusal no longer fires. Measured count of affected rules: 0. Pinned by
+  // test/location-criteria-axis-removal.test.ts.
 ] as const satisfies readonly { key: string; column: keyof typeof assignment.$inferSelect }[];
 
 /** Axes that are a plain (undated) column on `employment`. Job Grade is the only one 18103ba4 adds. */
@@ -126,7 +140,6 @@ export type OrgCriteria = {
   businessUnitIds?: string[];
   positionIds?: string[];
   costCenterIds?: string[];
-  locationIds?: string[];
   gradeIds?: string[];
   genders?: string[];
   nationalities?: string[];

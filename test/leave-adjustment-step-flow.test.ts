@@ -57,15 +57,21 @@ describe('18103ba4 · A. every criteria control posts a name the resolver unders
     expect(unknown, `criteria fields the resolver does not read: ${unknown.join(', ')}`).toEqual([]);
   });
 
-  it('the twelve schema-backed axes the plan promised are all offered', () => {
+  it('the twelve schema-backed axes the plan promised are all offered, less the one ADR-0086 retired', () => {
     // Named individually rather than counted, because "we added twelve" is not checkable and "business
-    // unit is missing" is. Job grade / position / cost centre / location / business unit are real columns;
+    // unit is missing" is. Job grade / position / cost centre / business unit are real columns;
     // gender / nationality / religion / race live on person; employment status and the hire-date band are
     // derived and stored respectively.
+    //
+    // ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). `locationIds` was the fifth real column on this list.
+    // ADR-0086 (item 0fe1ca2e, r331) retired the work-site axis with the work-site register — measured
+    // unused cross-tenant on production first (0 of 10 entitlement rules, 0 of 1 notice, 0 of 20
+    // generation runs). It is asserted ABSENT below rather than quietly dropped from the list, so the
+    // promise 18103ba4 made is still readable and its one withdrawal is explicit.
     const emitted = new Set(pageCriteriaNames());
+    expect(emitted.has('locationIds'), 'ADR-0086: the Work Site axis is retired, not merely unlisted').toBe(false);
     for (const name of [
       'businessUnitIds',
-      'locationIds',
       'gradeIds',
       'positionIds',
       'costCenterIds',
@@ -256,7 +262,7 @@ describe('18103ba4 (r155) · D. the criteria groups say what they hold', () => {
     buildOrgCriteriaSections(
       {
         companies: [], departments: [], grades: [], positions: [],
-        costCenters: [], businessUnits: [], locations: [], profileOptions: {},
+        costCenters: [], businessUnits: [], profileOptions: {},
       },
       { crit: (k) => k, org: (k) => k, employmentType: (k) => k },
     );
