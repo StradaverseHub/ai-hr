@@ -1,3 +1,39 @@
+## r333 (2026-09-23) — two items, a migration the brief said was not needed, and RLS that would have killed the feature. `main@dd61bf1f`, **migration 0485**.
+
+⚠️ **THE COMMITS OF THIS ROUND ARE PREFIXED `r332`, AND THAT IS WRONG AGAIN.** r332 is `main@1f28867c` / migration 0484, recorded directly below. I chose the worktree names (`r332-<item>`) when briefing the builders, before this round had a number, and the prefix followed them into the commit messages. **Second round running that this has happened.** The rule that keeps being skipped: the branch name must be chosen from this file's top entry, not from "the round I just shipped". Content is accurate; only the prefix is wrong.
+
+Closed: `2a237f5f`, `72fca31d`. Gate: **966 files — equal to the suite file count**, 14 chunks, ~14,928 tests, `tsc` 0, `next build` 0, shadow **PASS 398/398**. Render check clean.
+
+### ONE RED CHUNK, AND IT WAS REAL
+
+Chunk 3 failed with a genuine `AssertionError` — not the environment, and the §4 rule (`grep -c AssertionError` first) separated the two in one command. `test/employee-import-field-parity.test.ts`: migration 0485's new `person.marital_status_source_request_id` was *neither carried by an import column nor excluded with a reason*, which is precisely what that guard exists to catch. Excluded with the reason written down — it is not a fact about the person but the claim "this approved Marriage Leave request wrote the status stored now", and a day-one load has no approved leave behind it by definition. Re-run green. **The tally lists chunk 3 twice for that reason: 1035 counted − 69 = 966 distinct files.**
+
+### 72fca31d — TWO THINGS MY BRIEF GOT WRONG, BOTH LOAD-BEARING
+
+- **"No migration expected" was wrong, and the reason matters.** *Nothing in the system could NAME the marriage leave type.* `leave_type.role` is a closed 7-value set (migration 0387) with no `marriage`, DB-enforced; the pack seeds no MARRIAGE type; the only `MARRIAGE` strings in the repo are display-only maps. So `leaveTypeIs(lt,'marriage')` would have fallen through to `code === 'MARRIAGE'` and been **false forever** on a row coded `MRL` — the 65f466e2 defect repeated. Migration 0485 adds the role and backfills with 0387's own **two exact passes, no fuzzy matching**; unmatched rows stay NULL.
+  The builder **could not read production** (the classifier refused its `psql`), so it correctly flagged "if the live row matches neither pass, points 2/3/4 are silently inert" as an open risk rather than widening the match to guarantee a hit. **I closed it**: the live row is `code MRL`, `name 'Marriage Leave'`, `role NULL`, not archived — it matches **both** passes.
+- **RLS would have killed the approval.** `person_rls`'s WITH CHECK is `app.is_admin() OR app.is_self_person(id)`, and *a line manager clearing the final approval step is neither*. A plain `tx.update(person)` inside the approval is refused by Postgres and takes the whole approval down — and **a test that approved as an admin would never have seen it**. Proven by mutation: `PostgresError: new row violates row-level security policy for table "person"` (42501). The write goes through two SECURITY DEFINER functions (the idiom 0207/0433 established), each deriving everything from the request id and returning an outcome code so core can tell "lawfully did nothing" from "refused". The tests approve as a **manager** on purpose.
+
+Point 4's persisted cause is a **column**, not an inference: every other writer of `marital_status` NULLs it through one shared helper, so *"a status a human set by hand is never reverted"* is structural. The reversal also refuses while any sibling row of a partial give-back is still approved — giving one day of three back does not un-marry anybody.
+
+**Points 1 and 5 were already built, and the reporter was told rather than billed.** The eligibility gate exists and is *already configured on production* (`MRL` carries `{"maritalStatus":["single"]}`), enforced independently in the dropdown and at the API; marital status is already read-only to employees behind a change-request queue. Mutation M8 proved the API half is not read off the UI half — deleting the server gate left the four "absent from the dropdown" cases green and turned the four "API refuses" cases red.
+
+### 2a237f5f — THE POSTED VALUE WAS DEADER THAN I SAID
+
+I described `replacement_leave_request.leave_type_id` as stored-but-unused. The builder grepped the whole repo: that write is the **only** reference — it is never selected back anywhere. It then proved it behaviourally rather than by inspection: **a request naming Sick Leave is approved and the credit still lands on the replacement type.**
+
+It also improved on my brief. I told it to reuse the existing `add.leaveTypeValue` string; it refused, correctly — that key reads "Replacement Leave", which is a **false statement** on a tenant whose type is called "Off in Lieu". The box reads the tenant's own name. It also changed the component's prop from a list to a single required type, so *"no other type can be offered"* became a property of the component rather than a promise about its caller.
+
+⚠️ **Known narrowing, recorded at the guard:** the button now requires the tenant to *have* a replacement type, where before an allowed employee in a tenant with none would have had one created at approval. Production is unaffected — and checking that turned up **two** REPLACEMENT rows, one archived since 2026-08-14. Both resolvers correctly skip it (`isNull(archivedAt)` in SQL, `includeArchived:false` upstream).
+
+### WHAT WAS NOT DONE
+
+- **Four items are planned and awaiting the reporter**, all measured against production: `d272834b` (Maternity Leave for a male employee — the balance cards never ask the eligibility question at all, *and* 55 employees with no gender recorded hold a net 98-day Maternity balance), `6af80f5d` (Earned to Date ignores the rounding table — and the table quoted in the request is **not** the one live on production), `928f0454` (extended-hours credit — the workday exclusion is a named engine rule and a credit *suppresses* that day's OT pay, so at the proposed tiers the employee loses a third), `5b2a7f0f` (the payslip prints as question marks in Tamil/Chinese/Thai — 57 of 65 strings).
+- **No admin UI classifies `leave_type.role`.** None exists; only migration backfills write it. That is what makes 0485's reach the thing to check in the deploy log — **the NOTICE must read 1 row classified, not 0.**
+- `gate:shadow` still cannot validate a migration's data half — it restores structure without rows, so 0485's NOTICE reads 0 there. Third round running this limitation has mattered.
+
+### RECORDED
+
 ## r332 (2026-09-23) — six items, and two of my own raises overturned by production. `main@1f28867c`, **migration 0484**.
 
 ⚠️ **THE BRANCHES AND COMMITS OF THIS ROUND ARE LABELLED `r331`, AND THAT IS WRONG.** I inherited the number from the previous round instead of checking this file's top entry, which is exactly what the standing note about round numbering says to do. r331 is `main@78745e66` / migration 0483; this is a separate later round. The commit prefixes `r331 <item>:` and the branch names `build/r331-*` all belong to **r332**. Nothing else is affected — the content of every commit is accurate.
