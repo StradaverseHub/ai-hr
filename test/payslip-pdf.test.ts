@@ -2078,17 +2078,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     const before = drawnText(await renderPayslipPdf(base, labels));
     const after = drawnText(await renderPayslipPdf(withOther, labels));
 
-    // Every money string the document prints, compared as a SET. Not "gross is still 7120" — the whole
-    // population, so a figure that moved anywhere is caught whether or not this test thought of it.
-    const figures = (t: string) => t.split('\n').filter((l) => /^MYR [\d,]+\.\d\d$/.test(l)).sort();
-    const added = figures(after).filter((f) => !figures(before).includes(f));
-    // 850, 1200 and their total 2,050 are the ONLY new figures, and all three are inside the Other box.
-    expect(added.sort()).toEqual(['MYR 1,200.00', 'MYR 2,050.00', 'MYR 850.00']);
-    // Nothing was taken away, and nothing changed value.
-    expect(figures(before).every((f) => figures(after).includes(f)), 'no figure was removed or rewritten').toBe(true);
-
-    // And the four the employee actually reads, named, because a set comparison passing on two documents
-    // that are both wrong in the same way is the failure mode a set comparison has.
+    // THE FOUR THE EMPLOYEE ACTUALLY READS, named first so a failure says which one moved.
     for (const [what, value] of [
       ['gross / total earnings', 'MYR 7,120.00'],
       ['total deductions', 'MYR 1,099.65'],
@@ -2096,8 +2086,22 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
       ['total employer cost', 'MYR 8,141.55'],
     ] as const) {
       expect(before, `${what} before`).toContain(value);
-      expect(after, `${what} is byte-identical with a non-payable line present`).toContain(value);
+      expect(after, `${what} MOVED when a non-payable line was added — it must be byte-identical`).toContain(value);
     }
+
+    // …and then every money string the document prints, compared as a SET, because a named list only
+    // catches the figures this test thought of. `added` names the offender when one appears.
+    const figures = (t: string) => t.split('\n').filter((l) => /^MYR [\d,]+\.\d\d$/.test(l)).sort();
+    const added = figures(after).filter((f) => !figures(before).includes(f));
+    const lost = figures(before).filter((f) => !figures(after).includes(f));
+    // 850, 1200 and their own total 2,050 are the ONLY new figures, and all three are in the Other box.
+    expect(
+      added.sort(),
+      'the only new figures are the two non-payable lines and their own total',
+    ).toEqual(['MYR 1,200.00', 'MYR 2,050.00', 'MYR 850.00']);
+    expect(lost, 'no figure was removed or rewritten').toEqual([]);
+    // NON-VACUITY: the comparison really did have a population to compare.
+    expect(figures(before).length, 'the document prints plenty of figures').toBeGreaterThan(8);
     // The non-payable amounts are NOT folded into any of them.
     expect(after).not.toContain('MYR 9,170.00'); // gross + 2050, had it been folded into earnings
     expect(after).not.toContain('MYR 8,070.35'); // net + 2050, had it been folded into net pay
