@@ -57,10 +57,15 @@ export type EaPickerStrings = {
   /**
    * 72b100cd (r328) — the SECOND submit's label ("Preview"), and OPTIONAL because the preview is.
    *
-   * The C.P.8A (EA) screen passes neither this nor `previewAction` and is unchanged by r328: no button
-   * is rendered unless BOTH arrive. That is why the preview lands as two optional props on the shared
-   * picker rather than as a forked copy of it — a lookalike picker is the "six slightly different
-   * employee pickers" this repo keeps consolidating away from (r320).
+   * No button is rendered unless BOTH this and `previewAction` arrive. That is why the preview landed as
+   * two optional props on the shared picker rather than as a forked copy of it — a lookalike picker is the
+   * "six slightly different employee pickers" this repo keeps consolidating away from (r320).
+   *
+   * 2a1a6f42 (r331) — AND THAT IS WHAT LET THE EA CATCH UP WITHOUT THIS FILE CHANGING. r328 switched the
+   * preview on for PCB 2(II) and left the C.P.8A (EA) screen passing neither prop, which made the EA the
+   * one form on the statutory shelf that could not be looked at before it was downloaded. r331 has the EA
+   * screen pass both. Both remain optional: a future screen on this picker with no preview route still
+   * renders no preview button.
    */
   preview?: string;
   colSelect: string;
@@ -239,8 +244,9 @@ export function EaEmployeePicker({
               place a preview could be built from a slightly different set. It opens in a new tab so the
               selection survives being looked at; the reporter's flow is select → preview → download, and a
               preview that navigated away would empty the picker behind it.
-              Rendered only when the caller supplies both a route and a label (the EA screen supplies
-              neither), and refused in exactly the same two states as the download beside it. */}
+              Rendered only when the caller supplies both a route and a label — both statutory screens on
+              this picker do from r331 (2a1a6f42), each naming its OWN route — and refused in exactly the
+              same two states as the download beside it. */}
           {previewAction && strings.preview && (
             <button
               type="submit"

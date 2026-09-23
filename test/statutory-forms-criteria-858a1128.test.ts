@@ -66,6 +66,19 @@ const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
 const EA_PAGE = code('app/payroll/statutory-forms/ea/page.tsx');
 const EA_PICKER = code('app/payroll/statutory-forms/ea/employee-picker.tsx');
 const EA_DOWNLOAD = code('app/payroll/statutory-forms/ea/download/route.ts');
+/**
+ * 2a1a6f42 (r331) — THE GATE MOVED HOUSE; IT DID NOT CHANGE.
+ *
+ * r256 wrote the shape tests, the scope check, the ceiling, the lang allowlist, the read and the renderer
+ * inside `download/route.ts`, and the assertions below read them there. r331 gave the EA the preview it was
+ * the only statutory form to be missing, and a preview with its own copy of that gate is a second, weaker
+ * door onto the same pay and tax figures — so the body moved to `shared.ts` and BOTH routes are four lines
+ * over it. Every r256 claim below is therefore RETARGETED rather than dropped (CLAUDE.md §8: a guard pinning
+ * a decision you are reversing is updated, not deleted); what is reversed is WHERE the gate is written, not
+ * what it does. `EA_DOWNLOAD` keeps one assertion of its own — that it delegates and re-implements nothing.
+ */
+const EA_SHARED = code('app/payroll/statutory-forms/ea/shared.ts');
+const EA_PREVIEW = code('app/payroll/statutory-forms/ea/preview/route.ts');
 
 const linkById = new Map(MY_STATUTORY_LINKS.map((l) => [l.id, l]));
 const kinds = (href: string) => parseDestination(href).criteria.map((c) => c.kind);
@@ -390,8 +403,9 @@ describe('the C.P.8A (EA) picks people, and can pick many', () => {
     expect(EA_PICKER).toContain('<input key={id} type="hidden" name="id" value={id} />');
     expect(EA_PICKER).toContain('selectAllVisible');
     expect(EA_PICKER).toContain('setSelected([])');
-    expect(EA_DOWNLOAD).toContain("q.getAll('id')");
-    expect(EA_DOWNLOAD).toContain('for (const employmentId of unique)');
+    // r331: read in `../shared.ts` now, and reached through BOTH doors rather than only the download.
+    expect(EA_SHARED).toContain("q.getAll('id')");
+    expect(EA_SHARED).toContain('for (const employmentId of unique)');
   });
 
   /**
@@ -400,23 +414,41 @@ describe('the C.P.8A (EA) picks people, and can pick many', () => {
    * year's actual population, so this is the hand-edited-URL path.
    */
   it('refuses a partial answer rather than shipping one', () => {
-    expect(EA_DOWNLOAD).toContain('if (!ea) return notFound()');
-    expect(EA_DOWNLOAD).toContain('ids.length === 0');
-    expect(EA_DOWNLOAD).toContain('MAX_EA_SELECTION');
+    expect(EA_SHARED).toContain('if (!ea) return notFound()');
+    expect(EA_SHARED).toContain('ids.length === 0');
+    expect(EA_SHARED).toContain('MAX_EA_SELECTION');
     // Gated like the CP22 batch beside it, and pinned to THIS employer: after an Entity Transfer a year
     // can span two, and handing over the wrong employer's statement is the failure the per-employee route
     // refuses too.
-    expect(EA_DOWNLOAD).toContain('scopedAdmin()');
-    expect(EA_DOWNLOAD).toContain('if (!scopeIds.includes(companyId)) return notFound()');
-    expect(EA_DOWNLOAD).toContain('{ employmentId, year, companyId }');
+    expect(EA_SHARED).toContain('scopedAdmin()');
+    expect(EA_SHARED).toContain('if (!scopeIds.includes(companyId)) return notFound()');
+    expect(EA_SHARED).toContain('{ employmentId, year, companyId }');
     // ONE renderer. A second EA implementation is two versions of one statutory form that drift.
-    expect(EA_DOWNLOAD).toContain('renderEaPdf');
-    expect(EA_DOWNLOAD).toContain('eaPdfLabels');
+    expect(EA_SHARED).toContain('renderEaPdf');
+    expect(EA_SHARED).toContain('eaPdfLabels');
+  });
+
+  /**
+   * 2a1a6f42 (r331) — AND NEITHER DOOR CARRIES A COPY OF ANY OF IT. This is the claim that replaces
+   * "the gate is in download/route.ts": it is now in ONE place, so there is no second copy to relax.
+   */
+  it('both doors are four lines over the shared gate, and re-implement none of it', () => {
+    for (const [name, body] of [
+      ['download/route.ts', EA_DOWNLOAD],
+      ['preview/route.ts', EA_PREVIEW],
+    ] as const) {
+      expect(body, `${name} must not re-implement scopedAdmin`).not.toContain('scopedAdmin');
+      expect(body, `${name} must not re-implement the shape allowlist`).not.toContain('0-9a-f]{8}');
+      expect(body, `${name} must not draw the form itself`).not.toContain('renderEaPdf');
+      expect(body, `${name} must delegate to ../shared`).toContain('eaPdfResponse');
+    }
+    expect(EA_DOWNLOAD).toContain("eaPdfResponse(req, 'attachment')");
+    expect(EA_PREVIEW).toContain("eaPdfResponse(req, 'inline')");
   });
 
   it('allowlists the document language on the way in, exactly as the per-employee route does', () => {
-    expect(EA_DOWNLOAD).toContain("EA_LANGS = ['en', 'ms']");
-    expect(EA_DOWNLOAD).toContain('EA_LANGS.includes(langParam as EaLang)');
+    expect(EA_SHARED).toContain("EA_LANGS = ['en', 'ms']");
+    expect(EA_SHARED).toContain('EA_LANGS.includes(langParam as EaLang)');
     expect(EA_PAGE).toContain("EA_LANGS = ['en', 'ms']");
   });
 });
@@ -536,7 +568,8 @@ describe('the C.P.8A picker tells the truth about people and about its own limit
     expect(MAX_EA_SELECTION * 40).toBeLessThan(8192);
     expect(EA_PICKER).toContain('MAX_EA_SELECTION');
     expect(EA_PICKER).toContain('disabled={selected.length === 0 || overLimit}');
-    expect(EA_DOWNLOAD).toContain('ids.length > MAX_EA_SELECTION');
+    // r331: enforced in `../shared.ts`, so the preview is held to the same ceiling as the download.
+    expect(EA_SHARED).toContain('ids.length > MAX_EA_SELECTION');
   });
 });
 
@@ -558,8 +591,11 @@ describe('the new screens can be granted and revoked like the ones they sit betw
       expect(REGISTERED_ROUTES.has(r), r).toBe(true);
     }
     // The download sibling is a route handler, not a guarded page — the reverse-completeness check walks
-    // page.tsx files, and a registered route with no page on disk fails the other way.
+    // page.tsx files, and a registered route with no page on disk fails the other way. 2a1a6f42 (r331):
+    // its `preview` twin is the same kind of thing and is registered the same way, which is to say not at
+    // all. Both are gated at runtime by `scopedAdmin` inside ../shared.ts, not by a matrix column.
     expect(REGISTERED_ROUTES.has('/payroll/statutory-forms/ea/download')).toBe(false);
+    expect(REGISTERED_ROUTES.has('/payroll/statutory-forms/ea/preview')).toBe(false);
   });
 });
 

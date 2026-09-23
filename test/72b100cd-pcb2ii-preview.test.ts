@@ -46,6 +46,8 @@ const PREVIEW_ROUTE = src('app/payroll/statutory-forms/pcb2ii/preview/route.ts')
 const DOWNLOAD_ROUTE = src('app/payroll/statutory-forms/pcb2ii/download/route.ts');
 const SCREEN = src('app/payroll/statutory-forms/pcb2ii/page.tsx');
 const EA_SCREEN = src('app/payroll/statutory-forms/ea/page.tsx');
+/** The picker BOTH screens use. r328 put the preview on it as two optional props; r331 switched the EA on. */
+const PICKER = src('app/payroll/statutory-forms/ea/employee-picker.tsx');
 const SEED = src('db/seed.ts');
 
 /**
@@ -291,13 +293,42 @@ describe('72b100cd · the gate is written once, so it cannot relax on one side',
     expect(code(PREVIEW_ROUTE), 'the preview must not draw the form itself').not.toMatch(/renderPcb2iiPdf/);
   });
 
-  it('the C.P.8A (EA) screen is UNCHANGED — the picker’s preview props are optional', () => {
-    expect(code(EA_SCREEN), 'the EA passes no preview route, so it renders no preview button').not.toMatch(
-      /previewAction/,
-    );
-    expect(SCREEN, 'and the PCB 2(II) screen does').toMatch(
+  /**
+   * ⚠️ UPDATED BY 2a1a6f42 (r331), NOT DELETED — AND THIS IS THE REASON.
+   *
+   * r328 pinned "the C.P.8A (EA) screen is UNCHANGED": the preview landed as two OPTIONAL props on the
+   * shared picker, the EA passed neither, and the assertion was `EA_SCREEN` must NOT contain
+   * `previewAction`. That was a true statement about r328's blast radius, and it was never a statement
+   * that the EA should not have a preview — r331 is the item that gives it one, because the EA turned out
+   * to be the ONE form on the statutory shelf with no preview at all.
+   *
+   * So the claim is retargeted rather than dropped (CLAUDE.md §8: a guard pinning a decision you are
+   * reversing is updated, not deleted). What r328 actually cared about survives intact and is what is
+   * asserted now: the picker is SHARED and each screen points it at ITS OWN route. A screen that named the
+   * other form's preview route would hand an operator another statutory document under this one's heading,
+   * which is the failure the rest of this file exists for.
+   */
+  it('each screen points the shared picker at ITS OWN preview route', () => {
+    expect(SCREEN, 'the PCB 2(II) screen').toMatch(
       /previewAction="\/payroll\/statutory-forms\/pcb2ii\/preview"/,
     );
+    expect(EA_SCREEN, 'the C.P.8A (EA) screen, from r331 on').toMatch(
+      /previewAction="\/payroll\/statutory-forms\/ea\/preview"/,
+    );
+    // Neither may point at the other's document.
+    expect(code(SCREEN), 'the PCB 2(II) screen must not open the EA').not.toMatch(
+      /previewAction="\/payroll\/statutory-forms\/ea\//,
+    );
+    expect(code(EA_SCREEN), 'the EA screen must not open the PCB 2(II)').not.toMatch(
+      /previewAction="\/payroll\/statutory-forms\/pcb2ii\//,
+    );
+    // And the props stay OPTIONAL on the picker: no button unless BOTH arrive, which is what let r328
+    // ship the mechanism without touching the EA and let r331 switch it on without touching the picker.
+    expect(PICKER, 'the button is rendered only when a route AND a label arrive').toMatch(
+      /previewAction && strings\.preview/,
+    );
+    expect(PICKER, 'previewAction is optional').toMatch(/previewAction\?: string/);
+    expect(PICKER, 'and so is the label').toMatch(/preview\?: string/);
   });
 });
 

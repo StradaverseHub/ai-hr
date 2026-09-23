@@ -148,6 +148,12 @@ export default async function EaEmployeeSelectionPage({
             <EaEmployeePicker
               rows={rows}
               action="/payroll/statutory-forms/ea/download"
+              /* 2a1a6f42 (r331) — LOOK BEFORE YOU SEND. The picker has carried an optional Preview since
+                 r328 and this screen passed neither prop, which made the EA the ONE form on the statutory
+                 shelf that could not be looked at before it was downloaded. It passes both now. The route
+                 serves the download's own bytes `inline` — see ./shared.ts, which both doors are four
+                 lines over, so the preview cannot become a lighter gate onto the same tax figures. */
+              previewAction="/payroll/statutory-forms/ea/preview"
               hidden={[
                 { name: 'companyId', value: companyId },
                 { name: 'year', value: year },
@@ -163,6 +169,10 @@ export default async function EaEmployeeSelectionPage({
                 // Kept as a template on purpose — the count changes with every tick, on the client.
                 selectedTemplate: t('eaSelectedCount', { count: '{count}' }),
                 generate: t('eaGenerate'),
+                // 2a1a6f42 (r331) — the second submit's label. Its own key, not `pcb2iiPreview`: a screen
+                // that borrows a string named after another statutory document is the defect r328 fixed in
+                // the other direction, and this one is a plain verb in all six locales.
+                preview: t('eaPreview'),
                 colSelect: t('eaColSelect'),
                 colCode: t('eaColCode'),
                 colName: t('colEmployee'),

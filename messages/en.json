@@ -4374,6 +4374,7 @@
       "eaClear": "Clear selection",
       "eaSelectedCount": "{count} selected",
       "eaGenerate": "Generate C.P.8A (EA)",
+      "eaPreview": "Preview",
       "eaColSelect": "Select",
       "eaColCode": "Employee ID",
       "eaColDepartment": "Department",
