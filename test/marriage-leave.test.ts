@@ -479,6 +479,9 @@ describe('point 4 — cancelling or revoking an approved Marriage Leave', () => 
 
   it('THE EMPLOYEE GIVES THE WHOLE LEAVE BACK and a manager approves: it reverts', async () => {
     const reqId = await submitAndApprove();
+    // Pin the PRE-state: without it this case passes on a build where the approval never set anything,
+    // because 'single' is then both the start and the end.
+    expect(await personRow(subject.personId)).toEqual({ maritalStatus: 'married', source: reqId });
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
       today: '2026-08-01',
       leaveRequestId: reqId,
@@ -505,6 +508,9 @@ describe('point 4 — cancelling or revoking an approved Marriage Leave', () => 
   // ⚠️ THE CASE THE WHOLE PERSISTED-POINTER DESIGN EXISTS FOR.
   it('A STATUS A HUMAN SET BY HAND IS NOT REVERTED', async () => {
     const reqId = await submitAndApprove();
+    // Pin the PRE-state for the same reason: 'married' must be the leave's doing before HR overwrites it,
+    // or this case would pass on a build where the approval wrote nothing at all.
+    expect(await personRow(subject.personId)).toEqual({ maritalStatus: 'married', source: reqId });
     // HR sets the value themselves afterwards — even to the SAME value, which is the nastiest version:
     // nothing about the value itself distinguishes it from the one the leave wrote.
     await setPersonComplianceFields(adminCtx(b), {
