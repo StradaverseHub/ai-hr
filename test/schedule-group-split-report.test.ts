@@ -20,7 +20,14 @@
  * at, and that nobody is reported as unaffected who is attached through the default-shift fallback.
  */
 import { describe, expect, it } from 'vitest';
-import { buildReport, kindsOf, proposedGroupName, type ReportAttachment, type ReportInput } from '../scripts/report-schedule-group-split';
+import {
+  buildReport,
+  collectAttachments,
+  kindsOf,
+  proposedGroupName,
+  type ReportAttachment,
+  type ReportInput,
+} from '../scripts/report-schedule-group-split';
 
 const STANDARD = 'rule-standard';
 const A02 = 'rule-a02';
@@ -115,6 +122,42 @@ describe('07ebd04d — the split report', () => {
     const out = buildReport(input({ attached }));
     expect(out.affected).toBe(7);
     expect(out.lines.join('\n')).toContain('G | Person g | via default_shift_id');
+  });
+
+  it('…AND THE COLLECTION ITSELF APPLIES scheduleFor’s PRECEDENCE, not just the rendering', () => {
+    // The case above only proves buildReport RENDERS such a row. This proves collectAttachments
+    // PRODUCES one — which is the half that was missing, and the half where the under-count lived.
+    const base = { employeeCode: 'X', name: 'Person x', groupId: null, terminatedOn: null };
+    const attached = collectAttachments({
+      arrangements: [{ employmentId: 'e-1', shiftId: 's-am01', validFrom: '2026-02-01', ...base, employeeCode: 'ONE' }],
+      defaults: [
+        // e-1 ALSO has a default_shift_id, pointing somewhere else. The ladder wins; this must not
+        // produce a second attachment, or the same person would be counted on two shifts.
+        { employmentId: 'e-1', shiftId: 's-mb28', ...base, employeeCode: 'ONE' },
+        // e-2 has NO arrangement row at all, so the engine reaches its default shift. It must appear.
+        { employmentId: 'e-2', shiftId: 's-mb28', ...base, employeeCode: 'TWO' },
+        // e-3 has no default shift either. Nothing to attach.
+        { employmentId: 'e-3', shiftId: null, ...base, employeeCode: 'THREE' },
+      ],
+      withLiveArrangement: new Set(['e-1']),
+    });
+    expect(attached.get('s-am01')?.map((a) => [a.employmentId, a.via, a.since])).toEqual([['e-1', 'arrangement', '2026-02-01']]);
+    expect(attached.get('s-mb28')?.map((a) => [a.employmentId, a.via])).toEqual([['e-2', 'default_shift_id']]);
+    expect([...attached.keys()].sort()).toEqual(['s-am01', 's-mb28']);
+  });
+
+  it('an employment whose ladder has NO OPEN row still resolves to the ladder, not to the cache', () => {
+    // pickArrangementOn takes the greatest valid_from <= date and IGNORES valid_to, so a closed-off
+    // ladder still answers and the default-shift cache is NOT consulted. `withLiveArrangement` is
+    // therefore keyed on any live row, not on an open one — get that wrong and the report shows the
+    // person on two shifts at once.
+    const base = { employeeCode: 'Y', name: 'Person y', groupId: null, terminatedOn: null };
+    const attached = collectAttachments({
+      arrangements: [], // nothing OPEN
+      defaults: [{ employmentId: 'e-9', shiftId: 's-am01', ...base }],
+      withLiveArrangement: new Set(['e-9']), // …but a live, closed row exists
+    });
+    expect(attached.size).toBe(0);
   });
 
   it('MARKS AN EMPLOYEE STRANDED when their own group already differs from their shift’s', () => {

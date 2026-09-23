@@ -127,6 +127,43 @@ export function proposedGroupName(sh: PatternTriple): string {
   return '(UNNAMED — Saturday is a full working day; they must name it)';
 }
 
+/** The rows the three attachment routes come back as, before they are merged. */
+export type AttachmentRows = {
+  /** Open dated arrangements (supersededAt NULL, validTo NULL). */
+  arrangements: { employmentId: string; shiftId: string | null; validFrom: string; employeeCode: string | null; name: string; groupId: string | null; terminatedOn: string | null }[];
+  /** EVERY employment with its profile default shift, whether or not it also has an arrangement. */
+  defaults: { employmentId: string; shiftId: string | null; employeeCode: string | null; name: string; groupId: string | null; terminatedOn: string | null }[];
+  /** Employments with at least one LIVE arrangement row of any kind — the condition scheduleFor uses. */
+  withLiveArrangement: ReadonlySet<string>;
+};
+
+/**
+ * PURE — shiftId → everybody the engine would resolve onto that shift today, by the SAME precedence
+ * core/attendance.ts scheduleFor uses.
+ *
+ * ⚠️ THE DEFAULT-SHIFT FALLBACK IS NOT OPTIONAL, and leaving it out is how the first version of this
+ * report under-counted. `scheduleFor` reads the dated ladder first and falls back to
+ * employment.default_shift_id only when `arrangementsForEmploymentTx` returns NOTHING — not when the
+ * ladder merely has no OPEN row. So the fallback is keyed on "has any live arrangement row", which is
+ * why `withLiveArrangement` is a separate read from `arrangements` rather than derived from it. An
+ * employee reached this way IS on that shift for attendance, and their Saturday moves with the split.
+ */
+export function collectAttachments(rows: AttachmentRows): Map<string, ReportAttachment[]> {
+  const attached = new Map<string, ReportAttachment[]>();
+  const push = (shiftId: string, a: ReportAttachment) => attached.set(shiftId, [...(attached.get(shiftId) ?? []), a]);
+  for (const a of rows.arrangements) {
+    if (!a.shiftId) continue;
+    const { shiftId, validFrom, ...rest } = a;
+    push(shiftId, { ...rest, via: 'arrangement', since: validFrom });
+  }
+  for (const d of rows.defaults) {
+    if (!d.shiftId || rows.withLiveArrangement.has(d.employmentId)) continue;
+    const { shiftId, ...rest } = d;
+    push(shiftId, { ...rest, via: 'default_shift_id', since: null });
+  }
+  return attached;
+}
+
 export type ReportInput = {
   /** Today in Kuala Lumpur — the line between "history, preserved" and "dates that still change". */
   today: string;
@@ -384,19 +421,7 @@ async function main() {
     .innerJoin(person, eq(person.id, employment.personId))
     .orderBy(asc(employment.employeeCode), asc(person.fullName), asc(employment.id));
 
-  const attached = new Map<string, ReportAttachment[]>();
-  const push = (shiftId: string, a: ReportAttachment) => attached.set(shiftId, [...(attached.get(shiftId) ?? []), a]);
-  for (const a of arrangements) {
-    if (!a.shiftId) continue;
-    const { shiftId, validFrom, ...rest } = a;
-    push(shiftId, { ...rest, via: 'arrangement', since: validFrom });
-  }
-  for (const d of defaults) {
-    // Only where the engine would actually reach this branch: a live arrangement row wins over the cache.
-    if (!d.shiftId || withLiveArrangement.has(d.employmentId)) continue;
-    const { shiftId, ...rest } = d;
-    push(shiftId, { ...rest, via: 'default_shift_id', since: null });
-  }
+  const attached = collectAttachments({ arrangements, defaults, withLiveArrangement });
 
   // ── THE OFF-DAY ROSTER COLLISION (see the header) ─────────────────────────────────────────────────
   const shiftById = new Map(shifts.map((s) => [s.id, s]));
