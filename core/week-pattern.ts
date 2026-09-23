@@ -61,3 +61,55 @@ export const weekPatternFor = (
   group != null && weekPatternWorkingDayCount(group) > 0
     ? { pattern: group.pattern, halfPattern: group.halfPattern, offPattern: group.offPattern, source: 'group' }
     : { pattern: shift.pattern, halfPattern: shift.halfPattern, offPattern: shift.offPattern, source: 'shift' };
+
+/** aec53564 (r331) — ONE WEEKDAY of a week pattern, resolved to its kind.
+ *
+ *  `shiftDayKindFor` (core/attendance.ts) is this function with `isoWeekday(date)` in front of it, and it
+ *  now calls this rather than repeating the four tests: the date→weekday step is what needed `isoWeekday`,
+ *  not the pattern lookup, so only the step that needs it stays there. The Shift form's day row needs the
+ *  lookup WITHOUT a date — it is editing a weekly template, not a calendar — and a client island cannot
+ *  import core/attendance.ts at all, so before this the form carried its own copy (`kindOf` in
+ *  app/admin/attendance/shift-form.tsx). That copy is gone.
+ *
+ *  Rest stays the COMPLEMENT — a weekday in none of the three arrays — which is exactly what "not ticked"
+ *  has always meant. The arrays are pairwise disjoint (core/roster.ts, core/attendance-rule.ts, and a DB
+ *  CHECK since 0429/0483), so the order of these tests cannot change an answer. */
+export type WeekDayKind = 'full' | 'half' | 'rest' | 'off';
+export const weekDayKindFor = (p: WeekPattern, isoDay: number): WeekDayKind => {
+  if (p.pattern?.includes(isoDay)) return 'full';
+  if (p.halfPattern?.includes(isoDay)) return 'half';
+  if (p.offPattern?.includes(isoDay)) return 'off';
+  return 'rest';
+};
+
+/** aec53564 — the INVERSE: seven chosen kinds back into the three arrays that are stored.
+ *
+ *  Rest has no array, exactly as an unticked checkbox had none. Full-empty ⇒ null rather than `[]`,
+ *  because "no pattern at all" and "a week with no full day in it" are the same row today and
+ *  core/roster.ts normalizeShiftInput already collapses them that way — a second spelling here would
+ *  make the form and the service disagree about a shift that is all half-days. */
+export const weekFromDayKinds = (kinds: Record<number, WeekDayKind>): WeekPattern => {
+  const of = (want: WeekDayKind) =>
+    [1, 2, 3, 4, 5, 6, 7].filter((d) => (kinds[d] ?? 'rest') === want);
+  const full = of('full');
+  return { pattern: full.length > 0 ? full : null, halfPattern: of('half'), offPattern: of('off') };
+};
+
+/** aec53564 — WHICH Schedule Group answers for a shift, chosen out of a list that is already loaded.
+ *
+ *  THE SAME CHAIN core/attendance-rule.ts `resolveRuleTx` walks — an explicit `rule_id` wins, otherwise the
+ *  tenant's un-deletable `is_default` ("Standard") rule, otherwise nothing — expressed over an in-memory
+ *  list because the two callers that need it cannot open a transaction: the Shift form's client island (a
+ *  browser has no database) and the shift action, which has already read the rules to validate the posted
+ *  id. It lives HERE, beside `weekPatternFor`, so the screen that greys a control and the action that
+ *  refuses the matching write cannot pick different groups and disagree about the same POST.
+ *
+ *  ⚠️ THIS IS NOT A SECOND ANSWER TO "DOES THIS GROUP SET A WEEK". That question has exactly one answer —
+ *  `weekPatternFor` — and this function only says WHOSE triple to hand it. */
+export const weekPatternGroupFor = <G extends { id: string; isDefault: boolean }>(
+  groups: readonly G[],
+  ruleId: string | null | undefined,
+): G | null => {
+  const id = (ruleId ?? '').trim();
+  return (id ? groups.find((g) => g.id === id) : groups.find((g) => g.isDefault)) ?? null;
+};

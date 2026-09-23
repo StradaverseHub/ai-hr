@@ -2,10 +2,20 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listShiftOtWindows, listShiftsForTenant } from '@/core/roster';
 import type { listAttendanceRules } from '@/core/attendance-rule';
+import { weekDayKindFor } from '@/core/week-pattern';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { ShiftTimeFields, type DayKind } from '@/components/shift-time-fields';
 import { ShiftOtWindowFields } from '@/components/shift-ot-window-fields';
+// aec53564 (r331) — the Schedule Group picker and the context that lets the working-day row follow it live.
+// COMPONENTS ONLY are imported from this 'use client' module and they are RENDERED as JSX; nothing in it is
+// called from here, and no server action is passed into it (test/rsc-boundary-guard.test.ts).
+import {
+  ShiftScheduleGroupProvider,
+  ShiftScheduleGroupSelect,
+  type ShiftScheduleGroupOption,
+} from '@/components/shift-schedule-group';
 import { SHIFT_COLORS, SHIFT_COLOR_TOKENS } from '@/lib/shift-visual';
+import { scheduleGroupSectionHref } from './schedule/sections';
 import { createShiftAction, updateShiftAction } from './shift-actions';
 
 const LIST = '/admin/attendance';
@@ -80,14 +90,38 @@ export async function ShiftForm({
   // arrays, Rest = in none of them. A shift saved before migration 0429 therefore opens as Full where it
   // was ticked and Rest where it was not, which is precisely what it means today. A NEW shift defaults
   // Mon–Fri Full, Sat/Sun Rest — the same default the tick row had.
-  const kindOf = (d: number): DayKind => {
-    if (!editing) return d <= 5 ? 'full' : 'rest';
-    if (editing.weeklyPattern?.includes(d)) return 'full';
-    if (editing.halfPattern?.includes(d)) return 'half';
-    if (editing.offPattern?.includes(d)) return 'off';
-    return 'rest';
-  };
+  //
+  // aec53564 — the four-way lookup is `weekDayKindFor` (core/week-pattern.ts) now, not a fifth hand-written
+  // copy of it. Only the NEW-shift default is still decided here, because a shift that does not exist yet
+  // has no row to read.
+  const kindOf = (d: number): DayKind =>
+    editing
+      ? weekDayKindFor(
+          { pattern: editing.weeklyPattern, halfPattern: editing.halfPattern, offPattern: editing.offPattern },
+          d,
+        )
+      : d <= 5
+        ? 'full'
+        : 'rest';
   const dayKinds = Object.fromEntries(ISO_DAYS.map((d) => [d, kindOf(d)])) as Record<number, DayKind>;
+
+  /**
+   * aec53564 — the Schedule Groups this form can resolve to, as PLAIN DATA for the client island: identity,
+   * the week the group declares, and the href the group's page is reached at. The href is built HERE, on
+   * the server, by the one helper that knows the shape (`scheduleGroupSectionHref`) — a URL assembled in a
+   * browser is a URL nobody reviewed, and the `?section=` parameter on this screen has been mis-assembled
+   * twice already (the r287 → r301 defect).
+   */
+  const scheduleGroups: ShiftScheduleGroupOption[] = ruleOptions.map((r) => ({
+    id: r.id,
+    name: r.name,
+    isDefault: r.isDefault,
+    inactive: r.status === 'inactive',
+    href: scheduleGroupSectionHref(r.id, 'workingDay'),
+    pattern: r.weeklyPattern,
+    halfPattern: r.halfPattern,
+    offPattern: r.offPattern,
+  }));
 
   return (
     <div className={pageWideCls}>
@@ -107,6 +141,9 @@ export async function ShiftForm({
         action={editing ? updateShiftAction : createShiftAction}
         className="space-y-6"
       >
+        {/* aec53564 — the Schedule Group the shift resolves to, shared between the picker in Section 4 and
+            the working-day row in Section 2. DATA ONLY crosses this boundary; it carries no action. */}
+        <ShiftScheduleGroupProvider groups={scheduleGroups} defaultRuleId={editing?.ruleId ?? ''}>
         {editing && <input type="hidden" name="shiftId" value={editing.id} />}
 
         {/* ── SECTION 1 · SHIFT IDENTIFICATION ──────────────────────────────────────────────────────── */}
@@ -204,19 +241,13 @@ export async function ShiftForm({
         <Card className="space-y-6 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('generalSectionLegend')}</h2>
 
-          {/* 88e94371: the shift's attendance-calculation rule. Blank ⇒ the tenant's Standard rule. */}
+          {/* 88e94371: the shift's attendance-calculation rule. Blank ⇒ the tenant's Standard rule.
+              aec53564 — the same <select name="attendanceRuleId">, with the same options in the same order,
+              moved into a client island so the working-day row in Section 2 can follow it without a save.
+              IT STAYS HERE, in General Controls: its label names lateness, early-out and overtime, which is
+              where 6340aecb put it and none of which is a working time. The STATE travels, not the control. */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('ruleFieldLabel')}>
-              <select name="attendanceRuleId" defaultValue={editing?.ruleId ?? ''} className={inputCls}>
-                <option value="">{t('ruleFieldStandardDefault')}</option>
-                {ruleOptions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.isDefault ? `${r.name} ${t('ruleDefaultSuffix')}` : r.name}
-                    {r.status === 'inactive' ? ` ${t('ruleInactiveSuffix')}` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <ShiftScheduleGroupSelect />
             <div>
               <Field label={t('shiftNormalHoursRounding')}>
                 <input
@@ -338,6 +369,7 @@ export async function ShiftForm({
             {t('cancelEdit')}
           </Link>
         </div>
+        </ShiftScheduleGroupProvider>
       </form>
 
       <div className="space-y-1">

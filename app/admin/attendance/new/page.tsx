@@ -12,6 +12,10 @@ export default async function NewShiftPage({ searchParams }: { searchParams: Pro
   const s = await requireAdmin();
   const { error } = await searchParams;
   // Inactive rules are hidden on a NEW shift: there is no stored ruleId that could already point at one.
-  const ruleOptions = (await listAttendanceRules(s)).filter((r) => r.status === 'active');
+  // aec53564 — with ONE exception: the tenant's Standard rule, whatever its status. Blank means "Standard",
+  // and core/attendance-rule.ts `resolveRuleTx` resolves it without looking at `status` — so it is the rule
+  // this form resolves to before anything is picked, and since 07ebd04d it may state the working week that
+  // decides whether the day row is editable. The screen must read the row the write will read.
+  const ruleOptions = (await listAttendanceRules(s)).filter((r) => r.status === 'active' || r.isDefault);
   return <ShiftForm shift={null} otWindows={[]} ruleOptions={ruleOptions} error={error} />;
 }

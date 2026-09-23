@@ -25,7 +25,7 @@ import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './a
 // 07ebd04d (r331) — the ONE resolver for "whose working week is this, the group's or the shift's".
 // A leaf module with no imports, so the rule service can enforce the write-side half of the same
 // rule without a cycle through this file. Re-exported below for every caller that had it from here.
-import { weekPatternFor, type WeekPattern } from './week-pattern';
+import { weekDayKindFor, weekPatternFor, type WeekDayKind, type WeekPattern } from './week-pattern';
 import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
@@ -455,17 +455,17 @@ const anchorToShift = (minutes: number, shiftStartAbs: number, cutoffAbs?: numbe
  *  migration 0429 — and any caller that passes only `pattern` — resolves exactly as it does today. The
  *  three arrays are pairwise disjoint (validated in core/roster.ts AND by the 0429 CHECK), so the order of
  *  these tests cannot change an answer. */
-export type ShiftDayKind = 'full' | 'half' | 'rest' | 'off';
+export type ShiftDayKind = WeekDayKind;
+/** aec53564 (r331) — the four tests moved into core/week-pattern.ts `weekDayKindFor` and this is now the
+ *  date→weekday step in front of them. `isoWeekday` is the only reason this function stays in this file
+ *  (the pack drift ratchets quote it by name as living here); the pattern lookup itself never needed a
+ *  date, and the Shift form's day row — a client island, which cannot import this module at all — needs
+ *  it without one. Two copies of a four-way lookup is how the Full∪Half set union came to be written
+ *  twice before 07ebd04d removed both. */
 export const shiftDayKindFor = (
   sh: { pattern: number[] | null; halfPattern?: number[] | null; offPattern?: number[] | null },
   date: string,
-): ShiftDayKind => {
-  const d = isoWeekday(date);
-  if (sh.pattern?.includes(d)) return 'full';
-  if (sh.halfPattern?.includes(d)) return 'half';
-  if (sh.offPattern?.includes(d)) return 'off';
-  return 'rest';
-};
+): ShiftDayKind => weekDayKindFor(sh, isoWeekday(date));
 /** Half and Full are both WORKING days; Rest and Off are not. */
 export const isWorkingDayKind = (k: ShiftDayKind): boolean => k === 'full' || k === 'half';
 
