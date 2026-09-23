@@ -87,15 +87,28 @@ describe('0e276da0 — the calendar-coverage warning is wired to both screens', 
   });
 });
 
-describe('0e276da0 — the resolver and the s.60D skip are untouched', () => {
+describe('0e276da0 — the resolver and the s.60D skip are untouched (ADR-0086: on the surviving path)', () => {
   const src = read('core/holidays.ts');
 
+  /**
+   * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). 0e276da0 added a PRESENTATIONAL coverage read to core/holidays.ts
+   * and pinned, verbatim, that it disturbed neither the Custom s.60D skip nor the Custom resolution branch.
+   * Both of those existed TWICE — once for a calendar reached through a SITE (`effCalArchetype`) and once
+   * for one assigned DIRECTLY on the person (`effEmpGroupArchetype`). ADR-0086 retires the site rung, so the
+   * `effCalArchetype` copies are gone and asserting on them would pin a path that no longer exists.
+   *
+   * What 0e276da0's guard was FOR is unchanged and is what is pinned below: the coverage read still changes
+   * nothing about resolution, and the Custom semantics — no gazette, skip the warning — still hold on the
+   * door ADR-0086 leaves open. The behavioural halves are pinned by test/holiday-calendar-resolution.test.ts
+   * and test/holiday-calendar-coverage.test.ts; these two are the source-level "still there, verbatim".
+   */
   it('the Custom skip that suppresses the s.60D warning is still there, verbatim', () => {
-    expect(src).toContain("if (effCalArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };");
+    expect(src).toContain("if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };");
+    expect(src, 'the SITE copy is gone with the site rung').not.toContain('effCalArchetype');
   });
 
   it('the Custom resolution branch still returns the calendar’s own days and NO gazette', () => {
-    expect(src).toContain("if (effCalArchetype === 'custom') {");
+    expect(src).toContain("if (effEmpGroupArchetype === 'custom') {");
     expect(src).toContain('return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);');
   });
 

@@ -21,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { createHoliday, createHolidayGroup, setGroupHolidays } from '../core/admin';
 import { createLocation } from '../core/location';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setEmploymentHolidayCalendar } from '../core/org';
 import { withTenant } from '../db/client';
 import {
   effectiveHolidayState,
@@ -266,8 +266,31 @@ describe('holidayCalendarCoverage — Standard and Extended never warn', () => {
   });
 });
 
-describe('the s.60D completeness skip is NOT touched', () => {
-  it('effectiveHolidayState still returns skipCompleteness for a location mapped to a Custom calendar', async () => {
+describe('ADR-0086 — the s.60D completeness skip followed the calendar off the site', () => {
+  /**
+   * WHAT THIS PINNED, and why it is updated rather than deleted (CLAUDE.md §8). 0e276da0 added the
+   * presentational coverage read above and promised it did NOT disturb the resolver's deliberate decision
+   * to stay QUIET for a location mapped to a Custom calendar: a hand-managed calendar ignores the gazette,
+   * so "gazette < 11" would be false noise. ADR-0086 retires ADR-0067 §(b) — a site maps no calendar any
+   * more — so that skip cannot be reached through a site, and asserting it still is would be asserting a
+   * path that no longer exists.
+   *
+   * THE DECISION ITSELF SURVIVES, on the door ADR-0086 leaves open (§(a)): a Custom calendar assigned
+   * DIRECTLY on the employment still suppresses the warning, for exactly the original reason. Both halves
+   * are pinned below, so the reversal is bounded — one path closed, the other demonstrably untouched.
+   */
+  const hireOne = async () =>
+    (
+      await hireEmployee(adminCtx(b), {
+        person: { fullName: 'S', primaryEmail: `s_${randomUUID().slice(0, 8)}@t.local` },
+        companyId: b.companyId,
+        departmentId: b.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2024-01-01',
+      })
+    ).employmentId;
+
+  it('a Custom calendar reached through a SITE no longer suppresses it — the site is not read', async () => {
     const cal = await makeCalendar('CUSTOM', 'custom', ['Johor']);
     const { id: locationId } = await createLocation(adminCtx(b), {
       companyId: b.companyId,
@@ -275,25 +298,31 @@ describe('the s.60D completeness skip is NOT touched', () => {
       name: 'C1',
       holidayGroupId: cal,
     });
-    const e = await hireEmployee(adminCtx(b), {
-      person: { fullName: 'S', primaryEmail: `s_${randomUUID().slice(0, 8)}@t.local` },
-      companyId: b.companyId,
-      departmentId: b.deptA,
-      employmentType: 'full_time',
-      hiredOn: '2024-01-01',
-    });
+    const employmentId = await hireOne();
     await owner.db
       .update(schema.assignment)
       .set({ locationId })
       .where(
         and(
-          eq(schema.assignment.employmentId, e.employmentId),
+          eq(schema.assignment.employmentId, employmentId),
           isNull(schema.assignment.validTo),
           isNull(schema.assignment.supersededAt),
         ),
       );
 
-    const eff = await withTenant(adminCtx(b), (tx) => effectiveHolidayState(tx, e.employmentId));
+    const eff = await withTenant(adminCtx(b), (tx) => effectiveHolidayState(tx, employmentId));
+    expect(eff?.skipCompleteness, 'the mapping is still on the row; nothing reads it').toBeUndefined();
+  });
+
+  it('…but a Custom calendar assigned DIRECTLY still does (ADR-0067 §(a), untouched)', async () => {
+    const cal = await makeCalendar('CUSTOM DIRECT', 'custom', ['Johor']);
+    const employmentId = await hireOne();
+    await setEmploymentHolidayCalendar(adminCtx(b), {
+      employmentId,
+      selection: { kind: 'group', groupId: cal },
+    });
+
+    const eff = await withTenant(adminCtx(b), (tx) => effectiveHolidayState(tx, employmentId));
     expect(eff?.skipCompleteness).toBe(true);
   });
 });

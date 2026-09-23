@@ -2,9 +2,8 @@
  * r298 (board b6a995c1) — the Daily Attendance loader stops resolving holidays one employee at a time.
  *
  * `holidayDatesByEmployment` (core/holidays.ts) answers `holidayDatesFor` for a whole population by calling
- * the UNCHANGED resolver once per distinct set of the four employment inputs that decide a calendar —
- * company, work state, directly-assigned holiday group, and the open assignment's location — and resolving
- * an employment with more than one open assignment on its own. The reporter's condition, verbatim: "show,
+ * the UNCHANGED resolver once per distinct set of the employment inputs that decide a calendar — company,
+ * work state and directly-assigned holiday group. The reporter's condition, verbatim: "show,
  * for a spread of employees set up every different way, that the new answer is identical to the old one for
  * every single person. If any employee's list differs, the change does not ship."
  *
@@ -18,6 +17,15 @@
  * one input, AND resolves to different dates, can catch it. `PAIRS` below names one such pair per key
  * component and a test asserts each pair really does resolve differently, so the fixture cannot be edited
  * into vacuity without a red test.
+ *
+ * ADR-0086 — THERE WERE FOUR KEY COMPONENTS AND NOW THERE ARE THREE. The fourth was the OPEN assignment's
+ * `locationId`, and the resolver's `.limit(1)` on that join is why an employment with two open assignments
+ * had to be resolved alone rather than memoized. r331 retired the work-site register: nothing joins
+ * `assignment` to resolve a calendar any more. The `location` fixtures below are KEPT rather than deleted
+ * (CLAUDE.md §8 — a guard pinning a decision you are reversing is updated with the reason), and their
+ * pairs are inverted: `SITE_BLIND_PAIRS` asserts that two employees differing ONLY in their site now
+ * resolve IDENTICALLY. Put `location.state` or the mapped calendar back into core/holidays.ts and that
+ * assertion goes red, so the reversal is pinned exactly as firmly as the original decision was.
  *
  * Window: all of March 2025 (historical). Rows just outside it (28 Feb, 1 Apr) must never appear.
  */
@@ -76,17 +84,23 @@ type Name =
   | 'unrelatedCompanyCustomCal';
 
 /** The literal calendars, worked out by hand from the resolver's precedence (see the notes per line). */
-const EXPECTED: Record<Exclude<Name, 'twoOpenAssignments'>, string[]> = {
+const EXPECTED: Record<Name, string[]> = {
   nationalOnly: [NAT], // Step 2, no state anywhere
-  noOpenAssignment: [NAT], // no location to read → same as nationalOnly
+  noOpenAssignment: [NAT], // no assignment is read at all → same as nationalOnly
   wsSarawak: [NAT, SARAWAK],
   wsJohor: [NAT, JOHOR],
-  locCustomCal: [EXTRA_LOC_CUS], // custom: A's chain has no ad-hoc row, so only the calendar's own extra day
-  locExtendedCal: [NAT, SABAH], // extended: gazette on the calendar's states
-  locStandardCal: [NAT, SELANGOR], // the calendar's Selangor beats the location's own Sarawak
-  locStateSabah: [NAT, SABAH],
-  locStateJohor: [NAT, JOHOR],
-  locPlain: [NAT],
+  // ── ADR-0086: every `loc*` employee below is set up EXACTLY as it was — a real site, with a real state
+  // or a real mapped calendar — and every one of them now resolves like `nationalOnly`, because the site
+  // is not read. These lines ARE the reversal: each was a distinct calendar before r331.
+  locCustomCal: [NAT], // was [EXTRA_LOC_CUS] — a site's custom calendar reaches nobody now
+  locExtendedCal: [NAT], // was [NAT, SABAH]
+  locStandardCal: [NAT], // was [NAT, SELANGOR] (the calendar beat the site's own Sarawak)
+  locStateSabah: [NAT], // was [NAT, SABAH]
+  locStateJohor: [NAT], // was [NAT, JOHOR]
+  locPlain: [NAT], // unchanged: it never had a state or a calendar
+  // …and with the site gone, the two open assignments cannot disagree, so this employee has ONE literal
+  // answer where it used to have two candidates the `.limit(1)` chose between.
+  twoOpenAssignments: [NAT], // was either [NAT, SABAH] or [NAT, JOHOR]
   grpCustom: [EXTRA_GRP_CUS], // direct custom: no gazette, only the group's extra day
   grpExtended: [NAT, JOHOR], // direct extended: gazette on the group's states
   grpChild: [NAT, SABAH, EXTRA_PARENT], // the parent's archetype + states, plus the parent's extra day
@@ -95,14 +109,12 @@ const EXPECTED: Record<Exclude<Name, 'twoOpenAssignments'>, string[]> = {
   companyDefaultJohor: [NAT, JOHOR], // company default_work_state
   childCompany: [ADHOC_G], // Step 1: the parent's ad-hoc day IS the calendar
   childCompanyWsSarawak: [ADHOC_G], // …and it wins over the employee's own state
-  childCompanyCustomCal: [ADHOC_G, EXTRA_LOC_CUS], // custom: chain ad-hoc ∪ calendar extra
-  childCompanyExtendedCal: [NAT, SABAH, ADHOC_G], // extended: chain ad-hoc ∪ gazette
+  childCompanyCustomCal: [ADHOC_G], // was [ADHOC_G, EXTRA_LOC_CUS] — the site calendar's extra day is gone
+  childCompanyExtendedCal: [ADHOC_G], // was [NAT, SABAH, ADHOC_G] — now plain Step-1 company override
   parentCompany: [ADHOC_G],
   unrelatedCompany: [NAT], // G's ad-hoc day does not leak across an unrelated subtree
-  unrelatedCompanyCustomCal: [EXTRA_LOC_CUS],
+  unrelatedCompanyCustomCal: [NAT], // was [EXTRA_LOC_CUS]
 };
-/** `holidayDatesFor` joins ONE of the two open assignments via `.limit(1)`; which one is not specified. */
-const TWO_OPEN_EITHER = [EXPECTED.locStateSabah, EXPECTED.locStateJohor];
 
 /** One pair per memo-key component: the two employees differ in exactly that input. */
 const PAIRS: { component: string; a: Name; b: Name }[] = [
@@ -113,8 +125,20 @@ const PAIRS: { component: string; a: Name; b: Name }[] = [
   { component: 'workState (vs none)', a: 'nationalOnly', b: 'wsSarawak' },
   { component: 'holidayGroupId', a: 'grpTicked', b: 'grpSelangor' },
   { component: 'holidayGroupId (vs none)', a: 'nationalOnly', b: 'grpCustom' },
-  { component: 'locationId', a: 'locStateSabah', b: 'locStateJohor' },
-  { component: 'locationId (calendar vs none)', a: 'locCustomCal', b: 'locPlain' },
+];
+
+/**
+ * ADR-0086 — THE INVERTED PAIRS. Each of these differs in EXACTLY the site and in nothing else, and each
+ * resolved to a DIFFERENT calendar before r331 (the "was" comments in EXPECTED above name what). They are
+ * the non-vacuity of the removal: restore `location.state` or the mapped calendar to core/holidays.ts and
+ * every one of them goes red. They are also the reason the `loc*` fixtures are kept rather than deleted —
+ * a deleted fixture proves nothing about a rung that is supposed to be gone.
+ */
+const SITE_BLIND_PAIRS: { was: string; a: Name; b: Name }[] = [
+  { was: 'two sites with different states', a: 'locStateSabah', b: 'locStateJohor' },
+  { was: 'a site calendar vs no calendar', a: 'locCustomCal', b: 'locPlain' },
+  { was: 'a site with a state vs no site at all', a: 'locStateSabah', b: 'nationalOnly' },
+  { was: 'two open assignments at different sites vs one site', a: 'twoOpenAssignments', b: 'locStateSabah' },
 ];
 
 let b: Base;
@@ -317,17 +341,17 @@ const single = (employmentId: string) =>
 
 describe('r298 — the fixture really discriminates every key component', () => {
   it('covers every configured employee, and each pair differing in ONE input resolves to different dates', () => {
-    expect(allNames().sort()).toEqual([...Object.keys(EXPECTED), 'twoOpenAssignments'].sort());
+    expect(allNames().sort()).toEqual(Object.keys(EXPECTED).sort());
     for (const p of PAIRS) {
-      expect(EXPECTED[p.a as keyof typeof EXPECTED], `${p.component}: ${p.a} vs ${p.b}`).not.toEqual(
-        EXPECTED[p.b as keyof typeof EXPECTED],
-      );
+      expect(EXPECTED[p.a], `${p.component}: ${p.a} vs ${p.b}`).not.toEqual(EXPECTED[p.b]);
     }
-    // The ambiguous employee's two candidate calendars differ too, or the exclusion could not matter.
-    expect(TWO_OPEN_EITHER[0]).not.toEqual(TWO_OPEN_EITHER[1]);
+    // ADR-0086 — and the inverted pairs: differing ONLY in the site, they must now be IDENTICAL.
+    for (const p of SITE_BLIND_PAIRS) {
+      expect(EXPECTED[p.a], `site-blind (${p.was}): ${p.a} vs ${p.b}`).toEqual(EXPECTED[p.b]);
+    }
   });
 
-  it('the pairs really differ in the stored inputs, and the ambiguous employee has two open assignments', async () => {
+  it('the pairs really differ in the stored inputs, and the site-blind pairs differ ONLY in the site', async () => {
     const rows = await owner.db
       .select({
         id: schema.employment.id,
@@ -353,9 +377,17 @@ describe('r298 — the fixture really discriminates every key component', () => 
         (k) => JSON.stringify(a[k]) !== JSON.stringify(c[k]),
       );
     };
-    const componentOf = (label: string) => (label.split(' ')[0] === 'locationId' ? 'locs' : label.split(' ')[0]);
+    const componentOf = (label: string) => label.split(' ')[0];
     for (const p of PAIRS) expect(differing(p.a, p.b), `${p.a} vs ${p.b}`).toEqual([componentOf(p.component)]);
+    // ADR-0086 — the inverted pairs are only evidence if the SITE really is the only thing that differs:
+    // otherwise "they resolve the same" would be true for an uninteresting reason. `locs` is still read
+    // off the assignment rows here even though the resolver no longer reads it — that is the point.
+    for (const p of SITE_BLIND_PAIRS)
+      expect(differing(p.a, p.b), `site-blind (${p.was}): ${p.a} vs ${p.b}`).toEqual(['locs']);
+    // The fixture still holds the shapes the old escape hatch existed for: two open assignments at two
+    // different sites, and an employment with none at all. Neither can reach a calendar any more.
     expect(inputs('twoOpenAssignments').locs).toHaveLength(2);
+    expect(new Set(inputs('twoOpenAssignments').locs).size, 'the two open rows are at DIFFERENT sites').toBe(2);
     expect(inputs('noOpenAssignment').locs).toHaveLength(0);
   });
 });
@@ -368,8 +400,7 @@ describe('r298 — holidayDatesByEmployment gives every employee exactly what ho
       const old = sorted(await single(E[n]));
       const now = sorted(got.get(E[n]));
       expect(now, `${n}: batch vs holidayDatesFor`).toEqual(old);
-      if (n === 'twoOpenAssignments') expect(TWO_OPEN_EITHER, `${n}: literal`).toContainEqual(now);
-      else expect(now, `${n}: literal`).toEqual([...EXPECTED[n]].sort());
+      expect(now, `${n}: literal`).toEqual([...EXPECTED[n]].sort());
     }
   });
 
@@ -435,10 +466,13 @@ describe('r298 — the Daily Attendance loader reads the batched calendars', () 
     expect(ctxOn(onNat, 'noOpenAssignment')).toEqual(['holiday']);
     expect(ctxOn(onNat, 'grpChild')).toEqual(['holiday']);
     expect(ctxOn(onNat, 'unrelatedCompany')).toEqual(['holiday']);
-    // …but a working day under a calendar that omits it.
-    expect(ctxOn(onNat, 'locCustomCal')).toEqual([null]);
+    // …but a working day under a calendar that omits it. ADR-0086: the two employees who used to be here
+    // by virtue of their SITE's custom calendar (`locCustomCal`, `childCompanyCustomCal`) are on the
+    // holiday list above now — the site cannot strip a national day off anybody. A DIRECTLY assigned
+    // custom group still can, which is ADR-0067 §(a) surviving, and `grpCustom` is what proves it.
     expect(ctxOn(onNat, 'grpCustom')).toEqual([null]);
-    expect(ctxOn(onNat, 'childCompanyCustomCal')).toEqual([null]);
+    expect(ctxOn(onNat, 'locCustomCal')).toEqual(['holiday']);
+    expect(ctxOn(onNat, 'childCompanyCustomCal')).toEqual(['holiday']);
     // NOT in this list, deliberately: `childCompany`. Its March calendar is only ADHOC_G, but the Step-1
     // company override is WINDOW-scoped — on a one-day window holding no company row it does not fire, and
     // the day falls through to the gazette. That is holidayDatesFor's behaviour on main, and the loop below

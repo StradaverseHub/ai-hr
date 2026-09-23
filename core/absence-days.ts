@@ -67,11 +67,10 @@
  * full-day leave date, so it is excluded here while `unpaidDaysByEmployment` counts it. The two figures
  * can therefore be added without double-charging a day. Pinned by test rather than left to the reading.
  */
-import { and, eq, gte, inArray, isNull, lte, ne } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, ne } from 'drizzle-orm';
 
 import type { Tx } from '../db/client';
 import {
-  assignment,
   attendance,
   attendancePolicy,
   companyPayrollConfig,
@@ -254,7 +253,7 @@ export async function absenceBreakdownByEmployment(
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
 
-  const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, openAssignments] = await Promise.all([
+  const [rows, approved, partialLeave, policies, rosterRows, defaultShifts] = await Promise.all([
     // Every attendance row in the window — its PRESENCE says the day is accounted for, and (under the
     // `scheduled` rules) an explicit 'absent' status says the opposite of that: an admin marking a
     // no-show, which core/attendance-derive statusOf has always shown in red but the legacy count
@@ -347,17 +346,6 @@ export async function absenceBreakdownByEmployment(
       : Promise.resolve(
           [] as { employmentId: string; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }[],
         ),
-    // The OPEN assignment's location — the last input the holiday resolver keys on. See holidayKeyOf.
-    tx
-      .select({ employmentId: assignment.employmentId, locationId: assignment.locationId })
-      .from(assignment)
-      .where(
-        and(
-          inArray(assignment.employmentId, empIds),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      ),
   ]);
 
   const daysByCompany = new Map(policies.map((p) => [p.companyId, unionDays(p.workingDays, p.halfWorkingDays)]));
@@ -374,31 +362,26 @@ export async function absenceBreakdownByEmployment(
   //   companyId  → company.country, company.default_work_state, and the is_company_descendant chain
   //   workState  → employment.work_state (the `ws` rung of the state precedence)
   //   holidayGroupId → the directly-assigned group, its archetype, states and parent
-  //   locationId → the open assignment's location: its state, its mapped calendar, and that calendar's parent
-  // Employments sharing all four resolve to the SAME set, so one call answers for the whole group — in
-  // practice one call per company. An employment with MORE THAN ONE open assignment row is excluded from
-  // the memo and resolved on its own, because `holidayDatesFor` takes an arbitrary one via `.limit(1)`
-  // and we must not pick a different one than it would.
-  const openCount = new Map<string, number>();
-  const locationByEmp = new Map<string, string | null>();
-  for (const a of openAssignments) {
-    openCount.set(a.employmentId, (openCount.get(a.employmentId) ?? 0) + 1);
-    locationByEmp.set(a.employmentId, a.locationId ?? null);
-  }
+  // Employments sharing all three resolve to the SAME set, so one call answers for the whole group — in
+  // practice one call per company.
+  //
+  // ADR-0086 — THE FOURTH INPUT AND ITS ESCAPE HATCH ARE GONE. Until r331 this also read the OPEN
+  // assignment's `locationId` (a fourth query), and an employment with MORE THAN ONE open assignment was
+  // excluded from the memo and resolved alone, because `holidayDatesFor` joined `assignment` and took an
+  // arbitrary row via `.limit(1)`. The resolver no longer joins `assignment`, so there is no arbitrary
+  // row to disagree about and `holidayKeyOf` can never return "resolve this one alone".
+  //
   // 0fe1ca2e — the key itself is `holidayMemoKey` in core/holidays.ts, NOT a second expression of the
-  // four inputs written out here. This file and holidayDatesByEmployment used to spell the same key two
+  // inputs written out here. This file and holidayDatesByEmployment used to spell the same key two
   // different ways; a determining input could then leave one and stay in the other, and the memo would
   // hand one employee another's public holidays. Read that function's header before changing what a
   // calendar depends on.
-  const holidayKeyOf = (e: (typeof emps)[number]): string | null =>
-    (openCount.get(e.employmentId) ?? 0) > 1
-      ? null // ambiguous open assignment — resolve this one alone rather than guess which row wins
-      : holidayMemoKey({
-          companyId: e.companyId,
-          workState: e.workState,
-          holidayGroupId: e.holidayGroupId,
-          locationId: locationByEmp.get(e.employmentId) ?? null,
-        });
+  const holidayKeyOf = (e: (typeof emps)[number]): string =>
+    holidayMemoKey({
+      companyId: e.companyId,
+      workState: e.workState,
+      holidayGroupId: e.holidayGroupId,
+    });
   const holidayMemo = new Map<string, Set<string>>();
 
   const recordedByEmp = new Map<string, Set<string>>();
@@ -435,18 +418,18 @@ export async function absenceBreakdownByEmployment(
   }
 
   for (const e of emps) {
-    // ADR-0055 — the resolver is single-employment; memoized on its four determining inputs (above), so a
+    // ADR-0055 — the resolver is single-employment; memoized on its three determining inputs (above), so a
     // company whose staff share a calendar costs ONE call instead of one per head. Sequential because
     // every call shares this transaction's one connection.
     const key = holidayKeyOf(e);
-    let holidays = key === null ? undefined : holidayMemo.get(key);
+    let holidays = holidayMemo.get(key);
     if (!holidays) {
       holidays = await holidayDatesFor(tx, {
         employmentId: e.employmentId,
         startDate: periodStart,
         endDate: lastCounted,
       });
-      if (key !== null) holidayMemo.set(key, holidays);
+      holidayMemo.set(key, holidays);
     }
     const onLeave = approved.get(e.employmentId) ?? new Set<string>();
     const onPartialLeave = partialByEmp.get(e.employmentId) ?? new Set<string>();

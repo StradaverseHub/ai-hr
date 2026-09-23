@@ -194,21 +194,27 @@ describe('ADR-0067 (direct-assign) — regression: unchanged for standard / defa
   });
 });
 
-describe('ADR-0067 (direct-assign) — precedence: location calendar and Step-1 override still win', () => {
-  it('(e1) a location-mapped calendar wins over a different directly-assigned custom group', async () => {
-    // The location calendar is STANDARD Sarawak (national ∪ Sarawak). The directly-assigned group is a
-    // custom group with nothing hand-loaded (which alone would subtract NOTHING). The LOCATION calendar
-    // (higher precedence) drives the set — proving a directly-assigned group never overrides a location.
+describe('ADR-0086 — the location calendar no longer outranks the direct assignment; Step-1 still does', () => {
+  it('(e1) THE PRECEDENCE IS REVERSED: the DIRECTLY assigned group wins, because the site is not read', async () => {
+    // ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). This pinned ADR-0067 §(c): "a directly-assigned group never
+    // overrides a location". ADR-0086 retires that rung, so the same fixture now proves the opposite, and
+    // proving the opposite is how the reversal stays pinned — restore the location join in core/holidays.ts
+    // and this goes red exactly as the original assertion would have.
+    //
+    // Same setup: the SITE maps a STANDARD Sarawak calendar (which would give national ∪ Sarawak), and the
+    // PERSON carries a custom group with nothing hand-loaded (which subtracts nothing at all). The person's
+    // group is the one that decides now, so every one of the five days is a working day.
     const locCal = await createHolidayGroup(adminCtx(b), { name: 'Loc std', states: ['Sarawak'], archetype: 'standard' });
     const directCal = await createHolidayGroup(adminCtx(b), { name: 'Direct custom', states: [], archetype: 'custom' });
     const emp = await hire();
-    await assignGroup(emp, directCal.id); // directly assigned (lower precedence)
-    await setLocation(emp, await makeLocation('LOCWIN', locCal.id)); // location calendar (higher precedence)
+    await assignGroup(emp, directCal.id);
+    await setLocation(emp, await makeLocation('LOCWIN', locCal.id));
 
     const dates = await datesFor(emp);
-    expect(dates.has(NATIONAL)).toBe(true); // location standard calendar drives it (gazette applies)
-    expect(dates.has(SARAWAK)).toBe(true);
-    expect(await daysFor(emp)).toBe(3); // NOT 5 — the custom direct group did NOT win
+    expect(dates.has(NATIONAL), 'the site’s standard calendar no longer supplies the gazette').toBe(false);
+    expect(dates.has(SARAWAK)).toBe(false);
+    expect([...dates]).toEqual([]); // the person's empty custom calendar, exactly
+    expect(await daysFor(emp)).toBe(5); // was 3
   });
 
   it('(e2) a company-scoped Step-1 override still wins over a directly-assigned custom group', async () => {

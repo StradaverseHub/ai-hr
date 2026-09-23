@@ -2,8 +2,10 @@
  * ADR-0054 — Location master data: CRUD + integrity, the DomainEvent substrate, RLS read+write scoping
  * (as a real ai_hr_app admin, NOT owner.db which bypasses RLS), the INSERT…RETURNING-under-app-role path,
  * cross-company coherence, effective-dating via assignment, and the decisive time-engine consistency:
- * a location.state makes checkIn / dayContextFor (attendanceForDate) / attendanceMonthSummary all agree
- * with leave on a state-specific holiday. Plus a byte-identical compat golden test (null-location path).
+ * the four time engines all agree with leave on a state-specific holiday. ⚠️ ADR-0086 (r331) moved the
+ * INPUT of that agreement down one rung: `location.state` was the top of the precedence and is no longer
+ * read at all; `employment.work_state` carries it. The consistency claim is unchanged and still decisive —
+ * see the test itself. Plus a byte-identical compat golden test (null-location path).
  */
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -19,7 +21,7 @@ import {
   seedBase,
   type Base,
 } from './harness';
-import { CrossCompanyError, hireEmployee, transferEmployee } from '../core/org';
+import { CrossCompanyError, hireEmployee, setEmploymentHolidayCalendar, transferEmployee } from '../core/org';
 import { createCompany, createDepartment } from '../core/admin';
 import {
   createLocation,
@@ -208,49 +210,77 @@ describe('location master data (ADR-0054)', () => {
     expect(open.locationId).toBe(loc);
   });
 
-  // ── The decisive time-engine consistency test ──────────────────────────────
-  it('location.state makes checkIn, attendanceForDate, and attendanceMonthSummary all classify a state holiday as holiday', async () => {
+  // ── The decisive time-engine consistency test, ADR-0086 EDITION ────────────────────────────────────
+  /**
+   * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). ADR-0054 made `location.state` the top rung of the holiday
+   * precedence so that checkIn, attendanceForDate and attendanceMonthSummary all agreed with leave about
+   * a state-specific holiday. ADR-0086 (item 0fe1ca2e, r331) retires the work-site register: the SITE is
+   * no longer read, and `employment.work_state` carries that job — which is what it already did for every
+   * affected employee on production before the change (ADR-0086 §2).
+   *
+   * THE CLAIM THIS TEST EXISTS TO MAKE IS UNCHANGED: whatever decides an employee's gazette, all four
+   * engines decide it the SAME way. Only the input moved down a rung. So the fixture keeps the Sarawak
+   * SITE — and pins that it decides nothing — while the identical assertions now ride on work_state.
+   */
+  it('ADR-0086: the SITE no longer classifies a state holiday; employment.work_state does, and all engines agree', async () => {
     const a = adminCtx(b);
     // A Sarawak-only holiday on a Wednesday (2026-07-22 = Wed, a normal workday otherwise).
     const HOL = '2026-07-22';
     await owner.db.insert(schema.holiday).values({ tenantId: b.tenantId, country: 'MY', state: 'Sarawak', holidayDate: HOL, name: 'Sarawak Day (test)' });
 
     const { id: kch } = await createLocation(a, { companyId: b.companyId, code: 'KCH', name: 'Kuching', state: 'Sarawak' });
-    // Employee WITH the Sarawak location (no work_state — the location supplies it).
+
+    // (1) THE REVERSAL. An employee at the Sarawak SITE with NO work_state — the exact shape that used to
+    //     resolve 'holiday'. ⚠️ MUTATION TARGET: restore the location join in core/holidays.ts and this
+    //     flips back to 'holiday'.
+    const siteOnly = await hire(a, b.companyId, b.deptA);
+    await transferEmployee(a, { employmentId: siteOnly.employmentId, effectiveDate: '2024-01-01', locationId: kch });
+    await checkIn(a, { employmentId: siteOnly.employmentId, date: HOL, time: '09:00:00' });
+    const [siteRow] = await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId, siteOnly.employmentId));
+    expect(siteRow.dayType, 'the site’s Sarawak no longer reaches the day type').toBe('workday');
+
+    // (2) THE REPLACEMENT. The same employee shape, but the state carried on the PERSON — at the same site,
+    //     so the only difference between (1) and (2) is work_state.
     const swk = await hire(a, b.companyId, b.deptA);
     await transferEmployee(a, { employmentId: swk.employmentId, effectiveDate: '2024-01-01', locationId: kch });
-    // Employee with no location and no work_state — unaffected (the company has no default_work_state).
-    const nat = await hire(a, b.companyId, b.deptB);
-
-    // checkIn stamps the day type from the calendar.
+    await setEmploymentHolidayCalendar(a, { employmentId: swk.employmentId, selection: { kind: 'state', state: 'Sarawak' } });
     await checkIn(a, { employmentId: swk.employmentId, date: HOL, time: '09:00:00' });
     const [swkRow] = await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId, swk.employmentId));
     expect(swkRow.dayType).toBe('holiday');
 
+    // Employee with no location and no work_state — unaffected (the company has no default_work_state).
+    const nat = await hire(a, b.companyId, b.deptB);
     await checkIn(a, { employmentId: nat.employmentId, date: HOL, time: '09:00:00' });
     const [natRow] = await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId, nat.employmentId));
     expect(natRow.dayType).toBe('workday'); // national-only employee: a Sarawak holiday is a normal workday
 
-    // attendanceForDate (dayContextFor): contextualize the OTHER (non-checked-in) employee. Re-test with
-    // an employee who did NOT check in, so context is computed from the holiday set.
+    // attendanceForDate (dayContextFor): contextualize an employee who did NOT check in, so the context is
+    // computed from the holiday set rather than from a stamped row.
     const swk2 = await hire(a, b.companyId, b.deptA);
     await transferEmployee(a, { employmentId: swk2.employmentId, effectiveDate: '2024-01-01', locationId: kch });
+    await setEmploymentHolidayCalendar(a, { employmentId: swk2.employmentId, selection: { kind: 'state', state: 'Sarawak' } });
+    const siteOnly2 = await hire(a, b.companyId, b.deptA); // same SITE, no work_state — the control
+    await transferEmployee(a, { employmentId: siteOnly2.employmentId, effectiveDate: '2024-01-01', locationId: kch });
     const ctxRows = await attendanceForDate(a, HOL, [b.companyId]);
-    const swk2Ctx = ctxRows.find((r) => r.employmentId === swk2.employmentId);
-    const natCtx = ctxRows.find((r) => r.employmentId === nat.employmentId);
-    expect(swk2Ctx?.context).toBe('holiday'); // Sarawak employee, no row → holiday context
-    expect(natCtx?.context).toBeNull(); // national employee already has a (workday) row
+    expect(ctxRows.find((r) => r.employmentId === swk2.employmentId)?.context).toBe('holiday');
+    expect(
+      ctxRows.find((r) => r.employmentId === siteOnly2.employmentId)?.context,
+      'at the same site, without the state on the person: an ordinary Wednesday',
+    ).toBeNull();
+    expect(ctxRows.find((r) => r.employmentId === nat.employmentId)?.context).toBeNull(); // already has a row
 
     // attendanceMonthSummary: the Sarawak holiday is NOT counted as an absence for the Sarawak employee,
-    // but IS for a national-only employee with no row that day. Use a fresh national employee who never
-    // checks in (nat above DID check in, so the Wednesday is "recorded" and not absent for them).
-    const nat2 = await hire(a, b.companyId, b.deptB); // no location, no work_state
+    // but IS for a national-only employee with no row that day.
+    const nat2 = await hire(a, b.companyId, b.deptB); // no location, no work_state, never checks in
     const sum = await attendanceMonthSummary(a, { month: '2026-07', companyIds: [b.companyId], today: '2026-07-31' });
     const swk2Sum = sum.find((r) => r.employmentId === swk2.employmentId)!;
     const nat2Sum = sum.find((r) => r.employmentId === nat2.employmentId)!;
-    // Both never checked in; the ONLY difference is the Sarawak holiday — absent for the national
-    // employee (a normal Wednesday workday) but a holiday (not absent) for the Sarawak employee.
+    const siteOnly2Sum = sum.find((r) => r.employmentId === siteOnly2.employmentId)!;
+    // The ONLY difference is work_state — absent for the national employee (a normal Wednesday workday)
+    // but a holiday (not absent) for the Sarawak employee…
     expect(nat2Sum.absent).toBe(swk2Sum.absent + 1);
+    // …and the employee at the Sarawak SITE with no work_state counts exactly like the national one.
+    expect(siteOnly2Sum.absent).toBe(nat2Sum.absent);
   });
 
   // ── Byte-identical compat: the null-location path is unchanged (precedent #148) ────────────────────

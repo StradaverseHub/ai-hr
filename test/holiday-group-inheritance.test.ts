@@ -107,7 +107,13 @@ describe('R18 a519a96e — inheritance: a child group resolves the PARENT calend
     expect((await datesFor(emp)).has(EXTRA)).toBe(true); // received with zero re-saves
   });
 
-  it('(c) a location-mapped child calendar inherits the same way (ADR-0067 path)', async () => {
+  it('(c) ADR-0086 — a location-mapped child calendar reaches NOBODY; inheritance is a PERSON-level path now', async () => {
+    // ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). This pinned the ADR-0067 §(c) half of R18's inheritance:
+    // the same parent-substitution applied through a SITE's mapped calendar as through a directly assigned
+    // group. ADR-0086 retires the site rung, so the site half of that claim is withdrawn — and the guard
+    // now proves the withdrawal, on the identical fixture, so restoring the join turns it red.
+    //
+    // (a) and (b) above already pin that inheritance itself is untouched on the surviving path.
     const parent = await makeParent();
     const child = await makeChild(parent.id);
     await addExtra(child.id);
@@ -124,9 +130,17 @@ describe('R18 a519a96e — inheritance: a child group resolves the PARENT calend
       .where(eq(schema.assignment.employmentId, emp));
 
     const dates = await datesFor(emp);
-    expect(dates.has(NATIONAL)).toBe(true);
-    expect(dates.has(SARAWAK)).toBe(true); // parent gazette via the location calendar's parent
-    expect(dates.has(EXTRA)).toBe(true); // the office-only extra
+    expect(dates.has(NATIONAL)).toBe(true); // …from the plain national gazette, not from the calendar
+    expect(dates.has(SARAWAK), 'the parent gazette no longer arrives through a site').toBe(false);
+    expect(dates.has(EXTRA), 'nor does the office-only extra day').toBe(false);
+
+    // The SAME child calendar, assigned to the SAME kind of employee DIRECTLY, still inherits everything —
+    // which is what bounds this reversal to the site door.
+    const direct = await hire();
+    await assignGroup(direct, child.id);
+    const directDates = await datesFor(direct);
+    expect(directDates.has(SARAWAK)).toBe(true);
+    expect(directDates.has(EXTRA)).toBe(true);
   });
 });
 
