@@ -28,6 +28,7 @@ import {
   HourlyLeaveTimeRangeError,
   LeaveNoDaysInRangeError,
   DuplicateLeaveApplicationError,
+  MarriageLeaveAlreadyPendingError,
   InsufficientLeaveBalanceOnSubmitError,
   CombinedLeaveLimitExceededError,
   CombinedLeaveApplicationTooLongError,
@@ -370,6 +371,12 @@ export async function localizeLeaveError(
   // Duplicate Leave Application Restriction (d5e51c34): the leave type's duplicate_application_policy blocked
   // this same-date double-booking. Localized so all 6 locales see the reporter's requested message.
   if (e instanceof DuplicateLeaveApplicationError) return t('duplicateApplication');
+  // Marriage Leave (72fca31d rule 2): one pending Marriage Leave application at a time. A DIFFERENT
+  // refusal from `duplicateApplication` above and named separately because the fix is different — that
+  // one says the DATES clash and the employee should pick others; this one says a request for this very
+  // type is already with an approver and there is nothing to do but wait. Scoped to the marriage role, so
+  // no other leave type can ever produce it.
+  if (e instanceof MarriageLeaveAlreadyPendingError) return t('marriageLeaveAlreadyPending', { typeName: name || e.typeName || '' });
   // Configurable Negative Leave Balance Validation (0ef0defd): the leave type's allow_negative_balance=false
   // blocked a submit/edit whose days exceed the available balance. Localized so all 6 locales see the
   // reporter's requested message ("Insufficient leave balance. Your available leave balance is lower…").

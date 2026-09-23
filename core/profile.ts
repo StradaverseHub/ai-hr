@@ -129,6 +129,26 @@ const isoDate = (v: unknown): string | null | undefined => {
 const EVERY_REQUESTABLE_KEY: ReadonlySet<string> = new Set(PROFILE_REQUESTABLE_KEYS);
 
 /**
+ * 72fca31d — WHOEVER WRITES `marital_status` TAKES OWNERSHIP OF IT.
+ *
+ * `person.marital_status_source_request_id` (migration 0485) is a claim: "the current marital status was
+ * written by that approved Marriage Leave request, so cancelling it may put the status back." Any OTHER
+ * write of the column makes the claim false, and a stale claim is the one bug the whole mechanism exists
+ * to prevent — a leave cancellation quietly overwriting a value a human had since corrected by hand.
+ *
+ * So this is spread into EVERY `person` update in this file that can carry the column, and this file is
+ * the only place that writes it after creation: `decideProfileChange` (the employee asks, HR approves)
+ * and `setPersonComplianceFields` (HR writes it directly; `hireEmployee` and the new-employee draft both
+ * route through that one). The two Marriage Leave writers in migration 0485 are the only writers that
+ * SET the pointer, and they set it in the same statement that writes the status.
+ *
+ * Returns `{}` when the update does not touch marital status, so every other profile write is unchanged.
+ */
+function maritalStatusSourceReset(writeSet: Record<string, unknown>): { maritalStatusSourceRequestId?: null } {
+  return 'maritalStatus' in writeSet ? { maritalStatusSourceRequestId: null } : {};
+}
+
+/**
  * Keep only the recognised, sanitised keys — the bundle is a jsonb patch we later apply.
  *
  * DRIVEN BY THE DECLARATION. Every key must be one `lib/profile-requestable-fields.ts` names, and its
@@ -553,7 +573,10 @@ export async function decideProfileChange(
         delete personSet.fullName;
       }
       if (Object.keys(personSet).length > 0) {
-        await tx.update(person).set(personSet).where(eq(person.id, req.personId));
+        await tx
+          .update(person)
+          .set({ ...personSet, ...maritalStatusSourceReset(personSet) })
+          .where(eq(person.id, req.personId));
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'person',
@@ -673,7 +696,10 @@ export async function setPersonComplianceFields(
     }
     if (Object.keys(writeSet).length === 0) return { id: personId };
 
-    await tx.update(person).set(writeSet).where(eq(person.id, personId));
+    await tx
+      .update(person)
+      .set({ ...writeSet, ...maritalStatusSourceReset(writeSet) })
+      .where(eq(person.id, personId));
     const after = { ...before, ...writeSet };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

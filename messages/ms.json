@@ -2042,6 +2042,7 @@
       "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
       "applyOnBehalfNotAllowed": "Anda tiada kebenaran untuk memohon cuti bagi pihak pekerja lain.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
+      "marriageLeaveAlreadyPending": "Anda sudah mempunyai permohonan {typeName} yang menunggu kelulusan.",
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
       "insufficientBalanceNoScheme": "Tiada jadual kelayakan sampai kepada anda bagi {typeName}, jadi tiada hari diberikan. Skim faedah adalah pilihan dan tiada sesiapa disenaraikan di dalamnya mengikut nama: ia satu penerangan — gred jawatan, jabatan, tempoh perkhidmatan — dan ia hanya diperlukan untuk memilih antara beberapa jadual kelayakan. Minta HR menambah skim yang penerangannya merangkumi anda, atau menetapkan jadual kelayakan lalai untuknya.",
       "insufficientBalanceNoTable": "{typeName} belum mempunyai jadual kelayakan, jadi tiada hari diberikan. Minta HR menyediakannya sebelum anda memohon.",

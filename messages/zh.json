@@ -2042,6 +2042,7 @@
       "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。",
       "applyOnBehalfNotAllowed": "您没有代其他员工申请休假的权限。",
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
+      "marriageLeaveAlreadyPending": "您已有一份待审批的{typeName}申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
       "insufficientBalanceNoScheme": "{typeName} 没有任何额度表触及您，因此未发放任何天数。福利方案是可选的，方案里不会按姓名登记任何人：它是一段描述——职级、部门、服务年资——只有在需要在多张额度表之间做选择时才用得上。请让人力资源添加一个描述涵盖您的方案，或为其设置默认额度表。",
       "insufficientBalanceNoTable": "{typeName} 尚无额度表，因此没有发放任何天数。请让 HR 先设置一张再申请。",

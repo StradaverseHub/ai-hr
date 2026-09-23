@@ -640,7 +640,25 @@ export const person = pgTable(
     dateOfBirth: date('date_of_birth'),
     // Wave 2 (ADR-0038 2A): self-declared; gate maternity (female) / paternity (married male) eligibility.
     gender: text('gender'), // 'male' | 'female' | 'undisclosed'
-    maritalStatus: text('marital_status'), // 'single' | 'married' | 'other'
+    // The master vocabulary is lib/person-vocabulary.ts MARITAL_STATUSES — 'single' | 'married' |
+    // 'divorced' | 'widowed' | 'separated' | 'other'. (This comment used to list only the first two and
+    // 'other': that was the pre-#12129e77 set and it had been wrong since divorced/widowed/separated were
+    // added. Corrected by 72fca31d — do not restate the list anywhere else, import it.)
+    maritalStatus: text('marital_status'),
+    /**
+     * 72fca31d (migration 0485) — THE LEAVE REQUEST THAT WROTE THE CURRENT `maritalStatus`, or NULL.
+     *
+     * Approving a Marriage Leave flips a Single employee to Married; cancelling or revoking that leave
+     * puts it back. "That leave" has to be PROVABLE, not inferred, or a cancellation would overwrite a
+     * value some human had since set by hand. So the cause is persisted here, and every OTHER writer of
+     * `maritalStatus` NULLs it (core/profile.ts `setPersonComplianceFields` and `decideProfileChange` are
+     * the only two; `hireEmployee` / the draft path go through the first). NULL therefore means "nobody
+     * may revert this value automatically", which is the safe reading for every row that exists today.
+     *
+     * Written ONLY by the two SECURITY DEFINER functions migration 0485 installs — person's RLS WITH
+     * CHECK is `is_admin() OR is_self_person(id)` and the approving line manager is neither.
+     */
+    maritalStatusSourceRequestId: uuid('marital_status_source_request_id'),
     // 23ad620e — emergency_contact_name / _phone USED to live here. They are GONE (migration 0322): an
     // emergency contact is now a row in `personEmergencyContact` below, because a person may have several.
     // ── b4682879 Personnel Profile redesign — all NULLABLE, additive, HR-maintained ──
@@ -1189,7 +1207,15 @@ export const reportingLineScope = pgTable(
  * Declared here as a literal rather than imported because this file deliberately imports nothing from
  * `core/`. The two definitions are pinned to each other by test/leave-type-role.test.ts, the same way
  * OPERATOR_REPORTER_LABEL is pinned against the string its migration hardcodes — so they cannot drift
- * silently. The database enforces the same set (leave_type_role_check in migration 0387).
+ * silently. The database enforces the same set (leave_type_role_check in migration 0387, widened by 0485).
+ *
+ * 72fca31d added 'marriage' (migration 0485): three rules had to be scoped to Marriage Leave and nothing
+ * could name it — the pack seeds no MARRIAGE row at all, production's is coded `MRL`, and a code
+ * comparison would therefore have been dead on arrival exactly as 65f466e2's were.
+ *
+ * KEEP THE UNION ITSELF COMPACT: test/leave-type-role.test.ts reads the first 400 characters after
+ * `export type LeaveTypeRoleValue` to compare it against core's list, so a comment BETWEEN the members
+ * would push the last one out of view and the guard would stop guarding.
  */
 export type LeaveTypeRoleValue =
   | 'annual'
@@ -1198,7 +1224,8 @@ export type LeaveTypeRoleValue =
   | 'maternity'
   | 'paternity'
   | 'emergency'
-  | 'replacement';
+  | 'replacement'
+  | 'marriage';
 
 export const leaveType = pgTable('leave_type', {
   id: id(),
