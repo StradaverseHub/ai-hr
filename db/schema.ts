@@ -365,9 +365,13 @@ export const personPhoto = pgTable(
   (t) => [index('person_photo_person_idx').on(t.tenantId, t.personId)],
 );
 
-// location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
-// supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
-// company.default_work_state). `country` is captured for display only — the engine keeps using
+// location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site.
+// ⚠️ IT NO LONGER DECIDES HOLIDAYS. Until ADR-0086 (r331) `state` was the top of the precedence
+// (location.state ?? employment.work_state ?? company.default_work_state); the site left BOTH holiday
+// readers in one commit and the chain now starts at employment.work_state. The column is kept — it is
+// the record of which state a site was under before the move, and the register stopped offering the
+// control rather than clearing the value. See the inline note on `state` below.
+// `country` is captured for display only — the engine keeps using
 // company.country (a location-country override would silently flip the holiday-country lookup; out of
 // scope). archivedAt = soft-disable (never hard-delete, so audit survives). RLS gates read+write by
 // app.is_admin_for(company_id). The employee↔location link is assignment.location_id (no second table).
