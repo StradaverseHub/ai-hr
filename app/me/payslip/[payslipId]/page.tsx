@@ -8,6 +8,7 @@ import { payslipDetail } from '@/core/payroll';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
+import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk-line';
 // 6b134681 — the pay items behind the Overtime and Bonus figures, named from the payslip's own stamp.
 // The SAME derivation the printed PDF and Transaction View → History use, so the three cannot disagree
 // about which items make up a figure or how one is labelled.
@@ -15,6 +16,7 @@ import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-empl
 // named a consumed one-off from the transaction's free-text remark, and that fix reaches only runs
 // calculated after it, so an already-issued payslip keeps the old wording unless the screen repairs it.
 import {
+  earningRowShown,
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
@@ -45,6 +47,9 @@ type Stat = {
   socsoEmployee?: number;
   socsoEmployer?: number;
   socsoSkbbk?: number;
+  /** a96d320c rev 2 — the SKBBK ELECTION as this run recorded it. Absent on every earlier slip; read
+   *  through `payslipSkbbkSubject`, which is the one place `absent` and `false` are told apart. */
+  skbbkSubject?: boolean;
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;
@@ -130,6 +135,10 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   // list is shown only when it adds up to the figure it explains (a payslip whose display categories
   // moved money between boxes, or one issued before the stamp existed, keeps the bare figure) — the same
   // reconciliation rule the printed document applies, from the same function.
+  // f3148da1 — the allowance figure with the OT-converted excess taken back out; it gets its own row
+  // below, so gross still reconciles. Named here because a96d320c rev 2 tests it for zero as well as
+  // printing it, and the two must be the same number.
+  const allowanceNet = disp.allowance - Number(st.otConvert?.amount ?? 0);
   const stored = storedComponentLines(p.statutory);
   const otLines = payItemLinesForBuckets(stored, ['ot']);
   const bonusLines = payItemLinesForBuckets(stored, ['bonus']);
@@ -184,21 +193,33 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             {t('earnings')}
           </h2>
           <Row label={t('basicSalary')} value={rm(disp.basic)} />
+          {/* a96d320c rev 2 — AN EARNING LINE WITH NOTHING ON IT IS NOT SHOWN, and the SCREEN follows the
+              DOCUMENT rather than the other way round: the printed payslip stops rendering a zero
+              Allowance / Overtime / Bonus in the same round (lib/payslip-pdf.ts `earningsRowsOf`), and a
+              screen that kept them would disagree with the PDF downloaded from it about what the month
+              contained. The test is the STORED figure on this payslip — `payslipDisplayEarnings` off its
+              own snapshot — never today's pay-item setup. Basic salary is deliberately not subject to the
+              rule; the statutory deduction lines below are deliberately not subject to it either.
+
+              `|| showOtLines` / `|| showBonusLines`: a sub-line list belongs TO its row, so a figure that
+              is zero because its named items cancel each other out keeps its row and prints 0.00 with the
+              items under it. Hiding the heading and leaving the detail would be an orphan — the one way
+              this rule could make a payslip harder to read rather than shorter. */}
           {/* f3148da1 — the converted OT excess is folded into stored allowance; show the base allowance net
               of it, then a dedicated line for the pay item, so gross still reconciles. */}
-          <Row label={t('allowances')} value={rm(disp.allowance - Number(st.otConvert?.amount ?? 0))} />
-          <Row label={t('overtime')} value={rm(disp.overtime)} />
+          {earningRowShown(allowanceNet) && <Row label={t('allowances')} value={rm(allowanceNet)} />}
+          {(earningRowShown(disp.overtime) || showOtLines) && <Row label={t('overtime')} value={rm(disp.overtime)} />}
           {showOtLines && <SubLines lines={otLines} />}
           {Number(st.otConvert?.amount) > 0 && (
             <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
           )}
-          <Row label={t('bonus')} value={rm(disp.bonus)} />
+          {(earningRowShown(disp.bonus) || showBonusLines) && <Row label={t('bonus')} value={rm(disp.bonus)} />}
           {/* 6b134681 — "B0001 · ANGPOW  RM500.00" under the Bonus figure, instead of the figure alone.
               The classification (additional remuneration ⇒ the bonus box) decides the BOX; it never gets
               to stand in for the pay item's own code and description. */}
           {showBonusLines && <SubLines lines={bonusLines} />}
           {/* 3c473773 — the Claim box, shown only when a pay item was deliberately categorised into it. */}
-          {disp.claim > 0 && <Row label={t('claim')} value={rm(disp.claim)} />}
+          {earningRowShown(disp.claim) && <Row label={t('claim')} value={rm(disp.claim)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('grossPay')}</span>
             <span className="tabular-nums">{rm(p.gross)}</span>
@@ -215,7 +236,12 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
               carrying no snapshot (every one issued before the setting existed) renders as it always did. */}
           <Row label={t('epf')} value={rm(eb.employee.epf)} />
           <Row label={t('socso')} value={rm(eb.employee.socso)} />
-          {Number(st.socsoSkbbk) > 0 && <Row label={t('skbbk')} value={rm(eb.employee.skbbk)} />}
+          {/* a96d320c rev 2 — the ELECTION, not the amount: `> 0` could not tell "no SKBBK" from "has
+              SKBBK, contributed 0.00". One predicate, shared with the printed document and the two admin
+              payslip surfaces — core/payslip-skbbk-line.ts carries the argument. */}
+          {payslipSkbbkLineShown(payslipSkbbkSubject(st), eb.employee.skbbk) && (
+            <Row label={t('skbbk')} value={rm(eb.employee.skbbk)} />
+          )}
           <Row label={t('eis')} value={rm(eb.employee.eis)} />
           <Row label={t('pcb')} value={rm(eb.employee.pcb)} />
           {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}

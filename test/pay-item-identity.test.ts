@@ -26,12 +26,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  earningRowShown,
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
   recordLineIdentity,
   storedComponentLines,
 } from '../core/payslip-earning-lines';
+import { payslipSkbbkLineShown, payslipSkbbkSubject } from '../core/payslip-skbbk-line';
 import { buildPayslipPdfData } from '../lib/payslip-pdf';
 import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
@@ -345,6 +347,133 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
       expect(src, `${rel} must read the gated overtime lines`).toMatch(/b\.overtimeLines/);
       expect(src, `${rel} must read the gated bonus lines`).toMatch(/b\.bonusLines/);
     }
+  });
+});
+
+/**
+ * a96d320c rev 2 — TWO ROW PREDICATES, ONE COPY EACH, AND THE SURFACES THAT USE THEM.
+ *
+ * RULE 17 AGAIN, AND THIS TIME THE AUDIT HAD ALREADY WRITTEN THE LESSON DOWN.
+ * docs/audits/0085-delta-keys-sign-inventory.md found `socsoSkbbk > 0` copied into FOUR renderers and
+ * wrong in all four: SKBBK is a per-employee election, so `> 0` conflated "this employee has no SKBBK"
+ * with "has SKBBK, contributed 0.00 this run" — and on the second of those the zero is the assertion.
+ * The empty-earning-line rule the reporter asked for this round would have been a fifth such copy across
+ * three surfaces, so both predicates live in `core/` and the renderers call them.
+ *
+ * Two of the surfaces are async server components and one is a PDF builder, so none can be rendered
+ * here; the source-shape half is the only way to pin the contract between the predicate and the JSX.
+ * Comments are stripped first — prose describing the rule must never be what satisfies the guard.
+ */
+describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', () => {
+  const ROOT = path.resolve(__dirname, '..');
+  const code = (rel: string) =>
+    fs
+      .readFileSync(path.join(ROOT, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('an earning row is shown when it carries money, INCLUDING a negative', () => {
+    expect(earningRowShown(500)).toBe(true);
+    expect(earningRowShown(0)).toBe(false);
+    expect(earningRowShown('0.00')).toBe(false);
+    // Class B of the audit: a figure that went negative must be visible, not vanished. It is also what
+    // keeps the printed rows adding up to the total beside them.
+    expect(earningRowShown(-250)).toBe(true);
+    // Rounded to the sen first, so a float round-trip cannot print a row that reads `0.00`.
+    expect(earningRowShown(0.0000001)).toBe(false);
+    expect(earningRowShown(0.005)).toBe(true);
+    expect(earningRowShown(null)).toBe(false);
+    expect(earningRowShown(undefined)).toBe(false);
+  });
+
+  it('the SKBBK line follows the ELECTION the payslip recorded, and falls back to the amount', () => {
+    // `null` is not `false`: a slip written before the stamp cannot answer, and must render as it does
+    // today rather than lose a line its printed TOTAL DEDUCTIONS still counts.
+    expect(payslipSkbbkSubject({ skbbkSubject: true })).toBe(true);
+    expect(payslipSkbbkSubject({ skbbkSubject: false })).toBe(false);
+    expect(payslipSkbbkSubject({})).toBeNull();
+    expect(payslipSkbbkSubject(null)).toBeNull();
+    // A jsonb blob is not a type: a value this version does not understand is not guessed at.
+    expect(payslipSkbbkSubject({ skbbkSubject: 'yes' })).toBeNull();
+    expect(payslipSkbbkSubject({ skbbkSubject: 1 })).toBeNull();
+
+    // THE FIX: subject, contributed nothing ⇒ the line prints, and its 0.00 is the assertion.
+    expect(payslipSkbbkLineShown(true, 0)).toBe(true);
+    // Not subject, nothing contributed ⇒ absent, which asserts nothing — the truth.
+    expect(payslipSkbbkLineShown(false, 0)).toBe(false);
+    // No stamp ⇒ exactly today's behaviour, which is what leaves every existing document alone.
+    expect(payslipSkbbkLineShown(null, 0)).toBe(false);
+    expect(payslipSkbbkLineShown(null, 12.5)).toBe(true);
+    // A figure is NEVER hidden by an election, whatever its sign.
+    expect(payslipSkbbkLineShown(false, 12.5)).toBe(true);
+    expect(payslipSkbbkLineShown(false, -12.5)).toBe(true);
+  });
+
+  it('all FOUR payslip surfaces ask the shared SKBBK predicate, and none still tests the amount', () => {
+    const surfaces = [
+      'lib/payslip-pdf.ts',
+      'app/me/payslip/[payslipId]/page.tsx',
+      'app/payroll/individual-payslip/page.tsx',
+      'app/payroll/transaction-view/history-table.tsx',
+    ];
+    for (const rel of surfaces) {
+      const src = code(rel);
+      expect(src, `${rel} must ask the shared predicate`).toContain('payslipSkbbkLineShown(');
+      // THE DEFECT ITSELF, in every spelling the four sites used.
+      expect(src, `${rel} still renders SKBBK on the amount alone`).not.toMatch(/socsoSkbbk\s*\)?\s*>\s*0/);
+    }
+  });
+
+  it('the payslip DOCUMENT and the two payslip SCREENS all gate their zero earning rows', () => {
+    // The printed document decides through `earningsRowsOf`; the two screens gate the JSX row itself.
+    const pdf = code('lib/payslip-pdf.ts');
+    expect(pdf).toContain('earningRowShown(total)');
+    expect(pdf).toContain('earningRowShown(l.amount)');
+    expect(pdf).toContain('earningRowShown(d.claim)');
+
+    for (const [rel, figures] of [
+      ['app/me/payslip/[payslipId]/page.tsx', ['allowanceNet', 'disp.overtime', 'disp.bonus', 'disp.claim']],
+      ['app/payroll/individual-payslip/page.tsx', ['b.allowanceNet', 'b.overtime', 'b.bonus', 'b.claim']],
+    ] as const) {
+      const src = code(rel);
+      for (const f of figures) {
+        expect(src, `${rel} must gate its ${f} row`).toContain(`earningRowShown(${f})`);
+      }
+    }
+  });
+
+  it('a row that owns sub-lines is never hidden out from under them', () => {
+    // THE ONE WAY THIS RULE COULD MAKE A PAYSLIP HARDER TO READ. Both screens print the named pay items
+    // UNDER their figure. `payItemLinesForBuckets` drops a zero contribution but not a pair that cancels
+    // out, so a figure can be 0.00 with two real items beneath it — and gating the heading on the figure
+    // alone would leave the detail orphaned under nothing. The escape hatch is the list itself.
+    const ess = code('app/me/payslip/[payslipId]/page.tsx');
+    expect(ess).toContain('(earningRowShown(disp.overtime) || showOtLines)');
+    expect(ess).toContain('(earningRowShown(disp.bonus) || showBonusLines)');
+    const admin = code('app/payroll/individual-payslip/page.tsx');
+    expect(admin).toContain('(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0)');
+    expect(admin).toContain('(earningRowShown(b.overtime) || b.overtimeLines.length > 0)');
+    expect(admin).toContain('(earningRowShown(b.bonus) || b.bonusLines.length > 0)');
+
+    // The printed document cannot have the defect BY CONSTRUCTION, and that is worth pinning rather than
+    // trusting: `earningsRowsOf` prints either the named rows INSTEAD of the grouped one, or the grouped
+    // one alone — never a heading with a list under it — so there is no heading to orphan.
+    const pdf = code('lib/payslip-pdf.ts');
+    expect(pdf).toContain('} else if (earningRowShown(total)) {');
+  });
+
+  it('Transaction View - History deliberately KEEPS its zero rows, and that is pinned', () => {
+    // NOT AN OVERSIGHT, AND NOT A ROW TO TIDY. The reporter asked for empty lines to come off THE
+    // PAYSLIP. This panel is the operator's reconciliation grid for a whole run: it is read column-wise
+    // against the neighbouring employees and against the CSV `history-export.ts` writes, and that export
+    // emits Allowance, Overtime and Bonus as FIXED columns. Hiding the rows here would make one
+    // employee's panel a different shape from the next AND put the screen out of step with its own
+    // download. If that judgement is ever reversed, this guard is what makes it a decision rather than
+    // a drift — and the CSV columns have to move with it.
+    const grid = code('app/payroll/transaction-view/history-table.tsx');
+    expect(grid, 'History must not have picked up the payslip row rule by accident').not.toContain('earningRowShown(');
+    const csv = code('app/payroll/transaction-view/history-export.ts');
+    expect(csv, 'the CSV still emits the Allowance column unconditionally').toContain('money(b.allowanceNet)');
   });
 });
 

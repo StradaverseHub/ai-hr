@@ -18,6 +18,7 @@ import { payItemLabel, recordLineIdentity, type PayItemNames } from '@/core/pays
 // month is otherwise indistinguishable from a duplicate on this list.
 import { payslipSegmentOf } from '@/core/payslip-segment';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
+import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk-line';
 // 417d4937 request 10 — the one-off transactions behind this run's recorded items, listed BESIDE them
 // (never matched to them: see the component's own note on why a (code, amount) join would be worse).
 import type { PayslipSourceTxnRow } from '@/core/payroll-view';
@@ -276,7 +277,25 @@ export function HistoryTable({
                               disclosure block below. A payslip with no snapshot renders exactly as before. */}
                           <Row label={tSlip('epf')} value={rm(b.employerBorne.employee.epf)} />
                           <Row label={tSlip('socso')} value={rm(b.employerBorne.employee.socso)} />
-                          {Number(st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(b.employerBorne.employee.skbbk)} />}
+                          {/* a96d320c rev 2 — the ELECTION, not the amount: `> 0` could not tell "this
+                              employee has no SKBBK" from "has SKBBK, contributed 0.00 this run", and it is
+                              the second of those where the zero is the assertion. One predicate, shared
+                              with the printed document and the two payslip screens
+                              (core/payslip-skbbk-line.ts).
+
+                              ⚠️ THE ZERO-EARNINGS RULE OF THIS ROUND STOPS HERE, DELIBERATELY. The
+                              reporter asked for empty Allowance / Overtime / Bonus lines to come off THE
+                              PAYSLIP, and the printed document and the two payslip screens now do that.
+                              This panel is not a payslip: it is the operator's reconciliation grid for a
+                              whole run, read column-wise against the neighbouring employees and against
+                              the CSV `history-export.ts` writes — and that export emits Allowance,
+                              Overtime and Bonus as FIXED columns. Hiding the rows here would make one
+                              employee's panel a different shape from the next and would put the screen out
+                              of step with its own download, which is a worse answer for this reader than a
+                              0.00. Revisit only if the operator asks. */}
+                          {payslipSkbbkLineShown(payslipSkbbkSubject(st), b.employerBorne.employee.skbbk) && (
+                            <Row label={tSlip('skbbk')} value={rm(b.employerBorne.employee.skbbk)} />
+                          )}
                           <Row label={tSlip('eis')} value={rm(b.employerBorne.employee.eis)} />
                           {/* 45df860a — THE PCB AMOUNT IS THE LINK. The reporter's complaint was that
                               this figure is the one nobody can check and the only one with no way in:

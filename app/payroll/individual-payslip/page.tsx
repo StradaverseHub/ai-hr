@@ -132,6 +132,7 @@ import {
 } from '@/core/payroll-view';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
+import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk-line';
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
 // transfer split it. Null on every other payslip ⇒ this screen renders exactly as it did before.
 import { payslipSegmentOf } from '@/core/payslip-segment';
@@ -164,7 +165,7 @@ import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
-import { payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
+import { earningRowShown, payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -693,7 +694,20 @@ export default async function IndividualPayslipPage({
           {/* ── Earnings ── */}
           <Block title={tSlip('earnings')}>
             <Row label={tSlip('basicSalary')} value={rm(b.basic)} />
-            <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
+            {/* a96d320c rev 2 — AN EARNING LINE WITH NOTHING ON IT IS NOT SHOWN. This screen is the admin
+                REVIEW COPY of the payslip and it is where the PDF is downloaded from, so it follows the
+                document: lib/payslip-pdf.ts stops printing a zero Allowance / Overtime / Bonus in the same
+                round, and a screen that kept them would contradict the file it just produced. The test is
+                the STORED figure (`deriveHistoryBreakdown` off this payslip's own snapshot), never today's
+                pay-item setup. Basic salary is deliberately exempt, as are the statutory deduction lines
+                below — see core/payslip-earning-lines.ts and lib/payslip-pdf.ts `earningsRowsOf`.
+
+                `|| <list>.length > 0`: a sub-line list belongs TO its row. A figure that is zero because
+                its named items cancel out keeps its row, prints 0.00, and shows the items under it —
+                hiding the heading and leaving the detail would be an orphan. */}
+            {(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0) && (
+              <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
+            )}
             {/* 417d4937 — wage AND reimburse (a PCB-exempt allowance is stamped into `reimburse`, is
                 paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
                 identification the Recorded items rows and the printed payslip use. This screen reads the
@@ -704,7 +718,9 @@ export default async function IndividualPayslipPage({
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
-            <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+            {(earningRowShown(b.overtime) || b.overtimeLines.length > 0) && (
+              <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+            )}
             {/* 6b134681 — `overtimeLines` / `bonusLines`, not `componentsByBucket.*`: the derivation has
                 already checked that these rows add up to the figure above them, the same reconciliation
                 the printed payslip and the ESS payslip apply. The two lists are NOT interchangeable —
@@ -723,7 +739,9 @@ export default async function IndividualPayslipPage({
                 value={rm(b.otConvertAmount)}
               />
             )}
-            <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+            {(earningRowShown(b.bonus) || b.bonusLines.length > 0) && (
+              <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+            )}
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
                 (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
                 Reconciled in the derivation, as above. */}
@@ -733,7 +751,7 @@ export default async function IndividualPayslipPage({
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
-            {b.claim > 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
+            {earningRowShown(b.claim) && <Row label={tSlip('claim')} value={rm(b.claim)} />}
             {b.detailNotRecorded && (
               <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
             )}
@@ -747,7 +765,11 @@ export default async function IndividualPayslipPage({
           <Block title={tSlip('deductionsHeading')}>
             <Row label={tSlip('epf')} value={rm(eb.employee.epf)} />
             <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
-            {Number(b.st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(eb.employee.skbbk)} />}
+            {/* a96d320c rev 2 — the ELECTION, not the amount. One predicate, shared with the printed
+                document and the other two payslip surfaces: core/payslip-skbbk-line.ts. */}
+            {payslipSkbbkLineShown(payslipSkbbkSubject(b.st), eb.employee.skbbk) && (
+              <Row label={tSlip('skbbk')} value={rm(eb.employee.skbbk)} />
+            )}
             <Row label={tSlip('eis')} value={rm(eb.employee.eis)} />
             {/* 45df860a — the PCB amount is a LINK to the shared calculation screen, exactly as it now is
                 on Transaction Detail. Same href, same screen, so the two entry points cannot show one

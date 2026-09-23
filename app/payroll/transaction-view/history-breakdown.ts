@@ -52,6 +52,10 @@ export type BreakdownStat = {
   socsoEmployee?: number;
   socsoEmployer?: number;
   socsoSkbbk?: number;
+  /** a96d320c rev 2 — the SKBBK ELECTION as this run recorded it (core/payroll.ts `skbbkSubject`).
+   *  ABSENT on every payslip written before that stamp, which is why `core/payslip-skbbk-line.ts` reads it
+   *  through a function that tells `absent` from `false` instead of reading the property directly. */
+  skbbkSubject?: boolean;
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;

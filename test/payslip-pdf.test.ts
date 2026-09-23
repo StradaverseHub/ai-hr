@@ -290,6 +290,84 @@ function drawnRects(bytes: Uint8Array): { page: number; x: number; y: number; w:
   return out;
 }
 
+/**
+ * a96d320c rev 2 — THE LINES, per page, with their colour and width.
+ *
+ * `drawnRects` reads rectangles; the row hairlines inside a box are `drawLine` calls, and one of them was
+ * being drawn ON TOP of the box's own bottom border — a 0.5pt HAIR over a 0.8pt RULE, which washes the
+ * border out to near-white for its whole length and leaves 0.15pt of colour either side. That is a claim
+ * about two overlapping strokes; no amount of text or rectangle matching can see it. pdf-lib emits a line
+ * as `R G B RG`, `W w`, `[] 0 d`, a doubled `m`, an `l` and `S`.
+ */
+function drawnLines(
+  bytes: Uint8Array,
+): { page: number; x1: number; y1: number; x2: number; y2: number; w: number; color: string }[] {
+  const buf = Buffer.from(bytes);
+  const out: { page: number; x1: number; y1: number; x2: number; y2: number; w: number; color: string }[] = [];
+  let i = 0;
+  let page = 0;
+  for (;;) {
+    const s = buf.indexOf('stream', i);
+    if (s < 0) break;
+    const e = buf.indexOf('endstream', s);
+    if (e < 0) break;
+    let b = s + 6;
+    if (buf[b] === 0x0d) b += 1;
+    if (buf[b] === 0x0a) b += 1;
+    const raw = buf.subarray(b, e);
+    let body: Buffer;
+    try {
+      body = zlib.inflateSync(raw);
+    } catch {
+      body = raw;
+    }
+    const src = body.toString('latin1');
+    if (/\bTj\b/.test(src)) {
+      page += 1;
+      for (const m of src.matchAll(
+        /([\d.]+) ([\d.]+) ([\d.]+) RG\s+([\d.]+) w\s+\[\] 0 d\s+(-?[\d.]+) (-?[\d.]+) m\s+-?[\d.]+ -?[\d.]+ m\s+(-?[\d.]+) (-?[\d.]+) l\s+S/g,
+      )) {
+        out.push({
+          page,
+          x1: Number(m[5]),
+          y1: Number(m[6]),
+          x2: Number(m[7]),
+          y2: Number(m[8]),
+          w: Number(m[4]),
+          color: `${m[1]},${m[2]},${m[3]}`,
+        });
+      }
+    }
+    i = e + 9;
+  }
+  return out;
+}
+
+/**
+ * a96d320c rev 2 — EVERY FILLED BAND THAT WAS PAINTED OVER A BORDER ALREADY ON THE PAGE.
+ *
+ * THE DEFECT THE REPORTER CIRCLED, FOUR TIMES. A band is a filled rectangle with no border of its own, at
+ * the box's own x and the box's own width. Drawn AFTER the box outline it covers that outline's left and
+ * right edges for its own height — a notch out of the border at the top-left and top-right of every box.
+ * `drawnRects` returns rectangles in the order the renderer emitted them, which is the whole content of
+ * the claim: an `f` that comes after an `S` whose edge it covers is a notch, and one that comes before it
+ * is not. Nothing here measures pixels; it reads the paint order, which is what decides the picture.
+ */
+const bandsPaintedOverABorder = (rects: ReturnType<typeof drawnRects>) =>
+  rects.filter(
+    (f, i) =>
+      f.op === 'f' &&
+      rects.some((box, j) => {
+        if (box.op !== 'S' || j >= i || box.page !== f.page) return false;
+        // Do the two overlap vertically at all? If not, the fill is somewhere else on the sheet.
+        const yOverlap = Math.min(f.y + f.h, box.y + box.h) - Math.max(f.y, box.y);
+        if (yOverlap <= 0) return false;
+        // ...and does the fill reach either of the box's two vertical edges?
+        const covers = (edgeX: number) => f.x <= edgeX + 0.01 && f.x + f.w >= edgeX - 0.01;
+        return covers(box.x) || covers(box.x + box.w);
+      }),
+  );
+
 /** The RULED box that encloses a piece of drawn text, or undefined. A filled band (`f`) is not a border. */
 const enclosingRule = (
   rects: ReturnType<typeof drawnRects>,
@@ -833,11 +911,23 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     expect(earn!.x).toBeLessThan(297);
     expect(ded!.x).toBeGreaterThan(297);
 
-    // Their TOTALS line up too, which is the half a reader actually compares.
-    const te = placed(p, 'TOTAL EARNINGS');
-    const td = placed(p, 'TOTAL DEDUCTIONS');
+    // Their TOTALS line up too, which is the half a reader actually compares — WHEN THE TWO BOXES HOLD
+    // THE SAME NUMBER OF ROWS. That is what this guard has always measured, and a96d320c rev 2 makes the
+    // condition explicit rather than leaving it to a fixture coincidence: each total sits at the bottom
+    // of its OWN box, and the boxes are now as long as the month they describe. `data` has no bonus, so
+    // its Earnings box is one row SHORTER than its Deductions box — see the assertion below, which pins
+    // that reversal rather than letting this one quietly stop measuring anything.
+    const even = drawnPlacements(await renderPayslipPdf({ ...data, bonus: 800, gross: 7920 }, labels));
+    const te = placed(even, 'TOTAL EARNINGS');
+    const td = placed(even, 'TOTAL DEDUCTIONS');
     expect(td!.y).toBeCloseTo(te!.y, 1);
     expect(td!.x).toBeGreaterThan(te!.x);
+
+    // THE REVERSAL, PINNED. A month with no bonus prints no Bonus row (a96d320c rev 2), so the Earnings
+    // box ends one row higher than the Deductions box beside it. The two TOPS still line up — that is
+    // what "read against each other" means and it is asserted above; the two BOTTOMS no longer do, and
+    // that is the deliverable, not a layout regression.
+    expect(placed(p, 'TOTAL EARNINGS')!.y).toBeGreaterThan(placed(p, 'TOTAL DEDUCTIONS')!.y);
   });
 
   it('pairs Employer contributions with Payment information, BELOW the first pair', async () => {
@@ -1169,6 +1259,222 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     // The block is the SAME height it always was (BOX_HEAD_H + 14 + 6 × 15 = YTD_H = 124), which is what
     // keeps a payslip that fitted one sheet still fitting one sheet.
     expect(await pageCount(bytes)).toBe(1);
+  });
+
+  /**
+   * a96d320c rev 2 — THE NOTCH. The reporter drew four red rectangles on their payslip, one on the left
+   * edge of each of Earnings, Deductions, Employer contributions and Payment information, and wrote "not
+   * fixed". They were right: r328 ruled the two blocks that had NO rules (the employee panel and the YTD
+   * table) and never touched `paintBox`, whose header band is a full-width FILLED rectangle drawn after
+   * the outline — so it painted over the outline's left and right edges for its own height, four boxes,
+   * one notch each. The total row's band did the same again lower down, and on a box with no total it
+   * covered the bottom edge too.
+   *
+   * THE ASSERTION IS THE PAINT ORDER, READ OUT OF THE RENDERED FILE, not a source grep: `drawnRects`
+   * returns the rectangles in the order pdf-lib emitted them.
+   */
+  it('closes every box: no filled band is ever painted over a border already on the page', async () => {
+    const full = {
+      ...data,
+      // The most boxes one sheet can carry: Earnings + Deductions (a pair, each with a total band),
+      // Employer contributions (total + note), Payment information (NO total — the box whose bottom
+      // border the row hairline was washing out), NET PAY, and the YTD table.
+      ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
+      ytdYear: '2026',
+      paymentMethod: 'Bank transfer',
+      bankName: 'Maybank',
+      bankAccount: '514012345678',
+      identityNumber: '900101011234',
+      department: 'Finance',
+    };
+    const bytes = await renderPayslipPdf(full, labels);
+    const rects = drawnRects(bytes);
+
+    // NON-VACUITY, FIRST: the document really is made of ruled boxes and filled bands, so the emptiness
+    // asserted below is the absence of a defect rather than the absence of anything to inspect.
+    expect(rects.filter((r) => r.op === 'S').length, 'the document draws ruled boxes').toBeGreaterThanOrEqual(6);
+    expect(rects.filter((r) => r.op === 'f').length, 'the document draws filled bands').toBeGreaterThanOrEqual(6);
+
+    expect(
+      bandsPaintedOverABorder(rects).map((r) => `${r.op} x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
+      'every band is painted BEFORE the border it sits inside',
+    ).toEqual([]);
+
+    // …AND ON A CONTINUATION SHEET. `earningsContinued` exists because the Earnings box can spill, and a
+    // box drawn per page is bordered per page — so a band painted over a border would be painted over
+    // again on every sheet the box runs onto. Seventy rows is the fixture the continuation test uses.
+    const spilled = await renderPayslipPdf(
+      {
+        ...full,
+        allowance: 700,
+        earningLines: Array.from({ length: 70 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 })),
+        detailNotRecorded: false,
+      },
+      labels,
+    );
+    expect(drawnText(spilled), 'the fixture really does continue onto another sheet').toContain('EARNINGS (CONTINUED)');
+    expect(await pageCount(spilled)).toBeGreaterThan(1);
+    // NON-VACUITY for the sheet that is the whole point: page 2 carries a ruled box AND a filled band, so
+    // the emptiness asserted below is a defect that is absent rather than a page with nothing on it.
+    const sheet2 = drawnRects(spilled).filter((r) => r.page === 2);
+    expect(sheet2.filter((r) => r.op === 'S').length, 'the continuation sheet is ruled').toBeGreaterThan(0);
+    expect(sheet2.filter((r) => r.op === 'f').length, 'the continuation sheet has a band').toBeGreaterThan(0);
+    expect(
+      bandsPaintedOverABorder(drawnRects(spilled)).map((r) => `p${r.page} ${r.op} x=${r.x} y=${r.y}`),
+      'a continued box is closed on every sheet it runs onto',
+    ).toEqual([]);
+  });
+
+  /**
+   * a96d320c rev 2 — AND THE OTHER HALF OF THE SAME BOX, which nobody circled because it is invisible
+   * rather than notched: the rule under the LAST row of a box with no total row and no note sits on
+   * exactly the y of the box's own bottom border, and it is drawn afterwards in HAIR at 0.5pt over a
+   * RULE at 0.8pt. The border survives as 0.15pt of colour either side of a near-white stripe. Payment
+   * information is such a box, and it is one of the four the reporter marked.
+   */
+  it('does not wash out a box bottom border with the hairline under its last row', async () => {
+    const bytes = await renderPayslipPdf(
+      { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank', bankAccount: '514012345678' },
+      labels,
+    );
+    const rects = drawnRects(bytes);
+    const places = drawnPlacements(bytes);
+    // The BOX is identified by the text it encloses, not by a coordinate this test writes down.
+    const box = enclosingRule(rects, placed(places, '514012345678'));
+    expect(box, 'the Payment information box is on the page and is ruled').toBeDefined();
+
+    const HAIR = '0.937,0.941,0.969';
+    const onBottomEdge = drawnLines(bytes).filter(
+      (l) =>
+        l.page === box!.page &&
+        l.color === HAIR &&
+        Math.abs(l.y1 - box!.y) < 0.01 &&
+        Math.abs(l.y2 - box!.y) < 0.01 &&
+        l.x1 < box!.x + box!.w &&
+        l.x2 > box!.x,
+    );
+    expect(onBottomEdge, 'nothing is drawn on top of the box bottom border').toEqual([]);
+
+    // NON-VACUITY CONTROL: the row hairlines INSIDE the box are still there, so the filter above is
+    // looking at a box that has hairlines to find rather than at one that has none at all.
+    const inside = drawnLines(bytes).filter(
+      (l) => l.page === box!.page && l.color === HAIR && l.y1 > box!.y + 0.01 && l.y1 < box!.y + box!.h,
+    );
+    expect(inside.length, 'the rows inside the box are still separated by hairlines').toBeGreaterThan(0);
+  });
+
+  /**
+   * a96d320c rev 2 — "A PAYSLIP AS SHORT AS THE MONTH IT DESCRIBES", and the one exception the reporter
+   * wrote into their own request and then approved in writing.
+   *
+   * Earnings with nothing on them come off; the four statutory deduction lines stay at 0.00. CLAUDE.md
+   * §8 is the whole argument and it cuts both ways: an absent box asserts nothing, `0.00` asserts the
+   * money does not exist. "PCB 0.00" tells the employee no tax was taken this month; a payslip that never
+   * mentions tax tells them nothing, and that is the line they read when they file their own return.
+   */
+  it('stops printing empty earning lines, and KEEPS the four statutory deduction zeros', async () => {
+    const bare = {
+      ...data,
+      allowance: 0,
+      overtime: 0,
+      bonus: 0,
+      claim: 0,
+      earningLines: [],
+      bonusLines: [],
+      overtimeLines: [],
+      gross: 6500,
+      epfEmployee: 715,
+      socsoEmployee: 24.75,
+      socsoSkbbk: 0,
+      eisEmployee: 9.9,
+      pcb: 0,
+    };
+    const text = drawnText(await renderPayslipPdf(bare, labels));
+
+    expect(text).toContain(labels.basicSalary); // the wage is NOT subject to the rule — it is the anchor
+    expect(text).not.toContain(labels.allowances);
+    expect(text).not.toContain(labels.overtime);
+    expect(text).not.toContain(labels.bonus);
+    expect(text).not.toContain(labels.claim);
+
+    // …and the four statutory lines are all still there, two of them printing a zero.
+    for (const label of [labels.epf, labels.socso, labels.eis, labels.pcb]) expect(text).toContain(label);
+    expect(text).toContain('MYR 0.00');
+
+    // CONTROL: the same document with money in those figures prints all three rows. Without this the
+    // assertions above would pass on a renderer that had simply stopped drawing an Earnings box.
+    const paid = drawnText(await renderPayslipPdf({ ...bare, allowance: 500, overtime: 120, bonus: 800 }, labels));
+    expect(paid).toContain(labels.allowances);
+    expect(paid).toContain(labels.overtime);
+    expect(paid).toContain(labels.bonus);
+    expect(paid).toContain('MYR 500.00');
+  });
+
+  /**
+   * a96d320c rev 2 — A FIGURE THAT WENT NEGATIVE IS STILL PRINTED.
+   *
+   * docs/audits/0085-delta-keys-sign-inventory.md Class B: "a negative makes a line VANISH from a money
+   * document … worse than printing a negative, because there is nothing for the reader to question." The
+   * new rule is `!== 0`, not `> 0`, precisely so it cannot become that defect.
+   */
+  it('hides an earning line at zero, but never one that carries a negative figure', async () => {
+    const text = drawnText(
+      await renderPayslipPdf({ ...data, allowance: -250, overtime: 0, bonus: 0, earningLines: [], overtimeLines: [], bonusLines: [] }, labels),
+    );
+    expect(text).toContain(labels.allowances);
+    expect(text).toContain('MYR -250.00');
+    expect(text).not.toContain(labels.overtime);
+  });
+
+  /**
+   * a96d320c rev 2 — SKBBK IS AN ELECTION, AND `> 0` COULD NOT SEE IT.
+   *
+   * `subject_to_skbbk` is a real per-employee boolean and the engine returns 0 when it is off, so the old
+   * predicate conflated "this employee has no SKBBK" with "has SKBBK, contributed 0.00 this run". On the
+   * second of those the zero is the assertion — the same argument that keeps EPF/SOCSO/EIS/PCB at 0.00.
+   * The run now stamps the election (core/payroll.ts `skbbkSubject`); the amount clause stays beside it
+   * because every payslip written before the stamp answers `null` and must render exactly as it does now.
+   */
+  it('prints the SKBBK line on the ELECTION, not on the amount', async () => {
+    const zero = { ...data, socsoSkbbk: 0 };
+    // 1. Stamped subject, contributed nothing this run ⇒ the line prints, at 0.00. THE FIX.
+    expect(drawnText(await renderPayslipPdf({ ...zero, socsoSkbbkSubject: true }, labels))).toContain(labels.skbbk);
+    // 2. Stamped NOT subject ⇒ no line. An absent box asserts nothing, which is the truth here.
+    expect(drawnText(await renderPayslipPdf({ ...zero, socsoSkbbkSubject: false }, labels))).not.toContain(labels.skbbk);
+    // 3. NO STAMP — every payslip that exists today. Unchanged: the amount decides, so a historical
+    //    document neither grows a line nor loses one, and its deduction box still adds up to its total.
+    expect(drawnText(await renderPayslipPdf(zero, labels))).not.toContain(labels.skbbk);
+    expect(drawnText(await renderPayslipPdf({ ...zero, socsoSkbbk: 12.5 }, labels))).toContain(labels.skbbk);
+    // 4. …and a figure that went negative is never hidden by the election (Class B again).
+    expect(
+      drawnText(await renderPayslipPdf({ ...zero, socsoSkbbk: -12.5, socsoSkbbkSubject: false }, labels)),
+    ).toContain(labels.skbbk);
+  });
+
+  /**
+   * a96d320c rev 2 — the ROUTE half of the same fix: both PDF routes read the stamp through
+   * `buildPayslipPdfData`, so neither can decide the question for itself.
+   */
+  it('reads the SKBBK election off the payslip snapshot, never off anything else', async () => {
+    const row = {
+      employee: 'Aisyah Rahman', employeeCode: 'EMP-001', company: 'Demo Sdn Bhd', companyReg: null,
+      payPeriod: '2026-06', basic: 6500, allowance: 0, overtime: 0, bonus: 0, gross: 6500,
+      otherDeductions: 0, totalDeductions: 749.65, net: 5750.35, employerCost: 7441.55, daysWorked: 22,
+    };
+    const borne = { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' } as const;
+    expect(
+      buildPayslipPdfData({ ...row, statutory: { socsoSkbbk: 0, skbbkSubject: true } }, borne).socsoSkbbkSubject,
+    ).toBe(true);
+    expect(
+      buildPayslipPdfData({ ...row, statutory: { socsoSkbbk: 0, skbbkSubject: false } }, borne).socsoSkbbkSubject,
+    ).toBe(false);
+    // A slip written before the stamp cannot answer, and `null` is not `false`: it is what sends the
+    // renderer back to the amount clause.
+    expect(buildPayslipPdfData({ ...row, statutory: { socsoSkbbk: 0 } }, borne).socsoSkbbkSubject).toBeNull();
+    // A jsonb blob is not a type: a value this version does not understand is not guessed at.
+    expect(
+      buildPayslipPdfData({ ...row, statutory: { socsoSkbbk: 0, skbbkSubject: 'yes' } }, borne).socsoSkbbkSubject,
+    ).toBeNull();
   });
 
   it('keeps the `sub` slot: the day count still rides beside an unpaid-leave line', async () => {
