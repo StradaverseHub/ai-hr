@@ -1,0 +1,136 @@
+<meta charset="utf-8">
+<title>Payslips in Tamil, Chinese and Thai — what they print today</title>
+<!--
+  5b2a7f0f. Measured 2026-09-23 on main.
+  lib/payslip-pdf.ts:544 `.replace(/[^\x20-\x7E\xA0-\xFF]/g, '?')` — the Latin-1 fold. Everything outside
+  Latin-1 becomes a question mark.
+  Counted across the catalogue: of 65 payslip strings, 57 unprintable in ta/th/zh, 52 in vi, 10 in ms.
+  ADR-0036:49-51 already records the intent: "phase 1 uses the built-in Helvetica (WinAnsi) ... Embedding
+  a Unicode font (Noto) is the follow-up." This is that follow-up.
+  pdf-lib ^1.17.1 is the only PDF dependency; @pdf-lib/fontkit is NOT installed and is required for
+  embedding a custom font (and for subsetting).
+  The other renderers (ea-pdf, cp22, cp39, borang-a, borang-8a, tp1, tp3) carry the same fold but are only
+  ever produced in en/ms, so they are unaffected.
+  Real strings taken from messages/{en,zh,ta}.json.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1060px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .paper{border:1px solid var(--rule);border-radius:6px;background:#fff;padding:11px 13px}
+ .paper.b{border-color:#e4c2bd}
+ .paper.a{border-color:#bcdccb}
+ .band{background:var(--primary);color:#fff;font-size:8.5px;font-weight:700;letter-spacing:.06em;padding:4px 8px;margin:-11px -13px 8px;border-radius:5px 5px 0 0}
+ .r{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #f3f4f9}
+ .r:last-child{border-bottom:none}
+ .r .k{color:var(--mf)}
+ .r b{font-weight:700}
+ .q{color:var(--bad)}
+ .net{background:var(--primary);color:#fff;display:flex;justify-content:space-between;padding:7px 10px;border-radius:4px;margin-top:8px;font-size:12px;font-weight:700}
+ .nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:4px}
+ .n{border:1px solid var(--rule);border-radius:7px;padding:9px 6px;text-align:center}
+ .n.hot{border-color:#e4c2bd;background:#fdf6f5}
+ .n b{display:block;font-size:17px}
+ .n span{font-size:10px;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>The payslip in Chinese and Tamil &mdash; what it actually prints</h1>
+  <p class="sub">Not a translation problem. The document physically cannot draw these letters.</p>
+
+  <div class="sec">
+    <h2><b>Today</b> vs <b>after</b> &mdash; the same payslip, Chinese</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">What your employee receives today</p>
+          <div class="paper b">
+            <div class="band">?? &nbsp;(Earnings)</div>
+            <div class="r"><span class="k q">????</span><b>4,500.00</b></div>
+            <div class="r"><span class="k q">????</span><b>5,376.50</b></div>
+            <div class="r"><span class="k q">????</span><b>611.75</b></div>
+            <div class="net"><span class="q">????</span><span>4,764.75</span></div>
+          </div>
+          <p class="note">Every number is correct. Every word is a question mark.</p>
+        </div>
+        <div>
+          <p class="tag a">After</p>
+          <div class="paper a">
+            <div class="band">收入 &nbsp;(Earnings)</div>
+            <div class="r"><span class="k">基本工资</span><b>4,500.00</b></div>
+            <div class="r"><span class="k">应发工资</span><b>5,376.50</b></div>
+            <div class="r"><span class="k">扣除合计</span><b>611.75</b></div>
+            <div class="net"><span>实发工资</span><span>4,764.75</span></div>
+          </div>
+          <p class="note">The same words your screens already show &mdash; the translations exist, the
+            document just could not draw them.</p>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px"><b>Tamil is the same story:</b>
+        <span class="q">????? ??????</span> instead of <b>அடிப்படை சம்பளம்</b>,
+        <span class="q">???? ??????</span> instead of <b>நிகர ஊதியம்</b>.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>How much of the payslip</b> &mdash; of 65 pieces of text</h2>
+    <div class="bd">
+      <div class="nums">
+        <div class="n hot"><b>57</b><span>Tamil</span></div>
+        <div class="n hot"><b>57</b><span>Chinese</span></div>
+        <div class="n hot"><b>57</b><span>Thai</span></div>
+        <div class="n hot"><b>52</b><span>Vietnamese</span></div>
+        <div class="n"><b>10</b><span>Malay</span></div>
+      </div>
+      <p class="note">English is unaffected. Malay loses only a handful of accented words.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>What we&rsquo;ll do</b> &mdash; the step that was always planned</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">When the payslip was first built we wrote down that it used a
+        basic built-in font covering only the Latin alphabet, and that carrying a proper font was the
+        follow-up. Nothing has revisited it since. This is that follow-up.</p>
+      <div class="okbox">
+        <b>We will carry a font that contains these letters, and put only the characters each payslip
+        actually uses into the file.</b> A payslip uses a few hundred distinct characters, not the tens of
+        thousands a full Chinese font contains &mdash; so an English payslip stays exactly the size it is
+        today, and a Chinese one grows by a few tens of kilobytes rather than megabytes.
+      </div>
+      <p class="note"><b>Nothing about the figures changes.</b> Not one amount, total or calculation. This
+        is only which letters the document is able to draw.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Two things worth knowing</h3>
+    <p><b>Your government forms are not affected and are not being touched.</b> EA, CP22, CP39, Borang A,
+      Borang 8A, TP1 and TP3 are only ever produced in English or Malay. Nothing you file with LHDN, EPF or
+      SOCSO changes.</p>
+    <p><b>If you would rather not carry the font at all</b>, the alternative is to stop offering the payslip
+      in the four languages it cannot print, so an employee gets a correct English one instead of a page of
+      question marks. That is an hour of work rather than a day. Reject this and say so, and we will do
+      that instead.</p>
+  </div>
+</div>

@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<title>Extended-hours Replacement Leave — buildable, but it converts cash into leave</title>
+<!--
+  928f0454. Measured 2026-09-23 on main and on PRODUCTION.
+  core/toil.ts:503-506 RL_ELIGIBLE_DAY_TYPES = {'rest_day','holiday'}: the workday exclusion is a NAMED
+  engine rule (RL Control Engine 0113), commented "A plain workday's OT is cash-only ... banking a workday
+  is not permitted". PREMIUM_MULT (:197) = {workday: 1.5, rest_day: 2, holiday: 3} — the workday multiplier
+  already exists, it is only banking that is refused.
+  ⚠️ MONEY: core/toil.ts:1595 — "A credit suppresses its pay (EXCLUDE_TOIL_BANKED_DAYS)". A credit does not
+  sit alongside the overtime; it replaces it.
+  The consent gate already exists: firstScheduleConsent (:529) is "explicit per-election consent to
+  substitute TOIL for the statutory cash OT premium ... required (with the company toggle)" for a
+  First-Schedule-eligible (<= wage ceiling) employee. The request does not mention consent at all.
+  accrualBasis 'premium_equivalent' (:195) banks worked time UPLIFTED by the day-type multiplier.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1100px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .scr{border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+ .sb{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:600}
+ .row{display:flex;justify-content:space-between;gap:10px;padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f2f3f8}
+ .row:last-child{border-bottom:none}
+ .row .k{color:var(--mf)}
+ .refuse{padding:9px 11px;font-size:11.5px;color:var(--bad);background:#fdf6f5}
+ .tog{display:inline-block;width:26px;height:14px;border-radius:99px;background:#cfd0dc;position:relative;vertical-align:middle}
+ .tog.on{background:var(--primary)}
+ .tog i{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:99px;background:#fff}
+ .tog.on i{left:14px}
+ table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:4px}
+ th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+ th{background:#f6f7fb;font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ th:first-child,td:first-child{text-align:left}
+ td.loss{background:#fdf6f5;color:var(--bad);font-weight:700}
+ td.keep{background:#f4faf6;color:var(--ok);font-weight:700}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Extended-hours Replacement Leave &mdash; we can build it, and you should know what it costs</h1>
+  <p class="sub">A credit does not sit beside the overtime. It replaces it.</p>
+
+  <div class="sec">
+    <h2><b>What you asked for</b> &mdash; and the new settings</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <div class="scr">
+            <div class="sb">Leave Credit &rsaquo; Add credit &mdash; today</div>
+            <div class="row"><span class="k">Date worked</span><span>Tue 22 Sep 2026</span></div>
+            <div class="row"><span class="k">Kind of day</span><span>Ordinary working day</span></div>
+            <div class="refuse">This is an ordinary working day for this employee. Only a rest day, off
+              day or public holiday can earn a Leave Credit.</div>
+          </div>
+        </div>
+        <div>
+          <div class="scr">
+            <div class="sb">Rules &rsaquo; Extended hours on working day &mdash; new</div>
+            <div class="row"><span class="k">Enabled</span><span><span class="tog"><i></i></span> off by default</span></div>
+            <div class="row"><span class="k">Half-day threshold</span><span>4 hours</span></div>
+            <div class="row"><span class="k">Full-day threshold</span><span>8 hours</span></div>
+            <div class="row"><span class="k">Break deduction after shift end</span><span>0 min</span></div>
+            <div class="row"><span class="k">Grace period before counting</span><span>0 min</span></div>
+          </div>
+          <p class="note">Per company, off unless somebody turns it on &mdash; so nothing changes for anyone
+            until you choose it.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>⚠️ The part that is not in your request</b> &mdash; the employee is paid less</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">Taking a Leave Credit for a day <b>cancels that day&rsquo;s
+        overtime pay</b> &mdash; it is one or the other, never both. On a rest day or public holiday that is
+        a fair swap. On an ordinary working day the arithmetic is different:</p>
+      <table>
+        <tr><th>8 extra hours on an ordinary working day</th><th>What the employee gets</th></tr>
+        <tr><td>Paid as overtime today (1.5&times;)</td><td class="keep">12 hours of pay</td></tr>
+        <tr><td>Your proposed credit (&ge; 8 hours &rarr; 1.0 day)</td><td class="loss">8 hours of leave</td></tr>
+        <tr><td>Difference</td><td class="loss">the employee loses a third</td></tr>
+      </table>
+      <div class="warnbox">
+        <b>This is why the system refuses it today.</b> The block is not an oversight &mdash; it is a named
+        rule, and the code says in as many words that a plain working day&rsquo;s overtime is cash only.
+        For staff earning under the statutory ceiling, overtime pay is an entitlement; swapping it for less
+        time off is not something we will let a setting do quietly.
+      </div>
+      <div class="okbox">
+        <b>The good news: you already have the machinery for doing it properly.</b> For rest-day and holiday
+        credits the system already requires <b>both</b> the company switch <b>and</b> that individual
+        employee&rsquo;s recorded agreement before it will swap statutory overtime pay for time off. The new
+        working-day credit will ride that same gate rather than go round it &mdash; so an employee who has
+        not agreed keeps their overtime pay, and one who has agreed gets the credit.
+      </div>
+      <p class="note"><b>And there is a fairer setting already built.</b> The system can bank the extra time
+        <i>uplifted by the overtime rate</i> &mdash; 8 hours worked becomes 12 hours banked, so nobody loses
+        anything by choosing leave. Your flat 0.5 / 1.0 day tiers cannot express that. We will build your
+        tiers as you specified, and leave the uplifted option available, so you can choose per company.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What we will build, and what we will not</h3>
+    <p><b>We will build it:</b> the toggle and four thresholds per company, hours counted from shift end
+      only, rounded down to your tiers, one credit per employee per date, and no credit at all under the
+      half-day threshold.</p>
+    <p><b>We will not let it bypass consent.</b> Where the law makes overtime pay an entitlement, the credit
+      needs the employee&rsquo;s recorded agreement &mdash; the same gate rest-day credits already use. If
+      you want that changed, it is a decision for you and your advisers, not a setting we will add quietly.</p>
+    <p><b>Nothing changes until you switch it on.</b> Default off, per company, and every existing credit,
+      balance and payslip is untouched.</p>
+  </div>
+</div>
