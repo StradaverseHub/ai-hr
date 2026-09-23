@@ -618,6 +618,60 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(archived).toContain('statusArchived');
   });
 
+  /**
+   * ADR-0086 (item 0fe1ca2e, r331) — THE SITE REGISTER NO LONGER OFFERS, OR DESCRIBES, A HOLIDAY STATE.
+   *
+   * This case is here rather than in a source-scan file because it is the one place in the suite that
+   * RENDERS this screen against a real database (`renderList`, with `visible()` stripping <script> so the
+   * RSC payload cannot fake a pass — CLAUDE.md §8, "a key is not a screen").
+   *
+   * WHAT WENT, AND WHY IT HAD TO. `location.state` was the TOP rung of the public-holiday state precedence
+   * (location.state → holiday group → employment.work_state → company.default_work_state → national). r331
+   * removed the `location` join from BOTH readers in core/holidays.ts, so nothing functional reads the
+   * column now. The screen nevertheless kept a `<select name="state">` on the edit row AND on the create
+   * form, printed the resolved value back on each row, and closed with
+   * `admin.locations.stateNote` — "A location's state overrides the employee's work state for
+   * public-holiday resolution; leave blank to use the company default." In six locales.
+   *
+   * That sentence was TRUE when it was written and became FALSE the moment the resolver changed. An
+   * operator reading it would set a State expecting public holidays to follow, and nothing would happen —
+   * a worse failure than a dead column, because the screen actively teaches the wrong model. The control,
+   * the read-back and the note are all removed; `location.state` itself is KEPT (db/schema.ts records
+   * why), so the stored value simply stops being editable and stops being advertised.
+   *
+   * NON-VACUITY IS BUILT IN: the fixture creates a real location, so the edit row renders, and the
+   * assertions below check that the controls which SURVIVE are present. Without that, "no name=\"state\""
+   * would also pass on a screen that failed to render a form at all.
+   */
+  it('ADR-0086: the rendered register offers no State control and makes no claim about holiday resolution', async () => {
+    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+    const html = visible(await renderList());
+
+    // The row really is on screen, so the edit form below it really did render.
+    expect(html, 'the fixture location renders').toContain('Headquarters');
+    expect(html).toContain(`name="locationId" value="${loc}"`);
+    // …and the controls ADR-0086 KEEPS are there, which is what makes the absences below mean something.
+    for (const kept of ['code', 'name', 'country', 'branch']) {
+      expect(count(html, `name="${kept}"`), `the ${kept} control survives`).toBeGreaterThan(0);
+    }
+
+    // ⚠️ THE MUTATION TARGET. Put either <select name="state"> back on app/admin/locations/page.tsx and
+    // the first line fails; restore the <p>{t('stateNote')}</p> and the second does.
+    expect(count(html, 'name="state"'), 'no State control on the edit row or the create form').toBe(0);
+    const en = JSON.parse(read('messages/en.json')) as { admin: { locations: Record<string, string> } };
+    for (const gone of ['state', 'stateNational', 'stateNote', 'calendar', 'calendarNone']) {
+      expect(en.admin.locations[gone], `admin.locations.${gone} is retired from the catalogue`).toBeUndefined();
+    }
+    // A key that is gone from en.json cannot render in ANY locale (test/i18n-coverage.test.ts check A keeps
+    // the other five in step with it), so the false sentence is unreachable rather than merely unrendered.
+    expect(html).not.toMatch(/overrides the employee|public-holiday resolution/i);
+
+    // The page must also stop READING the column back at the operator: `stateLabel(l.state)` printed
+    // t('stateNational') — "National (default)" — for a site with NO state, which asserted a resolution
+    // rule rather than showing nothing.
+    expect(html).not.toContain('National (default)');
+  });
+
   it('the LIST as a group admin: read rows with Edit, the Add button, the label chip, no inline boxes; the clocking register first', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const { id: a } = await createClockingLocation(ADMIN, { name: 'Gate A', lat: HQ.lat, lng: HQ.lng, radiusM: 200, locationId: loc, reportLabel: 'GA' });

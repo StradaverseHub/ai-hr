@@ -275,7 +275,24 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
         .limit(1);
       if (!before) throw new Error('Location not found');
       const { companyId, ...beforeAudit } = before;
-      const state = cleanState(p.state, await companyCountryOf(tx, companyId));
+      /**
+       * ⚠️ ADR-0086 (0fe1ca2e, r331) — ABSENT MEANS KEEP, and it has to, or this Save silently erases data.
+       *
+       * The site register stopped offering a State control in r331 (nothing reads `location.state` any
+       * more, so a control for it would have been a control that lies). `updateLocationAction` therefore
+       * posts no `state` — and until this line it still passed `fd.get('state') || null`, i.e. an explicit
+       * NULL, so the FIRST Save of any location would have wiped the stored state. That column is
+       * deliberately kept (db/schema.ts) as the record of what a site was supplying before the r328 carry
+       * moved it onto `employment.work_state`; erasing it on an unrelated rename would have destroyed
+       * exactly the history the decision to keep it was protecting.
+       *
+       * So the distinction is now the ordinary partial-update one, which `state?: string | null` already
+       * expressed and nothing honoured: `undefined` = not supplied, keep what is there; `null` = clear it.
+       * A SUPPLIED value is still cleaned and still validated against the company's country — five cases in
+       * test/state-vocabulary-scoping.test.ts drive that through this service, which is why `cleanState`
+       * remains genuinely wired and tested even though no screen posts one any more.
+       */
+      const state = p.state === undefined ? before.state : cleanState(p.state, await companyCountryOf(tx, companyId));
       // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
       // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
       const branch = await cleanBranch(tx, p.branch, before.branch);

@@ -6,7 +6,6 @@ import { listCompanies } from '@/core/read';
 import { listLocations, listUnmappedBranches } from '@/core/location';
 import { listClockingLocations } from '@/core/clocking-location';
 import { listProfileOptions } from '@/core/profile-options';
-import { countryPacks } from '@/localization/registry';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
@@ -66,12 +65,10 @@ export default async function LocationsPage({
     if (arr) arr.push(l);
     else byCompany.set(l.companyId, [l]);
   }
-  // Rung 5c — the state pick-list comes from the country packs via the registry (union-read, the
-  // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company). MY-only
-  // today ⇒ byte-identical to the old MY_STATES import.
-  const stateOptions = countryPacks().flatMap((p) => p.states);
-  // Country/state are rendered through label maps (not raw strings) so a value isn't shown untranslated.
-  const stateLabel = (st: string | null) => (st ? st : t('stateNational'));
+  // ADR-0086: `stateOptions` (rung 5c's `countryPacks().flatMap(p => p.states)` pick-list) and
+  // `stateLabel` stood here. Both existed only for the State control above, and went with it. This page no
+  // longer consumes country-pack vocabulary at all; core/location.ts's `cleanState` still validates the
+  // stored column through the registry, which is what test/state-vocabulary-scoping.test.ts pins.
 
   // ADR-0070 — Clocking Location Management: a SEPARATE site register from the holiday-calendar
   // `location` list above (see ADR-0070 §1 for why). f9afd1ce (migration 0459): a SHARED, TENANT-LEVEL
@@ -400,16 +397,8 @@ export default async function LocationsPage({
                         <Field label={t('country')}>
                           <input name="country" defaultValue={l.country} required className={`${inputCls} w-16 uppercase`} />
                         </Field>
-                        <Field label={t('state')}>
-                          <select name="state" defaultValue={l.state ?? ''} className={`${inputCls} min-w-[8rem]`}>
-                            <option value="">{t('stateNational')}</option>
-                            {stateOptions.map((st) => (
-                              <option key={st} value={st}>
-                                {st}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
+                        {/* ADR-0086 (0fe1ca2e, r331): the State picker was here. See the note above the
+                            create form below for why it is gone rather than merely disabled. */}
                         {/* ADR-0086 (0fe1ca2e, r331): the Calendar picker was here. A work site is no
                             longer one of the ways a holiday calendar is chosen — the calendar is picked on
                             the PERSON (Personnel → Holiday calendar), and `location.holiday_group_id` is
@@ -430,10 +419,17 @@ export default async function LocationsPage({
                             ))}
                           </select>
                         </Field>
+                        {/* ADR-0086: `· {stateLabel(l.state)}` stood here and went with the control. It was
+                            not merely stale: `stateLabel` rendered the "stateNational" label for a NULL state
+                            (the key name is spelled WITHOUT its t() call on purpose — test/i18n-coverage.test.ts
+                            check C scans this file's comments too, and a quoted call would have demanded a key
+                            this change deletes), so a
+                            site with no state ASSERTED "National" — a resolution rule that no longer exists —
+                            rather than showing nothing. With the picker gone the value is also frozen, so it
+                            could only ever be misread, never corrected. Anyone who needs to see what a site
+                            was carrying has scripts/report-location-criteria-usage.ts, which prints it. */}
                         <span className="pb-2 text-xs text-muted-foreground">
                           {t('headcountLabel', { count: l.headcount })}
-                          {' · '}
-                          {stateLabel(l.state)}
                         </span>
                         <button className={btnGhost}>{t('save')}</button>
                       </form>
@@ -453,7 +449,9 @@ export default async function LocationsPage({
                 </ul>
               )}
 
-              <form action={createLocationAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6">
+              {/* ADR-0086: five cells now (code · name · country · branch · Add). It was seven before r331 —
+                  the Calendar picker and the State picker each took one and both are retired. */}
+              <form action={createLocationAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-5">
                 <input type="hidden" name="companyId" value={c.id} />
                 <Field label={t('code')}>
                   <input name="code" required placeholder={t('codePlaceholder')} className={`${inputCls} uppercase`} />
@@ -464,16 +462,24 @@ export default async function LocationsPage({
                 <Field label={t('country')}>
                   <input name="country" defaultValue="MY" className={`${inputCls} uppercase`} />
                 </Field>
-                <Field label={t('state')}>
-                  <select name="state" defaultValue="" className={inputCls}>
-                    <option value="">{t('stateNational')}</option>
-                    {stateOptions.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {/* ⚠️ ADR-0086 (0fe1ca2e, r331) — THE STATE PICKER IS GONE, AND SO IS THE SENTENCE THAT
+                    EXPLAINED IT. `location.state` was the TOP rung of the public-holiday state precedence
+                    (location.state → holiday group → employment.work_state → company.default_work_state →
+                    national). r331 removed the `location` join from BOTH readers in core/holidays.ts, so
+                    nothing functional reads the column any more: the only remaining readers are
+                    core/location.ts's own CRUD (it still cleans and stores what is there) and a report
+                    script that prints it.
+
+                    A control whose stored value changes nothing is worse than a dead column — an operator
+                    would set a State expecting public holidays to follow, and nothing would happen. The
+                    page also PRINTED `admin.locations.stateNote` ("A location's state overrides the
+                    employee's work state for public-holiday resolution…"), in six locales, which became an
+                    outright false statement the moment the resolver changed. Both are removed.
+
+                    THE COLUMN STAYS (db/schema.ts): it is the record of what a site was supplying before
+                    the r328 carry moved that state onto `employment.work_state`, `cleanState` stays wired
+                    on the write path, and retiring the column is a separate, smaller decision than the one
+                    ADR-0086 makes. It simply stops being editable and stops being advertised. */}
                 <Field label={t('branch')}>
                   <select name="branch" defaultValue="" className={inputCls}>
                     <option value="">{t('branchNone')}</option>
@@ -509,7 +515,6 @@ export default async function LocationsPage({
         })
       )}
 
-      <p className="px-1 text-xs text-muted-foreground">{t('stateNote')}</p>
     </div>
   );
 }

@@ -2426,8 +2426,10 @@ export async function createLocationAction(fd: FormData) {
       code: String(fd.get('code') ?? ''),
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
-      state: (fd.get('state') as string) || null,
-      // ADR-0086 (0fe1ca2e, r331) — a `holidayGroupId` field was posted here and is retired with
+      // ADR-0086 (0fe1ca2e, r331) — a `state` field was posted here too. `location.state` is no longer read
+      // by anything, so the register stopped offering the control; a new site simply has no state. The
+      // service still accepts and validates one (core/location.ts `cleanState`) for its own callers.
+      // ADR-0086 — a `holidayGroupId` field was posted here and is retired with
       // `location.holiday_group_id` (migration 0484). A site is no longer one of the ways a holiday
       // calendar is chosen; `employment.holiday_group_id` is.
       // 1fff489c — the Branch this location serves. Blank = not mapped (the field is optional).
@@ -2447,7 +2449,10 @@ export async function updateLocationAction(fd: FormData) {
       code: String(fd.get('code') ?? ''),
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
-      state: (fd.get('state') as string) || null,
+      // ⚠️ ADR-0086 — `state` is DELIBERATELY NOT PASSED, not passed as null. The form no longer has the
+      // field, so `fd.get('state')` is null, and `|| null` turned "the operator did not touch it" into
+      // "clear it" — wiping the stored state on the first unrelated rename. `updateLocation` reads an
+      // absent `state` as "keep"; see the note on that line for why the column is worth keeping.
       branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {

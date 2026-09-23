@@ -8,6 +8,8 @@
  * see the test itself. Plus a byte-identical compat golden test (null-location path).
  */
 import { and, eq, isNull } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -132,6 +134,54 @@ describe('location master data (ADR-0054)', () => {
     await archiveLocation(a, { locationId: id2 });
     await restoreLocation(a, { locationId: id });
     expect((await listLocations(a, [b.companyId])).map((l) => l.id)).toContain(id);
+  });
+
+  /**
+   * ADR-0086 (item 0fe1ca2e, r331) — AN ABSENT `state` MEANS KEEP, AND THE SAVE BUTTON DEPENDS ON IT.
+   *
+   * r331 removed the State control from the site register: nothing reads `location.state` any more, so
+   * offering one would have been offering a control that changes nothing while the screen's own note
+   * claimed it drove public holidays. The column is KEPT (db/schema.ts) as the record of what each site
+   * was supplying before the r328 carry moved that state onto `employment.work_state`.
+   *
+   * THE DEFECT THAT CREATED, and what this pins: `updateLocationAction` passed
+   * `state: fd.get('state') || null`. With the field gone from the form that is an explicit NULL on every
+   * Save, so renaming a site would have silently erased its state — destroying precisely the history the
+   * decision to keep the column was protecting, on a screen that no longer mentions state at all.
+   *
+   * ⚠️ IT LIVES IN THE CONTRACT BETWEEN TWO FILES, so it is pinned across both (CLAUDE.md §8): the service
+   * must treat absent as keep, AND the action must actually omit it. Either half alone is satisfiable by a
+   * change that still loses the data.
+   */
+  it('ADR-0086: updating a location WITHOUT a state keeps the stored one; an explicit null clears it', async () => {
+    const a = adminCtx(b);
+    const { id } = await createLocation(a, { companyId: b.companyId, code: 'KEEP', name: 'Keeper', state: 'Sarawak' });
+
+    // Exactly the shape the register's Save posts now — code / name / country / branch, and no state.
+    await updateLocation(a, { locationId: id, code: 'KEEP', name: 'Keeper Renamed' });
+    const afterRename = (await listLocations(a, [b.companyId])).find((r) => r.id === id)!;
+    expect(afterRename.name, 'the rename applied').toBe('Keeper Renamed');
+    expect(afterRename.state, 'an unrelated Save must not erase the state').toBe('Sarawak');
+
+    // …and the caller that MEANS "clear it" still can: undefined and null are different answers.
+    await updateLocation(a, { locationId: id, code: 'KEEP', name: 'Keeper Renamed', state: null });
+    expect((await listLocations(a, [b.companyId])).find((r) => r.id === id)!.state).toBeNull();
+  });
+
+  it('ADR-0086: the register’s own action omits `state` rather than posting null', () => {
+    // The other half of the contract above. `updateLocation` treating absent as "keep" is only protective
+    // if the action stops sending a value — and the action reading a field the form no longer renders is
+    // exactly how this returns.
+    const src = readFileSync(resolvePath(__dirname, '..', 'app/admin/actions.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    const update = src.slice(src.indexOf('export async function updateLocationAction'));
+    const body = update.slice(0, update.indexOf('export async function', 1));
+    expect(body, 'the Save must not post a state').not.toContain("fd.get('state')");
+    // …and the fields it DOES still post, so this cannot pass on an action that stopped posting anything.
+    for (const kept of ['code', 'name', 'country', 'branch']) {
+      expect(body, `${kept} is still posted`).toContain(`fd.get('${kept}')`);
+    }
   });
 
   it('appends location.created / updated / archived / restored events', async () => {
