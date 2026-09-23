@@ -23,6 +23,7 @@ import { formatMoney, formatRate } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
+import { payslipSkbbkLineShown, payslipSkbbkSubject } from '../core/payslip-skbbk-line';
 import { payslipZakatLine } from '../core/payslip-zakat-line';
 // 6b134681 / 417d4937 — the ONE derivation of "which named pay items explain this figure, and how is a
 // line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
@@ -84,6 +85,14 @@ export type PayslipPdfData = {
   epfEmployee: number;
   socsoEmployee: number;
   socsoSkbbk: number;
+  /**
+   * a96d320c rev 2 — DOES THIS PAYSLIP RECORD THAT THE EMPLOYEE IS SUBJECT TO SKBBK?
+   *
+   * `null` on every payslip written before the kernel started stamping it (core/payroll.ts
+   * `skbbkSubject`), which is every payslip that exists today — and `null` is why the row predicate below
+   * keeps its amount test as well. See `dedRows` for the whole argument.
+   */
+  socsoSkbbkSubject?: boolean | null;
   eisEmployee: number;
   pcb: number;
   cp38: number;
@@ -347,6 +356,10 @@ export function buildPayslipPdfData(
     epfEmployee: eb.employee.epf,
     socsoEmployee: eb.employee.socso,
     socsoSkbbk: eb.employee.skbbk,
+    // a96d320c rev 2 — the payslip's OWN record of the SKBBK election, read like every other figure here:
+    // off this slip's snapshot, never off today's `employee_statutory_my` row. Both PDF routes come
+    // through this function, so neither can decide the question for itself.
+    socsoSkbbkSubject: payslipSkbbkSubject(st),
     eisEmployee: eb.employee.eis,
     pcb: eb.employee.pcb,
     cp38: n(st.cp38),
@@ -626,9 +639,25 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const paintBox = (pg: PDFPage, x: number, top: number, p: BoxPlan): number => {
     const bodyH = p.rows.reduce((s, r) => s + r.h, 0);
     const h = boxHeight(p);
+    const totalTop = top - BOX_HEAD_H - bodyH;
+    // a96d320c rev 2 — THE NOTCH THE REPORTER CIRCLED, FOUR TIMES, IN THE SAME PLACE EACH TIME.
+    //
+    // Both BAND rectangles are FILLED and have no border of their own, and both are the FULL WIDTH of the
+    // box at the SAME x. Drawn after the outline — which is what this did — a fill paints over the
+    // outline's left and right edges for its own height: a notch out of the border at the top-left and
+    // top-right of every box, and a second pair (plus the bottom edge, when no note follows) around the
+    // total row. Earnings, Deductions, Employer contributions and Payment information: four boxes, one
+    // circle each.
+    //
+    // FIXED BY ORDERING, not by insetting the bands. An inset would have to be derived from `borderWidth`
+    // and would silently stop matching the moment that constant moved; painting the fills first and
+    // stroking the outline last cannot drift, and it is the order `drawGrid` and `drawYtd` use.
+    //
+    // PRE-EXISTING, NOT AN r328 REGRESSION: r328 (a96d320c rev 1) ruled the employee panel and the YTD
+    // table, two blocks that had no rules at all, and did not touch this function.
+    pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color: BAND }); // header band
+    if (p.total) pg.drawRectangle({ x, y: totalTop - BOX_TOTAL_H, width: p.w, height: BOX_TOTAL_H, color: BAND });
     pg.drawRectangle({ x, y: top - h, width: p.w, height: h, borderColor: RULE, borderWidth: 0.8 });
-    // header band
-    pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color: BAND });
     pg.drawLine({
       start: { x, y: top - BOX_HEAD_H }, end: { x: x + p.w, y: top - BOX_HEAD_H },
       thickness: 0.8, color: RULE,
@@ -641,23 +670,30 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     at(pg, p.title.toUpperCase(), tx, top - 13.5, 7.5, bold, INK);
 
     let ry = top - BOX_HEAD_H;
-    for (const r of p.rows) {
+    p.rows.forEach((r, i) => {
       const color = r.muted ? MUTED : INK;
       // The amount sits on the row's FIRST baseline whatever the label does below it, so a column of
       // figures still reads as a column when one description above it took two lines.
-      r.lines.forEach((line, i) => at(pg, line, x + 10, ry - 10.5 - i * LINE_H, 8.5, font, color));
+      r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 10.5 - j * LINE_H, 8.5, font, color));
       atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
       ry -= r.h;
       // a96d320c — EDGE TO EDGE. This rule was inset 6pt either side, so it read as a floating divider
       // between two rows rather than as the line between two cells of one ruled box. The reporter asked
       // for full borders; a box whose own outer border does not meet its row rules is the half-ruled
       // thing they were looking at. Same rule, same colour, same y — it simply reaches the border now.
-      pg.drawLine({ start: { x, y: ry }, end: { x: x + p.w, y: ry }, thickness: 0.5, color: HAIR });
-    }
+      //
+      // a96d320c rev 2 — …EXCEPT UNDER THE LAST ROW OF A BOX THAT HAS NOTHING BELOW IT, where this y IS
+      // the box's bottom border. Payment information is such a box (no total, no note) and it is one of
+      // the four the reporter circled: a 0.5pt HAIR drawn on top of the 0.8pt RULE border washed that
+      // border out to near-white for its whole length, leaving 0.15pt of colour either side. `drawGrid`
+      // and `drawYtd` already say this in as many words — "the LAST row gets no rule under it: that is
+      // the outer border" — and `paintBox` was the one painter that did not.
+      const isBottomBorder = i === p.rows.length - 1 && !p.total && p.noteLines.length === 0;
+      if (!isBottomBorder) pg.drawLine({ start: { x, y: ry }, end: { x: x + p.w, y: ry }, thickness: 0.5, color: HAIR });
+    });
 
-    let by = top - BOX_HEAD_H - bodyH;
+    let by = totalTop;
     if (p.total) {
-      pg.drawRectangle({ x, y: by - BOX_TOTAL_H, width: p.w, height: BOX_TOTAL_H, color: BAND });
       pg.drawLine({ start: { x, y: by }, end: { x: x + p.w, y: by }, thickness: 0.8, color: RULE });
       at(pg, p.total.label.toUpperCase(), x + 10, by - 14, 8, bold, INK);
       atR(pg, p.total.value, x + p.w - 10, by - 14, 9.5, bold, p.total.color ?? INK);
@@ -669,10 +705,25 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
 
   // ─── the rows this payslip prints ───
   const earnRows = earningsRowsOf(d, t, rate);
+  // THE FOUR STATUTORY LINES PRINT AT 0.00 AND THAT IS NOT AN OVERSIGHT. The reporter asked for empty
+  // lines to go; they wrote the exception themselves ("unless a particular statutory or payslip
+  // requirement specifically requires a zero-value item to be displayed") and approved its use here in
+  // writing. CLAUDE.md §8: an absent box asserts nothing, `0.00` asserts the money does not exist. "PCB
+  // 0.00" tells the employee no tax was taken this month; a payslip that simply does not mention tax
+  // tells them nothing, and that is the line they read when they file their own return. Do not "tidy"
+  // these four to match the earnings rule — the difference between the two boxes is the point.
   const dedRows: Row[] = [
     { label: t.epf, amount: d.epfEmployee },
     { label: t.socso, amount: d.socsoEmployee },
-    ...(d.socsoSkbbk > 0 ? [{ label: t.skbbk, amount: d.socsoSkbbk }] : []),
+    // a96d320c rev 2 — SKBBK IS AN ELECTION, SO TEST THE ELECTION. `> 0` was being asked to mean "this
+    // employee has no SKBBK", which it cannot: it conflated that with "has SKBBK, contributed 0.00 this
+    // run", and on the second of those the zero is the assertion — exactly what the three lines around it
+    // are kept for. The predicate is `core/payslip-skbbk-line.ts`, shared with the three payslip screens
+    // that carried the same defect, and its docblock carries the whole argument (including why the amount
+    // clause can never be dropped: every payslip issued before the stamp answers `null`).
+    ...(payslipSkbbkLineShown(d.socsoSkbbkSubject ?? null, d.socsoSkbbk)
+      ? [{ label: t.skbbk, amount: d.socsoSkbbk }]
+      : []),
     { label: t.eis, amount: d.eisEmployee },
     { label: t.pcb, amount: d.pcb },
     ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
@@ -1127,8 +1178,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // reserves for it. The header band and title are drawn exactly as `paintBox` draws a section head, so
     // this block and the Earnings box beside it are now the same object.
     const h = BOX_HEAD_H + 14 + rows.length * 15;
-    pg.drawRectangle({ x: M, y: top - h, width: CONTENT_W, height: h, borderColor: RULE, borderWidth: 0.8 });
+    // a96d320c rev 2 — BAND FIRST, OUTLINE LAST, the same ordering `paintBox` now uses and for the same
+    // reason: this band is a FILLED full-width rectangle with no border of its own, so stroking the
+    // outline before it left a notch in the border at the top-left and top-right of the YTD box too.
+    // The reporter circled the four `paintBox` boxes, not this one — it shipped in r328 with the defect
+    // already in it, and fixing only what was circled would have left one box on the page out of step.
     pg.drawRectangle({ x: M, y: top - BOX_HEAD_H, width: CONTENT_W, height: BOX_HEAD_H, color: BAND });
+    pg.drawRectangle({ x: M, y: top - h, width: CONTENT_W, height: h, borderColor: RULE, borderWidth: 0.8 });
     pg.drawLine({
       start: { x: M, y: top - BOX_HEAD_H }, end: { x: c3, y: top - BOX_HEAD_H },
       thickness: 0.8, color: RULE,
@@ -1180,6 +1236,31 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
  * on a document that carries money. So the named lines replace the lumped row only when they reconcile to
  * the stored figure; otherwise the grouped row stands, exactly as it did before this redesign.
  *
+ * a96d320c rev 2 — AND AN EARNING LINE WITH NOTHING ON IT IS NOT PRINTED AT ALL.
+ *
+ * "A payslip that is as short as the month it describes": a person paid only their basic salary got
+ * Allowances 0.00, Overtime 0.00 and Bonus 0.00 under it, and the reporter asked for those three to go.
+ *
+ * THE TEST IS THE STORED FIGURE ON THIS PAYSLIP, and nothing else. `d.allowance` / `d.overtime` /
+ * `d.bonus` come off the payslip's own snapshot through `payslipDisplayEarnings`; this function reads no
+ * `pay_component` flag, no attendance and no clock, so a month that paid no overtime keeps saying so for
+ * ever, whatever is configured later.
+ *
+ * `!== 0`, NOT `> 0`. A figure that somehow went negative is money the reader must be able to see and
+ * question; a line that silently vanishes leaves nothing to question, and would also make the rows stop
+ * adding up to the TOTAL EARNINGS printed under them. (docs/audits/0085-delta-keys-sign-inventory.md
+ * Class B is this exact failure, found on the statutory side of the same document.)
+ *
+ * THE BASIC SALARY ROW IS NOT SUBJECT TO THIS, DELIBERATELY. It is the one row that says what the
+ * employment pays rather than what a pay item added: on an additional (bonus-only) run "Basic salary
+ * 0.00" is the statement that this run did not pay the monthly wage, and without it the Earnings box of
+ * such a payslip could hold nothing but its own total. The approved plan names Allowance, Overtime,
+ * Bonus and "other pay items"; the wage is none of those.
+ *
+ * THE FOUR STATUTORY DEDUCTION LINES ARE NOT SUBJECT TO IT EITHER — see `dedRows` above, where EPF,
+ * SOCSO, EIS and PCB print at 0.00 on purpose. The reporter put that exception in writing and approved
+ * it: on those four the zero IS the assertion (CLAUDE.md §8).
+ *
  * 6b134681 extends the SAME rule, unchanged, to Overtime and Bonus. Those two were the earnings figures
  * that still printed as bare category words: a one-off keyed as "B0001 — ANGPOW" is additional
  * remuneration, so it lands in the bonus bucket, and the document said "Bonus RM500.00" — the pay item's
@@ -1228,16 +1309,22 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
       // its label from `otLegs` rather than from a stored name, because it is a rule of the Employment
       // Act rather than a pay item somebody keyed.
       for (const l of named) {
+        // a96d320c rev 2 — an item that contributed nothing to this figure is not a row about it. Both
+        // producers already drop a zero contribution (`payItemLinesForBuckets`, `storedOvertimeLines`), so
+        // this changes no document today; it is here because the rule below now depends on it — dropping a
+        // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
+        if (round2(l.amount) === 0) continue;
         rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub: detailSub(l), amount: l.amount });
       }
-    } else {
+    } else if (round2(total) !== 0) {
       rows.push({ label: grouped, amount: total });
     }
   };
   push(d.earningLines, d.allowance, t.allowances);
   push(d.overtimeLines, d.overtime, t.overtime);
   push(d.bonusLines, d.bonus, t.bonus);
-  if (d.claim > 0) rows.push({ label: t.claim, amount: d.claim });
+  // Same rule, written the same way since 3c473773: a Claim box appears when there is a claim.
+  if (d.claim !== 0) rows.push({ label: t.claim, amount: d.claim });
   return rows;
 }
 

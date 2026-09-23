@@ -5965,6 +5965,24 @@ export async function generatePayslips(
               ? { hrdfSubject: false, hrdfSubjectSet: true, hrdfSubjectSuppressed: 'company_not_registered' }
               : { hrdfSubject }
             : {}),
+          // a96d320c rev 2 — SNAPSHOT THE SKBBK ELECTION, because a payslip could not say whether it had one.
+          //
+          // `subject_to_skbbk` is a real per-employee boolean (db/schema.ts), and when it is off the engine
+          // returns 0 for the leg (localization/my/payroll.ts `skbbkOn`). Every surface that prints the
+          // payslip therefore used `socsoSkbbk > 0` to mean "this employee has no SKBBK" — which conflates
+          // it with "has SKBBK, contributed 0.00 this run", and on those the zero is the assertion the
+          // other four statutory lines are kept for (CLAUDE.md §8). docs/audits/0085-delta-keys-sign-inventory.md
+          // records the same defect as Class B, the class that makes a line VANISH from a money document.
+          //
+          // The answer was nowhere on the slip: only `employerBears.skbbk` was stamped, and that says who
+          // FUNDED the leg, not whether there is one. So it is stamped here, from `stOpts.subjectToSkbbk`
+          // — the effective election this run actually computed under, not today's row.
+          //
+          // UNCONDITIONAL, unlike `hrdfSubject` above, and that is the whole point: a reader must be able
+          // to tell `false` (this run says the employee is not subject) from ABSENT (this run predates the
+          // stamp and cannot answer). A conditional stamp would collapse those two into one silence, and
+          // the renderers fall back to the amount test on the second of them.
+          skbbkSubject: stOpts.subjectToSkbbk,
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
