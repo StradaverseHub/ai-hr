@@ -463,6 +463,52 @@ export const shiftDayKindFor = (
 /** Half and Full are both WORKING days; Rest and Off are not. */
 export const isWorkingDayKind = (k: ShiftDayKind): boolean => k === 'full' || k === 'half';
 
+/** b8aa3466 — the three arrays that decide WHICH DAYS are worked, carried as one value so the answer can
+ *  be resolved once and handed to `shiftDayKindFor` rather than reassembled at every call site. */
+export type WeekPattern = {
+  pattern: number[] | null;
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
+};
+
+/** b8aa3466 — how many WORKING weekdays a pattern declares, Full ∪ Half.
+ *
+ *  THE ONE DEFINITION. core/roster.ts and core/shift-arrangement.ts each guard "a backup shift with no
+ *  working pattern makes every unrostered day a rest day" (see core/roster.ts assignEmployeeShift), and
+ *  until 07ebd04d they answered it with two separately-written copies of the same set union. Off and Rest
+ *  are deliberately NOT counted: neither is scheduled work. An all-half-days shift IS walkable and must
+ *  not be rejected. */
+export const weekPatternWorkingDayCount = (p: WeekPattern): number =>
+  new Set([...(p.pattern ?? []), ...(p.halfPattern ?? [])]).size;
+
+/** 07ebd04d — WHOSE WORKING WEEK IS THIS: the Schedule Group's, or the shift's?
+ *
+ *  The approved item moves `weekly_pattern` / `half_pattern` / `off_pattern` off `shift` and on to the
+ *  Schedule Group (`attendance_rule`), because the group is what answers "which days are worked" while the
+ *  shift answers "what hours are worked". This is the ONE place that decides which of the two a reader
+ *  gets, so that every reader behaves identically before and after the data moves: pass the group's triple
+ *  (NULL today — the columns do not exist yet, so every caller resolves the shift, byte for byte) and the
+ *  shift's, and use the result.
+ *
+ *  ⚠️ A GROUP WITH NO WORKING DAY DOES NOT WIN, AND THAT IS THE LOAD-BEARING PART. core/roster.ts
+ *  assignEmployeeShift records why: a pattern that is NULL or empty "matches NOTHING, falls through to
+ *  policyBranch('rest_day')", so an employee under it silently books every working day as a rest day and
+ *  is paid rest-day overtime on ordinary work, with no error anywhere. A group row created without its
+ *  patterns — the single most likely mistake in the migration that moves them — would do exactly that to
+ *  everyone in the group at once. So the READ falls back to the shift, which is the value that is correct
+ *  today, and `source` says which one answered so a report can show it rather than a caller guess.
+ *
+ *  The WRITE side is the other half and is not this function's job: whatever creates a Schedule Group must
+ *  refuse one with no pattern (`weekPatternWorkingDayCount === 0`) in the same statement that creates it,
+ *  or the fallback here is silently papering over a broken row forever. */
+export const weekPatternFor = (
+  group: WeekPattern | null | undefined,
+  shift: WeekPattern,
+): WeekPattern & { source: 'group' | 'shift' } =>
+  group != null && weekPatternWorkingDayCount(group) > 0
+    ? { pattern: group.pattern, halfPattern: group.halfPattern, offPattern: group.offPattern, source: 'group' }
+    : { pattern: shift.pattern, halfPattern: shift.halfPattern, offPattern: shift.offPattern, source: 'shift' };
+
 /** Minutes of the punch that fell inside the shift's declared UNPAID break WINDOWS. Null when the shift
  *  carries no windows — a break scalar alone gives nothing to test the clocking against, so those shifts
  *  keep workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
