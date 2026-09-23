@@ -20,6 +20,7 @@
  * because the decode broke.
  */
 import { randomUUID } from 'node:crypto';
+import { scheduleGroupSectionHref } from '../app/admin/attendance/schedule/sections';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -305,5 +306,48 @@ describe('create: a NEW shift under a week-setting group declares no week of its
 
     const created = (await listShiftsForTenant(a)).find((s) => s.name === 'Brand New Free')!;
     expect((await storedWeek(created.id)).weeklyPattern).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+/**
+ * aec53564 — THE LINK ITSELF, which until now nothing exercised.
+ *
+ * ⚠️ WHY THIS EXISTS. The DOM test asserts the rendered anchor's href, but it builds its fixture from a
+ * STRING LITERAL (`test/aec53564-shift-working-days.dom.test.tsx`, the `href:` props). So the helper that
+ * actually composes that URL on the server was covered by nothing: break
+ * `scheduleGroupSectionHref` and every DOM case stays green, because the fixture never calls it.
+ *
+ * The shape is not cosmetic. `?section=` concatenated in FRONT of the query key is the r287 → r301 defect,
+ * and r331 has now reproduced it twice more — once in 665de026's own mutation table. It is spelled once,
+ * in `app/admin/attendance/schedule/sections.ts`, and this pins that spelling.
+ */
+describe('aec53564 · the Schedule Group link is built by the helper, not by hand', () => {
+  const RULE = '0f9c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
+
+  it('rides the section as a query parameter AND as the fragment', () => {
+    const href = scheduleGroupSectionHref(RULE, 'workingDay');
+    expect(href, 'the query parameter').toContain('?section=workingDay');
+    expect(href, 'and the fragment, because a fragment is never sent to the server').toContain('#section-workingDay');
+  });
+
+  it('never concatenates the section in front of the query key (r287 → r301)', () => {
+    const href = scheduleGroupSectionHref(RULE, 'workingDay');
+    // The defect spelling is `...?section=workingDay?toast=...` — a SECOND `?` rather than an `&`.
+    expect(href.match(/\?/g) ?? [], 'exactly one "?" in the URL').toHaveLength(1);
+    expect(href, 'the path ends at the rule id, not at a query fragment').not.toMatch(/\/[^/?#]*\?[^/?#]*\//);
+  });
+
+  it('points at the VIEW page, not the editor', () => {
+    const href = scheduleGroupSectionHref(RULE, 'workingDay');
+    expect(href.startsWith(`/admin/attendance/schedule/${RULE}?`), href).toBe(true);
+    expect(href, 'a link beside a control you cannot change must not open an editor').not.toContain('/edit');
+  });
+
+  it('is what the rendered anchor uses — the DOM fixture and the helper agree', () => {
+    // The literal the DOM test hard-codes for the grouped shift, rebuilt through the helper. If these
+    // ever diverge the DOM test is asserting a URL the product does not produce.
+    expect(scheduleGroupSectionHref('grp-0000-0000-0000-000000000001', 'workingDay')).toBe(
+      '/admin/attendance/schedule/grp-0000-0000-0000-000000000001?section=workingDay#section-workingDay',
+    );
   });
 });

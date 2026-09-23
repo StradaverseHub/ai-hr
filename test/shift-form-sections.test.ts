@@ -35,8 +35,26 @@ const OT_FIELDS = read('components/shift-ot-window-fields.tsx');
  * input that stops rendering nulls a column on the next save.
  */
 const GROUP_ISLAND = read('components/shift-schedule-group.tsx');
+
+/**
+ * ⚠️ COMMENTS STRIPPED, AND A MUTATION IS WHY.
+ *
+ * The check below is `RENDERED.includes('name="x"')`, so ANY prose copy of the attribute satisfies it —
+ * and a file that documents the input it renders naturally contains one. Measured during aec53564:
+ * renaming the real attendanceRuleId attribute in components/shift-schedule-group.tsx left this whole
+ * file GREEN, because that module's header quoted the attribute in a sentence. The guard's own header
+ * already says this about the ACTIONS side ("a prose mention of a field name must not be able to fail
+ * this test or to satisfy it"); the RENDERED side had no such protection until now.
+ *
+ * Block comments (including JSX comment wrappers) and whole-line `//` comments only — a trailing `//` on
+ * a line of code is left alone rather than risk eating a string, and none of these files hides an input
+ * behind one.
+ */
+const stripComments = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+
 /** Everything the form POSTS from, in one string — the sections are spread across four components. */
-const RENDERED = FORM + TIME_FIELDS + OT_FIELDS + GROUP_ISLAND;
+const RENDERED = stripComments(FORM + TIME_FIELDS + OT_FIELDS + GROUP_ISLAND);
 
 /**
  * The form fields shiftFields() (and the two actions around it) read off the POST. Collected from the call

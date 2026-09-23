@@ -87,7 +87,10 @@ export function useShiftScheduleGroup(): ShiftScheduleGroupOption | null {
 }
 
 /**
- * THE SELECT ITSELF — `name="attendanceRuleId"`, unchanged in name, position and options.
+ * THE SELECT ITSELF — the same field, unchanged in name, position and options. (Its name is spelled ONCE
+ * in this file, in the JSX below: test/shift-form-sections.test.ts proves every field the action reads is
+ * rendered by someone, and a prose copy of the attribute in a comment would satisfy that check without an
+ * input existing. Measured — the first version of this comment did exactly that.)
  *
  * Controlled rather than `defaultValue`, because the day row is now watching it. Blank ⇒ the tenant's
  * Standard rule (88e94371), which `weekPatternGroupFor` resolves exactly as core/attendance-rule.ts
