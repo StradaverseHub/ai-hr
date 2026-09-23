@@ -1505,6 +1505,27 @@ export async function eaStatement(
         ),
       );
 
+    /**
+     * ⚠️ 5d721048 — THE SAME REFUSAL `localization/my/pcb2ii.ts` MAKES, AND FOR THE SAME REASON.
+     *
+     * The rule, its two-fact test, why it is a bare 404 and why a never-paid employment still keeps its
+     * empty form are all written out at pcb2ii.ts's copy of this line — read it there. r328 fixed the
+     * PCB 2(II) and left the C.P.8A (EA) with the identical hole: `employerId` comes from a URL, and the
+     * only thing standing in front of it was `scopedAdmin`'s scope check, which proves the OPERATOR may
+     * see that company and never that this EMPLOYMENT sits in it. Two companies in one tenant, so RLS
+     * cannot separate them either. The slips join above already keeps the MONEY company-true, so what
+     * printed was a sheet of zeros — an employee's name, identity card and tax number under a letterhead
+     * of a company that never employed them, which is a worse document than none.
+     *
+     * It is deliberately AFTER the slips query and not beside the `!info` / `!co` refusals above: the
+     * second operand is `slips`, which does not exist yet up there.
+     *
+     * NOT a third population to keep in step with `eaCompaniesInYear` — that read returns exactly "the
+     * companies whose batches paid this employment this year, plus the current one", so every employer
+     * the switcher and `employeeEaStatements` can name passes this test by construction.
+     */
+    if (employerId !== info.companyId && slips.length === 0) return null;
+
     let grossSalary = 0;
     let bonus = 0;
     let allowances = 0;
