@@ -624,3 +624,51 @@ describe('07ebd04d — the Schedule Group’s working week is the one the engine
     ).rejects.toBeInstanceOf(ShiftHasNoWorkingPatternError);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * THE TWO DB CHECKS 0483 ADDS, asserted against the DATABASE and not against db/schema.ts. A constraint
+ * declared in the drizzle table and missing from the migration is a constraint that does not exist, and
+ * nothing else in the suite would notice: the service refuses these shapes first, so every ordinary path
+ * is green either way. These insert as the OWNER, straight past the service.
+ */
+describe('07ebd04d — migration 0483’s CHECK constraints exist in the database', () => {
+  const raw = (cols: string) =>
+    owner.db.execute(
+      sql.raw(
+        `INSERT INTO attendance_rule (tenant_id, name, is_default, status, ${cols.split('|')[0]}) VALUES ('${b.tenantId}', 'Raw ${randomUUID().slice(0, 8)}', false, 'active', ${cols.split('|')[1]})`,
+      ),
+    );
+
+  /** The driver wraps the Postgres error, so the CONSTRAINT NAME is on the cause — and the name is the
+   *  whole point: "some insert failed" would pass with the wrong constraint, or with an RLS refusal. */
+  const refusedBy = async (cols: string): Promise<string> => {
+    try {
+      await raw(cols);
+    } catch (e) {
+      let cur = e as { constraint_name?: string; constraint?: string; cause?: unknown } | undefined;
+      for (let i = 0; cur && i < 4; i++) {
+        if (cur.constraint_name || cur.constraint) return (cur.constraint_name ?? cur.constraint)!;
+        cur = cur.cause as typeof cur;
+      }
+      return 'rejected, but by no named constraint';
+    }
+    return 'NOT REFUSED';
+  };
+
+  it('refuses a week that declares OFF days and no working day', async () => {
+    expect(await refusedBy("weekly_pattern, half_pattern, off_pattern|NULL, '{}', '{6}'")).toBe(
+      'attendance_rule_off_needs_working_day',
+    );
+  });
+
+  it('refuses a week whose lists overlap', async () => {
+    expect(await refusedBy("weekly_pattern, half_pattern, off_pattern|'{1,2,3,4,5}', '{5}', '{}'")).toBe(
+      'attendance_rule_day_kinds_disjoint',
+    );
+  });
+
+  it('allows a row that declares no week at all — every rule written before 0483', async () => {
+    expect(await refusedBy("weekly_pattern, half_pattern, off_pattern|NULL, '{}', '{}'")).toBe('NOT REFUSED');
+  });
+});
