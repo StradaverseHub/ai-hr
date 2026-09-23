@@ -776,11 +776,23 @@ describe('df35d60d · the screen and the migration', () => {
     };
     const mine = journal.entries.find((e) => e.tag === '0480_employee_tp3');
     expect(mine, 'the journal entry IS the migration; a .sql without one never runs').toBeTruthy();
-    // drizzle's watermark is the last applied `when`: a lower one merged later is a SILENT skip.
-    for (const e of journal.entries) {
-      if (e.tag === mine!.tag) continue;
-      expect(e.idx, `${e.tag} must not outrank 0480`).toBeLessThan(mine!.idx);
-      expect(e.when, `${e.tag}'s timestamp must precede 0480's`).toBeLessThan(mine!.when);
+    // drizzle's watermark is the last applied `when`: a lower one merged later is a SILENT skip. So what
+    // must hold is that 0480 outranks everything BEFORE it — not that nothing ever comes after it.
+    //
+    // ⚠️ r330 — THE FIRST SPELLING OF THIS GUARD ASSERTED THE LATTER, and it was wrong the moment a
+    // later migration landed (0482_system_testing, the very next round). It passed in the worktree that
+    // wrote it because 0480 was the newest entry there, and went red only on the merged tree. The INTENT
+    // is unchanged and still asserted; what is fixed is that it compares against the entries that
+    // actually precede this one, which is what "a lower one merged later is a silent skip" means.
+    const at = journal.entries.findIndex((e) => e.tag === mine!.tag);
+    for (const e of journal.entries.slice(0, at)) {
+      expect(e.idx, `${e.tag} precedes 0480 and must rank below it`).toBeLessThan(mine!.idx);
+      expect(e.when, `${e.tag} precedes 0480 and its timestamp must too`).toBeLessThan(mine!.when);
+    }
+    // …and anything that came later must outrank it, for the same reason in the other direction.
+    for (const e of journal.entries.slice(at + 1)) {
+      expect(e.idx, `${e.tag} follows 0480 and must rank above it`).toBeGreaterThan(mine!.idx);
+      expect(e.when, `${e.tag} follows 0480 and its timestamp must too`).toBeGreaterThan(mine!.when);
     }
   });
 
