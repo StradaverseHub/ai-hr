@@ -102,6 +102,19 @@ const REGISTRY: Record<string, RegistryTable> = {
         fields: ['address', 'addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country'],
       },
       {
+        // 72fca31d (r332, migration 0485) — NOT a fact about the person, and it must never be keyed.
+        // It is the CLAIM "this approved Marriage Leave request wrote the marital status that is stored
+        // now", and it is what makes the reversal safe: cancelling an approved Marriage Leave puts the
+        // status back only when this column still points at that request. Every other writer of
+        // `maritalStatus` NULLs it through one shared helper, so "a status a human set by hand is never
+        // reverted" is structural rather than inferred. An import column would let a file assert that
+        // claim about a leave request it has no relationship with — and a day-one load, by definition,
+        // has no approved leave behind it.
+        reason:
+          'internal provenance pointer, not a person fact: it names the approved Marriage Leave request that set the current marital status, and is written only by the approval machinery (72fca31d). A file that could key it would be asserting a cause that does not exist',
+        fields: ['maritalStatusSourceRequestId'],
+      },
+      {
         reason:
           'second address block for post that goes somewhere other than home; the template carries ONE address because that is what the request asked for — add these columns when a customer actually maintains both',
         fields: [
