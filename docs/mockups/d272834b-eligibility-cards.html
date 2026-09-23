@@ -1,0 +1,155 @@
+<meta charset="utf-8">
+<title>Maternity Leave for a male employee — two faults, one bigger than reported</title>
+<!--
+  d272834b. Measured 2026-09-23 on main and on PRODUCTION.
+  FAULT 1 (display): core/my-leave.ts myLeaveDashboard contains ZERO references to isProfileEligible /
+  isLeaveEligible / eligibility. Cards are built from leaveBalances(...) filtered only by
+  placement !== 'hidden' — i.e. from LEDGER ROWS. The gate is never asked.
+  FAULT 2 (grant): core/leave.ts:7843 calls isProfileEligible(..., 'allow'), so a MISSING fact qualifies.
+  Production leave_ledger for MTL: male 11 accruals (+1078) and 11 adjustments (-1078) => net 0, which is
+  why Daniel Tan shows 98.00 / 0.00. BLANK gender: 56 accruals (+5488) and ONE adjustment (-98) => 55
+  employees hold a net 98-day Maternity Leave balance.
+  WHY 'allow' EXISTS: 55 of 75 active employees have no gender recorded, and EIGHT leave types list
+  ["male","female"]. Reading a blank as not-qualified would strip those eight types from 55 people — the
+  incident isProfileEligible's own header records.
+  THE RULE THAT RESOLVES IT: ELIGIBILITY_GENDER_OPTIONS = ['male','female'] (core/admin.ts:259) — the
+  picker offers exactly two, so ticking both IS "no restriction" by construction. ELIGIBILITY_MARITAL_OPTIONS
+  = all six. Production gender: 65 blank, 13 female, 10 male, ZERO 'undisclosed'.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1120px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .cards{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+ .card{border:1px solid var(--rule);border-radius:8px;padding:10px;background:#fff}
+ .card.bad{border-color:#e4c2bd;background:#fdf6f5}
+ .card h4{margin:0 0 6px;font-size:11.5px}
+ .card .r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mf);padding:1px 0}
+ .card .r b{color:var(--fg)}
+ .gone{border-style:dashed;color:#a0a0ad;background:#fafafc;display:flex;align-items:center;justify-content:center;font-size:11px;min-height:86px;text-align:center;padding:10px}
+ .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+ .n{border:1px solid var(--rule);border-radius:8px;padding:10px;text-align:center}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .n b{display:block;font-size:19px}
+ .n span{font-size:10.5px;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .rulebox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .rulebox b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:6px}
+ th,td{border:1px solid var(--rule);padding:5px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:10.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.y{color:var(--ok);font-weight:600}td.n2{color:var(--bad);font-weight:600}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Maternity Leave on a man&rsquo;s screen &mdash; and 55 people you did not mention</h1>
+  <p class="sub">You reported a card that should not be there. We found the card, and a second fault underneath it.</p>
+
+  <div class="sec">
+    <h2><b>1.</b> The card &mdash; the balance screen never asks whether you are eligible</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <div class="tag b">Before &mdash; Daniel Tan (EMP-0002), male</div>
+          <div class="cards">
+            <div class="card"><h4>Annual Leave</h4>
+              <div class="r"><span>Entitlement</span><b>14.00</b></div>
+              <div class="r"><span>Balance</span><b>9.50</b></div></div>
+            <div class="card bad"><h4>Maternity Leave</h4>
+              <div class="r"><span>Entitlement</span><b>98.00</b></div>
+              <div class="r"><span>Earned so far</span><b>98.00</b></div>
+              <div class="r"><span>Balance</span><b>0.00</b></div></div>
+          </div>
+          <p class="note"><b>Why it appears:</b> the balance screen lists whatever has movement recorded
+            against it. It never asks the eligibility question at all &mdash; not once. Daniel has 98 days
+            recorded and 98 days taken back off, so the card shows with a zero balance.</p>
+        </div>
+        <div>
+          <div class="tag a">After</div>
+          <div class="cards">
+            <div class="card"><h4>Annual Leave</h4>
+              <div class="r"><span>Entitlement</span><b>14.00</b></div>
+              <div class="r"><span>Balance</span><b>9.50</b></div></div>
+            <div class="card gone">Maternity Leave is not shown &mdash;<br>he does not meet its rules</div>
+          </div>
+          <p class="note">The balance cards, the Request-leave dropdown, the year selector and the mobile
+            preview all ask the <b>same one question</b> and get the same answer, so they cannot disagree
+            again.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>2.</b> The part you did not report &mdash; and it is the bigger number</h2>
+    <div class="bd">
+      <div class="nums">
+        <div class="n"><b>11</b><span>men were granted 98 days&hellip;<br>and all 11 were taken back</span></div>
+        <div class="n hot"><b>55</b><span>people whose gender is NOT recorded<br>still hold 98 days each</span></div>
+        <div class="n hot"><b>5,390</b><span>days of Maternity Leave<br>sitting with people who cannot use it</span></div>
+      </div>
+      <p class="note">The men were caught and reversed. <b>The 55 were not</b>, because their cards look
+        perfectly normal &mdash; nothing about them says &ldquo;this person should not have this&rdquo;.
+        They are not men; they are people whose gender nobody has filled in.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>3.</b> Why the obvious fix is wrong, and what we will do instead</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">When the system grants leave it deliberately treats a
+        <b>missing</b> fact as qualifying. That is not sloppiness &mdash; it was written after a real
+        incident. <b>55 of your 75 active employees have no gender recorded</b>, and eight of your leave
+        types are ticked for both men and women. Reading a blank as &ldquo;does not qualify&rdquo; would
+        have stripped Annual Leave, Medical Leave and six others from those 55 people.</p>
+      <div class="rulebox">
+        <b>The distinction that settles it.</b> Your eligibility screen offers exactly two genders to tick.
+        So a type ticked for <b>both</b> is not a restriction at all &mdash; it is every option there is.
+        A type ticked for <b>one</b> is a real restriction. We will treat them differently:
+        <table>
+          <tr><th>Leave type</th><th>Ticked</th><th>Gender not recorded &rarr;</th></tr>
+          <tr><td>Annual, Medical, Compassionate, Study, Exam, Graduation, Caregiver, Disaster</td><td>male + female</td><td class="y">granted &mdash; nothing is being restricted</td></tr>
+          <tr><td>Maternity Leave</td><td>female only</td><td class="n2">withheld, and listed for you</td></tr>
+          <tr><td>Paternity Leave</td><td>male only</td><td class="n2">withheld, and listed for you</td></tr>
+        </table>
+        So the incident that rule was written to prevent <b>cannot happen</b>, and a gendered leave stops
+        being handed to someone we cannot place.
+      </div>
+      <div class="warnbox">
+        <b>We will not delete 5,390 days behind your back.</b> Withholding stops it happening again; it does
+        not tidy up what is already there. We will give you the list of 55 so you can fill the gender in
+        &mdash; most of them probably should keep it &mdash; and only reverse what is still wrong once you
+        say so.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>The rest of your request</h3>
+    <p><b>&ldquo;Statutory entitlements are never blocked&rdquo; will mean what you said it should.</b> For
+      someone who IS eligible, the statutory minimum cannot be cut by other settings. It will not make a
+      leave type appear for someone who fails the rules.</p>
+    <p><b>It applies to every rule, not just gender</b> &mdash; marital status, minimum service and
+      probation behave the same way, through the one shared check.</p>
+    <p><b>Nothing changes for an eligible employee.</b> No entitlement, balance or approved leave of anyone
+      who qualifies is touched.</p>
+  </div>
+</div>
