@@ -161,7 +161,6 @@ beforeEach(async () => {
 
   const moved = await hire('Transferred Subject');
   transferredId = moved.employmentId;
-  neverPaidId = (await hire('Never Paid Subject')).employmentId;
 
   // REAL payroll either side of a REAL entity transfer. Nothing about (b) is asserted abstractly: the
   // January payslip is produced by Acme's own run and the February one by Beta's, and `payroll_batch`
@@ -188,6 +187,13 @@ beforeEach(async () => {
 
   const febBeta = await createBatch(adminCtx(b), { companyId: coB, payPeriod: `${YEAR}-02` });
   await generatePayslips(adminCtx(b), { batchId: febBeta.batchId });
+
+  // ⚠️ HIRED AFTER BOTH RUNS, and that is the only way to get a genuinely never-paid employment out of
+  // the real domain: `generatePayslips` REFUSES a run containing anybody with no salary record
+  // (PreProcessBlockedError, core/payroll.ts), so giving this person a compensation row to satisfy the
+  // January run would have paid them and destroyed case (d). `hiredOn` still says 2020, so they have
+  // been employed at Acme the whole year — they have simply never been run through payroll.
+  neverPaidId = (await hire('Never Paid Subject')).employmentId;
 
   // EVERY company is in the operator's scope, on purpose. The route's own `scopeIds` check must not be
   // what refuses anything below — otherwise this file would be re-testing r331's scope gate and would
