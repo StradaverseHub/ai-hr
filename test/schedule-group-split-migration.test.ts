@@ -30,6 +30,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { createAttendanceRule } from '../core/attendance-rule';
+import { dayTypeFor } from '../core/attendance';
+import { assignDefaultShift, createShift, ShiftHasNoWorkingPatternError } from '../core/roster';
+import { assignEmployeeShiftDated } from '../core/shift-arrangement';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -48,6 +51,16 @@ const runMigrationData = async () => {
   // silently assert nothing at all.
   expect(blocks).toHaveLength(2);
   for (const b of blocks) await owner.db.execute(sql.raw(b));
+};
+
+/** THE SPLIT BLOCK ON ITS OWN. Drizzle runs each `--> statement-breakpoint` chunk as its own statement,
+ *  so a group created here without its week is a group that is COMMITTED without one, however tidily the
+ *  next block would have filled it in. That is the failure mode the whole item is built around, so it is
+ *  asserted against this block alone rather than against the pair. */
+const runSplitBlockOnly = async () => {
+  const blocks = dataBlocks();
+  expect(blocks).toHaveLength(2);
+  await owner.db.execute(sql.raw(blocks[0]));
 };
 
 let b: Base;
@@ -201,6 +214,24 @@ describe('migration 0483 — the "Standard" Schedule Group splits into three', (
       ['A02', 'Standard', 'Standard 5 Day', 'Standard 5 Day + Saturday Off', 'Standard 5.5 Day'].sort(),
     );
     expect(ids.standard).toBeTruthy();
+  });
+
+  it('writes each new group’s working week in the SAME statement that creates it', async () => {
+    await seedProductionShape();
+    // ⚠️ THE SPLIT BLOCK ALONE. Not the pair: the second block would fill a missing week in afterwards,
+    // and a group that was committed pattern-less for even one statement books every working day as a
+    // rest day for everyone in it. This is the assertion that fails if the patterns leave the INSERT.
+    await runSplitBlockOnly();
+    expect(
+      (await owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.tenantId, b.tenantId)))
+        .filter((r) => r.name.startsWith('Standard 5'))
+        .map((r) => [r.name, r.weeklyPattern, r.halfPattern, r.offPattern])
+        .sort((x, y) => String(x[0]).localeCompare(String(y[0]))),
+    ).toEqual([
+      ['Standard 5 Day', [1, 2, 3, 4, 5], [], []],
+      ['Standard 5 Day + Saturday Off', [1, 2, 3, 4, 5], [], [6]],
+      ['Standard 5.5 Day', [1, 2, 3, 4, 5], [6], []],
+    ]);
   });
 
   it('moves each of the six shifts into the group that matches the week it already had, and edits no shift week', async () => {
@@ -442,5 +473,154 @@ describe('07ebd04d — the write side refuses a Schedule Group that declares a w
     expect(r.weeklyPattern).toBeNull();
     expect(r.halfPattern).toEqual([]);
     expect(r.offPattern).toEqual([]);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * THE REWIRING ITSELF, WHICH NO PRODUCTION-SHAPED TEST CAN SEE.
+ *
+ * Migration 0483 gives every new group EXACTLY the week its own shifts already have, so on the shipped
+ * data the engine returns the same answer whether the group or the shift is read — which is the promise,
+ * and which also means a rewiring that silently kept reading the shift would pass every test above.
+ *
+ * These cases therefore make the two DISAGREE on purpose and assert the GROUP wins, through
+ * `dayTypeFor` — the same `scheduleFor` ladder the clocking path freezes onto an attendance row, so the
+ * answer here is the day type that ends up on the row and therefore the rate the day is paid at.
+ */
+describe('07ebd04d — the Schedule Group’s working week is the one the engine uses', () => {
+  const SAT = '2026-05-09'; // a Saturday (ISO 6)
+  const TUE = '2026-05-05';
+
+  const group = async (over: { weeklyPattern?: number[] | null; halfPattern?: number[]; offPattern?: number[] }) =>
+    createAttendanceRule(adminCtx(b), {
+      name: `Grp ${randomUUID().slice(0, 8)}`,
+      lateGracePeriodMinutes: 0,
+      lateAfterMinutes: 0,
+      lateDeductMinutes: 0,
+      includeGraceInLateness: false,
+      earlyGracePeriodMinutes: 0,
+      earlyAfterMinutes: 0,
+      earlyDeductMinutes: 0,
+      includeGraceInEarlyOut: false,
+      applyToEarlyOt: false,
+      otRows: [],
+      ...over,
+    });
+
+  /** A Mon–Sat WORKING shift: Saturday is a full working day as far as the SHIFT is concerned. */
+  const satWorkingShift = async (ruleId: string | null) => {
+    const sh = await createShift(adminCtx(b), {
+      name: `SatWork_${randomUUID().slice(0, 6)}`,
+      code: `SW_${randomUUID().slice(0, 6)}`,
+      startTime: '08:00:00',
+      endTime: '17:00:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5, 6],
+    });
+    if (ruleId) await owner.db.update(schema.shift).set({ ruleId }).where(eq(schema.shift.id, sh.id));
+    return sh;
+  };
+
+  const employeeOn = async (shiftId: string, groupRuleId: string | null) => {
+    const a = adminCtx(b);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Week Owner', primaryEmail: `wk_${randomUUID()}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await assignDefaultShift(a, { employmentId: e.employmentId, shiftId });
+    if (groupRuleId) {
+      await owner.db
+        .update(schema.employment)
+        .set({ attendanceRuleId: groupRuleId })
+        .where(eq(schema.employment.id, e.employmentId));
+    }
+    return { a, employmentId: e.employmentId };
+  };
+
+  it('a group that does NOT work Saturday makes Saturday a REST day even though the shift works it', async () => {
+    const g = await group({ weeklyPattern: [1, 2, 3, 4, 5] }); // Saturday in no list ⇒ Rest
+    const sh = await satWorkingShift(g.id);
+    const { a, employmentId } = await employeeOn(sh.id, null); // reached through the SHIFT's group
+    expect(await dayTypeFor(a, employmentId, SAT)).toBe('rest_day');
+    // …and the rest of the week is untouched, so this is the group's week and not a blanket refusal.
+    expect(await dayTypeFor(a, employmentId, TUE)).toBe('workday');
+  });
+
+  it('the EMPLOYEE’s own group outranks the shift’s, exactly as `ruleFor` already resolves the rule', async () => {
+    const shiftGroup = await group({ weeklyPattern: [1, 2, 3, 4, 5, 6] }); // this group works Saturday
+    const ownGroup = await group({ weeklyPattern: [1, 2, 3, 4, 5] }); //     …this one does not
+    const sh = await satWorkingShift(shiftGroup.id);
+    const { a, employmentId } = await employeeOn(sh.id, ownGroup.id);
+    expect(await dayTypeFor(a, employmentId, SAT)).toBe('rest_day');
+  });
+
+  it('a group with NO week of its own changes nothing — the shift still answers', async () => {
+    const g = await group({}); // no week declared: the state every rule before 0483 is in
+    const sh = await satWorkingShift(g.id);
+    const { a, employmentId } = await employeeOn(sh.id, null);
+    expect(await dayTypeFor(a, employmentId, SAT)).toBe('workday');
+  });
+
+  it('OFF on the group is an off day, not a rest day — the distinction the whole split turns on', async () => {
+    const g = await group({ weeklyPattern: [1, 2, 3, 4, 5], offPattern: [6] });
+    const sh = await satWorkingShift(g.id);
+    const { a, employmentId } = await employeeOn(sh.id, null);
+    // scheduleFor's off-day branch: a WORKDAY with zero scheduled minutes (EA s.60A(3)(a), 1.5x), which
+    // is a different number from the rest_day branch above (s.60(3), 2.0x).
+    expect(await dayTypeFor(a, employmentId, SAT)).toBe('workday');
+  });
+
+  it('the backup-shift guard reads the RESOLVED week, so a group can make a pattern-less shift walkable', async () => {
+    const g = await group({ weeklyPattern: [1, 2, 3, 4, 5] });
+    const sh = await createShift(adminCtx(b), {
+      name: `NoPat_${randomUUID().slice(0, 6)}`,
+      code: `NP_${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: null,
+    });
+    await owner.db.update(schema.shift).set({ ruleId: g.id }).where(eq(schema.shift.id, sh.id));
+    const a = adminCtx(b);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Walkable By Group', primaryEmail: `wg_${randomUUID()}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    // The shift's own week is empty, which the guard used to refuse outright. Its GROUP's week is
+    // walkable, and the engine will use the group's — so refusing would be a false rejection.
+    await expect(assignDefaultShift(a, { employmentId: e.employmentId, shiftId: sh.id })).resolves.toBeTruthy();
+    expect(await dayTypeFor(a, e.employmentId, TUE)).toBe('workday');
+  });
+
+  it('…and a shift whose group has no week either is STILL refused — the guard is not loosened', async () => {
+    const sh = await createShift(adminCtx(b), {
+      name: `NoPat2_${randomUUID().slice(0, 6)}`,
+      code: `NP2_${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: null,
+    });
+    const a = adminCtx(b);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Still Refused', primaryEmail: `sr_${randomUUID()}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await expect(assignDefaultShift(a, { employmentId: e.employmentId, shiftId: sh.id })).rejects.toBeInstanceOf(
+      ShiftHasNoWorkingPatternError,
+    );
+    await expect(
+      assignEmployeeShiftDated(a, { employmentId: e.employmentId, shiftType: 'fixed', shiftId: sh.id, effectiveFrom: '2026-01-01' }),
+    ).rejects.toBeInstanceOf(ShiftHasNoWorkingPatternError);
   });
 });
