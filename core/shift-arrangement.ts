@@ -34,6 +34,11 @@ import { actorOf, appendEvent } from '../db/events';
 // behind the name). The table is imported from db/schema, never core/attendance-rule: this file is not on
 // the attendance pack's import allowlist and a schema import is not a pack import (ADR-0080 D9).
 import { attendanceRule, appUser, company, employment, employmentShiftArrangement, person, shift } from '../db/schema';
+// 07ebd04d — the shared "does this pattern declare a working day?" count, through the PACK FACADE and not
+// `core/attendance` directly: this file is not on the attendance pack's import allowlist
+// (test/pack-drift-allowlist.json, which only ever shrinks), and ADR-0080 D9 says a core file that needs a
+// pack service takes packs/<pack>/service. Same route core/absence-days.ts takes for shiftDayKindFor.
+import { weekPatternWorkingDayCount } from '../packs/attendance/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   arrangementsForEmploymentTx,
@@ -161,7 +166,9 @@ export async function assignEmployeeShiftDated(
     if (sh.archivedAt) throw new ArchivedShiftError();
     // b8aa3466 — "has a working pattern" is Full ∪ HALF now: an all-half-days shift is walkable, and the
     // guard exists to stop an UNWALKABLE backup shift making every day a rest day, not to stop half days.
-    if (new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size === 0) throw new ShiftHasNoWorkingPatternError();
+    // 07ebd04d — through the SHARED count (core/attendance.ts), not a second hand-written set union: this
+    // guard and core/roster.ts assignEmployeeShift enforce one invariant and had one copy of it each.
+    if (weekPatternWorkingDayCount(sh) === 0) throw new ShiftHasNoWorkingPatternError();
     // 870b79e2 (r277) — THE THIRD INVARIANT, and the reason it is here and not on the card that posts to
     // this writer. The ladder is one of four writers of "which shift is this person on"; a check on the
     // Shift arrangement form would leave roster generation, the roster brush and the profile backup shift

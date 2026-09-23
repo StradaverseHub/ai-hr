@@ -24,7 +24,7 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan } from './attendance';
+import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan, weekPatternWorkingDayCount } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
@@ -94,10 +94,14 @@ function validateShiftType(v: ShiftType | string | null | undefined): ShiftType 
  *  lexicographic order is chronological. */
 export const shiftCrossesMidnight = (startTime: string, endTime: string) => endTime <= startTime;
 
-/** b8aa3466 — how many WORKING weekdays a shift has, Full ∪ Half. Used by the two "a backup shift with no
- *  working pattern makes every day a rest day" guards, which must not reject an all-half-days shift. */
-const workingDayCount = (sh: { pattern: number[] | null; halfPattern?: number[] | null }): number =>
-  new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size;
+/** b8aa3466 — how many WORKING weekdays a shift has, Full ∪ Half. Used by the "a backup shift with no
+ *  working pattern makes every day a rest day" guards, which must not reject an all-half-days shift.
+ *
+ *  07ebd04d — the arithmetic moved to core/attendance.ts `weekPatternWorkingDayCount`, beside
+ *  `shiftDayKindFor`, because core/shift-arrangement.ts carried a SECOND hand-written copy of this exact
+ *  set union guarding the same invariant. Two copies of one rule is how the two guards drift. This alias
+ *  stays only so the call sites below keep reading in the shift's own vocabulary. */
+const workingDayCount = weekPatternWorkingDayCount;
 
 const asShiftTime = (v: string, label: string): string => {
   if (!/^\d{2}:\d{2}(:\d{2})?$/.test(v)) throw new Error(`${label} must be HH:MM`);
