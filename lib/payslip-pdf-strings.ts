@@ -234,6 +234,17 @@ export async function payslipPdfStrings(p: {
       // says exactly the right thing ("recorded for your reference only — these do not affect your gross or
       // net pay") and which is only NOW true of everything it labels: the same sentence used to head a
       // mixed list that included one-off payments the employee really did receive.
+      //
+      // a96d320c rev 3 — `nonPayableHeading` NOW READS "Other", in all six locales. The KEY still names
+      // the concept (these are the lines the run stamped `nonPayable`, and nothing else ever goes in that
+      // box); the VALUE is what the reporter asked the column to be called now that it sits beside
+      // Employer contributions rather than full width under NET PAY. The key is resolved here and nowhere
+      // else — no screen prints it — so the rename reaches the document and nothing else.
+      //
+      // `nonPayableTotal` is DELIBERATELY NOT RENAMED with it. "Other" is a heading, not an explanation,
+      // and "TOTAL NON-PAYABLE" on the total row is the one place the box still says in words what the
+      // figures in it are. A box headed "Other" whose total also said "Total other" would name the
+      // amounts twice and define them nowhere.
       nonPayable: t('nonPayableHeading'),
       nonPayableTotal: t('nonPayableTotal'),
       nonPayableNote: t('recordLinesNote'),

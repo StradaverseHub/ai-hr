@@ -428,6 +428,17 @@ describe('f35f758a rev 2 — the screen: the panel is back, and Review opens the
       for (const k of ['nonPayableHeading', 'nonPayableTotal', 'recordLinesNote']) {
         expect(m.me.payslip[k], `me.payslip.${k} in ${loc}`).toBeTruthy();
       }
+      // a96d320c rev 3 — THE BOX IS TITLED "Other" NOW. It moved out from under NET PAY into the band
+      // beside Employer contributions, and that is the word the reporter asked the column to be called.
+      // The KEY still names the concept — only lines the run stamped `nonPayable` ever go in it — and
+      // `nonPayableTotal` deliberately keeps the longer caption, because "Other" is a heading and the
+      // total row is the one place the box still says in words what the figures in it are. Every locale
+      // must have moved, or the document prints the old wording for five readers out of six.
+      expect(
+        m.me.payslip.nonPayableHeading.length,
+        `me.payslip.nonPayableHeading in ${loc} is the short "Other" heading, not the old sentence`,
+      ).toBeLessThan(m.me.payslip.nonPayableTotal.length);
+      if (loc === 'en') expect(m.me.payslip.nonPayableHeading).toBe('Other');
     }
   });
 });

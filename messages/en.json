@@ -3132,7 +3132,7 @@
       "recordLinesHeading": "Itemised payroll items",
       "recordLinesNote": "Recorded for your reference only — these do not affect your gross or net pay.",
       "recordLineRemark": "Entered as “{remark}”",
-      "nonPayableHeading": "Non-payable items",
+      "nonPayableHeading": "Other",
       "nonPayableTotal": "Total non-payable",
       "pdfTitle": "Payslip",
       "payPeriodLabel": "Pay period",

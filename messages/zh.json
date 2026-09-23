@@ -3099,7 +3099,7 @@
       "recordLinesHeading": "逐项列出的薪资项目",
       "recordLinesNote": "仅供参考记录 — 这些项目不影响您的应发或实发工资。",
       "recordLineRemark": "录入时写作“{remark}”",
-      "nonPayableHeading": "不支付项目",
+      "nonPayableHeading": "其他",
       "nonPayableTotal": "不支付项目合计",
       "pdfTitle": "薪资单",
       "payPeriodLabel": "薪资周期",

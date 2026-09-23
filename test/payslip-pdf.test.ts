@@ -92,7 +92,11 @@ const labels: PayslipPdfLabels = {
   periodLabel: 'June 2026',
   // f35f758a — the Non-payable box's three REQUIRED labels. tsc is what stops one PDF route printing a
   // block the other one does not, and it caught this fixture the moment they were added.
-  nonPayable: 'Non-payable items',
+  // a96d320c rev 3 — "Other", the word the reporter asked the column to be called now that it sits
+  // beside Employer contributions instead of full width under NET PAY. This fixture says what the REAL
+  // caller says: `me.payslip.nonPayableHeading` carries this value in all six locales (pinned in
+  // test/individual-payslip.test.ts, which is the test that reads the catalogue).
+  nonPayable: 'Other',
   nonPayableTotal: 'Total non-payable',
   nonPayableNote: 'Recorded for your reference only - these do not affect your gross or net pay.',
   // a96d320c — the rate-and-input vocabulary. REQUIRED on the type, and tsc caught this fixture the
@@ -911,23 +915,43 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     expect(earn!.x).toBeLessThan(297);
     expect(ded!.x).toBeGreaterThan(297);
 
-    // Their TOTALS line up too, which is the half a reader actually compares — WHEN THE TWO BOXES HOLD
-    // THE SAME NUMBER OF ROWS. That is what this guard has always measured, and a96d320c rev 2 makes the
-    // condition explicit rather than leaving it to a fixture coincidence: each total sits at the bottom
-    // of its OWN box, and the boxes are now as long as the month they describe. `data` has no bonus, so
-    // its Earnings box is one row SHORTER than its Deductions box — see the assertion below, which pins
-    // that reversal rather than letting this one quietly stop measuring anything.
+    // Their TOTALS line up too, which is the half a reader actually compares. This used to be qualified
+    // "WHEN THE TWO BOXES HOLD THE SAME NUMBER OF ROWS", and the qualification was the defect.
     const even = drawnPlacements(await renderPayslipPdf({ ...data, bonus: 800, gross: 7920 }, labels));
     const te = placed(even, 'TOTAL EARNINGS');
     const td = placed(even, 'TOTAL DEDUCTIONS');
     expect(td!.y).toBeCloseTo(te!.y, 1);
     expect(td!.x).toBeGreaterThan(te!.x);
 
-    // THE REVERSAL, PINNED. A month with no bonus prints no Bonus row (a96d320c rev 2), so the Earnings
-    // box ends one row higher than the Deductions box beside it. The two TOPS still line up — that is
-    // what "read against each other" means and it is asserted above; the two BOTTOMS no longer do, and
-    // that is the deliverable, not a layout regression.
-    expect(placed(p, 'TOTAL EARNINGS')!.y).toBeGreaterThan(placed(p, 'TOTAL DEDUCTIONS')!.y);
+    // ─── a96d320c rev 3 — THIS GUARD IS REVERSED, DELIBERATELY, AND THE OLD ONE IS QUOTED SO NOBODY
+    // RESTORES IT BY ACCIDENT. It read:
+    //
+    //     // THE REVERSAL, PINNED. A month with no bonus prints no Bonus row (a96d320c rev 2), so the
+    //     // Earnings box ends one row higher than the Deductions box beside it. … the two BOTTOMS no
+    //     // longer do, and that is the deliverable, not a layout regression.
+    //     expect(placed(p, 'TOTAL EARNINGS')!.y).toBeGreaterThan(placed(p, 'TOTAL DEDUCTIONS')!.y);
+    //
+    // It was an honest description of what the code did and a wrong reading of what the document is for.
+    // The two totals were NEVER aligned: `flowPair` starts both boxes at the same y and advances past the
+    // taller, but each total is painted at the foot of its OWN rows, so they were level only when the two
+    // columns happened to hold the same number of rows. The reporter read a payslip where they did not —
+    // three earnings rows beside four deduction rows — and asked for them aligned. `padBodyTo` holds the
+    // shorter side's body open to the taller side's so the total bands land on one baseline. No row
+    // moves, nothing is inserted, no figure changes.
+    //
+    // `data` is exactly the uneven case: no bonus ⇒ 3 earnings rows against 4 deduction rows. The line
+    // below would have read `toBeGreaterThan` before this item and it is the measurement that matters —
+    // the `even` fixture above cannot fail if the padding is removed, this one can. ───
+    expect(
+      placed(p, 'TOTAL EARNINGS')!.y,
+      'an UNEVEN pair still puts the two totals on one baseline',
+    ).toBeCloseTo(placed(p, 'TOTAL DEDUCTIONS')!.y, 1);
+    // …and the fixture really is uneven, or the assertion above is a coincidence again. Count the rows
+    // each box actually drew, from the page, not from the fixture.
+    const earnRowYs = p.filter((r) => r.text === 'Basic salary' || r.text === 'Allowances' || r.text === 'Overtime');
+    const dedRowYs = p.filter((r) => ['EPF', 'SOCSO', 'EIS', 'PCB'].includes(r.text) && r.x > 297);
+    expect(earnRowYs.length, 'three earnings rows').toBe(3);
+    expect(dedRowYs.length, 'four deduction rows — one MORE than the earnings side').toBe(4);
   });
 
   it('pairs Employer contributions with Payment information, BELOW the first pair', async () => {
@@ -983,7 +1007,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     );
     expect(d.nonPayableLines, 'not one of those three was non-payable').toEqual([]);
     const text = drawnText(await renderPayslipPdf(d, labels));
-    expect(text).not.toContain('NON-PAYABLE ITEMS');
+    expect(text).not.toContain('OTHER');
     expect(text).not.toContain('TOTAL NON-PAYABLE');
   });
 
@@ -1011,7 +1035,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
       { code: 'BIK02', name: 'ACCOMMODATION BENEFIT IN KIND', amount: 1200 },
     ]);
     const text = drawnText(await renderPayslipPdf(d, labels));
-    expect(text).toContain('NON-PAYABLE ITEMS');
+    expect(text).toContain('OTHER');
     // a96d320c — the BIK lines are named, not coded. The builder still CARRIES `code` (asserted above,
     // and Transaction View prints it), so what is pinned here is the DOCUMENT's choice, not a loss of data.
     expect(text).toContain('COMPANY CAR BENEFIT IN KIND');
@@ -1047,7 +1071,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
       { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
     );
     expect(d.nonPayableLines).toEqual([]);
-    expect(drawnText(await renderPayslipPdf(d, labels))).not.toContain('NON-PAYABLE ITEMS');
+    expect(drawnText(await renderPayslipPdf(d, labels))).not.toContain('OTHER');
   });
 
   it('prints the WHOLE bank account number, not the last four digits', async () => {
@@ -1220,28 +1244,121 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     expect(englishLongDate('2026-02-31')).toBe('2026-02-31');
   });
 
-  it('puts the employee identity fields inside a RULED box, not loose under a heading', async () => {
+  /**
+   * ─── a96d320c rev 3 — THIS TEST IS INVERTED, AND THE INVERSION IS THE DELIVERABLE (board item
+   * 048f1e9d, folded into a96d320c). It used to be titled "puts the employee identity fields inside a
+   * RULED box, not loose under a heading" and it asserted `enclosingRule(...)` toBeDefined for the NRIC
+   * and for the department.
+   *
+   * That box was OURS — r328 put it there, nobody asked for it — and the reporter contested it twice
+   * before approving its removal: "remove the unnecessary bordered-line design", "maintain clear
+   * alignment between the field labels and values", "avoid excessive borders and visual separation".
+   * The fields are loose label-over-value pairs again, on a shared column grid.
+   *
+   * The assertions are kept, not deleted, with their sense flipped: the OLD guard would now pass on a
+   * document that had quietly re-grown the box, and this one fails on exactly that. ───
+   */
+  it('takes the BOX OFF the employee information — the fields are loose pairs, not a ruled grid', async () => {
     const bytes = await renderPayslipPdf(
       { ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', department: 'Finance' },
       labels,
     );
     const rects = drawnRects(bytes);
     const places = drawnPlacements(bytes);
-    // The NRIC VALUE, not the heading: the heading could sit above a box the value is not in.
+    // The NRIC VALUE, not the heading: the heading could sit outside a box the value is inside.
     const nric = placed(places, '900101011234');
     expect(nric, 'the identity number reaches the page').toBeDefined();
-    expect(enclosingRule(rects, nric), 'the identity grid is enclosed by a ruled box').toBeDefined();
-    // …and so is the employment-info half, whose heading used to be a pill floating over unruled rows.
+    expect(enclosingRule(rects, nric), 'the identity fields are in NO ruled box').toBeUndefined();
+    // …and neither is the employment-info half, whose PRIMARY header band went with it.
     const dept = placed(places, 'Finance');
-    expect(enclosingRule(rects, dept), 'the employment-info grid is enclosed by a ruled box').toBeDefined();
-    // NON-VACUITY CONTROL. `enclosingRule` searching a document with any box at all would answer "yes"
-    // for every point inside that box, so the two assertions above are only worth something if the
-    // helper can still say no. The footer line is deliberately NOT in a box — it is one sentence under a
-    // rule at the foot of every sheet — so it is the honest negative.
+    expect(dept, 'the department reaches the page').toBeDefined();
+    expect(enclosingRule(rects, dept), 'the employment-info fields are in NO ruled box').toBeUndefined();
+
+    // NON-VACUITY CONTROL, AND IT MATTERS MORE NOW THAN IT DID. An assertion that something is NOT in a
+    // box passes trivially on a blank page, on a renderer that threw, and on a helper that lost its
+    // ability to find anything. So: the document still draws plenty of ruled boxes, and `enclosingRule`
+    // still finds one when the point really is inside it. Total earnings is inside the Earnings box.
+    // Three on THIS fixture: Earnings, Deductions and Employer contributions. It carries no bank
+    // details and no YTD, so those two boxes are not drawn — the count is the fixture's, not a floor
+    // on the document.
+    expect(rects.filter((r) => r.op === 'S').length, 'the document is still made of ruled boxes').toBe(3);
     expect(
-      enclosingRule(rects, placed(places, labels.generatedNote)),
-      'the footer sentence is not in a box, and the helper says so',
-    ).toBeUndefined();
+      enclosingRule(rects, placed(places, 'TOTAL EARNINGS')),
+      'the helper can still say YES — the money boxes are untouched',
+    ).toBeDefined();
+
+    // THE LABELS ARE STILL ALIGNED WITH THEIR VALUES, which is the reporter's second sentence and the
+    // thing that a de-boxed panel could plausibly have lost. Label and value share one x, and the left
+    // column's x is the page margin, so the panel lines up with the employee's name and the boxes below.
+    const label = placed(places, 'INCOME TAX NUMBER');
+    const value = placed(places, 'SG1234567890');
+    expect(label, 'the field label reaches the page').toBeDefined();
+    expect(value!.x, 'the value sits directly under its own label').toBeCloseTo(label!.x, 1);
+    expect(value!.y, 'and below it, not beside it').toBeLessThan(label!.y);
+    const nricLabel = placed(places, 'NRIC');
+    expect(nricLabel!.x, 'the first identity column starts at the page margin').toBeCloseTo(40, 1);
+  });
+
+  /**
+   * a96d320c rev 3 — THE EMPTY BOX, AND WHY IT CANNOT COME BACK AT ANY CELL COUNT.
+   *
+   * The reporter circled a blank bordered cell in the employee panel. It was not a missing field:
+   * `idCells` already spreads to nothing for an absent number. It was `drawGrid`'s ODD-CELL case. That
+   * function stroked its outer rectangle at FULL WIDTH and its column rule from `top` to `top - used` at
+   * FULL HEIGHT before drawing any text — it had to, to keep rules off glyphs — and then filled cells
+   * left to right. An odd `cells.length` therefore enclosed a cell that was never written into.
+   *
+   * Production, 84 employments by identity-cell count: 0→9, 1→29, 2→2, 3→17, 4→27. The 29 one-number and
+   * 17 three-number employments are 46 of 84 printing a void; 17 of the 48 that have ever had a payslip.
+   *
+   * This sweeps EVERY count from 0 to 6 rather than the one the reporter happened to hit. A fix that
+   * only special-cased the last row would pass at 3 and fail at 5.
+   */
+  it('cannot print an empty bordered cell at ANY number of identity fields', async () => {
+    const numbers: Partial<PayslipPdfData>[] = [
+      {},
+      { identityNumber: '900101011234' },
+      { identityNumber: '900101011234', taxNumber: 'SG1234567890' },
+      { identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678' },
+      { identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678', socsoNumber: '900101011234' },
+    ];
+    // …and the employment half, which is where an odd count is MOST likely: department + position +
+    // grade is three cells in a two-column grid.
+    const jobs: Partial<PayslipPdfData>[] = [
+      {},
+      { department: 'Finance' },
+      { department: 'Finance', position: 'Analyst' },
+      { department: 'Finance', position: 'Analyst', jobGrade: 'G5' },
+    ];
+    for (const ids of numbers) {
+      for (const job of jobs) {
+        const d: PayslipPdfData = { ...data, daysWorked: null, currency: null, ...ids, ...job };
+        const rects = drawnRects(await renderPayslipPdf(d, labels));
+        const cells = Object.keys(ids).length;
+        // The employee panel is the top of sheet 1. Anything ruled ABOVE the Earnings box belongs to it,
+        // and after this item there must be nothing ruled there at all.
+        const earnings = placed(drawnPlacements(await renderPayslipPdf(d, labels)), 'EARNINGS')!;
+        const inPanel = rects.filter((r) => r.page === 1 && r.op === 'S' && r.y > earnings.y);
+        expect(
+          inPanel.map((r) => `x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
+          `${cells} identity + ${Object.keys(job).length} employment fields: no ruled cell in the panel`,
+        ).toEqual([]);
+      }
+    }
+    // NON-VACUITY: the sweep above is worthless if the fields never reached the page. The fullest
+    // combination really does print all four numbers and all three job fields.
+    const full = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678',
+          socsoNumber: '900101011234', department: 'Finance', position: 'Analyst', jobGrade: 'G5',
+        },
+        labels,
+      ),
+    );
+    for (const v of ['900101011234', 'SG1234567890', '12345678', 'Finance', 'Analyst', 'G5']) {
+      expect(full, `the panel still prints ${v}`).toContain(v);
+    }
   });
 
   it('puts the YEAR TO DATE table inside a ruled box, and does not move the page flow doing it', async () => {
@@ -1292,8 +1409,13 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
 
     // NON-VACUITY, FIRST: the document really is made of ruled boxes and filled bands, so the emptiness
     // asserted below is the absence of a defect rather than the absence of anything to inspect.
-    expect(rects.filter((r) => r.op === 'S').length, 'the document draws ruled boxes').toBeGreaterThanOrEqual(6);
-    expect(rects.filter((r) => r.op === 'f').length, 'the document draws filled bands').toBeGreaterThanOrEqual(6);
+    // a96d320c rev 3 — 6 became 5, and the two that went are the employee panel's. r328 ruled the
+    // identity grid and the employment-info grid; both are de-boxed now (item 048f1e9d, folded in), so
+    // the ruled boxes on this sheet are Earnings, Deductions, Employer contributions, Payment
+    // information and Year to date. The floor is LOWERED, not removed — it is a non-vacuity control for
+    // the emptiness asserted below, and it still refuses a document that stopped drawing boxes at all.
+    expect(rects.filter((r) => r.op === 'S').length, 'the document draws ruled boxes').toBeGreaterThanOrEqual(5);
+    expect(rects.filter((r) => r.op === 'f').length, 'the document draws filled bands').toBeGreaterThanOrEqual(5);
 
     expect(
       bandsPaintedOverABorder(rects).map((r) => `${r.op} x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
@@ -1711,5 +1833,277 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
     const text = flat(await renderPayslipPdf(d, labels));
     expect(text).toContain('Site allowance');
     expect(text).not.toContain('18 days ×');
+  });
+});
+
+/**
+ * ─── a96d320c rev 3 — THE FOUR THINGS THE REPORTER CONTESTED, AND THEN APPROVED ───
+ *
+ * Four separate complaints about one document, all read off the RENDERED FILE rather than off a 200 or a
+ * source grep: an unidentified number in the header, a bordered employee-information grid with an empty
+ * cell in it, two totals that do not line up, and non-payable amounts stranded under NET PAY. Board item
+ * 048f1e9d (the employee details block) is folded in here — it is the second of the four.
+ *
+ * NOTHING IN THIS ROUND MAY MOVE A FIGURE. The last assertion in this block is the one that says so.
+ */
+describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned totals, the Other column', () => {
+  /** The letterhead rule: the one 1.6pt line on the sheet, under the company name. */
+  const letterheadRuleY = (bytes: Uint8Array) => {
+    const rules = drawnLines(bytes).filter((l) => l.w === 1.6 && l.page === 1);
+    expect(rules.length, 'exactly one letterhead rule').toBe(1);
+    return rules[0].y1;
+  };
+
+  it('prints NO unidentified number in the header — and the letterhead is the SAME HEIGHT without one', async () => {
+    // `data.companyReg` is '202301000001 (1400001-A)'. It used to be drawn under the subtitle with no
+    // label at all, so the reader met a bare figure under the company name and nothing said what it was.
+    // Production carries one on 2 of 5 companies, so it appeared on some payslips and not others.
+    const withReg = await renderPayslipPdf(data, labels);
+    expect(drawnText(withReg), 'the bare registration number is off the document').not.toContain('202301000001');
+    expect(drawnText(withReg), 'and so is its bracketed half').not.toContain('1400001-A');
+
+    // THE HALF WITH NO VISIBLE CAUSE. `drawLetterhead` reserved 46pt when a registration number was
+    // present and 34pt when it was not. Removing the text and leaving the arithmetic would keep a 12pt
+    // hole for a string nothing draws — and only on payslips from a registered company, so the same
+    // document would print in two shapes for a difference the reader can no longer see.
+    const withoutReg = await renderPayslipPdf({ ...data, companyReg: null }, labels);
+    expect(letterheadRuleY(withoutReg), 'the letterhead rule is at the same y either way').toBeCloseTo(
+      letterheadRuleY(withReg),
+      3,
+    );
+    // …and so is everything the letterhead pushes down, or the hole moved instead of closing.
+    const a = placed(drawnPlacements(withReg), 'EARNINGS')!;
+    const b = placed(drawnPlacements(withoutReg), 'EARNINGS')!;
+    expect(b.y, 'the whole page flow is unmoved').toBeCloseTo(a.y, 3);
+
+    // NON-VACUITY, TWO WAYS.
+    // 1. The fixture really does carry a registration number, so `not.toContain` above is a defect that
+    //    is absent and not a field that was never set.
+    expect(data.companyReg).toBe('202301000001 (1400001-A)');
+    // 2. The DATA still carries it. This item takes the number off the LETTERHEAD; it does not stop the
+    //    builder resolving it, because the admin Individual Payslip screen prints it and a LABELLED
+    //    registration line is the obvious next request.
+    const built = buildPayslipPdfData(
+      {
+        employee: 'Ismail', employeeCode: 'TEST0005', company: 'Isedecor Bina Sdn Bhd',
+        companyReg: '201901024512', payPeriod: '2026-07', basic: '4500.00', allowance: '0',
+        overtime: '0', bonus: '0', gross: '4500.00', otherDeductions: '0', totalDeductions: '649.65',
+        net: '3850.35', employerCost: '5085.00', daysWorked: '31', statutory: {},
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+    );
+    expect(built.companyReg, 'the builder still resolves it — it is the DOCUMENT that stopped printing it').toBe(
+      '201901024512',
+    );
+    expect(drawnText(await renderPayslipPdf(built, labels)), 'and the document still does not').not.toContain(
+      '201901024512',
+    );
+  });
+
+  it('lands the two totals on ONE baseline whatever the row counts are', async () => {
+    // Sweep the reversal in both directions. `data` is 3 earnings rows against 4 deduction rows; adding a
+    // bonus makes it 4 against 4; a CP38 line and an absence line make it 3 against 6. Every one of them
+    // must print TOTAL EARNINGS and TOTAL DEDUCTIONS on the same baseline.
+    const cases: [string, Partial<PayslipPdfData>][] = [
+      ['3 earnings / 4 deductions', {}],
+      ['4 earnings / 4 deductions', { bonus: 800, gross: 7920 }],
+      ['3 earnings / 5 deductions', { cp38: 50, totalDeductions: 1149.65, net: 5970.35 }],
+      [
+        '3 earnings / 6 deductions',
+        {
+          cp38: 50, otherDeductions: 200, totalDeductions: 1349.65, net: 5770.35,
+          absence: { unpaidLeave: { days: 2, amount: 200 }, absent: null, residual: 0, showResidual: false, any: true },
+        },
+      ],
+      ['5 earnings / 4 deductions', { bonus: 800, claim: 120, gross: 8040 }],
+    ];
+    for (const [name, patch] of cases) {
+      const p = drawnPlacements(await renderPayslipPdf({ ...data, ...patch }, labels));
+      const te = placed(p, 'TOTAL EARNINGS');
+      const td = placed(p, 'TOTAL DEDUCTIONS');
+      expect(te, `${name}: TOTAL EARNINGS is drawn`).toBeDefined();
+      expect(td, `${name}: TOTAL DEDUCTIONS is drawn`).toBeDefined();
+      expect(te!.page, `${name}: on one sheet`).toBe(td!.page);
+      expect(td!.y, `${name}: the two totals share a baseline`).toBeCloseTo(te!.y, 1);
+    }
+  });
+
+  it('the padding is a FLOOR: it never crops a row, and the shorter box still shows every line it has', async () => {
+    // The mechanism holds the shorter body open. It must not do anything else — in particular it must not
+    // be able to swallow a row by capping a body instead of extending it.
+    const text = drawnText(
+      await renderPayslipPdf({ ...data, cp38: 50, totalDeductions: 1149.65, net: 5970.35 }, labels),
+    );
+    for (const row of ['Basic salary', 'Allowances', 'Overtime', 'EPF', 'SOCSO', 'EIS', 'PCB', 'CP38']) {
+      expect(text, `the padded pair still prints ${row}`).toContain(row);
+    }
+  });
+
+  /**
+   * ⚠️ THE CONTINUATION PATH — where a naive per-side fix breaks.
+   *
+   * `total` is handed to `paintBox` only on `c.final`. A fix that padded whenever ITS OWN side was final
+   * would, on a sheet where Earnings is mid-flow and Deductions has finished, hold the Deductions body
+   * open to the height of the Earnings CHUNK — thirty-odd rows — and drive that box and its total
+   * straight through the footer and off the sheet. The guard is that EVERY side must be final in the
+   * same pass; a side that finished on an earlier sheet answers `null` and refuses the padding too.
+   */
+  it('does NOT pad a side whose partner is still flowing onto the next sheet', async () => {
+    const spilled = await renderPayslipPdf(
+      {
+        ...data,
+        allowance: 700,
+        earningLines: Array.from({ length: 70 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 })),
+      },
+      labels,
+    );
+    expect(await pageCount(spilled), 'the fixture really does continue onto another sheet').toBeGreaterThan(1);
+    const p = drawnPlacements(spilled);
+    expect(drawnText(spilled)).toContain('EARNINGS (CONTINUED)');
+
+    const td = placed(p, 'TOTAL DEDUCTIONS')!;
+    const te = placed(p, 'TOTAL EARNINGS')!;
+    // The two totals are on DIFFERENT SHEETS. There is no baseline to share, and the renderer must not
+    // invent one — which is exactly what padding a lone final side would have tried to do.
+    expect(td.page, 'Deductions finishes on sheet 1').toBe(1);
+    expect(te.page, 'Earnings finishes later').toBeGreaterThan(1);
+
+    // AND THE DEDUCTIONS BOX IS STILL ITS OWN SIZE. Its total sits one total-band below its last row
+    // (PCB). Padded to the Earnings chunk it would be ~30 rows lower — off the bottom of the sheet.
+    const pcb = p.find((r) => r.text === 'PCB' && r.page === 1 && r.x > 297)!;
+    expect(pcb, 'the last deduction row is drawn').toBeDefined();
+    expect(
+      pcb.y - td.y,
+      'TOTAL DEDUCTIONS sits directly under the last deduction row, not 30 rows below it',
+    ).toBeLessThan(40);
+    // …and nothing on any sheet is drawn below the page margin. The footer sentence itself sits at y=48,
+    // between the margin (40) and its own rule (62), and is excluded by name rather than by geometry so
+    // this cannot quietly stop measuring if that line moves.
+    const offSheet = p.filter((r) => r.y < 40 && r.text !== labels.generatedNote);
+    expect(offSheet.map((r) => `p${r.page} y=${r.y} ${r.text}`), 'nothing runs off the sheet').toEqual([]);
+    // NON-VACUITY for that sweep: it really did look at three sheets' worth of text.
+    expect(p.length, 'there is plenty on the page to have caught').toBeGreaterThan(100);
+  });
+
+  it('aligns a pair that lands on a CONTINUATION sheet, not only one on the first', async () => {
+    // The second band — Employer contributions beside Other — pushed onto a later sheet by a long
+    // Earnings list. Both sides are final in the same pass there, so the padding applies on a page that
+    // is not page 1. That is the half of "survives the continuation path" that must still WORK, as
+    // against the half above that must not FIRE.
+    const bytes = await renderPayslipPdf(
+      {
+        ...data,
+        allowance: 700,
+        earningLines: Array.from({ length: 70 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 })),
+        nonPayableLines: [
+          { code: 'BIK01', name: 'Company car benefit in kind', amount: 850 },
+          { code: 'BIK02', name: 'Accommodation benefit in kind', amount: 1200 },
+        ],
+      },
+      labels,
+    );
+    const p = drawnPlacements(bytes);
+    const emp = placed(p, 'TOTAL EMPLOYER COST')!;
+    const other = placed(p, 'TOTAL NON-PAYABLE')!;
+    expect(emp.page, 'the second band really is on a continuation sheet').toBeGreaterThan(1);
+    expect(other.page).toBe(emp.page);
+    expect(other.y, 'and its two totals share a baseline there').toBeCloseTo(emp.y, 1);
+  });
+
+  it('puts OTHER beside Employer contributions, and moves Payment information to the band below', async () => {
+    const withOther: PayslipPdfData = {
+      ...data,
+      paymentMethod: 'Bank transfer',
+      bankName: 'Maybank',
+      bankAccount: '157123456789',
+      nonPayableLines: [
+        { code: 'BIK01', name: 'Company car benefit in kind', amount: 850 },
+        { code: 'BIK02', name: 'Accommodation benefit in kind', amount: 1200 },
+      ],
+    };
+    const p = drawnPlacements(await renderPayslipPdf(withOther, labels));
+    const emp = placed(p, 'EMPLOYER CONTRIBUTIONS')!;
+    const other = placed(p, 'OTHER')!;
+    const pay = placed(p, 'PAYMENT INFORMATION')!;
+    const net = placed(p, 'NET PAY')!;
+
+    // Beside, not below: same sheet, same baseline, left column and right column.
+    expect(other.page).toBe(emp.page);
+    expect(other.y, 'Other is level with Employer contributions').toBeCloseTo(emp.y, 1);
+    expect(emp.x, 'Employer contributions holds the left column').toBeLessThan(297);
+    expect(other.x, 'Other holds the right column').toBeGreaterThan(297);
+
+    // Payment information moved to the band BELOW that pair — PDF y grows upward, so below is smaller.
+    expect(pay.page).toBe(emp.page);
+    expect(pay.y, 'Payment information is in the band below').toBeLessThan(emp.y);
+    expect(pay.x, 'and starts at the left margin').toBeCloseTo(emp.x, 1);
+    // …and still ABOVE net pay, which is where it has always been.
+    expect(net.y).toBeLessThan(pay.y);
+
+    // THE OLD PLACEMENT IS GONE: the box is no longer drawn full width UNDER the net figure.
+    expect(other.y, 'Other is above NET PAY, not under it').toBeGreaterThan(net.y);
+
+    // WITHOUT a non-payable line — every payslip that exists today — the band is the pair it has always
+    // been, and Payment information has not moved.
+    const q = drawnPlacements(
+      await renderPayslipPdf({ ...withOther, nonPayableLines: [] }, labels),
+    );
+    expect(placed(q, 'OTHER'), 'no Other box when there is nothing non-payable').toBeUndefined();
+    expect(placed(q, 'PAYMENT INFORMATION')!.y, 'Payment information is back beside Employer contributions').toBeCloseTo(
+      placed(q, 'EMPLOYER CONTRIBUTIONS')!.y,
+      1,
+    );
+    expect(placed(q, 'PAYMENT INFORMATION')!.x).toBeGreaterThan(297);
+  });
+
+  /**
+   * ⚠️ NON-PAYABLE MONEY MAY NOT REACH A TOTAL, AND THIS IS THE ASSERTION THAT SAYS SO.
+   *
+   * `core/pay-rule.ts` records what happens when it does: the clause that keeps a record-only row out of
+   * a daily-rate base was once MISSING, and a ticked non-payable 500 with 2 unpaid days wrote
+   * otherDeductions 419.35 instead of 387.10 — and because the unpaid deduction is pre-statutory, EPF,
+   * SOCSO, EIS, PCB and HRDF all moved with it. This document only LAYS OUT figures, but moving the box
+   * into the same band as Employer contributions is exactly the kind of change that invites someone to
+   * "tidy" the amount into a total beside it.
+   */
+  it('a non-payable line changes NO figure on the document', async () => {
+    const base: PayslipPdfData = { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank' };
+    const withOther: PayslipPdfData = {
+      ...base,
+      nonPayableLines: [
+        { code: 'BIK01', name: 'Company car benefit in kind', amount: 850 },
+        { code: 'BIK02', name: 'Accommodation benefit in kind', amount: 1200 },
+      ],
+    };
+    const before = drawnText(await renderPayslipPdf(base, labels));
+    const after = drawnText(await renderPayslipPdf(withOther, labels));
+
+    // THE FOUR THE EMPLOYEE ACTUALLY READS, named first so a failure says which one moved.
+    for (const [what, value] of [
+      ['gross / total earnings', 'MYR 7,120.00'],
+      ['total deductions', 'MYR 1,099.65'],
+      ['net pay', 'MYR 6,020.35'],
+      ['total employer cost', 'MYR 8,141.55'],
+    ] as const) {
+      expect(before, `${what} before`).toContain(value);
+      expect(after, `${what} MOVED when a non-payable line was added — it must be byte-identical`).toContain(value);
+    }
+
+    // …and then every money string the document prints, compared as a SET, because a named list only
+    // catches the figures this test thought of. `added` names the offender when one appears.
+    const figures = (t: string) => t.split('\n').filter((l) => /^MYR [\d,]+\.\d\d$/.test(l)).sort();
+    const added = figures(after).filter((f) => !figures(before).includes(f));
+    const lost = figures(before).filter((f) => !figures(after).includes(f));
+    // 850, 1200 and their own total 2,050 are the ONLY new figures, and all three are in the Other box.
+    expect(
+      added.sort(),
+      'the only new figures are the two non-payable lines and their own total',
+    ).toEqual(['MYR 1,200.00', 'MYR 2,050.00', 'MYR 850.00']);
+    expect(lost, 'no figure was removed or rewritten').toEqual([]);
+    // NON-VACUITY: the comparison really did have a population to compare.
+    expect(figures(before).length, 'the document prints plenty of figures').toBeGreaterThan(8);
+    // The non-payable amounts are NOT folded into any of them.
+    expect(after).not.toContain('MYR 9,170.00'); // gross + 2050, had it been folded into earnings
+    expect(after).not.toContain('MYR 8,070.35'); // net + 2050, had it been folded into net pay
   });
 });
