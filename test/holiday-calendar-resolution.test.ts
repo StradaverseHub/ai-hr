@@ -31,7 +31,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { createHolidayGroup, deleteHolidayGroup, listHolidayGroups } from '../core/admin';
-import { createLocation, listLocations, updateLocation } from '../core/location';
+import { readFileSync } from 'node:fs';
+import { createLocation, listLocations } from '../core/location';
 import { hireEmployee, setEmploymentHolidayCalendar } from '../core/org';
 import { requestLeave } from '../core/leave';
 import { effectiveHolidayState, holidayDatesFor } from '../core/holidays';
@@ -79,14 +80,12 @@ const setLocation = async (employmentId: string, locationId: string) =>
       ),
     );
 
-const makeLocation = async (code: string, holidayGroupId: string | null, state: string | null = null) => {
-  const { id } = await createLocation(adminCtx(b), {
-    companyId: b.companyId,
-    code,
-    name: code,
-    state,
-    holidayGroupId,
-  });
+/** ADR-0086: a site can no longer be given a calendar — `createLocation` has no such input and
+ *  `location.holiday_group_id` is dropped by migration 0484. The signature keeps its shape so every call
+ *  below still reads as "a site, and what it used to carry"; the calendar id it is handed is now only a
+ *  label for what the test is ABOUT. The column's absence is asserted in location-holiday-removal.test.ts. */
+const makeLocation = async (code: string, _wouldHaveMappedCalendarId: string | null, state: string | null = null) => {
+  const { id } = await createLocation(adminCtx(b), { companyId: b.companyId, code, name: code, state });
   return id;
 };
 
@@ -157,9 +156,11 @@ describe('ADR-0086 — a work site no longer decides anybody’s calendar', () =
     expect(dates.has(SARAWAK), 'the site calendar’s Sarawak is not applied').toBe(false);
     expect(await daysFor(emp)).toBe(4); // 5 − national (was 3: 5 − national − Sarawak)
 
-    // The mapping is still ON THE ROW. The reader changed; the data did not vanish underneath the test.
+    // …and the site cannot even be GIVEN that calendar any more: migration 0484 dropped the column, so
+    // `listLocations` has nothing to report about it. The mapping is unrepresentable, not merely unread.
     const row = (await listLocations(adminCtx(b), [b.companyId])).find((r) => r.id === loc)!;
-    expect(row.holidayGroupId).toBe(cal.id);
+    expect(Object.keys(row)).not.toContain('holidayGroupId');
+    expect(cal.id, 'the calendar still exists; it just has no site door').toBeTruthy();
   });
 
   it('a site’s EXTENDED calendar no longer adds the company ad-hoc day through the site', async () => {
@@ -338,48 +339,78 @@ describe('ADR-0086 — the s.60D completeness skip follows the PERSON’s calend
   });
 });
 
-describe('ADR-0067 — delete guard covers location references', () => {
-  it('deleteHolidayGroup throws InUseError when a LOCATION (not just an employment) maps to it', async () => {
+describe('ADR-0086 — the delete guard has one arm now, not two', () => {
+  /**
+   * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). ADR-0067 §(b) gave `deleteHolidayGroup` a SECOND in-use guard:
+   * a calendar could not be deleted while a LOCATION mapped it, so it could not be silently un-mapped from
+   * every site that used it (the `ON DELETE SET NULL` FK was the backstop; the guard was the friendly
+   * path). Migration 0484 drops `location.holiday_group_id`, so there is no site reference left to guard,
+   * and core/admin.ts's location arm went with it.
+   *
+   * THE OTHER ARM IS UNTOUCHED, and it is the one that protects a person: a calendar assigned to an
+   * EMPLOYMENT still refuses to delete. Both halves are below, so the reversal is bounded.
+   */
+  it('a calendar no site can map is FREE to delete — the site arm of the guard is gone', async () => {
     const cal = await createHolidayGroup(adminCtx(b), { name: 'Mapped', states: ['Sarawak'], archetype: 'standard' });
     await makeLocation('MAP', cal.id);
-    await expect(deleteHolidayGroup(adminCtx(b), { id: cal.id })).rejects.toThrow(/location/i);
+    await expect(deleteHolidayGroup(adminCtx(b), { id: cal.id })).resolves.toBeUndefined();
   });
 
-  it('un-mapping the location lets the calendar delete', async () => {
-    const cal = await createHolidayGroup(adminCtx(b), { name: 'Free', states: ['Sarawak'], archetype: 'standard' });
-    const loc = await makeLocation('FREE', cal.id);
-    await updateLocation(adminCtx(b), { locationId: loc, code: 'FREE', name: 'FREE', holidayGroupId: null });
-    await expect(deleteHolidayGroup(adminCtx(b), { id: cal.id })).resolves.toBeUndefined();
+  it('…but a calendar assigned to an EMPLOYMENT still refuses to delete', async () => {
+    const cal = await createHolidayGroup(adminCtx(b), { name: 'Held', states: ['Sarawak'], archetype: 'standard' });
+    const emp = await hire();
+    await setGroup(emp, cal.id);
+    await expect(deleteHolidayGroup(adminCtx(b), { id: cal.id })).rejects.toThrow(/employee/i);
   });
 });
 
-describe('ADR-0067 — config CRUD threads archetype + mapping, with events', () => {
-  it('create/list a calendar carries its archetype; location list shows the mapped name + archetype', async () => {
+describe('ADR-0086 — config CRUD threads the archetype; there is no mapping left to thread', () => {
+  it('create/list a calendar still carries its archetype, and a location row reports no calendar at all', async () => {
     const cal = await createHolidayGroup(adminCtx(b), { name: 'Cal X', states: ['Sarawak'], archetype: 'extended' });
     const groups = await listHolidayGroups(adminCtx(b));
+    // ADR-0067 §(a) — the archetype and its CRUD are untouched.
     expect(groups.find((g) => g.id === cal.id)?.archetype).toBe('extended');
     expect(await eventTypesFor(b.tenantId, cal.id)).toContain('holiday-group.created');
 
+    // §(b) — the location list used to carry holidayGroupId / holidayGroupName / holidayGroupArchetype,
+    // joined off the mapping. Migration 0484 dropped the column and the join went with it.
     const loc = await makeLocation('LX', cal.id);
-    const rows = await listLocations(adminCtx(b), [b.companyId]);
-    const row = rows.find((r) => r.id === loc)!;
-    expect(row.holidayGroupId).toBe(cal.id);
-    expect(row.holidayGroupName).toBe('Cal X');
-    expect(row.holidayGroupArchetype).toBe('extended');
+    const row = (await listLocations(adminCtx(b), [b.companyId])).find((r) => r.id === loc)!;
+    for (const gone of ['holidayGroupId', 'holidayGroupName', 'holidayGroupArchetype']) {
+      expect(Object.keys(row), `${gone} is retired from LocationRow`).not.toContain(gone);
+    }
+    // What the row still reports — and what a site is still FOR — is unchanged.
+    expect(row.code).toBe('LX');
     expect(await eventTypesFor(b.tenantId, loc)).toContain('location.created');
+  });
+
+  it('updateLocation no longer accepts a calendar at all, so a Save cannot re-map one', () => {
+    // A source-level pin rather than a behavioural one: the input type is what a screen or an action posts
+    // through, and the Calendar control left app/admin/locations in the same change.
+    //
+    // ⚠️ COMMENTS ARE STRIPPED FIRST, and that is not tidiness. The pack-drift ratchet shipped with exactly
+    // this bug (CLAUDE.md §8: "the ratchet reads comments"): a guard whose stated purpose is "the code no
+    // longer names X" passed on the DOCBLOCK explaining why X was removed. core/location.ts carries such a
+    // docblock now, so this guard would have been green over a real re-introduction.
+    const src = readFileSync(new URL('../core/location.ts', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(src).not.toContain('resolveHolidayGroupId');
+    expect(src).not.toContain('holidayGroupId');
   });
 });
 
-describe('ADR-0067 — RLS: a foreign tenant cannot see another tenant’s calendars/mappings', () => {
+describe('ADR-0086 — RLS: a foreign tenant still cannot see another tenant’s calendars or sites', () => {
   it('listHolidayGroups + listLocations are tenant-isolated', async () => {
     const cal = await createHolidayGroup(adminCtx(b), { name: 'TenantA Cal', states: ['Sarawak'], archetype: 'custom' });
-    await makeLocation('TA', cal.id);
+    const loc = await makeLocation('TA', cal.id);
 
-    // A second tenant with its own admin context.
+    // A second tenant with its own admin context. The mapping half of this test went with migration 0484;
+    // the isolation it was checking is the part that matters, and it is asserted on both catalogues.
     const other = await seedBase();
     const otherGroups = await listHolidayGroups(adminCtx(other));
     expect(otherGroups.find((g) => g.id === cal.id)).toBeUndefined();
     const otherLocs = await listLocations(adminCtx(other), [other.companyId]);
-    expect(otherLocs.find((r) => r.holidayGroupId === cal.id)).toBeUndefined();
+    expect(otherLocs.find((r) => r.id === loc)).toBeUndefined();
   });
 });

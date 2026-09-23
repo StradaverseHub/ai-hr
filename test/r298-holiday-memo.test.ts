@@ -233,8 +233,13 @@ const seedFixture = async () => {
   ]);
 
   // ── locations ──
-  const loc = async (companyId: string, code: string, holidayGroupId: string | null, state: string | null) =>
-    (await createLocation(ctx, { companyId, code, name: code, state, holidayGroupId })).id;
+  // ADR-0086 (migration 0484) — a site can no longer be given a calendar: `createLocation` has no such
+  // input and `location.holiday_group_id` is dropped. The signature keeps its shape so the fixture below
+  // still READS as "the site that used to map the custom calendar", which is what SITE_BLIND_PAIRS is
+  // about. The sites themselves are real and the employees are really at them; only the calendar door
+  // is gone, and test/location-holiday-removal.test.ts asserts the column's absence directly.
+  const loc = async (companyId: string, code: string, _wouldHaveMappedCalendarId: string | null, state: string | null) =>
+    (await createLocation(ctx, { companyId, code, name: code, state })).id;
   const L = {
     custom: await loc(A.companyId, 'A-CUS', calCustom.id, null),
     extended: await loc(A.companyId, 'A-EXT', calExtended.id, null),

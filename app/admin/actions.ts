@@ -2427,7 +2427,9 @@ export async function createLocationAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
-      holidayGroupId: (fd.get('holidayGroupId') as string) || null,
+      // ADR-0086 (0fe1ca2e, r331) — a `holidayGroupId` field was posted here and is retired with
+      // `location.holiday_group_id` (migration 0484). A site is no longer one of the ways a holiday
+      // calendar is chosen; `employment.holiday_group_id` is.
       // 1fff489c — the Branch this location serves. Blank = not mapped (the field is optional).
       branch: (fd.get('branch') as string) || null,
     });
@@ -2446,7 +2448,6 @@ export async function updateLocationAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
-      holidayGroupId: (fd.get('holidayGroupId') as string) || null,
       branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {

@@ -36,16 +36,27 @@ const KEYS = [
 ] as const;
 
 describe('0e276da0 — the calendar-coverage warning is wired to both screens', () => {
-  it('the Locations screen reads the coverage and surfaces it beside the calendar picker', () => {
+  it('ADR-0086 — the Locations screen has NO calendar picker left, so it carries no warning either', () => {
+    /**
+     * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). 0e276da0 promised the coverage sentence on TWO screens and
+     * this pinned the first of them: the Locations screen read `holidayCalendarCoverage` and surfaced it
+     * beside the per-location Calendar picker, both on the edit row and in the add form.
+     *
+     * ADR-0086 (item 0fe1ca2e, r331) retires ADR-0067 §(b): a work site is no longer one of the ways a
+     * holiday calendar is chosen, migration 0484 drops `location.holiday_group_id`, and the picker went
+     * with it. A warning about what a calendar would cost the staff of a site is meaningless when no site
+     * can have one — so the promise is not broken here, it is withdrawn with the control it described.
+     *
+     * THE OTHER SCREEN IS UNTOUCHED. The calendar's own screen and the holiday-group list still carry the
+     * identical sentence (the two tests below), and components/holiday-coverage-warning.tsx is still the
+     * single copy of it. That is what bounds this to the site door.
+     */
     const src = read(LOCATIONS_PAGE);
-    expect(src).toContain("holidayCalendarCoverage");
-    expect(src).toContain("from '@/core/holidays'");
-    // The warning, for the calendar a location already carries…
-    expect(src).toContain('HolidayCoverageWarning');
-    expect(src).toContain('calendarWarnings');
-    // …and the day count on the picker's own options, at the moment of choosing.
-    expect(src).toContain('calendarOptionLabel');
-    expect(src.match(/calendarOptionLabel\(cal\.id, cal\.name\)/g) ?? []).toHaveLength(2); // edit row + add form
+    for (const gone of ['holidayCalendarCoverage', 'HolidayCoverageWarning', 'calendarWarnings', 'calendarOptionLabel']) {
+      expect(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), `${gone} is retired`).not.toContain(gone);
+    }
+    // …and the control itself: nothing on this page posts a calendar onto a site any more.
+    expect(src).not.toContain("name=\"holidayGroupId\"");
   });
 
   it('the calendar’s OWN screen surfaces the same line with nothing attached to it', () => {

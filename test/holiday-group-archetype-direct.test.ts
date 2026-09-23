@@ -66,14 +66,10 @@ const setLocation = async (employmentId: string, locationId: string) =>
       ),
     );
 
-const makeLocation = async (code: string, holidayGroupId: string | null, state: string | null = null) => {
-  const { id } = await createLocation(adminCtx(b), {
-    companyId: b.companyId,
-    code,
-    name: code,
-    state,
-    holidayGroupId,
-  });
+/** ADR-0086 (migration 0484): a site can no longer carry a calendar — `createLocation` has no such input.
+ *  The signature keeps its shape so the calls below still read as "a site that WOULD have mapped this". */
+const makeLocation = async (code: string, _wouldHaveMappedCalendarId: string | null, state: string | null = null) => {
+  const { id } = await createLocation(adminCtx(b), { companyId: b.companyId, code, name: code, state });
   return id;
 };
 

@@ -36,7 +36,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
@@ -104,12 +104,15 @@ beforeAll(async () => {
     state: 'Kuala Lumpur',
   });
   klSiteId = klSite.id;
+  // ADR-0086 (migration 0484): a site can no longer be given a calendar — `createLocation` has no input
+  // for one and the column is gone. The site is created without it and an employee is put at it anyway;
+  // claim 4 below is that neither the site nor the calendar reaches them, and the structural assertion in
+  // claim 4b is that the mapping is UNREPRESENTABLE rather than merely unread.
   const calSite = await createLocation(ctx, {
     companyId: b.companyId,
     code: 'SUB-5',
     name: 'Sub 5',
     state: 'Kuala Lumpur',
-    holidayGroupId: calendar.id,
   });
 
   const hire = async (label: string) => {
@@ -205,12 +208,24 @@ describe('ADR-0086 — the site register removed from holiday resolution', () =>
     expect(now.has(SITE_CALENDAR_DAY)).toBe(false);
     expect(sorted(now)).toEqual([SELANGOR_ONLY, NATIONAL].sort());
 
-    // …and the mapping is still on the row: again the reader changed, not the data.
-    const [mapped] = await owner.db
-      .select({ gid: schema.location.holidayGroupId })
-      .from(schema.location)
-      .where(eq(schema.location.code, 'SUB-5'));
-    expect(mapped.gid, 'the site still maps a calendar; nothing reads it').not.toBeNull();
+  });
+
+  it('4b. …AND THE MAPPING IS UNREPRESENTABLE: `location.holiday_group_id` is gone from schema AND database', async () => {
+    // The strongest form of the retirement, and the only assertion in the suite that needs the migration
+    // to have run. ADR-0067 §(b) WAS this column. Re-add it to db/schema.ts and the first expectation
+    // fails; re-add it in a migration and the second does.
+    expect(Object.keys(schema.location)).not.toContain('holidayGroupId');
+    const cols = (await owner.db.execute(
+      sql`select column_name from information_schema.columns where table_name = 'location' order by column_name`,
+    )) as unknown as { column_name: string }[];
+    const names = cols.map((r) => r.column_name);
+    expect(names).not.toContain('holiday_group_id');
+    // …and the columns ADR-0086 deliberately KEEPS are still there: the table survives as a bare FK target
+    // for clocking_location (ADR-0070), `branch` is a second live feature (1fff489c PHASE 2), and `state`
+    // is the record of what the site was supplying before the r328 carry moved it onto the employee.
+    for (const kept of ['id', 'company_id', 'code', 'name', 'state', 'branch', 'archived_at']) {
+      expect(names, `${kept} is deliberately kept`).toContain(kept);
+    }
   });
 
   it('5. ONE KEY, TWO MEMOS: both call sites go through holidayMemoKey, on THREE inputs', () => {

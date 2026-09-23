@@ -290,13 +290,16 @@ describe('ADR-0086 — the s.60D completeness skip followed the calendar off the
       })
     ).employmentId;
 
-  it('a Custom calendar reached through a SITE no longer suppresses it — the site is not read', async () => {
-    const cal = await makeCalendar('CUSTOM', 'custom', ['Johor']);
+  it('a Custom calendar cannot be reached through a SITE at all — there is no mapping to make', async () => {
+    await makeCalendar('CUSTOM', 'custom', ['Johor']);
+    // Migration 0484 dropped `location.holiday_group_id`, so this site is created WITHOUT a calendar —
+    // there is no longer an input for one. The employee is put at it anyway: the claim is that being at a
+    // site tells the completeness guard nothing, and a site that cannot carry a calendar is the strongest
+    // form of that. (The column's absence is asserted directly in test/location-holiday-removal.test.ts.)
     const { id: locationId } = await createLocation(adminCtx(b), {
       companyId: b.companyId,
       code: 'C1',
       name: 'C1',
-      holidayGroupId: cal,
     });
     const employmentId = await hireOne();
     await owner.db
@@ -311,7 +314,7 @@ describe('ADR-0086 — the s.60D completeness skip followed the calendar off the
       );
 
     const eff = await withTenant(adminCtx(b), (tx) => effectiveHolidayState(tx, employmentId));
-    expect(eff?.skipCompleteness, 'the mapping is still on the row; nothing reads it').toBeUndefined();
+    expect(eff?.skipCompleteness, 'being at a site tells the s.60D guard nothing').toBeUndefined();
   });
 
   it('…but a Custom calendar assigned DIRECTLY still does (ADR-0067 §(a), untouched)', async () => {

@@ -117,11 +117,13 @@ describe('R18 a519a96e — inheritance: a child group resolves the PARENT calend
     const parent = await makeParent();
     const child = await makeChild(parent.id);
     await addExtra(child.id);
+    // ADR-0086 (migration 0484): the site can no longer be GIVEN the child calendar — there is no input
+    // and no column for it. The employee is still put at the site, so the claim below is about the site
+    // telling the resolver nothing, which a site that cannot carry a calendar states most strongly.
     const { id: locId } = await createLocation(adminCtx(b), {
       companyId: b.companyId,
       code: 'OKR',
       name: 'OKR Office',
-      holidayGroupId: child.id,
     });
     const emp = await hire();
     await owner.db
