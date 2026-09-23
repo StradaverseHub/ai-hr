@@ -1,0 +1,138 @@
+<meta charset="utf-8">
+<title>Work sites — the holiday half is done; the register stays</title>
+<!--
+  0fe1ca2e rev 5. Measured 2026-09-23 on main and on PRODUCTION.
+  Sole editor: the location CRUD actions live in app/admin/actions.ts and are referenced ONLY by
+  app/admin/locations/page.tsx (8 refs); createLocation has exactly one non-test caller (that action).
+  Branch mapping consumers: app/admin/locations/page.tsx, app/admin/personnel/[employmentId]/page.tsx,
+  core/location.ts. Clocking points are grouped under their linked location on the same register page.
+  Production: 8 sites, 0 with a branch mapped, 2 clocking points, 0 linked to a site, 2 open assignments
+  sitting at a site (0 of them missing a work_state), 0 sites mapping a holiday calendar.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1150px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:18px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+ .node{border:1px solid var(--rule);border-radius:7px;padding:7px 11px;font-size:11.5px;background:#fbfbfd}
+ .node.off{border-style:dashed;color:#a0a0ad;background:#faf9f7;text-decoration:line-through}
+ .node.on{border-color:#bcdccb;background:#f4faf6;color:var(--ok);font-weight:600}
+ .arr{color:var(--mf);font-size:14px}
+ .three{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+ .card{border:1px solid var(--rule);border-radius:8px;padding:11px}
+ .card h3{margin:0 0 5px;font-size:11.5px}
+ .card p{margin:0;font-size:11.5px;color:var(--mf);line-height:1.5}
+ .card .num{font-size:17px;font-weight:700;color:var(--fg);display:block;margin-bottom:3px}
+ .card.warn{border-color:#e6cfa8;background:#fdfaf4}
+ .screen{border:1px solid var(--rule);border-radius:8px;overflow:hidden;max-width:560px}
+ .sbar{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:600}
+ .frow{display:flex;justify-content:space-between;gap:10px;padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f0f1f7}
+ .frow:last-child{border-bottom:none}
+ .frow .k{color:var(--mf)}
+ .frow.gone{background:#fdf0ee;color:var(--bad);text-decoration:line-through}
+ .frow.gone .k{color:var(--bad)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Work sites &mdash; what is done, and the one thing we are not doing</h1>
+  <p class="sub">You approved removing work sites. Half of that is built. The other half turned out to take something with it.</p>
+
+  <div class="sec">
+    <h2><b>Done</b> &mdash; work sites no longer decide anybody&rsquo;s public holidays</h2>
+    <div class="bd">
+      <div class="flow">
+        <span class="node off">Work site&rsquo;s state</span>
+        <span class="arr">&rarr;</span>
+        <span class="node off">Work site&rsquo;s own calendar</span>
+        <span class="arr">&rarr;</span>
+        <span class="node on">Employee&rsquo;s own work state &rarr; public holidays</span>
+      </div>
+      <p class="note">Exactly what you approved, and it is built and checked. We verified on your live
+        system before touching anything: <b>2 employees sit at a work site and both already have their own
+        work state recorded</b>, so nobody&rsquo;s holidays change by a single day. No work site has a
+        calendar attached. The old paths are gone from the code, not just hidden.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>Not done</b> &mdash; the register itself cannot simply leave, and we should have seen it sooner</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0"><b>That screen is the only place a work site can be created or
+        edited at all.</b> There is no other door. Delete it and these three stop being maintainable &mdash;
+        not broken today, but frozen for good:</p>
+      <div class="three" style="margin-top:11px">
+        <div class="card warn">
+          <h3>The site list itself</h3>
+          <span class="num">8 sites &middot; 2 in use</span>
+          <p>Two employees are currently posted to a site. The list stays readable and pickable, but no
+            site could ever be added, renamed or retired again.</p>
+        </div>
+        <div class="card warn">
+          <h3>Branch mapping</h3>
+          <span class="num">0 mapped</span>
+          <p>We built this for you so an imported branch code could be matched to a site once and then
+            remembered. Nothing is mapped yet &mdash; and with no editor, nothing ever could be.</p>
+        </div>
+        <div class="card warn">
+          <h3>Clocking point links</h3>
+          <span class="num">0 of 2 linked</span>
+          <p>We promised clocking locations would not be affected. They are not &mdash; but a NEW clocking
+            point could never be linked to a site, because no new site could exist.</p>
+        </div>
+      </div>
+      <p class="note"><b>Nothing on your system breaks today</b> &mdash; no branch is mapped and no clocking
+        point is linked. What removal costs is the ability to ever use those again. That is the same kind
+        of decision you just made about site holiday calendars, and we are not going to make this one
+        quietly on your behalf.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>What we propose instead</b> &mdash; keep the register, and tidy it</h2>
+    <div class="bd">
+      <div class="screen">
+        <div class="sbar">Organization &rsaquo; Work Sites &mdash; edit site</div>
+        <div class="frow"><span class="k">Code</span><span>HQ-KL</span></div>
+        <div class="frow"><span class="k">Name</span><span>Kuala Lumpur Head Office</span></div>
+        <div class="frow"><span class="k">Branch</span><span>&mdash; none &mdash;</span></div>
+        <div class="frow gone"><span class="k">State</span><span>Kuala Lumpur</span></div>
+        <div class="frow gone"><span class="k">Holiday calendar</span><span>&mdash; none &mdash;</span></div>
+      </div>
+      <p class="note"><b>The two struck-through fields go.</b> The holiday calendar picker is already gone
+        &mdash; that is the work above. The State field goes with it: it now decides nothing, and the line
+        underneath it still tells you it &ldquo;overrides the employee&rsquo;s work state for public-holiday
+        resolution&rdquo;, which stopped being true the moment we made this change. A control that lies is
+        worse than one that is missing.</p>
+      <p class="note">Everything else stays exactly as it is: the site list, branch mapping, the clocking
+        points grouped underneath, and the site picker on an employee&rsquo;s record.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Where we got this wrong</h3>
+    <p><b>The plan you approved said the register would leave.</b> It also said clocking locations were
+      unaffected because &ldquo;that link is kept&rdquo;. We did not notice that keeping the link requires
+      keeping the editor &mdash; and we never mentioned branch mapping to you at all. Both are on us.</p>
+    <p><b>You were already offered this.</b> The same plan said that if you might want per-site holidays
+      later we would &ldquo;leave the work-site register in place and simply tidy the screen rather than
+      removing it&rdquo;. That is what we are now recommending, for a different reason than we expected.</p>
+    <p><b>If you still want the register gone</b>, say so and we will come back with what it would take to
+      retire branch mapping and the clocking link deliberately, each with its own decision &mdash; rather
+      than letting them lapse as a side effect of deleting a screen.</p>
+  </div>
+</div>
