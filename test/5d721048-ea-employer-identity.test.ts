@@ -314,6 +314,10 @@ describe('5d721048 · BOTH doors — the refusal lives in the read, so neither r
    */
   it('(c) an in-scope company that never employed or paid them is a bare 404 on BOTH routes', async () => {
     const r = await bothDoors({ companyId: coStranger, ids: [transferredId] });
+    // ⚠️ BOTH statuses in ONE assertion, deliberately. Asserted one after the other, removing the guard
+    // would report only the first surface and the "both doors" claim would rest on the second never
+    // being reached. As a pair, the failure message names both: `[200, 200]` vs `[404, 404]`.
+    expect([r.preview.status, r.download.status], 'preview and download refuse TOGETHER').toEqual([404, 404]);
     await bare(r.preview, 'preview must refuse an employer with no relationship');
     await bare(r.download, 'download must refuse it too');
   });
@@ -334,6 +338,7 @@ describe('5d721048 · BOTH doors — the refusal lives in the read, so neither r
     // too. Both are fine under Acme. Under the stranger neither is, and the file must not come back.
     await pdf((await bothDoors({ companyId: b.companyId, ids: [transferredId] })).preview, 'the good one alone');
     const mixed = await bothDoors({ companyId: coStranger, ids: [transferredId, neverPaidId] });
+    expect([mixed.preview.status, mixed.download.status], 'no partial EA file, on either route').toEqual([404, 404]);
     await bare(mixed.preview, 'no partial EA file');
     await bare(mixed.download, 'on either route');
   });
