@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<title>Payslip — closed boxes, and only the lines that have money in them</title>
+<!--
+  a96d320c rev 2. BEFORE/AFTER of the PDF the reporter marked up.
+  BEFORE reproduces the real defect located at lib/payslip-pdf.ts paintBox ~629-631: the outline is
+  drawn first, then the grey title band is painted OVER it at the same x and full width, so the border
+  has a notch at the top-left and top-right for the height of the band. That is what the four red
+  rectangles on "Payslip Design Review V1.png" circle.
+  Figures are the reporter's own (Eee Lee Yong, July 2026) from their mark-up.
+  Deliberately NOT drawn: the modernised identity block — the words describe it, but they marked it
+  "make it more modern" without a target, so drawing one would invent a promise.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--earn:#0f9b8e;--deduct:#e4572e;--bad:#b42318}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+ .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .col h2 b{font-weight:700}
+ .sheet{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px}
+ /* the box: outline + band. BEFORE paints the band over the outline (notch); AFTER draws it inside. */
+ .box{position:relative;margin-bottom:12px;border:1.2px solid #9a9aa6;border-radius:2px}
+ .box .band{background:#eef0f6;padding:5px 9px;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:#3a3a46;display:flex;align-items:center;gap:6px;border-bottom:1.2px solid #9a9aa6}
+ .box.broken .band{margin:-1.2px;margin-bottom:0;padding-left:10.2px}
+ .dot{width:7px;height:7px;border-radius:50%}
+ .r{display:flex;justify-content:space-between;padding:4px 9px;font-size:11.5px;border-bottom:1px solid #eceef5}
+ .r:last-child{border-bottom:0}
+ .r.tot{background:#f7f8fb;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+ .zero{color:#b0b0ba}
+ .n{font-variant-numeric:tabular-nums}
+ .mark{position:absolute;left:-5px;top:-5px;width:16px;height:30px;border:2.5px solid var(--bad);border-radius:3px}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .keep{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:700;background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+</style>
+
+<div class="wrap">
+  <h1>The payslip you marked up &mdash; both things fixed</h1>
+  <p class="sub">Eee Lee Yong &middot; July 2026 &middot; the printed and downloaded payslip</p>
+
+  <div class="pair">
+    <div class="col">
+      <h2><b>Before</b> &mdash; what you circled</h2>
+      <div class="sheet">
+        <div class="box broken"><div class="mark"></div>
+          <div class="band"><span class="dot" style="background:var(--earn)"></span>EARNINGS</div>
+          <div class="r"><span>Basic salary</span><span class="n">MYR 1,306.45</span></div>
+          <div class="r"><span>Fixed allowance</span><span class="n">MYR 145.16</span></div>
+          <div class="r"><span>Fixed allowance</span><span class="n">MYR 145.16</span></div>
+          <div class="r zero"><span>Overtime</span><span class="n">MYR 0.00</span></div>
+          <div class="r zero"><span>Bonus</span><span class="n">MYR 0.00</span></div>
+          <div class="r tot"><span>Total earnings</span><span class="n" style="color:var(--earn)">MYR 1,596.77</span></div>
+        </div>
+        <div class="box broken"><div class="mark"></div>
+          <div class="band"><span class="dot" style="background:var(--deduct)"></span>DEDUCTIONS (YOUR SHARE)</div>
+          <div class="r"><span>EPF / KWSP</span><span class="n">MYR 176.00</span></div>
+          <div class="r"><span>SOCSO / PERKESO</span><span class="n">MYR 7.75</span></div>
+          <div class="r"><span>EIS / SIP</span><span class="n">MYR 3.10</span></div>
+          <div class="r"><span>PCB / MTD (income tax)</span><span class="n">MYR 0.00</span></div>
+          <div class="r tot"><span>Total deductions</span><span class="n" style="color:var(--deduct)">MYR 186.85</span></div>
+        </div>
+        <p class="note"><b>The notch you circled:</b> the box draws its outline, then paints the grey
+        title strip on top of it at full width &mdash; so the outline is covered at the top-left and
+        top-right. Four boxes, same place each time.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>After</b> &mdash; what we propose</h2>
+      <div class="sheet">
+        <div class="box">
+          <div class="band"><span class="dot" style="background:var(--earn)"></span>EARNINGS</div>
+          <div class="r"><span>Basic salary</span><span class="n">MYR 1,306.45</span></div>
+          <div class="r"><span>Fixed allowance</span><span class="n">MYR 145.16</span></div>
+          <div class="r"><span>Fixed allowance</span><span class="n">MYR 145.16</span></div>
+          <div class="r tot"><span>Total earnings</span><span class="n" style="color:var(--earn)">MYR 1,596.77</span></div>
+        </div>
+        <div class="box">
+          <div class="band"><span class="dot" style="background:var(--deduct)"></span>DEDUCTIONS (YOUR SHARE)</div>
+          <div class="r"><span>EPF / KWSP</span><span class="n">MYR 176.00</span></div>
+          <div class="r"><span>SOCSO / PERKESO</span><span class="n">MYR 7.75</span></div>
+          <div class="r"><span>EIS / SIP</span><span class="n">MYR 3.10</span></div>
+          <div class="r"><span>PCB / MTD (income tax)</span><span class="n">MYR 0.00</span> </div>
+          <div class="r tot"><span>Total deductions</span><span class="n" style="color:var(--deduct)">MYR 186.85</span></div>
+        </div>
+        <p class="note"><b>Overtime and Bonus are gone</b> &mdash; there was nothing to show.
+        <b>The boxes are closed</b> all the way round.<br>
+        The income-tax line stays at 0.00 on purpose <span class="keep">see below</span></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>The one zero we want to keep</h3>
+    <p>Allowance, Overtime, Bonus and every other pay item disappear when there is nothing in them,
+    exactly as you asked. We would like to keep the four statutory lines &mdash; EPF, SOCSO, EIS and
+    income tax &mdash; even at 0.00.</p>
+    <p>There, a zero is a statement rather than clutter: <b>&ldquo;income tax 0.00&rdquo; tells the
+    employee no tax was taken this month.</b> If the line vanishes they cannot tell that apart from a
+    payslip that simply did not mention tax &mdash; and it is the line they look at for their own tax
+    return. Your request allows this exception; we are asking rather than deciding quietly.</p>
+    <p>Sketch only &mdash; wording, spacing and colours will differ from the finished document.</p>
+  </div>
+</div>
