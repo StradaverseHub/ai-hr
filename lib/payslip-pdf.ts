@@ -654,8 +654,14 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // and would silently stop matching the moment that constant moved; painting the fills first and
     // stroking the outline last cannot drift, and it is the order `drawGrid` and `drawYtd` use.
     //
-    // PRE-EXISTING, NOT AN r328 REGRESSION: r328 (a96d320c rev 1) ruled the employee panel and the YTD
-    // table, two blocks that had no rules at all, and did not touch this function.
+    // THE NOTCH IS PRE-EXISTING — but "r328 did not touch this function" was WRONG and is corrected
+    // here, because the parent asserted it in a plan the reporter read. r328 (a96d320c rev 1) ruled the
+    // employee panel and the YTD table, two blocks that had no rules at all, AND it changed this
+    // function: the row hairline below went from inset 6pt to edge-to-edge. That is what made the
+    // washed-out bottom border on Payment information — one of the four boxes they circled — an r328
+    // regression rather than a pre-existing fault. See the rev-2 note on that hairline below.
+    // So: the NOTCH (a filled band over the outline) predates r328; the WASHED-OUT BOTTOM BORDER does
+    // not. Both are fixed here, and the reporter is owed the distinction in plain words.
     pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color: BAND }); // header band
     if (p.total) pg.drawRectangle({ x, y: totalTop - BOX_TOTAL_H, width: p.w, height: BOX_TOTAL_H, color: BAND });
     pg.drawRectangle({ x, y: top - h, width: p.w, height: h, borderColor: RULE, borderWidth: 0.8 });
