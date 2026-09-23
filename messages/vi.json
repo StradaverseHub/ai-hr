@@ -3099,7 +3099,7 @@
       "recordLinesHeading": "Các khoản lương chi tiết",
       "recordLinesNote": "Chỉ ghi nhận để bạn tham khảo — các mục này không ảnh hưởng đến lương gộp hoặc lương thực nhận của bạn.",
       "recordLineRemark": "Được nhập là “{remark}”",
-      "nonPayableHeading": "Khoản không chi trả",
+      "nonPayableHeading": "Khác",
       "nonPayableTotal": "Tổng khoản không chi trả",
       "pdfTitle": "Phiếu lương",
       "payPeriodLabel": "Kỳ lương",

@@ -3099,7 +3099,7 @@
       "recordLinesHeading": "รายการเงินเดือนแยกรายการ",
       "recordLinesNote": "บันทึกไว้เพื่ออ้างอิงเท่านั้น — ไม่กระทบเงินเดือนรวมหรือเงินสุทธิของคุณ",
       "recordLineRemark": "บันทึกไว้ว่า “{remark}”",
-      "nonPayableHeading": "รายการที่ไม่จ่าย",
+      "nonPayableHeading": "อื่น ๆ",
       "nonPayableTotal": "รวมรายการที่ไม่จ่าย",
       "pdfTitle": "สลิปเงินเดือน",
       "payPeriodLabel": "งวดจ่าย",

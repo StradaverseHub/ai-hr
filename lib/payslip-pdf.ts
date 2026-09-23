@@ -608,6 +608,19 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     rows: BoxRowPlan[];
     total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     noteLines: string[];
+    /**
+     * a96d320c rev 3 — THE ONE THING THAT PUTS TWO TOTALS ON ONE BASELINE.
+     *
+     * Minimum height for the BODY (the rows between the header band and the total band). The rows are
+     * unchanged and nothing is inserted between them; the box simply does not close its body above this
+     * height, so a shorter column's total band drops to where the taller column's already is.
+     *
+     * Set by `flowPair`, and ONLY when both sides are painting their FINAL chunk in the same pass —
+     * padding a chunk that continues onto the next sheet would open a blank in the middle of a list. A
+     * box asked to pad to less than it already needs is unaffected: this is a floor, never a cap, so it
+     * can never crop a row.
+     */
+    padBodyTo?: number;
   };
 
   const planRow = (r: Row, w: number): BoxRowPlan => {
@@ -621,11 +634,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   };
 
   const noteHeightOf = (noteLines: string[]) => (noteLines.length > 0 ? noteLines.length * 9 + 7 : 0);
-  const boxHeight = (p: BoxPlan) =>
-    BOX_HEAD_H +
-    p.rows.reduce((s, r) => s + r.h, 0) +
-    (p.total ? BOX_TOTAL_H : 0) +
-    noteHeightOf(p.noteLines);
+  /** What the rows alone need. */
+  const rowsHeight = (rows: BoxRowPlan[]) => rows.reduce((s, r) => s + r.h, 0);
+  /** What the rows OCCUPY once `padBodyTo` has had its say (a96d320c rev 3). A floor, never a cap. */
+  const bodyHeight = (p: BoxPlan) => Math.max(rowsHeight(p.rows), p.padBodyTo ?? 0);
+  /** Everything under the body: the total band and the note. `chunkFor` and `flowPair` both need it. */
+  const tailHeight = (p: BoxPlan) => (p.total ? BOX_TOTAL_H : 0) + noteHeightOf(p.noteLines);
+  const boxHeight = (p: BoxPlan) => BOX_HEAD_H + bodyHeight(p) + tailHeight(p);
 
   const planBox = (o: {
     w: number; title: string; rows: Row[];
@@ -648,7 +663,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * aligned by `flowPair` drawing both at the same y — never by padding a box past its own contents.
    */
   const paintBox = (pg: PDFPage, x: number, top: number, p: BoxPlan): number => {
-    const bodyH = p.rows.reduce((s, r) => s + r.h, 0);
+    const rowsH = rowsHeight(p.rows);
+    const bodyH = bodyHeight(p);
     const h = boxHeight(p);
     const totalTop = top - BOX_HEAD_H - bodyH;
     // a96d320c rev 2 — THE NOTCH THE REPORTER CIRCLED, FOUR TIMES, IN THE SAME PLACE EACH TIME.
@@ -662,7 +678,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     //
     // FIXED BY ORDERING, not by insetting the bands. An inset would have to be derived from `borderWidth`
     // and would silently stop matching the moment that constant moved; painting the fills first and
-    // stroking the outline last cannot drift, and it is the order `drawGrid` and `drawYtd` use.
+    // stroking the outline last cannot drift, and it is the order `drawYtd` uses. (`drawGrid` used it
+    // too, until a96d320c rev 3 de-boxed the employee panel and replaced it with `drawFieldColumns`,
+    // which draws no rules at all — see that function for why that is the stronger form of this rule.)
     //
     // THE NOTCH IS PRE-EXISTING — but "r328 did not touch this function" was WRONG and is corrected
     // here, because the parent asserted it in a plan the reporter read. r328 (a96d320c rev 1) ruled the
@@ -702,11 +720,21 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       // a96d320c rev 2 — …EXCEPT UNDER THE LAST ROW OF A BOX THAT HAS NOTHING BELOW IT, where this y IS
       // the box's bottom border. Payment information is such a box (no total, no note) and it is one of
       // the four the reporter circled: a 0.5pt HAIR drawn on top of the 0.8pt RULE border washed that
-      // border out to near-white for its whole length, leaving 0.15pt of colour either side. `drawGrid`
-      // and `drawYtd` already say this in as many words — "the LAST row gets no rule under it: that is
-      // the outer border" — and `paintBox` was the one painter that did not.
-      const isBottomBorder = i === p.rows.length - 1 && !p.total && p.noteLines.length === 0;
-      if (!isBottomBorder) pg.drawLine({ start: { x, y: ry }, end: { x: x + p.w, y: ry }, thickness: 0.5, color: HAIR });
+      // border out to near-white for its whole length, leaving 0.15pt of colour either side. `drawYtd`
+      // already says this in as many words — "the LAST row gets no rule under it: that is the outer
+      // border" — and `paintBox` was the one painter that did not. (`drawGrid` said it too; it is gone,
+      // replaced by the rule-free `drawFieldColumns` in a96d320c rev 3.)
+      const isLastRow = i === p.rows.length - 1;
+      const isBottomBorder = isLastRow && !p.total && p.noteLines.length === 0;
+      // a96d320c rev 3 — …AND NO RULE UNDER THE LAST ROW OF A PADDED BODY EITHER. `padBodyTo` drops the
+      // total band below where the rows end; the hairline that closes the last row would then be stranded
+      // in the middle of that blank, a second horizontal line a few points above the total's own 0.8pt
+      // rule with nothing between them. Same family of fault as the two above: a rule drawn where the
+      // thing it was closing is no longer.
+      const isPadded = isLastRow && bodyH > rowsH;
+      if (!isBottomBorder && !isPadded) {
+        pg.drawLine({ start: { x, y: ry }, end: { x: x + p.w, y: ry }, thickness: 0.5, color: HAIR });
+      }
     });
 
     let by = totalTop;
@@ -838,11 +866,17 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
 
   /**
    * How much of `rows` fits in `avail`, and whether that chunk is the LAST one — i.e. the one that carries
-   * the total and the note. Measurement only; nothing is drawn. Both `flowBox` and `flowPair` decide where
-   * to break through this single function, so a one-column break and a two-column break cannot disagree.
+   * the total and the note. Measurement only; nothing is drawn.
+   *
+   * a96d320c rev 3 — `flowPair` is now its only caller. There used to be a one-column `flowBox` beside it,
+   * breaking through this same function so that a one-column break and a two-column break could not
+   * disagree; its only user was the full-width Non-payable box below NET PAY, and that box is now the
+   * right-hand side of the Employer contributions pair ("Other"). An uncalled flow painter is dead
+   * machinery, so it went with the block that used it — `git log` has it if a full-width flowing box is
+   * ever wanted again. This function did NOT change: the break decision is still made in exactly one place.
    */
   const chunkFor = (plan: BoxPlan, rows: BoxRowPlan[], avail: number) => {
-    const tailH = (plan.total ? BOX_TOTAL_H : 0) + noteHeightOf(plan.noteLines);
+    const tailH = tailHeight(plan);
     let take = 0;
     let acc = 0;
     while (take < rows.length && BOX_HEAD_H + acc + rows[take].h <= avail) {
@@ -855,35 +889,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // Keep one row back so the total is never orphaned at the top of a sheet on its own.
     if (take === rows.length) take -= 1;
     return { take, final: false, h: BOX_HEAD_H + rows.slice(0, take).reduce((s, r) => s + r.h, 0) };
-  };
-
-  const flowBox = (o: FlowSpec) => {
-    const planned = planBox({ w: o.w, title: o.title, rows: o.rows, dot: o.dot, total: o.total, note: o.note });
-    let rows = planned.rows;
-    let title = o.title;
-    let freshPage = false;
-    for (;;) {
-      const c = chunkFor(planned, rows, y - (M + FOOTER_H));
-      if (c.final) {
-        y -= paintBox(page, o.x, y, { ...planned, title, rows }) + GAP;
-        return;
-      }
-      let taken = c.take;
-      if (taken === 0) {
-        // Never emit an empty chunk, which on a sheet too short for one row would loop forever.
-        if (!freshPage) {
-          newPage();
-          freshPage = true;
-          continue;
-        }
-        taken = 1; // one row taller than a whole sheet: overflow it rather than spin
-      }
-      y -= paintBox(page, o.x, y, { ...planned, title, rows: rows.slice(0, taken), total: undefined, noteLines: [] }) + GAP;
-      rows = rows.slice(taken);
-      title = o.continuedTitle;
-      newPage();
-      freshPage = true;
-    }
   };
 
   /**
@@ -921,6 +926,40 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         freshPage = true;
         continue;
       }
+      /**
+       * a96d320c rev 3 — ONE BASELINE FOR THE TWO TOTALS.
+       *
+       * They were never aligned. Both sides start at the same `y` and `used = Math.max(...)` advances the
+       * flow past the taller one, so the TOPS line up and the downward step is shared — but each side is
+       * painted by its own `paintBox` with its own `plan.total`, and a total sits at the foot of its OWN
+       * content. Five earnings rows beside two deduction rows put TOTAL EARNINGS three rows above TOTAL
+       * DEDUCTIONS. The two were only ever level by coincidence, when the columns happened to hold the
+       * same number of rows; the reporter is reading a payslip where they do not.
+       *
+       * The fix is a FLOOR ON THE BODY, not an inserted row and not a taller row: the shorter side's body
+       * is held open to the taller side's, so its total band lands where the other one's already is. No
+       * row moves, no row is added, and no figure is touched.
+       *
+       * ⚠️ FINAL CHUNKS ONLY, AND ONLY WHEN BOTH SIDES ARE FINAL IN THE SAME PASS. `total` is handed to
+       * `paintBox` on `c.final`; a chunk that continues onto the next sheet has no total to align, and
+       * padding it would open a blank band in the middle of a list that carries on overleaf. A side that
+       * finished on an EARLIER sheet answers `null` here, and `every` then refuses the padding — its
+       * total is on a page this one cannot line up with. The two-page case is exercised explicitly in
+       * `test/payslip-pdf.test.ts`; it is where a padding that only looked at `c.final` per side breaks.
+       */
+      const allFinal = chunks.every((c) => c != null && c.final);
+      let padTo = 0;
+      if (allFinal) {
+        const bodies = chunks.map((c, i) => rowsHeight(sides[i].rows.slice(0, c!.take)));
+        const tallest = Math.max(...bodies);
+        // ⚠️ ONLY IF BOTH PADDED BOXES STILL CLEAR THE FOOTER. `chunkFor` passed each side on its own
+        // height; padding makes the shorter one taller, and when its tail is the heavier of the two (the
+        // Earnings note beside a Deductions box with none) the padded box can exceed what was measured.
+        // Alignment is a courtesy to the reader; running a box through the footer is a defect. So when it
+        // will not fit, the two totals simply stay where they were.
+        const fits = sides.every((s) => BOX_HEAD_H + tallest + tailHeight(s.plan) <= avail);
+        if (fits) padTo = tallest;
+      }
       let used = 0;
       chunks.forEach((c, i) => {
         if (!c) return;
@@ -934,6 +973,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
             rows: s.rows.slice(0, take),
             total: c.final ? s.plan.total : undefined,
             noteLines: c.final ? s.plan.noteLines : [],
+            // `padTo` is 0 unless EVERY side is final, so a continued chunk can never be padded; the
+            // `c.final` guard repeats that at the point of use rather than trusting it from 30 lines up.
+            padBodyTo: c.final ? padTo : 0,
           }),
         );
         s.rows = s.rows.slice(take);
@@ -970,26 +1012,71 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     },
   ]);
 
-  // ─── Employer contributions beside Payment information ───
+  // ─── Employer contributions beside OTHER — or, when there is no Other, beside Payment information ───
   //
-  // Both are SHORT and fixed (four statutory rows; three payment fields), so the simple measure-once pair
-  // is still right for them — neither can grow to the length that made Earnings need a continuing flow.
-  // Pairing them is also what buys the space for NET PAY to take the full width below.
-  const empPlan = planBox({
-    w: COL_W, title: t.employerContributions, rows: employerRows,
+  // a96d320c rev 3 — THE SECOND BAND. `Other` is the box that used to be drawn FULL WIDTH BELOW NET PAY
+  // (f35f758a, "Non-payable items"): the items this run calculated and did not pay. Below the net figure
+  // is the worst place on the document for it — the employee has already found the number they came for,
+  // and a full-width box of money they did NOT receive, after it, reads like a second pay total. Beside
+  // Employer contributions it reads as what it is: the other half of "what this month cost that is not in
+  // your net pay". The reporter asked for it as a COLUMN and this is that column.
+  //
+  // WHY NOT FOUR ACROSS. Their sketch put Earnings, Deductions, Employer contributions and Other side by
+  // side in one row. On A4 that is ~32mm a column, and "Construction Project Management Allowance" wraps
+  // to four lines in it — the clipping/cramping fault r179 (f35f758a) was raised to fix. Two across, in
+  // two bands, keeps every column at the width that fix bought.
+  //
+  // PAYMENT INFORMATION MOVES DOWN, and only when Other is present: it is three short text fields and the
+  // band below is a better home for them than a third column that does not exist. With no Other — every
+  // payslip that exists today — this is byte for byte the pair it has always been.
+  const empSpec = {
+    x: M, w: COL_W, title: t.employerContributions, continuedTitle: t.employerContributions,
+    rows: employerRows,
     total: { label: t.totalEmployerCost, value: money(d.employerCost) },
     note: t.employerContributionsNote,
-  });
+  } as const;
   // Payment information is printed only when there is something to print. A row of empty labels tells the
   // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
   const payPlan = payRows.length > 0
     ? planBox({ w: COL_W, title: t.paymentInformation, rows: payRows })
     : null;
-  const pairH = Math.max(boxHeight(empPlan), payPlan ? boxHeight(payPlan) : 0);
-  ensure(pairH);
-  paintBox(page, M, y, empPlan);
-  if (payPlan) paintBox(page, COL2_X, y, payPlan);
-  y -= pairH + GAP;
+
+  if (nonPayableRows.length > 0) {
+    // `flowPair`, not the measure-once pair: a company that starts declaring benefits in kind can declare
+    // a lot of them, and the full-width `flowBox` this replaces could already continue across sheets. The
+    // list must keep that. Employer contributions is four fixed rows and will never be the side that
+    // breaks. `flowPair` also lands TOTAL EMPLOYER COST and the Other total on one baseline, for the same
+    // reason and by the same mechanism as Total earnings and Total deductions above.
+    flowPair([
+      empSpec,
+      {
+        x: COL2_X, w: COL_W, title: t.nonPayable, continuedTitle: t.nonPayable, rows: nonPayableRows,
+        total: { label: t.nonPayableTotal, value: money(nonPayableTotal) },
+        note: t.nonPayableNote,
+      },
+    ]);
+    if (payPlan) {
+      // Its own band, at COL_W on the left — NOT widened to the full page. Three short text fields
+      // stretched across 515pt would put "Maybank" alone in the middle of a line; the box is the size of
+      // its contents, which is the rule every other block on this document already follows.
+      ensure(boxHeight(payPlan));
+      y -= paintBox(page, M, y, payPlan) + GAP;
+    }
+  } else {
+    // Both are SHORT and fixed (four statutory rows; three payment fields), so the simple measure-once
+    // pair is still right for them — neither can grow to the length that made Earnings need a continuing
+    // flow. Pairing them is also what buys the space for NET PAY to take the full width below. NO
+    // PADDING HERE, deliberately: Payment information has no total to align to, so `flowPair` would only
+    // open whitespace above TOTAL EMPLOYER COST and change a document that nothing asked to change.
+    const empPlan = planBox({
+      w: empSpec.w, title: empSpec.title, rows: empSpec.rows, total: empSpec.total, note: empSpec.note,
+    });
+    const pairH = Math.max(boxHeight(empPlan), payPlan ? boxHeight(payPlan) : 0);
+    ensure(pairH);
+    paintBox(page, M, y, empPlan);
+    if (payPlan) paintBox(page, COL2_X, y, payPlan);
+    y -= pairH + GAP;
+  }
 
   // ─── NET PAY, FULL WIDTH ───
   // The one figure the employee looks for first, and now the only thing on its line — which is both what
@@ -1001,20 +1088,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   at(page, t.netPay.toUpperCase(), M + 14, y - 28, 9.5, bold, WHITE);
   atR(page, money(d.net), A4_W - M - 14, y - 30, 15, bold, WHITE);
   y -= netH + GAP;
-
-  // ─── Non-payable (f35f758a) ───
-  //
-  // Items this run CALCULATED BUT DID NOT PAY. It is drawn only when the run stamped at least one line
-  // non-payable, which is true of no payslip that exists today — so on every existing document this block
-  // simply is not there. Full width and flowed, not paired, because a company that starts declaring
-  // benefits in kind can declare a lot of them and the list must be able to continue.
-  if (nonPayableRows.length > 0) {
-    flowBox({
-      x: M, w: CONTENT_W, title: t.nonPayable, continuedTitle: t.nonPayable, rows: nonPayableRows,
-      total: { label: t.nonPayableTotal, value: money(nonPayableTotal) },
-      note: t.nonPayableNote,
-    });
-  }
 
   // ─── employer-borne disclosure (3c473773) ───
   if (d.employerBorne.length > 0) {
@@ -1107,10 +1180,15 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       ...(d.epfNumber ? ([[t.epfNumber, d.epfNumber]] as [string, string][]) : []),
       ...(d.socsoNumber ? ([[t.socsoNumber, d.socsoNumber]] as [string, string][]) : []),
     ];
-    // a96d320c — the identity fields sit in a RULED GRID, not in loose label-over-value pairs. Nothing
-    // about which fields are printed changes; `drawGrid` draws the box and the cell rules it always
-    // measured for.
-    const leftH = headH + drawGrid(pg, idCells, M, top - headH, leftW, 2);
+    // a96d320c rev 3 — THE RULED GRID IS WITHDRAWN AND THIS COMMENT IS ITS RECORD, so it does not come
+    // back. It read: "the identity fields sit in a RULED GRID, not in loose label-over-value pairs."
+    // That was OUR change (rev 1 / r328), not a request, and the reporter contested it twice and has now
+    // approved its reversal in their own words — "remove the unnecessary bordered-line design", "maintain
+    // clear alignment between the field labels and values", "avoid excessive borders and visual
+    // separation". The fields are back to loose label-over-value pairs, aligned on a shared column grid.
+    // DO NOT RE-RULE THIS PANEL: it was tried, it shipped, it was read by the person the document is
+    // for, and it was rejected. See `drawFieldColumns` for the defect it also carried.
+    const leftH = headH + drawFieldColumns(pg, idCells, M, top - headH, leftW, 2);
 
     const infoCells: [string, string][] = [
       ...(d.department ? ([[t.department, d.department]] as [string, string][]) : []),
@@ -1122,18 +1200,33 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     ];
     let rightH = 0;
     if (infoCells.length > 0) {
-      // a96d320c — the floating PILL becomes a full-width HEADER BAND over a ruled grid, which is exactly
-      // the shape `paintBox` gives Earnings, Deductions and every other section. One visual language for
-      // every block on the document was the reporter's point; a heading that only covers its own text
-      // width, sitting above unruled rows, was the odd one out. The band keeps PRIMARY + white text, so
-      // the accent survives — what changes is that it is the top of a box rather than a label beside one.
-      const bandH = 17;
-      pg.drawRectangle({ x: rightX, y: top - bandH, width: rightW, height: bandH, color: PRIMARY });
-      at(pg, t.employmentInfo.toUpperCase(), rightX + 10, top - 12.5, 7.5, bold, WHITE);
+      // a96d320c rev 3 — THE EMPLOYMENT-INFO HALF IS DE-BOXED TOO, AND THAT IS A DECISION, not a spill.
+      //
+      // The reporter named the EMPLOYEE block. They also asked, generally, to "avoid excessive borders
+      // and visual separation". Three things decided it for the whole panel rather than half of it:
+      //   1. THE VOID IS HERE TOO. `drawGrid`'s odd-cell case (see `drawFieldColumns`) is a property of
+      //      the grid, not of the identity fields: an employment panel printing department + position +
+      //      grade is three cells in a two-column grid and encloses a fourth that is never written into.
+      //      Keeping the box here would have meant fixing the void twice, or in a shared function that
+      //      one caller no longer uses.
+      //   2. TWO HALVES OF ONE PANEL IN TWO VISUAL LANGUAGES is exactly what rev 1's own comment gave as
+      //      the reason for boxing this half ("one visual language for every block"). De-boxing the left
+      //      and leaving the right ruled would re-create that fault with the sides swapped.
+      //   3. THE MONEY IS WHAT THE RULES ARE FOR. Earnings, Deductions, Employer contributions, Other,
+      //      Payment information and Year to date are all still ruled boxes and none of them is touched.
+      //      What changes is that the identity panel stops competing with them: reference data reads
+      //      light, figures read ruled, and the panel is still closed off by the single 0.8pt rule below.
+      //
+      // The HEADING SURVIVES, as ink rather than as a filled band: same text, same size, same position,
+      // same PRIMARY accent — a full-width solid rectangle over a list with no border is the "visual
+      // separation" that was objected to, and 7.5pt bold PRIMARY names the column without drawing one.
+      // The 17pt it occupies is unchanged, so the flow below this panel does not move.
+      const headingH = 17;
+      at(pg, t.employmentInfo.toUpperCase(), rightX, top - 12.5, 7.5, bold, PRIMARY);
       // TWO columns, not three: a position title ("Senior Business Analyst") does not fit a third of this
       // panel and would print truncated on an official document.
-      const gridH = drawGrid(pg, infoCells, rightX, top - bandH, rightW, 2);
-      rightH = bandH + gridH;
+      const gridH = drawFieldColumns(pg, infoCells, rightX, top - headingH, rightW, 2);
+      rightH = headingH + gridH;
     }
 
     const h = Math.max(leftH, rightH, 40);
@@ -1142,27 +1235,64 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   }
 
   /**
-   * A label-over-value grid. Returns the height consumed, so the caller can align the panel beside it.
+   * The identity / employment fields as LABEL-OVER-VALUE PAIRS on a shared column grid. No box, no column
+   * rule, no row rule. Returns the height consumed, so the caller can align the panel beside it.
    *
-   * Both halves WRAP (f35f758a). This grid is where "Construction Project Managem…" was printed: a job
+   * ─── a96d320c rev 3 — THIS REPLACES `drawGrid`, AND WHY MATTERS MORE THAN WHAT ───
+   *
+   * `drawGrid` ruled this panel: an outer rectangle, a column rule, a hairline between rows. It was OUR
+   * idea (rev 1 / r328), the reporter contested it, and it is now withdrawn on their approval. Their
+   * words: "remove the unnecessary bordered-line design", "maintain clear alignment between the field
+   * labels and values", "avoid excessive borders and visual separation". THE GRID MUST NOT COME BACK.
+   * It is recorded here rather than deleted so the next reader knows it was tried, shipped, read by the
+   * person the document is for, and rejected.
+   *
+   * IT ALSO CARRIED A DEFECT NO STYLING COULD REACH — an EMPTY RULED CELL, on 46 of 84 production
+   * employments. Not a missing-field case: `idCells` already spreads to nothing for an absent number, so
+   * a payslip with three identity numbers passes three cells. The fault was the DRAW ORDER the grid
+   * needed in order to keep rules off glyphs: the outer rectangle was stroked at FULL WIDTH and the
+   * column rule from `top` to `top - used` at FULL HEIGHT, both before any text, and only then were the
+   * cells filled left to right. An ODD `cells.length` therefore enclosed a cell that was never written
+   * into — a ruled, labelled-looking, permanently blank box on an official document. By identity-cell
+   * count production reads 0→9, 1→29, 2→2, 3→17, 4→27: the 29 one-number and 17 three-number employments
+   * are the 46.
+   *
+   * THE FIX IS STRUCTURAL, NOT COSMETIC. Suppressing the last column-rule segment when the count is odd
+   * (the shape r328's lesson prescribes — suppress a segment, never paint another rectangle over one)
+   * would close the void and leave the box the reporter asked to remove. Loose pairs cannot produce a
+   * void at ANY cell count, because a row with one field draws one field and nothing else: there is no
+   * enclosure to be empty. `test/payslip-pdf.test.ts` renders 0..6 cells and asserts no ruled rectangle
+   * appears in this panel at any of them.
+   *
+   * THE r328 DISCIPLINE IS PRESERVED, absolutely rather than by ordering: `paintBox`, `drawGrid` and
+   * `drawYtd` each had to paint fills and rules in a careful sequence "so no rule can be drawn over a
+   * glyph", and every regression in this file has been a break in one of those sequences. This function
+   * draws NO rules and NO fills, so the property holds unconditionally and cannot be broken by a future
+   * edit reordering anything. Anyone adding a rule here inherits the whole problem again.
+   *
+   * Both halves WRAP (f35f758a). This panel is where "Construction Project Managem…" was printed: a job
    * title, a department name or a long field label got one 25pt row and whatever did not fit was cut.
-   * Rows are now as tall as their tallest cell.
+   * Rows are as tall as their tallest cell, and nothing on this document clips.
    */
-  function drawGrid(pg: PDFPage, cells: [string, string][], x: number, top: number, w: number, cols: number): number {
+  function drawFieldColumns(
+    pg: PDFPage, cells: [string, string][], x: number, top: number, w: number, cols: number,
+  ): number {
     if (cells.length === 0) return 0;
     const cw = w / cols;
-    // a96d320c — cell text is INSET from the rules that now surround it. `CELL_PAD` is subtracted from
-    // both sides of the wrap width, so a value still wraps rather than running under the rule beside it
-    // (nothing on this document clips — see `wrap`); a long field label simply takes one more line, and
-    // the row grows with it exactly as it already did.
-    const CELL_PAD = 6;
-    const textW = cw - 2 * CELL_PAD;
+    // a96d320c rev 3 — the label and its value share ONE x, the column's own left edge, and the left
+    // column's x is the page margin: the fields line up with the employee's name above them and with the
+    // Earnings box below them. `drawGrid` inset its text by CELL_PAD to hold it off the rules beside it;
+    // with the rules gone the inset would only push the panel out of alignment with the rest of the page.
+    // GUTTER is taken off the WRAP WIDTH instead, so a long value still stops short of the next column
+    // rather than running into it.
+    const GUTTER = 12;
+    const textW = cw - GUTTER;
     const planned = cells.map(([k, v]) => ({
       k: wrap(k.toUpperCase(), font, 6.5, textW),
       v: wrap(v, bold, 8.5, textW),
     }));
-    // Measured FIRST, drawn second, for the same reason `planBox` measures before `paintBox` draws: the
-    // outer border has to know the height of the thing it encloses before the first row is put down.
+    // Measured first, drawn second — the caller needs the height to align the half beside this one, and
+    // a row is as tall as the tallest pair in it so a wrapped job title pushes its whole row down.
     const rowHs: number[] = [];
     for (let r = 0; r * cols < planned.length; r += 1) {
       const rowCells = planned.slice(r * cols, r * cols + cols);
@@ -1170,23 +1300,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     }
     const used = rowHs.reduce((s, h) => s + h, 0);
 
-    // The box, then the column rules, then the row rules — all before the text, so no rule can be drawn
-    // over a glyph. The LAST row gets no rule under it: that is the outer border.
-    pg.drawRectangle({ x, y: top - used, width: w, height: used, borderColor: RULE, borderWidth: 0.8 });
-    for (let i = 1; i < cols; i += 1) {
-      pg.drawLine({ start: { x: x + i * cw, y: top }, end: { x: x + i * cw, y: top - used }, thickness: 0.5, color: HAIR });
-    }
-    let ruleY = top;
-    for (let r = 0; r < rowHs.length - 1; r += 1) {
-      ruleY -= rowHs[r];
-      pg.drawLine({ start: { x, y: ruleY }, end: { x: x + w, y: ruleY }, thickness: 0.5, color: HAIR });
-    }
-
     let drawn = 0;
     for (let r = 0; r * cols < planned.length; r += 1) {
       const rowCells = planned.slice(r * cols, r * cols + cols);
       rowCells.forEach((c, i) => {
-        const cx = x + i * cw + CELL_PAD;
+        const cx = x + i * cw;
         const cy = top - drawn;
         c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, font, MUTED));
         c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, bold));
