@@ -700,8 +700,14 @@ export default async function IndividualPayslipPage({
                 round, and a screen that kept them would contradict the file it just produced. The test is
                 the STORED figure (`deriveHistoryBreakdown` off this payslip's own snapshot), never today's
                 pay-item setup. Basic salary is deliberately exempt, as are the statutory deduction lines
-                below — see core/payslip-earning-lines.ts and lib/payslip-pdf.ts `earningsRowsOf`. */}
-            {earningRowShown(b.allowanceNet) && <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />}
+                below — see core/payslip-earning-lines.ts and lib/payslip-pdf.ts `earningsRowsOf`.
+
+                `|| <list>.length > 0`: a sub-line list belongs TO its row. A figure that is zero because
+                its named items cancel out keeps its row, prints 0.00, and shows the items under it —
+                hiding the heading and leaving the detail would be an orphan. */}
+            {(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0) && (
+              <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
+            )}
             {/* 417d4937 — wage AND reimburse (a PCB-exempt allowance is stamped into `reimburse`, is
                 paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
                 identification the Recorded items rows and the printed payslip use. This screen reads the
@@ -712,7 +718,9 @@ export default async function IndividualPayslipPage({
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
-            {earningRowShown(b.overtime) && <Row label={tSlip('overtime')} value={rm(b.overtime)} />}
+            {(earningRowShown(b.overtime) || b.overtimeLines.length > 0) && (
+              <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+            )}
             {/* 6b134681 — `overtimeLines` / `bonusLines`, not `componentsByBucket.*`: the derivation has
                 already checked that these rows add up to the figure above them, the same reconciliation
                 the printed payslip and the ESS payslip apply. The two lists are NOT interchangeable —
@@ -731,7 +739,9 @@ export default async function IndividualPayslipPage({
                 value={rm(b.otConvertAmount)}
               />
             )}
-            {earningRowShown(b.bonus) && <Row label={tSlip('bonus')} value={rm(b.bonus)} />}
+            {(earningRowShown(b.bonus) || b.bonusLines.length > 0) && (
+              <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+            )}
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
                 (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
                 Reconciled in the derivation, as above. */}

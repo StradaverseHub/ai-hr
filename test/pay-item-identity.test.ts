@@ -442,6 +442,26 @@ describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', (
     }
   });
 
+  it('a row that owns sub-lines is never hidden out from under them', () => {
+    // THE ONE WAY THIS RULE COULD MAKE A PAYSLIP HARDER TO READ. Both screens print the named pay items
+    // UNDER their figure. `payItemLinesForBuckets` drops a zero contribution but not a pair that cancels
+    // out, so a figure can be 0.00 with two real items beneath it — and gating the heading on the figure
+    // alone would leave the detail orphaned under nothing. The escape hatch is the list itself.
+    const ess = code('app/me/payslip/[payslipId]/page.tsx');
+    expect(ess).toContain('(earningRowShown(disp.overtime) || showOtLines)');
+    expect(ess).toContain('(earningRowShown(disp.bonus) || showBonusLines)');
+    const admin = code('app/payroll/individual-payslip/page.tsx');
+    expect(admin).toContain('(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0)');
+    expect(admin).toContain('(earningRowShown(b.overtime) || b.overtimeLines.length > 0)');
+    expect(admin).toContain('(earningRowShown(b.bonus) || b.bonusLines.length > 0)');
+
+    // The printed document cannot have the defect BY CONSTRUCTION, and that is worth pinning rather than
+    // trusting: `earningsRowsOf` prints either the named rows INSTEAD of the grouped one, or the grouped
+    // one alone — never a heading with a list under it — so there is no heading to orphan.
+    const pdf = code('lib/payslip-pdf.ts');
+    expect(pdf).toContain('} else if (earningRowShown(total)) {');
+  });
+
   it('Transaction View - History deliberately KEEPS its zero rows, and that is pinned', () => {
     // NOT AN OVERSIGHT, AND NOT A ROW TO TIDY. The reporter asked for empty lines to come off THE
     // PAYSLIP. This panel is the operator's reconciliation grid for a whole run: it is read column-wise

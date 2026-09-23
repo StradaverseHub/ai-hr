@@ -1299,6 +1299,30 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
       bandsPaintedOverABorder(rects).map((r) => `${r.op} x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
       'every band is painted BEFORE the border it sits inside',
     ).toEqual([]);
+
+    // …AND ON A CONTINUATION SHEET. `earningsContinued` exists because the Earnings box can spill, and a
+    // box drawn per page is bordered per page — so a band painted over a border would be painted over
+    // again on every sheet the box runs onto. Seventy rows is the fixture the continuation test uses.
+    const spilled = await renderPayslipPdf(
+      {
+        ...full,
+        allowance: 700,
+        earningLines: Array.from({ length: 70 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 })),
+        detailNotRecorded: false,
+      },
+      labels,
+    );
+    expect(drawnText(spilled), 'the fixture really does continue onto another sheet').toContain('EARNINGS (CONTINUED)');
+    expect(await pageCount(spilled)).toBeGreaterThan(1);
+    // NON-VACUITY for the sheet that is the whole point: page 2 carries a ruled box AND a filled band, so
+    // the emptiness asserted below is a defect that is absent rather than a page with nothing on it.
+    const sheet2 = drawnRects(spilled).filter((r) => r.page === 2);
+    expect(sheet2.filter((r) => r.op === 'S').length, 'the continuation sheet is ruled').toBeGreaterThan(0);
+    expect(sheet2.filter((r) => r.op === 'f').length, 'the continuation sheet has a band').toBeGreaterThan(0);
+    expect(
+      bandsPaintedOverABorder(drawnRects(spilled)).map((r) => `p${r.page} ${r.op} x=${r.x} y=${r.y}`),
+      'a continued box is closed on every sheet it runs onto',
+    ).toEqual([]);
   });
 
   /**

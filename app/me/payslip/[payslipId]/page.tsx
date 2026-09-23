@@ -199,16 +199,21 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
               screen that kept them would disagree with the PDF downloaded from it about what the month
               contained. The test is the STORED figure on this payslip — `payslipDisplayEarnings` off its
               own snapshot — never today's pay-item setup. Basic salary is deliberately not subject to the
-              rule; the statutory deduction lines below are deliberately not subject to it either. */}
+              rule; the statutory deduction lines below are deliberately not subject to it either.
+
+              `|| showOtLines` / `|| showBonusLines`: a sub-line list belongs TO its row, so a figure that
+              is zero because its named items cancel each other out keeps its row and prints 0.00 with the
+              items under it. Hiding the heading and leaving the detail would be an orphan — the one way
+              this rule could make a payslip harder to read rather than shorter. */}
           {/* f3148da1 — the converted OT excess is folded into stored allowance; show the base allowance net
               of it, then a dedicated line for the pay item, so gross still reconciles. */}
           {earningRowShown(allowanceNet) && <Row label={t('allowances')} value={rm(allowanceNet)} />}
-          {earningRowShown(disp.overtime) && <Row label={t('overtime')} value={rm(disp.overtime)} />}
+          {(earningRowShown(disp.overtime) || showOtLines) && <Row label={t('overtime')} value={rm(disp.overtime)} />}
           {showOtLines && <SubLines lines={otLines} />}
           {Number(st.otConvert?.amount) > 0 && (
             <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
           )}
-          {earningRowShown(disp.bonus) && <Row label={t('bonus')} value={rm(disp.bonus)} />}
+          {(earningRowShown(disp.bonus) || showBonusLines) && <Row label={t('bonus')} value={rm(disp.bonus)} />}
           {/* 6b134681 — "B0001 · ANGPOW  RM500.00" under the Bonus figure, instead of the figure alone.
               The classification (additional remuneration ⇒ the bonus box) decides the BOX; it never gets
               to stand in for the pay item's own code and description. */}
