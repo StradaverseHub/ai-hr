@@ -15,6 +15,7 @@ import {
   FileBarChart,
   Hash,
   ClipboardCheck,
+  FlaskConical,
   Gauge,
   Sparkles,
   Wand2,
@@ -210,6 +211,14 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // test/system-explorer.test.ts pins this href against the row in SYSTEM_SETTINGS_NODE and against
   // the route that exists on disk, so the three cannot part company silently.
   ['/admin/system-explorer', 'system_explorer'] as const,
+  // e6be5a3b (r330) — System Testing. A hand-written entry for the same reason as the one above: it is a
+  // catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from,
+  // even though (unlike the explorer) it DOES own tables. The child routes — /new and /[id] — are not
+  // listed and do not need to be: MODULE_OF_HREF decides which NAV ROWS the rail offers, and the rail
+  // has one row. The routes themselves are gated in-page by requireModule + the service's own refusal.
+  // test/system-testing.test.ts pins this href against the row in SYSTEM_SETTINGS_NODE and the route on
+  // disk, so the three cannot part company silently.
+  ['/admin/system-testing', 'system_testing'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -310,6 +319,14 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // Last in the node because it is a reference screen, not a setup step; the configuration screens
     // keep their ticket order above.
     { href: '/admin/system-explorer', labelKey: 'systemExplorer', icon: Share2, adminOnly: true },
+    // e6be5a3b (r330): System Testing. The SECOND row of this node that is entitlement-gated as well as
+    // role-gated (MODULE_OF_HREF above) — a sellable module that defaults OFF, so a tenant that was not
+    // sold it never sees the row, and that hiding is backed by a service which refuses by name
+    // (core/system-testing.ts). Last in the node, after System Analysis: both are vendor-facing
+    // reference/quality surfaces rather than setup steps, and the configuration screens keep their
+    // ticket order above. FlaskConical is unused elsewhere in the rail, so the collapsed view has no
+    // glyph collision.
+    { href: '/admin/system-testing', labelKey: 'systemTesting', icon: FlaskConical, adminOnly: true },
   ],
 };
 

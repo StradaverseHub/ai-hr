@@ -8809,3 +8809,96 @@ export const agentProposal = pgTable(
     check('agent_proposal_decided_together_ck', sql`(${t.decision} IS NULL) = (${t.decidedAt} IS NULL)`),
   ],
 );
+
+// ─────────────── System Testing module (e6be5a3b, r330; migration 0482) ───────────────
+//
+// A reusable test SCRIPT and a record of each EXECUTION. Sold as the `system_testing` catalogue module,
+// DEFAULT OFF (ADR-0077) — see packs/catalog.ts and core/system-testing.ts.
+//
+// ⚠️ READ THIS BEFORE ADDING A `status` COLUMN TO `testCase`. The reporter's request listed Status and
+// Actual Result as TEST-CASE fields. Modelled that way a case remembers only its latest outcome, every
+// earlier execution is overwritten, and "it passed in September and failed in October" — the whole
+// reason a release checklist exists — becomes unanswerable with nothing to notice. Both live on
+// `testRun`, one row per execution; a case's displayed status is DERIVED from its newest run.
+
+/** The reporter's own vocabulary. `not_tested` is also what a case with NO runs derives to. */
+export const testRunOutcomeEnum = pgEnum('test_run_outcome', [
+  'pass',
+  'fail',
+  'blocked',
+  'partial',
+  'not_tested',
+]);
+export type TestRunOutcome = (typeof testRunOutcomeEnum.enumValues)[number];
+
+export const testCase = pgTable(
+  'test_case',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** The visible number. Per-tenant monotonic, issued from `tenant_counter` kind='test_case_no'. */
+    caseNo: integer('case_no').notNull(),
+    /**
+     * A module catalogue code THIS TENANT is entitled to, or the literal 'cross_module'. No FK: see
+     * 0482's header — entitlement is per-tenant (`tenant_module`), and 'cross_module' is not a product.
+     * Validated in core/system-testing.ts, the service that decides a save (CLAUDE.md §6).
+     */
+    moduleCode: text('module_code').notNull(),
+    title: text('title').notNull(),
+    precondition: text('precondition'),
+    /** The steps IN ORDER. The order IS the data, so it is an array, not a child table. */
+    steps: jsonb('steps').$type<string[]>().notNull().default([]),
+    /** Catalogue-as-text, constrained app-side (TEST_TYPES / PRIORITIES), like employee_loan.loan_type. */
+    testType: text('test_type').notNull().default('functional'),
+    priority: text('priority').notNull().default('medium'),
+    /** Spelled exactly as feedbackRequest spells them — a failed run copies them into a board item. */
+    expectedBehavior: text('expected_behavior'),
+    expectedFunction: text('expected_function'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    updatedByUserId: uuid('updated_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('test_case_no_uq').on(t.tenantId, t.caseNo),
+    index('test_case_module_idx').on(t.tenantId, t.moduleCode, t.caseNo),
+    check('test_case_steps_is_array_ck', sql`jsonb_typeof(${t.steps}) = 'array'`),
+  ],
+);
+
+export const testRun = pgTable(
+  'test_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    testCaseId: uuid('test_case_id')
+      .notNull()
+      .references(() => testCase.id, { onDelete: 'cascade' }),
+    /**
+     * 1, 2, 3 … within the case, and THE ordering key.
+     *
+     * `runAt` cannot be one: `now()` is the TRANSACTION timestamp, so two runs written in one
+     * transaction carry an identical value and "the newest" becomes whatever the planner returns —
+     * exactly the position-dependent assertion CLAUDE.md §8 forbids.
+     */
+    runNo: integer('run_no').notNull(),
+    outcome: testRunOutcomeEnum('outcome').notNull(),
+    /** What the tester actually saw. NULL where they recorded only an outcome — never a placeholder. */
+    actualResult: text('actual_result'),
+    runByUserId: uuid('run_by_user_id').references(() => appUser.id),
+    runAt: timestamp('run_at', { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * THE DEFECT LINK, and it is a real FK rather than a hand-keyed "Defect ID" that can point at
+     * nothing (CLAUDE.md §1). Written only by raising the item through core/feedback.ts submitFeedback
+     * — the same writer the in-app form uses — and storing the id it returns.
+     */
+    feedbackRequestId: uuid('feedback_request_id').references(() => feedbackRequest.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('test_run_case_no_uq').on(t.testCaseId, t.runNo),
+    index('test_run_case_idx').on(t.tenantId, t.testCaseId, t.runNo.desc()),
+  ],
+);

@@ -46,6 +46,13 @@ export const MODULE_CODES_WITH_NAV = [
   // its one row (Leave Config › Leave Credit) sits in the core leave pack's node and is mapped to `toil` by
   // hand in components/sidebar.tsx MODULE_OF_HREF.
   'toil',
+  // e6be5a3b (r330) — System Testing, the test-case library. The THIRD non-pack-backed entry here, and
+  // the first that owns tables (test_case / test_run, migration 0482) while still registering no pack:
+  // it contributes no country or domain pack, so there is no descriptor to derive its nav row from and
+  // its MODULE_OF_HREF entry is a hand-written literal in components/sidebar.tsx, exactly like
+  // system_explorer's. Listed here for the same reason as the rest — without it the rail would advertise
+  // a module the tenant has not bought.
+  'system_testing',
 ] as const;
 
 /** Module codes whose nav rows are always shown, whatever the snapshot says. */
