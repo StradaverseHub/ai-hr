@@ -1,7 +1,13 @@
 # ADR-0067 — Configurable Public-Holiday Calendars by Location/Subsidiary
 
-Status: Accepted
+Status: **Superseded in part by [ADR-0086](0086-retiring-location-holiday-calendars.md)** (2026-09-23)
 Date: 2026-06-29
+
+> ⚠️ **§(b) and §(c) below are RETIRED.** A work site is no longer an input to holiday resolution —
+> `location.holiday_group_id` and the resolver precedence that read the open assignment's location
+> are gone, on the customer's say-so, after production showed 0 of 8 sites mapped a calendar and
+> 0 holidays moved. **§(a), `holiday_group.archetype`, is KEPT and unaffected**, as is direct
+> assignment via `employment.holiday_group_id`. Read ADR-0086 before acting on anything below.
 Feedback: "Configurable Public Holiday (PH) Calendars by Location/Subsidiary"
 
 ## Context
