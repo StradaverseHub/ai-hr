@@ -4027,7 +4027,17 @@
       "pcb2iiNoneForYear": "Không có nhân viên nào tại {company} có dữ liệu lương cho năm {year}, nên không có thuế để kê khai trên PCB 2(II). Hãy chạy bảng lương của năm đó trước.",
       "link_tp3": "Mẫu TP3",
       "link_tp3_hint": "Các con số từ nơi làm việc trước của nhân viên vào giữa năm. Chọn một người và một năm tính thuế để mở, sửa hoặc in mẫu của họ.",
-      "desc_tp3": "Mẫu TP3 (1/2026) của LHDN, dựng từ hồ sơ công việc trước đã lưu — các Mục A đến E, các dòng tiền C1 đến C5 và bảng giảm trừ D1 đến D17, theo đúng cách đánh số, câu chữ và thứ tự cột của chính mẫu, trên trang của chúng tôi. Mỗi nhân viên một mẫu cho mỗi năm tính thuế; không có gì được tính lại ở đây, và không có gì làm thay đổi khoản khấu trừ thuế hằng tháng."
+      "desc_tp3": "Mẫu TP3 (1/2026) của LHDN, dựng từ hồ sơ công việc trước đã lưu — các Mục A đến E, các dòng tiền C1 đến C5 và bảng giảm trừ D1 đến D17, theo đúng cách đánh số, câu chữ và thứ tự cột của chính mẫu, trên trang của chúng tôi. Mỗi nhân viên một mẫu cho mỗi năm tính thuế; không có gì được tính lại ở đây, và không có gì làm thay đổi khoản khấu trừ thuế hằng tháng.",
+      "pcb2iiReceiptsLink": "Chi tiết biên lai / giao dịch",
+      "pcb2iiReceiptsBack": "PCB 2(II)",
+      "pcb2iiReceiptsTitle": "Chi tiết biên lai / giao dịch",
+      "pcb2iiReceiptsSubtitle": "{company} · {year} · số biên lai và ngày nộp mà PCB 2(II) in cho từng tháng",
+      "pcb2iiReceiptsShow": "Xem cả năm",
+      "pcb2iiReceiptsHint": "Hai khoản nộp mỗi tháng: khấu trừ thuế hằng tháng (MTD) và CP38 được nộp và cấp biên lai riêng, và PCB 2(II) in riêng. Tháng để trống sẽ in ô trống trên biểu mẫu, không phải 0.00.",
+      "pcb2iiReceiptsCp39Note": "Các ô ở cuối màn hình CP39 vẫn hoạt động và ghi vào chính bản ghi này — bạn dùng cách nào thì cách kia cũng hiển thị.",
+      "pcb2iiReceiptsCount": "Đã ghi {recorded} trên {total}",
+      "pcb2iiReceiptsRecorded": "Đã ghi",
+      "pcb2iiReceiptsNotRecorded": "Chưa ghi"
     },
     "ea": {
       "backToReports": "Báo cáo",

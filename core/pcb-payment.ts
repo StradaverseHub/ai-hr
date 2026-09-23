@@ -58,7 +58,13 @@ export async function pcbPaymentsForYear(
           eq(pcbPayment.companyId, p.companyId),
           sql`${pcbPayment.periodKey} LIKE ${`${p.year}-%`}`,
         ),
-      );
+      )
+      // r331 — ORDERED, although the caller is handed a Map. A Map iterates in INSERTION order, so
+      // without this the order of `[...map.keys()]` is the planner's and an assertion over it is a
+      // coin toss that happens to pass (CLAUDE.md §8: any asserted array from a query needs ORDER BY).
+      // The receipts screen does not depend on it — it derives its twelve months from the year and
+      // looks each one up — but a Map handed out in an arbitrary order is a trap for the next reader.
+      .orderBy(pcbPayment.periodKey, pcbPayment.kind);
     return new Map(rows.map((r) => [`${r.periodKey}|${r.kind}`, r as PcbPaymentRow]));
   });
 }

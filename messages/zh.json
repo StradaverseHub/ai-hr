@@ -4027,7 +4027,17 @@
       "pcb2iiNoneForYear": "{company} 在 {year} 年没有任何薪资数据，因此 PCB 2(II) 上没有可申报的税款。请先运行该年度的薪资。",
       "link_tp3": "TP3 表格",
       "link_tp3_hint": "年中入职员工在前任雇主处的数字。选择员工与课税年度，即可打开、更正或打印其表格。",
-      "desc_tp3": "依据已存档的前任受雇记录绘制的 LHDN TP3（1/2026）表格 — A 至 E 节、C1 至 C5 金额行以及 D1 至 D17 减免明细，采用表格本身的编号、措辞与栏位顺序，呈现在我们自己的页面上。每位员工每个课税年度一份；此处不重新计算任何数字，也不会改变每月扣税。"
+      "desc_tp3": "依据已存档的前任受雇记录绘制的 LHDN TP3（1/2026）表格 — A 至 E 节、C1 至 C5 金额行以及 D1 至 D17 减免明细，采用表格本身的编号、措辞与栏位顺序，呈现在我们自己的页面上。每位员工每个课税年度一份；此处不重新计算任何数字，也不会改变每月扣税。",
+      "pcb2iiReceiptsLink": "收据／交易明细",
+      "pcb2iiReceiptsBack": "PCB 2(II)",
+      "pcb2iiReceiptsTitle": "收据／交易明细",
+      "pcb2iiReceiptsSubtitle": "{company} · {year} · PCB 2(II) 为每个月打印的收据号码与缴付日期",
+      "pcb2iiReceiptsShow": "显示该年",
+      "pcb2iiReceiptsHint": "每月两笔：每月扣税（MTD）与 CP38 分开缴付、分开开具收据，PCB 2(II) 也分开打印。留空的月份在表格上打印为空白，而不是 0.00。",
+      "pcb2iiReceiptsCp39Note": "CP39 页面底部的输入框仍然可用，写入的是同一条记录——无论用哪一个，另一个都会显示。",
+      "pcb2iiReceiptsCount": "已记录 {recorded} / {total}",
+      "pcb2iiReceiptsRecorded": "已记录",
+      "pcb2iiReceiptsNotRecorded": "未记录"
     },
     "ea": {
       "backToReports": "报表",
