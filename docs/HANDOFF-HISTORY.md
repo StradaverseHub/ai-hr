@@ -1,3 +1,55 @@
+## r332 (2026-09-23) — six items, and two of my own raises overturned by production. `main@1f28867c`, **migration 0484**.
+
+⚠️ **THE BRANCHES AND COMMITS OF THIS ROUND ARE LABELLED `r331`, AND THAT IS WRONG.** I inherited the number from the previous round instead of checking this file's top entry, which is exactly what the standing note about round numbering says to do. r331 is `main@78745e66` / migration 0483; this is a separate later round. The commit prefixes `r331 <item>:` and the branch names `build/r331-*` all belong to **r332**. Nothing else is affected — the content of every commit is accurate.
+
+Closed: `2a1a6f42`, `0fe1ca2e`, `5d721048`, `665de026`, `a96d320c` (rev 3), `aec53564`, and `048f1e9d` folded into `a96d320c` at the reporter's approval. Gate: **963 files — equal to the suite file count**, 14 chunks, **zero red chunks**, ~14,877 tests, `tsc` 0, `next build` 0, shadow **PASS 397/397**. Render check clean.
+
+### TWO OF MY OWN RAISES WERE WRONG, AND PRODUCTION SAID SO
+
+Both were raised by me last round as decisions for the reporter. Both recommendations were wrong, and measuring rather than reasoning is what caught them.
+
+- **`aec53564`.** I told the reporter the shift's copy of the working week "stops being used" and recommended **deleting the day fields**. `core/week-pattern.ts weekPatternFor` gives the Schedule Group the week **only when it declares one**; otherwise the read falls back to the shift, and 0483 leaves the un-deletable Standard rule's arrays NULL *on purpose* so an ungrouped shift keeps its own. Production: **6 of 8 shifts have a dead week on the form, 2 are living on theirs.** Deleting the fields would have fixed six by stranding two — the two where those fields are the only thing deciding when people work. Shipped instead as "editable exactly when nothing else decides them".
+- **`048f1e9d`.** I proposed giving the payslip employee block a heading band over a **ruled grid**, to match the panel beside it. The reporter then contested `a96d320c` asking for *"fewer borders", "less box-heavy"*. I had read "make it more modern" as asking for consistency; they meant the opposite. **Withdrawn before they could approve the wrong picture** and folded into `a96d320c`. The ruled grid they objected to was one *we* added the round before.
+
+### THE WORK-SITE BUILD STOPPED, AND THE STOP WAS RIGHT
+
+`0fe1ca2e`'s approved plan promised *"the work-site register leaves the Organization area"*. The build refused build-order step 2 and I verified why independently: the location CRUD actions are referenced **only** by `app/admin/locations/page.tsx`, and `createLocation` has one non-test caller. That screen is the **sole editor**, so deleting it permanently freezes the site list (8 sites, 2 in use), **branch mapping** (which the plan never mentioned at all) and the clocking-point link. Nothing breaks *today* — 0 branches mapped, 0 of 2 clocking points linked — what removal costs is the ability ever to use them again. Rev 5 said so plainly and fell back to the option the same plan had already offered; the reporter approved it.
+
+⚠️ **AND REMOVING THE STATE CONTROL OPENED A SILENT DATA-LOSS PATH.** `updateLocationAction` passed `state: fd.get('state') || null`. With the field gone from the form that is an **explicit NULL on every Save**, so an unrelated rename would have wiped the stored state — destroying exactly the history the decision to keep the column was protecting. `updateLocation` now honours the partial-update distinction its own signature already expressed: `undefined` = keep, `null` = clear. Pinned across both files, because either half alone is satisfiable by a change that still loses the data.
+
+The register also printed `"A location's state overrides the employee's work state for public-holiday resolution"` in all six locales — false the moment step 1 shipped. A dead control is bad; a lying one is worse. Gone.
+
+### A GUARD HAD PINNED THE PAYSLIP BUG AS THE DELIVERABLE
+
+`test/payslip-pdf.test.ts` asserted `TOTAL EARNINGS.y > TOTAL DEDUCTIONS.y`, commented *"that is the deliverable, not a layout regression"*. A previous round deliberately wrote a test locking in the misalignment the reporter is now complaining about. Inverted with the old text quoted — the §8 case of a guard pinning a decision being reversed.
+
+The empty box in the identity panel was never a missing-field case: `idCells` already omits an absent number. It was `drawGrid`'s **odd-cell** case — the box is drawn full width and the column rule full height, so any odd count encloses a cell never written into. **46 of 84 employments**, 17 of the 48 ever paid. The sweep now renders every 0–4 × 0–3 combination and asserts no ruled rectangle anywhere, so it cannot recur at any count.
+
+### RAISED, NOT SILENTLY FIXED
+
+- **`5b2a7f0f` — the payslip prints as question marks in Tamil, Chinese and Thai.** `lib/payslip-pdf.ts:544` folds everything outside Latin-1 to `?`. Measured across the catalogue: **57 of 65** payslip strings unprintable in ta/th/zh, 52 in vi, 10 in ms. For those employees it is not a partly broken document — it is the whole payslip except the numbers. Pre-existing and document-wide (ADR-0036 defers a Unicode font). **Every government form is en/ms only, so nothing filed with LHDN, EPF or SOCSO is affected.** Offered a cheaper interim: stop offering the payslip in languages it cannot print.
+- **`5d721048`** (raised last round, shipped this one) — the EA could be printed under an employer that never employed the person. One line, byte-identical to `pcb2ii.ts:170`. The build sharpened the diagnosis: of four callers that can pass a `companyId`, **three already validated it**; the only unvalidated door was the statutory-forms `shared.ts`.
+
+### `72fca31d` — THREE OF FIVE POINTS ALREADY EXISTED
+
+Marriage Leave eligibility. Point 1 is not merely built but **already configured on production**: `MRL` carries `{"maritalStatus":["single"]}` with `confirmed_only`, the dropdown narrows via `isProfileEligible(..., 'exclude')` and the submission is refused independently by `assertEligible`. Point 5 is built too — marital status is a `ReadField`; employees propose a change HR approves. Told the reporter rather than re-implementing what they own: and that **58 of 88 people have no marital status recorded**, so a blank counts as not-qualifying and they are already blocked — only 11 are recorded Single.
+
+### OPERATIONAL
+
+- ⚠️ **THE GATE CANNOT RUN ALONGSIDE AGENTS.** `gate-one.sh` runs `dev-db-rebuild.sh` at the start of **every chunk**, which rebuilds the whole cluster and wipes every agent's `ai_hr_test_w*` worker DBs. `TEST_DB_NAMESPACE` gives no protection. I nearly started it with two builds in flight.
+- **Two agents stalled from machine thrash** — load average 31.9, 227 MB free, swap 1545/2048 MB, after I ran three builders plus planning work. Their processes had already exited; the work was intact and I finished `aec53564` by hand. Concurrency limit is two builders on this machine, and the gate alone.
+- **A branch behind a column-dropping migration fails `db:seed` and it is NOT the dev DB's fault.** One agent read this as the §6 silent-skip hazard. `ai_hr_dev` migrates forward; a worktree cut before 0484 still references `location.holiday_group_id`. Merge main first; do not rebuild the cluster.
+- **§8 gap stated, not papered over:** the greyed-day branch of the shift form is unreachable from `pnpm db:seed` (the seeder creates **0 shifts**), so it is covered by a DOM test and the receipt says so.
+
+### WHAT WAS NOT DONE
+
+- `2a237f5f` (leave-credit type) and `72fca31d` (marriage leave, points 2–4) are **approved and unbuilt** — next round.
+- `665de026` **departed from its plan's sentence** *"all the setting sections move onto that page together"*: 4 of the General tab's 5 cards are company- or tenant-scoped, not per-group, and moving them would have drawn a company's working week under a Schedule Group's name. They stayed on the list page; the audit's §5 table is the honest reply if the reporter reads the plan literally.
+- `a96d320c` de-boxed **both** panels, not only the employee one — the void was a property of the shared grid, and de-boxing one side while leaving the other ruled re-creates the fault with the sides swapped. Money keeps its rules: Earnings, Deductions, Employer contributions, Other, Payment information and YTD are all still ruled boxes.
+- The rostered-off-day 2.0× defect, `usualShiftsFor` rendering AM02's half-day Saturday as OFF, and the ADR index being 34 of 83 all still stand.
+
+### RECORDED
+
 ## r331 (2026-09-23) — three items, and an agent finding the gap that would have made a promise false. `main@78745e66`, **migration 0483**.
 
 Closed: `72b100cd`, `a96d320c`, `07ebd04d`. Gate: **957 files — equal to the suite file count**, 14 chunks, **zero red chunks**, `tsc` 0, `next build` 0, shadow **PASS 396/396**. Render check clean.
