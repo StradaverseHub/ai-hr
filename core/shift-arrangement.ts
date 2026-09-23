@@ -38,7 +38,7 @@ import { attendanceRule, appUser, company, employment, employmentShiftArrangemen
 // `core/attendance` directly: this file is not on the attendance pack's import allowlist
 // (test/pack-drift-allowlist.json, which only ever shrinks), and ADR-0080 D9 says a core file that needs a
 // pack service takes packs/<pack>/service. Same route core/absence-days.ts takes for shiftDayKindFor.
-import { weekPatternWorkingDayCount } from '../packs/attendance/service';
+import { weekLookupTx, weekPatternWorkingDayCount } from '../packs/attendance/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   arrangementsForEmploymentTx,
@@ -51,6 +51,7 @@ import {
   BackupShiftRequiredError,
   ShiftHasNoWorkingPatternError,
   assertShiftsAllowedForEmploymentsTx,
+  groupRuleIdTx,
 } from './roster';
 
 export {
@@ -155,7 +156,15 @@ export async function assignEmployeeShiftDated(
     if (!emp) throw new Error('Employment not found');
 
     const [sh] = await tx
-      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern, halfPattern: shift.halfPattern })
+      .select({
+        id: shift.id,
+        archivedAt: shift.archivedAt,
+        pattern: shift.weeklyPattern,
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        // 07ebd04d — the shift's Schedule Group, so this guard asks about the week the engine will use.
+        ruleId: shift.ruleId,
+      })
       .from(shift)
       .where(eq(shift.id, shiftId))
       .limit(1);
@@ -166,9 +175,15 @@ export async function assignEmployeeShiftDated(
     if (sh.archivedAt) throw new ArchivedShiftError();
     // b8aa3466 — "has a working pattern" is Full ∪ HALF now: an all-half-days shift is walkable, and the
     // guard exists to stop an UNWALKABLE backup shift making every day a rest day, not to stop half days.
-    // 07ebd04d — through the SHARED count (core/attendance.ts), not a second hand-written set union: this
-    // guard and core/roster.ts assignEmployeeShift enforce one invariant and had one copy of it each.
-    if (weekPatternWorkingDayCount(sh) === 0) throw new ShiftHasNoWorkingPatternError();
+    // 07ebd04d — through the SHARED count (core/week-pattern.ts), not a second hand-written set union:
+    // this guard and core/roster.ts assignEmployeeShift enforce one invariant and had one copy of it each.
+    // And the week it counts is the RESOLVED one — since migration 0483 the Schedule Group can carry the
+    // working week and scheduleFor resolves the group's ahead of the shift's, so a guard reading only
+    // `shift.weekly_pattern` would refuse a shift that is walkable under its group. Same refusal, same
+    // reason, asked of the week that actually decides the days. The two guards stay byte-identical to
+    // each other, which is the point of them being written the same way.
+    const effectiveWeek = (await weekLookupTx(tx, await groupRuleIdTx(tx, p.employmentId), [sh.ruleId]))(sh.ruleId, sh);
+    if (weekPatternWorkingDayCount(effectiveWeek) === 0) throw new ShiftHasNoWorkingPatternError();
     // 870b79e2 (r277) — THE THIRD INVARIANT, and the reason it is here and not on the card that posts to
     // this writer. The ladder is one of four writers of "which shift is this person on"; a check on the
     // Shift arrangement form would leave roster generation, the roster brush and the profile backup shift

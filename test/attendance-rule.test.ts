@@ -88,6 +88,9 @@ describe('applyOtRuleRows (pure)', () => {
     includeGraceInEarlyOut: false,
     applyDeductions: false,
     deductionsEffectiveFrom: null,
+    // 07ebd04d — a rule with NO working week of its own, which is every rule written before
+    // migration 0483 and what `weekPatternFor` must fall back to the shift for.
+    week: { pattern: null, halfPattern: [], offPattern: [] },
     otRows: [],
     ...over,
   });
@@ -360,6 +363,9 @@ const inertRule = (over: Partial<Parameters<typeof createAttendanceRule>[1]> = {
   earlyDeductMinutes: 0,
   includeGraceInEarlyOut: false,
   applyToEarlyOt: false,
+  // 07ebd04d — a rule with NO working week of its own, which is every rule written before
+  // migration 0483 and what `weekPatternFor` must fall back to the shift for.
+  week: { pattern: null, halfPattern: [], offPattern: [] },
   otRows: [],
   ...over,
 });

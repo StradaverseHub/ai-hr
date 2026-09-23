@@ -7,7 +7,7 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withAttendanceTenant` — every exported entry
@@ -22,6 +22,10 @@ import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
+// 07ebd04d (r331) — the ONE resolver for "whose working week is this, the group's or the shift's".
+// A leaf module with no imports, so the rule service can enforce the write-side half of the same
+// rule without a cycle through this file. Re-exported below for every caller that had it from here.
+import { weekPatternFor, type WeekPattern } from './week-pattern';
 import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
@@ -66,6 +70,8 @@ import {
   // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
   attendanceCorrectionAttachment,
   attendancePolicy,
+  // 07ebd04d (migration 0483) — the Schedule Group carries the WORKING WEEK; see weekLookupTx below.
+  attendanceRule,
   attendancePunch,
   clockingLocation,
   employeeClockingLocation,
@@ -463,51 +469,13 @@ export const shiftDayKindFor = (
 /** Half and Full are both WORKING days; Rest and Off are not. */
 export const isWorkingDayKind = (k: ShiftDayKind): boolean => k === 'full' || k === 'half';
 
-/** b8aa3466 — the three arrays that decide WHICH DAYS are worked, carried as one value so the answer can
- *  be resolved once and handed to `shiftDayKindFor` rather than reassembled at every call site. */
-export type WeekPattern = {
-  pattern: number[] | null;
-  halfPattern?: number[] | null;
-  offPattern?: number[] | null;
-};
-
-/** b8aa3466 — how many WORKING weekdays a pattern declares, Full ∪ Half.
- *
- *  THE ONE DEFINITION. core/roster.ts and core/shift-arrangement.ts each guard "a backup shift with no
- *  working pattern makes every unrostered day a rest day" (see core/roster.ts assignEmployeeShift), and
- *  until 07ebd04d they answered it with two separately-written copies of the same set union. Off and Rest
- *  are deliberately NOT counted: neither is scheduled work. An all-half-days shift IS walkable and must
- *  not be rejected. */
-export const weekPatternWorkingDayCount = (p: WeekPattern): number =>
-  new Set([...(p.pattern ?? []), ...(p.halfPattern ?? [])]).size;
-
-/** 07ebd04d — WHOSE WORKING WEEK IS THIS: the Schedule Group's, or the shift's?
- *
- *  The approved item moves `weekly_pattern` / `half_pattern` / `off_pattern` off `shift` and on to the
- *  Schedule Group (`attendance_rule`), because the group is what answers "which days are worked" while the
- *  shift answers "what hours are worked". This is the ONE place that decides which of the two a reader
- *  gets, so that every reader behaves identically before and after the data moves: pass the group's triple
- *  (NULL today — the columns do not exist yet, so every caller resolves the shift, byte for byte) and the
- *  shift's, and use the result.
- *
- *  ⚠️ A GROUP WITH NO WORKING DAY DOES NOT WIN, AND THAT IS THE LOAD-BEARING PART. core/roster.ts
- *  assignEmployeeShift records why: a pattern that is NULL or empty "matches NOTHING, falls through to
- *  policyBranch('rest_day')", so an employee under it silently books every working day as a rest day and
- *  is paid rest-day overtime on ordinary work, with no error anywhere. A group row created without its
- *  patterns — the single most likely mistake in the migration that moves them — would do exactly that to
- *  everyone in the group at once. So the READ falls back to the shift, which is the value that is correct
- *  today, and `source` says which one answered so a report can show it rather than a caller guess.
- *
- *  The WRITE side is the other half and is not this function's job: whatever creates a Schedule Group must
- *  refuse one with no pattern (`weekPatternWorkingDayCount === 0`) in the same statement that creates it,
- *  or the fallback here is silently papering over a broken row forever. */
-export const weekPatternFor = (
-  group: WeekPattern | null | undefined,
-  shift: WeekPattern,
-): WeekPattern & { source: 'group' | 'shift' } =>
-  group != null && weekPatternWorkingDayCount(group) > 0
-    ? { pattern: group.pattern, halfPattern: group.halfPattern, offPattern: group.offPattern, source: 'group' }
-    : { pattern: shift.pattern, halfPattern: shift.halfPattern, offPattern: shift.offPattern, source: 'shift' };
+/** 07ebd04d (r331) — `WeekPattern`, `weekPatternWorkingDayCount` and `weekPatternFor` now live in the
+ *  leaf module core/week-pattern.ts and are RE-EXPORTED here unchanged, so every existing importer
+ *  (core/roster.ts, core/shift-arrangement.ts through the pack facade, the tests, the split report)
+ *  keeps the same specifier. They moved because core/attendance-rule.ts — the service that creates a
+ *  Schedule Group — must now enforce the write-side half of the same rule, and this file already
+ *  imports that one. See core/week-pattern.ts for the reasoning that used to sit here. */
+export { weekPatternFor, weekPatternWorkingDayCount, type WeekPattern } from './week-pattern';
 
 /** Minutes of the punch that fell inside the shift's declared UNPAID break WINDOWS. Null when the shift
  *  carries no windows — a break scalar alone gives nothing to test the clocking against, so those shifts
@@ -934,10 +902,23 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         .where(eq(employment.id, employmentId))
         .limit(1);
   if (ds) {
+    // 07ebd04d (r331, migration 0483) — THE WORKING WEEK IS THE SCHEDULE GROUP'S WHEN IT HAS ONE.
+    //
+    // The rule is resolved BEFORE the day-kind test now, because the group carries `weekly_pattern` /
+    // `half_pattern` / `off_pattern` of its own since 0483 and it is the group — not the shift template
+    // several people share — that states which days are worked. `ruleFor` is the SAME single-valued
+    // chain the rest of this branch already used (the employee's group → the shift's group → the tenant
+    // Standard rule), so there is no second notion of "this person's group" anywhere.
+    //
+    // ⚠️ BYTE-IDENTICAL THE DAY 0483 SHIPS, by construction: each group is created carrying exactly the
+    // week its own shifts already have, and a group with no working day never wins (core/week-pattern.ts
+    // weekPatternFor). The tenant's Standard rule keeps NULL patterns on purpose, so every shift that
+    // resolves it — every shift with no rule_id — still reads its own week, unchanged.
+    const rule = await ruleFor(ds.ruleId);
     // b8aa3466 — FOUR-WAY. Full and Half are both WORKING days of the default shift; Rest and Off are not.
     // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
     // and Rest-otherwise — byte-identically to the two-way test it replaces.
-    const kind = shiftDayKindFor(ds, date);
+    const kind = shiftDayKindFor(weekPatternFor(rule?.week, ds), date);
     if (isWorkingDayKind(kind)) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
@@ -964,7 +945,6 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // The manual normal-hours figure is halved with it — otherwise a Semi-Flexi shift's required 8h would
       // still be the threshold on a half day, and the half day would pay no overtime until hour 8.
       const override = ds.override == null ? null : kind === 'half' ? Math.floor(ds.override / 2) : ds.override;
-      const rule = await ruleFor(ds.ruleId);
       const otWindows = await otWindowsFor(ds.shiftId);
       const lateGrace = ds.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
       const earlyGrace = ds.earlyLeaveGrace ?? (rule && rule.earlyGracePeriodMinutes > 0 ? rule.earlyGracePeriodMinutes : null);
@@ -1544,38 +1524,45 @@ export async function payableHoursForCycle(
     // and the day's own scheduled minutes diverge on a Half day and nobody sees it until a payslip.
     halfPattern: shift.halfPattern,
     offPattern: shift.offPattern,
+    // 07ebd04d — the shift's Schedule Group, so the clamp can resolve the SAME working week scheduleFor
+    // does now that the group carries one (migration 0483). Reading the shift's own week while the engine
+    // reads the group's is the identical divergence the b8aa3466 note above was written about.
+    ruleId: shift.ruleId,
     rounding: shift.normalHoursRoundingMinutes,
   };
-  type ClampShift = { net: number; pattern: number[] | null; halfPattern: number[]; offPattern: number[] };
+  type ClampShift = { net: number; pattern: number[] | null; halfPattern?: number[] | null; offPattern?: number[] | null };
   const clampByShiftId = new Map<string, ClampShift>();
   const ladderShiftIds = [...new Set(periods.map((p) => p.shiftId))];
-  if (ladderShiftIds.length > 0) {
-    for (const sr of await tx.select(defShiftCols).from(shift).where(inArray(shift.id, ladderShiftIds))) {
-      clampByShiftId.set(sr.id, {
-        net: netScheduledMinutes(sr.start, sr.end, sr.crosses, sr.brk, sr.rounding),
-        pattern: sr.pattern,
-        halfPattern: sr.halfPattern,
-        offPattern: sr.offPattern,
-      });
-    }
-  }
+  const ladderShifts =
+    ladderShiftIds.length > 0 ? await tx.select(defShiftCols).from(shift).where(inArray(shift.id, ladderShiftIds)) : [];
   // No ladder row for this employment ⇒ the cache, exactly as before this item.
+  const [cachedRow] =
+    periods.length === 0
+      ? await tx
+          .select(defShiftCols)
+          .from(employment)
+          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+          .where(eq(employment.id, employmentId))
+          .limit(1)
+      : [];
+  const [clampEmp] = await tx
+    .select({ ruleId: employment.attendanceRuleId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  const clampWeek = await weekLookupTx(tx, clampEmp?.ruleId, [...ladderShifts, ...(cachedRow ? [cachedRow] : [])].map((r) => r.ruleId));
+  for (const sr of ladderShifts) {
+    clampByShiftId.set(sr.id, {
+      net: netScheduledMinutes(sr.start, sr.end, sr.crosses, sr.brk, sr.rounding),
+      ...clampWeek(sr.ruleId, sr),
+    });
+  }
   let cachedClamp: ClampShift | null = null;
-  if (periods.length === 0) {
-    const [ds] = await tx
-      .select(defShiftCols)
-      .from(employment)
-      .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-      .where(eq(employment.id, employmentId))
-      .limit(1);
-    if (ds) {
-      cachedClamp = {
-        net: netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding),
-        pattern: ds.pattern,
-        halfPattern: ds.halfPattern,
-        offPattern: ds.offPattern,
-      };
-    }
+  if (cachedRow) {
+    cachedClamp = {
+      net: netScheduledMinutes(cachedRow.start, cachedRow.end, cachedRow.crosses, cachedRow.brk, cachedRow.rounding),
+      ...clampWeek(cachedRow.ruleId, cachedRow),
+    };
   }
   const clampOn = (d: string): ClampShift | null => {
     const p = pickArrangementOn(periods, d);
@@ -1978,6 +1965,49 @@ const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftS
 // shift that rounds its normal hours would render 7h 50m in the Scheduled column while scheduleFor
 // measured the day against 7h 45m. Null on every legacy row ⇒ byte-identical.
 type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
+/**
+ * 07ebd04d (r331, migration 0483) — THE BATCHED "WHOSE WORKING WEEK IS THIS" LOOKUP.
+ *
+ * `scheduleFor` resolves one employee on one date and already has the rule in hand. The surfaces below
+ * resolve a whole cycle or a whole grid, and each of them builds its own narrow shift row; none of them
+ * may afford a rule query per date. This is that query, once: every rule week that could possibly answer
+ * for the shifts in play, plus the tenant's is_default rule (which is what a shift with no `rule_id`
+ * resolves — see core/attendance-rule.ts resolveRuleTx).
+ *
+ * THE CHAIN IS THE SAME ONE `scheduleFor`'s `ruleFor` USES and is not restated anywhere else:
+ *     employment.attendance_rule_id  →  shift.rule_id  →  the tenant's is_default rule
+ * The rule is chosen first, and THAT rule's week is then offered to `weekPatternFor`, which hands back
+ * the shift's own week whenever the chosen rule declares no working day. Every rule written before 0483
+ * declares none, and migration 0483 deliberately leaves the is_default rule that way forever, so this is
+ * byte-identical for every shift that has not been put into a pattern-carrying group.
+ */
+export type WeekLookup = (shiftRuleId: string | null | undefined, sh: WeekPattern) => WeekPattern;
+
+export async function weekLookupTx(
+  tx: Tx,
+  empGroupRuleId: string | null | undefined,
+  shiftRuleIds: readonly (string | null | undefined)[],
+): Promise<WeekLookup> {
+  const ids = [...new Set([empGroupRuleId, ...shiftRuleIds].filter((v): v is string => !!v))];
+  const rows = await tx
+    .select({
+      id: attendanceRule.id,
+      isDefault: attendanceRule.isDefault,
+      pattern: attendanceRule.weeklyPattern,
+      halfPattern: attendanceRule.halfPattern,
+      offPattern: attendanceRule.offPattern,
+    })
+    .from(attendanceRule)
+    .where(ids.length ? or(inArray(attendanceRule.id, ids), eq(attendanceRule.isDefault, true)) : eq(attendanceRule.isDefault, true));
+  const byId = new Map(rows.map((r) => [r.id, { pattern: r.pattern, halfPattern: r.halfPattern, offPattern: r.offPattern }]));
+  const fallback = rows.find((r) => r.isDefault);
+  return (shiftRuleId, sh) => {
+    const chosen = empGroupRuleId ?? shiftRuleId ?? null;
+    const week = chosen ? byId.get(chosen) : fallback ? byId.get(fallback.id) : undefined;
+    return weekPatternFor(week, sh);
+  };
+}
+
 type DefaultShiftRow = {
   code: string | null;
   start: string;
@@ -2238,49 +2268,58 @@ export function attendanceForDate(
       const p = pickArrangementOn(periods, date);
       if (p) shiftIdForDate.set(eid, p.shiftId);
     }
-    const defaultShiftByEmp = new Map<string, DefaultShiftRow>();
-    const datedShiftIds = [...new Set(shiftIdForDate.values())];
-    if (datedShiftIds.length > 0) {
-      const byShiftId = new Map<string, DefaultShiftRow>();
-      for (const sr of await tx
-        .select({
-          id: shift.id,
-          code: shift.code,
-          start: shift.startTime,
-          end: shift.endTime,
-          brk: shift.breakMinutes,
-          crosses: shift.crossesMidnight,
-          pattern: shift.weeklyPattern,
-          halfPattern: shift.halfPattern,
-          offPattern: shift.offPattern,
-          rounding: shift.normalHoursRoundingMinutes,
-        })
-        .from(shift)
-        .where(inArray(shift.id, datedShiftIds))) {
-        byShiftId.set(sr.id, sr);
-      }
-      for (const [eid, sid] of shiftIdForDate) {
-        const row = byShiftId.get(sid);
-        if (row) defaultShiftByEmp.set(eid, row);
+    // 07ebd04d — the GRID's working week, resolved exactly as scheduleFor resolves one day's: the
+    // employee's Schedule Group, else the shift's, else the tenant default (migration 0483). Two extra
+    // set-based reads for the whole grid — the group of every listed employment, and the week of every
+    // rule those shifts name — never one per row. `weekPatternFor` hands back the shift's own week for
+    // every group that declares none, which is every group written before 0483.
+    const groupByEmp = new Map<string, string | null>();
+    if (empIds.length) {
+      for (const g of await tx
+        .select({ id: employment.id, ruleId: employment.attendanceRuleId })
+        .from(employment)
+        .where(inArray(employment.id, empIds))) {
+        groupByEmp.set(g.id, g.ruleId);
       }
     }
-    for (const dr of await tx
-      .select({
-        employmentId: employment.id,
-        code: shift.code,
-        start: shift.startTime,
-        end: shift.endTime,
-        brk: shift.breakMinutes,
-        crosses: shift.crossesMidnight,
-        pattern: shift.weeklyPattern,
-        halfPattern: shift.halfPattern,
-        offPattern: shift.offPattern,
-        rounding: shift.normalHoursRoundingMinutes,
-      })
+    const defaultShiftByEmp = new Map<string, DefaultShiftRow>();
+    const gridShiftCols = {
+      id: shift.id,
+      code: shift.code,
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+      pattern: shift.weeklyPattern,
+      halfPattern: shift.halfPattern,
+      offPattern: shift.offPattern,
+      ruleId: shift.ruleId,
+      rounding: shift.normalHoursRoundingMinutes,
+    };
+    const datedShiftIds = [...new Set(shiftIdForDate.values())];
+    const datedShifts = datedShiftIds.length
+      ? await tx.select(gridShiftCols).from(shift).where(inArray(shift.id, datedShiftIds))
+      : [];
+    const profileShifts = await tx
+      .select({ ...gridShiftCols, employmentId: employment.id })
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-      .where(inArray(employment.id, empIds.length ? empIds : ['']))) {
-      if (!defaultShiftByEmp.has(dr.employmentId)) defaultShiftByEmp.set(dr.employmentId, dr);
+      .where(inArray(employment.id, empIds.length ? empIds : ['']));
+    // ONE rule read for the whole grid. The lookup is per employment (the group is the employee's), so it
+    // is built with a null employment group and the employee's own group is applied at the call site.
+    const gridWeek = await weekLookupTx(tx, null, [
+      ...[...datedShifts, ...profileShifts].map((r) => r.ruleId),
+      ...groupByEmp.values(),
+    ]);
+    const weekFor = (eid: string, row: { ruleId: string | null; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }) =>
+      gridWeek(groupByEmp.get(eid) ?? row.ruleId, row);
+    const byShiftId = new Map(datedShifts.map((sr) => [sr.id, sr]));
+    for (const [eid, sid] of shiftIdForDate) {
+      const row = byShiftId.get(sid);
+      if (row) defaultShiftByEmp.set(eid, { ...row, ...weekFor(eid, row) });
+    }
+    for (const dr of profileShifts) {
+      if (!defaultShiftByEmp.has(dr.employmentId)) defaultShiftByEmp.set(dr.employmentId, { ...dr, ...weekFor(dr.employmentId, dr) });
     }
 
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
@@ -2493,21 +2532,35 @@ export function attendanceForEmploymentRange(
       pattern: shift.weeklyPattern,
       halfPattern: shift.halfPattern,
       offPattern: shift.offPattern,
+      // 07ebd04d — the shift's Schedule Group, so this table's "was the employee scheduled that day"
+      // reads the SAME working week scheduleFor does (migration 0483). Without it, a group whose week
+      // differs from its shifts' would show Absent in red on a day the engine treated as a rest day.
+      ruleId: shift.ruleId,
       rounding: shift.normalHoursRoundingMinutes,
     };
     const periods = await arrangementsForEmploymentTx(tx, employmentId);
-    const shiftById = new Map<string, DefaultShiftRow>();
     const periodShiftIds = [...new Set(periods.map((p) => p.shiftId))];
-    if (periodShiftIds.length > 0) {
-      for (const sr of await tx.select(rangeShiftCols).from(shift).where(inArray(shift.id, periodShiftIds))) {
-        shiftById.set(sr.id, sr);
-      }
-    }
-    let cachedDefShift: DefaultShiftRow | undefined;
-    if (periods.length === 0 && emp.defShiftId) {
-      const [dr] = await tx.select(rangeShiftCols).from(shift).where(eq(shift.id, emp.defShiftId)).limit(1);
-      cachedDefShift = dr;
-    }
+    const rangeShifts =
+      periodShiftIds.length > 0 ? await tx.select(rangeShiftCols).from(shift).where(inArray(shift.id, periodShiftIds)) : [];
+    const [cachedRangeRow] =
+      periods.length === 0 && emp.defShiftId
+        ? await tx.select(rangeShiftCols).from(shift).where(eq(shift.id, emp.defShiftId)).limit(1)
+        : [];
+    const [rangeEmpGroup] = await tx
+      .select({ ruleId: employment.attendanceRuleId })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    const rangeWeek = await weekLookupTx(
+      tx,
+      rangeEmpGroup?.ruleId,
+      [...rangeShifts, ...(cachedRangeRow ? [cachedRangeRow] : [])].map((r) => r.ruleId),
+    );
+    const shiftById = new Map<string, DefaultShiftRow>();
+    for (const sr of rangeShifts) shiftById.set(sr.id, { ...sr, ...rangeWeek(sr.ruleId, sr) });
+    const cachedDefShift: DefaultShiftRow | undefined = cachedRangeRow
+      ? { ...cachedRangeRow, ...rangeWeek(cachedRangeRow.ruleId, cachedRangeRow) }
+      : undefined;
     const defShiftOn = (d: string): DefaultShiftRow | undefined => {
       const p = pickArrangementOn(periods, d);
       return p ? shiftById.get(p.shiftId) : cachedDefShift;

@@ -74,6 +74,7 @@ import {
   assignment,
   attendance,
   attendancePolicy,
+  attendanceRule,
   companyPayrollConfig,
   employment,
   leaveRequest,
@@ -88,7 +89,7 @@ import { holidayDatesFor, holidayMemoKey } from './holidays';
 // does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
 // dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
 // fix is never test/pack-drift-allowlist.json — that list is audited kernel-contract debt and only shrinks.
-import { isWorkingDayKind, shiftDayKindFor } from '../packs/attendance/service';
+import { isWorkingDayKind, shiftDayKindFor, weekPatternFor } from '../packs/attendance/service';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
@@ -254,7 +255,8 @@ export async function absenceBreakdownByEmployment(
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
 
-  const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, openAssignments] = await Promise.all([
+  const [rows, approved, partialLeave, policies, rosterRows, defaultShifts, openAssignments, scheduleGroups, groupWeeks] =
+    await Promise.all([
     // Every attendance row in the window — its PRESENCE says the day is accounted for, and (under the
     // `scheduled` rules) an explicit 'absent' status says the opposite of that: an admin marking a
     // no-show, which core/attendance-derive statusOf has always shown in red but the legacy count
@@ -340,12 +342,22 @@ export async function absenceBreakdownByEmployment(
             // b8aa3466 — the four-way row, so absence derivation reads the same schedule scheduleFor does.
             halfPattern: shift.halfPattern,
             offPattern: shift.offPattern,
+            // 07ebd04d — and the shift's Schedule Group, because since migration 0483 the GROUP is what
+            // states which days are worked. This count is deducted from pay, so it must read the same
+            // week scheduleFor does or somebody is docked for a day their group calls a rest day.
+            ruleId: shift.ruleId,
           })
           .from(employment)
           .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
           .where(inArray(employment.id, empIds))
       : Promise.resolve(
-          [] as { employmentId: string; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }[],
+          [] as {
+            employmentId: string;
+            pattern: number[] | null;
+            halfPattern: number[];
+            offPattern: number[];
+            ruleId: string | null;
+          }[],
         ),
     // The OPEN assignment's location — the last input the holiday resolver keys on. See holidayKeyOf.
     tx
@@ -358,13 +370,47 @@ export async function absenceBreakdownByEmployment(
           isNull(assignment.supersededAt),
         ),
       ),
+    // 07ebd04d — the two reads behind "whose working week is this", batched like everything else here:
+    // the Schedule Group of each listed employment, and the week every group in the tenant declares.
+    // The rule table is one small tenant-wide library (production: two rows), so it is read whole rather
+    // than joined per employment. `scheduled` only, for the same reason as the roster and the shifts.
+    scheduled
+      ? tx
+          .select({ employmentId: employment.id, ruleId: employment.attendanceRuleId })
+          .from(employment)
+          .where(inArray(employment.id, empIds))
+      : Promise.resolve([] as { employmentId: string; ruleId: string | null }[]),
+    scheduled
+      ? tx
+          .select({
+            id: attendanceRule.id,
+            isDefault: attendanceRule.isDefault,
+            pattern: attendanceRule.weeklyPattern,
+            halfPattern: attendanceRule.halfPattern,
+            offPattern: attendanceRule.offPattern,
+          })
+          .from(attendanceRule)
+      : Promise.resolve(
+          [] as { id: string; isDefault: boolean; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }[],
+        ),
   ]);
 
   const daysByCompany = new Map(policies.map((p) => [p.companyId, unionDays(p.workingDays, p.halfWorkingDays)]));
   // b8aa3466 — keep the whole four-way row, not just the Full list, so the scheduled test below can tell a
   // Half day (a WORKING day, so a missing row on it IS an absence) from an Off day (not scheduled).
+  // 07ebd04d — THE SAME CHAIN scheduleFor's `ruleFor` uses, restated nowhere else: the employee's
+  // Schedule Group, else the shift's, else the tenant's is_default rule. `weekPatternFor` then hands back
+  // the SHIFT's own week for any group that declares no working day, which is every group written before
+  // migration 0483 and, permanently, the is_default rule — so this is byte-identical for anyone who has
+  // not been put into a pattern-carrying group.
+  const groupOfEmp = new Map(scheduleGroups.map((g) => [g.employmentId, g.ruleId]));
+  const weekOfRule = new Map(groupWeeks.map((r) => [r.id, { pattern: r.pattern, halfPattern: r.halfPattern, offPattern: r.offPattern }]));
+  const tenantDefaultRuleId = groupWeeks.find((r) => r.isDefault)?.id ?? null;
   const patternByEmp = new Map(
-    defaultShifts.map((d) => [d.employmentId, { pattern: d.pattern, halfPattern: d.halfPattern, offPattern: d.offPattern }]),
+    defaultShifts.map((d) => {
+      const ruleId = groupOfEmp.get(d.employmentId) ?? d.ruleId ?? tenantDefaultRuleId;
+      return [d.employmentId, weekPatternFor(ruleId ? weekOfRule.get(ruleId) : null, d)] as const;
+    }),
   );
 
   // ── The holiday memo ────────────────────────────────────────────────────────────────────────────────
