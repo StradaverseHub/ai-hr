@@ -1,8 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Card, Field, inputCls } from '@/components/ui';
+// aec53564 (r331) — the ONE resolver for "whose working week is this, the group's or the shift's", plus the
+// two pure conversions between the three stored arrays and the seven dropdowns. A leaf module with no
+// imports, which is what makes it importable from a client island at all (core/attendance.ts is not).
+import { weekDayKindFor, weekFromDayKinds, weekPatternFor } from '@/core/week-pattern';
+import { SHIFT_SCHEDULE_GROUP_ANCHOR, useShiftScheduleGroup } from '@/components/shift-schedule-group';
 
 // cf21e554 stage 1 — `paid` is the reference Break tab's "Paid?" tick. Optional, and ABSENT MEANS UNPAID,
 // so a shift saved before this release round-trips byte-identically (see BreakPeriod in db/schema.ts).
@@ -147,6 +153,25 @@ export function ShiftTimeFields({
   // silently propose a different figure than the operator is looking at.
   const [flexOn, setFlexOn] = useState(defaultFlexibleBreakEnabled);
   const [flexMin, setFlexMin] = useState(defaultFlexibleBreakMinutes);
+
+  /**
+   * aec53564 — THE WORKING WEEK, AND WHO IS ANSWERING FOR IT.
+   *
+   * `ownKinds` is the SHIFT'S OWN week, seeded from the stored row and kept in state so that picking a
+   * Schedule Group and then clearing it again brings back exactly what the operator had — the shift's week
+   * is the fallback the whole read path depends on and nothing here may quietly overwrite it.
+   *
+   * `week` is `weekPatternFor`'s answer: the group's triple when the group declares one (Full ∪ Half > 0),
+   * the shift's otherwise, with `source` saying which. THE FORM ASKS THAT ONE FUNCTION AND USES WHAT IT
+   * RETURNS — both halves of it. `source` decides whether the row is editable; the triple is what the row
+   * SHOWS, so a greyed row displays the week that is actually in force rather than one nothing obeys.
+   * app/admin/attendance/shift-actions.ts asks the same function about the same POST, so the screen and
+   * the write cannot disagree.
+   */
+  const [ownKinds, setOwnKinds] = useState<Record<number, DayKind>>(dayKinds);
+  const scheduleGroup = useShiftScheduleGroup();
+  const week = weekPatternFor(scheduleGroup, weekFromDayKinds(ownKinds));
+  const decidedBy = week.source === 'group' ? scheduleGroup : null;
 
   const semiFlexi = type === 'semi_flexi';
   /**
@@ -427,7 +452,31 @@ export function ShiftTimeFields({
         {/* 6 — b8aa3466: the Mon–Sun row, seven dropdowns with four choices each. One <select> per weekday
             posting "full" | "half" | "rest" | "off", decoded server-side in shift-actions.ts into the three
             ISO-weekday arrays the service expects. It sits in Working Times because which days a shift is
-            worked is a working time, not a general control. */}
+            worked is a working time, not a general control.
+
+            ── aec53564 (r331) · EDITABLE EXACTLY WHEN NOTHING ELSE IS DECIDING ────────────────────────
+            Since 07ebd04d a Schedule Group may state its own working week, and when it does the group is
+            what every reader in the system obeys — so this row was editing a value nothing read. Measured
+            on production 2026-09-23: of 8 shifts, 6 resolve a rule that declares a week, and their seven
+            dropdowns were dead controls.
+
+            THE ROW IS NOT REMOVED, AND THAT IS THE LOAD-BEARING PART. A group whose pattern is NULL or
+            empty does NOT win (core/week-pattern.ts `weekPatternFor` — a week that matches nothing would
+            book every working day as a rest day and pay rest-day overtime on ordinary work), so the shift's
+            own week is the fallback, and the other 2 production shifts are living on it right now. Greying
+            a control keeps the fallback visible and keeps it stored; deleting the control would have
+            deleted the answer for those two.
+
+            WHAT IS SHOWN WHEN A GROUP DECIDES is `weekPatternFor`'s OWN RETURN VALUE — the group's week,
+            the one in force — not the shift's stored row greyed out. Showing an inert week is the defect
+            this item exists to end, not a gentler version of it. Nothing writes it to the shift: a disabled
+            <select> submits nothing, and shift-actions.ts refuses the fields even when something else
+            posts them.
+
+            IT FOLLOWS THE SELECT LIVE, WITH NO SAVE. `useShiftScheduleGroup` reads the Schedule Group
+            picker in Section 4 through a context provider (components/shift-schedule-group.tsx), so
+            choosing a group greys this row as it is chosen and clearing it brings the shift's own week
+            back, untouched. */}
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium text-foreground">{ta('shiftWorkingDays')}</legend>
           <div className="flex flex-wrap gap-1.5">
@@ -436,8 +485,10 @@ export function ShiftTimeFields({
                 <span className="text-xs font-medium text-foreground">{ta(DAY_KEY[d])}</span>
                 <select
                   name={`dayKind_${d}`}
-                  defaultValue={dayKinds[d] ?? 'rest'}
-                  className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                  value={weekDayKindFor(week, d)}
+                  onChange={(e) => setOwnKinds({ ...ownKinds, [d]: e.target.value as DayKind })}
+                  disabled={decidedBy != null}
+                  className="rounded border border-border bg-transparent px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label={ta(DAY_KEY[d])}
                 >
                   <option value="full">{t(DAY_KIND_KEY.full)}</option>
@@ -448,6 +499,20 @@ export function ShiftTimeFields({
               </div>
             ))}
           </div>
+          {decidedBy && (
+            /* The cause of a greyed control, said where the control is — the Schedule Group BY NAME, a link
+               to the section of its page that states the week, and a link back down to the picker that
+               chose it. A greyed row whose reason is somewhere else on the page is a bug report. */
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {ta('shiftWorkingDaysDecidedBy', { group: decidedBy.name })}{' '}
+              <Link href={decidedBy.href} className="text-primary hover:underline">
+                {ta('shiftWorkingDaysDecidedLink')}
+              </Link>{' '}
+              <a href={`#${SHIFT_SCHEDULE_GROUP_ANCHOR}`} className="text-primary hover:underline">
+                {ta('shiftWorkingDaysChangeGroup')}
+              </a>
+            </p>
+          )}
           <p className="mt-1.5 text-xs text-muted-foreground">{t('dayKindHint')}</p>
         </fieldset>
       </Card>

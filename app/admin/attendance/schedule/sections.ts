@@ -36,6 +36,8 @@
  * not. The list page's own header names the settings that are NOT STORED ANYWHERE (rotation, the duty-roster
  * controls, the monthly OT cap) and the reason each is absent.
  */
+import { scheduleGroupViewPath } from '../../attendance-policy/schedule-panel';
+
 export const SCHEDULE_SECTION_KEYS = [
   'general',
   'holiday',
@@ -54,6 +56,24 @@ export const SCHEDULE_BUILT_SECTIONS = ['general', 'overtime', 'attendance', 'wo
 
 /** One section's anchor on the per-group page, so a save can return the reader to the section they saved. */
 export const sectionAnchor = (key: ScheduleSectionKey) => `section-${key}`;
+
+/**
+ * aec53564 (r331) — A LINK (not a redirect) to one Schedule Group's page, landing on one section.
+ *
+ * ⚠️ THE SECTION IS A QUERY PARAMETER **AND** A FRAGMENT, IN THAT ORDER, AND NEVER IN FRONT OF A QUERY
+ * KEY. `okScheduleGroup` / `failScheduleGroup` (app/admin/_redirects.ts) append `&section=` AFTER their
+ * `?toast=` / `?error=` key for exactly this reason: `…?section=workingDay?toast=Saved` reads `section` as
+ * "workingDay?toast=Saved" and loses the toast, and that defect shipped TWICE on this screen (r287 → r301,
+ * on `?tab=`). A link carries no toast, so `section` is the FIRST and ONLY query key here — and it is
+ * built HERE, once, rather than spelled out at a call site where the next parameter added would be
+ * concatenated in front of it. Nothing else on this screen may build a schedule URL by hand.
+ *
+ * The VIEW page, not Edit: a link offered beside a control the reader cannot change is an invitation to
+ * see what decides it, and View is the page that answers that without putting them in an editor they did
+ * not ask for. Its own header carries "Edit this Schedule Group" for the step after.
+ */
+export const scheduleGroupSectionHref = (ruleId: string, section: ScheduleSectionKey): string =>
+  `${scheduleGroupViewPath(ruleId)}?section=${encodeURIComponent(section)}#${sectionAnchor(section)}`;
 
 /**
  * `[ruleId]` IS AN UNTRUSTED URL SEGMENT AND `attendance_rule.id` IS A UUID COLUMN.

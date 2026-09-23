@@ -24,8 +24,19 @@ const ACTIONS = read('app/admin/attendance/shift-actions.ts');
 const FORM = read('app/admin/attendance/shift-form.tsx');
 const TIME_FIELDS = read('components/shift-time-fields.tsx');
 const OT_FIELDS = read('components/shift-ot-window-fields.tsx');
-/** Everything the form POSTS from, in one string — the sections are spread across three components. */
-const RENDERED = FORM + TIME_FIELDS + OT_FIELDS;
+/**
+ * aec53564 (r331) — A FOURTH FILE, AND THE GUARD IS WIDENED RATHER THAN RELAXED.
+ *
+ * The Schedule Group picker (`name="attendanceRuleId"`) moved out of shift-form.tsx and into its own client
+ * island so the working-day row can follow it live. It is STILL one of the fields shiftFields() reads off
+ * the POST, so it must still be proved to render — and the way to keep proving that is to add the file the
+ * input moved to, never to except the field. Dropping `attendanceRuleId` into an exception list instead
+ * would have re-opened precisely the hole this test exists for: the write is a full-row overwrite, so an
+ * input that stops rendering nulls a column on the next save.
+ */
+const GROUP_ISLAND = read('components/shift-schedule-group.tsx');
+/** Everything the form POSTS from, in one string — the sections are spread across four components. */
+const RENDERED = FORM + TIME_FIELDS + OT_FIELDS + GROUP_ISLAND;
 
 /**
  * The form fields shiftFields() (and the two actions around it) read off the POST. Collected from the call
@@ -225,6 +236,10 @@ describe('6340aecb — every message key the shift screen asks for exists', () =
     ['app/admin/attendance/shift-form.tsx', FORM, 40],
     ['components/shift-time-fields.tsx', TIME_FIELDS, 40],
     ['components/shift-ot-window-fields.tsx', OT_FIELDS, 5],
+    // aec53564 — the fourth file of the screen. It uses ONE namespace, so i18n-coverage's check C would
+    // cover it, but the four keys it asks for are the sentence that explains a control the operator cannot
+    // click: a MISSING_MESSAGE there is the whole feature reading as a bug.
+    ['components/shift-schedule-group.tsx', GROUP_ISLAND, 5],
   ] as const) {
     it(`${label} — every key resolves in the namespace its own translator is bound to`, () => {
       const asked = askedFor(src);
