@@ -1,10 +1,11 @@
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listStatutoryCatalog, reportPreview } from '@/core/reporting';
 import { deriveEmploymentStatus } from '@/core/employment-status';
-import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 // THE PICKER IS SHARED, NOT FORKED. `EaEmployeePicker` is form-agnostic — rows, a destination href,
 // hidden fields and pre-translated strings — and its `Ea` prefix is historical: it was written for the
@@ -99,11 +100,24 @@ export default async function Pcb2iiEmployeeSelectionPage({
 
   const heading = t(entry.labelKey as 'link_pcb2ii_en');
   const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`;
+  /* r331 (72b100cd) — THE DOOR TO THE RECEIPTS SCREEN, and it is here because this is the form that
+     PRINTS them. Section 2 of PCB 2(II) reports, per month, the receipt / bank slip / transaction number
+     and the payment date; until r331 the only place to key one was the bottom of the CP39 screen for one
+     month at a time, so an operator maintaining a fact THIS form prints had to know to go to a different
+     form to do it. The company and year travel with the link (and `lang`, so coming back lands on the
+     same language's entry) — the receipts screen would otherwise default to a company and a year that
+     are not the ones being looked at here. */
+  const receiptsHref = `/payroll/statutory-forms/pcb2ii/receipts?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${lang ? `&lang=${lang}` : ''}`;
 
   return (
     <div className={pageWideCls}>
       <PageHeader
         back={{ href: backHref, label: t('criteria_back') }}
+        actions={
+          <Link href={receiptsHref} className={btnGhost}>
+            {t('pcb2iiReceiptsLink')}
+          </Link>
+        }
         title={heading}
         /* ⚠️ ITS OWN SENTENCE, NOT THE EA'S — r328. `eaPickPeople` reads "tick the people whose EA you
            need", which is the WRONG statutory document's name on the PCB 2(II) screen. Third instance of

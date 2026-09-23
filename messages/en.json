@@ -4392,7 +4392,17 @@
       "pcb2iiNoneForYear": "Nobody at {company} has payroll figures for {year}, so there is no tax to declare on a PCB 2(II). Run that year’s payroll first.",
       "link_tp3": "Form TP3",
       "link_tp3_hint": "Previous-employer figures for a mid-year joiner. Choose a person and an assessment year to open, correct or print theirs.",
-      "desc_tp3": "LHDN's TP3 (1/2026), drawn from the previous-employment record on file — Sections A to E, the C1 to C5 money lines and the D1 to D17 relief schedule, in the form's own numbering, wording and column order, on our own page. One form per employee per assessment year; nothing on it is recalculated here, and nothing on it changes the monthly tax deduction."
+      "desc_tp3": "LHDN's TP3 (1/2026), drawn from the previous-employment record on file — Sections A to E, the C1 to C5 money lines and the D1 to D17 relief schedule, in the form's own numbering, wording and column order, on our own page. One form per employee per assessment year; nothing on it is recalculated here, and nothing on it changes the monthly tax deduction.",
+      "pcb2iiReceiptsLink": "Receipt / transaction details",
+      "pcb2iiReceiptsBack": "PCB 2(II)",
+      "pcb2iiReceiptsTitle": "Receipt / transaction details",
+      "pcb2iiReceiptsSubtitle": "{company} · {year} · the receipt number and payment date PCB 2(II) prints for each month",
+      "pcb2iiReceiptsShow": "Show year",
+      "pcb2iiReceiptsHint": "Two payments a month: the ordinary monthly deduction (MTD) and CP38 are paid and receipted separately, and PCB 2(II) prints them separately. A month left blank prints an empty box on the form, never 0.00.",
+      "pcb2iiReceiptsCp39Note": "The boxes at the bottom of the CP39 screen still work and write this same record — whichever you use, the other shows it.",
+      "pcb2iiReceiptsCount": "{recorded} of {total} recorded",
+      "pcb2iiReceiptsRecorded": "Recorded",
+      "pcb2iiReceiptsNotRecorded": "Not recorded"
     },
     "ea": {
       "backToReports": "Reports",

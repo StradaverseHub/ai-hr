@@ -942,6 +942,17 @@ export const SCREENS: readonly ScreenEntry[] = [
       // is a route handler, not a guarded page, so it is not listed; the reverse-completeness check in
       // test/function-access.test.ts walks page.tsx files.
       '/payroll/statutory-forms/pcb2ii',
+      // 72b100cd (r331): the PCB 2(II) Receipt / Transaction Details screen — a whole year of the
+      // employer's own PCB payments (receipt number and payment date, MTD and CP38 apart) maintained on
+      // one page instead of one month at a time at the bottom of CP39. Same scopedAdmin key as the
+      // pcb2ii screen above and DELIBERATELY not a column of its own: a separate column would let an
+      // administrator grant PCB 2(II) while revoking the only sensible place to maintain what section 2
+      // of it prints — and the CP39 screen, which writes the identical record through the identical
+      // action, already sits on this key. It needs a line here on its own account too: it names a
+      // company and shows what that company paid a tax authority. Registered because
+      // test/function-access.test.ts checks reverse completeness — a guarded page with no matrix column
+      // fails the suite rather than silently becoming a screen nobody can grant or revoke.
+      '/payroll/statutory-forms/pcb2ii/receipts',
       // 88076362: the CP22 review step, between the joiner list on the statutory-form directory and the
       // download. Same scopedAdmin key as the directory that links to it (statutory-forms/page.tsx builds
       // the href twice, for the due list and the watchlist) — it shows one joiner's full particulars, name,

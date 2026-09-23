@@ -4027,7 +4027,17 @@
       "pcb2iiNoneForYear": "Tiada pekerja di {company} mempunyai angka gaji bagi {year}, jadi tiada cukai untuk diisytiharkan dalam PCB 2(II). Jalankan gaji tahun tersebut dahulu.",
       "link_tp3": "Borang TP3",
       "link_tp3_hint": "Angka majikan terdahulu bagi pekerja yang menyertai pertengahan tahun. Pilih seseorang dan tahun taksiran untuk membuka, membetulkan atau mencetak borang mereka.",
-      "desc_tp3": "Borang TP3 (1/2026) LHDN, dilukis daripada rekod pekerjaan terdahulu yang ada — Seksyen A hingga E, baris wang C1 hingga C5 dan jadual pelepasan D1 hingga D17, mengikut penomboran, perkataan dan susunan lajur borang itu sendiri, pada halaman kami sendiri. Satu borang bagi setiap pekerja bagi setiap tahun taksiran; tiada apa-apa dikira semula di sini, dan tiada apa-apa mengubah potongan cukai bulanan."
+      "desc_tp3": "Borang TP3 (1/2026) LHDN, dilukis daripada rekod pekerjaan terdahulu yang ada — Seksyen A hingga E, baris wang C1 hingga C5 dan jadual pelepasan D1 hingga D17, mengikut penomboran, perkataan dan susunan lajur borang itu sendiri, pada halaman kami sendiri. Satu borang bagi setiap pekerja bagi setiap tahun taksiran; tiada apa-apa dikira semula di sini, dan tiada apa-apa mengubah potongan cukai bulanan.",
+      "pcb2iiReceiptsLink": "Butiran resit / transaksi",
+      "pcb2iiReceiptsBack": "PCB 2(II)",
+      "pcb2iiReceiptsTitle": "Butiran resit / transaksi",
+      "pcb2iiReceiptsSubtitle": "{company} · {year} · nombor resit dan tarikh bayaran yang dicetak PCB 2(II) bagi setiap bulan",
+      "pcb2iiReceiptsShow": "Papar tahun",
+      "pcb2iiReceiptsHint": "Dua bayaran sebulan: potongan cukai bulanan (PCB) dan CP38 dibayar dan diresitkan berasingan, dan PCB 2(II) mencetaknya berasingan. Bulan yang dibiarkan kosong akan dicetak kosong pada borang, bukan 0.00.",
+      "pcb2iiReceiptsCp39Note": "Kotak di bahagian bawah skrin CP39 masih berfungsi dan menulis rekod yang sama — mana-mana yang anda guna, satu lagi akan memaparkannya.",
+      "pcb2iiReceiptsCount": "{recorded} daripada {total} direkodkan",
+      "pcb2iiReceiptsRecorded": "Direkodkan",
+      "pcb2iiReceiptsNotRecorded": "Belum direkodkan"
     },
     "ea": {
       "backToReports": "Laporan",

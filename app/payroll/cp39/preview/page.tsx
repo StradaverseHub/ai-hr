@@ -7,7 +7,7 @@ import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls 
 import { loadCp39Form } from '../shared';
 // 72b100cd — the payment reference this month's PCB 2(II) will print, read beside the return it settles.
 import { pcbPaymentsForYear } from '@/core/pcb-payment';
-import { recordPcbPaymentAction } from '../actions';
+import { recordPcbPaymentAction } from '../../pcb-payment-actions';
 
 /**
  * e0cd4583 — the CP39 review screen: pick a payroll cycle month, check the statement, fill in the
