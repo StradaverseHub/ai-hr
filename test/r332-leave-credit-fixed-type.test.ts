@@ -184,7 +184,10 @@ describe('2a237f5f: a tenant with no Replacement Leave type', () => {
     // the resolver the render path calls leaves the catalogue exactly as it found it, and the approval
     // path — which calls `ensureReplacementLeaveType` — adds the row the read declined to add.
     const before = await leaveTypeCount();
+    // The count is asserted IMMEDIATELY after each read, so it is this read that is on trial. Asserting it
+    // once at the end would let a later read see a row the earlier one wrote and fail on the wrong line.
     expect(await resolvedBySql()).toBeNull();
+    expect(await leaveTypeCount(), 'the SQL resolver must not create a leave type').toBe(before);
     expect(await resolvedInMemory()).toBeNull();
     expect(await leaveTypeCount(), 'drawing the page must not create a leave type').toBe(before);
 
