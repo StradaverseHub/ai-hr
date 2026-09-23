@@ -21,8 +21,30 @@
  *   G. The panel editors are the SAME forms posting the SAME fields: the group panel's markup is byte-identical
  *      to what the retired rules/[ruleId] page rendered, and the policy panel is that company's form alone.
  *   H. The old addresses are guarded redirects to the anchors (the guard runs first).
- *   I. Panel addressing: `?group=` (the Attendance/Overtime selector) opens no editor; an open panel forces General.
+ *   I. Addressing: the three per-group pages open the right record, and junk opens none of them.
  *   J. Last updated is readable by an HR admin under RLS (group-wide and company-scoped), and by nobody else.
+ *
+ * ══ 665de026 (r331) — THE TAB SHELL IS GONE AND THIS FILE FOLLOWED IT, ASSERTION BY ASSERTION ═════════
+ * The reporter contested r301's shape: one page carried every Schedule Group's settings at once and Add /
+ * Edit opened over the top of them. Schedule is list + detail now — the shape schedule-assignment reached
+ * the same way in r265 — so every case below that named a TAB or the `?editGroup=` PANEL was repointed at
+ * the page that replaced it. NOTHING was deleted and nothing was loosened:
+ *
+ *   · A renders the LIST page directly instead of unwrapping a `data-tabpanel="general"` div, and the
+ *     five cards keep their ids and their titles. The ORDER assertion flipped at the top on purpose:
+ *     the Schedule Group card leads the list now, because the reporter asked for this page to BE the
+ *     list of Schedule Groups.
+ *   · B still proves no id renders twice, over the list with each policy panel open AND over all three
+ *     new pages — a wider sweep than before, because there are three more screens to get wrong.
+ *   · E's "every writer returns to the General tab" became "every writer STAYS ON THE RECORD", which is
+ *     the second half of what the reporter asked for. The two row actions that have no record to return
+ *     to (status, delete) still return to the list, and that is asserted as such rather than assumed.
+ *   · G's byte-for-byte check survives intact and is the load-bearing proof that the SAME form moved:
+ *     rules/rule-form.tsx rendered standalone still equals what the Edit and Add pages render.
+ *   · H's two rule stubs now redirect to the pages rather than to panel query parameters.
+ *   · I lost `?group=` and `?editGroup=` with the tab shell; it gained the uuid-shape refusal on
+ *     `[ruleId]`, which is the class of bug (junk in a uuid column → a 500) the r263 verifier found on
+ *     the sibling screen.
  *
  * FILE-LEVEL MOCKS, the house pattern (test/r299-leave-credit-deploy-day.test.ts, test/schedule-tab-writers.test.ts):
  * requireAdmin()/getSession() return the module-level ADMIN (or refuse, for H); redirect() throws a recognisable
@@ -117,6 +139,9 @@ import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { ruleShiftChoices } from '../app/admin/attendance-policy/rules/shift-choices';
 import { WorkScheduleForm } from '../app/admin/attendance-policy/schedule/work-schedule-form';
 import SchedulePage from '../app/admin/attendance/schedule/page';
+import ViewGroupPage from '../app/admin/attendance/schedule/[ruleId]/page';
+import EditGroupPage from '../app/admin/attendance/schedule/[ruleId]/edit/page';
+import AddGroupPage from '../app/admin/attendance/schedule/new/page';
 import OldScheduleGroupPage from '../app/admin/attendance-policy/page';
 import OldWorkSchedulePage from '../app/admin/attendance-policy/schedule/page';
 import OldNewRulePage from '../app/admin/attendance-policy/rules/new/page';
@@ -186,8 +211,9 @@ const isAsync = (f: unknown) =>
 
 /**
  * Await every async server component in a tree — INCLUDING ones passed through props that are not `children`.
- * The Schedule page hands its tab panels to ClientTabs as `panels={{ general, attendance, overtime }}`, so a
- * children-only walk (the r299 helper) would render the General tab's cards as unresolved promises.
+ * 665de026: the Schedule pages no longer hand panels to a tab shell, but the walk stays prop-aware — the
+ * per-group pages pass an async `<ScheduleGroupSections>` through `PageHeader`'s `actions` prop, and a
+ * children-only walk (the r299 helper) would render those as unresolved promises.
  */
 async function settle(node: unknown): Promise<unknown> {
   if (Array.isArray(node)) return Promise.all(node.map(settle));
@@ -225,8 +251,17 @@ const toMarkup = async (tree: unknown) =>
     ),
   ).replace(/<script[\s\S]*?<\/script>/g, '');
 
-type SP = { tab?: string; group?: string; error?: string; editGroup?: string; policy?: string; viewPolicy?: string };
+type SP = { error?: string; policy?: string; viewPolicy?: string };
 const renderSchedule = async (sp: SP = {}) => toMarkup(await SchedulePage({ searchParams: Promise.resolve(sp) }));
+
+/** 665de026 — the three per-Schedule-Group screens the list now links to. */
+type GroupSP = { error?: string; section?: string; typedWeek?: string };
+const renderView = async (ruleId: string, sp: GroupSP = {}) =>
+  toMarkup(await ViewGroupPage({ params: Promise.resolve({ ruleId }), searchParams: Promise.resolve(sp) }));
+const renderEdit = async (ruleId: string, sp: GroupSP = {}) =>
+  toMarkup(await EditGroupPage({ params: Promise.resolve({ ruleId }), searchParams: Promise.resolve(sp) }));
+const renderNew = async (sp: { error?: string } = {}) =>
+  toMarkup(await AddGroupPage({ searchParams: Promise.resolve(sp) }));
 
 /** React escapes text; compare against the escaped form. */
 const esc = (s: string) =>
@@ -293,17 +328,18 @@ beforeEach(async () => {
 
 // ── A ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('A. the General tab is the one setup page', () => {
-  it('renders the five cards, in the approved order, on the General tab', async () => {
-    const html = await renderSchedule();
-    const general = elementById(html.replace('data-tabpanel="general"', 'id="__general" data-tabpanel="general"'), '__general');
-    expect(general, 'the General tab panel rendered').not.toBe('');
-    const ids = ['shifts-available', 'schedule-groups', 'company-policy-settings', 'work-schedule-overtime', 'not-configured-here'];
+describe('A. the Schedule page is the LIST, and keeps every card that is not per-group', () => {
+  it('renders the five cards, in the approved order', async () => {
+    // 665de026 — no tab shell to unwrap: the list page IS the page. The five cards, their ids and their
+    // titles are UNCHANGED; only the order of the first two swapped, deliberately (see the header).
+    const general = await renderSchedule();
+    expect(general, 'the list page rendered').not.toBe('');
+    const ids = ['schedule-groups', 'shifts-available', 'company-policy-settings', 'work-schedule-overtime', 'not-configured-here'];
     const at = ids.map((id) => general.indexOf(` id="${id}"`));
-    expect(at.every((i) => i > -1), `all five cards are on the General tab: ${JSON.stringify(Object.fromEntries(ids.map((id, i) => [id, at[i]])))}`).toBe(true);
-    expect([...at].sort((x, y) => x - y), 'in the order Shifts · Schedule Group · Company Policy · Work Schedule & OT · Not configured here').toEqual(at);
+    expect(at.every((i) => i > -1), `all five cards are on the list: ${JSON.stringify(Object.fromEntries(ids.map((id, i) => [id, at[i]])))}`).toBe(true);
+    expect([...at].sort((x, y) => x - y), 'in the order Schedule Group · Shifts · Company Policy · Work Schedule & OT · Not configured here').toEqual(at);
     // And each card says what it is, in the reporter's words.
-    const titles = [SC.shiftsTitle, SC.groupTitle, SC.policyTitle, SC.wsOtTitle, SC.gapsTitle];
+    const titles = [SC.groupTitle, SC.shiftsTitle, SC.policyTitle, SC.wsOtTitle, SC.gapsTitle];
     for (const [i, id] of ids.entries()) {
       expect(elementById(general, id), `${id} is titled "${titles[i]}"`).toContain(esc(titles[i]));
     }
@@ -345,11 +381,20 @@ describe('A. the General tab is the one setup page', () => {
 // ── B ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('B. no element id renders twice — now that two pages are one', () => {
-  it('with no panel, the group editor, the policy editor, and the policy view', async () => {
+  it('with no panel, the policy editor, the policy view — and on all three per-group pages', async () => {
     const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Office staff' }));
-    for (const sp of [{}, { editGroup: group.id }, { editGroup: 'new' }, { policy: b.companyId }, { viewPolicy: companyB }] as SP[]) {
+    for (const sp of [{}, { policy: b.companyId }, { viewPolicy: companyB }] as SP[]) {
       const html = await renderSchedule(sp);
       expect(duplicateIds(html), `duplicate ids with ${JSON.stringify(sp)}`).toEqual([]);
+    }
+    // 665de026 — the three new screens each render seven `id="section-…"` anchors, which is exactly the
+    // shape that produces a duplicate id if a section is ever rendered twice.
+    for (const [name, html] of [
+      ['view', await renderView(group.id)],
+      ['edit', await renderEdit(group.id)],
+      ['new', await renderNew()],
+    ] as const) {
+      expect(duplicateIds(html), `duplicate ids on the ${name} page`).toEqual([]);
     }
     // Non-vacuity: the per-company row ids AND the editor card's own id are both present at once.
     const withEditor = await renderSchedule({ policy: b.companyId });
@@ -451,7 +496,7 @@ describe('D. Schedule Group Delete asks first; Standard has none; an in-use grou
     expect(std.startsWith(`${SCHEDULE}?error=`), std).toBe(true);
     expect(await getAttendanceRule(ADMIN, standard.id)).not.toBeNull();
 
-    // …and the refusal is SHOWN on the General tab (no panel is open, so the page banner carries it).
+    // …and the refusal is SHOWN on the list (no policy panel is open, so the page banner carries it).
     const html = await renderSchedule({ error: queryOf(refused).get('error')! });
     expect(html.split(esc(queryOf(refused).get('error')!)).length - 1, 'shown exactly once').toBe(1);
 
@@ -463,40 +508,64 @@ describe('D. Schedule Group Delete asks first; Standard has none; an in-use grou
 
 // ── E ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('E. every moved writer returns to the General tab', () => {
-  it('Schedule Group: create, update, status, duplicate (opens the copy), and a refusal re-opens its panel', async () => {
-    expect(await redirectOf(() => createAttendanceRuleAction(fd({ name: 'Warehouse' })))).toBe(SCHEDULE);
+describe('E. every writer stays on the record — and the two row actions that have none return to the list', () => {
+  it('Schedule Group: create, update, status, duplicate (lands on the copy), and a refusal stays on the form', async () => {
+    // 665de026 — THE SECOND HALF OF THE ITEM, in the reporter's words: "Saving KEEPS YOU WHERE YOU ARE
+    // with a confirmation — it does not throw you back to the list." Every assertion below used to read
+    // `.toBe(SCHEDULE)`; each now names the record the operator is left on.
+    const createdTo = await redirectOf(() => createAttendanceRuleAction(fd({ name: 'Warehouse' })));
     const created = (await listAttendanceRules(ADMIN)).find((r) => r.name === 'Warehouse')!;
     expect(created).toBeDefined();
+    // Create lands on the group it just created — Add Schedule can only carry the identity, so the
+    // operator's next step is that page, every time.
+    expect(createdTo.startsWith(`${SCHEDULE}/${created.id}/edit?toast=`), createdTo).toBe(true);
+    expect(queryOf(createdTo).get('toast')).toBe(SC.createdToast);
+    expect(queryOf(createdTo).get('section'), 'on the General section').toBe('general');
+    expect(createdTo.endsWith('#section-general'), 'and the browser lands on that heading').toBe(true);
 
-    expect(
-      await redirectOf(() => updateAttendanceRuleAction(fd({ ruleId: created.id, name: 'Warehouse', status: 'active' }))),
-    ).toBe(SCHEDULE);
+    const updatedTo = await redirectOf(() =>
+      updateAttendanceRuleAction(fd({ ruleId: created.id, name: 'Warehouse', status: 'active' })),
+    );
+    expect(updatedTo.startsWith(`${SCHEDULE}/${created.id}/edit?toast=`), updatedTo).toBe(true);
+    expect(queryOf(updatedTo).get('toast')).toBe(SC.savedToast);
+
+    // ⚠️ EXACTLY ONE `?`. The r287 → r301 defect was a parameter concatenated in FRONT of the query key,
+    // which made `?tab=general?toast=…` and lost the toast. `okScheduleGroup` is the only place a
+    // schedule path and a query string meet, and the section rides as a SECOND `&` parameter.
+    expect(updatedTo.split('?').length - 1, updatedTo).toBe(1);
+
+    // Activate / Deactivate is a row action ON the list, so it returns to the list, deliberately.
     expect(
       await redirectOf(() => setAttendanceRuleStatusAction(fd({ ruleId: created.id, status: 'inactive' }))),
     ).toBe(SCHEDULE);
     expect((await getAttendanceRule(ADMIN, created.id))!.status).toBe('inactive');
 
     const copied = await redirectOf(() => copyAttendanceRuleAction(fd({ ruleId: created.id })));
-    expect(copied.startsWith(`${SCHEDULE}?editGroup=`), copied).toBe(true);
-    const copyId = queryOf(copied).get('editGroup')!;
+    expect(copied.startsWith(`${SCHEDULE}/`), copied).toBe(true);
+    const copyId = copied.slice(SCHEDULE.length + 1).split('/')[0];
     expect(copyId).not.toBe(created.id);
     const copy = await getAttendanceRule(ADMIN, copyId);
-    expect(copy, 'the panel it opens is the COPY').not.toBeNull();
-    const copyPanel = elementById(await renderSchedule({ editGroup: copyId }), 'schedule-panel');
-    expect(copyPanel).toContain(`name="ruleId" value="${copyId}"`);
-    expect(copyPanel).toContain(`value="${esc(copy!.name)}"`);
+    expect(copy, 'the page it opens is the COPY').not.toBeNull();
+    expect(copied.startsWith(`${SCHEDULE}/${copyId}/edit?toast=`), copied).toBe(true);
+    const copyPage = await renderEdit(copyId);
+    expect(copyPage).toContain(`name="ruleId" value="${copyId}"`);
+    expect(copyPage).toContain(`value="${esc(copy!.name)}"`);
 
-    // A refusal from the editor re-opens THAT panel with the message — shown once, inside it.
+    // A refusal stays on THAT group's Edit page with the message — shown once, in the section it belongs to.
     const refused = await redirectOf(() => updateAttendanceRuleAction(fd({ ruleId: created.id, name: '', status: 'active' })));
     const q = queryOf(refused);
-    expect(refused.startsWith(`${SCHEDULE}?editGroup=${created.id}&error=`), refused).toBe(true);
-    const html = await renderSchedule({ editGroup: q.get('editGroup')!, error: q.get('error')! });
+    expect(refused.startsWith(`${SCHEDULE}/${created.id}/edit?error=`), refused).toBe(true);
+    expect(q.get('section')).toBe('general');
+    const html = await renderEdit(created.id, { error: q.get('error')!, section: q.get('section')! });
     expect(html.split(esc(q.get('error')!)).length - 1, 'the refusal is shown exactly once').toBe(1);
-    expect(elementById(html, 'schedule-panel'), 'inside the panel it belongs to').toContain(esc(q.get('error')!));
+    expect(elementById(html, 'section-general'), 'inside the section it belongs to').toContain(esc(q.get('error')!));
 
+    // The ONE refusal with no record to return to: the group was never created, so it goes back to Add.
     const refusedNew = await redirectOf(() => createAttendanceRuleAction(fd({ name: '' })));
-    expect(refusedNew.startsWith(`${SCHEDULE}?editGroup=new&error=`), refusedNew).toBe(true);
+    expect(refusedNew.startsWith(`${SCHEDULE}/new?error=`), refusedNew).toBe(true);
+    expect(await renderNew({ error: queryOf(refusedNew).get('error')! }), 'and it is shown there').toContain(
+      esc(queryOf(refusedNew).get('error')!),
+    );
   });
 
   it('Revoke a device, and publish the overtime rates, both return to the plain Schedule path', async () => {
@@ -571,8 +640,8 @@ describe('F. THE BUG — a refused Save policy shows its error', () => {
 
 // ── G ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('G. the panel editors are the same forms, posting the same fields', () => {
-  it('the Schedule Group panel is byte-for-byte what the retired rules/[ruleId] and rules/new pages rendered', async () => {
+describe('G. the editors are the same forms, posting the same fields', () => {
+  it('Edit Schedule and Add Schedule are byte-for-byte what the retired rules/[ruleId] and rules/new pages rendered', async () => {
     await ensureStandardRule(ADMIN);
     const group = await createAttendanceRule(
       ADMIN,
@@ -596,26 +665,35 @@ describe('G. the panel editors are the same forms, posting the same fields', () 
     });
 
     // EXACTLY the retired rules/[ruleId] page body (main@1164f8d1): getAttendanceRule + the two parallel reads.
+    // 665de026 — `cancel` is the ONE prop that changed on RuleForm, and the change is that the page owns
+    // its chrome now: on Edit Schedule the page header's Back is the way out, so the form draws none.
     const oldEdit = await toMarkup(
       await RuleForm({
         rule: await getAttendanceRule(ADMIN, group.id),
         shifts: ruleShiftChoices(await listShiftsForTenant(ADMIN), await listAttendanceRules(ADMIN), group.id),
         error: undefined,
+        cancel: null,
       }),
     );
-    const panel = elementById(await renderSchedule({ editGroup: group.id }), 'schedule-panel');
+    const panel = elementById(await renderEdit(group.id), 'section-general');
     expect(oldEdit.length).toBeGreaterThan(2000);
-    expect(panel, 'the panel renders the old edit page’s form verbatim — same action, same fields, same values').toContain(oldEdit);
+    expect(panel, 'the General section renders the old edit page’s form verbatim — same action, same fields, same values').toContain(oldEdit);
     // Pinned positively too, so "verbatim" cannot be satisfied by two empty renders.
     for (const name of ['ruleId', 'name', 'status', 'description', 'lateGracePeriodMinutes', 'applyDeductions', 'allowedShiftsEditor', 'allowedShiftIds', 'otRows']) {
       expect(panel, `the editor posts ${name}`).toContain(`name="${name}"`);
     }
 
-    // And Add New: the retired rules/new page body.
+    // And Add New: the retired rules/new page body. Here the form DOES draw a Cancel, because Add Schedule
+    // has no record to go back to and "Back to Schedule" and "Cancel" are the same destination for it.
     const oldNew = await toMarkup(
-      await RuleForm({ rule: null, shifts: ruleShiftChoices(await listShiftsForTenant(ADMIN), await listAttendanceRules(ADMIN), null), error: undefined }),
+      await RuleForm({
+        rule: null,
+        shifts: ruleShiftChoices(await listShiftsForTenant(ADMIN), await listAttendanceRules(ADMIN), null),
+        error: undefined,
+        cancel: { href: SCHEDULE, label: en.admin.attendanceRule.cancel },
+      }),
     );
-    expect(elementById(await renderSchedule({ editGroup: 'new' }), 'schedule-panel')).toContain(oldNew);
+    expect(await renderNew()).toContain(oldNew);
   });
 
   it('the policy Edit panel is that company’s WorkScheduleForm, and only that company’s', async () => {
@@ -635,10 +713,12 @@ describe('H. the old addresses are guarded redirects to the matching card', () =
   it('each redirects to its anchor on the General tab', async () => {
     expect(await redirectOf(() => OldScheduleGroupPage())).toBe(`${SCHEDULE}#schedule-groups`);
     expect(await redirectOf(() => OldWorkSchedulePage())).toBe(`${SCHEDULE}#work-schedule-overtime`);
-    expect(await redirectOf(() => OldNewRulePage())).toBe(`${SCHEDULE}?editGroup=new#schedule-panel`);
+    // 665de026 — the two rule stubs point at the PAGES that replaced the panel, so every bookmark written
+    // against 88e94371's own routes or r301's panel parameters still lands on the right screen.
+    expect(await redirectOf(() => OldNewRulePage())).toBe(`${SCHEDULE}/new`);
     const id = randomUUID();
     expect(await redirectOf(() => OldEditRulePage({ params: Promise.resolve({ ruleId: id }) }))).toBe(
-      `${SCHEDULE}?editGroup=${id}#schedule-panel`,
+      `${SCHEDULE}/${id}/edit`,
     );
   });
 
@@ -655,8 +735,7 @@ describe('H. the old addresses are guarded redirects to the matching card', () =
   });
 
   it('every anchor they name is rendered exactly once on the page', async () => {
-    const group = await createAttendanceRule(ADMIN, ruleInput());
-    const html = await renderSchedule({ editGroup: group.id });
+    const html = await renderSchedule({ policy: b.companyId });
     for (const id of ['schedule-groups', 'work-schedule-overtime', 'schedule-panel']) {
       expect(html.split(` id="${id}"`).length - 1, id).toBe(1);
     }
@@ -665,42 +744,78 @@ describe('H. the old addresses are guarded redirects to the matching card', () =
 
 // ── I ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('I. panel addressing', () => {
-  it('`?group=` is the Attendance/Overtime selector and opens NO editor; an unknown id opens nothing', async () => {
-    const group = await createAttendanceRule(ADMIN, ruleInput());
-    expect(await renderSchedule({ tab: 'attendance', group: group.id })).not.toContain('id="schedule-panel"');
-    expect(await renderSchedule({ editGroup: randomUUID() })).not.toContain('id="schedule-panel"');
+describe('I. addressing — the per-group pages, and the panel that stayed', () => {
+  /**
+   * 665de026 — THIS BLOCK USED TO PIN THE TAB SHELL, AND EVERY CASE IN IT IS REPLACED RATHER THAN DROPPED.
+   *
+   * What it guarded was: `?group=` opens no editor, an unknown `?editGroup=` opens nothing, and an open
+   * panel forces the General tab (because ClientTabs keeps its active tab in client state, so the shell
+   * had to be re-keyed). The tab shell and both parameters are gone with the panel they served. What
+   * REPLACES each guard is the equivalent invariant on the pages that took over — every id is still read
+   * BY VALUE against what exists for this viewer, and a hand-edited URL still opens nothing rather than a
+   * record the viewer cannot see.
+   */
+  it('the per-group pages open the record their URL names, and nothing else', async () => {
+    const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Plant crew' }));
+    const other = await createAttendanceRule(ADMIN, ruleInput({ name: 'Office staff' }));
+    for (const html of [await renderView(group.id), await renderEdit(group.id)]) {
+      expect(html, 'the page names the group it is for').toContain(esc('Plant crew'));
+      expect(html, 'and not the other one').not.toContain(esc('Office staff'));
+    }
+    // Non-vacuity for the negative above: the other group IS on the list, so "not contained" is a fact
+    // about the per-group page rather than about the tenant having one group.
+    expect(await renderSchedule()).toContain(esc('Office staff'));
+    expect(other.id).not.toBe(group.id);
+  });
+
+  /**
+   * ⚠️ `[ruleId]` IS AN UNTRUSTED URL SEGMENT AND `attendance_rule.id` IS A UUID COLUMN.
+   *
+   * The r263 verifier found exactly this on the sibling screen: junk reached `eq(employment.id, …)` and
+   * Postgres threw "invalid input syntax for type uuid" — a 500 from a stale bookmark. Both pages check
+   * the SHAPE before any query, and junk, an unknown uuid and a group the viewer cannot see all render
+   * the same sentence with the back link. Never notFound(), never a crash.
+   */
+  it('junk and an unknown id render the "not on this list" sentence, not a crash', async () => {
+    for (const bad of ['not-a-uuid', '../../etc/passwd', randomUUID()]) {
+      for (const render of [renderView, renderEdit]) {
+        const html = await render(bad);
+        expect(html, `${bad} is answered, not thrown`).toContain(esc(SC.groupGone));
+        expect(html, 'with the way back').toContain(`href="${SCHEDULE}"`);
+      }
+    }
+  });
+
+  it('the list links to all three pages, and the retired panel parameter is gone from the source', async () => {
+    const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Plant crew' }));
+    const html = await renderSchedule();
+    for (const href of [`${SCHEDULE}/new`, `${SCHEDULE}/${group.id}`, `${SCHEDULE}/${group.id}/edit`]) {
+      expect(html, `the list links to ${href}`).toContain(`href="${href}"`);
+    }
+    // The panel address is retired, not merely unused: a `?editGroup=` left anywhere would be a second
+    // way to open an editor, and the whole item is that there is one.
+    const panelModule = fs.readFileSync(path.join(root, 'app/admin/attendance-policy/schedule-panel.ts'), 'utf8');
+    expect(panelModule, 'editGroup is retired with the panel it addressed').not.toMatch(/editGroup=/);
+    expect(panelModule, 'and so is the NEW_GROUP sentinel it carried').not.toMatch(/export const NEW_GROUP/);
+  });
+
+  it('the company policy panel still opens by VALUE, and an unknown company opens nothing', async () => {
+    // The one panel that stayed: its record is a COMPANY, so it has no per-group page to move to.
     expect(await renderSchedule({ policy: randomUUID() })).not.toContain('id="schedule-panel"');
-    expect(await renderSchedule({ editGroup: group.id })).toContain('id="schedule-panel"');
+    expect(await renderSchedule({ viewPolicy: randomUUID() })).not.toContain('id="schedule-panel"');
+    expect(await renderSchedule({ policy: b.companyId })).toContain('id="schedule-panel"');
+    expect(await renderSchedule()).not.toContain('id="schedule-panel"');
   });
 
-  it('an open panel lands on General even when the URL still says another tab', async () => {
-    const group = await createAttendanceRule(ADMIN, ruleInput());
-    const html = await renderSchedule({ tab: 'attendance', group: group.id, editGroup: group.id });
-    expect(html).toMatch(/<div role="tabpanel" data-tabpanel="general" class="space-y-6">/);
-    expect(html).toMatch(/<div role="tabpanel" data-tabpanel="attendance" hidden="">/);
-    // Without a panel the requested tab is honoured, as before.
-    expect(await renderSchedule({ tab: 'attendance', group: group.id })).toMatch(
-      /<div role="tabpanel" data-tabpanel="attendance" class="space-y-6">/,
-    );
-  });
-
-  it('the tab shell is KEYED on the open panel (source pin — the behaviour lives in client state)', () => {
-    // ClientTabs keeps its active tab in useState, and a soft navigation (a <Link> click, a server-action
-    // redirect) re-renders the same component in place, so `defaultTab` changing is IGNORED. Clicking the
-    // Attendance tab's "Edit this Schedule Group" would leave the reader on Attendance with the editor open on a
-    // hidden General tab. Re-keying on the panel re-mounts the shell. Server rendering cannot observe a key, so
-    // this is pinned on the source; the render check exercises it in a browser.
-    const page = fs.readFileSync(path.join(root, 'app/admin/attendance/schedule/page.tsx'), 'utf8');
-    expect(page).toMatch(/<ClientTabs<ScheduleTabKey>\s+key=\{schedulePanelKey\(panel\)\}/);
-  });
-
-  it('the Attendance and Overtime tabs’ "Edit this Schedule Group" opens that group’s panel', async () => {
-    const group = await createAttendanceRule(ADMIN, ruleInput());
-    const html = await renderSchedule({ tab: 'overtime', group: group.id });
-    const links = [...html.matchAll(new RegExp(`href="([^"]*)"[^>]*>${esc(SC.groupLink)}<`, 'g'))].map((m) => m[1]);
-    expect(links.length, 'rendered on both tabs').toBe(2);
-    expect(new Set(links)).toEqual(new Set([`${SCHEDULE}?editGroup=${group.id}#schedule-panel`]));
+  it('every section the reporter named is on the group\'s own page, exactly once', async () => {
+    const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Plant crew' }));
+    for (const html of [await renderView(group.id), await renderEdit(group.id)]) {
+      for (const key of ['general', 'holiday', 'overtime', 'attendance', 'request', 'notification', 'workingDay']) {
+        expect(html.split(` id="section-${key}"`).length - 1, `section-${key}`).toBe(1);
+      }
+      // …and no group PICKER: the page is the group. That is the item in one assertion.
+      expect(html, 'no group selector on a group\'s own page').not.toContain(esc(SC.groupHint));
+    }
   });
 });
 

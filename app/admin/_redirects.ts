@@ -191,3 +191,81 @@ export function failCompany(e: unknown, companyId: string, tab = ''): never {
     `${path}?error=${encodeURIComponent((e as Error).message)}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`,
   );
 }
+
+/**
+ * ─── 665de026 · STAY ON THE SCHEDULE GROUP, AND THE SECTION IT WAS SAVED FROM ────────────────────────
+ *
+ * The reporter's words: "Saving KEEPS YOU WHERE YOU ARE with a confirmation — it does not throw you back
+ * to the list." Edit Schedule is one page with four Saves on it (the group's own settings, the working
+ * week, the attendance rules, the overtime rounding), and before this round every one of them redirected
+ * somewhere else: `updateAttendanceRuleAction` to the LIST, the two tab writers to
+ * `?tab=…&group=…` on a screen that no longer has tabs.
+ *
+ * okCompany's shape (65b22c00), with one deliberate difference, and the difference is the whole point:
+ *
+ *   · THE SECTION RIDES TWICE, AND EACH RIDE DOES A DIFFERENT JOB. As `&section=<key>` — a SECOND `&`
+ *     parameter, appended AFTER the `?toast=` / `?error=` key and NEVER concatenated in front of it —
+ *     because the page reads it to decide WHICH section shows a refusal; a fragment is never sent to the
+ *     server, so a fragment alone would have printed every section's refusal in the same place. And as
+ *     `#section-<key>` after the whole query — the okEntitlements `#type-<id>` shape — because that is
+ *     what makes the browser land on the heading.
+ *
+ *     THE ORDER IS THE WHOLE POINT AND THESE HELPERS ARE THE ONLY PLACE A SCHEDULE PATH AND A QUERY
+ *     STRING MEET. `fail()` and `ok()` build `${path}?error=…` by plain concatenation, so handing either
+ *     of them a path that ALREADY carried `?section=` produces `…?section=general?toast=Saved` —
+ *     `section` read as "general?toast=Saved" and the toast never parsed. That exact defect shipped
+ *     TWICE on this screen (r287 → r301, on `?tab=`), which is why nothing here ever builds a schedule
+ *     URL by hand.
+ *   · ToastFromQuery (components/ui/toast-trigger.tsx) fires the toast, strips `toast` and `error`, and
+ *     `router.replace`s with `{ scroll: false }`. The browser has already scrolled to the fragment by
+ *     then, so the reader is looking at the section they saved when the confirmation appears.
+ *   · LOCALISE BEFORE CALLING. ToastFromQuery renders the raw string.
+ *   · AN EMPTY ruleId DEGRADES TO THE LIST rather than emitting `/admin/attendance/schedule//edit`, the
+ *     same way okEntitlements degrades when a form carried no leave type.
+ *
+ * BOTH PATHS ARE REVALIDATED. The list row carries the group's name, description, status, default badge
+ * and — since 665de026 — its working week, so a save that revalidated only the detail page would leave
+ * the list showing the old values until something else invalidated it.
+ */
+export const SCHEDULE_GROUPS = '/admin/attendance/schedule';
+
+/** The Edit page for one Schedule Group; an empty id degrades to the list. */
+export function scheduleGroupPath(ruleId: string): string {
+  return ruleId ? `${SCHEDULE_GROUPS}/${encodeURIComponent(ruleId)}/edit` : SCHEDULE_GROUPS;
+}
+
+export function okScheduleGroup(ruleId: string, msg: string, section = ''): never {
+  const path = scheduleGroupPath(ruleId);
+  revalidatePath(SCHEDULE_GROUPS);
+  if (path !== SCHEDULE_GROUPS) {
+    revalidatePath(path);
+    // The View page reads the same row; a save made on Edit must not leave View stale behind it.
+    revalidatePath(`${SCHEDULE_GROUPS}/${encodeURIComponent(ruleId)}`);
+  }
+  redirect(
+    `${path}?toast=${encodeURIComponent(msg)}${section ? `&section=${encodeURIComponent(section)}#section-${section}` : ''}`,
+  );
+}
+
+/**
+ * okScheduleGroup's failure twin, and it matters more than the success half does.
+ *
+ * A REFUSED save is the case where being thrown back to the list hurts most, and every refusal these
+ * carry is reachable from the form: "This Schedule Group states a working week with no working day in
+ * it…" (core/attendance-rule.ts normalizeWeekPattern), "Late in grace must be a non-negative whole
+ * number of minutes.", the continuous-ladder refusal on the overtime bands, and the duplicate-name
+ * refusal. `extra` carries what the operator typed back to the form so none of it is lost — see
+ * app/admin/attendance/schedule/actions.ts `weekParam`.
+ *
+ * ⚠️ `extra` IS A RUN OF ALREADY-ENCODED `&key=value` PAIRS AND MUST START WITH `&`, NEVER `?`. It is
+ * appended AFTER `?error=` and BEFORE the fragment, so it can only ever be a second query parameter —
+ * the r287 → r301 defect was a parameter concatenated in FRONT of the query key, and that shape is not
+ * expressible here. Callers build it with a named helper; nothing reads it out of a request body.
+ */
+export function failScheduleGroup(e: unknown, ruleId: string, section = '', extra = ''): never {
+  const path = scheduleGroupPath(ruleId);
+  redirect(
+    `${path}?error=${encodeURIComponent((e as Error).message)}${extra}` +
+      `${section ? `&section=${encodeURIComponent(section)}#section-${section}` : ''}`,
+  );
+}

@@ -308,11 +308,18 @@ describe('ad52212d round 2 — the list wiring (a contract that spans two files)
   it('Duplicate lands on the copy’s own edit form, like the shift library next door', () => {
     // The reason to duplicate is to change the two or three bands that differ; the list would make the
     // operator hunt for the row they just created.
-    // r301 — the copy's edit form is its editor PANEL on the Schedule General tab (`?editGroup=<copy id>`), and
-    // the panel address is built in one place. test/r301-schedule-general.test.ts runs the action and opens it.
-    expect(read(ACTIONS)).toContain('redirect(groupEditorPath(copied.id))');
+    // r301 — the copy's edit form was its editor PANEL on the Schedule General tab (`?editGroup=<copy id>`).
+    // 665de026 — the reporter contested that shape, so it is the copy's own Edit Schedule PAGE, and the
+    // address is still built in one place. The DESTINATION is unchanged in substance — the operator lands
+    // on the copy, not on the list — so this case is repointed, not relaxed: it now also pins the toast,
+    // because "you are on the copy" is only obvious to the operator if the screen says so.
+    // test/r301-schedule-general.test.ts runs the action and reads where it went.
+    expect(read(ACTIONS)).toContain("okScheduleGroup(copied.id, t('duplicatedToast'), 'general')");
     expect(read('app/admin/attendance-policy/schedule-panel.ts')).toContain(
-      'export const groupEditorPath = (ruleId: string) => `${SCHEDULE}?editGroup=${encodeURIComponent(ruleId)}`;',
+      'export const scheduleGroupEditPath = (ruleId: string) => `${scheduleGroupViewPath(ruleId)}/edit`;',
+    );
+    expect(read('app/admin/_redirects.ts'), 'and that helper is the only place a schedule path meets a query').toContain(
+      'export function okScheduleGroup(ruleId: string, msg: string, section = \'\'): never {',
     );
   });
 

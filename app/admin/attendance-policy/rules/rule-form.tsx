@@ -1,11 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
-import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, btnPrimary, inputCls } from '@/components/ui';
 import { AttendanceRuleOtEditor, type OtEditorRow } from '@/components/attendance-rule-ot-editor';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
 import { createAttendanceRuleAction, updateAttendanceRuleAction } from '../rule-actions';
-
-const LIST = '/admin/attendance-policy';
 
 /**
  * 88e94371 · Add / Edit form for one "Lateness, Early Out & Overtime Settings" rule. Three sections
@@ -29,14 +27,30 @@ export type RuleShiftChoice = {
   otherGroupName: string | null;
 };
 
+/**
+ * 665de026 (r331) — THIS FORM NO LONGER DRAWS ITS OWN PAGE CHROME, and that is a correction rather than a
+ * tidy-up. It used to render a `PageHeader` titled "Edit / New Schedule Group" with a back link to
+ * `/admin/attendance-policy`, and a Cancel link to the same address. Both were true when this was its own
+ * route (88e94371); r301 mounted it as a PANEL on a page that already had a header, so a second `<h1>` and
+ * a back link to a REDIRECT STUB were rendered inside it. Now it is a SECTION of Add Schedule and Edit
+ * Schedule, whose titles are the reporter's own words ("Add Schedule" / "Edit Schedule") and whose single
+ * Back returns to the list. The page owns the chrome; this form owns the fields.
+ *
+ * `cancel` is passed explicitly by both call sites rather than defaulted: on Add Schedule it is the way out
+ * that writes nothing, and on Edit Schedule there is none, because the page header's Back already is one
+ * and a "Cancel" beside a Save on a page with four Saves would read as "cancel the whole page".
+ */
 export async function RuleForm({
   rule,
   shifts,
   error,
+  cancel,
 }: {
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
   error?: string;
+  /** The way out that writes nothing, or null when the page's own Back is it. */
+  cancel: { href: string; label: string } | null;
 }) {
   const t = await getTranslations('admin.attendanceRule');
   const editing = !!rule;
@@ -95,12 +109,7 @@ export async function RuleForm({
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title={editing ? t('editTitle') : t('newTitle')}
-        description={t('formDescription')}
-        back={{ href: LIST, label: t('backToList') }}
-      />
+    <div className="space-y-6">
       <ErrorBanner message={error} />
 
       <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} className="space-y-6">
@@ -249,9 +258,11 @@ export async function RuleForm({
 
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{t('save')}</button>
-          <Link href={LIST} className="text-sm text-muted-foreground hover:text-foreground">
-            {t('cancel')}
-          </Link>
+          {cancel && (
+            <Link href={cancel.href} className="text-sm text-muted-foreground hover:text-foreground">
+              {cancel.label}
+            </Link>
+          )}
         </div>
       </form>
     </div>
