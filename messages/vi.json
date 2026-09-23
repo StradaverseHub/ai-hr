@@ -2042,6 +2042,7 @@
       "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
       "applyOnBehalfNotAllowed": "Bạn không có quyền đăng ký nghỉ phép thay cho nhân viên khác.",
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
+      "marriageLeaveAlreadyPending": "Bạn đã có một đơn {typeName} đang chờ phê duyệt.",
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
       "insufficientBalanceNoScheme": "Không có bảng định mức nào đến được bạn cho {typeName}, nên chưa có ngày nào được cấp. Chế độ phúc lợi là tùy chọn và không ai được liệt kê trong đó theo tên: nó là một mô tả — ngạch bậc, phòng ban, thâm niên — và chỉ cần đến khi phải chọn giữa nhiều bảng định mức. Hãy đề nghị nhân sự thêm một chế độ có mô tả bao gồm bạn, hoặc đặt một bảng định mức mặc định cho loại nghỉ này.",
       "insufficientBalanceNoTable": "{typeName} chưa có bảng định mức, nên chưa có ngày nào được cấp. Hãy đề nghị HR thiết lập trước khi bạn nộp đơn.",

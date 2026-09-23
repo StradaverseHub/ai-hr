@@ -2042,6 +2042,7 @@
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
       "applyOnBehalfNotAllowed": "You do not have permission to apply for leave on behalf of another employee.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
+      "marriageLeaveAlreadyPending": "You already have a {typeName} request pending approval.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
       "insufficientBalanceNoScheme": "No entitlement table reaches you for {typeName}, so no days have been granted. A benefit scheme is optional and nobody is listed in one by name: it is a description — a job grade, a department, a length of service — and it is only needed to choose between several entitlement tables. Ask HR to add a scheme whose description covers you, or to set a default entitlement table for it.",
       "insufficientBalanceNoTable": "{typeName} has no entitlement table yet, so no days have been granted. Ask HR to set one up before you apply.",

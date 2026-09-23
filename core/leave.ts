@@ -1119,6 +1119,47 @@ export class DuplicateLeaveApplicationError extends Error {
   }
 }
 
+/**
+ * 72fca31d — a second Marriage Leave application while one is still waiting for a decision.
+ *
+ * ⚠️ SCOPED TO THE MARRIAGE ROLE, DELIBERATELY, AND THIS IS NOT A GENERAL RULE. "One pending application
+ * per leave type" would change how every other type behaves for every tenant, which nobody asked for:
+ * two pending Annual Leave requests for two different weeks are ordinary and legitimate. Marriage Leave
+ * is different because approving it WRITES THE EMPLOYEE'S MARITAL STATUS — two pending applications are
+ * two pending claims to change the same fact, and whichever is approved second finds the employee no
+ * longer single and is refused by the eligibility gate anyway, after the employee has waited for it.
+ *
+ * Carries the (localized) leave-type name so the action layer re-localizes via localizeLeaveError; the
+ * English `message` is the fallback for tests and logs, and matches the reporter's requested copy.
+ */
+export class MarriageLeaveAlreadyPendingError extends Error {
+  readonly typeName?: string;
+  constructor(typeName?: string) {
+    super(`You already have a ${typeName ?? 'Marriage Leave'} request pending approval.`);
+    this.name = 'MarriageLeaveAlreadyPendingError';
+    this.typeName = typeName;
+  }
+}
+
+/**
+ * 72fca31d — the SQL side of the marital-status write refused something core had already decided.
+ *
+ * Migration 0485's two SECURITY DEFINER functions re-derive "is this the Marriage Leave type" from the
+ * request row, because they must not trust an argument. That restatement can drift from `leaveTypeIs`,
+ * and a drift here is the 65f466e2 failure mode exactly — a designed behaviour that silently stops
+ * running. So a refusal that core did not expect is LOUD: it rolls the approval (or the cancellation)
+ * back rather than committing a half-applied decision.
+ *
+ * `not_single` / `not_married` / `not_caused_by_request` / `still_approved` are NOT refusals — they are
+ * the lawful "nothing to do" answers and never reach this error.
+ */
+export class MarriageLeaveMaritalStatusWriteError extends Error {
+  constructor(outcome: string, requestId: string) {
+    super(`marriage-leave marital status write refused '${outcome}' for leave request ${requestId}`);
+    this.name = 'MarriageLeaveMaritalStatusWriteError';
+  }
+}
+
 
 // Supporting-document config: the applicant must supply a remark when the type sets employeeRemarkRequired.
 export class LeaveRemarkRequiredError extends Error {
@@ -2233,6 +2274,12 @@ export const LEAVE_TYPE_ROLES = [
   'paternity',
   'emergency',
   'replacement',
+  // 72fca31d (migration 0485) — Marriage Leave. Three rules are scoped to it (one pending application at
+  // a time, single→married on final approval, and the reversal) and NOTHING in the system could name the
+  // type: the pack seeds no MARRIAGE row at all, `lib/leave-groups.ts` / `lib/leave-visual.ts` key the
+  // string 'MARRIAGE' for DISPLAY only, and production's row is coded `MRL`. A code comparison would have
+  // been dead on arrival, which is the entire lesson of 65f466e2 above.
+  'marriage',
 ] as const;
 export type LeaveTypeRole = (typeof LEAVE_TYPE_ROLES)[number];
 
@@ -2263,6 +2310,172 @@ export function isStatutoryApplyType(lt: { role?: string | null; code?: string |
   if (lt == null) return false;
   if (lt.role != null && lt.role !== '') return STATUTORY_APPLY_ROLES.includes(lt.role as LeaveTypeRole);
   return (STATUTORY_APPLY_CODES as readonly string[]).includes((lt.code ?? '').toUpperCase());
+}
+
+// ── Marriage Leave (72fca31d) ──────────────────────────────────────────────────────────────────────
+//
+// THREE RULES, ALL SCOPED TO THE `marriage` ROLE and to nothing else:
+//   2. one pending application at a time (assertNoPendingMarriageLeave, below);
+//   3. final approval flips a Single employee to Married (applyMarriageLeaveMaritalStatusTx);
+//   4. cancelling or revoking that leave puts it back — but only when THAT application is provably what
+//      changed it (revertMarriageLeaveMaritalStatusTx).
+//
+// Rule 1 of the reporter's five ("only Single may apply") needed no code: it is `leave_type.eligibility`
+// {"maritalStatus":["single"]}, already configured, narrowing the dropdown through isProfileEligible and
+// refused independently by assertEligible. Rule 5 ("employees cannot edit marital status") needed none
+// either: /me renders the field read-only and the employee's only route is a profile-change request.
+
+/** Every non-archived leave type in scope that plays the `marriage` role, resolved through `leaveTypeIs`
+ *  rather than through a second SQL spelling of it — so this and every other reader of the marker can
+ *  never disagree about which rows are Marriage Leave. Usually one row; a tenant may legitimately have
+ *  more than one (migration 0485 warns when it finds that) and the pending rule spans all of them,
+ *  because they are all "a Marriage Leave request" to the employee looking at the screen. */
+async function marriageLeaveTypeIdsTx(tx: Tx): Promise<string[]> {
+  const rows = await tx
+    .select({ id: leaveType.id, role: leaveType.role, code: leaveType.code })
+    .from(leaveType)
+    .where(isNull(leaveType.archivedAt));
+  return rows.filter((r) => leaveTypeIs(r, 'marriage')).map((r) => r.id);
+}
+
+/**
+ * Rule 2 — refuse a second Marriage Leave application while one is still pending a decision.
+ *
+ * ⚠️ WHERE THIS LIVES, AND WHY. At the SAME chokepoint as the eligibility gate (requestLeave and
+ * editLeaveRequest, immediately after `assertEligible`), which is the server-side authority both the
+ * /me apply form and the /leave form submit through. It is deliberately NOT a fourth filter in
+ * `mayAppearInApplyMenu`: removing Marriage Leave from the dropdown would answer "why can't I apply"
+ * with silence, where this answers it with the sentence the reporter asked for. The dropdown and the
+ * API therefore cannot disagree, because there is exactly one rule and the screen surfaces its refusal.
+ *
+ * The check runs ONLY when the type applied for plays the marriage role, so nothing else pays for it —
+ * no extra query on any other leave type's path.
+ */
+async function assertNoPendingMarriageLeave(
+  tx: Tx,
+  p: {
+    lt: { role?: string | null; code?: string | null; name?: string | null } | null | undefined;
+    employmentId: string;
+    /** The request being EDITED, which must not count as its own duplicate. */
+    excludeRequestId?: string;
+  },
+): Promise<void> {
+  if (!leaveTypeIs(p.lt, 'marriage')) return;
+  const typeIds = await marriageLeaveTypeIdsTx(tx);
+  if (typeIds.length === 0) return;
+  const [row] = await tx
+    .select({ id: leaveRequest.id })
+    .from(leaveRequest)
+    .where(
+      and(
+        eq(leaveRequest.employmentId, p.employmentId),
+        eq(leaveRequest.status, 'pending'),
+        inArray(leaveRequest.leaveTypeId, typeIds),
+        p.excludeRequestId ? sql`${leaveRequest.id} <> ${p.excludeRequestId}` : undefined,
+      ),
+    )
+    .limit(1);
+  if (row) throw new MarriageLeaveAlreadyPendingError(p.lt?.name ?? undefined);
+}
+
+/** The outcome codes migration 0485's two writers return that mean "lawfully nothing to do". Anything
+ *  else is a refusal core did not expect, and `assertWriteOutcome` throws on it. */
+const MARRIAGE_NO_OP_OUTCOMES = new Set(['not_single', 'not_married', 'not_caused_by_request', 'still_approved']);
+
+async function callMaritalStatusWriter(tx: Tx, fn: 'set_married' | 'revert_single', requestId: string): Promise<string> {
+  const res =
+    fn === 'set_married'
+      ? await tx.execute(sql`select app.marriage_leave_set_married(${requestId}::uuid) as outcome`)
+      : await tx.execute(sql`select app.marriage_leave_revert_single(${requestId}::uuid) as outcome`);
+  const outcome = (res as unknown as { outcome: string | null }[])[0]?.outcome ?? 'not_found';
+  if (outcome !== 'changed' && !MARRIAGE_NO_OP_OUTCOMES.has(outcome)) {
+    throw new MarriageLeaveMaritalStatusWriteError(outcome, requestId);
+  }
+  return outcome;
+}
+
+/**
+ * Rule 3 — on FINAL approval, Single becomes Married, in the approval's own transaction.
+ *
+ * ⚠️ THE WRITE GOES THROUGH A SECURITY DEFINER FUNCTION, NOT `tx.update(person)`, AND THAT IS NOT
+ * DECORATION. `person_rls`'s WITH CHECK is `app.is_admin() OR app.is_self_person(id)` (migration 0099).
+ * The approver clearing the final step is ordinarily a LINE MANAGER — neither of those — so a direct
+ * update is refused by Postgres and takes the whole approval down with it. A test that approves as an
+ * HR admin would never have noticed; test/marriage-leave.test.ts approves as a manager on purpose.
+ *
+ * "Only if it is still 'single' at that moment" is enforced INSIDE the statement (`WHERE marital_status
+ * = 'single'`), not by a read-then-write in this process, so two concurrent approvals cannot both see
+ * 'single' and both claim to have changed it.
+ *
+ * The audit entry is the SAME mechanism the profile-change approval already writes — `appendEvent`, a
+ * `person.updated` event on the person aggregate — with `via` naming this cause. It is therefore read by
+ * the existing audit trail (core/read.ts auditEvents) with no new reader, and it sits beside the
+ * `via:'profile-change'` and `via:'admin-set'` entries for the same column rather than in a second
+ * history nobody opens.
+ */
+async function applyMarriageLeaveMaritalStatusTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    lt: { role?: string | null; code?: string | null } | null | undefined;
+    requestId: string;
+    employmentId: string;
+    deciderEmploymentId?: string | null;
+  },
+): Promise<void> {
+  if (!leaveTypeIs(p.lt, 'marriage')) return;
+  const outcome = await callMaritalStatusWriter(tx, 'set_married', p.requestId);
+  if (outcome !== 'changed') return; // already married / divorced / not recorded — nothing was touched
+  const personId = await personIdForEmployment(tx, p.employmentId);
+  if (!personId) return;
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'person',
+    aggregateId: personId,
+    eventType: 'person.updated',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    // Single line: test/event-payload-pii-guard.test.ts scans the remainder of the `payload:` line only.
+    payload: { via: 'marriage-leave', fields: ['maritalStatus'], before: { maritalStatus: 'single' }, after: { maritalStatus: 'married' }, leaveRequestId: p.requestId, deciderEmploymentId: p.deciderEmploymentId ?? null },
+  });
+}
+
+/**
+ * Rule 4 — cancelling or revoking an approved Marriage Leave puts the status back to 'single', AND ONLY
+ * IF THAT APPLICATION IS WHAT CHANGED IT.
+ *
+ * The cause is PERSISTED (person.marital_status_source_request_id, migration 0485), never inferred.
+ * Every other writer of the column NULLs the pointer, so a status a human set by hand carries no
+ * pointer and this function cannot touch it — the guarantee is structural. The function also refuses
+ * while any row of the application is still approved, so giving back one day of a three-day marriage
+ * leave does not un-marry anybody. Same transaction, same RLS reasoning as rule 3.
+ *
+ * Call it AFTER the status flip: the "is any of it still approved" test reads the rows as they now are.
+ */
+async function revertMarriageLeaveMaritalStatusTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    lt: { role?: string | null; code?: string | null } | null | undefined;
+    requestId: string;
+    employmentId: string;
+    actorEmploymentId?: string | null;
+  },
+): Promise<void> {
+  if (!leaveTypeIs(p.lt, 'marriage')) return;
+  const outcome = await callMaritalStatusWriter(tx, 'revert_single', p.requestId);
+  if (outcome !== 'changed') return;
+  const personId = await personIdForEmployment(tx, p.employmentId);
+  if (!personId) return;
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'person',
+    aggregateId: personId,
+    eventType: 'person.updated',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: { via: 'marriage-leave-reversal', fields: ['maritalStatus'], before: { maritalStatus: 'married' }, after: { maritalStatus: 'single' }, leaveRequestId: p.requestId, deciderEmploymentId: p.actorEmploymentId ?? null },
+  });
 }
 
 /** Round to 2 dp (mirrors the rest of the leave math). */
@@ -2950,6 +3163,12 @@ export async function requestLeave(
         .limit(1);
       assertEligible(elig, emp, p.startDate);
     }
+
+    // Marriage Leave (72fca31d rule 2) — one pending application at a time, and ONLY for the marriage
+    // role. Immediately after the eligibility gate, at the same chokepoint and for the same reason: this
+    // is the authority both apply forms submit through, so the screen and the API cannot disagree. No
+    // other leave type pays for it (the check returns at once unless leaveTypeIs(lt, 'marriage')).
+    await assertNoPendingMarriageLeave(tx, { lt, employmentId: p.employmentId });
 
     // Leave Type Employee Visibility (7b11f1c1) — can-apply gate. When HR has set employee_can_apply=false,
     // an ordinary employee may not submit a request for this type ("can look but can't apply"). This is the
@@ -5046,6 +5265,16 @@ async function finalizeLeaveApproval(
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
+  // Marriage Leave (72fca31d rule 3) — the approval that grants the leave also records the fact it is
+  // granted FOR: Single becomes Married. Here, after the status flip, because migration 0485's writer
+  // refuses on a request that is not approved — the row has to be true before the fact follows from it.
+  // Same transaction: the leave and the marital status commit together or neither does.
+  await applyMarriageLeaveMaritalStatusTx(tx, ctx, {
+    lt,
+    requestId: req.id,
+    employmentId: req.employmentId,
+    deciderEmploymentId: deciderEmploymentId ?? null,
+  });
   // RL Control Engine (0113): when the consumed type is REPLACEMENT, decrement the toil_accrual register
   // FIFO-by-expiry so the active/expired split stays authoritative and the year-end close never double-debits
   // already-spent credits. The ledger debit above is the balance authority; this only updates the register.
@@ -6490,6 +6719,18 @@ async function applyLeaveCancellationApprovalTx(
     }
   }
 
+  // Marriage Leave (72fca31d rule 4) — an APPROVED give-back of the leave puts the marital status back,
+  // under exactly the same two refusals migration 0485's writer enforces: the persisted pointer must name
+  // THIS application (so a value a human set by hand is never touched) and no row of it may still be
+  // approved (so a PARTIAL give-back — one day of three — changes nothing). Last, after every segment row
+  // has its final status, because that second test reads those rows.
+  await revertMarriageLeaveMaritalStatusTx(tx, ctx, {
+    lt: decLt,
+    requestId: req.id,
+    employmentId: req.employmentId,
+    actorEmploymentId: p.deciderEmploymentId ?? null,
+  });
+
   await tx
     .update(leaveCancellationRequest)
     .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId, decidedAt: sql`now()` })
@@ -6635,6 +6876,19 @@ export async function adminCancelLeave(
     // 2) Flip the request to cancelled. decidedByEmploymentId/decidedAt are left untouched (they record the
     //    ORIGINAL approval decision; the cancellation's who/when lives in the event below).
     await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
+
+    // 2b) Marriage Leave (72fca31d rule 4) — HR revoking an approved Marriage Leave puts the marital
+    //     status back to 'single', but ONLY when migration 0485's persisted pointer says this very
+    //     application is what set it. A value a human typed carries no pointer and is left alone; so is
+    //     one whose application is only partly cancelled. After the status flip, so the writer's "is any
+    //     of it still approved" test reads the rows as they now are. A pending leave never set anything,
+    //     so this is a no-op for previousStatus==='pending'.
+    await revertMarriageLeaveMaritalStatusTx(tx, ctx, {
+      lt,
+      requestId: req.id,
+      employmentId: req.employmentId,
+      actorEmploymentId: p.cancelledByEmploymentId ?? null,
+    });
 
     // 3) Supersede any open employee give-back on this leave, so no dangling pending card sits in /approvals
     //    (decideLeaveCancellation would then error on it). The column CHECK is pending|approved|rejected, so a
@@ -6849,6 +7103,17 @@ export async function editLeaveRequest(
         .limit(1);
       assertEligible(elig, emp, p.startDate);
     }
+
+    // Marriage Leave (72fca31d rule 2) — the edit re-runs the SAME gate as submission, or an edit could
+    // rescue an application the submission would refuse: `p.leaveTypeId` may differ from the row's own
+    // type, so editing some other pending request INTO Marriage Leave is a second pending claim just as
+    // surely as a fresh submission. The request being edited is itself pending, so it is excluded — it
+    // must not count as its own duplicate.
+    await assertNoPendingMarriageLeave(tx, {
+      lt,
+      employmentId: req.employmentId,
+      excludeRequestId: req.id,
+    });
 
     const today = p.today ?? todayInKualaLumpur();
     if (!isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, lt.backdatingLimitDays ?? null)) {

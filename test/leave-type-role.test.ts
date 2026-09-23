@@ -35,8 +35,24 @@ describe('the role vocabulary is one definition, mirrored not duplicated', () =>
     // what stops the two drifting — the same technique feedback-reporter-label uses for its migration
     // constant. A TYPE cannot be compared at runtime, so we compare against the DB CHECK constraint
     // instead, which is the thing that would actually reject a write.
-    const sql = read('/db/migrations/0387_leave_type_role.sql');
+    //
+    // 72fca31d — READ EVERY MIGRATION THAT DEFINES THE CHECK, not only the first one. The vocabulary
+    // grew ('marriage', migration 0485) and an applied migration can never be edited (content hash), so
+    // the constraint's current text is 0387's original ADD plus each later DROP/ADD. Asserting against
+    // 0387 alone would have forced the choice between a failing guard and a silently narrowed one; the
+    // list below is the exact set of files that touch `leave_type_role_check` and is UPDATED, never
+    // loosened, when another one appears — `grep -l leave_type_role_check db/migrations/*.sql` is the
+    // whole check, and a new file missing from here fails this test rather than passing quietly.
+    const ROLE_CHECK_MIGRATIONS = [
+      '/db/migrations/0387_leave_type_role.sql',
+      '/db/migrations/0485_marriage_leave.sql',
+    ] as const;
+    const sql = ROLE_CHECK_MIGRATIONS.map(read).join('\n');
     for (const role of LEAVE_TYPE_ROLES) expect(sql).toContain(`'${role}'`);
+    // The LATEST definition must carry the WHOLE set, or a role added by an earlier migration would have
+    // been silently dropped from the constraint by a later DROP/ADD that forgot it.
+    const latest = read(ROLE_CHECK_MIGRATIONS[ROLE_CHECK_MIGRATIONS.length - 1]);
+    for (const role of LEAVE_TYPE_ROLES) expect(latest).toContain(`'${role}'`);
     // And the schema's union must list exactly the same members.
     const schemaSrc = read('/db/schema.ts');
     const union = schemaSrc.slice(schemaSrc.indexOf('export type LeaveTypeRoleValue'));
