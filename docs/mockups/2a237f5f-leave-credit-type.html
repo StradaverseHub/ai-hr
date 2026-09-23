@@ -1,0 +1,131 @@
+<meta charset="utf-8">
+<title>Leave Credit Request — the leave type</title>
+<!--
+  2a237f5f. Measured 2026-09-23 on main at d2d50fb5 and on PRODUCTION.
+  The dialog is components/leave/replacement-leave-request-dialog.tsx, <select name="leaveTypeId"> at :149,
+  rendered from app/leave/page.tsx:1018. Its options are replacementLeaveTypeOptions (page.tsx:358), built
+  from eligibleLeaveTypes — EVERY type the employee is eligible for, not just Replacement.
+  What the posted value does: core/replacement-request.ts:376 stores it on replacement_leave_request, and
+  NOTHING ELSE READS IT for the grant. core/toil.ts:784-790 credits the ledger with
+  ensureReplacementLeaveType(...) — always Replacement Leave, whatever was picked.
+  Production: 2 replacement requests, both already REPLACEMENT — no bad data yet.
+  The admin equivalent already does the right thing: components/leave/leave-credit-add-dialog.tsx:122-124
+  renders a fixed, disabled field, commented "a Leave Credit is always Replacement Leave."
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --bad:#a8453a;--ok:#1f7a52;--muted:#f1f2f7}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+ .col>h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .col>h2 b{font-weight:700}
+ .dlg{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .dlg.b{border-color:#e4c2bd}.dlg.a{border-color:#bcdccb}
+ .dh{padding:10px 13px;border-bottom:1px solid var(--rule)}
+ .dh .t{font-size:12.5px;font-weight:600}
+ .dh .d{font-size:10.5px;color:var(--mf);margin-top:2px}
+ .db{padding:13px}
+ .lab{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);margin-bottom:4px}
+ .sel{border:1px solid var(--rule);border-radius:6px;padding:7px 9px;font-size:12px;display:flex;justify-content:space-between;background:#fff}
+ .sel .ch{color:var(--mf);font-size:10px}
+ .sel.fixed{background:var(--muted);color:var(--fg);font-weight:600}
+ .opts{border:1px solid var(--rule);border-top:none;border-radius:0 0 6px 6px;background:#fff;max-height:210px;overflow:hidden}
+ .opt{padding:4px 9px;font-size:11.5px;border-top:1px solid #f3f4f9}
+ .opt.sel0{background:#eef0fb;font-weight:600}
+ .opt.kill{color:#b5817a;text-decoration:line-through}
+ .fld{margin-bottom:11px}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .note.bad{color:#8a3d33}
+ .note.ok{color:var(--ok)}
+ .flow{margin-top:11px;border:1px dashed #d9a9a2;background:#fdf6f5;border-radius:7px;padding:10px;font-size:11.5px;color:#8a3d33;line-height:1.55}
+ .flow.g{border-color:#bcdccb;background:#f4faf6;color:var(--ok)}
+ .foot{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>My Leave &rsaquo; Leave Credit Request &mdash; the Leave type box</h1>
+  <p class="sub">You asked for one option. We found the other eleven were already being ignored.</p>
+
+  <div class="pair">
+    <div class="col">
+      <h2><b>Before</b></h2>
+      <div class="dlg b">
+        <div class="dh">
+          <div class="t">Request Leave Credit</div>
+          <div class="d">Claim replacement leave for a day you worked</div>
+        </div>
+        <div class="db">
+          <div class="fld">
+            <div class="lab">Leave type</div>
+            <div class="sel"><span>Annual Leave</span><span class="ch">&#9662;</span></div>
+            <div class="opts">
+              <div class="opt sel0">Annual Leave</div>
+              <div class="opt kill">Medical Leave</div>
+              <div class="opt kill">Caregiver Leave</div>
+              <div class="opt kill">Compassionate Leave</div>
+              <div class="opt kill">Examination Leave</div>
+              <div class="opt kill">Graduation Leave</div>
+              <div class="opt kill">Hospitalization Leave</div>
+              <div class="opt kill">Natural Disaster Leave</div>
+              <div class="opt kill">Special Leave</div>
+              <div class="opt kill">Study Leave</div>
+              <div class="opt kill">Unpaid Leave</div>
+              <div class="opt">Replacement Leave (in lieu)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flow">
+        <b>Pick Annual Leave and press Save.</b> The request is accepted. Your choice is written down. And
+        when it is approved you are credited <b>Replacement Leave</b> anyway &mdash; because that is the only
+        thing a leave credit can ever be. Nothing tells you.
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>After</b></h2>
+      <div class="dlg a">
+        <div class="dh">
+          <div class="t">Request Leave Credit</div>
+          <div class="d">Claim replacement leave for a day you worked</div>
+        </div>
+        <div class="db">
+          <div class="fld">
+            <div class="lab">Leave type</div>
+            <div class="sel fixed"><span>Replacement Leave (in lieu)</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="flow g">
+        <b>One thing it can be, shown as one thing.</b> Not a list of one &mdash; a plain field, exactly the
+        way the HR version of this same screen has always shown it. The box now says what the system was
+        always going to do.
+      </div>
+      <p class="note ok"><b>Good news on your data:</b> both leave-credit requests on your system already
+        say Replacement Leave, so nothing has gone wrong yet and there is nothing to correct.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Two notes</h3>
+    <p><b>We are going one step further than you asked, and here is why.</b> You asked us to remove the
+      other eleven options and default to Replacement Leave. That leaves a dropdown with one thing in it,
+      which still invites a click that can change nothing. The HR-side version of this same dialog already
+      shows it as a plain fixed field. We are matching that, so the two screens agree. Say the word if you
+      would rather have the one-item dropdown.</p>
+    <p><b>We will not match on the name.</b> You asked us to filter by code rather than display name so a
+      rename cannot break it &mdash; right instinct, and we are going slightly stronger: the system already
+      has one official way of answering &ldquo;which type is Replacement Leave&rdquo;, and it survives both a
+      rename AND a code change. We will use that one, so this box and the credit it creates cannot drift
+      apart.</p>
+  </div>
+</div>
