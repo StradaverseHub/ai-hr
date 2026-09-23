@@ -18,6 +18,9 @@ import { describe, expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
+/** 2a237f5f — a "this symbol is never CALLED here" assertion has to ignore prose: the page's own comment
+ *  names `ensureReplacementLeaveType` precisely to say it must not be called. Block then line comments. */
+const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 describe('leave filter panel: the HR-admin Employee Details surface', () => {
   // REPOINTED BY 388e53c2. The listing this block is about did not change — it MOVED, from /leave to the
@@ -137,12 +140,26 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     ]) {
       expect(leavePage, `${gone} survived the collapse`).not.toContain(gone);
     }
-    // …and the Replacement Leave dialog, which has NO employee selector, keeps the viewer's own list. It was
-    // already the viewer's own under rev 2 and is unchanged; the two dropdowns now agree by construction.
+    // …and the Replacement Leave dialog HAS NO LIST AT ALL ANY MORE.
+    //
+    // UPDATED BY 2a237f5f (AGENTS rule 18), and updated rather than dropped because the property this line
+    // defended is now stronger, not gone. Rev 2 pinned that the replacement dialog was handed the VIEWER's
+    // own eligible types rather than a manager's union. A Leave Credit is always Replacement Leave, and the
+    // choice was dead on arrival — core/toil.ts credits `ensureReplacementLeaveType(tenant)` whatever was
+    // posted — so there is one resolved type and no array. What must hold now: the page resolves it with
+    // the read-only role-first picker, NEVER with the `ensure` that would insert a leave type mid-render,
+    // and hands the dialog that one type.
+    expect(leavePage).toContain('const replacementLeaveType = pickReplacementLeaveType(leaveTypes);');
     expect(leavePage).toContain(
-      'const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));',
+      'replacementType={{ id: replacementLeaveType.id, name: replacementLeaveType.name }}',
     );
-    expect(leavePage).toContain('types={replacementLeaveTypeOptions}');
+    expect(stripComments(leavePage), 'the render path must never call the ensure-and-INSERT resolver').not.toContain(
+      'ensureReplacementLeaveType',
+    );
+    // The old array is deleted, not merely unreferenced — a survivor would be a second answer to "which
+    // leave type is this credit for" sitting one line away from the real one. Comments stripped first:
+    // they name it to say what it WAS, which is history worth keeping.
+    expect(stripComments(leavePage)).not.toContain('replacementLeaveTypeOptions');
     // WHO a permission holder may pick, and in what order: everyone in scope, VIEWER FIRST. That ordering is
     // the one rev-2 rule that survives, and it survives for a stronger reason than before — the dialog
     // defaults its employment selector to the first option, so without it a holder opening Request Leave is
@@ -150,12 +167,15 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     expect(leavePage).toMatch(
       /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\),\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId !== me\.employmentId\),/,
     );
-    // Neither employee dialog may render an empty type <select>. The Replacement one carries no `required`
-    // at all, so an empty list there posts leaveTypeId='' instead of being refused by the browser.
+    // Neither employee dialog may render an empty leave-type control. Request Leave still has a <select>
+    // over the eligible list, and that list can be empty.
     expect(leavePage).toContain('{ess && requestLeaveTypeOptions.length > 0 && (');
-    expect(leavePage).toContain(
-      '{ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (',
-    );
+    // 2a237f5f — THE REPLACEMENT GUARD SURVIVES ITS OWN REASON. It was there because that dialog's <select>
+    // carried no `required` and no placeholder, so an empty list posted leaveTypeId=''. The <select> is
+    // gone; the guard is not, because the single resolved type can still be absent — a tenant with no
+    // Replacement Leave type in its catalogue — and an unguarded dialog would render a leave-type box with
+    // no name in it and post leaveTypeId='' by the one route still open.
+    expect(leavePage).toContain('{ess && replacementRequest.allowed && replacementLeaveType != null && (');
     // The unfiltered catalogue is STILL read — two consumers need it and would break silently otherwise.
     expect(leavePage).toContain("const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;");
     expect(leavePage).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');

@@ -281,7 +281,14 @@ describe('r219: the employee and the admin looking that employee up are told the
     const src = read(EMPLOYEE_PAGE);
     expect(src).toContain('<ReplacementAvailabilityNotice availability={replacementRequest} audience="self" />');
     // …and the button gate is untouched: this item ADDED an explanation, it did not change who may submit.
-    expect(src).toContain('{ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (');
+    //
+    // UPDATED BY 2a237f5f (AGENTS rule 18). `replacementRequest.allowed` — the half r219 is about, and the
+    // only half that decides who may SUBMIT — is unchanged and still asserted here. What moved is the
+    // second conjunct: it was "the employee is eligible for at least one leave type", because the dialog
+    // offered a <select> over those types; the leave type is fixed now, so it is "this tenant HAS a
+    // Replacement Leave type". That is r219's own model of such a tenant, applied to the button as well as
+    // to the notice — see the page comment at the guard.
+    expect(src).toContain('{ess && replacementRequest.allowed && replacementLeaveType != null && (');
   });
 
   it("the admin's Employee Balances page renders it for the ADMIN audience, about the selected employee", () => {

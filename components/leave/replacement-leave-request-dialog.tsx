@@ -9,8 +9,20 @@ import { normalizeDayText } from '@/lib/day-format';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
-/** Reuses the shape the Request Leave dialog is already handed, so the page maps its type list once. */
-export type ReplacementLeaveTypeOption = { id: string; label: string };
+/**
+ * 2a237f5f — ONE type, not a list, and the singular is the fix.
+ *
+ * This used to be `ReplacementLeaveTypeOption[]`, mapped from every leave type the employee was eligible
+ * for and rendered as a `<select>`. There is no list to offer: a Leave Credit is always Replacement Leave
+ * (see the leave-type field below). Taking the plural away is what makes "no other type can be offered" a
+ * property of the component rather than a promise about its caller — with no array in hand it has nothing
+ * else it could draw.
+ *
+ * `name`, not `label`: it is the TENANT's own name for their replacement type, resolved from their
+ * catalogue and localized by the page's `listLeaveTypes(locale)` read — not a translated constant, so a
+ * customer whose type is called "Off in Lieu" reads "Off in Lieu".
+ */
+export type ReplacementLeaveTypeView = { id: string; name: string };
 
 type Row = { key: number; workedDate: string; days: string; fromTime: string; toTime: string };
 type DayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
@@ -47,13 +59,17 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * translator ever crosses the boundary.
  */
 export function ReplacementLeaveRequestDialog({
-  types,
+  replacementType,
   submitAction,
   today,
   requiresFirstScheduleConsent,
   dayKindAction,
 }: {
-  types: ReplacementLeaveTypeOption[];
+  /**
+   * 2a237f5f — the tenant's Replacement Leave type, already resolved by the page. Required and singular:
+   * the page renders no dialog at all when the tenant has none, so there is no "nothing selected" state.
+   */
+  replacementType: ReplacementLeaveTypeView;
   submitAction: Action;
   /** 3fb1a611 — resolves the kind of day a date is for the signed-in employee. Optional: omitted ⇒ no chip. */
   dayKindAction?: (workedDate: string) => Promise<DayKind | null>;
@@ -146,13 +162,29 @@ export function ReplacementLeaveRequestDialog({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t('leaveType')}>
-                <select name="leaveTypeId" className={inputCls}>
-                  {types.map((ty) => (
-                    <option key={ty.id} value={ty.id}>
-                      {ty.label}
-                    </option>
-                  ))}
-                </select>
+                {/* 2a237f5f — FIXED ON PURPOSE: a Leave Credit is always Replacement Leave. Same field as
+                    the HR-side dialog (components/leave/leave-credit-add-dialog.tsx), and for the same
+                    reason — it was a <select> over every leave type the employee was eligible for, and the
+                    choice was already dead: core/toil.ts credits `ensureReplacementLeaveType(tenant)`
+                    whatever was posted, and the reversal path agrees. The form was accepting an answer the
+                    engine discards.
+
+                    ONE DELIBERATE DIFFERENCE FROM THE HR DIALOG, WHICH POSTS NOTHING: the resolved id IS
+                    still posted, in the hidden input below, because `replacement_leave_request` carries a
+                    `leave_type_id` and the rows already in production carry the replacement type there.
+                    Nulling it on new rows would quietly change stored data nobody asked to change. It
+                    names the type the request is about; it is not what decides the credit.
+
+                    The visible box is `disabled`, so the BROWSER never submits it — which is exactly why
+                    the value travels in its own hidden field rather than on this input. */}
+                <input type="hidden" name="leaveTypeId" value={replacementType.id} />
+                <input
+                  value={replacementType.name}
+                  readOnly
+                  disabled
+                  data-testid="replacement-request-leave-type"
+                  className={`${inputCls} bg-muted`}
+                />
               </Field>
               <Field label={t('unit')}>
                 <select

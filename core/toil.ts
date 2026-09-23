@@ -204,6 +204,36 @@ const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workd
 const toilEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
 
 /**
+ * 2a237f5f — THE READ-ONLY HALF OF `ensureReplacementLeaveType`, extracted so it can be called, named and
+ * tested on its own. This IS the canonical resolution of "which leave type is this tenant's replacement
+ * one"; `ensureReplacementLeaveType` is now literally this plus an insert on a miss.
+ *
+ * It exists because the miss branch is the dangerous one. `ensure` is not `find`: it INSERTS a leave type,
+ * which is right at approval time and is not acceptable as a side effect of drawing a screen. A caller
+ * that only needs to NAME the type — the employee's Leave Credit request form, which fixes its leave-type
+ * box to this type — calls this one and renders nothing when it answers null.
+ *
+ * `core/ess-view.ts` `pickReplacementLeaveType` is the in-memory twin of this query, for callers that have
+ * already loaded the catalogue; the precedence below is stated there in the same words, and
+ * test/replacement-leave-type-resolver.test.ts asserts the two agree on the same rows.
+ */
+export async function findReplacementLeaveTypeIdTx(tx: Tx, tenantId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: leaveType.id })
+    .from(leaveType)
+    .where(
+      and(
+        eq(leaveType.tenantId, tenantId),
+        sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and lower(${leaveType.code}) = 'replacement'))`,
+        isNull(leaveType.archivedAt),
+      ),
+    )
+    .orderBy(sql`case when ${leaveType.role} = 'replacement' then 0 else 1 end`)
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
  * Idempotent: the tenant's replacement leave type (created on first need; paid, working-day counted).
  *
  * 5ff7daff — MATCHES ON `leave_type.role` FIRST, and that is a defect fix, not a tidy-up. This function
@@ -219,21 +249,9 @@ const toilEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
  * rather than leaving it to the planner when a tenant somehow has both.
  */
 async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<string> {
-  const find = () =>
-    tx
-      .select({ id: leaveType.id })
-      .from(leaveType)
-      .where(
-        and(
-          eq(leaveType.tenantId, tenantId),
-          sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and lower(${leaveType.code}) = 'replacement'))`,
-          isNull(leaveType.archivedAt),
-        ),
-      )
-      .orderBy(sql`case when ${leaveType.role} = 'replacement' then 0 else 1 end`)
-      .limit(1);
-  const [existing] = await find();
-  if (existing) return existing.id;
+  const find = () => findReplacementLeaveTypeIdTx(tx, tenantId);
+  const existing = await find();
+  if (existing) return existing;
   const [created] = await tx
     .insert(leaveType)
     // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.
@@ -245,8 +263,8 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
     .onConflictDoNothing()
     .returning({ id: leaveType.id });
   if (created) return created.id;
-  const [again] = await find(); // lost an insert race — re-read
-  return again.id;
+  const again = await find(); // lost an insert race — re-read
+  return again!;
 }
 
 // ─── policy ────────────────────────────────────────────────────────────────────────────────────────
