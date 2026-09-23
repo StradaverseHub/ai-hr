@@ -60,7 +60,19 @@ describe('slice 4 — which modules the rail may advertise', () => {
     // Spelled out rather than derived so adding a module to the rail stays a deliberate edit here.
     // 3fb1a611 (r299) — `toil` joined: the Leave Credit row (Leave Config) is its one nav row, mapped by hand in
     // components/sidebar.tsx like system_explorer's.
-    expect(sellable.sort()).toEqual(['attendance', 'claims', 'payroll', 'performance', 'system_explorer', 'toil']);
+    // e6be5a3b (r330) — `system_testing` joined: one nav row (System Settings › System Testing), mapped by hand
+    // for the same reason as system_explorer's. It is the first entry here that OWNS TABLES (test_case /
+    // test_run, 0482) while still being packBacked:false — which changes nothing about this guard, and is
+    // worth writing down because "not pack-backed" has meant "owns nothing" for every earlier entry.
+    expect(sellable.sort()).toEqual([
+      'attendance',
+      'claims',
+      'payroll',
+      'performance',
+      'system_explorer',
+      'system_testing',
+      'toil',
+    ]);
   });
 
   it('hides a module the tenant does not have', () => {
@@ -126,6 +138,9 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     // Rules tab has no such obligation and redirects like every other module entry page. Both pages carry
     // their own in-page gate as well (test/r299-leave-credit-screens.test.ts).
     toil: 'app/admin/leave-config/leave-credit/rules/page.tsx',
+    // e6be5a3b (r330) — the test-case library. Its two child routes (/new, /[id]) carry the same pair of
+    // guards; only the ENTRY page is listed here, which is this map's contract.
+    system_testing: 'app/admin/system-testing/page.tsx',
   };
 
   it('every SELLABLE module with nav guards its entry page', () => {

@@ -149,6 +149,36 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
    * a snapshot — but it states the truth: with no employment records there is nothing to ask about.
    */
   { code: 'assistant', name: 'AI Assistant', category: 'platform', description: 'In-product AI assistant that answers questions over the employee and HR record the user can already see.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 250 },
+  /**
+   * System Testing (e6be5a3b, r330) — the test-case library and its execution record.
+   *
+   * `platform`, like `system_explorer` and `assistant`: it owns no HR process. It describes how the
+   * PRODUCT is supposed to behave and keeps a quality record about the vendor.
+   *
+   * WHY IT IS SELLABLE RATHER THAN CORE, which is the whole point of the entry and the reporter's own
+   * precedent (deec1691). An HR customer does not want a testing tool in their menu, and a module with
+   * no `tenant_module` row simply does not exist for them — the rail hides the row, and
+   * core/system-testing.ts refuses every call by name. Stradaverse switches it on for itself. Making
+   * that a provisioning switch rather than a code change is the decision ADR-0077 exists to enable.
+   *
+   * `packBacked: false` — it registers no pack. It DOES own tables (test_case, test_run, 0482), which
+   * makes it the first non-pack-backed catalogue row to do so, and the consequence is stated rather
+   * than papered over: core/schema-explorer.ts derives table ownership from the packs' own
+   * `satelliteTables`, so both tables render as owned by NO module in the Dependency Explorer. That is
+   * the same accepted consequence ADR-0082 records for the assistant's tables, and the alternative —
+   * registering a pack — would force `packBacked: true`, which test/module-catalog-drift.test.ts pins
+   * against `listPacks('module')` in BOTH directions.
+   *
+   * `billable: true` — it is a thing sold separately, which is what the reporter asked for. It also
+   * means scripts/module-change-runner.ts refuses activation without a `subscription_line`, which is
+   * correct: the grant must correspond to something sold.
+   *
+   * `dependsOn: []` and NOT the modules a test case can be filed against. The controlled module list is
+   * resolved per tenant at read time (core/system-testing.ts listTestableModules); declaring Payroll or
+   * Attendance as a dependency would make the testing module itself resolve DISABLED for a tenant that
+   * has neither, which is backwards — you test what you own.
+   */
+  { code: 'system_testing', name: 'System Testing', category: 'platform', description: 'Test-case library and execution record — the written checks a release is run through, and what happened each time.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 260 },
 ];
 
 /**
@@ -361,6 +391,24 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    * knows which countries actually have a pack. SQL cannot, which is why this is not a migration.
    */
   'country-my': 'COUNTRY_MY_ENABLED',
+  /**
+   * e6be5a3b (r330) — the System Testing module. Same idiom as `system_explorer` above, and for the
+   * same mechanical reason: `SYSTEM_TESTING_ENABLED` is a RESERVED name that no tracked env file sets
+   * and no application source reads.
+   *
+   * `null` WOULD BE WRONG AND IS THE TRAP. `null` means "no whole-module gate anywhere — on for
+   * everyone", which forces the code into LEGACY_ENABLED_MODULE_CODES, which the drift test pins
+   * character-for-character against the literals inside db/migrations/0313_module_entitlements.sql — a
+   * migration that HAS ALREADY RUN on production, so widening it there is a silent skip on the deployed
+   * box (CLAUDE.md §6) AND would hand a testing tool to every existing customer. Naming an unset
+   * variable is the only way this map spells "OFF for everyone"; it keeps the row out of the parity
+   * set and out of DEFAULT_PROVISION_MODULE_CODES, so the provisioning form does not pre-tick it, and
+   * a missing `tenant_module` row is disabled (C7).
+   *
+   * The reintroduction guard in test/module-catalog-drift.test.ts asserts nothing reads this name, so
+   * it cannot later become a real deployment flag that outranks what a customer bought.
+   */
+  system_testing: 'SYSTEM_TESTING_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

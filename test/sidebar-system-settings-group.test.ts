@@ -47,6 +47,12 @@ const TICKET_HREFS = [
  *
  * 4509d2b8 added Holidays — after Hiring Defaults, before System Analysis. System Analysis is last on
  * purpose (it is a reference screen, not a setup step), so a new setup row lands ahead of it.
+ *
+ * e6be5a3b (r330) REFINES that rule rather than breaking it. The node now ends in TWO vendor-facing
+ * reference surfaces — System Analysis, then System Testing — and the rule is unchanged for every row
+ * that matters: a SETUP row still lands ahead of both. The pair is asserted by position below, so
+ * "System Analysis is last among the setup rows" keeps its force and a third reference screen cannot be
+ * quietly wedged between the setup rows and these two.
  */
 const SYSTEM_SETTINGS_CHILD_HREFS = [
   '/admin/settings/employee-id',
@@ -62,6 +68,10 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
   '/admin/settings/profile-requests',
   '/admin/system-explorer',
+  // e6be5a3b (r330) — System Testing, the test-case library. DECLARED here, and last: like System
+  // Analysis directly above it, it is a vendor-facing reference surface rather than company setup, and
+  // like it, it is entitlement-gated (a sellable module that defaults OFF) as well as admin-gated.
+  '/admin/system-testing',
 ] as const;
 
 /**
@@ -133,7 +143,15 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     const explorer = node!.indexOf(`'/admin/system-explorer'`);
     expect(holidays, 'Holidays is a child of the System Settings node').toBeGreaterThan(-1);
     expect(holidays, 'after Hiring Defaults').toBeGreaterThan(hiring);
-    expect(holidays, 'before System Analysis, which stays last').toBeLessThan(explorer);
+    expect(holidays, 'before System Analysis, which stays last among the setup rows').toBeLessThan(explorer);
+    // e6be5a3b (r330) — the reference PAIR sits at the end, in this order, and nothing comes after it.
+    // Without this the two could be reordered, or a setup row appended past them, and the full-list
+    // assertion above would have to be re-read line by line to notice.
+    const testing = node!.indexOf(`'/admin/system-testing'`);
+    expect(testing, 'System Testing is a child of the System Settings node').toBeGreaterThan(-1);
+    expect(testing, 'System Testing follows System Analysis').toBeGreaterThan(explorer);
+    const allHrefs = [...node!.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
+    expect(allHrefs[allHrefs.length - 1], 'the reference pair ends the node').toBe('/admin/system-testing');
     expect(
       node!.split('\n').find((l) => l.includes(`'/admin/holidays'`)),
       'labelled by the existing nav key — the move creates no new string',

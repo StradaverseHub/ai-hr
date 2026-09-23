@@ -1127,6 +1127,23 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     routes: ['/admin/system-explorer'],
   },
+  {
+    // System Testing (e6be5a3b, r330) — the test-case library and its execution record, sold as the
+    // `system_testing` module (default OFF). Same shape as systemExplorer directly above, and the same
+    // caveat applies: the ENTITLEMENT is a second, orthogonal axis this grid does not model. A column
+    // says which ROLES can reach a screen; a tenant without the module has no such screen for any role.
+    // requireAdmin is the right and honest answer for the tenants that do have it, and it is also what
+    // makes the three routes visible to test/function-access.test.ts's guard scan — a screen with no
+    // permission-matrix column is a screen Security & Permissions cannot describe.
+    //
+    // ONE COLUMN, THREE ROUTES: the list, the create form and the case detail share a guard, which is
+    // exactly the parent+child collapse this field documents.
+    screenKey: 'systemTesting',
+    href: '/admin/system-testing',
+    labelKey: 'nav.systemTesting',
+    guard: 'requireAdmin',
+    routes: ['/admin/system-testing', '/admin/system-testing/new', '/admin/system-testing/[id]'],
+  },
   // Reports hub + custom report builder (c440b365). scopedAdmin — every report surface is admin-gated.
   { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]'] },
 ] as const;
