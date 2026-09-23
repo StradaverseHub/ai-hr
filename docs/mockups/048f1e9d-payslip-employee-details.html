@@ -1,0 +1,164 @@
+<meta charset="utf-8">
+<title>Payslip — the employee details block</title>
+<!--
+  048f1e9d. Drawn to the real geometry of lib/payslip-pdf.ts drawEmployeePanel:
+  leftW = 218, GAP = 18, CONTENT_W = 515.28 (A4_W 595.28 − 2×M, M = 40) ⇒ right = 279.28.
+  Colours are the file's own: PRIMARY rgb(.31,.275,.898) = #4F46E5, RULE #D9DAE6, HAIR #EFF0F7,
+  MUTED #63636F. Label 6.5pt uppercase muted over value 8.5pt bold, per drawGrid.
+  THE EMPTY BOX IS drawGrid's odd-cell case, not a missing-field case: idCells already omits a field that
+  is absent (payslip-pdf.ts:1075-1079), but drawGrid draws the outer box FULL WIDTH and the column rule
+  FULL HEIGHT, so an odd number of cells leaves the last row's second half as a ruled void.
+  Production 2026-09-23: 84 employments — 29 print 1 cell and 17 print 3, so 46 print a void; 9 print no
+  grid at all. Of the 48 employments that actually have a payslip, 17 print a void.
+  The header band is NOT invented here: a96d320c already gave the RIGHT panel a full-width PRIMARY band
+  over a ruled grid, for "one visual language for every block on the document". The left panel never got
+  one. Tokens inline; no network.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--hair:#eff0f7;--primary:#4f46e5;
+       --border:#c9cad6;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1120px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .case{margin-bottom:16px}
+ .case>h2{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .case>h2 b{font-weight:700}
+ .sheet{background:#fff;border:1px solid var(--border);border-radius:9px;padding:16px 18px}
+ .sheet.before{border-color:#e4c2bd}
+ .sheet.after{border-color:#bcdccb}
+ .panel{display:grid;grid-template-columns:42.31% 3.49% 54.20%;align-items:start}
+ .nm{font-size:15px;font-weight:700;line-height:1.15}
+ .cd{font-size:9.5px;color:var(--mf);margin-top:4px;margin-bottom:8px}
+ .band{background:var(--primary);color:#fff;font-size:8px;font-weight:700;letter-spacing:.07em;padding:5px 9px}
+ .grid{border:1px solid var(--rule);display:grid}
+ .g2{grid-template-columns:1fr 1fr}
+ .cell{padding:6px 7px;min-height:32px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+ .cell:nth-child(2n){border-right:none}
+ .cell.full{grid-column:1 / -1;border-right:none}
+ .cell .k{font-size:7px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf)}
+ .cell .v{font-size:9.5px;font-weight:700;margin-top:2px}
+ .void{position:relative;background:repeating-linear-gradient(135deg,#fdf6f5,#fdf6f5 5px,#fbeeec 5px,#fbeeec 10px)}
+ .voidtag{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#b04a3c;letter-spacing:.04em}
+ .cap{font-size:11.5px;color:var(--mf);margin-top:9px;line-height:1.5}
+ .cap b{color:var(--fg)}
+ .cap.bad{color:#8a3d33}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:4px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Payslip &mdash; the employee details block</h1>
+  <p class="sub">Drawn to the payslip&rsquo;s real measurements. You wrote &ldquo;make it more modern design&rdquo; beside this block.</p>
+
+  <div class="case">
+    <h2><b>Before</b> &mdash; three numbers recorded, and a hole where the fourth would go</h2>
+    <div class="sheet before">
+      <div class="panel">
+        <div>
+          <div class="nm">Nurul Aisyah binti Rahman</div>
+          <div class="cd">EMPLOYEE ID: EMP-0142</div>
+          <div class="grid g2">
+            <div class="cell"><div class="k">IC No.</div><div class="v">880214-10-5566</div></div>
+            <div class="cell"><div class="k">Income Tax No.</div><div class="v">SG 10234567090</div></div>
+            <div class="cell"><div class="k">EPF No.</div><div class="v">12345678</div></div>
+            <div class="cell void"><div class="voidtag">empty ruled box</div></div>
+          </div>
+        </div>
+        <div></div>
+        <div>
+          <div class="band">EMPLOYMENT INFORMATION</div>
+          <div class="grid g2" style="border-top:none">
+            <div class="cell"><div class="k">Department</div><div class="v">Finance</div></div>
+            <div class="cell"><div class="k">Position</div><div class="v">Senior Analyst</div></div>
+            <div class="cell"><div class="k">Grade</div><div class="v">M3</div></div>
+            <div class="cell"><div class="k">Employment Type</div><div class="v">Permanent</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Days Worked</div><div class="v">22.00</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Currency</div><div class="v">MYR</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap bad"><b>Two things are wrong here.</b> The left block has no heading while the right one does &mdash;
+        they are two different designs on one document. And because an odd number of numbers is recorded,
+        the last box is ruled but empty. <b>46 of your 84 employees print that empty box today.</b></p>
+    </div>
+  </div>
+
+  <div class="case">
+    <h2><b>After</b> &mdash; the same visual language on both sides, and no holes</h2>
+    <div class="sheet after">
+      <div class="panel">
+        <div>
+          <div class="nm">Nurul Aisyah binti Rahman</div>
+          <div class="cd">EMPLOYEE ID: EMP-0142</div>
+          <div class="band">EMPLOYEE DETAILS</div>
+          <div class="grid g2" style="border-top:none">
+            <div class="cell"><div class="k">IC No.</div><div class="v">880214-10-5566</div></div>
+            <div class="cell"><div class="k">Income Tax No.</div><div class="v">SG 10234567090</div></div>
+            <div class="cell full" style="border-bottom:none"><div class="k">EPF No.</div><div class="v">12345678</div></div>
+          </div>
+        </div>
+        <div></div>
+        <div>
+          <div class="band">EMPLOYMENT INFORMATION</div>
+          <div class="grid g2" style="border-top:none">
+            <div class="cell"><div class="k">Department</div><div class="v">Finance</div></div>
+            <div class="cell"><div class="k">Position</div><div class="v">Senior Analyst</div></div>
+            <div class="cell"><div class="k">Grade</div><div class="v">M3</div></div>
+            <div class="cell"><div class="k">Employment Type</div><div class="v">Permanent</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Days Worked</div><div class="v">22.00</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Currency</div><div class="v">MYR</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>The last number simply takes the whole row.</b> Both blocks now open with the same
+        coloured heading bar over the same ruled grid &mdash; the shape you already approved for the right-hand
+        block. Nothing is hidden and nothing is invented.</p>
+    </div>
+  </div>
+
+  <div class="case">
+    <h2><b>After</b> &mdash; the commonest case: only an IC recorded (29 of your 84 employees)</h2>
+    <div class="sheet after">
+      <div class="panel">
+        <div>
+          <div class="nm">Tan Wei Ming</div>
+          <div class="cd">EMPLOYEE ID: EMP-0207</div>
+          <div class="band">EMPLOYEE DETAILS</div>
+          <div class="grid g2" style="border-top:none">
+            <div class="cell full" style="border-bottom:none"><div class="k">IC No.</div><div class="v">910530-14-5123</div></div>
+          </div>
+        </div>
+        <div></div>
+        <div>
+          <div class="band">EMPLOYMENT INFORMATION</div>
+          <div class="grid g2" style="border-top:none">
+            <div class="cell"><div class="k">Department</div><div class="v">Operations</div></div>
+            <div class="cell"><div class="k">Position</div><div class="v">Technician</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Days Worked</div><div class="v">22.00</div></div>
+            <div class="cell" style="border-bottom:none"><div class="k">Currency</div><div class="v">MYR</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">One recorded number, one full-width row, no void beside it. <b>Today this prints an IC
+        in a half-width box with an empty box next to it.</b></p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What we are NOT doing, and why</h3>
+    <p><b>We are not printing &ldquo;not recorded&rdquo; anywhere.</b> A blank on a payslip is quieter than a
+      payslip that announces a missing tax number to the employee. If you want those gaps chased, that is a
+      report, not a line on the payslip &mdash; tell us and we will build it separately.</p>
+    <p><b>We are not removing any of the six fields.</b> You listed them; they stay. The only change to what
+      is printed is that a lone last number stops sharing its row with a hole.</p>
+    <p><b>We are not redesigning the rest of the payslip.</b> Earnings, deductions and the rest already use
+      the heading-bar-over-ruled-grid shape. This brings the one block that was left out into line with them,
+      which is the smallest change that answers &ldquo;more modern&rdquo; without us guessing at a new look.</p>
+    <p><b>If this is not what you meant</b>, reject it and sketch over this picture &mdash; that is quicker for
+      both of us than another round of words.</p>
+  </div>
+</div>

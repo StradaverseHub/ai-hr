@@ -1,0 +1,143 @@
+<meta charset="utf-8">
+<title>Shift form — the working week is editable exactly where it is obeyed</title>
+<!--
+  aec53564. Measured on production 2026-09-23, not inferred.
+  core/week-pattern.ts weekPatternFor: the Schedule Group's week wins ONLY when it declares at least one
+  working day (Full ∪ Half > 0); otherwise the read FALLS BACK to the shift's own week. Migration 0483
+  leaves the un-deletable is_default "Standard" rule's three arrays NULL on purpose, so a shift that never
+  joined a group keeps its own week — that fallback is load-bearing, not an oversight.
+  Production: 8 shifts. 6 resolve a group that declares a week (their form's day fields are dead).
+  2 have rule_id NULL and carry a real week of their own (their form's day fields are the ONLY thing
+  deciding it). So "take the day fields off the form" — what we recommended when we raised this — would
+  strand exactly those 2.
+  The form already knows: shift-form.tsx imports listAttendanceRules and renders
+  <select name="attendanceRuleId"> at :210, so the day section can follow the rule select live.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+       --border:#c9cad6;--warn:#b54708;--ok:#256d4a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:16px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+ .col h2{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf)}
+ .col h2 b{font-weight:700}
+ .screen{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
+ .screen.before{border-color:#e4c2bd}
+ .screen.after{border-color:#bcdccb}
+ .bar{padding:8px 13px;border-bottom:1px solid var(--border);background:var(--muted);font-size:12px;font-weight:600}
+ .bar span{float:right;font-weight:400;color:var(--mf);font-size:11px}
+ .body{padding:12px}
+ .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 6px}
+ .days{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+ .day{border:1px solid var(--border);border-radius:6px;padding:5px 3px;text-align:center;background:#fff}
+ .day .d{font-size:10.5px;font-weight:700}
+ .day .k{font-size:9.5px;color:var(--mf);margin-top:2px}
+ .day.dead{background:#faf9f7;border-style:dashed;color:#9a9aa6}
+ .day.dead .k{color:#a9a9b4}
+ .sel{border:1px solid var(--border);border-radius:6px;padding:5px 9px;font-size:11.5px;margin-top:10px;background:#fff;display:flex;justify-content:space-between}
+ .sel i{font-style:normal;color:var(--mf)}
+ .warnbox{margin-top:10px;padding:9px;border:1px dashed #d9a9a2;border-radius:7px;background:#fdf6f5;font-size:11.5px;color:#8a3d33;line-height:1.5}
+ .okbox{margin-top:10px;padding:9px;border:1px solid #bcdccb;border-radius:7px;background:#f4faf6;font-size:11.5px;color:var(--ok);line-height:1.5}
+ .okbox a{color:var(--primary);text-decoration:none;font-weight:600}
+ .cnt{font-size:10.5px;color:var(--mf);margin-top:6px}
+ .foot{margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+ .foot h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 7px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Shift form &mdash; the working week stays editable exactly where it is obeyed</h1>
+  <p class="sub">Correcting what we told you when we raised this: the shift&rsquo;s week is not dead everywhere</p>
+  <div class="pair">
+
+    <div class="col">
+      <h2><b>Before</b> &mdash; editable whether or not it is obeyed</h2>
+      <div class="screen before">
+        <div class="bar">Edit Shift &mdash; A02 Morning <span>Working days</span></div>
+        <div class="body">
+          <p class="lbl">Working days</p>
+          <div class="days">
+            <div class="day"><div class="d">Mon</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Tue</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Wed</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Thu</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Fri</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Sat</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Sun</div><div class="k">Rest</div></div>
+          </div>
+          <div class="sel"><span>Schedule Group</span><i>Standard 5 Day + Saturday Off</i></div>
+          <div class="warnbox">
+            This shift&rsquo;s group already says Saturday is off. Change Saturday here and the form accepts it,
+            stores it, and the roster and the pay carry on following the group. Nothing tells you.
+          </div>
+          <p class="cnt">6 of your 8 shifts are in this position today.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2><b>After</b> &mdash; one rule, two honest outcomes</h2>
+
+      <div class="screen after">
+        <div class="bar">Edit Shift &mdash; A02 Morning <span>a group decides the week</span></div>
+        <div class="body">
+          <p class="lbl">Working days &mdash; decided by the Schedule Group</p>
+          <div class="days">
+            <div class="day dead"><div class="d">Mon</div><div class="k">Full</div></div>
+            <div class="day dead"><div class="d">Tue</div><div class="k">Full</div></div>
+            <div class="day dead"><div class="d">Wed</div><div class="k">Full</div></div>
+            <div class="day dead"><div class="d">Thu</div><div class="k">Full</div></div>
+            <div class="day dead"><div class="d">Fri</div><div class="k">Full</div></div>
+            <div class="day dead"><div class="d">Sat</div><div class="k">Off</div></div>
+            <div class="day dead"><div class="d">Sun</div><div class="k">Rest</div></div>
+          </div>
+          <div class="sel"><span>Schedule Group</span><i>Standard 5 Day + Saturday Off</i></div>
+          <div class="okbox">
+            These days are set by Schedule Group <a>Standard 5 Day + Saturday Off &rsaquo;</a> &mdash; change them there.
+            The form now shows what it is actually obeying, and no longer takes an edit it will throw away.
+          </div>
+        </div>
+      </div>
+
+      <div class="screen after">
+        <div class="bar">Edit Shift &mdash; Night Relief <span>no group sets a week</span></div>
+        <div class="body">
+          <p class="lbl">Working days</p>
+          <div class="days">
+            <div class="day"><div class="d">Mon</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Tue</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Wed</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Thu</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Fri</div><div class="k">Full</div></div>
+            <div class="day"><div class="d">Sat</div><div class="k">Half</div></div>
+            <div class="day"><div class="d">Sun</div><div class="k">Rest</div></div>
+          </div>
+          <div class="sel"><span>Schedule Group</span><i>&mdash; none &mdash;</i></div>
+          <div class="okbox">
+            No Schedule Group sets a working week for this shift, so these still decide it &mdash; and stay editable.
+          </div>
+          <p class="cnt">2 of your 8 shifts are in this position today.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What changes, and what does not</h3>
+    <p><b>No data changes.</b> Not one shift&rsquo;s stored week is edited, cleared or moved. This only decides
+      whether the form lets you type into a box whose value it will then ignore.</p>
+    <p><b>The days follow the Schedule Group box live.</b> Pick a group that sets a week and the days grey out
+      as you pick it; clear the group and they come back. You never have to save to find out which you got.</p>
+    <p><b>We were wrong when we raised this</b>, and we would rather say so than quietly build something else.
+      We told you the shift&rsquo;s copy of the week &ldquo;stops being used&rdquo; and recommended deleting the
+      day fields. We then read the engine: the group only wins when it actually declares a week, and two of
+      your shifts have no such group &mdash; for those, these fields are the only thing deciding when people work.
+      Deleting them would have taken the controls away from the shifts that still need them.</p>
+  </div>
+</div>
