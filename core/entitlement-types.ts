@@ -170,12 +170,15 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
       // gates on no module, so the marker is a label on a cross-tenant maintenance run rather than a key
       // that opens anything.
       'scripts/backfill-mileage-flat-rate.ts',
-      // 0fe1ca2e — one-off: moves a site's holiday state DOWN one rung onto employment.work_state, so
-      // removing the per-company site register cannot take a public holiday off anybody. Same synthetic
-      // cross-tenant shape as the three above, and the marker is a LABEL rather than a key that opens
-      // anything: it writes through setEmploymentHolidayCalendar (core/org.ts), which gates on no
-      // module, and reads through holidayDatesFor, which gates on none either. Dry run by default.
-      'scripts/carry-location-state-to-work-state.ts',
+      // 0fe1ca2e / ADR-0086 — `scripts/carry-location-state-to-work-state.ts` was here and its entry went
+      // with the file in r331. It moved a site's holiday state DOWN one rung onto employment.work_state so
+      // that removing the site register could not take a public holiday off anybody; it was run
+      // cross-tenant on production and the removal then measured `holidays MOVE 0`. Both it and the report
+      // it verified are PRE-CHANGE instruments: once the resolver stopped reading the site (r331), the
+      // "before" they compared against no longer exists, so keeping them would have left a script that
+      // prints a reassuring UNCHANGED nothing tested. This entry is deleted rather than left dangling —
+      // the drift ratchet asserts each entry's owner file literally carries the marker, and an entry
+      // naming a file that is gone is exactly the stale-allowlist shape the note above this list warns of.
     ],
   },
   /*

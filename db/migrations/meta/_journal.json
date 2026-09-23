@@ -2773,6 +2773,13 @@
       "when": 1789980193344,
       "tag": "0483_schedule_group_working_week",
       "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1789980194344,
+      "tag": "0484_location_drop_holiday_calendar",
+      "breakpoints": true
     }
   ]
 }

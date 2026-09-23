@@ -50,7 +50,6 @@ const sections: CriteriaSection[] = buildOrgCriteriaSections(
     positions: [],
     costCenters: [],
     businessUnits: [],
-    locations: [],
     profileOptions: {
       division: [{ id: 'd1', category: 'division', value: 'PROJECT', label: 'Project Division', isActive: true }],
     } as never,

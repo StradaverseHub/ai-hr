@@ -365,9 +365,13 @@ export const personPhoto = pgTable(
   (t) => [index('person_photo_person_idx').on(t.tenantId, t.personId)],
 );
 
-// location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
-// supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
-// company.default_work_state). `country` is captured for display only — the engine keeps using
+// location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site.
+// ⚠️ IT NO LONGER DECIDES HOLIDAYS. Until ADR-0086 (r331) `state` was the top of the precedence
+// (location.state ?? employment.work_state ?? company.default_work_state); the site left BOTH holiday
+// readers in one commit and the chain now starts at employment.work_state. The column is kept — it is
+// the record of which state a site was under before the move, and the register stopped offering the
+// control rather than clearing the value. See the inline note on `state` below.
+// `country` is captured for display only — the engine keeps using
 // company.country (a location-country override would silently flip the holiday-country lookup; out of
 // scope). archivedAt = soft-disable (never hard-delete, so audit survives). RLS gates read+write by
 // app.is_admin_for(company_id). The employee↔location link is assignment.location_id (no second table).
@@ -382,20 +386,30 @@ export const location = pgTable(
     code: text('code').notNull(),
     name: text('name').notNull(),
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2 (display only)
-    state: text('state'), // holiday-state override; null = inherit work_state/default/national
+    // ADR-0086: this WAS the top rung of the holiday-state precedence (`location.state` → holiday group →
+    // employment.work_state → company.default_work_state → national). Nothing reads it any more — r331
+    // removed the `location` join from both readers in core/holidays.ts. The column is KEPT rather than
+    // dropped in the same migration: it is the record of what a site's state was, it is what the r328 carry
+    // moved onto `employment.work_state`, and dropping it would force `cleanState` out of core/location.ts,
+    // which test/state-vocabulary-scoping.test.ts pins for a different reason (the state vocabulary's
+    // scoping). Retiring it is a separate, smaller decision than the one ADR-0086 makes.
+    state: text('state'),
     // 1fff489c PHASE 2 — the Branch this location serves. NOT an FK: Branch is profile_option category
     // 'branch' (a tenant-wide flat catalogue, core/profile-options.ts) stored as text on
     // employment.org_branch, so this column stores the same text and core/location.ts validates it through
     // the same assertProfileValueAllowed() setEmploymentInfo uses. Null = not mapped yet, which is one of
     // the four distinct empty states. Uniqueness is PER COMPANY (see the index below and migration 0420).
     branch: text('branch'),
-    // PH-calendars-by-location (ADR-0067): the NAMED holiday calendar every employee at this location
-    // follows. Null = unmapped → byte-identical to today's resolution (state override → company default →
-    // national). A holiday_group with an `archetype` IS the calendar. ON DELETE SET NULL: deleting a group
-    // un-maps the location rather than erroring (the deleteHolidayGroup service guard is the friendly path).
-    holidayGroupId: uuid('holiday_group_id').references((): AnyPgColumn => holidayGroup.id, {
-      onDelete: 'set null',
-    }),
+    // ADR-0086 (item 0fe1ca2e, r331) — `holiday_group_id` WAS here: ADR-0067 §(b)'s named holiday calendar
+    // that every employee at this site followed. It is dropped by migration 0484. The work-site register
+    // was retired on the reporter's say-so after being measured unused cross-tenant on production (8 sites,
+    // NONE mapping a calendar; `holidays MOVE 0`), and neither holiday reader joins `location` any more.
+    // Holiday calendars themselves are untouched (ADR-0067 §(a)): an employment still carries one directly
+    // through `employment.holiday_group_id` below.
+    //
+    // ⚠️ THE TABLE ITSELF STAYS, deliberately. `clocking_location.location_id` (ADR-0070) is a live FK onto
+    // it, `assignment.location_id` still records where somebody worked (core/movement.ts renders that
+    // history), and `branch` below is a second live feature. Only the calendar door closed.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

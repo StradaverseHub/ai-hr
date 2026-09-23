@@ -184,7 +184,7 @@ describe('9a65f808 · B. the storage decision, pinned across both files that dep
     const sections = buildOrgCriteriaSections(
       {
         companies: [], departments: [], grades: [{ id: 'g1', name: 'Grade 1' }], positions: [],
-        costCenters: [], businessUnits: [], locations: [], profileOptions: {},
+        costCenters: [], businessUnits: [], profileOptions: {},
       },
       { crit: (k) => k, org: (k) => k, employmentType: (k) => k },
     );

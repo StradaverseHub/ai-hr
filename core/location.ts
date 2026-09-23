@@ -8,24 +8,15 @@
 import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, domainEvent, employment, holidayGroup, location } from '../db/schema';
+import { company, domainEvent, employment, location } from '../db/schema';
 import { assertProfileValueAllowed } from './profile-options';
 import { validateStateFor } from './state-vocabulary';
 
-/** Resolve a holiday-group (calendar) id to a tenant-scoped group, or null when no calendar is assigned.
- *  Throws if the id is non-empty but does not resolve in scope (RLS already tenant-scopes the read), so a
- *  stale/cross-tenant id can't be stored on a location. */
-async function resolveHolidayGroupId(tx: Tx, holidayGroupId: string | null | undefined): Promise<string | null> {
-  const id = (holidayGroupId ?? '').trim();
-  if (!id) return null;
-  const [g] = await tx
-    .select({ id: holidayGroup.id })
-    .from(holidayGroup)
-    .where(eq(holidayGroup.id, id))
-    .limit(1);
-  if (!g) throw new Error('Unknown holiday calendar');
-  return g.id;
-}
+// ADR-0086 (item 0fe1ca2e, r331) — `resolveHolidayGroupId` lived here. It validated the holiday CALENDAR
+// a location was mapped to (ADR-0067 §(b)) before storing it, so a stale or cross-tenant id could not
+// reach `location.holiday_group_id`. Migration 0484 drops that column: a work site is no longer one of the
+// ways a holiday calendar is chosen, and `employment.holiday_group_id` — validated by
+// `setEmploymentHolidayCalendar` (core/org.ts) — is the surviving door.
 
 /** Trim + uppercase the code (0030 catalog-integrity pattern); the partial-unique index is exact-match. */
 function cleanCode(v: string | undefined): string {
@@ -211,7 +202,6 @@ export type CreateLocationInput = {
   state?: string | null;
   // ADR-0067: the named holiday CALENDAR (holiday_group) every employee at this location follows. Null =
   // unmapped → today's resolution (state override → company default → national), byte-identical.
-  holidayGroupId?: string | null;
   // 1fff489c — the Branch (profile_option 'branch') this location serves. Null = not mapped yet.
   branch?: string | null;
 };
@@ -226,14 +216,13 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
       // read first. RLS scopes that read to this tenant, so a companyId from another tenant fails here
       // rather than validating against a company the caller cannot see.
       const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
-      const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
       // No legacy value on a create — an out-of-catalogue branch is refused outright.
       const branch = await cleanBranch(tx, p.branch, null);
       let row: { id: string };
       try {
         [row] = await tx
           .insert(location)
-          .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId, branch })
+          .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, branch })
           .returning({ id: location.id });
       } catch (e) {
         // 1fff489c — a duplicate code or branch leaves as a typed error, never as raw SQL + parameters.
@@ -245,7 +234,7 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
         aggregateId: row.id,
         eventType: 'location.created',
         actor: actorOf(ctx),
-        payload: { companyId: p.companyId, code, name, country, state, holidayGroupId, branch },
+        payload: { companyId: p.companyId, code, name, country, state, branch },
       });
       return { id: row.id };
     });
@@ -261,7 +250,6 @@ export type UpdateLocationInput = {
   name: string;
   country?: string;
   state?: string | null;
-  holidayGroupId?: string | null;
   branch?: string | null;
 };
 
@@ -277,7 +265,6 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
           name: location.name,
           country: location.country,
           state: location.state,
-          holidayGroupId: location.holidayGroupId,
           branch: location.branch,
           // Selected for validation, NOT echoed into the event payload below — `before` is the audit
           // record of what the user changed, and companyId is not one of the editable fields.
@@ -288,15 +275,31 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
         .limit(1);
       if (!before) throw new Error('Location not found');
       const { companyId, ...beforeAudit } = before;
-      const state = cleanState(p.state, await companyCountryOf(tx, companyId));
-      const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
+      /**
+       * ⚠️ ADR-0086 (0fe1ca2e, r331) — ABSENT MEANS KEEP, and it has to, or this Save silently erases data.
+       *
+       * The site register stopped offering a State control in r331 (nothing reads `location.state` any
+       * more, so a control for it would have been a control that lies). `updateLocationAction` therefore
+       * posts no `state` — and until this line it still passed `fd.get('state') || null`, i.e. an explicit
+       * NULL, so the FIRST Save of any location would have wiped the stored state. That column is
+       * deliberately kept (db/schema.ts) as the record of what a site was supplying before the r328 carry
+       * moved it onto `employment.work_state`; erasing it on an unrelated rename would have destroyed
+       * exactly the history the decision to keep it was protecting.
+       *
+       * So the distinction is now the ordinary partial-update one, which `state?: string | null` already
+       * expressed and nothing honoured: `undefined` = not supplied, keep what is there; `null` = clear it.
+       * A SUPPLIED value is still cleaned and still validated against the company's country — five cases in
+       * test/state-vocabulary-scoping.test.ts drive that through this service, which is why `cleanState`
+       * remains genuinely wired and tested even though no screen posts one any more.
+       */
+      const state = p.state === undefined ? before.state : cleanState(p.state, await companyCountryOf(tx, companyId));
       // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
       // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
       const branch = await cleanBranch(tx, p.branch, before.branch);
       try {
         await tx
           .update(location)
-          .set({ code, name, country, state, holidayGroupId, branch })
+          .set({ code, name, country, state, branch })
           .where(eq(location.id, p.locationId));
       } catch (e) {
         // 1fff489c — mapping a branch another live location already holds is the likeliest way to reach
@@ -309,7 +312,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
         aggregateId: p.locationId,
         eventType: 'location.updated',
         actor: actorOf(ctx),
-        payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId, branch } },
+        payload: { before: beforeAudit, after: { code, name, country, state, branch } },
       });
       return { id: p.locationId };
     });
@@ -357,9 +360,6 @@ export type LocationRow = {
   country: string;
   state: string | null;
   // ADR-0067: the mapped holiday calendar (null = unmapped). name + archetype let the admin row show it.
-  holidayGroupId: string | null;
-  holidayGroupName: string | null;
-  holidayGroupArchetype: string | null;
   // 1fff489c — the mapped Branch (null = not mapped yet, one of the four distinct empty states).
   branch: string | null;
   archivedAt: Date | null;
@@ -367,8 +367,9 @@ export type LocationRow = {
 };
 
 /** Locations in scope, joined with company name + active headcount (open assignment rows pointing here) +
- *  the mapped holiday calendar's name/archetype (left join — null when unmapped).
- *  RLS already scopes rows to admin-of-company; companyIds further narrows to the UI's active scope. */
+ *  RLS already scopes rows to admin-of-company; companyIds further narrows to the UI's active scope.
+ *  ADR-0086: the mapped holiday calendar's name/archetype used to come back here too, via a left join on
+ *  `location.holiday_group_id`. That column is gone (migration 0484); a calendar is chosen on the person. */
 export function listLocations(
   ctx: SessionContext,
   companyIds: string[],
@@ -387,9 +388,6 @@ export function listLocations(
         name: location.name,
         country: location.country,
         state: location.state,
-        holidayGroupId: location.holidayGroupId,
-        holidayGroupName: holidayGroup.name,
-        holidayGroupArchetype: holidayGroup.archetype,
         branch: location.branch,
         archivedAt: location.archivedAt,
         headcount: sql<number>`(
@@ -400,7 +398,6 @@ export function listLocations(
       })
       .from(location)
       .innerJoin(company, eq(company.id, location.companyId))
-      .leftJoin(holidayGroup, eq(holidayGroup.id, location.holidayGroupId))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(company.legalName), asc(location.code));
   });

@@ -4,7 +4,6 @@ import { requireAdmin } from '@/lib/authz';
 import { entitlementYearOptions } from '@/core/leave';
 import { listLeaveTypes, listCompanies, listDepartments, listJobGrades, listEmployees } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
-import { listLocations } from '@/core/location';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listLeaveGenerationRuns } from '@/packs/leave/service';
@@ -79,7 +78,6 @@ export default async function LeaveConfigGeneratePage({
     positions,
     costCenters,
     businessUnits,
-    locations,
     runs,
     employments,
   ] = await Promise.all([
@@ -90,9 +88,10 @@ export default async function LeaveConfigGeneratePage({
       listPositions(s),
       listCostCenters(s),
       listBusinessUnits(s),
-      // The only list keyed by company rather than tenant. Empty scope ⇒ no locations, which is honest: an
-      // administrator who can see no company can narrow by no site either.
-      companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
+      // ADR-0086 (0fe1ca2e, r331) — a `listLocations` read sat here, feeding the Work Site criteria picker.
+      // That axis is retired with the work-site register (core/org-criteria.ts), so the read is gone too.
+      // ⚠️ It was removed from the DESTRUCTURE ABOVE in the same edit: every entry here is an array, so a
+      // position mismatch type-checks cleanly and silently hands one catalogue another's rows.
       listLeaveGenerationRuns(s, { limit: 10 }),
       /**
        * r287 (ff1c935f) — STEP ③'s "Pick individually" picker, read ONCE for the page.
@@ -112,7 +111,7 @@ export default async function LeaveConfigGeneratePage({
     ]);
 
   const criteriaSections = buildOrgCriteriaSections(
-    { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
+    { companies, departments, grades, positions, costCenters, businessUnits, profileOptions },
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
   );
 

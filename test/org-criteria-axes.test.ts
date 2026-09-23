@@ -107,7 +107,7 @@ describe('18103ba4 · the four ASSIGNMENT axes are resolved AS AT the date, like
     expect(await resolve({ costCenterIds: [newCc] }, '2026-01-15')).not.toContain(e);
   });
 
-  it('business unit, location and position narrow on the dated row', async () => {
+  it('business unit and position narrow on the dated row; ADR-0086 — the SITE no longer does', async () => {
     const [bu] = await owner.db
       .insert(schema.businessUnit)
       .values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BU1', name: 'Shared Services' })
@@ -124,9 +124,17 @@ describe('18103ba4 · the four ASSIGNMENT axes are resolved AS AT the date, like
       .where(eq(schema.assignment.id, await openAssignmentId(inScope)));
 
     expect(await resolve({ businessUnitIds: [bu.id] })).toEqual([inScope]);
-    expect(await resolve({ locationIds: [loc.id] })).toEqual([inScope]);
     expect(await resolve({ positionIds: [b.positionId] })).toEqual([inScope]);
     expect(await resolve({})).toEqual(expect.arrayContaining([inScope, outOfScope]));
+
+    // ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). `{ locationIds: [loc.id] }` used to select exactly
+    // [inScope], like its two neighbours above. ADR-0086 (item 0fe1ca2e, r331) retired the work-site axis
+    // with the work-site register — the key is no longer declared on OrgCriteria, and a legacy stored
+    // object that still carries it (as every record saved before r331 does) narrows nobody. The site is
+    // still set on the dated row, so this is the resolver changing rather than the fixture.
+    const legacy = { locationIds: [loc.id] } as unknown as OrgCriteria;
+    expect(await resolve(legacy)).toEqual(await resolve({}));
+    expect(await resolve(legacy)).toEqual(expect.arrayContaining([inScope, outOfScope]));
   });
 
   it('AND-combines the dated axes on ONE assignment row', async () => {

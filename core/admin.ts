@@ -2258,20 +2258,10 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
         `This holiday group is still assigned to ${refs.length} employee${refs.length === 1 ? '' : 's'}. Reassign them before deleting it.`,
       );
     }
-    // ADR-0067: also block when a LOCATION maps to this calendar (lock those rows too). The ON DELETE SET
-    // NULL FK is the backstop; the guard is the authoritative friendly path so a mapped calendar can't be
-    // silently un-mapped from every location at its site.
-    const locRefs = await tx
-      .select({ id: location.id })
-      .from(location)
-      .where(eq(location.holidayGroupId, p.id))
-      .for('update');
-    if (locRefs.length > 0) {
-      throw new InUseError(
-        'holiday group',
-        `This holiday calendar is still assigned to ${locRefs.length} location${locRefs.length === 1 ? '' : 's'}. Unassign it there before deleting it.`,
-      );
-    }
+    // ADR-0086 (item 0fe1ca2e, r331) — a SECOND guard sat here: delete was also blocked when a LOCATION
+    // mapped to this calendar (ADR-0067 §(b)), so a mapped calendar could not be silently un-mapped from
+    // every site that used it. Migration 0484 drops `location.holiday_group_id`, so there is no site
+    // reference left to protect. The employment guard above is unchanged and is now the only one.
     // R18 a519a96e: the group's OWN group-scoped "additional day" holiday rows are removed by the
     // ON DELETE CASCADE FK on holiday.holiday_group_id — deliberate (extras have no meaning without the
     // group), covered by the holiday-group.deleted event below rather than per-row holiday.deleted events.

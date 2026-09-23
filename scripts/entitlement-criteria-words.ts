@@ -28,7 +28,6 @@ import {
   costCenter,
   department,
   jobGrade,
-  location,
   position,
   profileOption,
 } from '../db/schema';
@@ -67,7 +66,7 @@ export function englishCriteriaLabels(messagesJsonPath: string): OrgCriteriaLabe
 
 /** Every catalogue a rule can name, for one tenant, read inside the caller's transaction. */
 export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<OrgCriteriaCatalogues> {
-  const [companies, departments, grades, positions, costCenters, businessUnits, locations, options] =
+  const [companies, departments, grades, positions, costCenters, businessUnits, options] =
     await Promise.all([
       tx
         .select({ id: company.id, name: sql<string>`coalesce(${company.companyLabel}, ${company.legalName})` })
@@ -84,10 +83,9 @@ export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<
         .select({ id: businessUnit.id, code: businessUnit.code, name: businessUnit.name })
         .from(businessUnit)
         .where(eq(businessUnit.tenantId, tenantId)),
-      tx
-        .select({ id: location.id, code: location.code, name: location.name })
-        .from(location)
-        .where(eq(location.tenantId, tenantId)),
+      // ADR-0086 (0fe1ca2e, r331) — a `location` read sat here for the Work Site criteria axis, which is
+      // retired. ⚠️ Removed from the DESTRUCTURE ABOVE in the same edit: every entry is an array, so a
+      // position mismatch type-checks and hands one catalogue another's rows.
       tx
         .select({
           id: profileOption.id,
@@ -105,7 +103,7 @@ export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<
     const cat = o.category as ProfileOptionCategory;
     (profileOptions[cat] ??= []).push({ ...o, category: cat, isActive: true });
   }
-  return { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions };
+  return { companies, departments, grades, positions, costCenters, businessUnits, profileOptions };
 }
 
 /** The product's own criteria sections — one call, so the two names above cannot be paired wrongly. */

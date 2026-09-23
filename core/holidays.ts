@@ -15,33 +15,39 @@
  *      employee's company or an ancestor of it. It must be used instead of walking `company` in app SQL,
  *      which company-context RLS could truncate, silently shortening the chain.
  *   2. Otherwise fall back to today's 2C behaviour: national ∪ effState, resolved in priority order
- *      location.state → work_state → company.default_work_state → national-only. Holiday groups expand to
- *      their member states and feed the same UNION predicate.
+ *      work_state → company.default_work_state → national-only. Holiday groups expand to their member
+ *      states and feed the same UNION predicate. (ADR-0086: `location.state` used to sit ABOVE work_state
+ *      in that order; the work site is no longer an input — see the ADR-0086 block below.)
  *
  * Country semantics (ADR-0055, deliberate change from the old country-blind leave query): the resolver
  * filters by the employee's COMPANY country in both branches, matching the attendance engine and the
  * correct multi-country intent (a SG-company employee's leave no longer subtracts MY national holidays).
  *
- * ── ADR-0067 — named PH calendars by location (a THIN layer over the above) ──
- * A location can be MAPPED to a named holiday_group whose `archetype` makes it a CALENDAR. When the
- * employee's OPEN assignment points at a mapped location, the resolver applies the archetype:
+ * ── ADR-0086 — the WORK SITE IS NOT AN INPUT TO THIS FUNCTION (supersedes ADR-0067 §(b) and §(c)) ──
+ * ADR-0067 let a `location` be MAPPED to a named holiday_group whose `archetype` made it a CALENDAR, and
+ * this resolver read the employee's OPEN assignment's location for two things: `location.state` at the
+ * TOP of the Step-2 precedence, and `location.holiday_group_id` as an archetype-bearing calendar that
+ * outranked the directly-assigned group. Item 0fe1ca2e retired the work-site register on the reporter's
+ * say-so; ADR-0086 records the reversal and the measurement behind it (8 sites, 0 mapping a calendar,
+ * 1 open assignment whose employee's `work_state` already carried the site's state, 0 holidays moved).
  *
- *   location.holiday_group_id present?
- *     ├─ custom   → ONLY the location-calendar's company-scoped ad-hoc rows (NO gazette). A national date
- *     │             the custom calendar omits is a normal working day for that location's staff.
- *     ├─ extended → ad-hoc rows ∪ gazette(national ∪ calendar.states)
- *     └─ standard → fall through (no distinct branch) — the calendar.states[] just feed the Step-2 gazette.
- *   absent (NULL) → existing path, BYTE-IDENTICAL to today (Step 1 business-group → Step 2 state precedence).
+ * So there is NO location join here any more, and none in `effectiveHolidayState` either. They were
+ * removed TOGETHER, in one commit, because the second feeds the s.60D completeness guard and the two
+ * must agree about which gazette a person follows; `test/holiday-calendar-resolution.test.ts` pins that
+ * agreement. What an employment's calendar depends on is now exactly THREE values — company, work_state,
+ * holiday_group_id — and `HolidayMemoInputs` below says so in one place for both memos.
  *
- * Conflict rule (location has BOTH `state` and a mapped calendar): the CALENDAR's states[] are the gazette
- * source and location.state is ignored for that location's staff — the named calendar is the explicit
- * override. effectiveHolidayState agrees, so attendance and the s.60D guard never disagree.
+ * What ADR-0086 deliberately KEEPS: ADR-0067 §(a) `holiday_group.archetype`, and direct assignment via
+ * `employment.holiday_group_id`. A custom/extended calendar is still a real thing — it is chosen on the
+ * PERSON now, not through a site. Only the site door closed.
  *
  * Frozen-attendance caveat (accepted decision, NOT a silent gap): attendance day-type rows are FROZEN at
- * check-in (core/attendance.ts) and drive the 1.5x/3.0x OT class = money. Changing a location's calendar
- * reclassifies only FRESH dates resolved through this function; already-frozen historical rows are accepted
- * as historical and are NOT retroactively re-classified. No re-freeze job is built (out of scope). If a
- * recompute is ever wanted, that is a separate task.
+ * check-in (core/attendance.ts) and drive the 1.5x/3.0x OT class = money. Changing a calendar — or, under
+ * ADR-0086, removing the site rung from the precedence at all — reclassifies only FRESH dates resolved
+ * through this function; already-frozen historical rows are accepted as historical and are NOT
+ * retroactively re-classified. No re-freeze job is built (out of scope). If a recompute is ever wanted,
+ * that is a separate task. For ADR-0086 specifically the question was MEASURED rather than left to this
+ * caveat: `holidays MOVE 0` on production, so there is no reclassification to absorb, fresh or frozen.
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -50,61 +56,36 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { appendEvent, actorOf } from '../db/events';
-import { assignment, company, employment, holiday, holidayGroup, holidayGroupHoliday, location } from '../db/schema';
+import { company, employment, holiday, holidayGroup, holidayGroupHoliday } from '../db/schema';
 
-// ADR-0067 — the LOCATION's named holiday calendar is a holiday_group row joined a SECOND time (the first
-// holidayGroup join is the per-employee assigned group, ADR-0040). Aliased so the two joins don't collide.
-const locationCalendar = alias(holidayGroup, 'location_calendar');
-// R18 a519a96e — group INHERITANCE: each of the two group joins above may point at a PARENT group
+// R18 a519a96e — group INHERITANCE: the employment's assigned group may point at a PARENT group
 // (holiday_group.parent_group_id, single level). The parent is joined LIVE (strictly 1:1 — parent_group_id
 // → PK) so parent edits propagate instantly with no sync. When a parent exists it supplies the gazette
 // source (archetype + states); the child contributes only its own group-scoped extra days.
-const locationCalendarParent = alias(holidayGroup, 'location_calendar_parent');
+// ADR-0086: there were TWO such chains until 0fe1ca2e — this one and the LOCATION's mapped calendar. The
+// site chain (`location_calendar` / `location_calendar_parent`) is gone with the site rung itself.
 const empGroupParent = alias(holidayGroup, 'emp_group_parent');
 
 /**
  * r328 (board 0fe1ca2e) — the READ-ONLY "what would this employment's calendar be WITHOUT the site
- * register" preview, and nothing else.
+ * register" preview, `HolidayWhatIf`, USED TO LIVE HERE, and it is gone on purpose.
  *
- * WHY IT IS A PARAMETER ON THE REAL RESOLVER rather than a second function. The approved plan promises
- * the reporter a BEFORE and an AFTER holiday list for every employee whose open assignment carries a
- * `location`, demonstrated rather than asserted, because the figure drives attendance and leave. AFTER
- * means "once employment.work_state carries the state the site was supplying and the site input is
- * gone". Re-expressing the precedence in a report script to compute that would be a SECOND definition of
- * the arithmetic this function exists to own — the drift the header above spends forty lines preventing.
- * So the report asks THIS resolver, with the site inputs blanked, exactly as
- * scripts/report-a2c-hire-year-deltas.ts asks the real accrual engine with `dryRun: true`.
+ * Its own closing paragraph set the condition: "IT IS TEMPORARY. It is the preview half of removing
+ * `location` from holiday resolution; when `assignment.location_id` and the `location` join leave this
+ * function, this goes with them." r331 is that removal (ADR-0086), so it went. A preview of a world we
+ * now live in is not a preview; leaving it would be a second, divergent copy of a precedence that no
+ * longer has the rung it was blanking.
  *
- * IT WRITES NOTHING. The override is applied to the row this function has already READ, in memory, after
- * the single SELECT and before any branch; no statement changes. `scripts/report-location-holiday-deltas.ts`
- * runs the whole report inside a `SET TRANSACTION READ ONLY` transaction, so even a mistake here errors
- * rather than moves a holiday.
- *
- * EVERY EXISTING CALLER IS BYTE-IDENTICAL: the field is optional and no caller in app/, core/ or packs/
- * passes it, so `whatIf === undefined` leaves the row exactly as the SELECT returned it.
- *
- * THE TWO MEMOS ARE NOT AFFECTED, and must not be taught about this. `holidayDatesByEmployment` below and
- * `holidayKeyOf` in core/absence-days.ts key on the four DETERMINING INPUTS read from the database; a
- * what-if is a property of the CALL, not of the employment, and the report makes one call per employment
- * with no memo of its own. A memo that cached a what-if answer under a real employment's key is precisely
- * the defect the key exists to prevent, which is why this type is carried on the window and not on a row.
- *
- * IT IS TEMPORARY. It is the preview half of removing `location` from holiday resolution; when
- * `assignment.location_id` and the `location` join leave this function, this goes with them.
+ * `scripts/report-location-holiday-deltas.ts`, its only caller, was the r328 report that measured the
+ * change on production before it was made (`holidays MOVE 0`, `EMPTY calendar both sides = 0`). It has
+ * served its purpose and is retired with the override it drove; the figures it produced are recorded in
+ * ADR-0086 §2, which is where a reader should look for what the removal cost.
  */
-export type HolidayWhatIf = {
-  /** Resolve as though the open assignment carried NO location: no state overlay, no mapped calendar. */
-  dropLocation: true;
-  /** The `employment.work_state` the preview should read — the `ws` rung the site currently outranks. */
-  workState: string | null;
-};
 
 export type HolidayWindow = {
   employmentId: string;
   startDate: string;
   endDate: string;
-  /** r328 — READ-ONLY preview override; omitted by every production caller. See HolidayWhatIf. */
-  whatIf?: HolidayWhatIf;
 };
 
 // ── Holiday completeness guard (Phase-B #15) ────────────────────────────────────────────────────────
@@ -177,18 +158,26 @@ export function yearsSpanned(startDate: string, endDate: string): number[] {
 
 /**
  * Resolve the SINGLE effective holiday-state for an employment — the same precedence the resolver uses
- * (location.state → holiday-group first state → work_state → company.default_work_state → national),
- * collapsed to one label for the completeness guard. Returns { country, state } with state null when the
- * employment resolves to national-only. A holiday group is summarised by its first state (the guard's job
- * is to flag an under-loaded gazette, not to fan out across every group member).
+ * (holiday-group first state → work_state → company.default_work_state → national), collapsed to one
+ * label for the completeness guard. Returns { country, state } with state null when the employment
+ * resolves to national-only. A holiday group is summarised by its first state (the guard's job is to
+ * flag an under-loaded gazette, not to fan out across every group member).
  *
- * ADR-0067 — archetype awareness (the high-severity double-path fix). This function feeds the s.60D
- * completeness guard (core/leave.ts), a DIFFERENT code path from holidayDatesFor. When the employee's OPEN
- * assignment maps to a location whose calendar is archetype 'custom', the gazette is deliberately ignored
- * (custom = exactly what HR loaded), so the "gazette < 11" warning is FALSE NOISE: return skipCompleteness
- * so the caller emits no warning. For 'standard'/'extended' the gazette still applies and the warning is
- * still meaningful — and per §3 the location-CALENDAR's group.states[] is the gazette source (it wins over
- * a bare location.state) so attendance and the guard agree.
+ * ADR-0086 — THE SITE RUNG IS GONE FROM BOTH READERS, TOGETHER. Until r331 this function also joined the
+ * OPEN assignment's `location` for `location.state` (the top of the precedence) and for the location's
+ * mapped CALENDAR, whose archetype decided whether to suppress the warning. ADR-0067 §(b)/§(c) are
+ * superseded, so neither is read here any more. This function and `holidayDatesFor` had to lose the join
+ * in ONE commit — they feed different code paths (this one the s.60D guard in core/leave.ts, that one
+ * attendance and the working-day leave count) and a person who follows one gazette for their days off and
+ * another for the "is your gazette complete?" warning is the r209-class defect this pairing exists to
+ * prevent. `test/holiday-calendar-resolution.test.ts` asserts the two AGREE, which is what makes
+ * "together" enforceable rather than remembered.
+ *
+ * ADR-0067 §(a) SURVIVES, and so does the archetype awareness that goes with it: a Custom group assigned
+ * DIRECTLY on the profile (`employment.holiday_group_id`) is hand-managed and deliberately ignores the
+ * gazette in `holidayDatesFor`, so the "gazette < 11" warning would be false noise — return
+ * skipCompleteness and the caller emits nothing. 'extended' is deliberately NOT suppressed: an extended
+ * group still includes the gazette, so the warning stays meaningful.
  */
 export async function effectiveHolidayState(
   tx: Tx,
@@ -201,59 +190,33 @@ export async function effectiveHolidayState(
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
       // ADR-0067 (direct-assign): the per-employee assigned group's archetype, so the s.60D guard mirrors
-      // holidayDatesFor for a custom/extended group assigned DIRECTLY on the profile. Reuses the holidayGroup
-      // join already present at line 157.
+      // holidayDatesFor for a custom/extended group assigned DIRECTLY on the profile.
       empGroupArchetype: holidayGroup.archetype,
       // R18 a519a96e: the assigned group's PARENT (single level). When set, the PARENT's archetype/states
       // are the gazette source — keeps this guard in agreement with holidayDatesFor's inheritance.
       empGroupParentId: holidayGroup.parentGroupId,
       empGroupParentArchetype: empGroupParent.archetype,
       empGroupParentStates: empGroupParent.states,
-      locationState: location.state,
-      // ADR-0067: the location-CALENDAR (mapped on the open assignment's location), its archetype + states.
-      calArchetype: locationCalendar.archetype,
-      calStates: locationCalendar.states,
-      // R18 a519a96e: the location calendar's PARENT (single level), same substitution rule as above.
-      calParentId: locationCalendar.parentGroupId,
-      calParentArchetype: locationCalendarParent.archetype,
-      calParentStates: locationCalendarParent.states,
-      mappedCalendar: location.holidayGroupId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
     .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
-    .leftJoin(
-      assignment,
-      and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
-    )
-    .leftJoin(location, eq(location.id, assignment.locationId))
-    .leftJoin(locationCalendar, eq(locationCalendar.id, location.holidayGroupId))
-    .leftJoin(locationCalendarParent, eq(locationCalendarParent.id, locationCalendar.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
   if (!emp) return null;
   // R18 a519a96e — inheritance substitution: with a parent set, the parent's archetype + states ARE the
   // gazette source for the child (the child only adds group-scoped extras, which never affect this guard).
   // Parentless groups keep their own values, so every existing path is unchanged.
-  const effCalArchetype = emp.calParentId ? emp.calParentArchetype : emp.calArchetype;
-  const effCalStates = emp.calParentId ? emp.calParentStates : emp.calStates;
   const effEmpGroupArchetype = emp.empGroupParentId ? emp.empGroupParentArchetype : emp.empGroupArchetype;
   const effEmpGroupStates = emp.empGroupParentId ? emp.empGroupParentStates : emp.groupStates;
-  // A mapped Custom calendar is hand-managed and ignores the gazette → suppress the s.60D warning.
-  if (effCalArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
-  // ADR-0067 (direct-assign): a Custom group assigned DIRECTLY on the profile (no location calendar mapped)
-  // is likewise hand-managed and ignores the gazette in holidayDatesFor — so the "gazette < 11" warning would
-  // be false noise. Suppress it to keep effectiveHolidayState and holidayDatesFor in agreement. Extended is
-  // deliberately NOT suppressed here: an extended group still includes the gazette, so the warning stays
-  // meaningful (matching how the location 'extended' path is treated).
-  if (!emp.mappedCalendar && effEmpGroupArchetype === 'custom')
-    return { country: emp.country, state: null, skipCompleteness: true };
-  // Standard/Extended: the location-calendar's own states[] are the gazette source (they win over a bare
-  // location.state, §3). Fall back to today's precedence when no calendar is mapped.
-  const calFirst = Array.isArray(effCalStates) ? (effCalStates as string[])[0] : undefined;
+  // ADR-0067 (direct-assign): a Custom group assigned DIRECTLY on the profile is hand-managed and ignores
+  // the gazette in holidayDatesFor — so the "gazette < 11" warning would be false noise. Suppress it to
+  // keep effectiveHolidayState and holidayDatesFor in agreement. Extended is deliberately NOT suppressed:
+  // an extended group still includes the gazette, so the warning stays meaningful.
+  if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
   const groupFirst = Array.isArray(effEmpGroupStates) ? (effEmpGroupStates as string[])[0] : undefined;
-  const state = calFirst ?? emp.locationState ?? groupFirst ?? emp.ws ?? emp.cds ?? null;
+  const state = groupFirst ?? emp.ws ?? emp.cds ?? null;
   return { country: emp.country, state };
 }
 
@@ -310,15 +273,20 @@ export async function warnIfHolidaysIncomplete(
 /** The set of holiday dates in [startDate, endDate] for an employment, resolved business-group → state →
  *  national. Returns a Set<string> of YYYY-MM-DD dates (both callers ask only "is this date a holiday?").
  *
- *  DETERMINING INPUTS, MIRRORED IN TWO MEMO KEYS. From the employment side this reads exactly four values:
- *  employment.company_id, employment.work_state, employment.holiday_group_id, and the OPEN assignment's
- *  location_id (plus how many open assignments there are, because it takes one via `.limit(1)`). Two memos
- *  key on precisely those — `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts —
- *  and hand every employment sharing them the same answer. Reading a new employment- or assignment-level
- *  input here without adding it to BOTH keys silently gives one employee another's calendar. */
+ *  DETERMINING INPUTS, MIRRORED IN TWO MEMO KEYS. This reads exactly THREE employment-level values:
+ *  employment.company_id, employment.work_state and employment.holiday_group_id. Two memos key on
+ *  precisely those — `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts — and
+ *  hand every employment sharing them the same answer. Reading a new employment-level input here without
+ *  adding it to BOTH keys silently gives one employee another's calendar.
+ *
+ *  ADR-0086: there were FOUR until r331. The fourth was the OPEN assignment's `location_id` — plus how
+ *  many open assignments there were, because the join took one via `.limit(1)`, which is why both memos
+ *  carried an "ambiguous open assignment, resolve alone" escape hatch. Nothing here joins `assignment`
+ *  any more, so a second open assignment cannot change anybody's calendar and both escape hatches went
+ *  with it. */
 export async function holidayDatesFor(
   tx: Tx,
-  { employmentId, startDate, endDate, whatIf }: HolidayWindow,
+  { employmentId, startDate, endDate }: HolidayWindow,
 ): Promise<Set<string>> {
   const [row] = await tx
     .select({
@@ -338,74 +306,31 @@ export async function holidayDatesFor(
       empGroupParentId: holidayGroup.parentGroupId,
       empGroupParentArchetype: empGroupParent.archetype,
       empGroupParentStates: empGroupParent.states,
-      // ADR-0054: location.state overlay from the employee's OPEN assignment row — the top of the
-      // precedence so leave matches attendance (which resolves the same order in core/attendance.ts).
-      locationState: location.state,
-      // ADR-0067: the location's named CALENDAR (mapped on the open assignment's location) + its archetype
-      // and states. The join chain employment → assignment(open) → location → holiday_group is strictly 1:1
-      // (the open-assignment predicate is single-row, location.id and holiday_group.id are PKs), so it does
-      // NOT fan out the .limit(1) employment select.
-      calArchetype: locationCalendar.archetype,
-      calStates: locationCalendar.states,
-      // R18 a519a96e: the location calendar's PARENT (single level, strictly 1:1 self-join).
-      calParentId: locationCalendar.parentGroupId,
-      calParentArchetype: locationCalendarParent.archetype,
-      calParentStates: locationCalendarParent.states,
-      mappedCalendar: location.holidayGroupId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
     .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
-    .leftJoin(
-      assignment,
-      and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
-    )
-    .leftJoin(location, eq(location.id, assignment.locationId))
-    .leftJoin(locationCalendar, eq(locationCalendar.id, location.holidayGroupId))
-    .leftJoin(locationCalendarParent, eq(locationCalendarParent.id, locationCalendar.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
   if (!row) return new Set<string>();
-
-  // r328 — the READ-ONLY what-if (see HolidayWhatIf). Applied to the row already read, before any branch,
-  // so the ONE decision block below serves both the live answer and the preview and there is no second
-  // copy of the precedence. Undefined for every production caller ⇒ `emp` IS the row the SELECT returned.
-  // Every site-derived input is blanked together — `state` AND the mapped calendar and its parent —
-  // because dropping the location drops all three; blanking only the state would preview a world that
-  // never exists and would silently keep a location calendar alive in the AFTER figure.
-  const emp = whatIf?.dropLocation
-    ? {
-        ...row,
-        locationState: null,
-        mappedCalendar: null,
-        calArchetype: null,
-        calStates: null,
-        calParentId: null,
-        calParentArchetype: null,
-        calParentStates: null,
-        ws: whatIf.workState,
-      }
-    : row;
+  const emp = row;
 
   // ── R18 a519a96e — group INHERITANCE + group-scoped "additional days" ─────────────────────────────
-  // Effective substitution: when the ACTIVE group (location calendar or directly-assigned group) has a
-  // PARENT, the parent's archetype + states[] become the gazette source. Parentless groups keep their own
-  // values, so every predicate below is byte-identical to before for existing data (all parents NULL).
-  const effCalArchetype = emp.calParentId ? emp.calParentArchetype : emp.calArchetype;
-  const effCalStates = emp.calParentId ? emp.calParentStates : emp.calStates;
+  // Effective substitution: when the directly-assigned group has a PARENT, the parent's archetype +
+  // states[] become the gazette source. Parentless groups keep their own values, so every predicate below
+  // is byte-identical to before for existing data (all parents NULL). ADR-0086: there used to be a SECOND
+  // chain here — the location's mapped calendar, which outranked this one — and it is gone with the site
+  // rung; a calendar is chosen on the PERSON now.
   const effEmpGroupArchetype = emp.empGroupParentId ? emp.empGroupParentArchetype : emp.empGroupArchetype;
   const effEmpGroupStates = emp.empGroupParentId ? emp.empGroupParentStates : emp.groupStates;
   // The active calendar CHAIN (group + its parent) contributes group-scoped extra rows. Extras are
-  // ADDITIVE to every resolution path below — never replacement — so a per-office "Company Family Day"
-  // stacks on top of whatever calendar the office resolves to, and a parent's extra day reaches every
-  // child location instantly (resolve-at-read; nothing is copied). Location calendar wins over the
-  // directly-assigned group, mirroring the archetype precedence.
-  const chainIds: string[] = emp.mappedCalendar
-    ? [emp.mappedCalendar, ...(emp.calParentId ? [emp.calParentId] : [])]
-    : emp.empHolidayGroupId
-      ? [emp.empHolidayGroupId, ...(emp.empGroupParentId ? [emp.empGroupParentId] : [])]
-      : [];
+  // ADDITIVE to every resolution path below — never replacement — so a "Company Family Day" stacks on top
+  // of whatever calendar the employee resolves to, and a parent's extra day reaches every child group
+  // instantly (resolve-at-read; nothing is copied).
+  const chainIds: string[] = emp.empHolidayGroupId
+    ? [emp.empHolidayGroupId, ...(emp.empGroupParentId ? [emp.empGroupParentId] : [])]
+    : [];
   const chainExtras: string[] = chainIds.length
     ? (
         await tx
@@ -450,49 +375,10 @@ export async function holidayDatesFor(
   // ...chainExtras into its result Set) unions them without further edits.
   chainExtras.push(...chainTicked);
 
-  // ── ADR-0067 archetype pre-check — runs ONLY when the open assignment's location maps to a CALENDAR.
-  // When unmapped (mappedCalendar IS NULL) we fall through to the Step 1 / Step 2 SQL *untouched*, which is
-  // what guarantees the "byte-identical when unmapped" regression claim. 'standard' deliberately does NOT
-  // branch here either — a standard calendar IS the existing gazette path, just named (its states[] feed
-  // Step 2 below), so it falls through too. Only 'custom' and 'extended' need distinct resolution.
-  // R18 a519a96e: the EFFECTIVE archetype (the parent's, when the calendar inherits) drives the branch.
-  if (emp.mappedCalendar && (effCalArchetype === 'custom' || effCalArchetype === 'extended')) {
-    // The company-scoped ad-hoc rows for this employee's company chain in the window (existing Step-1 query).
-    const adHocRows = await tx
-      .select({ d: holiday.holidayDate })
-      .from(holiday)
-      .where(
-        and(
-          gte(holiday.holidayDate, startDate),
-          lte(holiday.holidayDate, endDate),
-          eq(holiday.country, emp.country),
-          sql`${holiday.companyId} IS NOT NULL`,
-          sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
-        ),
-      );
-    if (effCalArchetype === 'custom') {
-      // CUSTOM = exactly what HR loaded: ONLY the company-scoped ad-hoc rows (∪ the chain's group-scoped
-      // extras), no gazette. A national date the custom calendar omits is a normal working day here.
-      return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);
-    }
-    // EXTENDED = official gazette ∪ company ad-hoc. The gazette half is keyed on the CALENDAR's states[]
-    // (national ∪ group.states), not location.state (§3: the named calendar is the explicit override).
-    const calStates: string[] = Array.isArray(effCalStates) ? (effCalStates as string[]) : [];
-    const gazetteRows = await tx
-      .select({ d: holiday.holidayDate })
-      .from(holiday)
-      .where(
-        and(
-          gte(holiday.holidayDate, startDate),
-          lte(holiday.holidayDate, endDate),
-          eq(holiday.country, emp.country),
-          isNull(holiday.companyId),
-          isNull(holiday.holidayGroupId), // group extras are chain-gated, not part of the public gazette
-          calStates.length ? or(isNull(holiday.state), inArray(holiday.state, calStates)) : isNull(holiday.state),
-        ),
-      );
-    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d), ...chainExtras]);
-  }
+  // ADR-0086: the ADR-0067 archetype pre-check for the LOCATION's mapped calendar used to sit here,
+  // ABOVE the Step-1 business-group override, so a site calendar outranked a company-subtree override.
+  // The site rung is retired; the equivalent branch for a group assigned DIRECTLY on the profile still
+  // exists below, deliberately BELOW Step 1 (see its own note on placement).
 
   // Step 1 — business-group override: any company-scoped row in the window matching the company chain
   // (upward ancestor walk via the SECURITY DEFINER helper). If present, it is the WHOLE calendar.
@@ -511,22 +397,16 @@ export async function holidayDatesFor(
   // R18 a519a96e: the chain's group-scoped extras stack on top of the override (additive, never replaced).
   if (groupRows.length > 0) return new Set([...groupRows.map((h) => h.d), ...chainExtras]);
 
-  // ── ADR-0067 (direct-assign) — per-employee-group archetype branch. Mirrors the location-calendar
-  // pre-check above, but for a custom/extended group assigned DIRECTLY on the profile
-  // (employment.holidayGroupId) rather than via a location mapping. Placement is deliberate and documented:
-  // it runs AFTER the location-calendar pre-check (a site-level location calendar keeps its higher
-  // precedence — a location is a stronger signal than a per-person default) and AFTER the Step-1
-  // business-group company override early-return (a company-subtree override still wins), and BEFORE the
-  // Step-2 state fallback. It fires ONLY when NO location calendar is mapped (mappedCalendar IS NULL), the
-  // Step-1 override produced nothing (groupRows was empty), the employee has a directly-assigned group
-  // (empHolidayGroupId set), and that group's archetype is 'custom' or 'extended'. A 'standard' (or unset)
-  // group falls through to Step 2 BYTE-IDENTICALLY, preserving the regression guarantee for every existing
-  // state-based / default employee.
-  if (
-    !emp.mappedCalendar &&
-    emp.empHolidayGroupId &&
-    (effEmpGroupArchetype === 'custom' || effEmpGroupArchetype === 'extended')
-  ) {
+  // ── ADR-0067 (direct-assign) — per-employee-group archetype branch, for a custom/extended group assigned
+  // DIRECTLY on the profile (employment.holidayGroupId). ADR-0086: this is now the ONLY archetype branch —
+  // its twin for a location's mapped calendar, which outranked it, is retired with the site rung, so a
+  // named calendar reaches a person one way instead of two. Placement is unchanged and still deliberate:
+  // AFTER the Step-1 business-group company override early-return (a company-subtree override still wins)
+  // and BEFORE the Step-2 state fallback. It fires ONLY when the Step-1 override produced nothing
+  // (groupRows was empty), the employee has a directly-assigned group (empHolidayGroupId set), and that
+  // group's archetype is 'custom' or 'extended'. A 'standard' (or unset) group falls through to Step 2
+  // BYTE-IDENTICALLY, preserving the regression guarantee for every existing state-based / default employee.
+  if (emp.empHolidayGroupId && (effEmpGroupArchetype === 'custom' || effEmpGroupArchetype === 'extended')) {
     // The company-scoped ad-hoc rows for this employee's company chain in the window (same query as Step-1).
     const adHocRows = await tx
       .select({ d: holiday.holidayDate })
@@ -566,25 +446,18 @@ export async function holidayDatesFor(
     return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d), ...chainExtras]);
   }
 
-  // Step 2 — 2C fallback: national ∪ effState. A mapped STANDARD calendar contributes its states[] as the
-  // gazette state source (the named override wins over a bare location.state, §3); otherwise the existing
-  // precedence (location.state → group → work_state → company default → national). R18 a519a96e: a group
-  // that INHERITS contributes its PARENT's states[] (the effective values computed above).
-  const standardCalStates: string[] | undefined =
-    emp.mappedCalendar && effCalArchetype === 'standard' && Array.isArray(effCalStates)
-      ? (effCalStates as string[])
-      : undefined;
-  const states: string[] = standardCalStates
-    ? standardCalStates
-    : emp.locationState
-      ? [emp.locationState]
-      : effEmpGroupStates
-        ? (effEmpGroupStates as string[])
-        : emp.ws
-          ? [emp.ws]
-          : emp.cds
-            ? [emp.cds]
-            : [];
+  // Step 2 — 2C fallback: national ∪ effState, resolved group → work_state → company default → national.
+  // R18 a519a96e: a group that INHERITS contributes its PARENT's states[] (the effective values above).
+  // ADR-0086: `location.state` used to sit ABOVE the group here, and a mapped STANDARD calendar's states[]
+  // above that again. Both rungs are retired; `employment.work_state` is the employee-level answer now,
+  // which is the one that was already in force for every employee on production (ADR-0086 §2).
+  const states: string[] = effEmpGroupStates
+    ? (effEmpGroupStates as string[])
+    : emp.ws
+      ? [emp.ws]
+      : emp.cds
+        ? [emp.cds]
+        : [];
   const baseRows = await tx
     .select({ d: holiday.holidayDate })
     .from(holiday)
@@ -612,21 +485,22 @@ export async function holidayDatesFor(
  *   companyId      → company.country, company.default_work_state, and the is_company_descendant chain
  *   workState      → employment.work_state (the `ws` rung of the state precedence)
  *   holidayGroupId → the directly-assigned group: its archetype, states, parent, extras and ticked days
- *   locationId     → the OPEN assignment's location: its state, its mapped calendar and that calendar's parent
- * Employments sharing all four get the answer of ONE call. The precedence rules are not re-expressed here,
+ * Employments sharing all three get the answer of ONE call. The precedence rules are not re-expressed here,
  * so there is no second copy of them to drift, and the payroll/leave callers of `holidayDatesFor` are
  * untouched.
  *
- * Cost: two queries load those inputs for every id whatever the headcount, then one resolver call per
- * DISTINCT key plus one per ambiguous employment — sequential, because every call shares `tx`'s one
- * connection. The worst case (every employment its own key) is the old one-call-per-head plus two queries.
+ * ADR-0086 — THE FOURTH INPUT IS GONE. It was `locationId`, the OPEN assignment's site, and it cost this
+ * function a second query and an escape hatch: because the resolver joined `assignment` and took one row
+ * via `.limit(1)`, an employment with two open assignments had to be resolved ALONE rather than memoized,
+ * or the memo could have picked a different site than the resolver would. The resolver no longer joins
+ * `assignment` at all, so the ambiguity cannot arise and the escape hatch is not "removed for tidiness" —
+ * there is nothing left for it to disambiguate.
+ *
+ * Cost: ONE query loads those inputs for every id whatever the headcount, then one resolver call per
+ * DISTINCT key — sequential, because every call shares `tx`'s one connection. The worst case (every
+ * employment its own key) is the old one-call-per-head plus one query.
  *
  * Exact-equivalence rules, each pinned by test/r298-holiday-memo.test.ts:
- *  - an employment with MORE THAN ONE open assignment is resolved ON ITS OWN: `holidayDatesFor` joins an
- *    arbitrary one via `.limit(1)`, and the memo must not pick a different one than it would. The database
- *    forbids that state (`assignment_no_overlap`, migration 0001), so this is defence in depth, kept because
- *    core/absence-days.ts makes the same promise and a relaxed constraint must not change anyone's calendar;
- *  - the open-assignment predicate is the resolver's own (valid_to IS NULL AND superseded_at IS NULL);
  *  - an id with no visible employment row maps to an empty Set, as `holidayDatesFor`'s `if (!emp)` does;
  *  - the inputs are read through the caller's `tx`, so RLS hides from this exactly what it hides from the
  *    resolver.
@@ -634,22 +508,24 @@ export async function holidayDatesFor(
  * employment's calendar can never change another's.
  */
 /**
- * THE DETERMINING INPUTS of `holidayDatesFor`, named once — the four employment-level values that fully
+ * THE DETERMINING INPUTS of `holidayDatesFor`, named once — the three employment-level values that fully
  * decide an employment's calendar for a window. See the resolver's own header for what each one reaches.
+ * (ADR-0086 removed a fourth, the open assignment's `locationId`, when the work site stopped being an
+ * input to holiday resolution. An input leaving this type is exactly as dangerous as one arriving: both
+ * memos must move with the resolver, which is why the type and the key below are the only place either
+ * is written down.)
  */
 export type HolidayMemoInputs = {
   companyId: string;
   workState: string | null;
   holidayGroupId: string | null;
-  /** The OPEN assignment's location. Null = none, and NOT the same key as an employment that has one. */
-  locationId: string | null;
 };
 
 /**
  * THE memo key for a resolved holiday calendar — ONE function, deliberately, because there are TWO memos.
  *
  * `holidayDatesByEmployment` below and `holidayKeyOf` in core/absence-days.ts both hand every employment
- * sharing these four inputs the answer of ONE resolver call. Until 0fe1ca2e they expressed that key TWICE,
+ * sharing these inputs the answer of ONE resolver call. Until 0fe1ca2e they expressed that key TWICE,
  * in two files, by hand: a JSON tuple here and a pipe-joined string there. Two copies of a key are two
  * things to edit when a determining input changes, and the failure mode is silent and severe — the memo
  * and the resolver disagree, and one employee is handed another's public holidays, which reaches the
@@ -664,7 +540,7 @@ export type HolidayMemoInputs = {
  * The window is not part of the key because both callers memoize within a single window.
  */
 export function holidayMemoKey(i: HolidayMemoInputs): string {
-  return JSON.stringify([i.companyId, i.workState, i.holidayGroupId, i.locationId]);
+  return JSON.stringify([i.companyId, i.workState, i.holidayGroupId]);
 }
 
 export async function holidayDatesByEmployment(
@@ -684,18 +560,8 @@ export async function holidayDatesByEmployment(
     })
     .from(employment)
     .where(inArray(employment.id, ids));
-  const openAssignments = await tx
-    .select({ employmentId: assignment.employmentId, locationId: assignment.locationId })
-    .from(assignment)
-    .where(and(inArray(assignment.employmentId, ids), isNull(assignment.validTo), isNull(assignment.supersededAt)));
 
   const empById = new Map(emps.map((e) => [e.employmentId, e]));
-  const openCount = new Map<string, number>();
-  const locationByEmp = new Map<string, string | null>();
-  for (const a of openAssignments) {
-    openCount.set(a.employmentId, (openCount.get(a.employmentId) ?? 0) + 1);
-    locationByEmp.set(a.employmentId, a.locationId);
-  }
 
   const memo = new Map<string, Set<string>>();
   for (const id of ids) {
@@ -705,16 +571,10 @@ export async function holidayDatesByEmployment(
       continue;
     }
     const one = { employmentId: id, startDate, endDate };
-    if ((openCount.get(id) ?? 0) > 1) {
-      // Ambiguous open assignment — resolve this one alone rather than guess which row `.limit(1)` takes.
-      out.set(id, await holidayDatesFor(tx, one));
-      continue;
-    }
     const key = holidayMemoKey({
       companyId: e.companyId,
       workState: e.workState,
       holidayGroupId: e.holidayGroupId,
-      locationId: locationByEmp.get(id) ?? null,
     });
     let dates = memo.get(key);
     if (!dates) {

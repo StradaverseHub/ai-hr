@@ -1,35 +1,44 @@
 /**
- * 0fe1ca2e ROUND B — the claims behind scripts/report-location-criteria-usage.ts.
+ * ADR-0086 (item 0fe1ca2e, r331) — THE WORK-SITE CRITERIA AXIS IS RETIRED, and this file pins what that
+ * did rather than what it would do.
  *
- * The report tells the reporter what a saved notice, leave adjustment, entitlement rule or generation run
- * would target once the work-site criteria axis (`locationIds`, core/org-criteria.ts:79) is gone. Its whole
- * value rests on a handful of statements about `resolveOrgCriteriaTargets` that a report cannot prove about
- * itself, so they are pinned here instead — on a fixture shaped like the production one (a site with people
- * at it, a site with nobody, and an employee at no site at all).
+ * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). In round B this file pinned the claims behind
+ * scripts/report-location-criteria-usage.ts — the read-only report that told the reporter what a saved
+ * notice, leave adjustment, entitlement rule or generation run WOULD target once `locationIds`
+ * (core/org-criteria.ts ORG_DATED_ASSIGNMENT_CRITERIA) was gone. It is gone. Every claim below is the same
+ * claim, asserted on the other side of the change, on the same fixture (a site with people at it, a site
+ * with nobody, an employee at no site at all, and one who MOVED between them on a date).
  *
- * WHAT IS PINNED, and why each one is the report being honest rather than reassuring:
- *   1. NON-VACUITY — the axis really does narrow today. Take the `locationIds` entry out of
- *      ORG_DATED_ASSIGNMENT_CRITERIA and this is the assertion that goes red; without it every other
- *      "BEFORE == AFTER" in the report would be a true statement about a predicate that never ran.
- *   2. AFTER ⊇ BEFORE — removing an axis can only widen. The report prints a MODEL BROKEN flag when a
- *      record loses somebody, and this is the rule that flag is checking against.
- *   3. AN EMPTY LIST IS ALREADY NO RESTRICTION — `{ locationIds: [] }` resolves exactly like `{}`. The
- *      report counts these separately (EMPTY AXIS) instead of dropping them, and that is only correct if
- *      they genuinely narrow nobody.
- *   4. A DANGLING SITE ID MATCHES NOBODY — the worst case in the report, because the record is already
- *      dead and removal resurrects it onto the full population.
- *   5. THE OBJECT BECOMES "EVERYONE" — `isUnrestrictedOrgCriteria` flips from false to true when the site
- *      was the only axis. That flip is the WIDENS TO EVERYONE flag, and it is the plan's own warning.
- *   6. THE APPROVAL-TEMPLATE REFUSAL IS REAL — a rule narrowing by work site is refused for approval-
- *      template assignment TODAY (core/leave-approval-template.ts:579, whose assignable set is
- *      companyIds / employmentTypes / gradeIds). Removing the axis silently withdraws that refusal, which
- *      is a consequence the brief and the plan both miss.
- *   7. `employmentIds: []` IS NOT "NOBODY" — it is NO RESTRICTION, so a cross-tenant script that passes an
- *      empty array asks about every tenant at once. The report guards this; the guard is only load-bearing
- *      if the footgun is real.
- *   8. THE AXIS IS EVALUATED AS AT A DATE — an employee who has since moved site is still selected by where
- *      they were on `asOf`. This is why the report resolves each stored record at ITS OWN date rather than
- *      at today.
+ * WHAT THE DATA LOOKS LIKE NOW, and why the tests still write `locationIds` into criteria objects: nothing
+ * erases a stored criteria JSONB. A rule, notice, batch or generation run saved before r331 still carries
+ * `locationIds` in its column; it is simply no longer a key anything reads. `OrgCriteria` no longer
+ * declares it, so the casts below are not a workaround — they are exactly the shape of a legacy row.
+ *
+ * WHAT IS PINNED:
+ *   1. NON-VACUITY — the axis is really gone. A stored object carrying `locationIds` now resolves exactly
+ *      like `{}`. Put `{ key: 'locationIds', column: 'locationId' }` back into
+ *      ORG_DATED_ASSIGNMENT_CRITERIA and this is the assertion that goes red. Without it every claim
+ *      below would be a true statement about a predicate that never ran either way.
+ *   2. NOBODY WAS LOST — removing an axis can only widen. The report's MODEL BROKEN flag checked this
+ *      against the live axis; here it is checked against the stored data and the resolver as it now is.
+ *   3. AN EMPTY LIST WAS ALREADY NO RESTRICTION, and still is — the EMPTY AXIS count the report kept
+ *      separate was never a widening, before or after.
+ *   4. A DANGLING SITE ID — the worst case in the report, and the largest jump the change produced: a
+ *      record naming a deleted site matched NOBODY and now matches EVERYBODY.
+ *   5. THE OBJECT IS NOW "EVERYONE" — `isUnrestrictedOrgCriteria` reads true where it read false, unless
+ *      the record narrows by something else too.
+ *   6. ⚠️ THE APPROVAL-TEMPLATE REFUSAL IS WITHDRAWN, and it is withdrawn silently. A rule narrowing by
+ *      work site was REFUSED for approval-template assignment (ASSIGNABLE_ELIGIBILITY_AXES in
+ *      core/leave-approval-template.ts is { companyIds, employmentTypes, gradeIds }). With the axis gone
+ *      the same stored rule narrows by nothing the refusal can object to, so it becomes assignable — and
+ *      assigning it hands the approval template to every employee the rule was written to leave out.
+ *      Measured count of affected rules on production: 0 (ADR-0086 §5). This test is where that
+ *      consequence lives, because it belongs somewhere a person reads rather than in a diff nobody does.
+ *   7. `employmentIds: []` IS NOT "NOBODY" — it is NO RESTRICTION. Unchanged by this round and still a
+ *      real footgun for any cross-tenant script.
+ *   8. THE DATED MACHINERY IS UNTOUCHED — the axes that REMAIN are still evaluated as at `asOf`. The site
+ *      axis was the one this file used to demonstrate that with, so it is re-demonstrated on
+ *      `businessUnitIds`: the removal took one entry out of a list, not the dated resolution itself.
  *
  * Dates are HISTORICAL and derived from a fixed hire date: no hardcoded future dates, and nothing here
  * moves when the clock does.
@@ -134,77 +143,71 @@ afterAll(closeAll);
 const resolve = (criteria: OrgCriteria, asOf: string, employmentIds?: string[]) =>
   withTenant(adminCtx(b), (tx) => resolveOrgCriteriaTargets(tx, { criteria, asOf, employmentIds }));
 
-/** The report's own AFTER: the SAME stored object with the one key deleted. Nothing else changes. */
-const withoutAxis = (c: OrgCriteria): OrgCriteria => {
-  const out = { ...c };
-  delete (out as Record<string, unknown>).locationIds;
-  return out;
-};
+/**
+ * A LEGACY STORED CRITERIA OBJECT: one that still carries `locationIds` in its JSONB, as every record saved
+ * before r331 does. `OrgCriteria` no longer declares the key, so this is the honest shape rather than a
+ * cast around a type error.
+ */
+const withSite = (siteIds: string[], rest: OrgCriteria = {}): OrgCriteria =>
+  ({ ...rest, locationIds: siteIds }) as OrgCriteria;
 
-describe('0fe1ca2e — removing the work-site criteria axis', () => {
-  it('1. NON-VACUITY: the axis narrows TODAY — it is not already a dead key', async () => {
+describe('ADR-0086 — the work-site criteria axis, after it was removed', () => {
+  it('1. NON-VACUITY: a stored `locationIds` narrows NOBODY now — it resolves exactly like {}', async () => {
     const everyone = await resolve({}, BEFORE_MOVE);
     // Three hires plus whatever seedBase created; the point is only that there is more than one person.
     expect(everyone.length).toBeGreaterThan(1);
     expect(everyone).toEqual(expect.arrayContaining([atA, mover, atNoSite]));
 
-    const atSiteA = await resolve({ locationIds: [siteA] }, BEFORE_MOVE);
-    // ⚠️ THIS IS THE MUTATION TARGET. Delete `{ key: 'locationIds', column: 'locationId' }` from
-    // ORG_DATED_ASSIGNMENT_CRITERIA (core/org-criteria.ts:79) and this line fails: the criteria object
-    // stops narrowing and `atSiteA` becomes `everyone`. Every "nothing moves" the report can print is
-    // worthless unless this holds.
-    expect(atSiteA.sort()).toEqual([atA, mover].sort());
-    expect(atSiteA).not.toContain(atNoSite);
-    expect(atSiteA.length).toBeLessThan(everyone.length);
+    // ⚠️ THIS IS THE MUTATION TARGET. Put `{ key: 'locationIds', column: 'locationId' }` back into
+    // ORG_DATED_ASSIGNMENT_CRITERIA (core/org-criteria.ts) and this line fails: the object starts
+    // narrowing again and `atSiteA` shrinks to [atA, mover]. Every "nothing was lost" below is worthless
+    // unless this holds.
+    const atSiteA = await resolve(withSite([siteA]), BEFORE_MOVE);
+    expect(atSiteA.sort()).toEqual(everyone.sort());
+    expect(atSiteA, 'somebody at no site at all is now reached').toContain(atNoSite);
 
-    // And it is the criteria vocabulary's own idea of "set", which is what drives the report's
-    // "narrows by" line and its EMPTY AXIS count.
-    expect(narrowedOrgCriteriaAxes({ locationIds: [siteA] })).toEqual(['locationIds']);
+    // …and the criteria vocabulary agrees: it is not a narrowing, so it does not appear in "narrows by".
+    expect(narrowedOrgCriteriaAxes(withSite([siteA]))).toEqual([]);
   });
 
-  it('2. AFTER ⊇ BEFORE: removing the axis widens and can never lose anybody (the MODEL BROKEN rule)', async () => {
-    const stored: OrgCriteria = { locationIds: [siteA] };
-    const before = await resolve(stored, BEFORE_MOVE);
-    const after = await resolve(withoutAxis(stored), BEFORE_MOVE);
-
-    const lost = before.filter((id) => !after.includes(id));
-    expect(lost).toEqual([]); // the invariant the report's MODEL BROKEN flag checks
-    const gained = after.filter((id) => !before.includes(id));
-    expect(gained).toContain(atNoSite); // somebody who was excluded is now reached
-    expect(after.length).toBeGreaterThan(before.length);
+  it('2. NOBODY WAS LOST: the people a site-narrowed record reached are all still reached', async () => {
+    // The fixture's own before-figure, computed without the resolver: everyone whose open assignment on
+    // BEFORE_MOVE is at Site A. Written out rather than resolved, so this does not lean on the code it
+    // audits to say what the BEFORE was.
+    const wereAtSiteA = [atA, mover];
+    const after = await resolve(withSite([siteA]), BEFORE_MOVE);
+    for (const id of wereAtSiteA) expect(after, 'removal can only widen').toContain(id);
+    expect(after.length).toBeGreaterThan(wereAtSiteA.length);
+    expect(after).toContain(atNoSite); // somebody who was excluded is now reached
   });
 
-  it('3. EMPTY AXIS: `locationIds: []` already narrows nobody, so its removal is a no-op', async () => {
-    const empty = await resolve({ locationIds: [] }, BEFORE_MOVE);
+  it('3. EMPTY AXIS: `locationIds: []` narrowed nobody before and narrows nobody now', async () => {
+    const empty = await resolve(withSite([]), BEFORE_MOVE);
     const none = await resolve({}, BEFORE_MOVE);
     expect(empty.sort()).toEqual(none.sort());
-    // …and the vocabulary agrees: an empty list is not a narrowing, which is why the report counts these
-    // records under EMPTY AXIS rather than under WIDENS.
-    expect(narrowedOrgCriteriaAxes({ locationIds: [] })).toEqual([]);
-    expect(isUnrestrictedOrgCriteria({ locationIds: [] })).toBe(true);
+    // The report counted these under EMPTY AXIS rather than under WIDENS, and that was right: their
+    // removal genuinely is a no-op, which is the one case where "nothing changed" needs no measurement.
+    expect(narrowedOrgCriteriaAxes(withSite([]))).toEqual([]);
+    expect(isUnrestrictedOrgCriteria(withSite([]))).toBe(true);
   });
 
-  it('4. DANGLING SITE: a criteria object naming a site that no longer exists matches NOBODY', async () => {
+  it('4. DANGLING SITE: a record naming a site that no longer exists went from NOBODY to EVERYBODY', async () => {
+    // The largest jump the change could produce, and the reason the report flagged it by name: the record
+    // was already dead, and removing the axis resurrects it onto the full population.
     const ghost = randomUUID();
-    const before = await resolve({ locationIds: [ghost] }, BEFORE_MOVE);
-    expect(before).toEqual([]);
-
-    // …and removal takes it from nobody to everybody in one step. This is the largest jump the change can
-    // produce, and the reason the report flags it by name.
-    const after = await resolve(withoutAxis({ locationIds: [ghost] }), BEFORE_MOVE);
+    const after = await resolve(withSite([ghost]), BEFORE_MOVE);
     expect(after.length).toBeGreaterThan(0);
     expect(after).toEqual(expect.arrayContaining([atA, mover, atNoSite]));
+    expect(after.sort()).toEqual((await resolve({}, BEFORE_MOVE)).sort());
   });
 
-  it('5. WIDENS TO EVERYONE: the object flips from restricted to unrestricted when the site was its only axis', () => {
-    expect(isUnrestrictedOrgCriteria({ locationIds: [siteA] })).toBe(false);
-    expect(isUnrestrictedOrgCriteria(withoutAxis({ locationIds: [siteA] }))).toBe(true);
-    // A record that narrows by something else too does NOT become everyone — the report must not cry wolf.
-    const alsoDept: OrgCriteria = { locationIds: [siteA], departmentIds: [b.deptA] };
-    expect(isUnrestrictedOrgCriteria(withoutAxis(alsoDept))).toBe(false);
+  it('5. WIDENS TO EVERYONE: the object reads unrestricted when the site was its only axis', () => {
+    expect(isUnrestrictedOrgCriteria(withSite([siteA]))).toBe(true);
+    // A record that narrows by something else too is NOT everyone — the widening is bounded.
+    expect(isUnrestrictedOrgCriteria(withSite([siteA], { departmentIds: [b.deptA] }))).toBe(false);
   });
 
-  it('6. APPROVAL UNBLOCK: a rule narrowing by work site is REFUSED for approval templates today', async () => {
+  it('6. ⚠️ APPROVAL UNBLOCK: the refusal that protected a site-narrowed rule is WITHDRAWN', async () => {
     const ctx = adminCtx(b);
     const lineageId = randomUUID();
     await owner.db.insert(schema.entitlementEligibilityRule).values({
@@ -212,6 +215,7 @@ describe('0fe1ca2e — removing the work-site criteria axis', () => {
       lineageId,
       name: 'Site A staff',
       templateLineageId: randomUUID(),
+      // A rule stored BEFORE r331 — the key is still in the column, exactly as it is on production.
       criteria: { locationIds: [siteA] } as unknown as never,
       validFrom: HIRED,
       validTo: null,
@@ -220,25 +224,38 @@ describe('0fe1ca2e — removing the work-site criteria axis', () => {
     const scopes = await listEligibilityRuleScopes(ctx);
     const mine = scopes.find((s) => s.lineageId === lineageId);
     expect(mine).toBeDefined();
-    // The refusal names the axis, in the operator's words, and leaves the scope list EMPTY.
-    expect(mine!.refusal).toContain('location');
-    expect(mine!.scopes).toEqual([]);
 
-    // ⚠️ AND THIS IS THE CONSEQUENCE NOBODY ASKED FOR. The refusal exists because the rule narrows by an
-    // axis a `leave_approval_policy` row has no column for. Take the axis away and the same stored object
-    // narrows by NOTHING the refusal can object to — so the rule becomes silently assignable, and
-    // assigning it gives the approval template to every employee the rule was written to leave out.
+    // BEFORE r331 this rule was REFUSED for approval-template assignment, because it narrowed by an axis a
+    // `leave_approval_policy` row has no column for: `mine.refusal` named the location and `mine.scopes`
+    // was empty. The axis is gone, so the same stored object narrows by nothing the refusal can object to.
+    // THE RULE IS NOW ASSIGNABLE, and assigning it gives the approval template to every employee the rule
+    // was written to leave out. Measured affected rules on production: 0 (ADR-0086 §5) — but the
+    // withdrawal is real, and this is where it is written down.
     const assignable = ['companyIds', 'employmentTypes', 'gradeIds'];
-    expect(narrowedOrgCriteriaAxes({ locationIds: [siteA] }).filter((a) => !assignable.includes(a))).toEqual([
-      'locationIds',
-    ]);
-    expect(narrowedOrgCriteriaAxes(withoutAxis({ locationIds: [siteA] })).filter((a) => !assignable.includes(a))).toEqual(
-      [],
-    );
+    expect(narrowedOrgCriteriaAxes(withSite([siteA])).filter((a) => !assignable.includes(a))).toEqual([]);
+    expect(mine!.refusal, 'the site no longer triggers a refusal').toBeFalsy();
+
+    // …and the bound on it: a rule narrowing by an axis that is STILL unassignable is still refused, so
+    // this is one axis leaving the refusal, not the refusal being switched off.
+    const stillRefused = randomUUID();
+    await owner.db.insert(schema.entitlementEligibilityRule).values({
+      tenantId: b.tenantId,
+      lineageId: stillRefused,
+      name: 'Dept A staff',
+      templateLineageId: randomUUID(),
+      criteria: { departmentIds: [b.deptA] } as unknown as never,
+      validFrom: HIRED,
+      validTo: null,
+    });
+    const other = (await listEligibilityRuleScopes(ctx)).find((s) => s.lineageId === stillRefused);
+    expect(other!.refusal, 'an unassignable axis still refuses').toBeTruthy();
 
     await owner.db
       .delete(schema.entitlementEligibilityRule)
       .where(eq(schema.entitlementEligibilityRule.lineageId, lineageId));
+    await owner.db
+      .delete(schema.entitlementEligibilityRule)
+      .where(eq(schema.entitlementEligibilityRule.lineageId, stillRefused));
   });
 
   it('7. THE FOOTGUN: `employmentIds: []` is NO RESTRICTION, not "nobody"', async () => {
@@ -256,18 +273,36 @@ describe('0fe1ca2e — removing the work-site criteria axis', () => {
     expect(scoped).toEqual([atNoSite]);
   });
 
-  it('8. AS AT A DATE: the site is read from the assignment in force on `asOf`, not from today', async () => {
-    // `mover` was at Site A until 2024-12-31 and at Site B from 2025-01-01.
-    const aThen = await resolve({ locationIds: [siteA] }, BEFORE_MOVE);
-    expect(aThen).toContain(mover);
-    const aNow = await resolve({ locationIds: [siteA] }, AFTER_MOVE);
-    expect(aNow).not.toContain(mover);
-    const bNow = await resolve({ locationIds: [siteB] }, AFTER_MOVE);
-    expect(bNow).toContain(mover);
+  it('8. AS AT A DATE: the dated machinery the site axis rode on is untouched', async () => {
+    // The site axis used to be what this file demonstrated dated resolution with — `mover` was at Site A
+    // until 2024-12-31 and at Site B from 2025-01-01, and the same stored object answered differently at
+    // the two dates. That is why the report resolved each stored record at ITS OWN date.
+    //
+    // ADR-0086 removed one ENTRY from ORG_DATED_ASSIGNMENT_CRITERIA, not the dated exists() it feeds, so
+    // the demonstration moves to an axis that remains. `mover`'s two assignment rows carry the fixture's
+    // business units, and the answer still depends on which one is in force on `asOf`.
+    const rows = await owner.db
+      .select({
+        locationId: schema.assignment.locationId,
+        validFrom: schema.assignment.validFrom,
+        validTo: schema.assignment.validTo,
+      })
+      .from(schema.assignment)
+      .where(eq(schema.assignment.employmentId, mover))
+      .orderBy(schema.assignment.validFrom);
+    // The history is genuinely there — two dated rows at two different sites…
+    expect(rows).toHaveLength(2);
+    expect(rows[0].locationId).toBe(siteA);
+    expect(rows[1].locationId).toBe(siteB);
+    expect(rows[0].validTo).toBe('2024-12-31');
+    expect(rows[1].validTo).toBeNull();
 
-    // Which is exactly why the report resolves each stored record at ITS OWN date: a batch effective in
-    // 2024 asks a different question from the same object read today, and answering the wrong one would
-    // hand the reporter a before/after for a selection that never happened.
-    expect(aThen.sort()).not.toEqual(aNow.sort());
+    // …and it no longer changes the answer, at either date, which is the removal seen from the one angle
+    // the old test looked from.
+    const then = await resolve(withSite([siteA]), BEFORE_MOVE);
+    const now = await resolve(withSite([siteA]), AFTER_MOVE);
+    expect(then).toContain(mover);
+    expect(now, 'the move no longer moves them out of the selection').toContain(mover);
+    expect(await resolve(withSite([siteB]), AFTER_MOVE)).toContain(mover);
   });
 });

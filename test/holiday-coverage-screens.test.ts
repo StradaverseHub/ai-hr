@@ -36,16 +36,27 @@ const KEYS = [
 ] as const;
 
 describe('0e276da0 — the calendar-coverage warning is wired to both screens', () => {
-  it('the Locations screen reads the coverage and surfaces it beside the calendar picker', () => {
+  it('ADR-0086 — the Locations screen has NO calendar picker left, so it carries no warning either', () => {
+    /**
+     * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). 0e276da0 promised the coverage sentence on TWO screens and
+     * this pinned the first of them: the Locations screen read `holidayCalendarCoverage` and surfaced it
+     * beside the per-location Calendar picker, both on the edit row and in the add form.
+     *
+     * ADR-0086 (item 0fe1ca2e, r331) retires ADR-0067 §(b): a work site is no longer one of the ways a
+     * holiday calendar is chosen, migration 0484 drops `location.holiday_group_id`, and the picker went
+     * with it. A warning about what a calendar would cost the staff of a site is meaningless when no site
+     * can have one — so the promise is not broken here, it is withdrawn with the control it described.
+     *
+     * THE OTHER SCREEN IS UNTOUCHED. The calendar's own screen and the holiday-group list still carry the
+     * identical sentence (the two tests below), and components/holiday-coverage-warning.tsx is still the
+     * single copy of it. That is what bounds this to the site door.
+     */
     const src = read(LOCATIONS_PAGE);
-    expect(src).toContain("holidayCalendarCoverage");
-    expect(src).toContain("from '@/core/holidays'");
-    // The warning, for the calendar a location already carries…
-    expect(src).toContain('HolidayCoverageWarning');
-    expect(src).toContain('calendarWarnings');
-    // …and the day count on the picker's own options, at the moment of choosing.
-    expect(src).toContain('calendarOptionLabel');
-    expect(src.match(/calendarOptionLabel\(cal\.id, cal\.name\)/g) ?? []).toHaveLength(2); // edit row + add form
+    for (const gone of ['holidayCalendarCoverage', 'HolidayCoverageWarning', 'calendarWarnings', 'calendarOptionLabel']) {
+      expect(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), `${gone} is retired`).not.toContain(gone);
+    }
+    // …and the control itself: nothing on this page posts a calendar onto a site any more.
+    expect(src).not.toContain("name=\"holidayGroupId\"");
   });
 
   it('the calendar’s OWN screen surfaces the same line with nothing attached to it', () => {
@@ -87,15 +98,28 @@ describe('0e276da0 — the calendar-coverage warning is wired to both screens', 
   });
 });
 
-describe('0e276da0 — the resolver and the s.60D skip are untouched', () => {
+describe('0e276da0 — the resolver and the s.60D skip are untouched (ADR-0086: on the surviving path)', () => {
   const src = read('core/holidays.ts');
 
+  /**
+   * ⚠️ UPDATED, NOT DELETED (CLAUDE.md §8). 0e276da0 added a PRESENTATIONAL coverage read to core/holidays.ts
+   * and pinned, verbatim, that it disturbed neither the Custom s.60D skip nor the Custom resolution branch.
+   * Both of those existed TWICE — once for a calendar reached through a SITE (`effCalArchetype`) and once
+   * for one assigned DIRECTLY on the person (`effEmpGroupArchetype`). ADR-0086 retires the site rung, so the
+   * `effCalArchetype` copies are gone and asserting on them would pin a path that no longer exists.
+   *
+   * What 0e276da0's guard was FOR is unchanged and is what is pinned below: the coverage read still changes
+   * nothing about resolution, and the Custom semantics — no gazette, skip the warning — still hold on the
+   * door ADR-0086 leaves open. The behavioural halves are pinned by test/holiday-calendar-resolution.test.ts
+   * and test/holiday-calendar-coverage.test.ts; these two are the source-level "still there, verbatim".
+   */
   it('the Custom skip that suppresses the s.60D warning is still there, verbatim', () => {
-    expect(src).toContain("if (effCalArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };");
+    expect(src).toContain("if (effEmpGroupArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };");
+    expect(src, 'the SITE copy is gone with the site rung').not.toContain('effCalArchetype');
   });
 
   it('the Custom resolution branch still returns the calendar’s own days and NO gazette', () => {
-    expect(src).toContain("if (effCalArchetype === 'custom') {");
+    expect(src).toContain("if (effEmpGroupArchetype === 'custom') {");
     expect(src).toContain('return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);');
   });
 

@@ -500,7 +500,21 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
 
 /** The criteria axes an assignment row can carry. `companyIds` is matched against the companies chosen on
  *  the form (an assignment row already names one company); `employmentTypes` and `gradeIds` become the two
- *  dimensions the bucket writes. Every other axis has nowhere to go — see the block above. */
+ *  dimensions the bucket writes. Every other axis has nowhere to go — see the block above.
+ *
+ *  ⚠️ ADR-0086 (item 0fe1ca2e, r331) WITHDREW A LIVE REFUSAL THROUGH THIS SET, without editing it. This
+ *  set never contained `locationIds`, so a rule narrowing by work site was REFUSED here — the refusal
+ *  below named "location" and left the scope list empty. ADR-0086 retired the work-site axis from
+ *  `ORG_DATED_ASSIGNMENT_CRITERIA` (core/org-criteria.ts), so `narrowedOrgCriteriaAxes` no longer reports
+ *  it and the same stored rule now narrows by nothing this set objects to: IT BECOMES ASSIGNABLE, and
+ *  assigning it hands the approval template to every employee the rule was written to leave out. That is
+ *  the exact failure the block above exists to prevent, arrived at from the other direction — by an axis
+ *  leaving the vocabulary rather than by this set widening.
+ *
+ *  Measured cross-tenant on production before the change: 0 affected rules (ADR-0086 §5). Pinned by
+ *  test/location-criteria-axis-removal.test.ts claim 6, which also pins the bound — a rule narrowing by an
+ *  axis that is still unassignable is still refused. The general lesson, for whoever retires the next
+ *  axis: REMOVING a key from OrgCriteria silently widens this refusal, and nothing here fails to say so. */
 const ASSIGNABLE_ELIGIBILITY_AXES: ReadonlySet<string> = new Set(['companyIds', 'employmentTypes', 'gradeIds']);
 
 /** `departmentIds` → "department", `minYearsOfService` → "min years of service". Derived from the field
