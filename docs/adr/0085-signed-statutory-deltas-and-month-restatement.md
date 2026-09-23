@@ -75,6 +75,39 @@ overturn it — it answers the question.
 **A statutory delta may be negative while the month is still being assembled, and may not be once the
 month has been filed.** The clamp is replaced by that distinction rather than removed.
 
+### 3.0 THREE CORRECTIONS TO THIS DOCUMENT, found while building step 2
+
+Recorded here rather than silently edited, because the reasoning below was written from them.
+
+1. **§3.2 and §5 keyed the predicate on `statutory_report.ack_ref`. That is the wrong mechanism.** The
+   owned definition of "filed" is `STATUTORY_FILED_STATUSES` (`db/schema.ts:6514`, `['submitted',
+   'amended']`), and the comment beside it says why it lives in the schema: so `core/reporting.ts` and
+   `core/payroll.ts` resolve against ONE list, because *"two hand-kept copies of 'which statuses count as
+   filed' is how a further status ships that only half the codebase believes in."* An ack_ref-keyed
+   predicate would have been exactly that second copy. **Status decides; `ack_ref` corroborates.** The
+   answer is identical today — `markReportFiled` sets both atomically — so this is wrong about what
+   decides, not about which months.
+
+2. **"No new state machine" understated what exists, and the gap it leaves is a real divergence.**
+   `batchDownstreamWarnings` (`core/payroll.ts:874`) ALREADY computes `statutoryFiled` for company +
+   month off the same table and the same status list, and it feeds the amber banner on Unlock, Reset,
+   Remove-employee and the Individual Transaction screen. The step-2 predicate is deliberately WIDER —
+   year-keyed returns and `pcb_payment` are outside the banner's reader. **So a month can read filed to
+   the predicate and not-filed to the banner an operator is looking at.** ⚠️ DECISION REQUIRED at step 4:
+   either the banner widens, or this document states why they differ. Not settled here.
+
+3. **The two signals do not share a visibility rule, and §3.2 treated them as interchangeable.**
+   `statutory_report` is RLS'd `tenant_id = current_tenant AND app.is_admin_for(company_id)` (migration
+   0026); `pcb_payment` is **tenant-only** (migration 0476). A non-admin session sees payments but not
+   returns — so a naive predicate would answer "not filed" from half the evidence and fail OPEN on a
+   money guard. The predicate therefore refuses rather than answering when it cannot see returns.
+
+A fourth thing was decided rather than assumed and belongs here: **the predicate answers per PERIOD, not
+per statutory leg.** A filed Borang A strictly says nothing about a PCB increment, but splitting that way
+needs a map from report type to the legs it asserts, and no such map exists in this repo. Inventing one
+would be inventing the scope of someone else's form. Coarse errs toward refusing — and it has a cost step
+4 must own: a filed Borang A will block a legitimate PCB correction. UNKNOWN, recorded, not settled.
+
 ### 3.1 The seam already exists
 
 - `pay_period.status` is `open` or `closed`; `core/payroll.ts` ~1623 already refuses a new run on a
