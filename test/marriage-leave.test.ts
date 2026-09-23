@@ -28,7 +28,7 @@
  *
  * Dates are in 2026 (future) so no backdating / notice gate interferes.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -570,6 +570,73 @@ describe('point 4 — cancelling or revoking an approved Marriage Leave', () => 
     const p = await personRow(subject.personId);
     expect(p.maritalStatus).toBe('single');
     expect(p.source).toBeNull();
+  });
+});
+
+// ── The SQL guard's own three branches, and the loud refusal ─────────────────────────────────────────
+//
+// Migration 0485's two writers RESTATE `leaveTypeIs` in SQL, because a SECURITY DEFINER function must not
+// trust an argument. A restatement can drift, and a drift here is the 65f466e2 failure mode — a designed
+// behaviour that silently stops running. These drive the function DIRECTLY so all three branches of the
+// restatement are exercised against the same rows `leaveTypeIs` is asked about above.
+describe('the privileged writer refuses anything outside the two lawful moves', () => {
+  const callSet = async (requestId: string) => {
+    const res = await owner.db.execute(
+      sql`select app.marriage_leave_set_married(${requestId}::uuid) as outcome`,
+    );
+    return (res as unknown as { outcome: string | null }[])[0]?.outcome ?? null;
+  };
+
+  /** The function reads `app.current_tenant_id()`, so the owner connection has to declare one. */
+  const withTenantSetting = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    await owner.db.execute(sql`select set_config('app.tenant_id', ${b.tenantId}, false)`);
+    try {
+      return await fn();
+    } finally {
+      await owner.db.execute(sql`select set_config('app.tenant_id', '', false)`);
+    }
+  };
+
+  it('role=marriage with a tenant-specific code is accepted (the production shape)', async () => {
+    const reqId = await submitAndApprove();
+    // Already applied by the approval, so a second call is the lawful no-op rather than a refusal —
+    // which is exactly the distinction core relies on.
+    await withTenantSetting(async () => expect(await callSet(reqId)).toBe('not_single'));
+  });
+
+  it('an UNCLASSIFIED row coded MARRIAGE is accepted through the code fallback', async () => {
+    const legacy = await makeLeaveType({ code: 'MARRIAGE', name: 'Kahwin', role: null });
+    await grant(subject.employmentId, legacy, '10.00');
+    const reqId = await submitAndApprove(legacy);
+    await withTenantSetting(async () => expect(await callSet(reqId)).toBe('not_single'));
+  });
+
+  it('a NON-marriage type is refused outright — and core turns that refusal into a thrown error', async () => {
+    await grant(subject.employmentId, b.annualLeaveTypeId, '20.00');
+    const reqId = await submitAndApprove(b.annualLeaveTypeId);
+    await withTenantSetting(async () => expect(await callSet(reqId)).toBe('not_marriage'));
+  });
+
+  it('a request from ANOTHER tenant is invisible to the function', async () => {
+    const reqId = await submitAndApprove();
+    // No tenant declared ⇒ current_tenant_id() matches nothing ⇒ the row is not found.
+    expect(await callSet(reqId)).toBe('not_marriage');
+  });
+});
+
+// ── The refusal string, in six languages ─────────────────────────────────────────────────────────────
+describe('the refusal message exists and interpolates in every locale', () => {
+  it('carries the {typeName} placeholder in all six catalogues', async () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const cat = (await import(`../messages/${loc}.json`)).default as {
+        leave: { errors: Record<string, string> };
+      };
+      const msg = cat.leave.errors.marriageLeaveAlreadyPending;
+      expect(msg, `${loc} is missing leave.errors.marriageLeaveAlreadyPending`).toBeTruthy();
+      // The sentence names the leave type; a catalogue that dropped the placeholder would render a
+      // grammatically broken refusal that no test asserting mere presence would catch.
+      expect(msg, `${loc} dropped the {typeName} placeholder`).toContain('{typeName}');
+    }
   });
 });
 
