@@ -361,8 +361,10 @@ describe('C2. the rounding form survives the band ids CHURNING, because it is no
      * Source-shaped because the field NAME is what is under test, and a name is only observable in the
      * markup the page emits. The behavioural half is the case above.
      */
+    // 665de026 — the fields moved off the list page onto the per-group screen, so the source this case
+    // reads moved with them. The contract it pins is identical and still pinned across BOTH files.
     const page = readFileSync(
-      pathJoin(rootDir, 'app/admin/attendance/schedule/page.tsx'),
+      pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
       'utf8',
     );
     expect(page, 'the rounding select is keyed on the band boundary').toContain('roundingMode_${row.fromMinutes}');
@@ -448,11 +450,22 @@ describe('E. the before-shift overtime switch can be turned OFF from the tab', (
 });
 
 describe('F. a missing group refuses instead of writing against nothing', () => {
-  it('redirects back to the tab with a message', async () => {
+  /**
+   * 665de026 — THE ONE REFUSAL THAT STILL LANDS ON THE LIST, and it is the exception that proves the rule.
+   *
+   * Every other save on this screen now stays on the Schedule Group it was made from ("Saving KEEPS YOU
+   * WHERE YOU ARE with a confirmation"). This one cannot: the group named by the submission does not
+   * exist, so there is no record page to stay on — a redirect to `/admin/attendance/schedule/<gone>/edit`
+   * would answer a refusal with a second "this Schedule Group is not on the list" screen. It goes to the
+   * list, where the operator can pick a group that does exist, which is what the message tells them to do.
+   */
+  it('redirects to the LIST with a message, because the record it names is gone', async () => {
     const target = await captureRedirect(() =>
       saveScheduleGroupAttendanceAction(fd({ ruleId: '00000000-0000-0000-0000-000000000000' })),
     );
-    expect(target).toContain('/admin/attendance/schedule?tab=attendance');
-    expect(target).toContain('error=');
+    expect(target.startsWith('/admin/attendance/schedule?error='), target).toBe(true);
+    // Not onto a per-group page: that is the distinction this case exists to hold.
+    expect(target, 'no record path for a record that does not exist').not.toMatch(/\/schedule\/[^?]/);
+    expect(decodeURIComponent(target)).toContain('no longer exists');
   });
 });
