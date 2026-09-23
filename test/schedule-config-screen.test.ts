@@ -230,16 +230,37 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
         `control unless the storage behind it actually ships; when it does, raise that section as its own ` +
         `item and change this assertion with it, as r277 and 665de026 both did.`,
     ).toEqual(['attendance', 'general', 'overtime', 'workingDay']);
-    // Non-vacuity: a key in the built set that nothing renders would still pass the assertion above.
+    /**
+     * Non-vacuity, and it is asserted over the WIRING rather than over the declarations.
+     *
+     * A first pass of this case checked that `const <key> = ` existed for each built section. Measured
+     * against a real mutation — `workingDay: notBuilt('workingDay')` in the `bodyFor` map, with the
+     * `const workingDay` left in place — it PASSED while the section rendered the "not built yet" line.
+     * A section is built when the page renders it, not when a variable holding it exists, so the map is
+     * what is read.
+     */
     const sections = read('app/admin/attendance/schedule/group-sections.tsx');
+    const map = /const bodyFor: Record<ScheduleSectionKey, ReactNode> = \{([\s\S]*?)\n  \};/.exec(sections);
+    expect(map, 'group-sections.tsx no longer maps every section key to a body').not.toBeNull();
+    const wiring = Object.fromEntries(
+      map![1]
+        .split(',')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [k, v] = line.split(':');
+          return [k.trim(), (v ?? k).trim()];
+        }),
+    );
+    expect(Object.keys(wiring).sort(), 'every section key is wired').toEqual([...SCHEDULE_SECTION_KEYS].sort());
     for (const key of SCHEDULE_BUILT_SECTIONS) {
-      expect(sections, `the ${key} section is declared built and must actually render something`).toContain(
-        `const ${key} = `,
+      expect(wiring[key], `the ${key} section is declared built and must not render the "not built" line`).not.toMatch(
+        /notBuilt/,
       );
     }
-    // …and the three that are NOT built render the one honest sentence, through the shared helper.
+    // …and the ones that are NOT built render the one honest sentence, through the shared helper.
     for (const key of SCHEDULE_SECTION_KEYS.filter((k) => !SCHEDULE_BUILT_SECTIONS.includes(k as never))) {
-      expect(sections, `${key} is named and empty`).toContain(`${key}: notBuilt('${key}')`);
+      expect(wiring[key], `${key} is named and empty`).toBe(`notBuilt('${key}')`);
     }
     expect(sections, 'and "empty" is a sentence, not a blank card').toContain("t('notBuiltYet')");
   });

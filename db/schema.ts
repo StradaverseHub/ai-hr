@@ -3766,7 +3766,7 @@ export const attendanceRule = pgTable(
     // ⚠️ NULL / ALL-EMPTY IS A FIRST-CLASS VALUE AND MEANS "THIS GROUP DECLARES NO WEEK", which is what
     // every row written before 0483 holds and what the tenant's un-deletable is_default "Standard" rule
     // MUST keep holding: it is the fallback for every shift whose rule_id is NULL, so a week on it would
-    // be imposed on every ungrouped shift in the tenant. core/attendance.ts `weekPatternFor` resolves
+    // be imposed on every ungrouped shift in the tenant. core/week-pattern.ts `weekPatternFor` resolves
     // group-first, shift-second, and a group whose Full ∪ Half is empty deliberately DOES NOT WIN — see
     // that function and core/roster.ts assignEmployeeShift for the rest-day trap it exists to avoid.
     //

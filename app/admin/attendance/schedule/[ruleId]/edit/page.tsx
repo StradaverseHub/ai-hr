@@ -18,7 +18,11 @@ import { RULE_ID_RE, resolveSection } from '../../sections';
  * overtime ladder both want the extra room, and the ladder is the table r301's note said the cap existed
  * to protect.
  */
-const FORM_COLUMN = 'mx-auto max-w-5xl space-y-6';
+/* ⚠️ A STRING LITERAL, NOT A CONSTANT. test/attendance-screens-layout.test.ts reads className VALUES out
+ * of the source, and its own header records the limit: "a className composed through cn() or a variable
+ * escapes a source check like this one". Writing this as `className={FORM_COLUMN}` made all three pages
+ * silently uncovered — the guard passed by seeing no className at all. Measured, not assumed: the three
+ * cases failed with "expected 0 to be greater than 0" until the literal went back inline. */
 
 /**
  * EDIT SCHEDULE — one Schedule Group, editable, on a page of its own (feedback 665de026, r331).
@@ -70,7 +74,7 @@ export default async function EditScheduleGroupPage({
 
   if (!rule) {
     return (
-      <div className={FORM_COLUMN}>
+      <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader title={t('editTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
         <Card>
           <p className="p-4 text-sm text-muted-foreground">{t('groupGone')}</p>
@@ -80,7 +84,7 @@ export default async function EditScheduleGroupPage({
   }
 
   return (
-    <div className={FORM_COLUMN}>
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title={t('editTitle')}
         description={rule.name}

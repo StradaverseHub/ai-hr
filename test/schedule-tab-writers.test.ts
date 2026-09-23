@@ -46,6 +46,31 @@ vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => actionCtx) }));
 vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => actionCtx) }));
 vi.mock('next/navigation', () => ({ redirect: (p: string) => redirectSpy(p), notFound: vi.fn(() => undefined) }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
+/**
+ * 665de026 — these actions LOCALISE their confirmation before redirecting, so the module needs a
+ * translator. A REAL one over messages/en.json that THROWS on a missing or malformed message, the same
+ * mock test/r301-schedule-general.test.ts uses: a MISSING_MESSAGE or a FORMATTING_ERROR in a toast fails
+ * here rather than only showing up as a raw key in the operator's confirmation. Without it, next-intl
+ * resolves to its client build and every case in this file dies with "`getTranslations` is not supported
+ * in Client Components" — measured, not assumed.
+ */
+vi.mock('next-intl/server', async () => {
+  const { createTranslator } = await import('next-intl');
+  const { readFileSync: rf } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const messages = JSON.parse(rf(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
+  return {
+    getTranslations: async (ns: string | { namespace?: string }) =>
+      createTranslator({
+        locale: 'en',
+        messages,
+        namespace: (typeof ns === 'string' ? ns : ns?.namespace) as never,
+        onError: (e) => {
+          throw e;
+        },
+      }),
+  };
+});
 
 import { createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
 import {
