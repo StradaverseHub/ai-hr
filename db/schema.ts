@@ -3757,6 +3757,30 @@ export const attendanceRule = pgTable(
     // a closed payroll period cannot acquire one.
     applyDeductions: boolean('apply_deductions').notNull().default(false),
     deductionsEffectiveFrom: date('deductions_effective_from'),
+    // ── 07ebd04d (r331, migration 0483) · THE SCHEDULE GROUP'S WORKING WEEK ─────────────────────────
+    // The same four-way row `shift` carries since 0429, on the object that should have answered the
+    // question all along: the GROUP says WHICH DAYS are worked, the shift says WHAT HOURS are worked.
+    // Full = in weekly_pattern · Half = in half_pattern · Off = in off_pattern · Rest = in none of them
+    // (the complement, exactly as on `shift`). Pairwise disjoint by a DB CHECK, mirroring 0429's.
+    //
+    // ⚠️ NULL / ALL-EMPTY IS A FIRST-CLASS VALUE AND MEANS "THIS GROUP DECLARES NO WEEK", which is what
+    // every row written before 0483 holds and what the tenant's un-deletable is_default "Standard" rule
+    // MUST keep holding: it is the fallback for every shift whose rule_id is NULL, so a week on it would
+    // be imposed on every ungrouped shift in the tenant. core/attendance.ts `weekPatternFor` resolves
+    // group-first, shift-second, and a group whose Full ∪ Half is empty deliberately DOES NOT WIN — see
+    // that function and core/roster.ts assignEmployeeShift for the rest-day trap it exists to avoid.
+    //
+    // The write side is core/attendance-rule.ts normalizeInput (disjointness, ISO 1–7, and the refusal of
+    // a declared-but-unwalkable week), which is the half `weekPatternFor` cannot do.
+    weeklyPattern: integer('weekly_pattern').array(),
+    halfPattern: integer('half_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    offPattern: integer('off_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -3765,6 +3789,21 @@ export const attendanceRule = pgTable(
     // names tenant-wide (both replaced the per-company indexes from 0204).
     uniqueIndex('attendance_rule_tenant_default_uq').on(t.tenantId).where(sql`is_default`),
     uniqueIndex('attendance_rule_tenant_name_uq').on(t.tenantId, sql`lower(${t.name})`),
+    // 07ebd04d (0483) — the 0429 invariant, moved with the columns. COALESCE because weekly_pattern is
+    // nullable and one NULL would make the whole predicate NULL, silently un-constraining the table.
+    check(
+      'attendance_rule_day_kinds_disjoint',
+      sql`NOT (COALESCE(${t.weeklyPattern}, '{}') && ${t.halfPattern})
+          AND NOT (COALESCE(${t.weeklyPattern}, '{}') && ${t.offPattern})
+          AND NOT (${t.halfPattern} && ${t.offPattern})`,
+    ),
+    // 07ebd04d (0483) — a group that declares OFF days must declare at least one WORKING day. All three
+    // empty is legal ("no week"); an all-HALF week is legal (it is walkable). What is unrepresentable is
+    // a group that looks like it schedules a week and schedules nothing.
+    check(
+      'attendance_rule_off_needs_working_day',
+      sql`COALESCE(${t.weeklyPattern}, '{}') <> '{}' OR ${t.halfPattern} <> '{}' OR ${t.offPattern} = '{}'`,
+    ),
   ],
 );
 

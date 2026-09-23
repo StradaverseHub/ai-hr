@@ -2766,6 +2766,13 @@
       "when": 1789980192344,
       "tag": "0482_system_testing",
       "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1789980193344,
+      "tag": "0483_schedule_group_working_week",
+      "breakpoints": true
     }
   ]
 }

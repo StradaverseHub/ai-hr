@@ -24,7 +24,14 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan, weekPatternWorkingDayCount } from './attendance';
+import {
+  isWorkingDayKind,
+  netScheduledMinutes,
+  shiftDayKindFor,
+  shiftSpan,
+  weekLookupTx,
+  weekPatternWorkingDayCount,
+} from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
@@ -1279,6 +1286,18 @@ export class ShiftNotInScheduleGroupError extends Error {
  *
  * Pairs with a null shiftId (a rest day) are skipped — a rest day puts nobody on a shift.
  */
+/** 07ebd04d — one employment's SCHEDULE GROUP id (`employment.attendance_rule_id`), or null. Read on its
+ *  own rather than folded into a caller's select because the two walkability guards live in different
+ *  files and must ask the question the same way. */
+export async function groupRuleIdTx(tx: Tx, employmentId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ ruleId: employment.attendanceRuleId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return row?.ruleId ?? null;
+}
+
 export async function assertShiftsAllowedForEmploymentsTx(
   tx: Tx,
   pairs: readonly { employmentId: string; shiftId: string | null }[],
@@ -1715,6 +1734,10 @@ export async function assignEmployeeShift(
         archivedAt: shift.archivedAt,
         pattern: shift.weeklyPattern,
         halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        // 07ebd04d — the shift's Schedule Group, so the walkability test below asks about the week the
+        // ENGINE will actually use (migration 0483), not the one stored on the shift.
+        ruleId: shift.ruleId,
       })
       .from(shift)
       .where(eq(shift.id, shiftId))
@@ -1733,7 +1756,17 @@ export async function assignEmployeeShift(
     // several; now it is the floor, so the floor has to be walkable.
     // b8aa3466 — "has a working pattern" is now Full ∪ HALF: a shift that is all half days is perfectly
     // walkable, and refusing it would be a new false rejection. Off and Rest are still not working days.
-    if (workingDayCount(sh) === 0) throw new ShiftHasNoWorkingPatternError();
+    //
+    // 07ebd04d — AND THE WEEK THIS ASKS ABOUT IS THE RESOLVED ONE. Since migration 0483 a Schedule Group
+    // can carry the working week, and core/attendance.ts scheduleFor resolves the group's ahead of the
+    // shift's. A guard that kept reading only `shift.weekly_pattern` would refuse a shift that is
+    // perfectly walkable under its group — a FALSE rejection with no way for the operator to see why —
+    // while still failing to notice the case it exists for. The refusal itself is unchanged and is NOT
+    // loosened: what is refused is still "this person's unrostered days would ALL be rest days", asked of
+    // the week that decides them. Employee's group → shift's group → the tenant default, exactly the
+    // chain `ruleFor` uses.
+    const assignWeek = (await weekLookupTx(tx, (await groupRuleIdTx(tx, p.employmentId)), [sh.ruleId]))(sh.ruleId, sh);
+    if (weekPatternWorkingDayCount(assignWeek) === 0) throw new ShiftHasNoWorkingPatternError();
     // 870b79e2 — and the shift must be one the employee's Schedule Group allows. No group ⇒ no-op, which
     // is every employment at release. See assertShiftsAllowedForEmploymentsTx for why the refusal lives
     // here rather than on the form: this is one of four writers of "which shift is this person on".
@@ -2126,25 +2159,43 @@ export async function generateRosterFromTemplate(
   if (toMs < fromMs) throw new Error('The end date must not be before the start date');
   if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
 
-  const [tpl] = await withTenant(ctx, (tx) =>
-    tx
+  // 07ebd04d — the template's week is resolved through its SCHEDULE GROUP first (migration 0483). The
+  // generator writes a row for every date in the window, so if it split the month by the shift's own week
+  // while the engine measured each day against the group's, every generated rest row on a day the group
+  // calls working would be a rest day the engine never agreed to — and rest-day overtime is 2.0x.
+  // `weekPatternFor` hands back the shift's own week for any group that declares none, so a shift that has
+  // not been put into a pattern-carrying group generates exactly the month it generates today.
+  //
+  // The GROUP here is the SHIFT's (shift.rule_id), not any one employee's: this call generates for a whole
+  // department, and the group guard (assertShiftsAllowedForEmploymentsTx) already refuses an employment
+  // whose own group does not contain this shift, so on every assignment the system accepts the two agree.
+  const tpl = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
       .select({
         companyId: shift.companyId,
         weeklyPattern: shift.weeklyPattern,
         // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
         halfPattern: shift.halfPattern,
         offPattern: shift.offPattern,
+        ruleId: shift.ruleId,
         archivedAt: shift.archivedAt,
       })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
-      .limit(1),
-  );
+      .limit(1);
+    if (!row) return null;
+    const week = (await weekLookupTx(tx, null, [row.ruleId]))(row.ruleId, {
+      pattern: row.weeklyPattern,
+      halfPattern: row.halfPattern,
+      offPattern: row.offPattern,
+    });
+    return { ...row, ...week };
+  });
   if (!tpl) throw new Error('Shift not found (or not visible)');
   if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
   // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
   // would be a new false rejection introduced by the four-way row.
-  if (workingDayCount({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern }) === 0) {
+  if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
     throw new Error('This shift has no weekly working-day pattern — set one on the shift first');
   }
 
@@ -2175,7 +2226,7 @@ export async function generateRosterFromTemplate(
   const restDates: string[] = [];
   for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
     const iso = new Date(ms).toISOString().slice(0, 10);
-    const kind = shiftDayKindFor({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
+    const kind = shiftDayKindFor({ pattern: tpl.pattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
     (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
   }
 
@@ -2327,8 +2378,8 @@ export type UsualShiftRow = {
  */
 export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Promise<UsualShiftRow[]> {
   if (employmentIds.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         employmentId: employment.id,
         shiftId: shift.id,
@@ -2337,11 +2388,31 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         startTime: shift.startTime,
         endTime: shift.endTime,
         pattern: shift.weeklyPattern,
+        // 07ebd04d — the four-way row is read but NOT surfaced (see below), and the two Schedule Group
+        // columns the ghost cells must now resolve through (migration 0483).
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        shiftRuleId: shift.ruleId,
+        groupRuleId: employment.attendanceRuleId,
       })
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-      .where(inArray(employment.id, employmentIds)),
-  );
+      .where(inArray(employment.id, employmentIds));
+    // 07ebd04d — the ghost cells follow the SCHEDULE GROUP's week when it has one, the same chain
+    // scheduleFor uses (employee's group → shift's group → tenant default), so the grid cannot say OFF on
+    // a day the engine pays as work. One extra set-based read for the whole grid.
+    //
+    // ⚠️ WHAT THIS DELIBERATELY DOES NOT FIX: `UsualShift.pattern` is still the FULL-day list alone and
+    // lib/roster-month.ts resolveRosterCell still asks it a two-way question, so a HALF working day
+    // renders as OFF on the duty roster while the engine treats it as a working half day. That is a
+    // pre-existing display defect (it predates this item and is unchanged by it), it needs its own item,
+    // and widening the type here without changing the renderer would only move it.
+    const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
+    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => ({
+      ...r,
+      pattern: lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern }).pattern,
+    }));
+  });
 }
 
 /** One row of the month grid's pinned block. Every field comes from listEmployees, which already

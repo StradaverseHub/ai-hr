@@ -15,6 +15,10 @@
  * documented skips.
  */
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+// 07ebd04d (r331) — the group's WORKING WEEK. `weekPatternWorkingDayCount` is the ONE definition of
+// "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
+// precisely so this service can use it without a cycle through core/attendance.ts).
+import { weekPatternWorkingDayCount } from './week-pattern';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -63,6 +67,12 @@ export type ResolvedAttendanceRule = {
   applyDeductions: boolean;
   /** Stamped by the service on switch-on; deductions never exist for a date before it. */
   deductionsEffectiveFrom: string | null;
+  /** 07ebd04d (migration 0483) — THE SCHEDULE GROUP'S WORKING WEEK, the four-way row `shift` has carried
+   *  since 0429. Handed to core/week-pattern.ts `weekPatternFor` beside the shift's own triple; a group
+   *  whose Full ∪ Half is empty (which is every rule written before 0483, including the tenant's
+   *  un-deletable Standard rule) deliberately does NOT win, so the shift keeps answering and nothing
+   *  moves. Never read on its own — always through `weekPatternFor`. */
+  week: { pattern: number[] | null; halfPattern: number[]; offPattern: number[] };
   otRows: ResolvedOtRow[];
 };
 
@@ -156,6 +166,7 @@ const toResolved = (
   includeGraceInEarlyOut: rule.includeGraceInEarlyOut,
   applyDeductions: rule.applyDeductions,
   deductionsEffectiveFrom: rule.deductionsEffectiveFrom ?? null,
+  week: { pattern: rule.weeklyPattern, halfPattern: rule.halfPattern, offPattern: rule.offPattern },
   otRows: rows
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -392,6 +403,18 @@ export type AttendanceRuleInput = {
   name: string;
   description?: string | null;
   status?: 'active' | 'inactive';
+  /** 07ebd04d (migration 0483) — THE SCHEDULE GROUP'S WORKING WEEK: Full days, Half days, Off days, as
+   *  ISO weekdays (1=Mon … 7=Sun). Rest is the complement, exactly as on `shift`.
+   *
+   *  ⚠️ `undefined` MEANS "NOT SUPPLIED", NOT "EMPTY", and the difference is a group's whole schedule.
+   *  Every existing caller — the Schedule Group form in app/admin/attendance-policy/rules — posts none
+   *  of these three, and an update that read `undefined` as `[]` would wipe the working week off a group
+   *  the migration had just given one to, silently making every day a rest day for everybody in it.
+   *  `updateAttendanceRule` therefore writes these columns only when at least one of the three is
+   *  present; supplying all three as empty arrays is how a week is deliberately cleared. */
+  weeklyPattern?: number[] | null;
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
   lateGracePeriodMinutes: number;
   lateAfterMinutes: number;
   lateDeductMinutes: number;
@@ -406,6 +429,76 @@ export type AttendanceRuleInput = {
   applyDeductions?: boolean;
   otRows: OtRowInput[];
 };
+
+/**
+ * 07ebd04d — THE WRITE-SIDE HALF OF `weekPatternFor`, and the reason it exists.
+ *
+ * core/week-pattern.ts `weekPatternFor` resolves a group's week ahead of a shift's, but refuses to let a
+ * group with NO working day win — because a pattern that matches nothing falls through to
+ * policyBranch('rest_day') and would book every working day as a rest day, paying rest-day overtime on
+ * ordinary work with no error anywhere (core/roster.ts assignEmployeeShift records the same trap for a
+ * backup shift). That read-side fallback keeps a broken group harmless, which is exactly why the broken
+ * group must be refused HERE: otherwise the fallback quietly papers over it forever and nobody learns
+ * that the week they typed is not the week being used.
+ *
+ * Three rules, and they are the three `shift` has carried since migration 0429 (core/roster.ts
+ * normalizeShiftInput + the 0429 CHECK), now stated for the group as well:
+ *   1. every entry is an ISO weekday 1–7, deduplicated and sorted (so two saves of the same week are the
+ *      same row, and a report cannot print the same group two different ways);
+ *   2. the three lists are PAIRWISE DISJOINT — they are a partition of the week, and a Saturday in two of
+ *      them has no answer;
+ *   3. a group that declares ANY of the three must declare at least one WORKING day (Full ∪ Half — see
+ *      weekPatternWorkingDayCount; an all-half week is walkable and must not be rejected).
+ *
+ * ALL THREE EMPTY IS LEGAL AND IS NOT A SCHEDULE GROUP'S WEEK: it means "this rule states no working
+ * week", which is what every rule written before 0483 holds and what the tenant's un-deletable
+ * is_default "Standard" rule must keep holding — it is the rule every shift with no `rule_id` resolves,
+ * so a week on it would be imposed on every ungrouped shift in the tenant. Refusing the empty case would
+ * make that rule uneditable and would be the more dangerous guard.
+ */
+const isoWeekdayList = (v: number[] | null | undefined, label: string): number[] => {
+  const out = new Set<number>();
+  for (const raw of v ?? []) {
+    const d = Math.trunc(Number(raw));
+    if (!Number.isFinite(d) || d < 1 || d > 7) {
+      throw new Error(`${label} must be weekdays 1–7 (1 = Monday … 7 = Sunday).`);
+    }
+    out.add(d);
+  }
+  return [...out].sort((a, b) => a - b);
+};
+
+export function normalizeWeekPattern(p: {
+  weeklyPattern?: number[] | null;
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
+}): { weeklyPattern: number[] | null; halfPattern: number[]; offPattern: number[] } {
+  const full = isoWeekdayList(p.weeklyPattern, 'Working days');
+  const half = isoWeekdayList(p.halfPattern, 'Half-day weekdays');
+  const off = isoWeekdayList(p.offPattern, 'Off-day weekdays');
+  const clash = (a: number[], b: number[]) => a.find((d) => b.includes(d));
+  for (const [a, b, msg] of [
+    [full, half, 'a full working day and a half day'],
+    [full, off, 'a full working day and an off day'],
+    [half, off, 'a half day and an off day'],
+  ] as const) {
+    const d = clash(a, b);
+    if (d != null) {
+      throw new Error(`Weekday ${d} cannot be both ${msg}. Each day of the week belongs to exactly one list.`);
+    }
+  }
+  const declared = full.length > 0 || half.length > 0 || off.length > 0;
+  if (declared && weekPatternWorkingDayCount({ pattern: full, halfPattern: half }) === 0) {
+    throw new Error(
+      'This Schedule Group states a working week with no working day in it, so everybody in it would be treated as resting every day of the week. Tick at least one full or half working day, or leave the whole week blank to let each shift keep its own.',
+    );
+  }
+  // NULL rather than [] whenever no FULL day is declared: `shift.weekly_pattern` is nullable and the two
+  // mean the same thing to `shiftDayKindFor`, so an all-half week must store NULL exactly as an all-half
+  // SHIFT does. `declared` is used only to decide whether the week was stated at all, not what is stored.
+  void declared;
+  return { weeklyPattern: full.length > 0 ? full : null, halfPattern: half, offPattern: off };
+}
 
 const nonNeg = (v: number, label: string): number => {
   const n = Math.trunc(Number(v));
@@ -516,10 +609,17 @@ function normalizeInput(p: AttendanceRuleInput) {
       `Early out: “after ${earlyAfter} minutes” cannot be larger than “deduct ${earlyDeduct} minutes”. Raise the deduction or lower the interval.`,
     );
   }
+  // 07ebd04d — the week is normalized and refused HERE, beside the OT ladder and the deduction pairs, so
+  // that every writer of a Schedule Group goes through one validation. `hasWeekInput` is what keeps a
+  // caller that never mentions the week from wiping it — see AttendanceRuleInput.
+  const hasWeekInput = p.weeklyPattern !== undefined || p.halfPattern !== undefined || p.offPattern !== undefined;
+  const week = normalizeWeekPattern(p);
   return {
     name,
     description: p.description?.trim() || null,
     status,
+    hasWeekInput,
+    week,
     lateGracePeriodMinutes: nonNeg(p.lateGracePeriodMinutes, 'Lateness grace period'),
     lateAfterMinutes: lateAfter,
     lateDeductMinutes: lateDeduct,
@@ -585,6 +685,13 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
           applyToEarlyOt: n.applyToEarlyOt,
           applyDeductions: n.applyDeductions,
           deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, null),
+          // 07ebd04d — THE WORKING WEEK IS WRITTEN IN THE SAME STATEMENT THAT CREATES THE GROUP, never in
+          // a follow-up UPDATE: a group row that exists for even one statement with no week is a group
+          // that schedules nothing for everyone in it (see normalizeWeekPattern). Migration 0483 creates
+          // the three split groups under exactly the same rule.
+          weeklyPattern: n.week.weeklyPattern,
+          halfPattern: n.week.halfPattern,
+          offPattern: n.week.offPattern,
         })
         .returning({ id: attendanceRule.id });
       ruleId = row.id;
@@ -648,6 +755,12 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
           applyToEarlyOt: n.applyToEarlyOt,
           applyDeductions: n.applyDeductions,
           deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, before ?? null),
+          // 07ebd04d — ONLY when the caller actually said something about the week. The Schedule Group
+          // form posts no day fields, and spreading a normalized-from-nothing week here would clear the
+          // working week off every group the migration gave one to, the first time anyone renamed one.
+          ...(n.hasWeekInput
+            ? { weeklyPattern: n.week.weeklyPattern, halfPattern: n.week.halfPattern, offPattern: n.week.offPattern }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(attendanceRule.id, p.ruleId));
@@ -741,6 +854,12 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
           applyToEarlyOt: src.applyToEarlyOt,
           applyDeductions: src.applyDeductions,
           deductionsEffectiveFrom: resolveDeductionStart(src.applyDeductions, null),
+          // 07ebd04d — the WORKING WEEK travels with the copy, like the OT bands below and for the same
+          // reason: a duplicate of a Schedule Group that scheduled Mon–Sat but schedules nothing is not a
+          // duplicate. In the same statement, never a follow-up UPDATE (see createAttendanceRule).
+          weeklyPattern: src.weeklyPattern,
+          halfPattern: src.halfPattern,
+          offPattern: src.offPattern,
         })
         .returning({ id: attendanceRule.id });
       ruleId = row.id;
