@@ -169,13 +169,19 @@ describe('72b100cd · one writer of pcb_payment, imported by both screens', () =
    * is a second definition of what a recorded payment IS — a second trim rule, a second period check, a
    * second event. The upsert in core/pcb-payment.ts is the only one.
    */
-  it('exactly ONE module inserts or updates the table', () => {
+  it('exactly ONE module inserts or updates the table, and it writes exactly once', () => {
     const writers = sources().filter((f) =>
       /\.(insert|update)\(\s*(schema\.)?pcbPayment\b/.test(code(read(f))),
     );
     expect(writers, `unexpected writer(s) of pcb_payment:\n${writers.join('\n')}`).toEqual([
       'core/pcb-payment.ts',
     ]);
+    // …and ONCE inside it. A second statement in the one writer is the same defect a file away: the
+    // upsert is the whole contract (one box per company, month and stream), so a plain insert beside it
+    // would be a path that appends where the form can only print one.
+    const service = code(read('core/pcb-payment.ts'));
+    expect(service.match(/\.(insert|update)\(\s*pcbPayment\b/g)).toHaveLength(1);
+    expect(service, 'and that one write is the upsert').toMatch(/onConflictDoUpdate/);
   });
 
   /** And exactly one module under app/ calls it — the shared server action, not a screen. */
