@@ -1,0 +1,274 @@
+<meta charset="utf-8">
+<title>Payslip redesign — answering the four points</title>
+<!--
+  a96d320c revision 3, drawn against the contest of 2026-09-23 and measured in lib/payslip-pdf.ts.
+  1. The header number is company.registration_no, printed unlabelled at payslip-pdf.ts:1052 in 8pt MUTED.
+     Production: only 2 of 5 companies have one at all (KERJAYA RIANG 201901024512, CHIN HIN 1387396-A).
+  2. The ruled grid is drawGrid (:1121), which a96d320c ITSELF introduced (:1081 "the identity fields sit
+     in a RULED GRID, not in loose label-over-value pairs"). The contest asks for that to be undone.
+     Its odd-cell case also leaves a ruled void: 46 of 84 employments, 17 of the 48 ever paid.
+  3. flowPair (:~880) paints each side with its own planBox, so each TOTAL sits at the bottom of ITS OWN
+     content; `used = Math.max(...)` aligns only the top and the advance. Earnings has more rows than
+     Deductions, so the totals land at different heights. That is the misalignment.
+  4. Non-payable ALREADY EXISTS and already renders — nonPayableLines (:205, :423), nonPayableRows (:780),
+     nonPayableTotal (:784) — but full width BELOW Net Pay. Production: 0 of 87 payslips carry a
+     nonPayable:true line, so no one has ever seen it. This is relocation + a rename, not new capability.
+  Colours are the file's own: PRIMARY #4F46E5, RULE #D9DAE6, HAIR #EFF0F7, MUTED #63636F. Nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--hair:#eff0f7;--primary:#4f46e5;
+       --border:#c9cad6;--earn:#1b7f5a;--ded:#b0413e}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1180px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 20px;font-size:12.5px;color:var(--mf)}
+ .pt{margin-bottom:20px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .pt>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .pt>h2 b{color:var(--primary)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:0}
+ .side{padding:14px}
+ .side+.side{border-left:1px dashed var(--border)}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mf);margin-bottom:9px}
+ .tag.b{color:#a8453a}.tag.a{color:#1f7a52}
+ .paper{border:1px solid var(--rule);border-radius:4px;padding:11px 12px;background:#fff}
+ .co{font-size:12px;font-weight:700}
+ .coaddr{font-size:8.5px;color:var(--mf);margin-top:2px}
+ .regno{font-size:8.5px;color:var(--mf);margin-top:2px}
+ .strike{background:#fdecea;color:#a8453a;font-weight:700;padding:0 3px;border-radius:2px}
+ .nm{font-size:13px;font-weight:700}
+ .cd{font-size:8.5px;color:var(--mf);margin-bottom:8px}
+ .grid{border:1px solid var(--rule);display:grid;grid-template-columns:1fr 1fr;margin-top:6px}
+ .cell{padding:5px 6px;min-height:28px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+ .cell:nth-child(2n){border-right:none}
+ .cell .k{font-size:6.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf)}
+ .cell .v{font-size:9px;font-weight:700;margin-top:1px}
+ .void{background:repeating-linear-gradient(135deg,#fdf6f5,#fdf6f5 5px,#fbeeec 5px,#fbeeec 10px);position:relative}
+ .void i{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:7.5px;font-weight:700;color:#b04a3c}
+ .clean{margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:7px 20px}
+ .cl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-bottom:3px}
+ .cl .k{font-size:8px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);white-space:nowrap}
+ .cl .v{font-size:9.5px;font-weight:700;text-align:right}
+ .hr{border:0;border-top:1px solid var(--rule);margin:9px 0 0}
+ .cols{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:4px}
+ .box{border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+ .bt{font-size:7.5px;font-weight:700;letter-spacing:.06em;padding:4px 7px;background:#f6f7fb;border-bottom:1px solid var(--hair);color:var(--mf)}
+ .r{display:flex;justify-content:space-between;padding:2.5px 7px;font-size:8.5px}
+ .r span:last-child{font-weight:600}
+ .tot{display:flex;justify-content:space-between;padding:5px 7px;font-size:9px;font-weight:700;border-top:1px solid var(--rule);margin-top:2px}
+ .tot.e{color:var(--earn)}.tot.d{color:var(--ded)}
+ .spacer{height:0}
+ .net{background:var(--primary);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:8px 11px;border-radius:3px;margin-top:9px;font-size:10px;font-weight:700}
+ .net b{font-size:13px}
+ .cap{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.5}
+ .cap b{color:var(--fg)}
+ .cap.bad{color:#8a3d33}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Payslip &mdash; answering your four points</h1>
+  <p class="sub">Each pair below is the same part of the payslip, before and after. Measured against your live data.</p>
+
+  <!-- POINT 1 -->
+  <div class="pt">
+    <h2><b>1.</b> Remove the unidentified number from the header</h2>
+    <div class="pair">
+      <div class="side">
+        <div class="tag b">Before</div>
+        <div class="paper">
+          <div class="co">KERJAYA RIANG SDN BHD</div>
+          <div class="regno"><span class="strike">201901024512</span></div>
+          <div class="coaddr">No. 12, Jalan Perusahaan 3, 43300 Seri Kembangan, Selangor</div>
+        </div>
+        <p class="cap bad"><b>It is your company registration number</b> &mdash; printed with no label, so it
+          reads as a stray reference. Only 2 of your 5 companies have one recorded, so it appears on some
+          payslips and not others.</p>
+      </div>
+      <div class="side">
+        <div class="tag a">After</div>
+        <div class="paper">
+          <div class="co">KERJAYA RIANG SDN BHD</div>
+          <div class="coaddr">No. 12, Jalan Perusahaan 3, 43300 Seri Kembangan, Selangor</div>
+        </div>
+        <p class="cap">Gone, as you asked. Now you know what it was: if you ever want it back for EPF or
+          SOCSO reconciliation we would put it back <b>with a label</b> &mdash; never bare.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- POINT 2 -->
+  <div class="pt">
+    <h2><b>2.</b> Employee information &mdash; fewer borders, cleaner alignment</h2>
+    <div class="pair">
+      <div class="side">
+        <div class="tag b">Before</div>
+        <div class="paper">
+          <div class="nm">Nurul Aisyah binti Rahman</div>
+          <div class="cd">EMPLOYEE ID: EMP-0142</div>
+          <div class="grid">
+            <div class="cell"><div class="k">IC No.</div><div class="v">880214-10-5566</div></div>
+            <div class="cell"><div class="k">Income Tax No.</div><div class="v">SG 10234567090</div></div>
+            <div class="cell"><div class="k">EPF No.</div><div class="v">12345678</div></div>
+            <div class="cell void"><i>empty box</i></div>
+          </div>
+        </div>
+        <p class="cap bad">Every field boxed, and an odd number of them leaves a ruled hole.
+          <b>46 of your 84 employees print that hole.</b> We added this grid last round &mdash; so this is us
+          undoing our own change.</p>
+      </div>
+      <div class="side">
+        <div class="tag a">After</div>
+        <div class="paper">
+          <div class="nm">Nurul Aisyah binti Rahman</div>
+          <div class="cd">EMPLOYEE ID: EMP-0142</div>
+          <hr class="hr">
+          <div class="clean">
+            <div class="cl"><span class="k">IC No.</span><span class="v">880214-10-5566</span></div>
+            <div class="cl"><span class="k">Income Tax No.</span><span class="v">SG 10234567090</span></div>
+            <div class="cl"><span class="k">EPF No.</span><span class="v">12345678</span></div>
+          </div>
+        </div>
+        <p class="cap">No boxes at all. Labels left, values right, on a shared line so the eye can run down
+          them. One hairline separates the name from the numbers. <b>Nothing recorded is dropped, and a
+          missing number simply takes no space</b> &mdash; so the hole cannot happen.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- POINT 3 -->
+  <div class="pt">
+    <h2><b>3.</b> Align Total Earnings with Total Deductions</h2>
+    <div class="pair">
+      <div class="side">
+        <div class="tag b">Before</div>
+        <div class="cols">
+          <div class="box">
+            <div class="bt">EARNINGS</div>
+            <div class="r"><span>Basic Salary</span><span>4,500.00</span></div>
+            <div class="r"><span>Travel Allowance</span><span>300.00</span></div>
+            <div class="r"><span>Shift Allowance</span><span>180.00</span></div>
+            <div class="r"><span>Overtime</span><span>246.50</span></div>
+            <div class="r"><span>Attendance Bonus</span><span>150.00</span></div>
+            <div class="tot e"><span>TOTAL EARNINGS</span><span>5,376.50</span></div>
+          </div>
+          <div class="box" style="align-self:start">
+            <div class="bt">DEDUCTIONS</div>
+            <div class="r"><span>EPF Employee</span><span>592.00</span></div>
+            <div class="r"><span>SOCSO Employee</span><span>19.75</span></div>
+            <div class="tot d"><span>TOTAL DEDUCTIONS</span><span>611.75</span></div>
+          </div>
+        </div>
+        <p class="cap bad">The two totals sit at <b>different heights</b>, because each box is only as tall as
+          its own rows. You cannot read one against the other.</p>
+      </div>
+      <div class="side">
+        <div class="tag a">After</div>
+        <div class="cols">
+          <div class="box">
+            <div class="bt">EARNINGS</div>
+            <div class="r"><span>Basic Salary</span><span>4,500.00</span></div>
+            <div class="r"><span>Travel Allowance</span><span>300.00</span></div>
+            <div class="r"><span>Shift Allowance</span><span>180.00</span></div>
+            <div class="r"><span>Overtime</span><span>246.50</span></div>
+            <div class="r"><span>Attendance Bonus</span><span>150.00</span></div>
+            <div class="tot e"><span>TOTAL EARNINGS</span><span>5,376.50</span></div>
+          </div>
+          <div class="box">
+            <div class="bt">DEDUCTIONS</div>
+            <div class="r"><span>EPF Employee</span><span>592.00</span></div>
+            <div class="r"><span>SOCSO Employee</span><span>19.75</span></div>
+            <div class="r" style="visibility:hidden"><span>&nbsp;</span><span>&nbsp;</span></div>
+            <div class="r" style="visibility:hidden"><span>&nbsp;</span><span>&nbsp;</span></div>
+            <div class="r" style="visibility:hidden"><span>&nbsp;</span><span>&nbsp;</span></div>
+            <div class="tot d"><span>TOTAL DEDUCTIONS</span><span>611.75</span></div>
+          </div>
+        </div>
+        <p class="cap">The shorter box grows to match, so both totals land on <b>one baseline</b>. Same label
+          position, same number alignment, same rule above. The blank space is empty, not ruled &mdash; no new
+          boxes.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- POINT 4 -->
+  <div class="pt">
+    <h2><b>4.</b> An &ldquo;Other&rdquo; column for non-payable amounts, beside Employer Contributions</h2>
+    <div class="pair">
+      <div class="side">
+        <div class="tag b">Before</div>
+        <div class="cols">
+          <div class="box">
+            <div class="bt">EMPLOYER CONTRIBUTIONS</div>
+            <div class="r"><span>EPF Employer</span><span>765.00</span></div>
+            <div class="r"><span>SOCSO Employer</span><span>69.15</span></div>
+            <div class="r"><span>EIS Employer</span><span>10.50</span></div>
+            <div class="tot"><span>TOTAL EMPLOYER COST</span><span>844.65</span></div>
+          </div>
+          <div class="box">
+            <div class="bt">PAYMENT INFORMATION</div>
+            <div class="r"><span>Method</span><span>Bank Transfer</span></div>
+            <div class="r"><span>Bank</span><span>Maybank</span></div>
+            <div class="r"><span>Account</span><span>5124 8890 1123</span></div>
+          </div>
+        </div>
+        <div class="net"><span>NET PAY</span><b>RM 4,764.75</b></div>
+        <div class="box" style="margin-top:9px">
+          <div class="bt">NON-PAYABLE</div>
+          <div class="r"><span>Company Car (BIK)</span><span>600.00</span></div>
+        </div>
+        <p class="cap bad">It already exists &mdash; but <b>full width, below Net Pay</b>, which is the last place
+          you look. <b>And no payslip you have ever issued contains one</b> (0 of 87), so you have never seen it.</p>
+      </div>
+      <div class="side">
+        <div class="tag a">After</div>
+        <div class="cols">
+          <div class="box">
+            <div class="bt">EMPLOYER CONTRIBUTIONS</div>
+            <div class="r"><span>EPF Employer</span><span>765.00</span></div>
+            <div class="r"><span>SOCSO Employer</span><span>69.15</span></div>
+            <div class="r"><span>EIS Employer</span><span>10.50</span></div>
+            <div class="tot"><span>TOTAL EMPLOYER COST</span><span>844.65</span></div>
+          </div>
+          <div class="box">
+            <div class="bt">OTHER &mdash; NOT PAID THIS RUN</div>
+            <div class="r"><span>Company Car (BIK)</span><span>600.00</span></div>
+            <div class="r" style="visibility:hidden"><span>&nbsp;</span><span>&nbsp;</span></div>
+            <div class="r" style="visibility:hidden"><span>&nbsp;</span><span>&nbsp;</span></div>
+            <div class="tot"><span>TOTAL OTHER</span><span>600.00</span></div>
+          </div>
+        </div>
+        <div class="cols" style="margin-top:9px">
+          <div class="box">
+            <div class="bt">PAYMENT INFORMATION</div>
+            <div class="r"><span>Method</span><span>Bank Transfer</span></div>
+            <div class="r"><span>Bank</span><span>Maybank</span></div>
+            <div class="r"><span>Account</span><span>5124 8890 1123</span></div>
+          </div>
+          <div></div>
+        </div>
+        <div class="net"><span>NET PAY</span><b>RM 4,764.75</b></div>
+        <p class="cap">Beside Employer Contributions, as you suggested, and <b>only when there is one</b>.
+          When there is none the payslip is exactly as it is today. Not counted in Total Earnings and not in
+          Net Pay &mdash; its heading says so out loud.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Two things we want to flag before you approve</h3>
+    <p><b>We are NOT removing zero statutory rows.</b> You asked for excessive zero-value rows to go. For
+      ordinary pay items we agree and they are already gone. But EPF, SOCSO and EIS at 0.00 is the payslip
+      telling the employee that nothing was contributed this month &mdash; delete the row and the document
+      goes silent about a statutory figure. We would rather show 0.00 than say nothing. Tell us if you
+      disagree and we will change it.</p>
+    <p><b>We are not building the four-across grid literally.</b> Your suggested structure put Earnings,
+      Deductions, Employer Contributions and Other side by side in one row. On A4 that gives each column
+      about 32mm, and a name like &ldquo;Construction Project Management Allowance&rdquo; would wrap to four
+      lines &mdash; which is the clipping problem you raised with us before. Two across, in two bands, keeps
+      the pairing you asked for and keeps the names readable.</p>
+  </div>
+</div>
