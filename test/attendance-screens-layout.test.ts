@@ -120,9 +120,16 @@ const WIDE_LIST_SCREENS = [
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
 const NARROW_FORM_SCREENS = [
-  // r301 — still one column, and still capped: it renders as a panel on the Schedule screen now, where the cap
-  // keeps the ladder table at the width it was designed for on a wide monitor.
-  'app/admin/attendance-policy/rules/rule-form.tsx',
+  // 665de026 (r331) — 'app/admin/attendance-policy/rules/rule-form.tsx' STOOD HERE, and its entry is
+  // REPOINTED rather than dropped, exactly as 6340aecb repointed the shift form's and r301 repointed the
+  // work-schedule page's. The form capped itself while it drew its own page chrome; it is a SECTION of
+  // Add Schedule and Edit Schedule now, so the cap moved up to the three pages below — otherwise a 3xl
+  // form would sit inside a full-width page beside wider sections, which is the mismatch, not the fix.
+  // af7a8eb4's property is unchanged and is asserted on the file that now owns the width. The form's own
+  // one-column shape is still pinned, positively, by the case at the foot of this file.
+  'app/admin/attendance/schedule/new/page.tsx',
+  'app/admin/attendance/schedule/[ruleId]/page.tsx',
+  'app/admin/attendance/schedule/[ruleId]/edit/page.tsx',
   // 6d091cc0 (r301) — 'app/admin/attendance-policy/schedule/page.tsx' STOOD HERE. It is a redirect stub; the
   // stack of paired time inputs it capped is the Company Policy Settings Edit panel (a card inside the panel
   // column), and the rest of that page is the Work Schedule & Overtime Rates card.
@@ -230,6 +237,26 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     // over each page.tsx source, so the call has to be literally there.
     expect(read('app/admin/attendance/new/page.tsx')).toContain('requireAdmin()');
     expect(read('app/admin/attendance/[shiftId]/page.tsx')).toContain('requireAdmin()');
+  });
+
+  /**
+   * 665de026 — THE OTHER HALF OF MOVING rule-form.tsx's CAP UP A LEVEL.
+   *
+   * Taking the `mx-auto max-w-3xl` off the form would be a silent full-width regression if the pages that
+   * mount it ever lost their own cap — NARROW_FORM_SCREENS above catches that. This case catches the
+   * opposite drift: the form growing a second `PageHeader` again. It drew one until this round, which on
+   * r301's panel meant a second `<h1>` inside a page that already had one, and a back link pointing at a
+   * redirect stub. The page owns the chrome; the form owns the fields.
+   */
+  it('the rule form draws no page chrome of its own — the page it is mounted on does (665de026)', () => {
+    const form = read('app/admin/attendance-policy/rules/rule-form.tsx');
+    expect(form, 'no second <h1> inside a page that already has one').not.toContain('<PageHeader');
+    expect(classNameLiterals(form).filter(capsPage), 'and no page-level cap of its own — it lives on the pages now').toEqual([]);
+    // Positively: both mounts exist and both are in NARROW_FORM_SCREENS above, so the reading width is
+    // still asserted somewhere — this case cannot pass by the form simply not being rendered anywhere.
+    for (const mount of ['app/admin/attendance/schedule/new/page.tsx', 'app/admin/attendance/schedule/group-sections.tsx']) {
+      expect(read(mount), `${mount} mounts the rule form`).toContain('<RuleForm');
+    }
   });
 
   it('the rule list no longer renders the company work schedule', () => {

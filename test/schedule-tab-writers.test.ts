@@ -46,6 +46,31 @@ vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => actionCtx) }));
 vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => actionCtx) }));
 vi.mock('next/navigation', () => ({ redirect: (p: string) => redirectSpy(p), notFound: vi.fn(() => undefined) }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
+/**
+ * 665de026 — these actions LOCALISE their confirmation before redirecting, so the module needs a
+ * translator. A REAL one over messages/en.json that THROWS on a missing or malformed message, the same
+ * mock test/r301-schedule-general.test.ts uses: a MISSING_MESSAGE or a FORMATTING_ERROR in a toast fails
+ * here rather than only showing up as a raw key in the operator's confirmation. Without it, next-intl
+ * resolves to its client build and every case in this file dies with "`getTranslations` is not supported
+ * in Client Components" — measured, not assumed.
+ */
+vi.mock('next-intl/server', async () => {
+  const { createTranslator } = await import('next-intl');
+  const { readFileSync: rf } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const messages = JSON.parse(rf(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
+  return {
+    getTranslations: async (ns: string | { namespace?: string }) =>
+      createTranslator({
+        locale: 'en',
+        messages,
+        namespace: (typeof ns === 'string' ? ns : ns?.namespace) as never,
+        onError: (e) => {
+          throw e;
+        },
+      }),
+  };
+});
 
 import { createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
 import {
@@ -361,8 +386,10 @@ describe('C2. the rounding form survives the band ids CHURNING, because it is no
      * Source-shaped because the field NAME is what is under test, and a name is only observable in the
      * markup the page emits. The behavioural half is the case above.
      */
+    // 665de026 — the fields moved off the list page onto the per-group screen, so the source this case
+    // reads moved with them. The contract it pins is identical and still pinned across BOTH files.
     const page = readFileSync(
-      pathJoin(rootDir, 'app/admin/attendance/schedule/page.tsx'),
+      pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
       'utf8',
     );
     expect(page, 'the rounding select is keyed on the band boundary').toContain('roundingMode_${row.fromMinutes}');
@@ -448,11 +475,22 @@ describe('E. the before-shift overtime switch can be turned OFF from the tab', (
 });
 
 describe('F. a missing group refuses instead of writing against nothing', () => {
-  it('redirects back to the tab with a message', async () => {
+  /**
+   * 665de026 — THE ONE REFUSAL THAT STILL LANDS ON THE LIST, and it is the exception that proves the rule.
+   *
+   * Every other save on this screen now stays on the Schedule Group it was made from ("Saving KEEPS YOU
+   * WHERE YOU ARE with a confirmation"). This one cannot: the group named by the submission does not
+   * exist, so there is no record page to stay on — a redirect to `/admin/attendance/schedule/<gone>/edit`
+   * would answer a refusal with a second "this Schedule Group is not on the list" screen. It goes to the
+   * list, where the operator can pick a group that does exist, which is what the message tells them to do.
+   */
+  it('redirects to the LIST with a message, because the record it names is gone', async () => {
     const target = await captureRedirect(() =>
       saveScheduleGroupAttendanceAction(fd({ ruleId: '00000000-0000-0000-0000-000000000000' })),
     );
-    expect(target).toContain('/admin/attendance/schedule?tab=attendance');
-    expect(target).toContain('error=');
+    expect(target.startsWith('/admin/attendance/schedule?error='), target).toBe(true);
+    // Not onto a per-group page: that is the distinction this case exists to hold.
+    expect(target, 'no record path for a record that does not exist').not.toMatch(/\/schedule\/[^?]/);
+    expect(decodeURIComponent(target)).toContain('no longer exists');
   });
 });

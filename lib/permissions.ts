@@ -694,6 +694,20 @@ export const SCREENS: readonly ScreenEntry[] = [
     // guard is scopedSession — function-access checks guard-derived access in both directions, and
     // registering an admin-only page under scopedSession would tell every role it can reach it.
     // Registered in the SAME commit as its page.tsx; the test fails in both directions.
+    // 665de026 (r331): '/admin/attendance/schedule/new', '/admin/attendance/schedule/[ruleId]' and
+    // '/admin/attendance/schedule/[ruleId]/edit' — Add Schedule, View Schedule and Edit Schedule. The
+    // reporter contested r301's shape (one page carrying every Schedule Group's settings at once), so
+    // Schedule is list + detail now, exactly as schedule-assignment became in r265 after its own panel was
+    // contested. All three call requireAdmin, the same guard and the same admin surface as the list they
+    // hang off, so they RIDE this column rather than minting a screen key — a record's own page is not a
+    // second screen, exactly as '[employmentId]' rides here and '[shiftId]' does below. 'new' is a STATIC
+    // segment and Next resolves it ahead of the '[ruleId]' sibling either way. Registered in the SAME
+    // commit as the three page.tsx files: test/function-access.test.ts fails in BOTH directions, so
+    // neither half may land alone.
+    //
+    // The four '/admin/attendance-policy/...' routes stay on `attendancePolicyConfig` below, still as
+    // requireAdmin() redirect stubs — repointed at these three addresses, not deleted. A screenKey is a
+    // permission identity and removing one silently revokes every grant that names it.
     // 8cd601d0 (r329): '/admin/attendance/schedule-assignment/bulk' — putting MANY employments in a
     // Schedule Group in one action, which is what makes r277's allowed-shift refusal bite (1 of 75
     // production employments was in a group; the guard is a no-op on an employment that is in none).
@@ -710,6 +724,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/card-assignment',
       '/admin/attendance/new',
       '/admin/attendance/schedule',
+      '/admin/attendance/schedule/new',
+      '/admin/attendance/schedule/[ruleId]',
+      '/admin/attendance/schedule/[ruleId]/edit',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance/schedule-assignment/bulk',
       '/admin/attendance/schedule-assignment/[employmentId]',
