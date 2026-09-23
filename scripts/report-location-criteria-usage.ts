@@ -120,7 +120,12 @@ import { writeFileSync } from 'node:fs';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 
 import { createDb } from '../db/client';
-import { asOfForLeaveYear } from '../core/leave';
+// ADR-0080 D9 — through the PACK FACADE, not core/leave. The drift ratchet
+// (test/leave-pack-drift.test.ts) refuses a NEW file importing the leave pack's implementation
+// directly, and its allowlist only ever SHRINKS — adding an entry for this report is the one fix
+// that is not available. packs/leave/service re-exports core/leave wholesale (service.ts:27), so
+// this is the same symbol reached the supported way, exactly as report-a2c-hire-year-deltas.ts does.
+import { asOfForLeaveYear } from '../packs/leave/service';
 import { deriveNoticeStatus } from '../core/notice';
 import {
   isUnrestrictedOrgCriteria,
