@@ -181,6 +181,43 @@ describe('Item 5a461b99 — kernel employer-bears + subject-to wiring', () => {
     expect(Number(psOff.netPay)).toBeCloseTo(Number(psOn.netPay) + stOn.socsoEmployee, 2);
   });
 
+  /**
+   * a96d320c rev 2 — THE RUN NOW RECORDS THE SKBBK ELECTION, because the payslip could not say whether
+   * it had one.
+   *
+   * Four surfaces printed the SKBBK line on `socsoSkbbk > 0`, which conflates "this employee has no
+   * SKBBK" with "has SKBBK, contributed 0.00 this run" — and on the second of those the zero is the
+   * assertion, exactly as it is for the EPF / SOCSO / EIS / PCB lines beside it (CLAUDE.md §8).
+   * docs/audits/0085-delta-keys-sign-inventory.md calls that Class B: the class where a line VANISHES
+   * from a money document. The election was on `employee_statutory_my` and NOWHERE on the payslip, and
+   * reading today's row to decide what last January's document says is the re-derivation every module in
+   * this family exists to refuse. So the run stamps it.
+   *
+   * UNCONDITIONAL, unlike `employerBears` above: a reader must be able to tell `false` from ABSENT, and
+   * ABSENT is what sends the four renderers back to the amount test on every payslip written before this.
+   */
+  it('stamps the SKBBK ELECTION on every payslip, true AND false, so absent means "predates the stamp"', async () => {
+    const a = adminCtx(base);
+    const on = await hire(base, 'SkbbkOn', 3000, { subjectToSkbbk: true });
+    const off = await hire(base, 'SkbbkOff', 3000, { subjectToSkbbk: false });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+
+    const psOn = (await slip(batchId, on.employmentId)).statutory as Record<string, unknown>;
+    const psOff = (await slip(batchId, off.employmentId)).statutory as Record<string, unknown>;
+
+    expect(psOn.skbbkSubject).toBe(true);
+    expect(psOff.skbbkSubject).toBe(false);
+    // The stamp is the ELECTION, not the amount, and this is the pair that proves the two differ: the
+    // opted-out employee contributes 0.00 and still carries an explicit `false` rather than a silence.
+    expect(Number(psOn.socsoSkbbk)).toBeGreaterThan(0);
+    expect(Number(psOff.socsoSkbbk)).toBe(0);
+    // NOTHING ELSE MOVED. This stamp is provenance; it may not touch a figure.
+    expect(Number(psOff.socsoEmployee)).toBe(Number(psOn.socsoEmployee));
+    expect(Number(psOff.socsoEmployer)).toBe(Number(psOn.socsoEmployer));
+  });
+
   it('the statutory save records the control flags before/after on the domain event', async () => {
     const a = adminCtx(base);
     const e = await hire(base, 'EventCtrl', 3000, { subjectToSocso: true });

@@ -29,6 +29,7 @@ import { payslipZakatLine } from '../core/payslip-zakat-line';
 // line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
 // document cannot itemise a total differently from the screen it was printed from.
 import {
+  earningRowShown,
   payItemLinesForBuckets,
   payItemLinesReconcile,
   storedComponentLines,
@@ -1313,10 +1314,10 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
         // producers already drop a zero contribution (`payItemLinesForBuckets`, `storedOvertimeLines`), so
         // this changes no document today; it is here because the rule below now depends on it — dropping a
         // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
-        if (round2(l.amount) === 0) continue;
+        if (!earningRowShown(l.amount)) continue;
         rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub: detailSub(l), amount: l.amount });
       }
-    } else if (round2(total) !== 0) {
+    } else if (earningRowShown(total)) {
       rows.push({ label: grouped, amount: total });
     }
   };
@@ -1324,7 +1325,7 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
   push(d.overtimeLines, d.overtime, t.overtime);
   push(d.bonusLines, d.bonus, t.bonus);
   // Same rule, written the same way since 3c473773: a Claim box appears when there is a claim.
-  if (d.claim !== 0) rows.push({ label: t.claim, amount: d.claim });
+  if (earningRowShown(d.claim)) rows.push({ label: t.claim, amount: d.claim });
   return rows;
 }
 

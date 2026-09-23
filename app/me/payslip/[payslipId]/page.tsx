@@ -16,6 +16,7 @@ import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk
 // named a consumed one-off from the transaction's free-text remark, and that fix reaches only runs
 // calculated after it, so an already-issued payslip keeps the old wording unless the screen repairs it.
 import {
+  earningRowShown,
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
@@ -201,19 +202,19 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
               rule; the statutory deduction lines below are deliberately not subject to it either. */}
           {/* f3148da1 — the converted OT excess is folded into stored allowance; show the base allowance net
               of it, then a dedicated line for the pay item, so gross still reconciles. */}
-          {allowanceNet !== 0 && <Row label={t('allowances')} value={rm(allowanceNet)} />}
-          {disp.overtime !== 0 && <Row label={t('overtime')} value={rm(disp.overtime)} />}
+          {earningRowShown(allowanceNet) && <Row label={t('allowances')} value={rm(allowanceNet)} />}
+          {earningRowShown(disp.overtime) && <Row label={t('overtime')} value={rm(disp.overtime)} />}
           {showOtLines && <SubLines lines={otLines} />}
           {Number(st.otConvert?.amount) > 0 && (
             <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
           )}
-          {disp.bonus !== 0 && <Row label={t('bonus')} value={rm(disp.bonus)} />}
+          {earningRowShown(disp.bonus) && <Row label={t('bonus')} value={rm(disp.bonus)} />}
           {/* 6b134681 — "B0001 · ANGPOW  RM500.00" under the Bonus figure, instead of the figure alone.
               The classification (additional remuneration ⇒ the bonus box) decides the BOX; it never gets
               to stand in for the pay item's own code and description. */}
           {showBonusLines && <SubLines lines={bonusLines} />}
           {/* 3c473773 — the Claim box, shown only when a pay item was deliberately categorised into it. */}
-          {disp.claim !== 0 && <Row label={t('claim')} value={rm(disp.claim)} />}
+          {earningRowShown(disp.claim) && <Row label={t('claim')} value={rm(disp.claim)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('grossPay')}</span>
             <span className="tabular-nums">{rm(p.gross)}</span>

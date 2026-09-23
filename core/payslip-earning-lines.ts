@@ -293,6 +293,32 @@ export function storedOvertimeLines(statutory: unknown): NamedPayItemLine[] {
 }
 
 /**
+ * a96d320c rev 2 — IS THERE ANYTHING ON THIS EARNING LINE?
+ *
+ * The reporter read their own payslip and found Allowance 0.00, Overtime 0.00 and Bonus 0.00 under a
+ * basic salary, and asked for "a payslip as short as the month it describes". This is that rule, and it
+ * lives here for the same reason everything else in this file does: the printed document, the employee's
+ * own payslip screen and the admin Individual Payslip all render the same three figures, and three copies
+ * of one predicate is exactly how `socsoSkbbk > 0` ended up wrong in four places at once
+ * (docs/audits/0085-delta-keys-sign-inventory.md).
+ *
+ * `!== 0`, NOT `> 0`. A figure that went negative is money the reader must be able to see and question,
+ * and hiding it would also stop the printed rows adding up to the total beside them — the Class B failure
+ * of that same audit, which it calls the worst class precisely because nothing is left on the page to
+ * question. Rounded to the sen first, so a stored figure that is 0.0000001 away from zero through a
+ * float round-trip does not print a row that says `0.00`.
+ *
+ * WHAT THIS IS NOT FOR. Not the BASIC SALARY row — it is the one line that says what the employment pays
+ * rather than what a pay item added, and on an additional (bonus-only) run "Basic salary 0.00" is the
+ * statement that this run did not pay the monthly wage. And emphatically not the statutory deduction
+ * lines: EPF, SOCSO, EIS and PCB print at 0.00 on purpose, because there the zero IS the assertion
+ * (CLAUDE.md §8, and the reporter approved that exception in writing).
+ */
+export function earningRowShown(amount: unknown): boolean {
+  return round2(n(amount)) !== 0;
+}
+
+/**
  * Do these named lines add up to the figure they claim to explain?
  *
  * Half a cent of tolerance, because every input is already rounded to the sen. An empty list NEVER

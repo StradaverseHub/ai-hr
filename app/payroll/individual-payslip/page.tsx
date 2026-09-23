@@ -165,7 +165,7 @@ import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
-import { payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
+import { earningRowShown, payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -701,7 +701,7 @@ export default async function IndividualPayslipPage({
                 the STORED figure (`deriveHistoryBreakdown` off this payslip's own snapshot), never today's
                 pay-item setup. Basic salary is deliberately exempt, as are the statutory deduction lines
                 below — see core/payslip-earning-lines.ts and lib/payslip-pdf.ts `earningsRowsOf`. */}
-            {b.allowanceNet !== 0 && <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />}
+            {earningRowShown(b.allowanceNet) && <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />}
             {/* 417d4937 — wage AND reimburse (a PCB-exempt allowance is stamped into `reimburse`, is
                 paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
                 identification the Recorded items rows and the printed payslip use. This screen reads the
@@ -712,7 +712,7 @@ export default async function IndividualPayslipPage({
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
-            {b.overtime !== 0 && <Row label={tSlip('overtime')} value={rm(b.overtime)} />}
+            {earningRowShown(b.overtime) && <Row label={tSlip('overtime')} value={rm(b.overtime)} />}
             {/* 6b134681 — `overtimeLines` / `bonusLines`, not `componentsByBucket.*`: the derivation has
                 already checked that these rows add up to the figure above them, the same reconciliation
                 the printed payslip and the ESS payslip apply. The two lists are NOT interchangeable —
@@ -731,7 +731,7 @@ export default async function IndividualPayslipPage({
                 value={rm(b.otConvertAmount)}
               />
             )}
-            {b.bonus !== 0 && <Row label={tSlip('bonus')} value={rm(b.bonus)} />}
+            {earningRowShown(b.bonus) && <Row label={tSlip('bonus')} value={rm(b.bonus)} />}
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
                 (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
                 Reconciled in the derivation, as above. */}
@@ -741,7 +741,7 @@ export default async function IndividualPayslipPage({
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
-            {b.claim !== 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
+            {earningRowShown(b.claim) && <Row label={tSlip('claim')} value={rm(b.claim)} />}
             {b.detailNotRecorded && (
               <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
             )}
