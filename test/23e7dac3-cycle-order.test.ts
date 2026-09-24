@@ -176,6 +176,13 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     // the bonus run could not see. The SUM is what the previous test pins.
     expect(round2(bonusFirst.pcb + monthlyLast.pcb)).toBe(100);
     expect(bonusFirst.pcb).not.toBe(bonusLast.pcb);
+
+    // ── THE WORKSHEET'S OWN TRACE (ADR-0085 §7). Every per-run figure in the worked example an
+    // accountant is asked to read is pinned here as a literal, so the document and the kernel cannot
+    // drift apart without this failing. RM5,000 basic + RM500 overtime + a RM3,000 bonus, May, no priors.
+    expect(bonusLast).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 90 });
+    expect(bonusFirst).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 50 });
+    expect(monthlyLast).toEqual({ epfEmployee: 550, epfEmployer: 650, socsoEmployee: 27.25, socsoEmployer: 95.35, socsoSkbbk: 0, eisEmployee: 10.9, eisEmployer: 10.9, pcb: 50 });
   });
 
   it('(a) an OFF-CYCLE advance salary before the monthly run behaves the same way', async () => {

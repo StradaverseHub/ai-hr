@@ -28,6 +28,16 @@
  *
  * v1 requires runs[0] to be the regular run (it supplies Y1); later runs are additional remuneration.
  * Reversals/negative deltas are out of scope (clamped ≥ 0) — see ADR-0024 §6.
+ *
+ * ⚠️ r337 — THE KERNEL NO LONGER REQUIRES THAT, AND THIS MODULE STILL DOES. Item 23e7dac3 lifted the
+ * regular-run-first rule in `core/payroll.ts` (ADR-0085 §5 step 5): a bonus or off-cycle run may open
+ * the month, and the regular run restates it when it lands. This module is the one that is UNWIRED, and
+ * it was left as it is deliberately — its contract above is what `test/multicycle-compute.test.ts` and
+ * the ADR-0024 §7 figures were signed off against, and re-deriving those under a second ordering rule
+ * would move a signed-off document for no caller. The two are therefore NOT interchangeable any more:
+ * the worksheet screen that drives this module reports a month whose first run is not regular as
+ * `first_run_not_regular` and excludes it, which is now reachable in ordinary use rather than only on
+ * hand-built data. Stated so the divergence is a recorded decision, not a discovery.
  */
 import { statutory, type PcbAccumulators, type TaxProfile } from './payroll';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
