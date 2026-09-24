@@ -3516,7 +3516,12 @@
     "noPendingReplacement": "无待审替代假申请。",
     "replacementDatesWorked": "工作日期",
     "replacementApproved": "替代假已批准",
-    "replacementRejected": "替代假已拒绝"
+    "replacementRejected": "替代假已拒绝",
+    "creditSourceNonWorkingDay": "非工作日",
+    "creditSourceExtended": "延长工时",
+    "creditShiftEnd": "下班时间",
+    "creditClockOut": "打卡下班",
+    "creditEligibleMinutes": "符合资格 {minutes} 分钟"
   },
   "performance": {
     "list": {
@@ -12568,7 +12573,7 @@
   "replacementRequest": {
     "trigger": "+ 假期额度申请",
     "title": "假期额度申请",
-    "description": "为您在休息日、休假日或公共假期工作的日子申请额度。在经理批准之前不会记入任何额度。",
+    "description": "为您在休息日、休假日或公共假期工作的日子申请额度，或为工作日下班时间之后的延长工时申请额度。在经理批准之前不会记入任何额度。",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -12616,7 +12621,30 @@
       "offDay": "休假日",
       "holiday": "公共假期"
     },
-    "workingDayRefused": "普通工作日不能获得额度。"
+    "workingDayRefused": "普通工作日不能获得额度。",
+    "grandTotal": "申请额度合计",
+    "sectionA": {
+      "title": "非工作日工作",
+      "help": "您工作过的休息日、休假日或公共假期。",
+      "dayType": "日期类型",
+      "fullDay": "1 天",
+      "halfDay": "0.5 天",
+      "total": "本节合计",
+      "workingDayRefused": "此日期为工作日。请改用工作日延长工时。"
+    },
+    "sectionB": {
+      "title": "工作日延长工时",
+      "help": "在普通工作日排定下班时间之后继续工作的时数。",
+      "shiftEnd": "排定下班时间",
+      "actualClockOut": "实际打卡下班时间",
+      "extendedStart": "延长开始",
+      "extendedEnd": "延长结束",
+      "eligibleMinutes": "符合资格分钟数",
+      "credit": "额度",
+      "total": "本节合计",
+      "nonWorkingDayRefused": "此日期并非工作日。请改用非工作日工作。",
+      "belowThreshold": "少于 {minutes} 分钟，不符合额度资格。"
+    }
   },
   "notices": {
     "pageTitle": "公告栏",

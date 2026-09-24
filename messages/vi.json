@@ -3516,7 +3516,12 @@
     "noPendingReplacement": "Không có yêu cầu nghỉ bù chờ duyệt.",
     "replacementDatesWorked": "Ngày đã làm việc",
     "replacementApproved": "Đã phê duyệt nghỉ bù",
-    "replacementRejected": "Đã từ chối nghỉ bù"
+    "replacementRejected": "Đã từ chối nghỉ bù",
+    "creditSourceNonWorkingDay": "Ngày không làm việc",
+    "creditSourceExtended": "Giờ làm thêm",
+    "creditShiftEnd": "kết thúc ca",
+    "creditClockOut": "giờ ra",
+    "creditEligibleMinutes": "{minutes} phút đủ điều kiện"
   },
   "performance": {
     "list": {
@@ -12568,7 +12573,7 @@
   "replacementRequest": {
     "trigger": "+ Yêu cầu tín dụng nghỉ phép",
     "title": "Yêu cầu tín dụng nghỉ phép",
-    "description": "Yêu cầu tín dụng cho ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",
+    "description": "Yêu cầu tín dụng cho ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc, hoặc cho số giờ làm thêm sau khi kết thúc ca trong ngày làm việc. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -12616,7 +12621,30 @@
       "offDay": "Ngày nghỉ",
       "holiday": "Ngày lễ"
     },
-    "workingDayRefused": "Ngày làm việc bình thường không được tính tín dụng."
+    "workingDayRefused": "Ngày làm việc bình thường không được tính tín dụng.",
+    "grandTotal": "Tổng tín dụng yêu cầu",
+    "sectionA": {
+      "title": "Làm việc vào ngày không phải ngày làm việc",
+      "help": "Ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc.",
+      "dayType": "Loại ngày",
+      "fullDay": "1 ngày",
+      "halfDay": "0,5 ngày",
+      "total": "Tổng phần này",
+      "workingDayRefused": "Ngày này là ngày làm việc. Hãy dùng Làm thêm trong ngày làm việc thường thay thế."
+    },
+    "sectionB": {
+      "title": "Làm thêm trong ngày làm việc thường",
+      "help": "Số giờ làm việc sau giờ kết thúc ca theo lịch trong một ngày làm việc thường.",
+      "shiftEnd": "Giờ kết thúc ca theo lịch",
+      "actualClockOut": "Giờ ra thực tế",
+      "extendedStart": "Bắt đầu làm thêm",
+      "extendedEnd": "Kết thúc làm thêm",
+      "eligibleMinutes": "Số phút đủ điều kiện",
+      "credit": "Tín dụng",
+      "total": "Tổng phần này",
+      "nonWorkingDayRefused": "Ngày này không phải ngày làm việc. Hãy dùng Làm việc vào ngày không phải ngày làm việc thay thế.",
+      "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
+    }
   },
   "notices": {
     "pageTitle": "Bảng thông báo",

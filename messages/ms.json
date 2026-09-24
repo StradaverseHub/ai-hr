@@ -3516,7 +3516,12 @@
     "noPendingReplacement": "Tiada permohonan cuti gantian tertangguh.",
     "replacementDatesWorked": "Tarikh bekerja",
     "replacementApproved": "Cuti gantian diluluskan",
-    "replacementRejected": "Cuti gantian ditolak"
+    "replacementRejected": "Cuti gantian ditolak",
+    "creditSourceNonWorkingDay": "Hari bukan bekerja",
+    "creditSourceExtended": "Jam lanjutan",
+    "creditShiftEnd": "tamat syif",
+    "creditClockOut": "waktu keluar",
+    "creditEligibleMinutes": "{minutes} minit layak"
   },
   "performance": {
     "list": {
@@ -12568,7 +12573,7 @@
   "replacementRequest": {
     "trigger": "+ Permohonan Kredit Cuti",
     "title": "Permohonan Kredit Cuti",
-    "description": "Mohon kredit bagi hari rehat, hari cuti atau cuti umum yang anda bekerja. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",
+    "description": "Mohon kredit bagi hari rehat, hari cuti atau cuti umum yang anda bekerja, atau bagi jam lanjutan selepas syif anda pada hari bekerja. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -12616,7 +12621,30 @@
       "offDay": "Hari cuti",
       "holiday": "Cuti umum"
     },
-    "workingDayRefused": "Hari bekerja biasa tidak boleh memperoleh kredit."
+    "workingDayRefused": "Hari bekerja biasa tidak boleh memperoleh kredit.",
+    "grandTotal": "Jumlah kredit dituntut",
+    "sectionA": {
+      "title": "Kerja pada hari bukan bekerja",
+      "help": "Hari rehat, hari cuti atau cuti umum yang anda bekerja.",
+      "dayType": "Jenis hari",
+      "fullDay": "1 hari",
+      "halfDay": "0.5 hari",
+      "total": "Jumlah bahagian",
+      "workingDayRefused": "Tarikh ini ialah hari bekerja. Gunakan Kerja lanjutan pada hari biasa sebaliknya."
+    },
+    "sectionB": {
+      "title": "Kerja lanjutan pada hari biasa",
+      "help": "Jam bekerja selepas waktu tamat syif anda pada hari bekerja biasa.",
+      "shiftEnd": "Tamat syif dijadualkan",
+      "actualClockOut": "Waktu keluar sebenar",
+      "extendedStart": "Mula lanjutan",
+      "extendedEnd": "Tamat lanjutan",
+      "eligibleMinutes": "Minit layak",
+      "credit": "Kredit",
+      "total": "Jumlah bahagian",
+      "nonWorkingDayRefused": "Tarikh ini bukan hari bekerja. Gunakan Kerja pada hari bukan bekerja sebaliknya.",
+      "belowThreshold": "Kurang daripada {minutes} minit. Tidak layak mendapat kredit."
+    }
   },
   "notices": {
     "pageTitle": "Papan Notis",

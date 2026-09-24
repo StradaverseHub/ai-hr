@@ -786,11 +786,31 @@ export default async function ApprovalsPage({
                   {/* Every worked date, with its own figure — the reporter asked to see the claim line by
                       line, and a manager approving time already worked has to be able to check each one. */}
                   <td className="px-4 py-2.5">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-1">
+                      {/* r336 cbfa8b0b — THE CREDIT SOURCE IS NAMED ON EVERY ROW, and for a Section B row the
+                          four facts an approver needs to check it are printed beside the claim: the scheduled
+                          shift end, the actual clock-out, the window the employee claimed and the minutes
+                          that earned the credit. It is shown rather than inferred because it is not
+                          inferable — an Hour-unit Section A claim also carries a from/to pair, so "has times"
+                          was never the question. A line written before r336 reads as Section A, which is what
+                          it was (core/replacement-request.ts's claimLineView maps NULL to that). */}
                       {r.dates.map((d) => (
                         <span key={d.workedDate} className="tabular-nums text-xs text-muted-foreground">
                           <span className="font-medium text-foreground/80">{d.workedDate}</span>
-                          {d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : ''}
+                          {' · '}
+                          <span data-testid="approval-credit-source">
+                            {d.sourceType === 'extended_hours' ? t('creditSourceExtended') : t('creditSourceNonWorkingDay')}
+                          </span>
+                          {d.sourceType === 'extended_hours' ? (
+                            <span data-testid="approval-credit-extended-detail">
+                              {d.shiftEnd ? ` · ${t('creditShiftEnd')} ${d.shiftEnd.slice(0, 5)}` : ''}
+                              {d.actualClockOut ? ` · ${t('creditClockOut')} ${d.actualClockOut.slice(0, 5)}` : ''}
+                              {d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : ''}
+                              {d.eligibleMinutes != null ? ` · ${t('creditEligibleMinutes', { minutes: d.eligibleMinutes })}` : ''}
+                            </span>
+                          ) : (
+                            (d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : '')
+                          )}
                           {' · '}
                           {r.unit === 'hour'
                             ? `${(d.hours ?? 0).toFixed(2)} ${tLeave('breakdown.replacement.unitHour')}`
