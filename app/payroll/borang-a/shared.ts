@@ -261,3 +261,23 @@ export function describeGaps(loaded: { missing: BorangAMissing[]; headerMissing:
     .filter(Boolean)
     .join('; ');
 }
+
+/**
+ * 20f6c6a8 — `kwsp-borang-a-<employer ref>-<contribution period>.txt`, and the `-check.txt` variant for
+ * the field-by-field report. MOVED HERE FROM `file/route.ts`, unchanged, when the Payment Submission
+ * shelf became a second surface that hands this file over.
+ *
+ * ONE DEFINITION, FOR THE SAME REASON EVERYTHING ELSE IN THIS FILE IS SHARED. The route restating the
+ * name and the shelf restating it again is how the same month's file arrives under two names and an
+ * operator uploads yesterday's by mistake. `perkesoUploadFilename` (lib/perkeso-socso-file.ts) is the
+ * sibling form's copy of this decision, and it was already exported for exactly this reason.
+ */
+export function borangAUploadFilename(
+  employerRef: string,
+  contributionPeriodKey: string,
+  report = false,
+): string {
+  const ref = (employerRef || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
+  const stem = `kwsp-borang-a-${ref}-${contributionPeriodKey.replace('-', '')}`;
+  return report ? `${stem}-check.txt` : `${stem}.txt`;
+}
