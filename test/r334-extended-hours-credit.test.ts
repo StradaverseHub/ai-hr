@@ -175,19 +175,26 @@ const policyRow = async () =>
  * demands, and it is a different row written by a different function, so asserting only the input would not
  * prove the money moved.
  */
-async function overtimeMoney(employmentId: string): Promise<{ input: number; payslip: number }> {
+type OtMoney = { input: number; payslip: number };
+async function overtimeMoney(employmentId: string): Promise<OtMoney>;
+async function overtimeMoney(employmentId: string, controlId: string): Promise<{ subject: OtMoney; control: OtMoney }>;
+async function overtimeMoney(employmentId: string, controlId?: string) {
   const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: PERIOD });
   await prefillOvertimeFromAttendance(ctx, { batchId });
   await generatePayslips(ctx, { batchId });
-  const [input] = await owner.db
-    .select({ amount: schema.payrollInput.overtimeAmount })
-    .from(schema.payrollInput)
-    .where(and(eq(schema.payrollInput.batchId, batchId), eq(schema.payrollInput.employmentId, employmentId)));
-  const [slip] = await owner.db
-    .select({ ot: schema.payslip.overtimePay })
-    .from(schema.payslip)
-    .where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, employmentId)));
-  return { input: Number(input?.amount ?? 0), payslip: Number(slip?.ot ?? 0) };
+  const read = async (id: string): Promise<OtMoney> => {
+    const [input] = await owner.db
+      .select({ amount: schema.payrollInput.overtimeAmount })
+      .from(schema.payrollInput)
+      .where(and(eq(schema.payrollInput.batchId, batchId), eq(schema.payrollInput.employmentId, id)));
+    const [slip] = await owner.db
+      .select({ ot: schema.payslip.overtimePay })
+      .from(schema.payslip)
+      .where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, id)));
+    return { input: Number(input?.amount ?? 0), payslip: Number(slip?.ot ?? 0) };
+  };
+  const subject = await read(employmentId);
+  return controlId === undefined ? subject : { subject, control: await read(controlId) };
 }
 
 beforeAll(async () => {
@@ -291,16 +298,30 @@ describe('r334 · (f) the switch OFF reproduces today’s refusal, byte for byte
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r334 · (a)(b)(c) the tiers, and ⚠️ THE PAYSLIP', () => {
+  /**
+   * ⚠️ WHY EVERY MONEY TEST BELOW HIRES AT RM3,000 AND RECORDS CONSENT.
+   *
+   * MEASURED: `overtimePay` (localization/my/payroll) answers `eligible: false` above the First-Schedule
+   * wage ceiling (RM4,000), so a RM5,000 employee's workday overtime is never prefilled and the payslip
+   * figure is 0 whether a credit exists or not. A money test on such an employee would have been VACUOUS —
+   * it would have "proved" suppression against a figure that was zero all along. So the money arms use a
+   * RM3,000 employee, which brings the statutory floor with them: the company override AND the employee's
+   * recorded agreement. That is the honest fixture for this feature, because the employees whose overtime
+   * pay this feature can actually move are exactly the ones the First Schedule protects.
+   */
+  const fsPolicy = (over: Partial<ToilPolicyInput> = {}) => extendedPolicy({ allowFirstScheduleEligible: true, ...over });
+  const CONSENT = { firstScheduleConsent: true } as const;
+
   it('(a) below the half-day threshold: no credit, and the day’s overtime is still PAID in full', async () => {
-    const { employmentId, shiftId } = await hire(5000);
+    const { employmentId, shiftId } = await hire(3000);
     // 14:00 shift end, out at 17:59 ⇒ 239 minutes: one minute short of four hours.
     expect(await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '17:59:00')).toBe(239);
-    await setToilPolicy(ctx, extendedPolicy());
+    await setToilPolicy(ctx, fsPolicy());
 
-    await expect(accrueToil(ctx, { employmentId, workedDate: WORKDAY })).rejects.toBeInstanceOf(
+    await expect(accrueToil(ctx, { employmentId, workedDate: WORKDAY, ...CONSENT })).rejects.toBeInstanceOf(
       ToilExtendedHoursBelowThresholdError,
     );
-    await expect(accrueToil(ctx, { employmentId, workedDate: WORKDAY })).rejects.toThrow(
+    await expect(accrueToil(ctx, { employmentId, workedDate: WORKDAY, ...CONSENT })).rejects.toThrow(
       `${WORKDAY} is an ordinary working day. Extended hours after the scheduled shift end earn a Leave Credit only from 240 minutes; this day counted 239.`,
     );
     expect(await replacementBalance(employmentId)).toBe(0);
@@ -313,24 +334,21 @@ describe('r334 · (a)(b)(c) the tiers, and ⚠️ THE PAYSLIP', () => {
   });
 
   it('(b) at the half-day threshold: 0.5 day banked, and THE PAYSLIP’S OVERTIME FIGURE MOVES TO ZERO', async () => {
-    const { employmentId, shiftId } = await hire(5000);
-    expect(await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '18:00:00')).toBe(240);
-    await setToilPolicy(ctx, extendedPolicy());
+    // TWO employees, the SAME worked day, the SAME hours, in ONE payroll run. Only one is credited, so the
+    // difference between their payslips is the credit and nothing else — no second run, no deleted batch,
+    // and no constant to trust. The uncredited one is what makes the credited one's zero meaningful.
+    const credited = await hire(3000, 'Credited Worker');
+    const control = await hire(3000, 'Control Worker');
+    expect(await workShift(credited.employmentId, credited.shiftId, WORKDAY, '06:00:00', '18:00:00')).toBe(240);
+    expect(await workShift(control.employmentId, control.shiftId, WORKDAY, '06:00:00', '18:00:00')).toBe(240);
+    await setToilPolicy(ctx, fsPolicy());
 
-    // The figure BEFORE any credit exists, measured rather than asserted from a constant — this is what has
-    // to move, and a test that did not measure it first could not prove that it did.
-    const before = await overtimeMoney(employmentId);
-    expect(before.payslip, 'the fixture must really pay overtime, or (b) proves nothing').toBeGreaterThan(0);
-    // Delete the run so the credit is added to a clean month (a credit on a date whose payroll has started is
-    // refused on the HR path; the roster path has no such guard, and reusing the batch would compare two
-    // different runs). Removing the batch cascades its inputs and payslips.
-    await owner.db.delete(schema.payrollBatch).where(eq(schema.payrollBatch.tenantId, b.tenantId));
-
-    const r = await accrueToil(ctx, { employmentId, workedDate: WORKDAY });
+    const r = await accrueToil(ctx, { employmentId: credited.employmentId, workedDate: WORKDAY, ...CONSENT });
     expect(r.daysCredited).toBe(0.5);
-    expect(await replacementBalance(employmentId)).toBe(0.5);
+    expect(await replacementBalance(credited.employmentId)).toBe(0.5);
+    expect(await replacementBalance(control.employmentId), 'the control banks nothing').toBe(0);
 
-    const acc = await accrualRow(employmentId);
+    const acc = await accrualRow(credited.employmentId);
     expect(acc.workedDayKind, 'the kind that earned it is recorded, never guessed').toBe('workday');
     // ⚠️ MONEY: NULL day type on purpose — the tier rounds DOWN from the measured minutes, so the expiry
     // sweep must not price it through the exact s.60A workday-OT branch. See extendedWorkdayCreditTx.
@@ -338,22 +356,23 @@ describe('r334 · (a)(b)(c) the tiers, and ⚠️ THE PAYSLIP', () => {
     expect(acc.otMinutes, 'the counted minutes the tier was decided from').toBe(240);
     expect(Number(acc.daysCredited)).toBe(0.5);
 
-    const after = await overtimeMoney(employmentId);
-    expect(after.payslip, 'the credited day’s overtime must stop being paid').toBe(0);
-    expect(after.input).toBe(0);
-    expect(after.payslip, 'and that must be a MOVE, not the fixture having been zero all along').not.toBeCloseTo(
-      before.payslip,
+    const money = await overtimeMoney(credited.employmentId, control.employmentId);
+    expect(money.control.payslip, 'the fixture must really pay overtime, or (b) proves nothing').toBeGreaterThan(0);
+    expect(money.subject.payslip, 'the credited day’s overtime must stop being paid').toBe(0);
+    expect(money.subject.input, 'and the prefill must not carry it either').toBe(0);
+    expect(money.subject.payslip, 'the figure MOVED — it was not zero for both of them').not.toBeCloseTo(
+      money.control.payslip,
       2,
     );
   });
 
   it('(c) at or above the full-day threshold: exactly 1.0 day, capped, never more', async () => {
-    const { employmentId, shiftId } = await hire(5000);
+    const { employmentId, shiftId } = await hire(3000);
     // Out at 23:00 ⇒ 540 minutes past the 14:00 end. 540/480 = 1.125 of a "full day" — a proportional basis
     // would bank more than a day, and the reporter's cap says it must not.
     expect(await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '23:00:00')).toBe(540);
-    await setToilPolicy(ctx, extendedPolicy());
-    const r = await accrueToil(ctx, { employmentId, workedDate: WORKDAY });
+    await setToilPolicy(ctx, fsPolicy());
+    const r = await accrueToil(ctx, { employmentId, workedDate: WORKDAY, ...CONSENT });
     expect(r.daysCredited).toBe(1);
     expect(await replacementBalance(employmentId)).toBe(1);
     expect((await overtimeMoney(employmentId)).payslip, 'a full-day credit suppresses the day’s OT pay too').toBe(0);
@@ -486,9 +505,12 @@ describe('r334 · rest day / off day / holiday are byte-identical', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r334 · HR’s Add Leave Credit on a working day', () => {
   it('offers the day, PINS the amount to the tier, and refuses any other figure', async () => {
-    const { employmentId, shiftId } = await hire(5000);
+    // RM3,000 + the override + recorded consent, for the measured reason given in the (a)(b)(c) block: above
+    // the First-Schedule ceiling there is no workday overtime pay to suppress, so the payslip assertion at
+    // the end of this test would be vacuous on a higher-paid employee.
+    const { employmentId, shiftId } = await hire(3000);
     await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '18:00:00'); // 240 ⇒ 0.5 day
-    await setToilPolicy(ctx, extendedPolicy());
+    await setToilPolicy(ctx, extendedPolicy({ allowFirstScheduleEligible: true }));
 
     expect(await previewLeaveCredit(ctx, { employmentId, workedDate: WORKDAY })).toMatchObject({
       workedDayKind: 'workday',
@@ -500,11 +522,12 @@ describe('r334 · HR’s Add Leave Credit on a working day', () => {
     });
 
     // A typed figure that is not the tier is refused — not silently overwritten, and not accepted.
+    const consent = { firstScheduleConsent: true };
     await expect(
-      grantLeaveCredit(ctx, { employmentId, workedDate: WORKDAY, days: 3, reason: 'Stayed very late', today: TODAY }),
+      grantLeaveCredit(ctx, { employmentId, workedDate: WORKDAY, days: 3, reason: 'Stayed very late', today: TODAY, ...consent }),
     ).rejects.toBeInstanceOf(LeaveCreditError);
     await expect(
-      grantLeaveCredit(ctx, { employmentId, workedDate: WORKDAY, days: 1, reason: 'Stayed very late', today: TODAY }),
+      grantLeaveCredit(ctx, { employmentId, workedDate: WORKDAY, days: 1, reason: 'Stayed very late', today: TODAY, ...consent }),
     ).rejects.toThrow(`${WORKDAY} is an ordinary working day: its extended hours earn exactly 0.5 day.`);
     expect(await accrualRow(employmentId), 'a refused save writes nothing').toBeUndefined();
 
@@ -514,6 +537,7 @@ describe('r334 · HR’s Add Leave Credit on a working day', () => {
       days: 0.5,
       reason: 'Stayed for the month-end close',
       today: TODAY,
+      ...consent,
     });
     expect(granted.daysCredited).toBe(0.5);
     expect(granted.workedDayKind).toBe('workday');
