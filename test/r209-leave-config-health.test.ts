@@ -892,7 +892,10 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     // column carries the four days the marriage application has reserved out of the pool.
     expect(byId.get(pool)!.balance, 'pool balance').toBe(10);
     expect(byId.get(marriage)!.balance, 'a borrower holds no balance').toBe(0);
-    expect(byId.get(pool)!.pendingShare, 'the pool has lent out four pending days').toBe(-4);
+    // 2a57a007 — was −4. The minus was a display convention and the reporter read the pool row as a
+    // deduction taken twice; both halves now carry the same magnitude. The invariant that made the minus
+    // look load-bearing is about `balance` (asserted two lines up, unmoved), not about this column.
+    expect(byId.get(pool)!.pendingShare, 'the pool has lent out four pending days').toBe(4);
     expect(byId.get(marriage)!.pendingShare, 'the borrower has drawn in four pending days').toBe(4);
     expect(byId.get(study)!.pendingShare, 'an untouched member shares nothing').toBe(0);
     for (const id of [pool, marriage, study]) {
