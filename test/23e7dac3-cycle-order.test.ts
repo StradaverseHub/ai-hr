@@ -25,6 +25,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
+import { explainStatutory } from '../core/statutory-explain';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 
@@ -220,6 +221,28 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     await expect(createBatch(a, { companyId: base.companyId, payPeriod: MONTH })).rejects.toThrow(
       /A payroll process already exists for this period/,
     );
+  });
+});
+
+describe('23e7dac3 · the payslip says for itself that it restated the month', () => {
+  /**
+   * `explainStatutory` discloses "these amounts are increments against a CUMULATIVE base" so the screen
+   * cannot show a month's wage beside a run's amount and call it a rate. Its test used to be
+   * `runType !== 'regular'`, which was exact only while the regular run was always the month's first.
+   * A regular run that restates carries increments under the run type 'regular', so the disclosure has
+   * to come off the PAYSLIP (`deltaStat`'s `pcbMeta.delta` stamp), not off the run type.
+   */
+  it('a restating MONTHLY run is disclosed as incremental; a first monthly run is not', async () => {
+    await bonusRun();
+    const restating = await monthlyRun();
+    const [late] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, restating));
+    expect(explainStatutory(late.statutory, 'regular').basesCoverWholeMonth).toBe(true);
+
+    // …and the opposite, which is every monthly run that exists today: no stamp, no banner.
+    await world();
+    const first = await monthlyRun();
+    const [lone] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, first));
+    expect(explainStatutory(lone.statutory, 'regular').basesCoverWholeMonth).toBe(false);
   });
 });
 
