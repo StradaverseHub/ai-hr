@@ -40,7 +40,7 @@
  * Substrate: pure derivation, no DomainEvent. // substrate: read-only, no event
  */
 import type { EntitlementStatus } from './entitlement-status';
-import { otherContributors, type SharedLeaveBalanceInfo } from './shared-leave-balance';
+import { otherContributors, poolBadges, type SharedLeaveBalanceInfo } from './shared-leave-balance';
 
 // ── The derivation core/read.ts builds ──────────────────────────────────────────────────────────────────
 
@@ -256,12 +256,18 @@ export const LEAVE_SUMMARY_EXPLAIN_KEYS = [
   'takenOtherItemReason',
   'takenOtherItemUnrecorded',
   'takenPool',
+  // 2a57a007 — the Share column, decomposed by the leave type each day was filed under.
+  'sharedTakenIntro',
+  'sharedTakenItem',
   // Pending Approval
   'pendingNone',
   'pendingIntro',
   'pendingItem',
   'pendingItemOneDay',
   'pendingOwnOnly',
+  // 2a57a007 — the Pending Share column, decomposed the same way.
+  'sharedPendingIntro',
+  'sharedPendingItem',
   // Brought Forward Forfeited
   'forfeitNone',
   'forfeitItem',
@@ -281,6 +287,26 @@ const signed = (n: number): ExplainArg => ({ signedDays: n });
 const date = (d: string): ExplainArg => ({ date: d });
 const text = (s: string): ExplainArg => ({ text: s });
 const choice = (s: string): ExplainArg => ({ choice: s });
+
+/**
+ * 2a57a007 — one pooled column, itemised by the leave type that moved the days. Pure: every figure printed
+ * is a `contributions` entry core/read.ts already computed beside the column it adds up to, and the total
+ * sentence reuses `addsUpTo` rather than inventing a second way to say the same thing.
+ */
+function sharedBreakdown(
+  pool: SharedLeaveBalanceInfo | null,
+  which: 'share' | 'pendingShare',
+  intro: LeaveSummaryExplainKey,
+  item: LeaveSummaryExplainKey,
+): ExplainStep[] {
+  const moved = poolBadges(pool, which);
+  if (moved.length === 0) return [];
+  return [
+    { key: intro },
+    ...moved.map((c): ExplainStep => ({ key: item, args: { type: text(c.leaveType), days: days(c[which]) }, item: true })),
+    { key: 'addsUpTo', args: { total: days(r2(moved.reduce((n, c) => n + c[which], 0))) } },
+  ];
+}
 
 /** The list is printed only when it reaches the figure exactly; otherwise one sentence says it could not be. */
 function guarded(items: number, figure: number, steps: ExplainStep[]): ExplainStep[] {
@@ -534,6 +560,15 @@ export function explainLeaveSummary(
     taken.push(...guarded(r2(t.leaveDays + sum(t.other)), f.takenThisCycle, list));
   }
   if (pool) taken.push({ key: 'takenPool', args: { types: { list: pool.contributingLeaveTypes } } });
+  /**
+   * 2a57a007 — THE SHARE COLUMN, BY LEAVE TYPE. `takenPool` above names the types that share the balance;
+   * it does not say how many days each of them took, which is the whole of what the grid's Share figure is
+   * a sum of. The list is the SAME `contributions` the badge beside the figure and the export's source
+   * column read (core/read.ts builds it in the pass that computes the figure), so the panel cannot itemise
+   * a total the grid does not show. Zero-day borrowers are already dropped by `poolBadges`; a pool that lent
+   * nothing out emits nothing at all rather than a heading over an empty list.
+   */
+  for (const step of sharedBreakdown(pool, 'share', 'sharedTakenIntro', 'sharedTakenItem')) taken.push(step);
 
   // ── Pending Approval ────────────────────────────────────────────────────────────────────────────────
   const pending: ExplainStep[] = [];
@@ -554,6 +589,8 @@ export function explainLeaveSummary(
     );
   }
   if (pool) pending.push({ key: 'pendingOwnOnly', args: { type: text(f.leaveType) } });
+  // 2a57a007 — and the Pending Share column, the same way, from the same list.
+  for (const step of sharedBreakdown(pool, 'pendingShare', 'sharedPendingIntro', 'sharedPendingItem')) pending.push(step);
 
   // ── Brought Forward Forfeited ───────────────────────────────────────────────────────────────────────
   const forfeited: ExplainStep[] = [];

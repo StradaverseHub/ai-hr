@@ -13,6 +13,7 @@ import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { formatDays } from '@/lib/day-format';
+import { isPoolBorrower, poolBadges } from '@/lib/shared-leave-balance';
 import { ENTITLEMENT_STATUS_LABEL_KEY } from '@/lib/entitlement-status';
 import { employeeBalanceRows } from '../rows';
 
@@ -48,6 +49,28 @@ export async function GET(req: Request) {
   // computed must be EMPTY, not an em dash (which is text a reader could not sum) and not "0.00" (which is
   // a claim). `pending` is non-nullable, so it takes the same call and simply never hits the placeholder.
   const cell = (v: number | null) => formatDays(v, { placeholder: '' });
+  /**
+   * 2a57a007 — WHERE A SHARED DAY WENT, OR CAME FROM, IN A FILE READ AWAY FROM THE SCREEN.
+   *
+   * Share and Pending Share are the only two columns in this file whose figure names no counterparty. On
+   * screen the pool's row answers that with a badge per contributing leave type and the borrower's row with
+   * the "Shares one balance with…" caption under its Leave Code; a spreadsheet has neither a badge nor a
+   * sub-cell, so both become a column — which is this route's own header invariant applied to the thing the
+   * item added ("the file exports the table that was on screen").
+   *
+   *   · the POOL's row lists each borrower that moved days in THIS column, as `CODE 1.00`, semicolon
+   *     separated — the badges, flattened, with the figure their tooltip carries.
+   *   · a BORROWER's row names the pool its days come from, which is what its on-screen caption says.
+   *   · a leave type in no pool leaves the cell EMPTY, the same convention `cell()` above uses for a figure
+   *     nobody computed: a spreadsheet cell must not assert something the screen does not.
+   */
+  const shareSource = (r: (typeof rows)[number], which: 'share' | 'pendingShare') => {
+    if (!r.sharedBalance) return '';
+    if (isPoolBorrower(r)) return r.sharedBalance.sourceLeaveTypeName;
+    return poolBadges(r.sharedBalance, which)
+      .map((c) => `${c.code ?? c.leaveType} ${formatDays(c[which])}`)
+      .join('; ');
+  };
   const data: ReportData = {
     filename: `leave-balances-${selected?.employeeCode ?? 'employee'}-${asOf}`,
     title: tInq('balancesTitle'),
@@ -68,7 +91,11 @@ export async function GET(req: Request) {
       // 39136455 — the two pooled-transfer columns, in the SAME position as on screen. This route's header
       // states the invariant they are here to satisfy: the file exports the table that was on screen.
       tMe('colShare'),
+      // 2a57a007 — the counterparty each pooled figure moved with. See `shareSource` above for why a
+      // spreadsheet needs a column where the screen has a badge and a caption.
+      tMe('colShareSource'),
       tMe('colPendingShare'),
+      tMe('colPendingShareSource'),
       tMe('colOverutilized'),
       tInq('colForfeitedBf'),
       tMe('colBalance'),
@@ -92,7 +119,9 @@ export async function GET(req: Request) {
       cell(r.pending),
       cell(r.adjustment),
       cell(r.share),
+      shareSource(r, 'share'),
       cell(r.pendingShare),
+      shareSource(r, 'pendingShare'),
       cell(r.overutilized),
       cell(r.forfeitedBf),
       cell(r.balance),
