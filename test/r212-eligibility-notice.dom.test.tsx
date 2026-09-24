@@ -64,6 +64,7 @@ const breakdown: EntitlementBreakdownData = {
   entitlementStatus: 'no_eligibility_match',
   entitlementTemplateName: null,
   currentYearEntitlement: 0,
+  currentYearEntitlementRounded: 0, // r335: no rounding rule in this fixture
   monthlyAccruedToDate: null,
   carriedForward: 0,
   carryForwardRemaining: 0,

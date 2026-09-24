@@ -2121,6 +2121,7 @@
       },
       "adjustmentNoReason": "未填写原因",
       "expiresOn": "到期：{date}",
+      "roundedTo": "按此休假类型的取整规则取整为 {value}",
       "replacement": {
         "creditsHeading": "已累积额度",
         "empty": "尚未累积任何替代假额度。",

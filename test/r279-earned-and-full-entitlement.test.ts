@@ -82,6 +82,10 @@ const panelData = (over: Partial<PanelData['breakdown']> = {}): PanelData => ({
     entitlementStatus: 'granted',
     entitlementTemplateName: 'Executive Annual Leave',
     currentYearEntitlement: 12.5,
+    // r335 (6af80f5d): this fixture configures no rounding rule, so the displayed Earned to Date IS the
+    // exact figure — which is what keeps r279's "Earned to Date is currentYearEntitlement and nothing
+    // else" proof meaning what it meant. Derived from `over` so a case that moves one moves both.
+    currentYearEntitlementRounded: over.currentYearEntitlement ?? 12.5,
     monthlyAccruedToDate: 12.5,
     carriedForward: 0,
     carryForwardRemaining: 0,

@@ -26,7 +26,7 @@ const breakdown = (over: Partial<LeaveEntitlementBreakdown> = {}): LeaveEntitlem
     entitlement: { annualEntitlementDays: 14, prorated: false, eligibleCalendarDays: null, daysInLeaveYear: null,
       unroundedEntitlementDays: 14, displayEntitlementDays: 14, roundingApplied: false },
     entitlementStatus: 'granted', entitlementTemplateName: null,
-    currentYearEntitlement: 14, monthlyAccruedToDate: 14, carriedForward: 0, carryForwardRemaining: 0, carryForwardExpiryDate: null, forfeited: 0, otherAdjustments: 0, balance: 14,
+    currentYearEntitlement: 14, currentYearEntitlementRounded: 14, monthlyAccruedToDate: 14, carriedForward: 0, carryForwardRemaining: 0, carryForwardExpiryDate: null, forfeited: 0, otherAdjustments: 0, balance: 14,
     pendingApproval: 0, broughtForward: 0, configAdjustments: 0, systemAdjustments: 0, forfeitedThisCycle: 0, takenThisCycle: 0, configAdjustmentItems: [], adjustments: 0,
     totalEntitlement: 14, totalAvailable: 14, transactions: [],
     essView: { eligible: true, ytdEntitled: true, broughtForward: true, adjustment: true, total: true, taken: true, pendingApproval: true, forfeited: true, available: true },

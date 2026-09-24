@@ -48,6 +48,9 @@ import {
   isProfileEligible,
   displayEntitlementFor,
   type DisplayEntitlement,
+  // r335 (6af80f5d) — the Rounding Method applied to the DISPLAYED Earned to Date. Same shape as
+  // displayEntitlementFor: a kernel helper this read PICKS, never arithmetic restated here.
+  displayEarnedToDateDays,
   resolveCarryBreakdown,
   // r303 (31492f74) — the Leave Summary explanation reads the engine's own join-year and carry decisions
   // rather than restating them.
@@ -3367,9 +3370,39 @@ export type LeaveEntitlementBreakdown = {
    * question being asked. Undefined everywhere else, and the panel then renders exactly what it did before.
    */
   eligibility?: EligibilityNotice;
-  /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. */
+  /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. EXACT, and it stays exact:
+   *  it is one of the six buckets that tile the ledger, so `totalEntitlement` and the reconciliation
+   *  identity are computed from THIS figure. r335 (6af80f5d) deliberately did not round it — see
+   *  `currentYearEntitlementRounded` below for what the screens show and why the two differ. */
   currentYearEntitlement: number;
-  /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open. */
+  /**
+   * r335 (6af80f5d) — WHAT "EARNED TO DATE" SHOWS: `currentYearEntitlement` put through the leave type's
+   * own Rounding Method (`leave_type.rounding_method` + `rounding_threshold` + `rounding_bands`), by the
+   * kernel's `displayEarnedToDateDays`. Equal to `currentYearEntitlement` to the byte whenever no rule is
+   * configured, whenever the rule is `custom` with no table, and whenever the figure is already whole.
+   *
+   * The reporter's case: EMP-0004 / Annual Leave / as at 23-09-2026 read 11.18 under a `custom` table
+   * whose first band maps 0.00–0.38 to 0.00. The rule was already REPORTED to the Explain panel
+   * (`derivation.earned.rounding`) and never APPLIED to any figure — that asymmetry was the bug.
+   *
+   * ⚠️ THIS IS NOT AN ADDEND. `totalEntitlement`, `adjustments`, the RECONCILIATION_ADDENDS identity and
+   * every sentence in lib/leave-summary-explain.ts read `currentYearEntitlement`, the exact figure, so the
+   * Explain panel's column still closes onto the real Available Balance. The consequence is stated openly
+   * on the screens rather than papered over: with 11.18 earned and 5.00 taken the grid prints Earned to
+   * Date 11.00 and Balance 6.18, because the balance is an identity, not an agreement
+   * (components/leave/entitlement-panel-config.ts) and is surfaced from the ledger, never re-derived
+   * (components/leave/leave-balance-row.ts, 6574c6b4).
+   *
+   * Consumed by: the Employee Balances / My Profile grid column (`deriveBalanceRow` → `ytdEntitled`), the
+   * employee's own "Earned so far" card (core/my-leave.ts), the Explain panel's rounded sub-line, and the
+   * assistant tool — so no two surfaces can quote different numbers for one question.
+   */
+  currentYearEntitlementRounded: number;
+  /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open.
+   *  r335 (6af80f5d) left this EXACT on purpose: it renders on no screen (both mirror types declare it and
+   *  neither panel descriptor selects it), its one live consumer is `core/assistant-tools.ts`, and an AI
+   *  context that reported a rounded accrual beside an exact `balance` would be internally inconsistent.
+   *  The rounded figure travels beside it as `currentYearEntitlementRounded`. */
   monthlyAccruedToDate: number | null;
   /** Balance carried into the current cycle, capped at the policy's carryForwardMax. */
   carriedForward: number;
@@ -3908,6 +3941,26 @@ export function leaveEntitlementBreakdown(
     });
 
     /**
+     * r335 (6af80f5d) — THE DISPLAYED EARNED TO DATE, derived beside the displayed Entitlement above for
+     * the same reason and by the same shape: a kernel helper is CALLED, no arithmetic is restated here,
+     * and the exact ledger figure it is derived FROM (`cycleAccrual`) is returned unchanged.
+     *
+     * The rule is the one this function already resolves and already REPORTS to the Explain panel a few
+     * lines below (`derivation.earned.rounding` reads this same `policy.roundingMethod`, and names
+     * `custom_no_table` when the table is missing). Until now it was reported and never applied; handing
+     * the very same three columns to `applyRounding` — via the kernel, never a sixth hand-written band
+     * walk — is the whole of the fix.
+     *
+     * `policy == null` (no entitlement table reaches this employee) ⇒ no rule ⇒ the figure is untouched,
+     * which is also exactly what `derivation.earned.rounding` reports as `null` for the same case.
+     */
+    const currentYearEntitlementRounded = displayEarnedToDateDays(cycleAccrual, {
+      method: policy?.roundingMethod ?? null,
+      threshold: policy?.roundingThreshold ?? null,
+      bands: policy?.roundingBands,
+    });
+
+    /**
      * r303 (31492f74) — HR's per-line working, assembled ONLY when asked and ONLY from what this read already
      * holds: the winner and band `eligibleDays` came from, the policy every rule came from, and the records the
      * ledger walk above pushed beside each figure. The single extra read is the Leave Credit register, asked
@@ -4022,6 +4075,9 @@ export function leaveEntitlementBreakdown(
       entitlementTemplateName: entitlementWinner?.templateName ?? null,
       eligibility,
       currentYearEntitlement: cycleAccrual,
+      // r335 (6af80f5d): the SAME figure through the type's Rounding Method — what every screen prints
+      // under "Earned to Date". `currentYearEntitlement` above stays exact so the six buckets keep tiling.
+      currentYearEntitlementRounded,
       monthlyAccruedToDate: earned ? cycleAccrual : null,
       carriedForward: carried,
       carryForwardRemaining,

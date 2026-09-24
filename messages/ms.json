@@ -2121,6 +2121,7 @@
       },
       "adjustmentNoReason": "Tiada sebab dinyatakan",
       "expiresOn": "Luput: {date}",
+      "roundedTo": "Dibundarkan kepada {value} oleh peraturan pembundaran jenis cuti ini",
       "replacement": {
         "creditsHeading": "Kredit Terkumpul",
         "empty": "Belum ada kredit cuti gantian yang terkumpul.",

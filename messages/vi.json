@@ -2121,6 +2121,7 @@
       },
       "adjustmentNoReason": "Không có lý do",
       "expiresOn": "Hết hạn: {date}",
+      "roundedTo": "Được làm tròn thành {value} theo quy tắc làm tròn của loại phép này",
       "replacement": {
         "creditsHeading": "Tín dụng đã tích lũy",
         "empty": "Chưa có tín dụng nghỉ bù nào được tích lũy.",

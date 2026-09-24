@@ -2121,6 +2121,7 @@
       },
       "adjustmentNoReason": "ไม่ได้ระบุเหตุผล",
       "expiresOn": "หมดอายุ: {date}",
+      "roundedTo": "ปัดเป็น {value} ตามกฎการปัดเศษของประเภทการลานี้",
       "replacement": {
         "creditsHeading": "เครดิตที่สะสมไว้",
         "empty": "ยังไม่มีเครดิตวันลาชดเชยที่สะสมไว้",

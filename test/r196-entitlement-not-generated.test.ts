@@ -308,6 +308,8 @@ const breakdownInput = (status: EntitlementStatus): BreakdownInput => ({
   // the same honest reading the band above carries.
   entitlement: { displayEntitlementDays: 0 },
   currentYearEntitlement: 0,
+  // r335 (6af80f5d): nothing resolves, so there is nothing to round either.
+  currentYearEntitlementRounded: 0,
   carriedForward: 0,
   forfeited: 0,
   otherAdjustments: 0,

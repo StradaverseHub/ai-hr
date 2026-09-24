@@ -48,6 +48,9 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   // what keeps the 20-vs-12 distinction above doing its job.
   entitlement: { displayEntitlementDays: 20 },
   currentYearEntitlement: 12,
+  // r335 (6af80f5d): no rounding rule in this fixture's world, so Earned to Date shows the exact figure.
+  // Derived from `over` so a case that moves the earned figure moves the column with it.
+  currentYearEntitlementRounded: over.currentYearEntitlement ?? 12,
   carriedForward: 5,
   forfeited: 1,
   // 0315dac7: `otherAdjustments` commingles HR's configured grants with automatic system corrections; the

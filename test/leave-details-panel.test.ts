@@ -63,6 +63,9 @@ const DATA: PanelData = {
     entitlementStatus: 'granted',
     entitlementTemplateName: 'Executive Annual Leave',
     currentYearEntitlement: 12,
+    // r335 (6af80f5d): no rounding rule ⇒ the displayed figure is the exact one, so the summary column
+    // below renders byte-identically to before and its rounded sub-line does not appear.
+    currentYearEntitlementRounded: 12,
     monthlyAccruedToDate: 2,
     carriedForward: 4,
     carryForwardRemaining: 3,

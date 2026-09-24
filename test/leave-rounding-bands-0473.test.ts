@@ -489,6 +489,8 @@ describe('§4 the "every input is already 2dp" premise is false for one caller �
    *   core/leave.ts          openLeaveYear        the same hireYearGrantDays, or composed.days RAW
    *   core/leave.ts          accrueEarnedLeave    earnedToDateFor(...)     — round2 on both branches
    *   core/leave.ts          projectExpected…     a2c / earned / ANNUAL joiner round2; else `days` RAW
+   *   core/leave.ts          displayEarnedToDate… r335: the DISPLAYED Earned to Date — the r2-accumulated
+   *                                                ledger sum, so always already 2dp
    *   leave-type-sub-forms   worked example       14 ÷ 12 rounded to 2dp
    * RAW is a template band's configured days, and validateServiceBands does not limit its decimals. So a
    * third decimal CAN reach the engine on the full-grant path.
@@ -503,6 +505,9 @@ describe('§4 the "every input is already 2dp" premise is false for one caller �
   const CALL_SITES: [string, RegExp, number][] = [
     ['core/org.ts', /applyRounding\(grantRaw, /g, 1],
     ['core/leave.ts', /applyRounding\((days|earnedToDate|expected), /g, 3],
+    // r335 (6af80f5d) — the DISPLAY caller, pinned by its own parameter name so this list stays exhaustive
+    // over core/leave.ts rather than merely exhaustive over the three engine call sites it started with.
+    ['core/leave.ts', /applyRounding\(exactEarned, /g, 1],
     ['app/admin/leave-config/types/leave-type-sub-forms.tsx', /applyRounding\(ROUNDING_EXAMPLE_RAW, /g, 1],
   ];
 

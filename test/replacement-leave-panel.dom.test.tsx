@@ -46,6 +46,7 @@ const breakdown = (leaveTypeId: string, leaveType: string): EntitlementBreakdown
   entitlementStatus: 'granted',
   entitlementTemplateName: null,
   currentYearEntitlement: 12,
+  currentYearEntitlementRounded: 12, // r335: no rounding rule in this fixture
   monthlyAccruedToDate: 2,
   carriedForward: 4,
   carryForwardRemaining: 3,

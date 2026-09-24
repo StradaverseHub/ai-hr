@@ -2121,6 +2121,7 @@
       },
       "adjustmentNoReason": "No reason given",
       "expiresOn": "Expires: {date}",
+      "roundedTo": "Rounded to {value} by this leave type's rounding rule",
       "replacement": {
         "creditsHeading": "Banked Credits",
         "empty": "No replacement leave credits have been banked yet.",

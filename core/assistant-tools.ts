@@ -418,6 +418,10 @@ const leaveEntitlementExplain: AssistantTool = {
         entitlementTemplateName: b.entitlementTemplateName,
         eligibility: b.eligibility ?? null,
         currentYearEntitlement: b.currentYearEntitlement,
+        // r335 (6af80f5d): the figure the employee's own screens print under "Earned to Date". Both are given
+        // so the model can answer "what does my screen say" and "what does the ledger hold" without
+        // inventing the difference; the exact one is what `balance` and `totalEntitlement` are built from.
+        currentYearEntitlementRounded: b.currentYearEntitlementRounded,
         monthlyAccruedToDate: b.monthlyAccruedToDate,
         broughtForward: b.broughtForward,
         carriedForward: b.carriedForward,
