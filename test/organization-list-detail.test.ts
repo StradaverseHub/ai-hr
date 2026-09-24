@@ -84,6 +84,17 @@ function findByType(node: unknown, type: unknown, acc: any[] = []): any[] {
   return acc;
 }
 
+/**
+ * ⚠️ FILE-LEVEL, moved out of the scope-refusal describe by item 7d2df42a. It sat inside that describe,
+ * so the connection pools closed the moment it finished — which was fine while every LATER describe was
+ * pure. It stopped being fine when the create screen took a company read of its own: the next describe's
+ * setup got `write CONNECTION_ENDED 127.0.0.1:5433`, which reads like a wedged cluster and is not one.
+ * `closeAll` is file teardown; this is where it belongs.
+ */
+afterAll(async () => {
+  await closeAll();
+});
+
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 // 3. Search / status filter / sort — pure, no DB.
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -199,9 +210,6 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     await addCompany('Beta East Sdn Bhd', ids['Beta Sdn Bhd']);
     await addCompany('Gamma Sdn Bhd');
   });
-  afterAll(async () => {
-    await closeAll();
-  });
 
   it('REFUSES a company the signed-in admin cannot administer — 404, not read-only, not coerced', async () => {
     scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
@@ -311,16 +319,40 @@ describe('/admin/organization/new — the create form has its own screen', () =>
     'utf8',
   );
 
+  /**
+   * ⚠️ UPDATED BY ITEM 7d2df42a — THIS SCREEN NOW TAKES A COMPANY READ, so it needs a real session.
+   *
+   * It used to run none, and the case below said so ("scopedAdmin is mocked and the page runs no
+   * company read of its own"). That stopped being true when the Company Code field learned to warn —
+   * and NAME the other company — when the operator types a code somebody else already uses: the page
+   * reads `listCompanies(s, { adminOnly: true })` to know which codes are taken and who holds them.
+   * A null session now throws out of withTenant before the form is built.
+   *
+   * The guard itself is unchanged and is not loosened: what is asserted below is still the EXACT field
+   * set the create action reads, and still that `legalName` is the only required input. Only the
+   * precondition moved.
+   */
+  let createBase: Base;
+  beforeAll(async () => {
+    await migrateTestDb();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    createBase = await seedBase();
+    // Group-wide hr_admin, the grant on the SESSION as well as in role_assignment, because the new read
+    // resolves scope through the database's own app.is_admin_for (which reads the app.grants GUC).
+    scope.s = { ...adminCtx(createBase), grants: [{ role: 'hr_admin', companyId: null }] };
+    scope.scopeIds = [];
+  });
+
   it('the LISTING no longer renders a create form — it links to the create screen', () => {
     expect(LISTING).not.toContain('createCompanyAction');
     expect(LISTING).toContain('href="/admin/organization/new"');
   });
 
   it('renders a form bound to createCompanyAction with exactly the fields that action reads', async () => {
-    // No session is needed to inspect the element tree: scopedAdmin is mocked and the page runs no
-    // company read of its own — the create form is the whole screen.
-    scope.s = null;
-    scope.scopeIds = [];
+    // The session comes from this describe's beforeEach — see the note above it: since 7d2df42a the
+    // page runs one company read (the codes already in use, for the duplicate warning).
     const tree = await NewCompanyPage({ searchParams: Promise.resolve({}) });
     const forms = findByType(tree, 'form');
     expect(forms).toHaveLength(1);
