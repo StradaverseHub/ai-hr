@@ -589,7 +589,8 @@
       "exportXlsx": "Xuất",
       "exportAria": "Xuất danh sách nhân viên đã lọc ra Excel",
       "exportTitle": "Nhân viên",
-      "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)"
+      "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
+      "childReliefReview": "Rà soát giảm trừ cho con"
     },
     "switcher": {
       "ariaLabel": "Tìm nhân viên",
@@ -1589,7 +1590,8 @@
       "recalcColGrade": "Bậc công việc",
       "recalcGradeUnchanged": "Không thay đổi",
       "tp3OpenForm": "Mở Mẫu TP3 đầy đủ",
-      "tp3FormNote": "Bốn con số này là những gì PCB hằng tháng đọc, và vẫn sẽ như vậy. Mẫu TP3 đầy đủ — các người sử dụng lao động trước, các ô thù lao gộp / miễn thuế / EPF mà mẫu hỏi riêng, và mười bảy nhóm giảm trừ — được giữ trên màn hình riêng, nơi cũng có thể in mẫu."
+      "tp3FormNote": "Bốn con số này là những gì PCB hằng tháng đọc, và vẫn sẽ như vậy. Mẫu TP3 đầy đủ — các người sử dụng lao động trước, các ô thù lao gộp / miễn thuế / EPF mà mẫu hỏi riêng, và mười bảy nhóm giảm trừ — được giữ trên màn hình riêng, nơi cũng có thể in mẫu.",
+      "childReliefModeAutoTableHint": "Tự động (từ bảng) định giá từng người con theo loại giảm trừ chính thức của họ thay vì mức cố định cho mỗi con — người con đang học cao đẳng hoặc đại học toàn thời gian có giá trị cao hơn nhiều so với con dưới 18 tuổi. Chọn mục này sẽ hiện bảng phân loại bên dưới; khi bảng đó chưa được nhập thì không kê khai gì cả, vì vậy hãy nhập trước khi lưu. Màn hình Rà soát giảm trừ cho con cho thấy giá trị của thay đổi này bằng ringgit cho tất cả mọi người cùng lúc."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1911,6 +1913,49 @@
         "birth_date_contradicts_profile": "Cả hai số CMND/CCCD đều cho {inIc}, nhưng hồ sơ ghi {onProfile}",
         "different_birth_dates": "Các số CMND/CCCD cho ngày sinh KHÁC NHAU ({inIc})"
       }
+    },
+    "childRelief": {
+      "title": "Rà soát giảm trừ cho con (PCB)",
+      "description": "Mọi nhân viên đang làm việc có con, thuế hằng tháng hiện đang khấu trừ bao nhiêu cho các con của họ, và sẽ khấu trừ bao nhiêu theo bảng phân loại chính thức của LHDN.",
+      "backToPersonnel": "Quay lại Quản lý nhân sự",
+      "howToReadTitle": "Cách đọc trang này",
+      "howToReadToday": "Giảm trừ hiện nay là số tiền mà phép tính thuế đã khấu trừ cho các con của người này — số con nhân với mức cố định cho mỗi con, trừ khi họ đã dùng bảng phân loại.",
+      "howToReadSwitch": "Theo bảng phân loại là số tiền sẽ được khấu trừ nếu đổi thiết lập của họ ngay bây giờ, dựa trên bảng phân loại đã lưu trên chính hồ sơ của họ. Không ai có bảng này trừ khi có người nhập, và một bảng trống không có giá trị nào — vì vậy cột thay đổi có thể âm, nghĩa là thuế tăng chứ không giảm.",
+      "howToReadFamily": "Từ sổ gia đình là số tiền bảng đó sẽ đạt được nếu được điền từ các loại giảm trừ đã ghi nhận cho từng người con. Đây là gợi ý rút ra từ chính hồ sơ của bạn; nó không được lưu ở đâu cả và không phép tính nào đọc nó.",
+      "howToReadNothingChanges": "Không có gì trên trang này thay đổi bất kỳ ai. Trang cố ý không có nút Áp dụng: chuyển nhân viên sang bảng phân loại sẽ thay đổi thuế hằng tháng của họ, nên quyết định được đưa ra tại đây và thực hiện trên từng hồ sơ một.",
+      "statPeople": "Nhân viên có con",
+      "statChildren": "Số con được tính",
+      "statTodayRM": "Giảm trừ năm hiện nay (RM)",
+      "statSwitchRM": "Theo bảng phân loại (RM)",
+      "statDeltaRM": "Thay đổi (RM)",
+      "activeOnlyNote": "Chỉ nhân viên đang làm việc. Tổng số bao gồm các công ty bạn được phép xem.",
+      "amountsTitle": "Các mức tiền dùng để tính những con số này",
+      "pricedBy": "Phiên bản quy định pháp luật {version}, tính đến {asOf}.",
+      "amountPerChild": "Mức cố định cho mỗi con",
+      "amountsPendingSignOff": "Các mức tiền theo loại này lấy từ một bản tóm tắt đã công bố có uy tín chứ không phải từ tài liệu chính thức, vì trang chính thức hiện không truy cập được. Đây chính là những con số phép tính đang áp dụng. Hãy đối chiếu từng mức với ấn phẩm chính thức hiện hành trước khi bất kỳ kỳ tính lương nào dựa vào chúng.",
+      "cat_under_18": "Con dưới 18 tuổi",
+      "cat_study_preu": "Từ 18 tuổi, học dự bị đại học toàn thời gian",
+      "cat_study_tertiary": "Từ 18 tuổi, học cao đẳng/đại học (và cao hơn)",
+      "cat_disabled": "Con khuyết tật",
+      "cat_disabled_study": "Con khuyết tật đang học toàn thời gian",
+      "colEmployee": "Nhân viên",
+      "colMode": "Cách tính số con",
+      "colChildren": "Số con",
+      "colToday": "Giảm trừ hiện nay (RM)",
+      "colSwitch": "Theo bảng phân loại (RM)",
+      "colChange": "Thay đổi (RM)",
+      "colFamily": "Từ sổ gia đình (RM)",
+      "modeManual": "Thủ công (nhập số lượng)",
+      "modeAuto": "Tự động (từ sổ gia đình)",
+      "modeAutoTable": "Tự động (từ bảng)",
+      "alreadyOnTable": "Đã dùng bảng phân loại",
+      "gridEmptyWarning": "Chưa nhập loại nào — chuyển đổi bây giờ sẽ không kê khai gì cho các con của họ và làm tăng thuế của họ.",
+      "familyNone": "Không có con trong hồ sơ",
+      "familyPartial": "Bao gồm {done} trong số {total} người con; số còn lại chưa ghi nhận loại.",
+      "openRecord": "Mở hồ sơ",
+      "emptyTitle": "Không có nhân viên đang làm việc nào ghi nhận con để hưởng giảm trừ thuế.",
+      "emptyBody": "Danh sách này gồm những nhân viên đang làm việc có hồ sơ thuế ghi số con, hoặc đã dùng bảng phân loại. Hãy ghi số con ở thẻ Ngân hàng & Pháp định của nhân viên thì họ sẽ xuất hiện tại đây.",
+      "shareNote": "Người con chưa ghi tỷ lệ kê khai được tính ở mức kê khai đầy đủ 100%, đây là mặc định; người con ghi ở mức 50% có giá trị bằng một nửa mức tiền của loại đó."
     }
   },
   "leave": {
@@ -8117,7 +8162,8 @@
         "payrollPermissions": "Quyền tính lương và nghỉ phép",
         "leaveEmployeeBalances": "Số dư của nhân viên",
         "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên",
-        "duplicatePersonRecords": "Hồ sơ nhân viên trùng"
+        "duplicatePersonRecords": "Hồ sơ nhân viên trùng",
+        "childReliefReview": "Rà soát giảm trừ cho con (PCB)"
       },
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
@@ -8131,7 +8177,8 @@
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
-        "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này."
+        "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
+        "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này."
       },
       "status": {
         "active": "Đang hoạt động",

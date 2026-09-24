@@ -420,6 +420,21 @@ export default async function PeoplePage({
                 {t('duplicateRecords')}
               </Link>
             )}
+            {/* 99b2d6c0 (r336) — the way in to "Child relief review (PCB)". A LINK from this list for
+                exactly the reason the duplicates link above is one: `/admin/personnel/child-relief` sits
+                below this screen's own href, and the rail matches a segment PREFIX, so a row of its own
+                would light Personnel Management AND itself on the same page (defect 388e53c2). It belongs
+                here because "how are my people's children being counted for tax?" is a question asked
+                while looking at the employee list, and until this round it had no answer anywhere: the
+                category grid was reachable only one employee at a time, behind a dropdown. */}
+            {isAdmin && (
+              <Link
+                href="/admin/personnel/child-relief"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('childReliefReview')}
+              </Link>
+            )}
             {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me

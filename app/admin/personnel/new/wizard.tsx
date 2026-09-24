@@ -103,7 +103,13 @@ import { PassportFields, PassportSectionTitle } from '@/components/passport-fiel
 import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
 import { EpfCategoryField } from '@/components/epf-election';
 import { EmployerBearsSwitch } from '@/components/employer-bears-fields';
-import { ChildReliefModeField, DisabledReliefField, DisabledReliefHints, HrdfSubjectField } from '@/components/tax-relief-fields';
+import {
+  ChildReliefModeField,
+  ChildReliefModeHint,
+  DisabledReliefField,
+  DisabledReliefHints,
+  HrdfSubjectField,
+} from '@/components/tax-relief-fields';
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
@@ -1002,6 +1008,12 @@ export function EmployeeWizard({
               value={data.statutory?.subjectToHrdf}
               onChange={(subjectToHrdf) => set('statutory', { subjectToHrdf })}
             />
+            {/* 99b2d6c0 (r336) — the same explanation of "Auto (from table)" the Personnel card now
+                carries, on the screen where the mode is FIRST chosen. Spans the row for the same reason
+                the OKU hints below do. */}
+            <div className="sm:col-span-2">
+              <ChildReliefModeHint />
+            </div>
             <div className="sm:col-span-2">
               <DisabledReliefHints />
             </div>
