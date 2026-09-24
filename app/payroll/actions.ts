@@ -97,6 +97,10 @@ export async function generateAction(formData: FormData) {
     // existence blocker is gone: the Personnel Basic Salary record is the authoritative pay source.
     // A stale BASIC pay item (amount differing from Personnel) joins the confirm-to-proceed warnings.
     const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+    // Item 1bb09a73 — its OWN count and its OWN message. `preChecksBlockedError` names a missing salary
+    // record; a TP3 year mismatch is a different fault on employees whose salary record is fine, and a
+    // refusal that misdescribes itself sends the operator to the wrong screen.
+    const tp3Blockers = checks.tp3YearMismatch?.length ?? 0;
     // 297ae65a — a non-MYR/mixed-currency salary joins the confirm-to-proceed warnings (never blocks).
     // r79 — so does an explicit "Subject to HRDF = Yes" at a company with no HRD Corp registration band.
     // WARN, not REFUSE: the flag is legitimate forward setup, the levy is correctly zero either way, and
@@ -110,6 +114,8 @@ export async function generateAction(formData: FormData) {
       (checks.hrdfSubjectUnregistered?.length ?? 0);
     if (blockers > 0) {
       errMsg = t('preChecksBlockedError', { n: blockers });
+    } else if (tp3Blockers > 0) {
+      errMsg = t('preChecksBlockedTp3Error', { n: tp3Blockers });
     } else if (warnings > 0 && !acknowledged) {
       errMsg = t('preChecksConfirmRequired', { n: warnings });
     } else {

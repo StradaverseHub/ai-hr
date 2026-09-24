@@ -86,7 +86,16 @@ export function StepValidation({
       .then((a) => {
         if (!live) return;
         setAdvisory(a);
-        const hasBlockers = a.missingCompensation.length + (a.zeroBasic?.length ?? 0) > 0;
+        // Item 1bb09a73 adds tp3YearMismatch, so the Process button is disabled for exactly the runs
+        // generatePayslips will refuse. It must agree with the `blockers` count further down this file;
+        // one file counting blockers two ways is how a card and a button disagree.
+        //
+        // ⚠️ MEASURED, PRE-EXISTING AND DELIBERATELY NOT CHANGED HERE: `unpayablePayMode` (ADR-0078) is
+        // enforced server-side in generatePayslips but is counted by NEITHER of this file's two counts,
+        // nor by the batch card's, nor by app/payroll/actions.ts. A custom_period employee therefore
+        // leaves Process enabled and the run throws. That belongs to ADR-0078's own item, not this one.
+        const hasBlockers =
+          a.missingCompensation.length + (a.zeroBasic?.length ?? 0) + (a.tp3YearMismatch?.length ?? 0) > 0;
         onStatusChange({ loading: false, hasBlockers });
       })
       .catch(() => {
@@ -117,7 +126,12 @@ export function StepValidation({
     );
   }
 
-  const blockers = advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0);
+  // Item 1bb09a73 — a Form TP3 for this pay year that the run would seed as ZERO is a BLOCKER here too.
+  // `validationBlockerHint` is generic ("Payroll cannot proceed until these are corrected"), so unlike
+  // the batch card this count folds in without any sentence becoming untrue; the group row below names
+  // what is wrong.
+  const blockers =
+    advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0) + (advisory.tp3YearMismatch?.length ?? 0);
   // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company is AMBER for the same reason:
   // the run is honest work that must not be blocked, but the contradiction has to be seen before Process.
@@ -179,6 +193,7 @@ export function StepValidation({
   const groups: [keyof PreProcessAdvisory, typeof advisory.missingCompensation, boolean][] = [
     ['missingCompensation', advisory.missingCompensation, true],
     ['zeroBasic', advisory.zeroBasic ?? [], true],
+    ['tp3YearMismatch', advisory.tp3YearMismatch ?? [], true],
     ['missingStatutory', advisory.missingStatutory, false],
     ['missingBank', advisory.missingBank, false],
     ['staleBasicComponent', advisory.staleBasicComponent ?? [], false],

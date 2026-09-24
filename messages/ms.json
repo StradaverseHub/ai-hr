@@ -4564,6 +4564,7 @@
       "preChecksTitle": "Semakan pra-pemprosesan",
       "preChecksAllClear": "Semua semakan lulus — maklumat pekerja lengkap untuk larian ini.",
       "preChecksBlockerHint": "{n} pekerja tiada rekod gaji semasa. Sebelum ini mereka akan tercicir daripada larian secara senyap — payroll tidak boleh diproses sehingga ini dibetulkan (atau skop larian mengecualikan mereka).",
+      "preChecksTp3BlockerHint": "{n} pekerja mempunyai Borang TP3 untuk tahun ini yang tidak sepadan dengan angka pada tab Payroll mereka, jadi larian ini akan menganggap pekerjaan terdahulu mereka sebagai tiada dan memotong PCB terlalu sedikit. Buka Borang TP3 bagi setiap seorang dan simpan, kemudian jalankan payroll semula.",
       "preChecksWarningHint": "{n} semakan memerlukan perhatian anda. Anda masih boleh memproses payroll, tetapi anda akan diminta mengesahkan.",
       "preChecksBlockerBadge": "Menghalang pemprosesan",
       "preChecksWarningBadge": "Amaran",
@@ -4574,10 +4575,12 @@
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
-        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
+        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
+      "preChecksBlockedTp3Error": "Payroll tidak boleh diproses: {n} pekerja mempunyai Borang TP3 untuk tahun ini yang belum sampai kepada angka payroll mereka. Buka Borang TP3 bagi setiap seorang dan simpan dahulu.",
       "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",
       "skipped": {
         "title": "Pekerja yang dilangkau oleh proses ini",
@@ -5697,7 +5700,8 @@
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
-        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
+        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
       },
       "unattachedScopeTitle": "{n} pekerja mempunyai transaksi yang tidak akan dikutip oleh proses ini",
       "unattachedScopeWarning": "Sesuatu proses hanya mengutip pekerja yang termasuk di dalamnya, dan hanya transaksi yang ditanda untuk kitaran gajinya sendiri (atau yang tidak ditanda apa-apa). Selain itu kekal tertunggak sehingga satu proses yang meliputinya dikira. Anda boleh teruskan — ini amaran, bukan sekatan.",
@@ -11404,7 +11408,7 @@
     "tp3": {
       "title": "Borang TP3 — pekerjaan terdahulu",
       "intro": "Angka pekerjaan terdahulu bagi pekerja yang menyertai pada pertengahan tahun, disusun mengikut seksyen borang rasmi supaya borang TP3 bercetak boleh diikuti mengikut urutan. Peringkat 1: rekod ini disimpan dan dicetak. Ia tidak mengubah cukai — PCB bulanan masih membaca empat angka baki pembukaan pada tab Payroll pekerja.",
-      "stageNote": "Peringkat 1 daripada dua. Tiada apa-apa pada skrin ini mengubah potongan cukai bulanan. Pelepasan Seksyen D disambungkan kepada pengiraan PCB pada peringkat 2, bersama semakan had merentasi kedua-dua majikan.",
+      "stageNote": "Seksyen C kini sampai kepada potongan cukai bulanan: menyimpan borang ini menulis saraan, KWSP, PCB dan zakat daripada pekerjaan terdahulu ke dalam angka yang dibaca oleh larian payroll. Pelepasan Seksyen D masih direkod dan dicetak sahaja — ia belum menjadi sebahagian daripada pengiraan PCB.",
       "sectionA": "Seksyen A — Maklumat majikan",
       "sectionAFootnote": "*Sila gunakan lampiran tambahan untuk pekerjaan seterusnya",
       "sectionB": "Seksyen B — Maklumat pekerja",
@@ -11452,7 +11456,7 @@
         }
       },
       "reconcileHeading": "Berbanding angka yang digunakan oleh pengiraan cukai",
-      "reconcileNote": "PCB bulanan membaca empat angka baki pembukaan pada tab Payroll pekerja, dan ia masih berbuat demikian. Ini ialah empat angka yang sama, dikira daripada kotak di atas — kasar tolak elaun dikecualikan tolak KWSP. Ia dipaparkan supaya kedua-duanya boleh dibandingkan; tiada apa-apa di sini disalin ke dalam pengiraan cukai, dan perbezaan bukan satu ralat.",
+      "reconcileNote": "PCB bulanan membaca empat angka baki pembukaan pada tab Payroll pekerja. Menyimpan borang ini menulis angka tersebut daripada kotak di atas — kasar tolak elaun dikecualikan tolak KWSP, KWSP itu sendiri, PCB yang telah dipotong, dan zakat. Ia dipaparkan di sini supaya anda nampak apa yang akan digunakan oleh pengiraan cukai; perbezaan bermakna seseorang telah menyuntingnya secara manual pada tab Payroll selepas itu.",
       "reconcileDerived": "Daripada borang ini",
       "reconcileStored": "Digunakan oleh pengiraan cukai",
       "reconcileNet": "Saraan bersih terkumpul",
@@ -11468,6 +11472,7 @@
       "lastSaved": "Disimpan {at}",
       "save": "Simpan",
       "saved": "Borang TP3 disimpan.",
+      "savedFormOnly": "Borang TP3 disimpan. Angka payroll tidak diubah: ia disimpan terhadap tahun {year}, tahun yang lebih lewat daripada borang ini.",
       "deleted": "Rekod Borang TP3 dibuang.",
       "downloadPdf": "Muat turun Borang TP3 (Bahasa Inggeris)",
       "downloadPdfMs": "Muat turun Borang TP3 (Bahasa Malaysia)",

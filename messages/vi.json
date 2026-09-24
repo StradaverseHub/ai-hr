@@ -4564,6 +4564,7 @@
       "preChecksTitle": "Kiểm tra trước khi xử lý",
       "preChecksAllClear": "Tất cả kiểm tra đã đạt — thông tin nhân viên đầy đủ cho kỳ chạy này.",
       "preChecksBlockerHint": "{n} nhân viên không có hồ sơ lương hiện tại. Trước đây họ sẽ bị âm thầm loại khỏi kỳ chạy — không thể xử lý lương cho đến khi khắc phục (hoặc phạm vi kỳ chạy loại trừ họ).",
+      "preChecksTp3BlockerHint": "{n} nhân viên có Mẫu TP3 của năm nay không khớp với các con số trên thẻ Bảng lương của họ, nên kỳ chạy này sẽ coi công việc trước đó của họ bằng không và khấu trừ PCB quá ít. Hãy mở Mẫu TP3 của từng người và lưu lại, rồi chạy lương lần nữa.",
       "preChecksWarningHint": "{n} mục kiểm tra cần bạn chú ý. Bạn vẫn có thể xử lý lương nhưng sẽ được yêu cầu xác nhận.",
       "preChecksBlockerBadge": "Chặn xử lý",
       "preChecksWarningBadge": "Cảnh báo",
@@ -4574,10 +4575,12 @@
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
-        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
+        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "preChecksBlockedTp3Error": "Không thể xử lý lương: {n} nhân viên có Mẫu TP3 của năm nay chưa vào các con số bảng lương. Hãy mở Mẫu TP3 của từng người và lưu lại trước.",
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
       "skipped": {
         "title": "Nhân viên bị bỏ qua trong lần chạy này",
@@ -5697,7 +5700,8 @@
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
-        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
+        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "unattachedScopeTitle": "{n} nhân viên có giao dịch mà kỳ lương này sẽ không thu thập",
       "unattachedScopeWarning": "Một kỳ lương chỉ thu thập những nhân viên nằm trong kỳ đó, và chỉ những giao dịch được đánh dấu cho chu kỳ lương của chính nó (hoặc không đánh dấu chu kỳ nào). Phần còn lại vẫn tồn đọng cho đến khi một kỳ lương bao gồm chúng được tính. Bạn có thể tiếp tục — đây là cảnh báo, không phải rào chặn.",
@@ -11404,7 +11408,7 @@
     "tp3": {
       "title": "Mẫu TP3 — công việc trước đây",
       "intro": "Các con số từ nơi làm việc trước của nhân viên vào giữa năm, trình bày theo đúng các mục của mẫu chính thức để có thể điền lần lượt theo bản giấy TP3. Giai đoạn 1: hồ sơ này được lưu và in ra. Nó không thay đổi thuế — PCB hằng tháng vẫn đọc bốn số dư đầu kỳ trên thẻ Bảng lương của nhân viên.",
-      "stageNote": "Giai đoạn 1 trên hai. Không có gì trên màn hình này làm thay đổi khoản khấu trừ thuế hằng tháng. Các khoản giảm trừ ở Mục D sẽ được nối vào phép tính PCB ở giai đoạn 2, cùng với kiểm tra hạn mức trên cả hai người sử dụng lao động.",
+      "stageNote": "Mục C hiện đã ảnh hưởng đến khoản khấu trừ thuế hằng tháng: lưu mẫu này sẽ ghi thù lao, EPF, PCB và zakat của công việc trước đó vào các con số mà kỳ chạy lương đọc. Các khoản giảm trừ ở Mục D vẫn chỉ được ghi nhận và in ra — chúng chưa thuộc phép tính PCB.",
       "sectionA": "Mục A — Thông tin người sử dụng lao động",
       "sectionAFootnote": "*Vui lòng dùng phụ lục bổ sung cho công việc tiếp theo",
       "sectionB": "Mục B — Thông tin nhân viên",
@@ -11452,7 +11456,7 @@
         }
       },
       "reconcileHeading": "So với các con số mà phép tính thuế dùng",
-      "reconcileNote": "PCB hằng tháng đọc bốn số dư đầu kỳ trên thẻ Bảng lương của nhân viên, và hiện vẫn vậy. Đây là chính bốn con số đó, tính ra từ các ô ở trên — thù lao gộp trừ phụ cấp miễn thuế trừ EPF. Chúng được hiển thị để so sánh; không con số nào ở đây được sao vào phép tính thuế, và chênh lệch không phải là lỗi.",
+      "reconcileNote": "PCB hằng tháng đọc bốn số dư đầu kỳ trên thẻ Bảng lương của nhân viên. Lưu mẫu này sẽ ghi các số đó từ những ô ở trên — thù lao gộp trừ phụ cấp miễn thuế trừ EPF, chính khoản EPF, PCB đã khấu trừ, và zakat. Chúng được hiển thị ở đây để bạn thấy phép tính thuế sẽ dùng giá trị nào; nếu có chênh lệch nghĩa là sau đó đã có người sửa tay trên thẻ Bảng lương.",
       "reconcileDerived": "Từ mẫu này",
       "reconcileStored": "Phép tính thuế đang dùng",
       "reconcileNet": "Thù lao thuần luỹ kế",
@@ -11468,6 +11472,7 @@
       "lastSaved": "Lưu lần cuối {at}",
       "save": "Lưu",
       "saved": "Đã lưu Mẫu TP3.",
+      "savedFormOnly": "Đã lưu Mẫu TP3. Các con số bảng lương không thay đổi: chúng đang được ghi cho năm {year}, muộn hơn năm của mẫu này.",
       "deleted": "Đã xoá hồ sơ Mẫu TP3.",
       "downloadPdf": "Tải Mẫu TP3 (tiếng Anh)",
       "downloadPdfMs": "Tải Mẫu TP3 (tiếng Mã Lai)",
