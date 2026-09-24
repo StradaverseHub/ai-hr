@@ -8,10 +8,29 @@ import { ClockingAddressSearch } from './address-search';
 import { ClockingMap } from './clocking-map';
 
 /**
- * f9afd1ce rev 2 (r267) — ONE clocking location, on a page of its own, in TWO sections in the reporter's
- * order: Location information (name, report label, address, the optional holiday-calendar link, remarks)
- * then GPS and clocking settings (latitude, longitude, radius). Rendered by ./new/page.tsx and
+ * f9afd1ce rev 2 (r267) — ONE clocking location, on a page of its own. Rendered by ./new/page.tsx and
  * ./[id]/page.tsx; the list (../page.tsx) renders no form any more.
+ *
+ * 0fe1ca2e rev 6 (r335) — ONE SECTION, AND THERE IS NO "LOCATION INFORMATION" HEADING ANY MORE.
+ *
+ * Until this round the form was TWO cards: "Location information" (search, name, report label, address,
+ * the read-only link, remarks) and "GPS and clocking settings" (latitude, longitude, radius). The
+ * reporter contested that, and the complaint was precise: the address search was already ABOVE Latitude
+ * and already filled Address, Latitude and Longitude in (fa2db8cb rev 2, r279 — the functional half was
+ * built then and NOTHING about it changes here), but a whole card boundary sat between the search and the
+ * two boxes it writes, so the connection was invisible. The fix is the boundary, not the behaviour.
+ *
+ * One card now, under the GPS heading, in the reporter's approved order:
+ *   Find an address → Address → Latitude → Longitude → Clocking radius → Name → Report label →
+ *   Clocking location link (only when one exists) → Remarks
+ * `admin.locations.sectionInfo` is therefore RETIRED — removed from all six locales, because a heading
+ * that no screen renders is a string the next reader has to prove is dead. test/clocking-location-*.ts
+ * pin its absence rather than merely stopping mentioning it.
+ *
+ * TWO CONSEQUENCES, BOTH SAID OUT LOUD IN THE PLAN. Name moves BELOW the coordinates, which reads
+ * slightly oddly and the reporter was offered the option of lifting it back. And Address STAYS, directly
+ * under the search: their sketch omitted it, but it is the field the search writes and the one the
+ * Attendance report prints, so dropping it would have discarded the address just looked up.
  *
  * A SERVER COMPONENT WITH TWO CLIENT ISLANDS INSIDE IT (fa2db8cb rev 2, r279 — see below): it posts to
  * the SAME two actions the inline rows used to post to (app/admin/actions.ts createClockingLocationAction
@@ -108,13 +127,40 @@ export function ClockingLocationForm({
 
       <ErrorBanner message={error} />
 
-      {/* SECTION 1 — Location information. */}
+      {/* ONE SECTION — 0fe1ca2e rev 6 (r335). See this file's header for why there is no second card. */}
       <Card className="overflow-hidden">
-        <SectionHeader title={t('sectionInfo')} />
-        {/* At the TOP of the form, above the boxes it fills in. On a button press only — the free
-            geocoder's usage policy forbids search-as-you-type. */}
+        <SectionHeader title={t('sectionGps')} />
+        {/* The search, and then the three boxes it writes, with nothing between them. On a button press
+            only — the free geocoder's usage policy forbids search-as-you-type. */}
         <ClockingAddressSearch provider={mapProvider} />
-        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+          {/* Address is the field the search WRITES and the one that prints on reports. The reporter's
+              sketch omitted it; dropping it would throw away the address just looked up, so it stays —
+              directly under the search, which is the whole point of the move. */}
+          <Field label={t('address')} className="sm:col-span-3">
+            <textarea name="address" defaultValue={values.address} rows={2} maxLength={1000} className={textareaCls} />
+          </Field>
+          <Field label={t('lat')} required>
+            <input name="lat" type="number" step="any" min={-90} max={90} defaultValue={values.lat} required placeholder="3.1390" className={inputCls} />
+          </Field>
+          <Field label={t('lng')} required>
+            <input name="lng" type="number" step="any" min={-180} max={180} defaultValue={values.lng} required placeholder="101.6869" className={inputCls} />
+          </Field>
+          {/* 1fff489c — the allowed distance, per site. Required by the form AND by the service; min=1 is
+              the DB CHECK, and the 10..5000 advisory is a toast, never a block. Posted as the raw string so
+              a blank reaches "Radius is required" rather than becoming NaN. */}
+          <Field label={t('radiusMetresLabel')} required>
+            <input name="radiusM" type="number" min={1} step={1} defaultValue={values.radiusM} required placeholder="150" className={inputCls} />
+          </Field>
+        </div>
+        <p className="px-4 pb-3 text-xs text-muted-foreground">{t('radiusNote')}</p>
+        {/* The marker and the radius circle, which follows the boxes above as they are typed. It stays
+            DIRECTLY under them: a picture of lat / lng / radius separated from lat / lng / radius by four
+            text boxes would repeat, against the map, the exact complaint this round fixes for the search. */}
+        <ClockingMap provider={mapProvider} />
+        {/* What the place is CALLED, after where it is. The reporter's order puts these below the
+            coordinates; the plan said out loud that Name moves down and offered to lift it back. */}
+        <div className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
           {/* The point keeps its OWN name (the reporter's "HQ — North Gate" / "HQ — South Gate" reading). */}
           <Field label={t('name')} required>
             <input name="name" defaultValue={values.name} required maxLength={300} placeholder={t('clockingNamePlaceholder')} className={inputCls} />
@@ -122,9 +168,6 @@ export function ClockingLocationForm({
           {/* NEW (0461): the short name the Attendance report prints; blank = the name is printed. */}
           <Field label={t('reportLabel')}>
             <input name="reportLabel" defaultValue={values.reportLabel} maxLength={MAX_REPORT_LABEL_CHARS} className={inputCls} />
-          </Field>
-          <Field label={t('address')} className="sm:col-span-2">
-            <textarea name="address" defaultValue={values.address} rows={2} maxLength={1000} className={textareaCls} />
           </Field>
           {/*
             * 0fe1ca2e — THE CONTROL IS GONE; THE COLUMN, THE LINK AND THE REGISTER'S GROUPING ARE NOT.
@@ -154,29 +197,6 @@ export function ClockingLocationForm({
           </Field>
         </div>
         <p className="px-4 pb-4 text-xs text-muted-foreground">{t('reportLabelHint')}</p>
-      </Card>
-
-      {/* SECTION 2 — GPS and clocking settings. The three boxes are still the thing that gets saved; the
-          map below them is a picture of what they mean. */}
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('sectionGps')} />
-        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
-          <Field label={t('lat')} required>
-            <input name="lat" type="number" step="any" min={-90} max={90} defaultValue={values.lat} required placeholder="3.1390" className={inputCls} />
-          </Field>
-          <Field label={t('lng')} required>
-            <input name="lng" type="number" step="any" min={-180} max={180} defaultValue={values.lng} required placeholder="101.6869" className={inputCls} />
-          </Field>
-          {/* 1fff489c — the allowed distance, per site. Required by the form AND by the service; min=1 is
-              the DB CHECK, and the 10..5000 advisory is a toast, never a block. Posted as the raw string so
-              a blank reaches "Radius is required" rather than becoming NaN. */}
-          <Field label={t('radiusMetresLabel')} required>
-            <input name="radiusM" type="number" min={1} step={1} defaultValue={values.radiusM} required placeholder="150" className={inputCls} />
-          </Field>
-        </div>
-        <p className="px-4 pb-3 text-xs text-muted-foreground">{t('radiusNote')}</p>
-        {/* The marker and the radius circle, which follows the box above as it is typed. */}
-        <ClockingMap provider={mapProvider} />
       </Card>
 
       <div className="flex items-center gap-3">
