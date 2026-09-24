@@ -166,8 +166,6 @@ describe('r336 · Section B derives its figures and never offers them as inputs'
     mount('en', { extended: WORKING_DAY });
     await openModal(user, 'en');
     const section = screen.getByTestId('leave-credit-section-b');
-    await user.type(within(section).getByDisplayValue(''), ''); // no-op; keeps the query explicit below
-
     const dateInput = section.querySelector('input[name="bWorkedDate"]') as HTMLInputElement;
     await user.type(dateInput, '2026-09-16');
     const start = section.querySelector('input[name="bStart"]') as HTMLInputElement;
