@@ -49,7 +49,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
-import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 import { isHrefActive, isNavRowActive } from '../components/nav-flyout';
 import { attendancePack } from '../packs/attendance';
@@ -334,8 +334,14 @@ describe('639bf4a5 (f) — ADR-0086: no State control, and no holiday claim in a
   });
 
   it('the relocated source offers no state control on either form', () => {
-    const src = read('app/admin/work-locations/page.tsx');
-    expect(src.split('name="state"').length - 1, 'no <select name="state"> on the edit row or the create form').toBe(0);
+    // CODE ONLY — the file's header and its ADR-0086 notes deliberately QUOTE what they replaced, and a
+    // guard that read the comments would refuse the very explanation that keeps the decision legible.
+    const src = read('app/admin/work-locations/page.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
+      .join('\n');
+    expect(src.split('name="state"').length - 1, 'no state control on the edit row or the create form').toBe(0);
     expect(src, 'and nothing reads the column back at the operator').not.toContain('stateLabel(');
   });
 });
@@ -487,15 +493,22 @@ describe('639bf4a5 (c) — create, edit, archive and restore a work site, from t
 });
 
 describe('639bf4a5 (d) — branch mapping still proposes, and still reports what is unmapped', () => {
+  /**
+   * Seeded through the harness's own admin context rather than the page's: `setEmploymentInfo` gates on
+   * `ctx.roles`, which the group-administrator fixture above deliberately does not carry (it carries
+   * `grants`, which is what isGroupAdmin and RLS read). Hiring is not what this case is about — the
+   * branch on the employment is — so it uses the context built for that job.
+   */
   async function hireWithBranch(branch: string) {
-    const r = await hireEmployee(ADMIN, {
+    const ctx = adminCtx(b);
+    const r = await hireEmployee(ctx, {
       person: { fullName: `B ${branch}`, primaryEmail: `b_${randomUUID().slice(0, 8)}@t.local` },
       companyId: b.companyId,
       departmentId: b.deptA,
       employmentType: 'full_time',
       hiredOn: '2026-01-01',
     });
-    await setEmploymentInfo(ADMIN, { employmentId: r.employmentId, orgBranch: branch });
+    await setEmploymentInfo(ctx, { employmentId: r.employmentId, orgBranch: branch });
     return r.employmentId;
   }
 
