@@ -167,30 +167,41 @@ describe('f9afd1ce rev 2 — the list is for reading: Edit and Add open the page
   });
 });
 
-describe('f9afd1ce rev 2 — the page of its own: two sections in the reporter’s order, Back, Save beside a Cancel LINK', () => {
+describe('f9afd1ce rev 2 — the page of its own: ONE section in the reporter’s order, Back, Save beside a Cancel LINK', () => {
   const form = withoutComments(read(FORM));
   const newPage = withoutComments(read(NEW));
   const editPage = withoutComments(read(EDIT));
 
-  it('Location information, then GPS and clocking settings — each field in its place', () => {
-    expect(at(form, "t('sectionInfo')")).toBeLessThan(at(form, "t('sectionGps')"));
-    const info = form.slice(at(form, "t('sectionInfo')"), at(form, "t('sectionGps')"));
-    const gps = form.slice(at(form, "t('sectionGps')"));
-    for (const field of ['name', 'reportLabel', 'address', 'locationId', 'remarks']) {
-      expect(info, `${field} is in Location information`).toContain(`name="${field}"`);
-      expect(gps, `${field} is not in GPS`).not.toContain(`name="${field}"`);
-    }
-    for (const field of ['lat', 'lng', 'radiusM']) {
-      expect(gps, `${field} is in GPS and clocking settings`).toContain(`name="${field}"`);
-      expect(info, `${field} is not in Location information`).not.toContain(`name="${field}"`);
-    }
-    // In the reporter's order within each section.
-    expect(at(info, 'name="name"')).toBeLessThan(at(info, 'name="reportLabel"'));
-    expect(at(info, 'name="reportLabel"')).toBeLessThan(at(info, 'name="address"'));
-    expect(at(gps, 'name="lat"')).toBeLessThan(at(gps, 'name="lng"'));
-    expect(at(gps, 'name="lng"')).toBeLessThan(at(gps, 'name="radiusM"'));
+  /**
+   * 0fe1ca2e rev 6 (r335) — UPDATED, NOT LOOSENED, because it pinned a layout the reporter contested.
+   *
+   * This case used to read "Location information, then GPS and clocking settings — each field in its
+   * place" and asserted the two section slices as disjoint sets: name / reportLabel / address /
+   * locationId / remarks in the first, lat / lng / radiusM in the second, each absent from the other.
+   * That pinned exactly the card boundary the reporter complained about — the address search sat above
+   * Latitude but with a whole card between them — so it is REWRITTEN to pin the single section and the
+   * one order they approved, field by field, rather than deleted.
+   *
+   * The `sectionGps` heading is now the only heading on the form, and it is asserted as the ONLY
+   * SectionHeader: a second card creeping back would show up here first.
+   */
+  it('ONE section, headed GPS and clocking settings — search, address, the coordinates, then what the place is called', () => {
+    expect(form, 'the retired heading is not rendered anywhere').not.toContain("t('sectionInfo')");
+    expect(form.match(/<SectionHeader /g)?.length, 'ONE section heading on the whole form').toBe(1);
+    expect(form).toContain("<SectionHeader title={t('sectionGps')} />");
+    expect(form.match(/<Card /g)?.length, 'ONE card — the boundary the reporter contested is gone').toBe(1);
+
+    // ⚠️ ORDER, not presence. Every one of these fields was already on the form before this round, so an
+    // assertion that merely found them would have passed on the two-card layout too.
+    const order = ['<ClockingAddressSearch', 'name="address"', 'name="lat"', 'name="lng"', 'name="radiusM"', 'name="name"', 'name="reportLabel"', 'name="locationId"', 'name="remarks"'];
+    const seen = order.map((needle) => ({ needle, at: at(form, needle) }));
+    const measured = [...seen].sort((a, b) => a.at - b.at).map((s) => s.needle);
+    expect(measured, `the source order, as measured: ${measured.join(' → ')}`).toEqual(order);
+
     expect(form, 'the radius is posted raw so a blank reaches the service’s sentence').toContain('name="radiusM" type="number" min={1} step={1}');
-    expect(form, 'the report label hint sits under the section that holds the box').toContain("t('reportLabelHint')");
+    expect(form, 'the report label hint sits under the grid that holds the box').toContain("t('reportLabelHint')");
+    expect(at(form, "t('reportLabelHint')"), 'and after it, not stranded above the coordinates').toBeGreaterThan(at(form, 'name="reportLabel"'));
+    expect(at(form, "t('radiusNote')"), 'the radius note still follows its own box').toBeGreaterThan(at(form, 'name="radiusM"'));
     expect(form, 'full width — pageWideCls is the pages’, the form fills it').not.toMatch(/max-w-\d*xl/);
     for (const rel of [NEW, EDIT]) expect(read(rel), `${rel} uses pageWideCls`).toContain('pageWideCls');
   });
@@ -202,7 +213,9 @@ describe('f9afd1ce rev 2 — the page of its own: two sections in the reporter�
     expect(form).toMatch(/<Link href=\{cancelHref\}[^>]*>\s*\{t\('cancel'\)\}/);
     expect(form.match(/<form/g)?.length, 'ONE form — Cancel is not a second one').toBe(1);
     expect(form.match(/<ErrorBanner /g)?.length, 'one banner').toBe(1);
-    expect(at(form, '<ErrorBanner message={error} />')).toBeLessThan(at(form, "t('sectionInfo')"));
+    // 0fe1ca2e rev 6 (r335): keyed on the heading that still exists — `sectionInfo` was retired with the
+    // second card. The property is unchanged: the refusal reason is above the fields, not under the header.
+    expect(at(form, '<ErrorBanner message={error} />')).toBeLessThan(at(form, "t('sectionGps')"));
     /**
      * fa2db8cb rev 2 (r279) — REWRITTEN, NOT DELETED. Until this round two lines stood here. One
      * asserted the form matched none of five map-related spellings — the two map-library names, the
@@ -235,8 +248,24 @@ describe('f9afd1ce rev 2 — the page of its own: two sections in the reporter�
     ]);
     expect(form, 'the search is mounted at the top of the form').toContain('<ClockingAddressSearch provider={mapProvider} />');
     expect(form, 'the map is mounted inside GPS and clocking settings').toContain('<ClockingMap provider={mapProvider} />');
-    expect(at(form, '<ClockingAddressSearch'), 'the search is in Location information').toBeLessThan(at(form, "t('sectionGps')"));
-    expect(at(form, '<ClockingMap'), 'the map is in GPS and clocking settings').toBeGreaterThan(at(form, 'name="radiusM"'));
+    /**
+     * 0fe1ca2e rev 6 (r335) — REVERSED ON PURPOSE, WHICH IS THE ROUND. This read
+     *
+     *   expect(at(form, '<ClockingAddressSearch'), 'the search is in Location information')
+     *     .toBeLessThan(at(form, "t('sectionGps')"));
+     *
+     * and was the line that pinned the search into the OTHER card. There is one card now, so the search
+     * comes AFTER the only heading — and, the thing the reporter actually asked for, immediately before
+     * the boxes it writes with nothing between.
+     */
+    expect(at(form, '<ClockingAddressSearch'), 'the search is inside the one section, under its heading').toBeGreaterThan(at(form, "t('sectionGps')"));
+    expect(at(form, '<ClockingAddressSearch'), 'and directly above Address, which it writes').toBeLessThan(at(form, 'name="address"'));
+    expect(
+      form.slice(at(form, '<ClockingAddressSearch'), at(form, 'name="address"')),
+      'nothing posted sits between the search and the first box it fills',
+    ).not.toMatch(/\sname="/);
+    expect(at(form, '<ClockingMap'), 'the map is still directly under the boxes it draws').toBeGreaterThan(at(form, 'name="radiusM"'));
+    expect(at(form, '<ClockingMap'), '…and above the descriptive fields, so it is never separated from them').toBeLessThan(at(form, 'name="name"'));
     expect(form, 'the seam is resolved ONCE, on the server, from the environment').toContain('const mapProvider = resolveMapProvider(process.env);');
     expect(form, 'no embed: the framed third-party map is the option that still needs a key').not.toContain('<ifr' + 'ame');
   });
@@ -339,6 +368,56 @@ async function runAction(action: (fd: FormData) => Promise<void>, fields: Record
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 /** Strip <script> before counting — a key in the RSC payload is not a screen (CLAUDE.md §8). */
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
+
+/**
+ * 0fe1ca2e rev 6 (r335) — THE ORDER OF THE CONTROLS IN THE MARKUP, which is the whole of what this round
+ * changed and the only thing the reporter can see.
+ *
+ * ⚠️ ORDER, NEVER PRESENCE. Every one of these controls was on the page before this round — in two cards,
+ * the search separated from Latitude by the whole of Location information. An assertion that merely found
+ * them would pass on the layout that was contested, so each is located by index and the sequence compared,
+ * with the MEASURED sequence in the failure message so a regression says what it actually rendered.
+ *
+ * The search box is anchored on its accessible label, read out of en.json rather than typed here: the
+ * island resolves its own text through the real catalogue (the provider in `toMarkup`), so a hardcoded
+ * English sentence would pin the translation instead of the layout.
+ */
+const EN_LOCATIONS = (JSON.parse(read('messages/en.json')) as { admin: { locations: Record<string, string> } }).admin.locations;
+function assertClockingOrder(html: string): void {
+  const marks: [string, string][] = [
+    ['the address search', `aria-label="${EN_LOCATIONS.addressSearchLabel}"`],
+    ['Address', 'name="address"'],
+    ['Latitude', 'name="lat"'],
+    ['Longitude', 'name="lng"'],
+    ['Clocking radius', 'name="radiusM"'],
+    ['Name', 'name="name"'],
+    ['Report label', 'name="reportLabel"'],
+    ['Remarks', 'name="remarks"'],
+  ];
+  const found = marks.map(([label, needle]) => {
+    const i = html.indexOf(needle);
+    expect(i, `${label} (${needle}) is on the rendered page`).toBeGreaterThan(-1);
+    return { label, at: i };
+  });
+  const measured = [...found].sort((a, b) => a.at - b.at).map((f) => f.label);
+  expect(measured, `the rendered order is: ${measured.join(' → ')}`).toEqual(marks.map(([label]) => label));
+}
+
+/**
+ * 0fe1ca2e rev 6 (r335) — WHAT THE MOVED FORM ACTUALLY POSTS, read off the rendered markup rather than off
+ * the source. Re-ordering nine controls by hand is precisely how one gets dropped or duplicated, and
+ * neither tsc nor the order guard above would notice: a form that silently stopped posting `remarks`
+ * still renders its eight remaining boxes in the right sequence. Asserted as a SET EQUAL to
+ * CLOCKING_FIELDS — `clockingLocationId` is the route's own hidden id, not one of the eight, and the
+ * search box is deliberately unnamed so it never appears here at all.
+ */
+function assertPostedFields(html: string): void {
+  const open = html.lastIndexOf('<form', html.indexOf('sectionGps'));
+  expect(open, 'the form is on the page').toBeGreaterThan(-1);
+  const form = html.slice(open, html.indexOf('</form>', open));
+  const posted = [...new Set([...form.matchAll(/\sname="([^"]+)"/g)].map((m) => m[1]))].filter((n) => n !== 'clockingLocationId');
+  expect([...posted].sort(), `the form posts: ${posted.join(', ')}`).toEqual([...CLOCKING_FIELDS].sort());
+}
 
 let b: Base;
 /** A GROUP administrator (hr_admin with company_id NULL) carrying the grant, so isGroupAdmin() and RLS agree. */
@@ -511,12 +590,24 @@ describe('0fe1ca2e · removing the control must not unlink anything', () => {
 });
 
 describe('f9afd1ce rev 2 — the pages render', () => {
-  it('the NEW page: two section headings in order, Save, Cancel to the list, the pre-picked link, and the keyless map', async () => {
+  it('the NEW page: ONE section heading, Save, Cancel to the list, the pre-picked link, and the keyless map', async () => {
     const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
     const html = visible(await renderNew({ addPoint: loc }));
-    expect(count(html, 'sectionInfo')).toBe(1);
-    expect(count(html, 'sectionGps')).toBe(1);
-    expect(html.indexOf('sectionInfo')).toBeLessThan(html.indexOf('sectionGps'));
+    /**
+     * 0fe1ca2e rev 6 (r335) — UPDATED, NOT LOOSENED. The three lines here used to read
+     *
+     *   expect(count(html, 'sectionInfo')).toBe(1);
+     *   expect(count(html, 'sectionGps')).toBe(1);
+     *   expect(html.indexOf('sectionInfo')).toBeLessThan(html.indexOf('sectionGps'));
+     *
+     * and pinned the two-card layout the reporter contested. ONE card now, and `sectionInfo` is retired
+     * from all six locales, so its count is asserted at ZERO — on the markup with <script> stripped, so a
+     * key surviving in the RSC payload cannot fake either half (CLAUDE.md §8).
+     */
+    expect(count(html, 'sectionGps'), 'the one heading, once').toBe(1);
+    expect(count(html, 'sectionInfo'), 'and no Location information heading anywhere on the page').toBe(0);
+    assertClockingOrder(html);
+    assertPostedFields(html);
     expect(count(html, '>save<')).toBe(1);
     expect(html).toContain(`href="${LOCATIONS_LIST}"`);
     expect(count(html, '>cancel<')).toBe(1);
@@ -603,8 +694,11 @@ describe('f9afd1ce rev 2 — the pages render', () => {
     expect(html, 'and it says which location, rather than just hiding it').toContain('Headquarters');
     // Back and Cancel both land on the row (renderToStaticMarkup escapes & in attributes; there is none here).
     expect(count(html, `href="${clockingRowHref(id)}"`)).toBe(2);
-    expect(count(html, 'sectionInfo')).toBe(1);
+    // 0fe1ca2e rev 6 (r335): ONE heading, and the retired one absent — the edit page renders the same form.
     expect(count(html, 'sectionGps')).toBe(1);
+    expect(count(html, 'sectionInfo')).toBe(0);
+    assertClockingOrder(html);
+    assertPostedFields(html);
 
     for (const junk of ['not-a-uuid', "'; drop table clocking_location; --", id.slice(0, -1)]) {
       await expect(renderEdit(junk), `${junk} never reaches SQL`).rejects.toThrow('NEXT_NOT_FOUND');

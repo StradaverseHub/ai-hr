@@ -198,7 +198,9 @@ Migration 0461. The shared record above is unchanged; two things are added aroun
 - **The screen.** A clocking location is added and edited on a dedicated full-width page
   (`/admin/locations/clocking/new`, `/admin/locations/clocking/[id]`, registered on the existing
   `locations` screen column) in two sections in the reporter's order — Location information, then GPS
-  and clocking settings. The list's rows are read-only with Edit; Archive / Restore / Delete stay on the
+  and clocking settings. **[The TWO SECTIONS are SUPERSEDED — see "Amended 2026-09-24 (0fe1ca2e rev 6,
+  r335)" below: one section, and `Location information` is retired. Everything else in this bullet
+  stands.]** The list's rows are read-only with Edit; Archive / Restore / Delete stay on the
   row. The clocking register now leads the Locations page so the "Clocking location" menu row lands on
   it. Address search and a map preview are a separate item, planned once a map provider is chosen; the
   page's section order leaves room for them and carries no placeholder. **[SUPERSEDED — see "Amended 2026-09-15 (fa2db8cb rev 2, r279)" below.]**
@@ -253,6 +255,38 @@ posted field set (`CLOCKING_FIELDS`) is the same eight.
 - Still NOT done, and still deferred: a timezone per clocking location (the whole system assumes
   Malaysian time); deduplication of sites; reverse-geocoding captured punch coordinates into a street
   address; dragging or clicking the marker to set the point (the boxes and the search set it).
+
+## Amended 2026-09-24 (0fe1ca2e rev 6, r335) — ONE section, and the Location-information heading is retired
+No migration, no schema change, nothing stored differently, and `CLOCKING_FIELDS` is still the same
+eight. This supersedes ONLY the "two sections" half of the screen bullet under "Amended 2026-09-11
+(f9afd1ce rev 2, r267)".
+
+- **WHAT THE REPORTER CONTESTED, precisely.** Not the behaviour. r279 had already made the address
+  search fill Address, Latitude and Longitude, and the search was already ABOVE Latitude — but in the
+  OTHER card, with the whole of "Location information" between it and the two boxes it writes. A card
+  boundary between a control and the fields it fills is the defect; the connection was invisible.
+- **THE SCREEN IS NOW ONE CARD**, under the existing `admin.locations.sectionGps` heading, in the order
+  the reporter approved: Find an address → Address → Latitude → Longitude → Clocking radius (metres) →
+  Name → Report label → Clocking location link (rendered only when one exists) → Remarks.
+- **`admin.locations.sectionInfo` is RETIRED from all six locales.** A heading no screen renders is a
+  string the next reader has to prove is dead. Its absence is asserted (test/clocking-location-shared)
+  so a deep-merge of an older branch's `messages/*.json` cannot resurrect it silently.
+- **ADDRESS STAYS, directly under the search.** The reporter's sketch omitted it. It is the field the
+  search WRITES and the one `core/reporting.ts` prints, so dropping it would have discarded the address
+  just looked up. The plan told them so.
+- **THE MAP STAYS DIRECTLY UNDER THE COORDINATES** it draws, above the descriptive fields. Putting four
+  text boxes between lat/lng/radius and their picture would have repeated, against the map, the exact
+  complaint this amendment fixes for the search.
+- **Named consequence, disclosed in the plan:** Name now sits BELOW the coordinates, which reads
+  slightly oddly — naming a place after locating it. The reporter was offered the option of lifting it
+  back to the top with the rest of their order unaffected.
+- **The three traps the move had to clear, none of them changed.** The islands still find the inputs
+  through the ENCLOSING FORM (`form-bridge.ts`, `closest('form')`), so the search had to stay inside the
+  same `<form>` — a layout change that moved it out would break the fill in silence, which is why
+  test/clocking-map.dom.test.tsx now mounts the REAL `ClockingLocationForm` rather than a look-alike
+  harness and reads the boxes back. Search is still `type="button"` with a `preventDefault`ing Enter
+  handler, and the search box still carries NO `name`. Search-as-you-type remains forbidden by the free
+  geocoder's usage policy: there is no debounce and there must never be one.
 
 ## Consequences
 - Two site registries exist side by side (see §1); the nullable

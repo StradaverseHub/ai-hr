@@ -331,7 +331,6 @@ describe('f9afd1ce — the two screens', () => {
         'newClockingTitle',
         'editClockingTitle',
         'backToLocations',
-        'sectionInfo',
         'sectionGps',
         'radiusMetresLabel',
         'cancel',
@@ -340,6 +339,16 @@ describe('f9afd1ce — the two screens', () => {
         expect(m.admin.locations[k], `${loc} admin.locations.${k}`).toBeTruthy();
       }
       expect(m.admin.locations.noLocationsForCompany, `${loc} retired key`).toBeUndefined();
+      /**
+       * 0fe1ca2e rev 6 (r335) — MOVED FROM THE MUST-EXIST LIST ABOVE TO HERE, which is the whole of the
+       * round in one line. "Location information" was the heading of the first of two cards; the reporter
+       * contested the card boundary between the address search and the coordinate boxes it fills, so the
+       * form is ONE section under `sectionGps` now and nothing renders `sectionInfo`. A heading no screen
+       * renders is a string the next reader has to prove is dead, so it is deleted rather than orphaned —
+       * asserted absent in all six locales so a merge of an older branch cannot resurrect it silently
+       * (CLAUDE.md §10: a naive deep-merge of messages/*.json brings deleted keys back).
+       */
+      expect(m.admin.locations.sectionInfo, `${loc} retired with the second card (r335)`).toBeUndefined();
       expect(m.people.detail.clocking.noSharedSites, `${loc} people.detail.clocking.noSharedSites`).toBeTruthy();
       expect(m.people.detail.clocking.linkedPoints, `${loc} people.detail.clocking.linkedPoints`).toContain('{count, plural,');
       expect(m.people.detail.clocking.noSites, `${loc} retired key`).toBeUndefined();

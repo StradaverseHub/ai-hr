@@ -166,7 +166,33 @@ vi.mock('leaflet', () => {
   };
 });
 
+/**
+ * 0fe1ca2e rev 6 (r335) — THE REAL FORM, MOUNTED, and the two server-only modules it reaches for.
+ *
+ * The harness below is a hand-built <form> that merely AGREES with the real one; it cannot notice a
+ * layout change that moved the address search out of the form's subtree, which is the one thing r335's
+ * re-ordering could have broken silently (form-bridge.ts finds every input through `closest('form')`).
+ * So the last describe in this file renders `ClockingLocationForm` itself.
+ *
+ * It is a server component, and it imports two modules that a jsdom test cannot load: `app/admin/actions`
+ * ('use server') and `@/packs/attendance/service`, whose own header says it "drags in db/client" — proven
+ * rather than assumed here, the unmocked import fails with "DATABASE_URL is not set" out of db/client.ts.
+ * Both are replaced, as narrowly as possible: the actions become spies (which makes "the search never
+ * submits" assertable against the form's REAL action rather than against a test-only onSubmit), and the
+ * service contributes the single number the form reads. That number is pinned to the kernel's own source
+ * below so the stub cannot drift away from `core/clocking-location.ts`.
+ */
+vi.mock('@/packs/attendance/service', () => ({ MAX_REPORT_LABEL_CHARS: 60 }));
+/** `vi.hoisted` because `vi.mock` is hoisted above every `const`: a plain one would be in its TDZ here. */
+const formActions = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn() }));
+vi.mock('../app/admin/actions', () => ({
+  createClockingLocationAction: formActions.create,
+  updateClockingLocationAction: formActions.update,
+}));
+
 import * as leafletModule from 'leaflet';
+import { ClockingLocationForm } from '../app/admin/locations/clocking/clocking-form';
+import type { ClockingFormValues } from '../app/admin/locations/clocking/form-fields';
 const fake = leafletModule as unknown as { __state: FakeState; __reset: () => void };
 
 /** A point that is NOT the island's fallback centre, so "the marker moved" cannot pass by accident. */
@@ -419,5 +445,138 @@ describe('fa2db8cb rev 2 — the address search: on submit only, and it fills in
     const b = boxes();
     expect([b.address.value, b.lat.value, b.lng.value], 'a failed search writes nothing').toEqual(['', '', '']);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 0fe1ca2e rev 6 (r335) — ONE CARD, AND THE BRIDGE STILL REACHES THE BOXES.
+ *
+ * The reporter contested the layout, not the behaviour: the address search already filled Address,
+ * Latitude and Longitude (r279) and already sat above Latitude, but a whole card boundary stood between
+ * them. r335 collapses the two cards into one, under the GPS heading, in their order. Nothing about the
+ * search changed — which is exactly why it needs a test that a pure re-ordering could fail.
+ *
+ * ⚠️ THIS MOUNTS THE REAL `ClockingLocationForm`, not the harness above. `form-bridge.ts` finds `address`,
+ * `lat` and `lng` through `closest('form')` on a node the island owns, so moving the search into a
+ * different card is safe ONLY while it stays inside the same <form> — and moving it outside one, or into
+ * a nested one, would break the fill with no error, no warning and a green source scan. Verified BY USE:
+ * a result is picked and the real form's own boxes are read back.
+ */
+describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fills the boxes, and still posts nothing', () => {
+  const hit = { display_name: 'Menara KL, Jalan Punchak, Kuala Lumpur', lat: '3.1528', lon: '101.7038' };
+  const LINK = '11111111-2222-4333-8444-555555555555';
+  const blank = Object.fromEntries(CLOCKING_FIELDS.map((f) => [f, ''])) as ClockingFormValues;
+
+  /** The form as the NEW page renders it, with a link present so all eight posted fields are on screen. */
+  const renderForm = () =>
+    render(
+      <NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={messages}>
+        <ClockingLocationForm
+          t={(k) => k}
+          mode="new"
+          values={{ ...blank, locationId: LINK }}
+          linkableLocations={[{ id: LINK, code: 'HQ', name: 'Headquarters', companyName: 'Acme' }]}
+          cancelHref="/admin/locations"
+        />
+      </NextIntlClientProvider>,
+    );
+  const theForm = () => {
+    const forms = document.querySelectorAll('form');
+    expect(forms.length, 'ONE form — Cancel is a link, and no island opens a second one').toBe(1);
+    return forms[0];
+  };
+
+  beforeEach(() => {
+    formActions.create.mockClear();
+    formActions.update.mockClear();
+  });
+
+  it('the stubbed report-label cap is the kernel’s own number, so this file cannot drift from core', () => {
+    expect(fs.readFileSync(path.resolve(__dirname, '../core/clocking-location.ts'), 'utf8')).toContain(
+      'export const MAX_REPORT_LABEL_CHARS = 60;',
+    );
+  });
+
+  it('every control is in the reporter’s order in the LIVE DOM, with the search inside the one form and unnamed', () => {
+    renderForm();
+    const form = theForm();
+
+    /**
+     * ⚠️ ORDER, NOT PRESENCE — and read off the mounted DOM, which is what the reporter looks at. Each of
+     * these nine controls existed before r335 too, in two cards with the search four fields away from
+     * Latitude, so an assertion that merely found them would have been green on the layout that was
+     * contested. The search is the unnamed one: its blank `name` is deliberate (an unnamed control is not
+     * submitted, which is what keeps CLOCKING_FIELDS the set of eight) and is asserted as part of the row.
+     */
+    const controls = [...form.querySelectorAll('input, textarea')].map((el) => (el as HTMLInputElement).name || '(the address search)');
+    expect(controls).toEqual([
+      '(the address search)',
+      'address',
+      'lat',
+      'lng',
+      'radiusM',
+      'name',
+      'reportLabel',
+      'locationId',
+      'remarks',
+    ]);
+
+    // TRAP 1, by use rather than by reading: the bridge walks up to the enclosing form from the island.
+    const box = screen.getByLabelText('Find an address');
+    expect(box.closest('form'), 'the search lives INSIDE the form whose boxes it writes').toBe(form);
+    expect((box as HTMLInputElement).name, 'still unnamed on purpose').toBe('');
+
+    // TRAP 2: a <button> in a <form> defaults to submit. Every button the search renders says otherwise.
+    const searchHost = box.closest('div[class*="border-b"]') as HTMLElement;
+    const buttons = [...searchHost.querySelectorAll('button')];
+    expect(buttons.length, 'the Search button at least').toBeGreaterThan(0);
+    for (const b of buttons) expect(b.type, `${b.textContent} is not a submit button`).toBe('button');
+
+    // (c) The eight posted fields, as the browser would actually post them off the real form.
+    expect([...new FormData(form).keys()].sort()).toEqual([...CLOCKING_FIELDS].sort());
+  });
+
+  it('Search → pick fills Address, Latitude and Longitude of the real form, reframes the map, and never posts', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [hit] });
+    vi.stubGlobal('fetch', fetchMock);
+    renderForm();
+    await mapReady();
+    const form = theForm();
+    const named = (n: string) => form.elements.namedItem(n) as HTMLInputElement | HTMLTextAreaElement;
+
+    typeInto(named('radiusM') as HTMLInputElement, '150');
+    const fitsBefore = fake.__state.fits;
+
+    await user.type(screen.getByLabelText('Find an address'), 'Menara KL');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    const result = await screen.findByRole('button', { name: /Menara KL, Jalan Punchak/ });
+    expect(formActions.create, 'Search is not a submit button').not.toHaveBeenCalled();
+
+    await user.click(result);
+    expect(named('address').value, 'the address the search wrote').toBe(hit.display_name);
+    expect(named('lat').value).toBe('3.1528');
+    expect(named('lng').value).toBe('101.7038');
+    await waitFor(() => expect(fake.__state.marker?.latLng).toEqual([3.1528, 101.7038]));
+    expect(fake.__state.fits, 'a picked result reframes the map around the new circle').toBeGreaterThan(fitsBefore);
+
+    // Still hand-editable: the search fills the boxes in, it never takes them over.
+    typeInto(named('lat') as HTMLInputElement, '4.2105');
+    await waitFor(() => expect(fake.__state.marker?.latLng).toEqual([4.2105, 101.7038]));
+
+    expect(formActions.create, 'nothing in that sequence posted a half-filled form').not.toHaveBeenCalled();
+    expect(formActions.update).not.toHaveBeenCalled();
+  });
+
+  it('Enter in the search box searches the real form and does not post it either', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [hit] });
+    vi.stubGlobal('fetch', fetchMock);
+    renderForm();
+
+    await user.type(screen.getByLabelText('Find an address'), 'Menara KL{Enter}');
+    await screen.findByRole('button', { name: /Menara KL, Jalan Punchak/ });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(formActions.create, 'Enter submits a form by default — the key handler preventDefaults first').not.toHaveBeenCalled();
   });
 });
