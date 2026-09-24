@@ -48,7 +48,7 @@
  * files and cannot see a computed key.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { IcDobAutofill, deriveDobFromIcInput, nextAutofilledDob } from '@/components/ic-dob-autofill';
@@ -235,8 +235,8 @@ function ControlledIcNumberInput({
   // lets a CORRECTED IC number move the Date of Birth while a hand-typed one is never touched.
   const autofilledRef = useRef<string | null>(null);
 
-  const apply = (raw: string) => {
-    onChange(raw);
+  const apply = (raw: string, alsoSetIc = true) => {
+    if (alsoSetIc) onChange(raw);
     if (!onDateOfBirthChange) return;
     const { status, dob } = deriveDobFromIcInput(raw);
     setShowNote(status === 'unreal');
@@ -247,6 +247,27 @@ function ControlledIcNumberInput({
       onDateOfBirthChange(next);
     }
   };
+
+  /**
+   * ON MOUNT, derive from an NRIC that is ALREADY THERE — item da7463b4, and this was a real gap found by
+   * the render check rather than by a test.
+   *
+   * A draft is filled in over several days, so the common case is REOPENING one that already carries an
+   * NRIC: HR typed it last week, or it was saved by a build that had no autofill at all. Deriving only on
+   * a keystroke leaves that draft showing "Not Available" under the Age for ever, which is the reporter's
+   * exact sentence — the feature would have looked present and done nothing for the population that needs
+   * it most. components/ic-dob-autofill.tsx has always done this on the activated record (its own mount
+   * effect); the draft now does the same, so the two screens agree on a REOPENED record as well as a
+   * freshly typed one.
+   *
+   * `alsoSetIc = false`: the NRIC is already in the draft, and re-writing it would mark a draft that was
+   * merely opened as edited. Only the Date of Birth is touched, and only through `nextAutofilledDob`, so
+   * a stored hand-typed date is still never overwritten. Runs once.
+   */
+  useEffect(() => {
+    if (icNumber) apply(icNumber, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>

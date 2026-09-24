@@ -127,6 +127,25 @@ describe('da7463b4 — the draft Profile tab, rendered', () => {
     expect(screen.getByText('36 Years'), 'the Age did not follow the derived date of birth').toBeTruthy();
   });
 
+  it('(a2) REOPENING a draft that already carries an NRIC fills the Date of Birth and Age too', () => {
+    // FOUND BY THE RENDER CHECK, NOT BY A TEST, and it is the case that matters most: a draft is filled in
+    // over several days, so the common state is one REOPENED with an NRIC already on it — typed last week,
+    // or saved by a build that had no autofill at all. Deriving only on a keystroke would leave every one
+    // of those drafts reading "Not Available" for ever, which is the reporter's sentence verbatim. The
+    // activated record has always derived on mount (components/ic-dob-autofill.tsx); the draft now does
+    // too, so the two agree on a reopened record and not only on a freshly typed one.
+    open(draftWith({ icNumber: IC_A }));
+    expect(dobInput().value, 'a stored NRIC did not fill the date of birth on open').toBe('1990-01-01');
+    expect(screen.getByText('36 Years')).toBeTruthy();
+  });
+
+  it('(a3) …but a stored hand-typed Date of Birth still wins over the stored NRIC', () => {
+    // The mount derivation goes through the same `nextAutofilledDob` guard as a keystroke, so opening a
+    // draft can never rewrite a date somebody typed into it.
+    open(draftWith({ icNumber: IC_A, dateOfBirth: '1979-12-31' }));
+    expect(dobInput().value).toBe('1979-12-31');
+  });
+
   it('(b) an INCOMPLETE or UNREAL NRIC fills nothing, and blocks nothing', async () => {
     const user = userEvent.setup();
     open(draftWith({}));
