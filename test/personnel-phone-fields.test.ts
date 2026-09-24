@@ -196,9 +196,29 @@ describe('bf953339 — copy island + form wiring (source shape)', () => {
   const page = stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
   const actions = stripComments(read('app/admin/personnel/[employmentId]/actions.ts'));
 
-  it('FIELD_SUFFIXES carries the two phone pairs so the tick box copies phones with the address', () => {
-    expect(island).toMatch(/'mobile-phone'/);
-    expect(island).toMatch(/'home-phone'/);
+  it('the shared pair table carries the two phone pairs so the tick box copies phones with the address', () => {
+    /*
+     * da7463b4 (r336) — THE LIST MOVED OUT OF THE ISLAND, WHICH IS WHY THIS NOW ASSERTS THE TABLE.
+     *
+     * bf953339 kept the permanent→correspondence pairing in the island's own private `FIELD_SUFFIXES`.
+     * When the Create New Employee draft was given the record's two address blocks, a second copy would
+     * have been a second source of truth for which field pairs with which — so the pairing became ONE
+     * table, `ADDRESS_COPY_PAIRS` in lib/address-blocks.ts, giving both the DOM id suffixes (the record)
+     * and the field keys (the draft). The island now maps that table instead of holding its own.
+     *
+     * Asserting the table is stronger than asserting the island: it is what BOTH screens read, so a phone
+     * pair dropped here stops being copied on the record AND on the draft, which is the fault this case
+     * exists to catch.
+     */
+    const pairs = stripComments(read('lib/address-blocks.ts'));
+    expect(pairs).toMatch(/idSuffix: 'mobile-phone'/);
+    expect(pairs).toMatch(/idSuffix: 'home-phone'/);
+    // …and the island DERIVES its suffix list from that table rather than restating the pairing. The
+    // local name survives; what matters is that it is computed from ADDRESS_COPY_PAIRS, so the island
+    // cannot pair a field differently from the draft.
+    expect(island, 'the island derives its suffixes from the shared table').toMatch(
+      /FIELD_SUFFIXES = ADDRESS_COPY_PAIRS\.map\(/,
+    );
   });
 
   it('the page assigns the perm-/corr- phone ids the island copies between', () => {
@@ -211,16 +231,44 @@ describe('bf953339 — copy island + form wiring (source shape)', () => {
     // the prop would leave the tick box copying into nothing.
     expect(page).toMatch(/<PersonContactExtraFields[\s\S]*?homePhoneId="perm-home-phone"/);
     const GROUP = read('components/person-name-fields.tsx');
-    expect(GROUP, 'the shared group puts the caller\'s id and the homePhone name on the same input')
-      .toMatch(/id: props\.homePhoneId, name: 'homePhone'/);
+    /*
+     * da7463b4 (r336) — the group gained a CONTROLLED mode for the draft, so the id and the name stopped
+     * sitting in one object literal: the id is always on the input, and `name` is now only in the `form`
+     * branch (a controlled input must not post a name of its own). The contract this asserts is unchanged
+     * — the caller's id and the homePhone name land on the SAME input — so it is asserted as the two
+     * halves of that input instead of as one literal.
+     */
+    const homePhoneInput = GROUP.slice(GROUP.indexOf('id={props.homePhoneId}'));
+    expect(homePhoneInput, 'the shared group puts the caller’s id on the home-phone input').toMatch(
+      /id=\{props\.homePhoneId\}/,
+    );
+    expect(
+      homePhoneInput.slice(0, homePhoneInput.indexOf('</Field>')),
+      'and that same input carries the homePhone name when it is posting a form',
+    ).toMatch(/name: 'homePhone'/);
     // Correspondence block's own pair.
     expect(page).toMatch(/id="corr-mobile-phone"[^>]*name="correspondenceMobilePhone"/);
     expect(page).toMatch(/id="corr-home-phone"[^>]*name="correspondenceHomePhone"/);
-    // The correspondence pair renders inside the Correspondence block (after the corr-country select).
-    const corrCountryAt = page.indexOf('id="corr-country"');
+    /*
+     * The correspondence pair still renders INSIDE the Correspondence block, but the anchor moved:
+     * da7463b4 lifted the seven address inputs into the shared <AddressBlockFields side="corr">, so
+     * `id="corr-country"` is no longer written on this page. The block's opening element is the anchor
+     * now, and the phone pair must follow it — a pair that drifted above the block, or out of it, is the
+     * layout fault this case was written for.
+     */
+    const corrBlockAt = page.indexOf('side="corr"');
     const corrMobileAt = page.indexOf('id="corr-mobile-phone"');
-    expect(corrCountryAt).toBeGreaterThan(-1);
-    expect(corrMobileAt).toBeGreaterThan(corrCountryAt);
+    expect(corrBlockAt, 'the correspondence address block is rendered from the shared group').toBeGreaterThan(-1);
+    expect(corrMobileAt).toBeGreaterThan(corrBlockAt);
+    // …and the shared group is what now MINTS the perm-/corr- address ids the island copies between:
+    // one `${side}-${suffix}` helper, so the two sides cannot drift into different id shapes.
+    const GROUPSRC = stripComments(read('components/address-fields.tsx'));
+    expect(GROUPSRC, 'the group derives both sides’ ids from one helper').toMatch(
+      /const id = \(suffix: string\) => `\$\{side\}-\$\{suffix\}`/,
+    );
+    expect(GROUPSRC, 'and it is the group that renders the country control the pair follows').toMatch(
+      /id=\{id\('country'\)\}/,
+    );
   });
 
   it('setContactAddressAction parses all three new fields (blank → null)', () => {
