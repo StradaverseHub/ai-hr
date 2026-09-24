@@ -40,7 +40,14 @@ export type LeaveBalanceRow = {
    *  `currentYearEntitlement`, and Brought Forward is already its own column — a column called Earned to Date
    *  that silently folds in last year's leftovers is the same mismatch the rename exists to close. Every
    *  production balance carried 0 when this shipped, so no displayed figure moved; test/r279-earned-and-full-
-   *  entitlement.test.ts pins BOTH halves of that (equal at carry 0, apart by exactly the carry otherwise). */
+   *  entitlement.test.ts pins BOTH halves of that (equal at carry 0, apart by exactly the carry otherwise).
+   *
+   *  r335 (6af80f5d) — AND IT IS NOW ROUNDED BY THE LEAVE TYPE'S RULE. The column showed the raw ledger
+   *  running total while the Explain panel, one click away, already NAMED the rounding table that was
+   *  supposed to shape it. It now reads `currentYearEntitlementRounded` — the same figure through
+   *  `applyRounding`, derived once in core/read.ts. Byte-identical whenever no rounding is configured.
+   *  The Balance column did NOT follow it: the balance is the authoritative ledger remaining and is an
+   *  identity, so 11.18 earned with 5.00 taken prints Earned to Date 11.00 beside Balance 6.18. */
   ytdEntitled: number | null;
   /** r279 — ENTITLEMENT: this employee's allowance FOR THIS LEAVE YEAR, before carry, adjustment or usage.
    *
@@ -136,6 +143,11 @@ export type BreakdownInput = {
    *  silently render an em dash where a band exists — the same reason `eligibleDays` is required. */
   entitlement: { displayEntitlementDays: number };
   currentYearEntitlement: number;
+  /** r335 (6af80f5d) — the Earned to Date COLUMN's source: `currentYearEntitlement` through the leave
+   *  type's Rounding Method, derived in core/read.ts. Required, not optional, for the same reason
+   *  `entitlement` above is: a call site handing this helper a hand-built breakdown must not silently fall
+   *  back to the unrounded figure, which is precisely the defect this field exists to fix. */
+  currentYearEntitlementRounded: number;
   carriedForward: number;
   forfeited: number;
   otherAdjustments: number;
@@ -188,7 +200,12 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     overutilized,
     // r279 — Earned to Date. `currentYearEntitlement` ONLY; see the field's doc above for why the
     // `+ bd.carriedForward` that used to be here is gone and why the field name did not change with the label.
-    ytdEntitled: bd ? bd.currentYearEntitlement : null,
+    // r335 (6af80f5d) — and now that figure THROUGH THE LEAVE TYPE'S ROUNDING METHOD. Still a PICK: the
+    // rounding happens once, in core/read.ts's `displayEarnedToDateDays`, so this file cannot become a
+    // second place a rounding table is read. The Balance column beside it is UNCHANGED and still exact —
+    // it is the authoritative ledger remaining, an identity rather than an agreement, so a row can honestly
+    // read Earned to Date 11.00 beside Balance 6.18.
+    ytdEntitled: bd ? bd.currentYearEntitlementRounded : null,
     // r279 — ENTITLEMENT. A PICK off the breakdown, never a re-resolved band.
     // 845903a3 (r313): the pick moved from `eligibleDays` (the table's whole-year allowance) to the
     // prorated, rounded figure the kernel derives from it. Still a pick, still one resolver — the

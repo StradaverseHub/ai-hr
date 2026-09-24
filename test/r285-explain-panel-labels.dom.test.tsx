@@ -56,6 +56,7 @@ const DATA: EntitlementBreakdownData = {
   entitlementStatus: 'granted',
   entitlementTemplateName: null,
   currentYearEntitlement: 5.5,
+  currentYearEntitlementRounded: 5.5, // r335: no rounding rule in this fixture
   monthlyAccruedToDate: 5.5,
   carriedForward: 0,
   carryForwardRemaining: 0,

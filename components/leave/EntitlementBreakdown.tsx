@@ -54,6 +54,11 @@ export type EntitlementBreakdownData = {
    *  already-resolved data (`lib/entitlement-status.ts`) — nothing here recomputes eligibility. */
   eligibility?: EligibilityNotice;
   currentYearEntitlement: number;
+  /** r335 (6af80f5d) — `currentYearEntitlement` through the leave type's Rounding Method: what the grid's
+   *  "Earned to Date" column and the employee's "Earned so far" card print. Mirrors core/read.ts, where it
+   *  is derived; nothing is recomputed on the client. NOT an addend — the summary column keeps summing the
+   *  exact figure above it, so it still closes onto the real Available Balance. */
+  currentYearEntitlementRounded: number;
   monthlyAccruedToDate: number | null;
   carriedForward: number;
   carryForwardRemaining: number;

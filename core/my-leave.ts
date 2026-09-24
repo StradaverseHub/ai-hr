@@ -92,7 +92,10 @@ export type MyLeaveCard = {
   isCurrentCycle: boolean;
   /** Full-year entitlement (`eligibleDays`). */
   entitlement: number | null;
-  /** Granted/earned in the cycle so far (`currentYearEntitlement`). */
+  /** Granted/earned in the cycle so far, through the leave type's Rounding Method
+   *  (`currentYearEntitlementRounded`). r335 (6af80f5d): it follows the Employee Balances grid on purpose —
+   *  the same person opening My Leave and being shown their own row on HR's screen must not be given two
+   *  different numbers for one question. The card's Balance is unchanged and still exact. */
   earnedSoFar: number | null;
   /** Debited in the cycle, approved leave later in the cycle included (`takenThisCycle`). */
   taken: number | null;
@@ -366,7 +369,9 @@ export async function myLeaveDashboard(
         asOf,
         isCurrentCycle,
         entitlement: bd && hasEntitlement && shows('eligible') ? bd.eligibleDays : null,
-        earnedSoFar: bd && hasEntitlement && shows('ytdEntitled') ? bd.currentYearEntitlement : null,
+        // r335 (6af80f5d): the ROUNDED figure, exactly as deriveBalanceRow's `ytdEntitled` picks it. The ESS
+        // gate is unchanged — `ytdEntitled` is a STORED ess_view_config key and was deliberately not renamed.
+        earnedSoFar: bd && hasEntitlement && shows('ytdEntitled') ? bd.currentYearEntitlementRounded : null,
         taken: bd && shows('taken') ? bd.takenThisCycle : null,
         pending:
           bd && !takenOnly && shows('pendingApproval') ? (apply ? apply.pending : bd.pendingApproval) : null,

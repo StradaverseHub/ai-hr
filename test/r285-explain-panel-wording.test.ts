@@ -101,6 +101,9 @@ describe('r285 §1: the panel says what the grid says — the same words for the
       entitlement: { annualEntitlementDays: 18, prorated: false, eligibleCalendarDays: null,
         daysInLeaveYear: null, unroundedEntitlementDays: 18, displayEntitlementDays: 18, roundingApplied: false },
       currentYearEntitlement: 12.5,
+      // r335 (6af80f5d): no rounding rule ⇒ the displayed Earned to Date is the exact figure, so the
+      // rounded sub-line stays absent and this file's point (two rows, two DIFFERENT figures) is untouched.
+      currentYearEntitlementRounded: 12.5,
     } as PanelData['breakdown'];
     const d = { breakdown: b, summary: { available: 0 } } as PanelData;
     expect(field('eligible').select).toBeTypeOf('function');

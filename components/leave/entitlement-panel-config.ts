@@ -12,6 +12,9 @@
 // everything). The key set is the closed allow-list in core/ess-view.ts.
 
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewComponentKey } from '@/core/ess-view';
+// r335 (6af80f5d): a note is a STRING, so the rounded day figure is printed through the one day formatter
+// (lib/day-format.ts) rather than a ninth `toFixed(2)`. Pure and client-safe, like this whole descriptor.
+import { formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 
 /**
@@ -204,12 +207,35 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
         select: (d) => d.breakdown.entitlement.displayEntitlementDays,
       },
       // YTD Entitled — granted to date. See the deviation note above before changing this to a projection.
+      //
+      // r335 (6af80f5d) — THE VALUE STAYS EXACT AND THE ROUNDED FIGURE RIDES UNDER IT.
+      //
+      // This row is the column's first addend: `broughtForward + THIS + adjustments = Total`, and Total is
+      // `totalEntitlement`, which core/read.ts builds from the EXACT `currentYearEntitlement`. Selecting the
+      // rounded figure here would make the panel contradict its own Total by the rounding difference and
+      // stop the column closing onto Available Balance — the property 1f6fd6d8 / 0315dac7 / r285 each exist
+      // to protect. So the addend is exact and the rounded figure — the one the grid column and the
+      // employee's card print — is a labelled sub-line beneath it, the same mechanism the carry-expiry date
+      // uses on Brought Forward Forfeited: beside the figure it explains, never a row of its own.
+      //
+      // IT IS NOT A SECOND ESS KEY AND MUST NOT BECOME ONE. It is the same number presented twice; two
+      // switches for one figure would let a tenant show the rounded one and hide the exact one (or the
+      // reverse). Riding on `ytdEntitled` means it hides and shows with the figure it is about, and
+      // ESS_VIEW_CHECKLIST_GROUPS / LEAVE_EXPLANATION_KEYS are untouched.
+      //
+      // null when rounding did not move the figure — no rule configured, `custom` with no table, or an
+      // already-whole figure — so a type with no rounding renders byte-identically to before.
       {
         key: 'ytdEntitled',
         labelKey: 'field.ytdEntitled',
         essKey: 'ytdEntitled',
         tooltipKey: 'summaryTip.ytdEntitled',
         select: (d) => d.breakdown.currentYearEntitlement,
+        noteSelect: (d) =>
+          d.breakdown.currentYearEntitlementRounded === d.breakdown.currentYearEntitlement
+            ? null
+            : formatDays(d.breakdown.currentYearEntitlementRounded),
+        noteLabelKey: 'roundedTo',
       },
       {
         key: 'broughtForward',

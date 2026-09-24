@@ -403,8 +403,11 @@ export function LeaveDetailsPanel({
               </div>
               {/* 1f6fd6d8: the carry-expiry date sits UNDER the Brought Forward Forfeited figure it explains
                   ("Expires: 31/08/2026"), rather than as a row of its own that a reader has to connect back. */}
+              {/* r335 (6af80f5d): the same sub-line now also carries the ROUNDED Earned to Date, so the note
+                  value is offered under both names. A note is an already-formatted string either way; ICU
+                  ignores the argument a given message does not use, so `expiresOn` is untouched. */}
               {note && f.noteLabelKey && (
-                <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: note })}</p>
+                <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: note, value: note })}</p>
               )}
               {/* r303 — HR only: how THIS employee's figure was reached, then HR's own explanation (if written)
                   as a plain paragraph. No icon, no hover: the reader asked "why this number", so it is on the page. */}

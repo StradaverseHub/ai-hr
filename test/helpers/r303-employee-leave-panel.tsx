@@ -54,6 +54,7 @@ export const EMPLOYEE_BREAKDOWN = {
   entitlementStatus: 'granted',
   entitlementTemplateName: 'Annual — all staff',
   currentYearEntitlement: 10.5,
+  currentYearEntitlementRounded: 10.5, // r335: no rounding rule in this fixture
   monthlyAccruedToDate: 10.5,
   carriedForward: 2,
   carryForwardRemaining: 0,

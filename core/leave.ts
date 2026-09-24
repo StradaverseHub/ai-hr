@@ -8779,6 +8779,52 @@ export function displayEntitlementFor(p: {
   };
 }
 
+/**
+ * r335 (6af80f5d) — THE DISPLAYED EARNED TO DATE: the cycle's accrual-class ledger sum, shown through the
+ * leave type's own Rounding Method.
+ *
+ * ⚠️ DISPLAY-ONLY, AND THAT IS THE WHOLE POINT OF PUTTING IT HERE RATHER THAN IN THE LEDGER WALK. The
+ * reporter's fault is that Employee Balances' "Earned to Date" column prints the raw running total while
+ * the Explain panel, one click away, NAMES the rounding rule that is supposed to shape it
+ * (`derivation.earned.rounding`, core/read.ts). The rule was reported and never applied; this closes that
+ * asymmetry on the DISPLAY side only.
+ *
+ * WHY NOT ROUND THE LEDGER SUM ITSELF. `cycleAccrual` is one of the six buckets that TILE the ledger, and
+ * `totalEntitlement = priorBalance + cycleAccrual + adjustments` is an identity, not an agreement (see
+ * core/read.ts's reconciliation partition and RECONCILIATION_ADDENDS). Rounding the bucket re-prices the
+ * identity: `broughtForward + earned + adjustments − forfeited − taken` would stop equalling `balance`,
+ * and the Explain panel's column would stop closing onto Available Balance — the one property 1f6fd6d8,
+ * 0315dac7 and r285 each exist to protect. So the BALANCE stays exact (11.18 earned ⇒ 6.18 remaining) and
+ * only the figure a reader is shown under the column heading is rounded.
+ *
+ * WHY THE ENGINES' OWN ROUNDING DOES NOT ALREADY COVER THIS. b81d3c52 rounds at SOURCE in all four
+ * granting engines, so a ledger written under a rounding rule already holds whole days. But
+ * `accrueEarnedLeave` tops up by `toGrant = earnedToDate − already` and never posts a NEGATIVE top-up
+ * (the forward-only contract documented at its `applyRounding` call): days credited BEFORE the rule was
+ * configured are never clawed back. A type that earned 11.18 and then had a rounding table added keeps
+ * 11.18 on the ledger for the rest of the cycle, and every ledger-derived screen prints it. That is the
+ * production shape the reporter is looking at, and it can only be answered at the display layer.
+ *
+ * THE RULE IS THE ACCRUAL ROUNDING RULE, not the entitlement one. `displayEntitlementFor` above rounds the
+ * prorated ENTITLEMENT with `leave_type.entitlement_rounding_*`; this figure is what the accrual engines
+ * credited, so it is shaped by `leave_type.rounding_*` — the same three columns `applyRounding` is handed
+ * at every engine call site, resolved once by `applyLeaveTypeRules`. Two figures, two configured rules,
+ * neither borrowing the other's.
+ *
+ * NO `round2` WRAPPER, DELIBERATELY. Every branch of `applyRounding` that MOVES a value already returns
+ * 2dp; the branches that do not move it return the value untouched. The input here is the r2-accumulated
+ * ledger sum, i.e. already 2dp, so adding `round2` could only narrow a pass-through — and "No Rounding is
+ * byte-identical to today" is an asserted requirement of this change, not a hope. `displayEntitlementFor`
+ * wraps because ITS input (`a2cFirstYearEntitledToDate` over a raw template figure) can carry a third
+ * decimal; this one cannot.
+ */
+export function displayEarnedToDateDays(
+  exactEarned: number,
+  rounding?: { method?: string | null; threshold?: string | number | null; bands?: unknown } | null,
+): number {
+  return applyRounding(exactEarned, rounding?.method ?? null, rounding?.threshold ?? null, rounding?.bands);
+}
+
 /** Anniversary to Calendar (f3a64d90): is this (type, employee, asOf) inside the ONE window where a2c
  *  behaves differently from a plain calendar type — the employee's HIRE year, on ANNUAL only?
  *

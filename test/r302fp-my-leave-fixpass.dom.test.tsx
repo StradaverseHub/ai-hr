@@ -54,6 +54,7 @@ const breakdown = (over: Partial<LeaveEntitlementBreakdown> = {}): LeaveEntitlem
     entitlementStatus: 'granted',
     entitlementTemplateName: null,
     currentYearEntitlement: 14,
+    currentYearEntitlementRounded: 14, // r335: no rounding rule in this fixture
     monthlyAccruedToDate: 14,
     carriedForward: 0,
     carryForwardRemaining: 0,
