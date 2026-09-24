@@ -91,6 +91,15 @@ withdrawal is real and belongs in the round entry, not in a diff nobody reads.
    the reason** — never deleted (CLAUDE.md §8: a guard pinning a decision you are reversing is updated).
 4. The screens: the site register half of `app/admin/locations`. The clocking half stays;
    `admin.locations` is 95 keys × 6 locales and the split must keep the survivors.
+   ⚠️ **Addendum 2026-09-24 (639bf4a5, r336) — step 4 WAS INCOMPLETE, and the miss was a live false
+   statement.** `admin.locations.stateNote` was deleted as planned, but `admin.locations.pageDescription`
+   said the same thing in its own words — *"A location can set a state that overrides the public-holiday
+   calendar used by leave and attendance"* — in all six locales, and went on rendering for a fortnight.
+   The guard written for this ADR could not have caught it twice over: it matched `stateNote`'s exact
+   phrases, and it ran under a translator mocked to echo key names, so no English sentence was on the
+   markup it searched. Removed at r336, with the six retired strings quoted in
+   `test/work-location-organization-relocation.test.ts` so they cannot return. The screen itself moved in
+   the same round — it is `/admin/work-locations` now — and nothing about this ADR's decision changed.
 5. The criteria axis, with the approval-template withdrawal recorded.
 6. **The migration last**, allocated at the moment of writing from `max(idx)`. ⚠️ Earlier plans
    "reserved" 0477/0478; those numbers are now UNUSABLE —
