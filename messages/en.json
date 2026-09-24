@@ -3519,7 +3519,12 @@
     "noPendingReplacement": "No pending replacement leave requests.",
     "replacementDatesWorked": "Dates worked",
     "replacementApproved": "Replacement leave approved",
-    "replacementRejected": "Replacement leave rejected"
+    "replacementRejected": "Replacement leave rejected",
+    "creditSourceNonWorkingDay": "Non-working day",
+    "creditSourceExtended": "Extended hours",
+    "creditShiftEnd": "shift end",
+    "creditClockOut": "clocked out",
+    "creditEligibleMinutes": "{minutes} eligible min"
   },
   "performance": {
     "list": {
@@ -12658,7 +12663,7 @@
   "replacementRequest": {
     "trigger": "+ Leave Credit request",
     "title": "Leave Credit request",
-    "description": "Ask for a credit for a rest day, off day or public holiday you worked. Nothing is credited until your manager approves.",
+    "description": "Claim a credit for a rest day, off day or public holiday you worked, or for extended hours after your shift on a working day. Nothing is credited until your manager approves.",
     "leaveType": "Leave type",
     "unit": "Unit",
     "unitDay": "Day",
@@ -12706,7 +12711,30 @@
       "offDay": "Off day",
       "holiday": "Public holiday"
     },
-    "workingDayRefused": "An ordinary working day cannot earn a credit."
+    "workingDayRefused": "An ordinary working day cannot earn a credit.",
+    "grandTotal": "Total credit claimed",
+    "sectionA": {
+      "title": "Non-working-day work",
+      "help": "A rest day, off day or public holiday that you worked.",
+      "dayType": "Day type",
+      "fullDay": "1 day",
+      "halfDay": "0.5 day",
+      "total": "Section total",
+      "workingDayRefused": "This date is a working day. Use Extended ordinary-day work instead."
+    },
+    "sectionB": {
+      "title": "Extended ordinary-day work",
+      "help": "Hours worked past your scheduled shift end on an ordinary working day.",
+      "shiftEnd": "Scheduled shift end",
+      "actualClockOut": "Actual clock-out",
+      "extendedStart": "Extended start",
+      "extendedEnd": "Extended end",
+      "eligibleMinutes": "Eligible minutes",
+      "credit": "Credit",
+      "total": "Section total",
+      "nonWorkingDayRefused": "This date is not a working day. Use Non-working-day work instead.",
+      "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
+    }
   },
   "notices": {
     "pageTitle": "Notice Board",

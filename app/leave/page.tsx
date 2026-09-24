@@ -69,7 +69,7 @@ import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-le
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
-import { listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
+import { extendedHoursOfferForEmployment, listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 // My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
@@ -85,6 +85,7 @@ import { leaveDisplaySplit } from '@/lib/leave-split';
 import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
+  leaveCreditExtendedDayAction,
   submitReplacementLeaveRequestAction,
   leaveCreditDayKindAction,
   requestLeaveCancellationAction,
@@ -391,6 +392,11 @@ export default async function LeavePage({
   // read exists so the button is not offered where the submission would be refused. Hiding it is the
   // courtesy, refusing the POST is the control.
   const replacementRequest = ess && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false };
+  // r336 cbfa8b0b — Section B of the Leave Credit request is offered only where the company has switched
+  // extended hours on (r334's switch, false on every company at release). Null ⇒ the dialog draws Section A
+  // alone; the service refuses an extended-hours line for such a company anyway.
+  const extendedHoursTiers =
+    ess && me && replacementRequest.allowed ? await extendedHoursOfferForEmployment(session, me.employmentId) : null;
   // r219 — WHO IS SHOWN THE REASON, and why it is not simply everyone whose read said no.
   //
   // A tenant that has never had a Replacement Leave type in its catalogue has nothing to explain: the
@@ -1061,6 +1067,11 @@ export default async function LeavePage({
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
                   // 3fb1a611 (r299) — the kind-of-day chip beside each date worked (a server action, not a closure).
                   dayKindAction={leaveCreditDayKindAction}
+                  // r336 — Section B's read-only row, and the company's tier figures. BOTH are passed or
+                  // NEITHER is: the dialog draws Section B only when it has the action AND the tiers, so a
+                  // company with the switch off can never be shown a section whose credit it cannot compute.
+                  extendedHoursAction={extendedHoursTiers ? leaveCreditExtendedDayAction : undefined}
+                  extendedHoursTiers={extendedHoursTiers ?? undefined}
                 />
               )}
             </div>

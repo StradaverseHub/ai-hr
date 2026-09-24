@@ -651,6 +651,35 @@ const RL_ELIGIBLE_DAY_TYPES: ReadonlySet<'rest_day' | 'holiday'> = new Set(['res
 /** The pre-r334 refusal, as one string, so the roster path and its test cannot drift apart. */
 const WORKDAY_CASH_ONLY_MESSAGE = 'Replacement leave can only be banked for work on a rest day or public holiday.';
 
+/**
+ * r336 cbfa8b0b · THE TWO SECTION REFUSALS OF THE LEAVE CREDIT REQUEST SCREEN, as exact strings.
+ *
+ * The screen holds both kinds of claim in one modal, so the only useful thing to tell someone who filed a
+ * date in the wrong section is WHICH SECTION IT BELONGS IN. These are the reporter's own words for that,
+ * and they are constants for the reason `WORKDAY_CASH_ONLY_MESSAGE` is: the submit-time refusal, the
+ * approval-time refusal and the test that pins them read one string.
+ *
+ * DELIBERATELY NOT `ToilOrdinaryWorkingDayError`'s message. That error is r299's and it says something
+ * different and still true for the paths that have no Section B at all ("only a rest day, off day or public
+ * holiday can earn a Leave Credit"); rewording it would have changed what the HR grant screen and the
+ * roster path say in order to fix a sentence on a screen neither of them draws. It is untouched.
+ */
+export const SECTION_A_WORKING_DAY_MESSAGE = 'This date is a working day. Use Extended ordinary-day work instead.';
+export const SECTION_B_NON_WORKING_DAY_MESSAGE = 'This date is not a working day. Use Non-working-day work instead.';
+
+/** r336 · a Section A line whose date the roster resolves as an ordinary working day. Carries the dates so
+ *  the screen can mark the offending rows rather than the whole form. */
+export class LeaveCreditSectionMismatchError extends ToilNotEligibleError {
+  readonly dates: string[];
+  readonly section: 'A' | 'B';
+  constructor(section: 'A' | 'B', dates: string[]) {
+    super(section === 'A' ? SECTION_A_WORKING_DAY_MESSAGE : SECTION_B_NON_WORKING_DAY_MESSAGE);
+    this.name = 'LeaveCreditSectionMismatchError';
+    this.section = section;
+    this.dates = dates;
+  }
+}
+
 /** r334 · the five policy fields the extended-hours arithmetic reads, and nothing else. */
 export type ExtendedHoursPolicy = {
   extendedHoursEnabled: boolean;
@@ -688,32 +717,25 @@ export function extendedMinutesAfterShiftEnd(p: { otMinutes: number | null; calc
   return Math.max(0, ot - folded);
 }
 
-/**
- * r334 928f0454 · THE TIERS. Rounded DOWN, no partial credit, one day is the cap.
- *
- * `< half` earns nothing at all (not a pro-rata sliver); `>= half and < full` earns 0.5; `>= full` earns 1.0
- * and never more, however long the day ran. The break deduction and the grace period come off BEFORE the
- * thresholds are tested, in that order, because both describe minutes that were never extended work in the
- * first place — subtracting after the test would let a day qualify on minutes the policy says do not exist.
- *
- * THE GRACE PERIOD IS A SUBTRACTION, NOT A CUT-OFF, and that is a decision rather than a reading of the
- * obvious. "Grace period before counting" says the first N minutes do not count, so a 15-minute grace turns
- * 4h15m of extended work into 4h00m of counted work. The alternative reading — "under N minutes, count
- * nothing, at or over N count all of it" — is a threshold, and this policy ALREADY HAS two of those in the
- * half-day and full-day figures; a third would be redundant with them and unreachable in practice (any
- * grace small enough to be called a grace is far below a four-hour half-day threshold, so it could never
- * change an answer). Both defaults are 0, so a company that sets neither gets `counted === extended`.
- *
- * ⚠️ NOT COMPOSED WITH `accrualBasis`. See `extendedWorkdayCreditTx` for why the tiers and
- * `premium_equivalent` are two answers to the same question and only one of them may run.
- */
-export function extendedHoursCreditDays(
-  extendedMinutes: number,
-  policy: Pick<ExtendedHoursPolicy, 'extendedHalfDayMinutes' | 'extendedFullDayMinutes' | 'extendedBreakMinutes' | 'extendedGraceMinutes'>,
-): { countedMinutes: number; days: number } {
-  const countedMinutes = Math.max(0, Math.round(extendedMinutes) - policy.extendedBreakMinutes - policy.extendedGraceMinutes);
-  const days = countedMinutes >= policy.extendedFullDayMinutes ? 1 : countedMinutes >= policy.extendedHalfDayMinutes ? 0.5 : 0;
-  return { countedMinutes, days };
+// r336 cbfa8b0b — `extendedHoursCreditDays` and `eligibleExtendedMinutes` MOVED to lib/extended-hours.ts,
+// unchanged, and are re-exported here so every existing importer of this module is unaffected. The move is
+// not cosmetic: Section B of the Leave Credit request shows the employee the eligible minutes and the credit
+// as they type, so the arithmetic has to run in the browser too, and this file is server-only (db/client).
+// A second copy in the component would have been the alternative, and two implementations of "240 minutes is
+// half a day, rounded down, capped at one" agree only until a company changes a threshold. See that file.
+import { eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
+export { eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
+
+/** r336 · the extended-hours policy a company has, with r334's defaults for a company that has no row. */
+export async function extendedHoursPolicyForCompanyTx(tx: Tx, companyId: string): Promise<ExtendedHoursPolicy> {
+  const [row] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, companyId)).limit(1);
+  return {
+    extendedHoursEnabled: row?.extendedHoursEnabled ?? false,
+    extendedHalfDayMinutes: row?.extendedHalfDayMinutes ?? 240,
+    extendedFullDayMinutes: row?.extendedFullDayMinutes ?? 480,
+    extendedBreakMinutes: row?.extendedBreakMinutes ?? 0,
+    extendedGraceMinutes: row?.extendedGraceMinutes ?? 0,
+  };
 }
 
 /**
@@ -1251,6 +1273,20 @@ export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date:
 }
 
 /**
+ * r336 cbfa8b0b · the four read-only facts Section B of the Leave Credit request shows for one date —
+ * through the SAME dynamic facade import `resolveWorkedDayKindTx` above uses, and for the same reason
+ * (a static import here closes a module cycle through the attendance pack's star re-export).
+ */
+export async function extendedHoursDayForEmploymentTx(
+  tx: Tx,
+  employmentId: string,
+  date: string,
+): Promise<{ kind: ToilWorkedDayKind; shiftEnd: string | null; actualClockOut: string | null; measuredExtendedMinutes: number }> {
+  const { extendedHoursDayForTx } = await import('../packs/attendance/service');
+  return extendedHoursDayForTx(tx, employmentId, date);
+}
+
+/**
  * The attendance-vocabulary day type a credit is VALUED from on expiry, for a resolved day kind.
  *
  * Rest day and public holiday map straight across, so a convert-to-pay reconciles to the exact statutory
@@ -1319,6 +1355,104 @@ export async function accrueSelfDeclaredToilTx(
     firstScheduleConsent: p.firstScheduleConsent,
     source: 'employee_request',
   });
+}
+
+/**
+ * r336 cbfa8b0b · SECTION B'S APPROVAL PATH — an EMPLOYEE-CLAIMED extended-hours credit on an ordinary
+ * working day, minted when the line manager approves the Leave Credit request.
+ *
+ * ── WHY IT IS NOT `accrueSelfDeclaredToilTx` ────────────────────────────────────────────────────────────
+ * That function refuses `kind === 'workday'` outright (r299's day-type gate), which is correct and stays:
+ * a Section A claim on a working day must still be refused at the binding moment. Section B is the exact
+ * opposite claim — it REQUIRES a working day — so it needs its own entry point rather than a boolean that
+ * turns r299's gate off, which would be one `true` away from reopening the hole r299 closed.
+ *
+ * ── WHY IT IS NOT `extendedWorkdayCreditTx` EITHER ──────────────────────────────────────────────────────
+ * That is r334's ROSTER fork and it is reached from `accrueToilTx` step 1b, i.e. only after step 1 has
+ * demanded an attendance row with `otMinutes > 0` and read the day's `day_type` off it. It is untouched by
+ * this round. This path shares the two things that must never diverge — `extendedHoursCreditDays` (the
+ * tiers, the break and grace deductions, the one-day cap) and `bankToilCreditTx` (the double-bank guard,
+ * the First Schedule gate, the frozen expiry, the ledger credit and the register row) — and differs only in
+ * that the minutes are the employee's CLAIMED window narrowed by the measured figure rather than the whole
+ * measured figure. There is no second copy of the arithmetic.
+ *
+ * ── EVERY GATE IS RE-RUN HERE, because this is the binding moment and submission was the courtesy ────────
+ *  1. the company switch (`extended_hours_enabled`) — off ⇒ r334's byte-identical pre-r334 sentence;
+ *  2. the day kind — a date that is no longer an ordinary working day is refused (a roster can move between
+ *     submission and approval, which is exactly why r299 put its own gate down here);
+ *  3. the measurement — re-read from the live attendance row, so a corrected clock-out between submission
+ *     and approval changes the answer rather than the stored claim winning;
+ *  4. the threshold — below the half-day figure earns nothing, with r334's own error naming the shortfall.
+ *
+ * ── ⚠️ MONEY · `dayType: null`, AND `otMinutes` IS THE COUNTED FIGURE ────────────────────────────────────
+ * Identical to r334's fork and for the identical reason, restated because this is a second caller of
+ * `bankToilCreditTx` that could get it wrong: `convertAmountFor` prices a First-Schedule employee's unused
+ * credit as exact statutory cash over the stored `ot_minutes` for the stored `day_type`, while the credit
+ * actually banked is a tier ROUNDED DOWN from those minutes. Stamping 'workday' would cash out time that
+ * was never banked — measured at RM86.52 of s.60A cash against a RM57.69 credit when r334 checked. NULL is
+ * what routes the sweep to the ORP × remaining-days fallback, and `worked_day_kind = 'workday'` is recorded
+ * beside it so a person can still reconcile what earned the credit.
+ */
+export async function accrueExtendedWorkdayToilTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    workedDate: string;
+    /** The employee's claimed window, as typed on the form. */
+    claimStart: string;
+    claimEnd: string;
+    approvedOn: Date;
+    requestedOn: string;
+    firstScheduleConsent?: boolean;
+  },
+): Promise<AccrueToilResult & { eligibleMinutes: number; shiftEnd: string | null; actualClockOut: string | null }> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId, country: company.country })
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) throw new ToilNotEligibleError('No employment on record for this request.');
+
+  const policy = await extendedHoursPolicyForCompanyTx(tx, emp.companyId);
+  // Gate 1 — the switch, first and alone, with r334's pre-r334 sentence unchanged.
+  if (!policy.extendedHoursEnabled) throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
+
+  const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, p.workedDate);
+  // Gate 2 — Section B is for ORDINARY WORKING DAYS. A rest day, off day or public holiday belongs in
+  // Section A, and the message says exactly that.
+  if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [p.workedDate]);
+
+  // Gate 3 — re-derived from the LIVE attendance row, never from what the claim line stored at submission.
+  const eligibleMinutes = eligibleExtendedMinutes({
+    claimStart: p.claimStart,
+    claimEnd: p.claimEnd,
+    shiftEnd: day.shiftEnd,
+    actualClockOut: day.actualClockOut,
+    measuredExtendedMinutes: day.measuredExtendedMinutes,
+  });
+  // Gate 4 — the tiers. `extendedHoursCreditDays` is r334's, unmodified: break and grace come off first,
+  // then 0.5 from the half-day figure and 1.0 from the full-day figure, rounded down, one day the cap.
+  const { countedMinutes, days } = extendedHoursCreditDays(eligibleMinutes, policy);
+  if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
+
+  const res = await bankToilCreditTx(tx, ctx, {
+    employmentId: p.employmentId,
+    workedDate: p.workedDate,
+    companyId: emp.companyId,
+    country: emp.country,
+    // ⚠️ MONEY — NULL on purpose. See the header.
+    dayType: null,
+    workedDayKind: 'workday',
+    otMinutes: countedMinutes,
+    declaredDays: days,
+    approvedOn: p.approvedOn,
+    requestedOn: p.requestedOn,
+    firstScheduleConsent: p.firstScheduleConsent,
+    source: 'employee_request',
+  });
+  return { ...res, eligibleMinutes: countedMinutes, shiftEnd: day.shiftEnd, actualClockOut: day.actualClockOut };
 }
 
 /**
