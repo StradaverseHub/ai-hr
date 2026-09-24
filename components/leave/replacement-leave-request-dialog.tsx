@@ -6,6 +6,10 @@ import { useTranslations } from 'next-intl';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls } from '../ui';
 import { eligibleExtendedMinutes, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
+// 4a1abc4a — every day figure a leave surface prints goes through ONE formatter, so 0.5 and 0.50 cannot
+// appear on two screens for the same balance. `totalDays` is a plain {days} substitution, so a raw number
+// would print the JS repr; test/leave-day-decimal-precision.test.ts lists this file for exactly that.
+import { formatDays } from '@/lib/day-format';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -339,7 +343,7 @@ export function ReplacementLeaveRequestDialog({
               <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm">
                 <span className="text-muted-foreground">{t('sectionA.total')}</span>
                 <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total-a">
-                  {t('totalDays', { days: totalA })}
+                  {t('totalDays', { days: formatDays(totalA) })}
                 </span>
               </div>
             </section>
@@ -427,7 +431,7 @@ export function ReplacementLeaveRequestDialog({
                           <div className="min-w-[6rem]">
                             <label className="mb-1 block text-[11px] text-muted-foreground">{t('sectionB.credit')}</label>
                             <div className={`${inputCls} flex items-center bg-muted text-xs tabular-nums`} data-testid="leave-credit-row-credit">
-                              {r.start && r.end && view ? t('totalDays', { days: d!.credit }) : '—'}
+                              {r.start && r.end && view ? t('totalDays', { days: formatDays(d!.credit) }) : '—'}
                             </div>
                           </div>
                         </div>
@@ -451,7 +455,7 @@ export function ReplacementLeaveRequestDialog({
                 <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm">
                   <span className="text-muted-foreground">{t('sectionB.total')}</span>
                   <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total-b">
-                    {t('totalDays', { days: totalB })}
+                    {t('totalDays', { days: formatDays(totalB) })}
                   </span>
                 </div>
               </section>
@@ -460,7 +464,7 @@ export function ReplacementLeaveRequestDialog({
             <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
               <span className="font-medium text-foreground">{t('grandTotal')}</span>
               <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-grand-total">
-                {t('totalDays', { days: grandTotal })}
+                {t('totalDays', { days: formatDays(grandTotal) })}
               </span>
             </div>
 
