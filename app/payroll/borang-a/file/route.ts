@@ -30,16 +30,9 @@
  * character whose byte count is arguable.
  */
 import { borangAFileReport } from '@/lib/kwsp-borang-a-file';
-import { loadBorangAFile } from '../shared';
+import { borangAUploadFilename, loadBorangAFile } from '../shared';
 
 export const runtime = 'nodejs';
-
-/** `kwsp-borang-a-<employer ref>-<contribution period>.txt` — distinct from the readable export's name. */
-function uploadFilename(employerRef: string, contributionPeriodKey: string, report: boolean): string {
-  const ref = (employerRef || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
-  const stem = `kwsp-borang-a-${ref}-${contributionPeriodKey.replace('-', '')}`;
-  return report ? `${stem}-check.txt` : `${stem}.txt`;
-}
 
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
@@ -57,7 +50,7 @@ export async function GET(req: Request) {
       'Content-Type': 'text/plain; charset=us-ascii',
       // The report is shown, the file is saved: a check you have to open a downloads folder to read is a
       // check nobody performs, and a file the browser renders instead of saving is not an upload.
-      'Content-Disposition': `${report ? 'inline' : 'attachment'}; filename="${uploadFilename(loaded.form.employerRef, loaded.form.contributionPeriodKey, report)}"`,
+      'Content-Disposition': `${report ? 'inline' : 'attachment'}; filename="${borangAUploadFilename(loaded.form.employerRef, loaded.form.contributionPeriodKey, report)}"`,
       'Cache-Control': 'private, no-store',
     },
   });

@@ -153,7 +153,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, FileUp, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -230,6 +230,12 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // 956cec85 — the reporter asked for "a centralized location" for the statutory forms. The forms
     // themselves already existed on Reports; this row is the home they were missing.
     { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms', icon: Landmark },
+    // 20f6c6a8 — Payment Submission. The reporter asked for one place to generate the files a month is
+    // filed and paid with, grouped by who receives them. The FILES already existed, scattered: the KWSP
+    // and PERKESO uploads behind their review screens, the LHDN e-Data file behind a link on Reports.
+    // This row is the home they were missing — the same complaint, and the same answer, as 956cec85's
+    // Statutory Forms row. Ranked 9 in phases.ts, so it lands last; it is not spliced by hand here.
+    { href: '/payroll/payment-submission', labelKey: 'payrollPaymentSubmission', icon: FileUp },
     { href: '/payroll/setup', labelKey: 'payrollSettings', icon: Settings2 },
     // Sorted by the canonical sequence, NOT by the literal order above. Written declaratively so a
     // future row is placed by giving it a rank in phases.ts rather than by guessing where to splice

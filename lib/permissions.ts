@@ -929,6 +929,23 @@ export const SCREENS: readonly ScreenEntry[] = [
       // 956cec85: the statutory-form directory. Same guard as the rest of the Payroll hub — it exposes
       // which submissions are due and links to their figures, so it is admin-scoped like Reports.
       '/payroll/statutory-forms',
+      // 20f6c6a8: Payment Submission — the shelf of machine-readable files a month is filed with (KWSP
+      // i-Akaun, PERKESO ASSIST, LHDN e-Data PCB). SAME `scopedAdmin` KEY AS THE REST OF THE PAYROLL HUB
+      // AND DELIBERATELY NOT A COLUMN OF ITS OWN: every file it hands over is built from figures already
+      // reachable on Reports and Statutory Forms by anyone holding this key, so a separate column would
+      // suggest a boundary that does not exist — and revoking it while leaving Statutory Forms granted
+      // would hide the upload file while still offering the same month's printed form.
+      //
+      // It rides PAYROLL'S module entitlement (ADR-0077) rather than taking one of its own: `packs/
+      // catalog.ts` is the source of truth for what a customer BUYS, and this sells nothing Payroll does
+      // not already sell. Its nav row lives inside the payroll pack's node, so `visibleModuleCodes`
+      // hides it for a tenant without Payroll, and its data path sits behind service files already bound
+      // to the `payroll` module by core/module-gate.ts. See the screen's header.
+      //
+      // Its `download` sibling is a route handler, not a guarded page, so it is not listed — the
+      // reverse-completeness check walks page.tsx files. Registered here because that check would
+      // otherwise fail the suite rather than let this become a screen nobody can grant or revoke.
+      '/payroll/payment-submission',
       // 6babf4f6: ONE generation screen serving every form on the shelf, addressed by report id. Same
       // scopedAdmin key as the directory it is reached from — it shows per-employee statutory numbers
       // (name, IC, EPF/SOCSO/tax number and the contribution split), so it is admin-scoped like Reports.
