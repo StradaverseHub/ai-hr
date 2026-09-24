@@ -9047,7 +9047,15 @@
       "empTypeFullTime": "Full-time",
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
-      "empTypeIntern": "Intern"
+      "empTypeIntern": "Intern",
+      "extendedTitle": "Waktu lanjutan pada hari bekerja",
+      "extendedEnabledLabel": "Kreditkan waktu lanjutan yang dikerjakan pada hari bekerja biasa",
+      "extendedEnabledHint": "Dimatikan secara lalai. Apabila dihidupkan, masa bekerja selepas waktu tamat syif yang dijadualkan pada hari bekerja biasa boleh memperoleh Kredit Cuti. Kerja lebih masa hari itu TIDAK akan dibayar juga — hari itu diberikan semula sebagai cuti. Daftar masuk awal sebelum syif bermula tidak sekali-kali dikira.",
+      "extendedHalfDay": "Ambang setengah hari (minit)",
+      "extendedFullDay": "Ambang sehari penuh (minit)",
+      "extendedBreak": "Rehat selepas tamat syif (minit)",
+      "extendedGrace": "Tempoh tangguh sebelum dikira (minit)",
+      "extendedHint": "Rehat dan tempoh tangguh ditolak dahulu daripada masa bekerja selepas tamat syif; bakinya menentukan kredit. Di bawah ambang setengah hari tiada apa-apa diperoleh — tiada kredit separa. Pada atau melebihi ambang itu, setengah hari. Pada atau melebihi ambang sehari penuh, satu hari, dan satu hari ialah jumlah maksimum bagi mana-mana tarikh tunggal. Ini terpakai hanya pada hari bekerja biasa; hari rehat, hari cuti atau cuti umum tidak berubah dan masih menggunakan asas pengumpulan di atas."
     },
     "entitlementArchive": {
       "pageDescription": "Rekod baca sahaja bagi jadual kelayakan dan skim faedah yang dirakam sebelum satu set semula mengosongkannya.",
@@ -9628,7 +9636,9 @@
         "policyOff": "Kredit Cuti dimatikan untuk syarikat pekerja ini. Hidupkannya dalam tab Peraturan terlebih dahulu.",
         "firstScheduleConsent": "Pekerja ini berada dalam Jadual Pertama, jadi bayaran kerja lebih masa berkanun terpakai. Kredit memerlukan persetujuan mereka yang direkodkan untuk mengambil cuti sebagai ganti bayaran itu, dan sebarang kredit yang tidak digunakan akan dibayar apabila luput.",
         "firstScheduleConsentLabel": "Pekerja telah bersetuju mengambil hari ini sebagai cuti sebagai ganti bayaran kerja lebih masa berkanun.",
-        "firstScheduleBlocked": "Pekerja ini berada dalam Jadual Pertama dan syarikatnya tidak membenarkan Kredit Cuti sebagai ganti bayaran kerja lebih masa berkanun. Ubah dalam tab Peraturan terlebih dahulu."
+        "firstScheduleBlocked": "Pekerja ini berada dalam Jadual Pertama dan syarikatnya tidak membenarkan Kredit Cuti sebagai ganti bayaran kerja lebih masa berkanun. Ubah dalam tab Peraturan terlebih dahulu.",
+        "extendedShort": "Ini hari bekerja biasa. Hanya {minutes} minit selepas waktu tamat syif yang dijadualkan dikira untuk pekerja ini, iaitu di bawah ambang setengah hari syarikat, jadi tarikh ini tidak boleh memperoleh Kredit Cuti.",
+        "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini."
       },
       "rulesIntro": "Siapa boleh memperoleh Kredit Cuti, cara ia diperoleh dan tempoh kredit bertahan, mengikut syarikat. Perubahan di sini terpakai kepada kredit yang diberikan selepasnya; kredit yang sudah diberikan mengekalkan tarikh luputnya."
     },

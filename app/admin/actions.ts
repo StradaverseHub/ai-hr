@@ -2315,6 +2315,14 @@ export async function setToilPolicyAction(fd: FormData) {
         ? (String(fd.get('replacementLeaveFrom')) as ToilReplacementLeaveFrom)
         : undefined,
       requestEligibility,
+      // r334 928f0454 — the extended-hours block. A checkbox is read by PRESENCE (the form posts nothing when
+      // it is off), and the four numbers are read with the same defaults `setToilPolicy` and the column
+      // defaults use, so a caller that somehow omits them writes the pre-r334 policy rather than NaN.
+      extendedHoursEnabled: fd.get('extendedHoursEnabled') === 'on',
+      extendedHalfDayMinutes: Number(fd.get('extendedHalfDayMinutes') ?? 240),
+      extendedFullDayMinutes: Number(fd.get('extendedFullDayMinutes') ?? 480),
+      extendedBreakMinutes: Number(fd.get('extendedBreakMinutes') ?? 0),
+      extendedGraceMinutes: Number(fd.get('extendedGraceMinutes') ?? 0),
     });
     warning = r.premiumEquivalentWarning;
   } catch (e) {

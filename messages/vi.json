@@ -9047,7 +9047,15 @@
       "empTypeFullTime": "Full-time",
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
-      "empTypeIntern": "Intern"
+      "empTypeIntern": "Intern",
+      "extendedTitle": "Giờ làm thêm trong ngày làm việc",
+      "extendedEnabledLabel": "Tính tín dụng cho giờ làm thêm trong ngày làm việc bình thường",
+      "extendedEnabledHint": "Mặc định tắt. Khi bật, thời gian làm việc sau giờ kết thúc ca theo lịch trong một ngày làm việc bình thường có thể được tính tín dụng nghỉ phép. Khi đó tiền làm thêm giờ của ngày đó sẽ KHÔNG được trả thêm — ngày đó được bù lại bằng nghỉ phép. Chấm công sớm trước khi ca bắt đầu không bao giờ được tính.",
+      "extendedHalfDay": "Ngưỡng nửa ngày (phút)",
+      "extendedFullDay": "Ngưỡng trọn ngày (phút)",
+      "extendedBreak": "Nghỉ giữa giờ sau khi kết thúc ca (phút)",
+      "extendedGrace": "Thời gian ân hạn trước khi tính (phút)",
+      "extendedHint": "Thời gian nghỉ giữa giờ và thời gian ân hạn được trừ trước khỏi thời gian làm việc sau khi kết thúc ca; phần còn lại quyết định tín dụng. Dưới ngưỡng nửa ngày thì không được gì cả — không có tín dụng một phần. Từ ngưỡng đó trở lên, nửa ngày. Từ ngưỡng trọn ngày trở lên, một ngày, và một ngày là mức tối đa mà bất kỳ ngày nào có thể nhận. Điều này chỉ áp dụng cho ngày làm việc bình thường; ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ không thay đổi và vẫn dùng cơ sở tích lũy ở trên."
     },
     "entitlementArchive": {
       "pageDescription": "Bản ghi chỉ đọc của các bảng định mức và chế độ phúc lợi được lưu lại trước khi một lần đặt lại xóa chúng.",
@@ -9628,7 +9636,9 @@
         "policyOff": "Tín dụng nghỉ phép đang tắt cho công ty của nhân viên này. Hãy bật trong thẻ Quy tắc trước.",
         "firstScheduleConsent": "Nhân viên này thuộc Phụ lục Thứ nhất nên được hưởng tiền làm thêm theo luật. Tín dụng cần có sự đồng ý đã ghi nhận của họ để nhận nghỉ phép thay cho khoản tiền đó, và tín dụng không dùng sẽ được trả thành tiền khi hết hạn.",
         "firstScheduleConsentLabel": "Nhân viên đã đồng ý nhận ngày này làm nghỉ phép thay cho tiền làm thêm theo luật.",
-        "firstScheduleBlocked": "Nhân viên này thuộc Phụ lục Thứ nhất và công ty không cho phép dùng tín dụng nghỉ phép thay cho tiền làm thêm theo luật. Hãy thay đổi trong thẻ Quy tắc trước."
+        "firstScheduleBlocked": "Nhân viên này thuộc Phụ lục Thứ nhất và công ty không cho phép dùng tín dụng nghỉ phép thay cho tiền làm thêm theo luật. Hãy thay đổi trong thẻ Quy tắc trước.",
+        "extendedShort": "Đây là một ngày làm việc bình thường. Nhân viên này chỉ được tính {minutes} phút sau giờ kết thúc ca theo lịch, thấp hơn ngưỡng nửa ngày của công ty, nên ngày này không thể nhận tín dụng nghỉ phép.",
+        "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây."
       },
       "rulesIntro": "Ai được nhận tín dụng nghỉ phép, cách nhận và tín dụng có hiệu lực bao lâu, theo từng công ty. Thay đổi ở đây áp dụng cho tín dụng cấp sau đó; tín dụng đã cấp giữ nguyên ngày hết hạn."
     },

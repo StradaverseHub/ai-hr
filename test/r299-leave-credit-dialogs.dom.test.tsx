@@ -37,6 +37,11 @@ const PREVIEW: LeaveCreditPreviewView = {
   firstSchedule: true,
   allowFirstSchedule: true,
   alreadyCredited: false,
+  // r334 · the extended-hours question does not arise on a rest day, which is what this base fixture is.
+  // Left in its OFF shape on purpose so every assertion below still describes the pre-r334 dialog exactly.
+  extendedHoursEnabled: false,
+  extendedHoursMinutes: null,
+  extendedHoursDays: null,
 };
 
 function renderAdd(locale: Locale, preview: LeaveCreditPreviewView) {

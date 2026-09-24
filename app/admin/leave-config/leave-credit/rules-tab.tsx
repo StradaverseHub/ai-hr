@@ -204,6 +204,73 @@ export async function LeaveCreditRulesTab({
                   </span>
                 </label>
 
+                {/* r334 928f0454 · EXTENDED HOURS ON A WORKING DAY. ⚠️ MONEY: a credit suppresses the worked
+                    day's overtime PAY (core/payroll.ts EXCLUDE_TOIL_BANKED_DAYS), so switching this on moves
+                    money off a payslip — the hint says so on screen. OFF by default; every field is posted on
+                    every save, like the rest of this absolute-set form. */}
+                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-500/5">
+                  <SectionHeader title={tr('extendedTitle')} />
+                  <label className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      name="extendedHoursEnabled"
+                      defaultChecked={p.extendedHoursEnabled}
+                      className="mt-0.5 h-4 w-4 accent-amber-600"
+                    />
+                    <span>
+                      <span className="text-sm font-medium text-foreground">{tr('extendedEnabledLabel')}</span>
+                      <span className="block text-xs text-amber-700/90 dark:text-amber-300/80">{tr('extendedEnabledHint')}</span>
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label={tr('extendedHalfDay')}>
+                      <input
+                        type="number"
+                        name="extendedHalfDayMinutes"
+                        min={1}
+                        max={1440}
+                        required
+                        defaultValue={p.extendedHalfDayMinutes}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label={tr('extendedFullDay')}>
+                      <input
+                        type="number"
+                        name="extendedFullDayMinutes"
+                        min={1}
+                        max={1440}
+                        required
+                        defaultValue={p.extendedFullDayMinutes}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label={tr('extendedBreak')}>
+                      <input
+                        type="number"
+                        name="extendedBreakMinutes"
+                        min={0}
+                        max={1440}
+                        required
+                        defaultValue={p.extendedBreakMinutes}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label={tr('extendedGrace')}>
+                      <input
+                        type="number"
+                        name="extendedGraceMinutes"
+                        min={0}
+                        max={1440}
+                        required
+                        defaultValue={p.extendedGraceMinutes}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{tr('extendedHint')}</p>
+                </div>
+
                 <label className="flex items-start gap-2.5">
                   <input type="checkbox" name="carryForwardAtYearEnd" defaultChecked={p.carryForwardAtYearEnd} className="mt-0.5 h-4 w-4 accent-primary" />
                   <span>

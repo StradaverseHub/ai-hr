@@ -9047,7 +9047,15 @@
       "empTypeFullTime": "Full-time",
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
-      "empTypeIntern": "Intern"
+      "empTypeIntern": "Intern",
+      "extendedTitle": "Extended hours on working day",
+      "extendedEnabledLabel": "Credit extended hours worked on an ordinary working day",
+      "extendedEnabledHint": "Off by default. When on, time worked past the scheduled shift end on an ordinary working day can earn a Leave Credit. That day’s overtime is then NOT also paid — the day is given back as leave instead. Early clock-in before the shift starts never counts.",
+      "extendedHalfDay": "Half-day threshold (minutes)",
+      "extendedFullDay": "Full-day threshold (minutes)",
+      "extendedBreak": "Break after shift end (minutes)",
+      "extendedGrace": "Grace period before counting (minutes)",
+      "extendedHint": "The break and the grace period come off the time worked past the shift end first; what is left decides the credit. Below the half-day threshold nothing is earned — there is no part credit. At or above it, half a day. At or above the full-day threshold, one day, and one day is the most any single date can earn. This applies only to ordinary working days; a rest day, off day or public holiday is unchanged and still uses the accrual basis above."
     },
     "entitlementArchive": {
       "pageDescription": "A read-only record of the entitlement tables and benefit schemes captured before a reset cleared them.",
@@ -9628,7 +9636,9 @@
         "policyOff": "Leave Credit is switched off for this employee's company. Switch it on in the Rules tab first.",
         "firstScheduleConsent": "This employee is within the First Schedule, so statutory overtime pay applies. A credit needs their recorded agreement to take leave instead of that pay, and any credit they do not use will be paid out when it expires.",
         "firstScheduleConsentLabel": "The employee has agreed to take this day as leave instead of statutory overtime pay.",
-        "firstScheduleBlocked": "This employee is within the First Schedule and their company does not allow a Leave Credit in place of statutory overtime pay. Change that in the Rules tab first."
+        "firstScheduleBlocked": "This employee is within the First Schedule and their company does not allow a Leave Credit in place of statutory overtime pay. Change that in the Rules tab first.",
+        "extendedShort": "This is an ordinary working day. Only {minutes} minute(s) past the scheduled shift end counted for this employee, which is below the company’s half-day threshold, so this date cannot earn a Leave Credit.",
+        "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here."
       },
       "rulesIntro": "Who can earn a Leave Credit, how it is earned and how long a credit lasts, per company. A change here applies to credits granted after it; a credit already granted keeps its expiry date."
     },

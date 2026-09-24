@@ -49,6 +49,7 @@ import { packFor } from '../localization/registry';
 // (see its header for why 1cf5b37c's removal was reversed), and so is the HR grant. `isModuleEnabled` still
 // gates both accrual paths.
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+import { isAttendanceTrace, type AttendanceTraceV1 } from './attendance-trace';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isAdmin } from '../lib/authz';
 
@@ -93,6 +94,28 @@ export class ToilOrdinaryWorkingDayError extends ToilNotEligibleError {
     );
     this.name = 'ToilOrdinaryWorkingDayError';
     this.dates = dates;
+  }
+}
+/**
+ * r334 · 928f0454 — the day IS an ordinary working day, the company HAS switched extended hours on, and the
+ * employee still did not stay late enough to earn anything. A different fact from
+ * `ToilOrdinaryWorkingDayError` (which says the DAY cannot qualify at all), and it must be its own type
+ * because the two are answered on screen with different sentences: one tells HR to pick another date, the
+ * other tells them how many minutes short the day fell.
+ *
+ * Extends `ToilNotEligibleError` so `maybeAutoAccrueOnApprovalTx` keeps swallowing it — a workday correction
+ * that did not clear the half-day threshold must never block the approval it rode in on.
+ */
+export class ToilExtendedHoursBelowThresholdError extends ToilNotEligibleError {
+  readonly countedMinutes: number;
+  readonly halfDayMinutes: number;
+  constructor(date: string, countedMinutes: number, halfDayMinutes: number) {
+    super(
+      `${date} is an ordinary working day. Extended hours after the scheduled shift end earn a Leave Credit only from ${halfDayMinutes} minutes; this day counted ${countedMinutes}.`,
+    );
+    this.name = 'ToilExtendedHoursBelowThresholdError';
+    this.countedMinutes = countedMinutes;
+    this.halfDayMinutes = halfDayMinutes;
   }
 }
 export class ToilNoOvertimeError extends Error {
@@ -303,6 +326,22 @@ export type ToilPolicyInput = {
   replacementLeaveFrom?: ToilReplacementLeaveFrom;
   /** Who may submit. null/absent ⇒ everyone. See core/replacement-eligibility.ts for the rule. */
   requestEligibility?: ReplacementRequestEligibility | null;
+  // ── r334 928f0454 · "Extended hours on working day" ────────────────────────────────────────────────
+  //
+  // ALL OPTIONAL, for the reason 296fc027 already recorded above: `setToilPolicy` is a FULL REPLACE and this
+  // type is constructed literally by a dozen test files and by the module-install path. Every default below
+  // reproduces the pre-r334 policy exactly, so an omitting caller gets the behaviour it meant — and because
+  // the switch itself defaults to OFF, an omitting caller can never move money.
+  /** Master switch. OFF ⇒ a workday election is refused with the pre-r334 message, byte for byte. */
+  extendedHoursEnabled?: boolean;
+  /** Counted minutes past shift end that earn 0.5 day (default 240 = 4h). */
+  extendedHalfDayMinutes?: number;
+  /** Counted minutes that earn 1.0 day, which is the per-day cap (default 480 = 8h). */
+  extendedFullDayMinutes?: number;
+  /** Unpaid break taken AFTER shift end, deducted before the tiers are tested (default 0 ⇒ no-op). */
+  extendedBreakMinutes?: number;
+  /** The first N minutes past shift end do not count at all (default 0 ⇒ no-op). */
+  extendedGraceMinutes?: number;
 };
 
 /**
@@ -369,6 +408,28 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   const expiryMonths = p.expiryMonths ?? 3;
   if (!Number.isInteger(expiryMonths) || expiryMonths < 1 || expiryMonths > 24)
     throw new Error('Expiry months must be a whole number between 1 and 24.');
+  // ── r334 928f0454 · the extended-hours thresholds, VALIDATED HERE because this is the only writer ────
+  //
+  // Bounded at one calendar day (1440) rather than at an OT-hours ceiling: the figure being described is a
+  // clock span past a shift end, and a cross-midnight shift makes anything up to a full day representable.
+  const extendedHalfDayMinutes = p.extendedHalfDayMinutes ?? 240;
+  const extendedFullDayMinutes = p.extendedFullDayMinutes ?? 480;
+  const extendedBreakMinutes = p.extendedBreakMinutes ?? 0;
+  const extendedGraceMinutes = p.extendedGraceMinutes ?? 0;
+  if (!Number.isInteger(extendedHalfDayMinutes) || extendedHalfDayMinutes < 1 || extendedHalfDayMinutes > 1440)
+    throw new Error('The half-day threshold must be a whole number of minutes between 1 and 1440.');
+  if (!Number.isInteger(extendedFullDayMinutes) || extendedFullDayMinutes < 1 || extendedFullDayMinutes > 1440)
+    throw new Error('The full-day threshold must be a whole number of minutes between 1 and 1440.');
+  // NOT a tidy-up: with full <= half the 0.5-day tier is UNREACHABLE — every qualifying day would jump
+  // straight to a full day, silently doubling the credit (and so the overtime pay it suppresses) against
+  // what the administrator typed. Refused rather than normalised, because there is no way to guess which of
+  // the two numbers they meant.
+  if (extendedFullDayMinutes <= extendedHalfDayMinutes)
+    throw new Error('The full-day threshold must be greater than the half-day threshold, or no day could ever earn half a day.');
+  if (!Number.isInteger(extendedBreakMinutes) || extendedBreakMinutes < 0 || extendedBreakMinutes > 1440)
+    throw new Error('The break deduction must be a whole number of minutes between 0 and 1440.');
+  if (!Number.isInteger(extendedGraceMinutes) || extendedGraceMinutes < 0 || extendedGraceMinutes > 1440)
+    throw new Error('The grace period must be a whole number of minutes between 0 and 1440.');
   // Normalised BEFORE the write so the column holds exactly one representation of "no restriction"
   // (NULL), and a criteria object that is all-empty lists cannot masquerade as a restriction.
   const requestEligibility = cleanReplacementEligibility(p.requestEligibility);
@@ -390,6 +451,13 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
         employeeRequestEnabled: p.employeeRequestEnabled ?? false,
         replacementLeaveFrom: p.replacementLeaveFrom ?? 'overtime',
         requestEligibility,
+        // r334: the extended-hours block. `?? false` on the switch is what makes every caller that predates
+        // r334 write the pre-r334 policy.
+        extendedHoursEnabled: p.extendedHoursEnabled ?? false,
+        extendedHalfDayMinutes,
+        extendedFullDayMinutes,
+        extendedBreakMinutes,
+        extendedGraceMinutes,
       })
       .onConflictDoUpdate({
         target: toilPolicy.companyId,
@@ -413,6 +481,14 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
           // silent edit to a setting the administrator can no longer see. A caller that passes it still sets it.
           ...(p.replacementLeaveFrom !== undefined ? { replacementLeaveFrom: p.replacementLeaveFrom } : {}),
           requestEligibility,
+          // r334 — IN THE UPDATE SET TOO. 0113 and 296fc027 both left the same note above and it is still the
+          // single most repeatable bug on this function: a column inserted but not updated is silently
+          // dropped on every save after the first.
+          extendedHoursEnabled: p.extendedHoursEnabled ?? false,
+          extendedHalfDayMinutes,
+          extendedFullDayMinutes,
+          extendedBreakMinutes,
+          extendedGraceMinutes,
         },
       })
       .returning({ id: toilPolicy.id });
@@ -442,7 +518,16 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
  */
 export type ToilPolicyView = Omit<
   ToilPolicyInput,
-  'expiryUnit' | 'expiryMonths' | 'employeeRequestEnabled' | 'replacementLeaveFrom' | 'requestEligibility'
+  | 'expiryUnit'
+  | 'expiryMonths'
+  | 'employeeRequestEnabled'
+  | 'replacementLeaveFrom'
+  | 'requestEligibility'
+  | 'extendedHoursEnabled'
+  | 'extendedHalfDayMinutes'
+  | 'extendedFullDayMinutes'
+  | 'extendedBreakMinutes'
+  | 'extendedGraceMinutes'
 > & {
   isDefault: boolean;
   expiryUnit: ToilExpiryUnit;
@@ -450,6 +535,14 @@ export type ToilPolicyView = Omit<
   employeeRequestEnabled: boolean;
   replacementLeaveFrom: ToilReplacementLeaveFrom;
   requestEligibility: ReplacementRequestEligibility | null;
+  // r334 — RESOLVED, never optional, for the same reason as the five above: the Rules tab renders a control
+  // per field and an `undefined` default would make the checkbox and the numbers disagree with what a save
+  // would write.
+  extendedHoursEnabled: boolean;
+  extendedHalfDayMinutes: number;
+  extendedFullDayMinutes: number;
+  extendedBreakMinutes: number;
+  extendedGraceMinutes: number;
 };
 const POLICY_DEFAULTS = {
   enabled: false,
@@ -466,6 +559,13 @@ const POLICY_DEFAULTS = {
   employeeRequestEnabled: false,
   replacementLeaveFrom: 'overtime' as ToilReplacementLeaveFrom,
   requestEligibility: null as ReplacementRequestEligibility | null,
+  // r334 — these MUST match the column defaults in migration 0486, or a company with no saved policy would
+  // render one thing and save another. OFF is what keeps an unconfigured company's payslips unchanged.
+  extendedHoursEnabled: false,
+  extendedHalfDayMinutes: 240,
+  extendedFullDayMinutes: 480,
+  extendedBreakMinutes: 0,
+  extendedGraceMinutes: 0,
 };
 
 /** Each requested company's TOIL policy, falling back to the (disabled) defaults where none is saved. */
@@ -491,6 +591,12 @@ export function listToilPolicies(ctx: SessionContext, companyIds: string[]): Pro
             employeeRequestEnabled: r.employeeRequestEnabled,
             replacementLeaveFrom: r.replacementLeaveFrom,
             requestEligibility: r.requestEligibility ?? null,
+            // r334 · the extended-hours block, straight off the row.
+            extendedHoursEnabled: r.extendedHoursEnabled,
+            extendedHalfDayMinutes: r.extendedHalfDayMinutes,
+            extendedFullDayMinutes: r.extendedFullDayMinutes,
+            extendedBreakMinutes: r.extendedBreakMinutes,
+            extendedGraceMinutes: r.extendedGraceMinutes,
             isDefault: false,
           }
         : { companyId, ...POLICY_DEFAULTS, isDefault: true };
@@ -521,7 +627,94 @@ const PREMIUM_EQUIVALENT_FS_WARNING =
 // RL Control Engine (0113): only work on a Rest Day or Public Holiday is eligible for replacement leave.
 // A plain workday's OT is cash-only (PREMIUM_MULT carries a 'workday' key for the multiplier, but banking a
 // workday is not permitted). This is the "only RL for Rest Day/PH; block if no eligible attendance" rule.
+//
+// ── r334 928f0454 · DO NOT ADD 'workday' TO THIS SET, and the reason is not stylistic ────────────────────
+//
+// r334 lets extended hours on an ordinary working day earn a credit, and it is implemented as a SEPARATE,
+// TIERED path gated on `toil_policy.extended_hours_enabled` (default OFF) rather than by widening the
+// membership here. Widening the set would have changed FOUR things at once and only one of them was asked
+// for: this set is the eligibility rule for the roster election AND the attendance auto-accrual AND — as
+// the day-type that gets stamped onto the accrual — the input to the expiry sweep's exact-statutory-cash
+// valuation (`convertAmountFor`). A 'workday' member would have priced an extended-hours credit through
+// `overtimePay({ dayType: 'workday', minutes: otMinutes })`, i.e. at 1.5x the FULL measured minutes, while
+// the credit actually banked is a tier ROUNDED DOWN from those minutes — the same over-valuation r299's
+// fix pass found and closed with `dayType: null` (see `accrueSelfDeclaredToilTx`). It would also have
+// applied `PREMIUM_MULT.workday = 1.5` to the credit under the `premium_equivalent` basis, contradicting
+// the reporter's "1.0 day (cap per day)".
+//
+// So this set keeps meaning exactly what it has always meant — "which day types accrue from measured OT
+// through the basis" — and the tiers below own the workday answer instead. The set is UPDATED, not
+// loosened: the `has()` calls that guard it now sit behind an explicit `extendedWorkdayCreditTx` fork that
+// reproduces this refusal byte for byte whenever the company switch is off.
 const RL_ELIGIBLE_DAY_TYPES: ReadonlySet<'rest_day' | 'holiday'> = new Set(['rest_day', 'holiday']);
+
+/** The pre-r334 refusal, as one string, so the roster path and its test cannot drift apart. */
+const WORKDAY_CASH_ONLY_MESSAGE = 'Replacement leave can only be banked for work on a rest day or public holiday.';
+
+/** r334 · the five policy fields the extended-hours arithmetic reads, and nothing else. */
+export type ExtendedHoursPolicy = {
+  extendedHoursEnabled: boolean;
+  extendedHalfDayMinutes: number;
+  extendedFullDayMinutes: number;
+  extendedBreakMinutes: number;
+  extendedGraceMinutes: number;
+};
+
+/**
+ * r334 928f0454 · EXTENDED HOURS PAST THE SCHEDULED SHIFT END, FROM THE FIGURE THAT ALREADY OWNS THEM.
+ *
+ * ⚠️ THIS FUNCTION DELIBERATELY DOES NOT MEASURE ANYTHING. The reporter defines extended hours as
+ * "actual clock-out − scheduled shift end (after Recompute Attendance adjustments)", and that figure
+ * ALREADY EXISTS and is already stored: `attendance.ot_minutes` on a workday with a resolved shift is
+ * literally `max(0, outAbs − max(inAbs, endAbs))` — see core/attendance.ts's `window` OT basis, whose own
+ * comment says "workday OT is the time worked BEYOND the shift's time-out". Recomputing it here from raw
+ * punch times would put a SECOND owner on one business fact, and the two would diverge the first time a
+ * shift's OT rule, its rounding band, its daily cap or a cross-midnight anchor moved — while payroll kept
+ * paying the first one. So the ONE input is `otMinutes`, and everything below is an ADJUSTMENT to it.
+ *
+ * THE ONE ADJUSTMENT THAT IS NOT A POLICY SETTING is early clock-in. The reporter is explicit that arriving
+ * before shift start must contribute nothing, and on the `window` basis it already contributes nothing —
+ * that basis counts only minutes past the END. But a company whose attendance rule sets `applyToEarlyOt`
+ * has its PRE-SHIFT minutes folded INTO `ot_minutes` (core/attendance.ts, "the rule's opt-in folds them in
+ * HERE"), and for such a company `ot_minutes` is no longer purely post-shift-end time. The engine records
+ * exactly what it folded (`calc_trace.overtime.earlyMinutes` / `earlyIncluded`), so this takes it back out
+ * rather than re-deriving the day. A trace that is absent, of another version, or from a non-`window` basis
+ * reports `earlyIncluded: false` and nothing is subtracted, which is the pre-r334 arithmetic.
+ */
+export function extendedMinutesAfterShiftEnd(p: { otMinutes: number | null; calcTrace: unknown }): number {
+  const ot = Math.max(0, p.otMinutes ?? 0);
+  const trace: AttendanceTraceV1 | null = isAttendanceTrace(p.calcTrace) ? p.calcTrace : null;
+  const folded = trace?.overtime?.earlyIncluded === true ? Math.max(0, trace.overtime.earlyMinutes) : 0;
+  return Math.max(0, ot - folded);
+}
+
+/**
+ * r334 928f0454 · THE TIERS. Rounded DOWN, no partial credit, one day is the cap.
+ *
+ * `< half` earns nothing at all (not a pro-rata sliver); `>= half and < full` earns 0.5; `>= full` earns 1.0
+ * and never more, however long the day ran. The break deduction and the grace period come off BEFORE the
+ * thresholds are tested, in that order, because both describe minutes that were never extended work in the
+ * first place — subtracting after the test would let a day qualify on minutes the policy says do not exist.
+ *
+ * THE GRACE PERIOD IS A SUBTRACTION, NOT A CUT-OFF, and that is a decision rather than a reading of the
+ * obvious. "Grace period before counting" says the first N minutes do not count, so a 15-minute grace turns
+ * 4h15m of extended work into 4h00m of counted work. The alternative reading — "under N minutes, count
+ * nothing, at or over N count all of it" — is a threshold, and this policy ALREADY HAS two of those in the
+ * half-day and full-day figures; a third would be redundant with them and unreachable in practice (any
+ * grace small enough to be called a grace is far below a four-hour half-day threshold, so it could never
+ * change an answer). Both defaults are 0, so a company that sets neither gets `counted === extended`.
+ *
+ * ⚠️ NOT COMPOSED WITH `accrualBasis`. See `extendedWorkdayCreditTx` for why the tiers and
+ * `premium_equivalent` are two answers to the same question and only one of them may run.
+ */
+export function extendedHoursCreditDays(
+  extendedMinutes: number,
+  policy: Pick<ExtendedHoursPolicy, 'extendedHalfDayMinutes' | 'extendedFullDayMinutes' | 'extendedBreakMinutes' | 'extendedGraceMinutes'>,
+): { countedMinutes: number; days: number } {
+  const countedMinutes = Math.max(0, Math.round(extendedMinutes) - policy.extendedBreakMinutes - policy.extendedGraceMinutes);
+  const days = countedMinutes >= policy.extendedFullDayMinutes ? 1 : countedMinutes >= policy.extendedHalfDayMinutes ? 0.5 : 0;
+  return { countedMinutes, days };
+}
 
 /**
  * RL Control Engine (0113) · shared accrual executor (runs inside an open tx). Reads the day's `otMinutes`,
@@ -567,6 +760,10 @@ export async function accrueToilTx(
       dayType: attendance.dayType,
       companyId: employment.companyId,
       country: company.country,
+      // r334: the engine's own working, so the extended-hours path can take back any PRE-SHIFT minutes the
+      // company's attendance rule folded into ot_minutes instead of re-deriving the day. See
+      // `extendedMinutesAfterShiftEnd`.
+      calcTrace: attendance.calcTrace,
     })
     .from(attendance)
     .innerJoin(employment, eq(employment.id, attendance.employmentId))
@@ -578,9 +775,24 @@ export async function accrueToilTx(
   const otMinutes = att.otMinutes ?? 0;
   const dayType = att.dayType;
 
-  // 1b · "only RL for Rest Day/PH": a plain workday's OT is cash-only, never banked.
+  // 1b · "only RL for Rest Day/PH": a plain workday's OT is cash-only, never banked — UNLESS the company
+  // has switched r334's extended-hours path on. Read the comment above RL_ELIGIBLE_DAY_TYPES before
+  // touching either branch: the set is not widened, a second path is opened beside it.
   if (!RL_ELIGIBLE_DAY_TYPES.has(dayType as 'rest_day' | 'holiday')) {
-    throw new ToilNotEligibleError('Replacement leave can only be banked for work on a rest day or public holiday.');
+    return extendedWorkdayCreditTx(tx, ctx, {
+      employmentId: p.employmentId,
+      workedDate: p.workedDate,
+      companyId: att.companyId,
+      country: att.country,
+      dayType,
+      otMinutes,
+      calcTrace: att.calcTrace,
+      approvedOn: p.approvedOn,
+      requestedOn: p.requestedOn,
+      firstScheduleConsent: p.firstScheduleConsent,
+      viaAutoApproval: p.viaAutoApproval,
+      source: p.viaAutoApproval ? 'auto_approval' : 'roster',
+    });
   }
 
   // 2..6 · everything from here is SHARED with the employee-request path, which reaches it without an
@@ -600,6 +812,104 @@ export async function accrueToilTx(
     firstScheduleConsent: p.firstScheduleConsent,
     viaAutoApproval: p.viaAutoApproval,
     source: p.viaAutoApproval ? 'auto_approval' : 'roster',
+  });
+}
+
+/**
+ * r334 928f0454 · THE EXTENDED-HOURS FORK — an ordinary working day, reached only from `accrueToilTx`'s
+ * step 1b, i.e. only when `RL_ELIGIBLE_DAY_TYPES` has already said no.
+ *
+ * ── THE SWITCH IS THE WHOLE FEATURE ─────────────────────────────────────────────────────────────────────
+ * With `extended_hours_enabled` off — which is every company on release, and every company with no saved
+ * policy at all — this throws the pre-r334 refusal BYTE FOR BYTE (`WORKDAY_CASH_ONLY_MESSAGE`) and nothing
+ * else in this function runs. That ordering is deliberate and is itself pinned: the refusal used to be
+ * raised at step 1b BEFORE step 2's "is the policy enabled" check, so a company with a DISABLED policy saw
+ * the day-type message rather than `ToilDisabledError`, and it still does.
+ *
+ * ── AN OFF DAY IS NOT A WORKING DAY, AND `attendance.day_type` CANNOT TELL THEM APART ────────────────────
+ * MEASURED, not assumed: `attendance_day_type` is a THREE-value enum ('workday','rest_day','holiday'), and
+ * `scheduleFor` resolves an off day (the default shift's own rest day) as `dayType:'workday'` with
+ * `scheduledMinutes: 0` and `source:'default-shift-rest'` (core/attendance.ts:1007). So the row this fork
+ * receives says "workday" for BOTH a real working day and an off day, and on an off day `ot_minutes` is the
+ * WHOLE worked span — running the tiers on it would hand out a full day's credit for an off day that the
+ * roster path refuses outright today. The true kind therefore comes from `resolveWorkedDayKindTx`, the same
+ * ladder the HR add and the employee request already use, and an off day keeps the pre-r334 refusal. Note
+ * what that records: the roster election has never been able to bank an OFF day, even though the reporter
+ * believes it can — that is a pre-existing divergence between this path and the other two, and r334
+ * deliberately does not close it (rest-day / off-day / holiday behaviour is pinned byte-identical).
+ *
+ * ── THE TIERS AND `premium_equivalent` ARE TWO ANSWERS TO ONE QUESTION; ONLY THE TIERS RUN HERE ──────────
+ * `accrualBasis` continues to govern a rest-day / off-day / holiday credit exactly as before, untouched —
+ * so BOTH remain selectable per company, which is what the approved plan promised. They simply price
+ * different things now. The basis is PROPORTIONAL (worked minutes over a standard day, optionally uplifted
+ * by the day-type multiplier); the tiers are ABSOLUTE and round DOWN to 0.5 or 1.0 with one day as the cap.
+ * Composing them would contradict the reporter's own spec in both directions: `premium_equivalent` would
+ * multiply a 1.0-day tier by `PREMIUM_MULT.workday = 1.5` and breach "1.0 day (cap per day)", and
+ * `hours_worked` would re-derive a proportional figure that ignores the tiers entirely. So the tier is
+ * passed as `declaredDays`, which `bankToilCreditTx` already documents as the one input the multiplier is
+ * never applied to.
+ *
+ * ── ⚠️ MONEY · WHY `dayType` IS NULL ON THE ROW ─────────────────────────────────────────────────────────
+ * `convertAmountFor` (the expiry sweep) prices a First-Schedule employee's unused credit as the EXACT
+ * statutory cash for the stored `day_type` over the stored `ot_minutes`. Stamping 'workday' here would
+ * value the credit at s.60A OT on the FULL counted minutes while the credit actually banked is a tier
+ * rounded DOWN from them — 7h59m of extended work banks 0.5 day but would cash out as nearly eight hours of
+ * overtime. That is the identical over-valuation r299's fix pass found on the self-declared path and closed
+ * with `dayType: null`; the same answer is the right one here, and `worked_day_kind = 'workday'` is
+ * recorded beside it so a person can still reconcile what earned the credit.
+ *
+ * The First-Schedule consent gate is NOT bypassed and is not re-implemented: everything below goes through
+ * `bankToilCreditTx`, where step 4 refuses an at-or-below-ceiling employee without the company override AND
+ * their own recorded agreement. A workday credit for such an employee without consent is refused, switch on
+ * or not.
+ */
+async function extendedWorkdayCreditTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    workedDate: string;
+    companyId: string;
+    country: string | null;
+    dayType: 'workday' | 'rest_day' | 'holiday';
+    otMinutes: number;
+    calcTrace: unknown;
+    approvedOn?: Date;
+    requestedOn?: string;
+    firstScheduleConsent?: boolean;
+    viaAutoApproval?: boolean;
+    source: ToilAccrualSource;
+  },
+): Promise<AccrueToilResult> {
+  const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, p.companyId)).limit(1);
+  // The switch, first and alone: off (or no policy row) ⇒ the pre-r334 sentence, unchanged.
+  if (!policy?.extendedHoursEnabled) throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
+  // An off day is not an ordinary working day — see the header. Same sentence as before r334.
+  const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
+  if (kind !== 'workday') throw new ToilNotEligibleError(WORKDAY_CASH_ONLY_MESSAGE);
+
+  const extendedMinutes = extendedMinutesAfterShiftEnd({ otMinutes: p.otMinutes, calcTrace: p.calcTrace });
+  const { countedMinutes, days } = extendedHoursCreditDays(extendedMinutes, policy);
+  if (days <= 0) throw new ToilExtendedHoursBelowThresholdError(p.workedDate, countedMinutes, policy.extendedHalfDayMinutes);
+
+  return bankToilCreditTx(tx, ctx, {
+    employmentId: p.employmentId,
+    workedDate: p.workedDate,
+    companyId: p.companyId,
+    country: p.country,
+    // ⚠️ MONEY — NULL on purpose. See the header: the tier rounds DOWN from the measured minutes, so the
+    // exact-statutory branch of `convertAmountFor` would pay out for time this credit never banked.
+    dayType: null,
+    workedDayKind: 'workday',
+    // The COUNTED figure, not the raw one: it is the number the tier was decided from, so the register row
+    // and the audit event explain the credit beside it rather than leaving a reader to re-derive it.
+    otMinutes: countedMinutes,
+    declaredDays: days,
+    approvedOn: p.approvedOn,
+    requestedOn: p.requestedOn,
+    firstScheduleConsent: p.firstScheduleConsent,
+    viaAutoApproval: p.viaAutoApproval,
+    source: p.source,
   });
 }
 
@@ -648,7 +958,8 @@ export async function bankToilCreditTx(
      * says so on the event when the day type is unknown.
      */
     dayType: 'workday' | 'rest_day' | 'holiday' | null;
-    /** 3fb1a611: the kind of day that earned the credit (rest / off / public holiday). Recorded, never guessed. */
+    /** 3fb1a611: the kind of day that earned the credit (rest / off / public holiday — and, since r334 and
+     *  only behind the company's extended-hours switch, an ordinary working day). Recorded, never guessed. */
     workedDayKind?: ToilWorkedDayKind | null;
     otMinutes: number;
     /** Employee path: the credit is this many days verbatim. Omitted ⇒ derived from otMinutes × basis. */
@@ -947,7 +1258,13 @@ export async function resolveWorkedDayKindTx(tx: Tx, employmentId: string, date:
  * statutory source (docs/architecture/STATUTORY-SOURCES.md §6) states the rest-day, public-holiday and
  * normal-workday rules and says nothing about an off day, so no exact figure is claimed for one — it stays
  * on the existing ORP fallback, with the kind recorded beside it (`worked_day_kind`) so a person can
- * reconcile it. A working day never reaches here: it cannot earn a credit.
+ * reconcile it.
+ *
+ * r334 — A WORKING DAY CAN NOW REACH HERE, and the sentence that used to end this comment ("a working day
+ * never reaches here: it cannot earn a credit") is no longer true. It maps to NULL for the same reason an
+ * off day does, and one stronger: an extended-hours credit is a TIER rounded DOWN from the measured minutes,
+ * so the exact s.60A workday-OT branch would cash out more time than was ever banked. See
+ * `extendedWorkdayCreditTx`.
  */
 
 export async function accrueSelfDeclaredToilTx(
@@ -1024,8 +1341,9 @@ export async function maybeAutoAccrueOnApprovalTx(
   },
 ): Promise<boolean> {
   if (!toilEnabled(ctx)) return false;
-  // Cheap pre-checks before any work: must be a rest-day/holiday correction.
-  if (!p.dayType || !RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday')) return false;
+  // Cheap pre-check: a correction with no day type at all can never qualify on any path.
+  if (!p.dayType) return false;
+  const eligibleDayType = RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday');
   // Resolve the company policy gate (enabled + opted-in). RLS already scopes the row to this tenant.
   const [att] = await tx
     .select({ companyId: employment.companyId })
@@ -1035,6 +1353,14 @@ export async function maybeAutoAccrueOnApprovalTx(
   if (!att) return false;
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, att.companyId)).limit(1);
   if (!policy || !policy.enabled || !policy.autoAccrueOnApproval) return false;
+  // r334 · THE DAY-TYPE PRE-FILTER MOVED BELOW THE POLICY READ, and only because it had to. It used to
+  // return false for a workday before this function had any idea what the company's settings were, which
+  // made the extended-hours switch unreachable from the auto path however it was set. Below the read, the
+  // filter asks the honest question: a non-eligible day type is still refused outright UNLESS this company
+  // has switched extended hours on, in which case `accrueToilTx` decides — and its own fork re-checks the
+  // same flag, resolves an off day properly and applies the tiers. Byte-identical for every company with
+  // the switch off, which is every company on release.
+  if (!eligibleDayType && !policy.extendedHoursEnabled) return false;
   try {
     await accrueToilTx(tx, ctx, {
       employmentId: p.employmentId,
@@ -1606,10 +1932,50 @@ async function overtimeMinutesOnTx(tx: Tx, employmentId: string, date: string): 
   return Math.max(0, att?.otMinutes ?? 0);
 }
 
+/**
+ * r334 · what an ordinary working day would earn under this company's extended-hours settings, from the day's
+ * OWN stored figures. Returns `null` when there is no attendance row at all — a day nobody clocked has no
+ * extended hours to measure, which is a different answer from "measured, and it earned nothing".
+ *
+ * One reader, two callers (the Add form's preview and its save), so the form can never show a tier the save
+ * would then disagree with. The arithmetic itself lives in the two pure functions above.
+ */
+async function extendedHoursOnTx(
+  tx: Tx,
+  employmentId: string,
+  date: string,
+  policy: ExtendedHoursPolicy,
+): Promise<{ extendedMinutes: number; countedMinutes: number; days: number } | null> {
+  const [att] = await tx
+    .select({ otMinutes: attendance.otMinutes, calcTrace: attendance.calcTrace })
+    .from(attendance)
+    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
+    .limit(1);
+  if (!att) return null;
+  const extendedMinutes = extendedMinutesAfterShiftEnd(att);
+  return { extendedMinutes, ...extendedHoursCreditDays(extendedMinutes, policy) };
+}
+
 export type LeaveCreditPreview = {
   workedDayKind: ToilWorkedDayKind;
-  /** false ⇒ an ordinary working day: the Add form refuses it. */
+  /**
+   * false ⇒ this date cannot earn a credit and the Add form refuses it.
+   *
+   * r334 — no longer simply "not a working day". An ordinary working day IS eligible when the company has
+   * switched extended hours on AND the day actually cleared the half-day threshold; `extendedHoursDays`
+   * below says which, so the form can tell "wrong kind of day" from "not enough extended hours" and say the
+   * right sentence for each.
+   */
   eligibleDay: boolean;
+  /** r334 · the company's "Extended hours on working day" switch. Only meaningful on a workday. */
+  extendedHoursEnabled: boolean;
+  /** r334 · minutes past the scheduled shift end that COUNT, after the break and grace deductions. NULL
+   *  when the date is not an ordinary working day, the switch is off, or nothing was clocked. */
+  extendedHoursMinutes: number | null;
+  /** r334 · the tier those minutes earn (0.5 / 1). NULL when nothing is earned — the form then says how far
+   *  short the day fell rather than offering a Save the service would refuse. The Add form PINS the credit
+   *  amount to this figure, and `grantLeaveCredit` refuses any other. */
+  extendedHoursDays: number | null;
   /** ⚠️ MONEY: overtime already recorded on the date. A credit suppresses its pay (EXCLUDE_TOIL_BANKED_DAYS). */
   overtimeMinutes: number;
   /** The policy's expiry counted from today — what the form pre-fills. NULL when the company has no enabled policy. */
@@ -1657,9 +2023,18 @@ export async function previewLeaveCredit(
         ),
       )
       .limit(1);
+    // r334 · only ever measured for an ordinary working day whose company has the switch on. A rest day, an
+    // off day and a public holiday are unchanged: they answer null here and stay eligible on their own rule.
+    const extended =
+      kind === 'workday' && policy?.extendedHoursEnabled
+        ? await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy)
+        : null;
     return {
       workedDayKind: kind,
-      eligibleDay: kind !== 'workday',
+      eligibleDay: kind !== 'workday' || (extended != null && extended.days > 0),
+      extendedHoursEnabled: policy?.extendedHoursEnabled === true,
+      extendedHoursMinutes: extended?.countedMinutes ?? null,
+      extendedHoursDays: extended != null && extended.days > 0 ? extended.days : null,
       overtimeMinutes: await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate),
       // The same arithmetic bankToilCreditTx applies on save (approval instant → resolveExpiry), so the date
       // the form pre-fills is the date an untouched save freezes.
@@ -1751,7 +2126,33 @@ export async function grantLeaveCredit(
       throw new LeaveCreditError(`The date worked must fall within this employee's service (${emp.hiredOn} onwards${emp.terminatedOn ? `, until ${emp.terminatedOn}` : ''}).`);
     }
     const kind = await resolveWorkedDayKindTx(tx, p.employmentId, p.workedDate);
-    if (kind === 'workday') throw new ToilOrdinaryWorkingDayError([p.workedDate]);
+    // ── r334 928f0454 · AN ORDINARY WORKING DAY, BEHIND THE SWITCH ──────────────────────────────────────
+    //
+    // Switch off (and every company with no saved policy) ⇒ `ToilOrdinaryWorkingDayError`, byte for byte as
+    // before. Switch on ⇒ the day is measured, and HR's typed credit must EQUAL the tier the day earned.
+    //
+    // WHY THE TYPED FIGURE IS CHECKED RATHER THAN OVERWRITTEN. This form lets HR type any amount from 0.5 to
+    // 366 days, and on a rest day that freedom is the point — there is no measurement to contradict. On a
+    // working day there IS one, and the reporter's rule is "tiers, rounded DOWN, no partial credit, cap per
+    // day". Silently replacing what HR typed with the tier would move a number on a form that suppresses
+    // overtime pay without saying so; accepting what they typed would let a 4-hour day be banked as three.
+    // Refusing and NAMING the tier is the only one of the three that neither hides nor invents. The Add
+    // dialog pins the field to the same figure, so this fires only on a bypass or a stale form.
+    let extendedCounted: number | null = null;
+    if (kind === 'workday') {
+      const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, emp.companyId)).limit(1);
+      if (!policy?.extendedHoursEnabled) throw new ToilOrdinaryWorkingDayError([p.workedDate]);
+      const extended = await extendedHoursOnTx(tx, p.employmentId, p.workedDate, policy);
+      if (!extended || extended.days <= 0) {
+        throw new ToilExtendedHoursBelowThresholdError(p.workedDate, extended?.countedMinutes ?? 0, policy.extendedHalfDayMinutes);
+      }
+      if (days !== extended.days) {
+        throw new LeaveCreditError(
+          `${p.workedDate} is an ordinary working day: its extended hours earn exactly ${extended.days} day. A Leave Credit for a working day cannot be more or less than the hours worked past the scheduled shift end allow.`,
+        );
+      }
+      extendedCounted = extended.countedMinutes;
+    }
     const overtime = await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate);
     if (overtime > 0 && (await payrollStartedForDateTx(tx, p.workedDate))) {
       throw new LeaveCreditError(
@@ -1769,7 +2170,10 @@ export async function grantLeaveCredit(
       workedDayKind: kind,
       // The measured overtime when the day has any (what a statutory convert-to-pay should be valued from);
       // otherwise the declared credit in standard-day minutes, the request path's convention.
-      otMinutes: overtime > 0 ? overtime : Math.round(days * STD_DAY_MINUTES),
+      // r334 — on a working day it is the COUNTED extended figure instead: the minutes the tier was decided
+      // from, which is what explains this credit. (`dayType` is null on every path through here, so this
+      // figure never reaches `convertAmountFor`'s exact-statutory branch.)
+      otMinutes: extendedCounted ?? (overtime > 0 ? overtime : Math.round(days * STD_DAY_MINUTES)),
       declaredDays: days,
       approvedOn: p.approvedOn,
       // There is no employee request behind a hand-added credit; the worked day is the only date in evidence,
