@@ -1,3 +1,41 @@
+## r335 (2026-09-24) — two items, and both corrected something I had written. `main@6281abb3`, no migration.
+
+Closed: `0fe1ca2e` (rev 6), `6af80f5d` (rev 2). Gate: **971 files — equal to the suite file count**, 14 chunks, ~15,040 tests, **zero red chunks on the first pass**, `tsc` 0, `next build` 0. No shadow gate: no migration, journal verified unchanged at 399 entries / max idx 486. Render check clean.
+
+### `6af80f5d` — MY BRIEF CONTRADICTED ITSELF, AND THE BUILD CAUGHT IT
+
+I wrote "round the DISPLAY field only — `currentYearEntitlement`" and, two paragraphs later, "the SUM must use the exact figure (to tile)". **`currentYearEntitlement` is not a display field.** `core/read.ts` builds `totalEntitlement` from it; `entitlement-panel-config.ts` lists it in `RECONCILIATION_ADDENDS` with `sign: 1`, where `reconciledBalance(b)` must equal `b.balance`; `lib/leave-summary-explain.ts` builds the HR sentences and the Total formula from it. Rounding it is exactly what my second instruction forbids. I verified the addend membership directly before merging.
+
+Resolved by the repo's own r313 `DisplayEntitlement` precedent: a new `currentYearEntitlementRounded`, **required rather than optional** in both mirror types, so no hand-built breakdown can silently fall back to the unrounded figure.
+
+**And it explained why 11.18 exists at all** — worth telling the reporter: `accrueEarnedLeave` *already* rounds at source (b81d3c52), but tops up by `toGrant = earnedToDate − already` behind a `toGrant > 0` guard, the forward-only contract. Days credited **before** a rounding table was configured are never clawed back, so the cycle keeps its raw running total. A display fix is the only answer that does not rewrite ledger rows.
+
+Mutation B (rounding `cycleAccrual` at source) fires both named invariant guards: *"totalEntitlement is byte-identical with the rounding rule on and off — expected 11 to be 11.18"* and *"Σ(addends · sign) still equals the balance — expected 6 to be 6.18"*.
+
+### `0fe1ca2e` — IT CLOSED A COVERAGE GAP MY BRIEF ASSUMED EXISTED
+
+`test/clocking-map.dom.test.tsx` drove a **hand-built look-alike `<form>`**, never `ClockingLocationForm`. So **no test in the suite could have caught the address search leaving the form's subtree** — trap 1, and the one failure mode that is silent, because `form-bridge` finds its inputs through the enclosing form.
+
+A new describe mounts the real component. Mutation (d) renders the search outside the form and fails with *"the address the search wrote: expected '' to be 'Menara KL…'"* **while the other 11 DOM tests stay green** — demonstrating the old harness's blindness rather than asserting it.
+
+Order is asserted by **measured index** in the stripped markup, not by presence (a presence check passes on today's layout too), and the search is anchored on its `aria-label` read out of `en.json` rather than a hardcoded English sentence.
+
+Two of the three things the reporter asked for were **already built** since r279 — the search already filled Address/Latitude/Longitude and already sat above Latitude. The real complaint was the card boundary between them, and the plan said so rather than claiming credit for building them.
+
+### OPERATIONAL
+
+- **The gate ran under heavy swap pressure** — 146 s on chunk 1 against a 124 s baseline, load ~17–20, ~5 GB swap in use after 1M+ swapouts across two days. Still green first pass.
+- **Three builders stall this machine; two do not.** Two agents were lost to the 600 s watchdog earlier in the session at *lighter* load than the gate ran at. The working limit is two concurrent builders, and the gate alone.
+
+### WHAT WAS NOT DONE
+
+- **Six items approved and unbuilt**: `1bb09a73` and `3783fd87` (building at the time of writing), `20f6c6a8`, `7f251381`, `99b2d6c0`, `da7463b4`.
+- **`8d3a7bff` planned**: the second "Special Leave" card is **Compassionate Leave** drawing on the Special Leave pot — measured, and it must NOT be removed. `lib/shared-leave-balance.ts`'s header records why the borrower tells the pool's story.
+- **`73ddd5a1` open**, awaiting the reporter: 55 of 76 active employees have no gender recorded and 48 no marital status, which decides who gets which leave.
+- `20f6c6a8` cannot start its LHDN writer, and `99b2d6c0` cannot change its two disabled-relief figures, until the reporter supplies the authoritative LHDN documents. Both plans say why, and `statutory-tables.ts:99` already records one of those values as *"RATE-ONLY, NOT YET VERIFIED"*.
+
+### RECORDED
+
 ## r334 (2026-09-24) — three items, and a flake that had been measured and written down before it was written in. `main@86fa1231`, **migration 0486**.
 
 Closed: `d272834b`, `928f0454`, `5b2a7f0f`. Gate: **969 files — equal to the suite file count**, 14 chunks, ~15,007 tests, `tsc` 0, `next build` 0, shadow **PASS 399/399**. Render check clean.
