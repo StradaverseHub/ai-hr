@@ -25,6 +25,54 @@ const dobFromIC = (ic: string): string | null => {
   }
   return null;
 };
+
+/**
+ * WHAT A TYPED IC NUMBER MEANS FOR THE DATE OF BIRTH — the three outcomes, named, item da7463b4.
+ *
+ * This was the body of `apply` below and nothing else could reach it. The Create New Employee DRAFT has
+ * to reach exactly the same decision (feedback da7463b4 is a drift complaint: the draft screen and the
+ * activated screen must not disagree about one person), and it cannot use `apply` itself because its Date
+ * of Birth is React state in the same tree, not a DOM node in a sibling `<form>`. So the DECISION is here
+ * and the two mechanisms — a `.value =` write on the record, a `setState` on the draft — are all that
+ * differ.
+ *
+ *   'incomplete'  fewer than 12 digits. Nothing is filled and NOTHING IS SAID: nagging about an invalid
+ *                 date after the fourth keystroke of a number that is still being typed is noise.
+ *   'unreal'      twelve digits whose first six are not a real calendar date (month 13, 31 April,
+ *                 29 Feb of a non-leap year). Nothing is filled, the note is shown, AND THE FORM IS NOT
+ *                 BLOCKED — feedback b9fd8fd5's rule for the importer, stated for the screens: such an IC
+ *                 "derives nothing (null) and is skipped, not failed".
+ *   'derived'     a date. `dob` is an ISO yyyy-mm-dd.
+ */
+export type IcDobDerivation = { status: 'incomplete' | 'unreal' | 'derived'; dob: string | null };
+
+export function deriveDobFromIcInput(raw: string): IcDobDerivation {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (digits.length < 12) return { status: 'incomplete', dob: null };
+  const iso = dobFromIC(digits);
+  if (iso === null) return { status: 'unreal', dob: null };
+  return { status: 'derived', dob: iso };
+}
+
+/**
+ * MAY THE DERIVED DATE BE WRITTEN OVER WHAT IS THERE? — the second half of the rule, also shared.
+ *
+ * YES when the Date of Birth is empty, and yes when it still holds the value WE derived last time, which
+ * is what makes the field FOLLOW a corrected IC number rather than freezing on the first one typed. NO
+ * once a human has touched it: a hand-typed date is a statement about a person and an IC number is a
+ * guess about one.
+ *
+ * THAT IS DELIBERATELY NOT `dobOnlyIfEmpty`, and the difference is the one place this item diverges from
+ * the rule core/import.ts states. `dobOnlyIfEmpty` guards a date already PERSISTED against a later
+ * import or IC edit; this guards a date being TYPED against the field it is being typed beside. The
+ * reporter asked for a Date of Birth that "updates when the NRIC changes" and this is what makes it do
+ * so, without ever discarding something a person wrote. Both are pinned in
+ * test/da7463b4-draft-ic-dob-address.test.ts.
+ */
+export function nextAutofilledDob(current: string, derived: string, lastAutofilled: string | null): string | null {
+  return current === '' || current === lastAutofilled ? derived : null;
+}
+
 export function IcDobAutofill({
   name,
   defaultValue,
@@ -47,25 +95,17 @@ export function IcDobAutofill({
   const autofilledRef = useRef<string | null>(null);
 
   const apply = (raw: string) => {
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length < 12) {
-      // Not a full IC yet — don't populate, and don't nag with the invalid-date note mid-typing.
-      setShowNote(false);
-      return;
-    }
-    const iso = dobFromIC(digits);
-    if (iso === null) {
-      // 12 digits but YYMMDD is not a real calendar date — surface the note, leave the DOB alone.
-      setShowNote(true);
-      return;
-    }
-    setShowNote(false);
+    // da7463b4 — the decision is `deriveDobFromIcInput`, shared with the draft screen; what is left here
+    // is this screen's MECHANISM, the cross-form `.value =` write by DOM id.
+    const { status, dob } = deriveDobFromIcInput(raw);
+    setShowNote(status === 'unreal');
+    if (dob === null) return;
     const dobEl = document.getElementById(dobInputId) as HTMLInputElement | null;
     if (!dobEl) return;
-    // Fill only when the DOB is empty or still equals our previous auto-fill (never clobber a manual DOB).
-    if (dobEl.value === '' || dobEl.value === autofilledRef.current) {
-      dobEl.value = iso;
-      autofilledRef.current = iso;
+    const next = nextAutofilledDob(dobEl.value, dob, autofilledRef.current);
+    if (next !== null) {
+      dobEl.value = next;
+      autofilledRef.current = next;
     }
   };
 

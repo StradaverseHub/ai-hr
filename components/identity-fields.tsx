@@ -48,9 +48,10 @@
  * files and cannot see a computed key.
  */
 
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { IcDobAutofill } from '@/components/ic-dob-autofill';
+import { IcDobAutofill, deriveDobFromIcInput, nextAutofilledDob } from '@/components/ic-dob-autofill';
 import { Field, inputCls } from '@/components/ui';
 import { clientCountryPacks } from '@/localization/registry.client';
 
@@ -138,7 +139,29 @@ export function IdentityNumberField(
         /** The DOM id of the sibling form's Date of Birth input — see IcDobAutofill (item 354a500d). */
         dobInputId: string;
       }
-    | { mode: 'controlled'; icNumber?: string; onChange: (icNumber: string) => void }
+    | {
+        mode: 'controlled';
+        icNumber?: string;
+        onChange: (icNumber: string) => void;
+        /**
+         * ITEM da7463b4 — THE DATE OF BIRTH, so the controlled copy of this field autofills it too.
+         *
+         * The reporter's complaint is that the DRAFT screen does not behave like the ACTIVATED one, and
+         * IC → Date of Birth was the first example. It already worked on the record (item 354a500d) and
+         * in the bulk importer (feedback b9fd8fd5) and NOT on the draft, where the comment three lines
+         * below used to explain that the server would derive a blank one at Activate — true, and no help
+         * at all to somebody looking at the screen, because the Age beside it read "Not Available" for
+         * the entire time the record was a draft.
+         *
+         * OPTIONAL, so the pair is all-or-nothing rather than a second required prop on every caller:
+         * without them this renders exactly as it did before.
+         */
+        dateOfBirth?: string;
+        onDateOfBirthChange?: (dateOfBirth: string) => void;
+        /** Shown when twelve digits do not form a real date. The record's own key, passed in by the
+         *  caller that has it — this component is rendered by a client parent in controlled mode. */
+        invalidDateNote?: string;
+      }
   ),
 ) {
   const t = useTranslations('people.detail');
@@ -160,19 +183,85 @@ export function IdentityNumberField(
             invalidDateNote={t('icDobInvalidDate')}
           />
         ) : (
-          // The wizard's Date of Birth is React state in this same tree and `completeEmployeeDraft`
-          // derives a blank one from the IC server-side (`dobOnlyIfEmpty`), so there is no second form to
-          // reach into — a plain controlled input is the whole of it here.
-          <input
-            value={props.icNumber ?? ''}
-            onChange={(e) => props.onChange(e.target.value)}
-            placeholder={IC_PLACEHOLDER}
-            className={inputCls}
-            aria-label={t('icNumber')}
+          // da7463b4 — the draft's Date of Birth is React state in THIS tree, so there is no second form
+          // to reach into and no DOM write: the same shared decision (`deriveDobFromIcInput` +
+          // `nextAutofilledDob`, components/ic-dob-autofill.tsx) is applied through the caller's setter.
+          // `completeEmployeeDraft` still re-derives server-side at Activate, exactly as `setIcAction`
+          // and `commitEmployeeImport` do — the screen is a preview of a rule the server owns.
+          <ControlledIcNumberInput
+            icNumber={props.icNumber}
+            onChange={props.onChange}
+            dateOfBirth={props.dateOfBirth}
+            onDateOfBirthChange={props.onDateOfBirthChange}
+            invalidDateNote={props.invalidDateNote}
+            label={t('icNumber')}
           />
         )}
       </Field>
       <p className={`text-xs text-muted-foreground ${props.hintClassName ?? ''}`}>{t('icNumberHint')}</p>
+    </>
+  );
+}
+
+
+/**
+ * THE CONTROLLED IC INPUT AND ITS DATE-OF-BIRTH AUTOFILL — item da7463b4.
+ *
+ * Its own component because it needs two hooks (the "unreal date" note, and the memory of what we last
+ * derived) and `IdentityNumberField` returns null for a non-local nationality BEFORE it would reach
+ * them. That early return is the rule item 357faecf made, so the hooks move rather than the gate.
+ *
+ * IT IS ALSO WHY REQUIREMENT (d) HOLDS WITHOUT A SECOND RULE: for a non-Malaysian nationality this
+ * component is never rendered, so no IC is collected on the draft and nothing is derived from one.
+ *
+ * WHAT IT DOES NOT DO IS BLOCK. An IC whose first six digits are not a real date shows a note and leaves
+ * the Date of Birth alone; it never prevents a keystroke and never prevents Save Draft. That is
+ * feedback b9fd8fd5's rule for the importer ("derives nothing (null) and is skipped, not failed") applied
+ * to the screen, and `saveEmployeeDraft` validates nothing, which is the whole of what a draft is.
+ */
+function ControlledIcNumberInput({
+  icNumber,
+  onChange,
+  dateOfBirth,
+  onDateOfBirthChange,
+  invalidDateNote,
+  label,
+}: {
+  icNumber?: string;
+  onChange: (icNumber: string) => void;
+  dateOfBirth?: string;
+  onDateOfBirthChange?: (dateOfBirth: string) => void;
+  invalidDateNote?: string;
+  label: string;
+}) {
+  const [showNote, setShowNote] = useState(false);
+  // The last date WE derived — a ref, not state, because nothing re-renders when it changes. It is what
+  // lets a CORRECTED IC number move the Date of Birth while a hand-typed one is never touched.
+  const autofilledRef = useRef<string | null>(null);
+
+  const apply = (raw: string) => {
+    onChange(raw);
+    if (!onDateOfBirthChange) return;
+    const { status, dob } = deriveDobFromIcInput(raw);
+    setShowNote(status === 'unreal');
+    if (dob === null) return;
+    const next = nextAutofilledDob(dateOfBirth ?? '', dob, autofilledRef.current);
+    if (next !== null) {
+      autofilledRef.current = next;
+      onDateOfBirthChange(next);
+    }
+  };
+
+  return (
+    <>
+      <input
+        value={icNumber ?? ''}
+        onChange={(e) => apply(e.target.value)}
+        placeholder={IC_PLACEHOLDER}
+        className={inputCls}
+        aria-label={label}
+      />
+      {showNote && invalidDateNote ? <span className="text-xs text-destructive">{invalidDateNote}</span> : null}
     </>
   );
 }

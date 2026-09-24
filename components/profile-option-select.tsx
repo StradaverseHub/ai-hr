@@ -96,6 +96,8 @@ export function ProfileOptionSelectControlled({
   legacySuffix,
   className,
   onChange,
+  id,
+  disabled,
 }: {
   value: string | null | undefined;
   options: ProfileOptionChoice[];
@@ -103,11 +105,19 @@ export function ProfileOptionSelectControlled({
   legacySuffix: string;
   className?: string;
   onChange: (value: string) => void;
+  // da7463b4 — an optional DOM id, matching the `form` twin above, so a caller's markup can be addressed
+  // by id (the draft's address blocks render `perm-state` / `corr-state` exactly as the record does).
+  id?: string;
+  // da7463b4 — the draft's Correspondence block is a DERIVED view while "same as permanent" is ticked, and
+  // a derived value is not something to type into. See components/same-as-permanent-address.tsx.
+  disabled?: boolean;
 }) {
   const current = value ?? '';
   return (
     <select
+      id={id}
       value={current}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       className={className ?? inputCls}
     >
