@@ -265,7 +265,10 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // …and every one of them is still there on the way back. Nothing was saved in between: this is the
     // in-progress record surviving navigation, which is what "fill it in over several days" needs first.
     await openTab(messages.people.detail.tabs.profile);
-    expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.phone) as HTMLInputElement).value)
+    // BY ID (da7463b4), for the reason given where it is typed above: two fields on this tab now carry
+    // the label "Mobile Phone Number" — the person's own and the Correspondence block's — exactly as the
+    // activated record does, so only the id identifies one.
+    expect((document.getElementById('perm-mobile-phone') as HTMLInputElement).value)
       .toBe('+60123456789');
     await openTab(messages.people.detail.tabs.job);
     expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.department) as HTMLSelectElement).value)
