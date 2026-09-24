@@ -85,6 +85,13 @@ const EXPECTED_SET = [
   { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment' },
   { href: '/payroll/reports', labelKey: 'payrollReports' },
   { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms' },
+  // 20f6c6a8 — an ADDITION, like statutory-forms / individual-payslip / back-pay / statutory-adjustment.
+  // Payment Submission is a NEW screen (the shelf of machine-readable files a month is filed with),
+  // ranked last in phases.ts. Every original entry above and below is character for character what it
+  // was, so the guard's promise — "no destination lost, no href renamed" — is untouched. Listed here
+  // explicitly rather than the assertion being loosened to "contains", for the reason the header gives:
+  // a set guard that only checks a subset stops noticing a deletion.
+  { href: '/payroll/payment-submission', labelKey: 'payrollPaymentSubmission' },
   { href: '/payroll/setup', labelKey: 'payrollSettings' },
 ] as const;
 
