@@ -274,6 +274,10 @@ const myLeaveBalances: AssistantTool = {
       // An assistant answering an employee would be a third, on an employee-facing path.
       // ec991c2a — and never `includeArchived` either, for the same reason: this answers an EMPLOYEE about
       // their own leave, so it must return the list their own screen returns. Stated explicitly.
+      // d272834b — and never `includeIneligible` either, for the third time and the same reason: this
+      // answers an EMPLOYEE about their own leave, so it must return the list their own screen returns.
+      // An assistant that named a Maternity balance a man was never eligible for would be reintroducing
+      // the reported defect through a channel with no card to look at.
       const rows = await leaveBalances(ctx, e.employmentId, undefined, { includeArchived: false });
       employments.push({
         employmentId: e.employmentId,

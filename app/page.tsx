@@ -216,6 +216,8 @@ export default async function DashboardPage({
       // ec991c2a — the dashboard's own leave card is the SAME employee-facing list as My Leave, and an
       // archived type must not sit on it either. `false` is the default; written out for the same reason
       // the /leave call site writes it out.
+      // d272834b — and no `includeIneligible`: the dashboard card is the same employee-facing list, so a
+      // leave type that is not this person's must not appear here either. The default is the gated one.
       leaveBalances(s, me.employmentId, locale, { includeArchived: false }),
       // r292 — THE DASHBOARD IS THE CORE SCREEN THIS CHANGE COULD MOST PLAUSIBLY BREAK. Performance is an
       // optional pack and `myFeedbackRequests` is now service-gated (core/module-gate.ts), so an

@@ -195,19 +195,23 @@ const primaryRank = (code: string | null) => {
   return i === -1 ? PRIMARY_CODES.length : i;
 };
 
-/** The leave years the selector offers: this calendar year, and every earlier year the employee has ledger
- *  rows in. Never a future year. RLS scopes the ledger to what the caller may see. */
-export function leaveYearsFor(ctx: SessionContext, employmentId: string, today: string): Promise<number[]> {
-  const currentYear = Number(today.slice(0, 4));
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .selectDistinct({ y: sql<number>`extract(year from ${leaveLedger.effectiveOn})::int` })
-      .from(leaveLedger)
-      .where(and(eq(leaveLedger.employmentId, employmentId), lt(leaveLedger.effectiveOn, `${currentYear}-01-01`)));
-    const earlier = rows.map((r) => Number(r.y)).filter((y) => Number.isInteger(y) && y < currentYear);
-    return [currentYear, ...[...new Set(earlier)].sort((a, b) => b - a)];
-  });
-}
+/**
+ * ⚠️ `leaveYearsFor` WAS HERE AND d272834b DELETED IT, which is worth a line because deleting a working
+ * function usually is not the answer.
+ *
+ * It offered "this calendar year, plus every earlier year the employee has LEDGER ROWS in" — the ledger
+ * with no notion of leave type at all — and it was called from exactly one place: `myLeaveDashboard`'s
+ * early exit when the balance list comes back empty. Once the balance read gates on eligibility, an empty
+ * list means this employee has no leave type whatsoever, so a year built from their remaining ledger rows
+ * can only be a year justified by a card they must not see. On the reporting account those rows are the
+ * Maternity accruals on 55 employments: the selector would have gone on offering 2025 for a card the same
+ * change had just removed, which is the reported leak in a smaller control.
+ *
+ * It is DELETED rather than left exported and uncalled because it answers, correctly, the question this
+ * screen has deliberately stopped asking. A future reader reaching for it would be reintroducing the leak
+ * by picking the obvious helper. The reading that survives is `offeredLeaveYears` below, which derives the
+ * years from the cycles of the types that actually DREW A CARD.
+ */
 
 /**
  * r302 hand-fix (second verification, defect 3) — the selections the dashboard offers: the current year, and
@@ -269,13 +273,24 @@ export async function myLeaveDashboard(
   const { today, locale } = opts;
   const currentYear = Number(today.slice(0, 4));
 
-  // The same type list the page has always read: visible, not archived, eligible-or-active, pooled (r209).
+  // The same type list the page has always read: visible, not archived, pooled (r209) — and, since
+  // d272834b, ELIGIBLE. That last word is the whole of the reported defect: this dashboard asked
+  // `leaveBalances` for rows and filtered them on `placement` alone, so a leave type whose eligibility
+  // says it is not this employee's still drew a card whenever the ledger held a row for it. The gate is
+  // not repeated here — it is `leaveBalances`'s own `includeIneligible` (default: gated), the SAME
+  // `isProfileEligible` the apply dropdown has always used, so the card and the dropdown can no longer
+  // disagree about whether a type is this person's.
   const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false })).filter(
     (b) => b.placement !== 'hidden',
   );
   if (balances.length === 0) {
-    const years = await leaveYearsFor(ctx, employmentId, today);
-    return { today, currentYear, selectedYear: resolveSelectedLeaveYear(opts.year, years, currentYear), years, cards: [] };
+    // d272834b — NO YEAR BUT THIS ONE. An empty list here means the employee has no leave type at all:
+    // the eligible-but-inactive tail adds a row for every active type they ARE eligible for, so nothing
+    // survives only when nothing applies to them. Offering 2025 because the ledger holds a Maternity
+    // accrual they were never eligible for would put the removed card's history back in the year
+    // selector, which is the same leak in a smaller control. The helper that used to be called here
+    // (`leaveYearsFor`) was deleted rather than left uncalled — see the note where it stood.
+    return { today, currentYear, selectedYear: currentYear, years: [currentYear], cards: [] };
   }
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];

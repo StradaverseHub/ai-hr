@@ -97,6 +97,9 @@ import { NON_STATUTORY, resolveCompanyTier } from './company-tier';
 import { statesForCountries } from './state-vocabulary';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
+// d272834b — the eligibility picker's GENDER options, now shared with the gate (core/leave.ts) and the
+// picker itself. See the note above ELIGIBILITY_GENDER_OPTIONS below.
+import { ELIGIBILITY_GENDERS } from '../lib/person-vocabulary';
 import {
   appUser,
   assignment,
@@ -256,7 +259,25 @@ export function normalizeReason(v: string | null | undefined): string | undefine
 // #12129e77) so a rule value and a profile value are provably drawn from the same list — the "centralized
 // marital status master list" the item asks for. Adding a value there (divorced/widowed/separated) makes it a
 // rule option AND a reachable profile value in one edit.
-export const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
+//
+// d272834b — THE GENDER LIST IS NO LONGER SPELLED HERE. It moved to `lib/person-vocabulary.ts`
+// (`ELIGIBILITY_GENDERS`) because its CONTENT became load-bearing in a third file this one cannot reach:
+// `core/leave.ts`'s `eligibilityRuleList` reads a saved list that contains every picker option as carrying
+// NO restriction, and `core/leave.ts` cannot import this module (this module imports IT — see the
+// `from './leave'` above). Re-exported under its original name so every existing importer is untouched.
+//
+// ⚠️ AND THE WRITE PATH DELIBERATELY DOES NOT APPLY THAT RULE — `cleanEligList` below still stores exactly
+// what the administrator ticked. Two reasons, and the first is decisive:
+//   1. IT WOULD FIX NOTHING WITHOUT A MIGRATION. Eight of the eleven live leave types ALREADY store
+//      ["male","female"]. A rule applied only on save leaves every one of them untouched until somebody
+//      re-opens and re-saves that type, so the defect this item exists to fix would still be on screen.
+//      Normalising at INTERPRETATION time (one function, in the gate) reaches the stored rows on the next
+//      read, with no migration and nothing rewritten.
+//   2. A SAVE MUST GIVE BACK WHAT IT WAS GIVEN. The eligibility form re-renders from the stored object; a
+//      write-time strip would show an administrator who ticked both genders a form with neither ticked,
+//      which reads as "the save failed". Storing the expression and interpreting it separately keeps the
+//      form honest and keeps the meaning in one place.
+export const ELIGIBILITY_GENDER_OPTIONS = ELIGIBILITY_GENDERS;
 export const ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES;
 
 /** Normalize a scalar-or-array eligibility field to a de-duped, blank-stripped, validated list. Accepts a

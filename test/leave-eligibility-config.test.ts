@@ -146,13 +146,33 @@ describe('#badc5966 — multi-select gender + marital eligibility', () => {
       name: 'Wellness',
       eligibility: { gender: ['male', 'female'] },
     });
+    // d272834b — THE WRITE STILL STORES WHAT WAS TICKED. The universal-list rule is applied when a stored
+    // rule is INTERPRETED (core/leave.ts `eligibilityRuleList`), never when it is saved: eight live types
+    // already hold this exact value, so a save-time strip would have reached none of them without a
+    // migration, and an administrator who ticked both genders must get a form back with both ticked.
     expect(await eligibilityOf(wellness)).toEqual({ gender: ['male', 'female'] });
     const male = await hire('male', 'single');
     const female = await hire('female', 'single');
     const undisclosed = await hire(null, 'single');
     await expect(req(male.employmentId, wellness)).resolves.toMatchObject({ days: 1 });
     await expect(req(female.employmentId, wellness)).resolves.toMatchObject({ days: 1 });
-    await expect(req(undisclosed.employmentId, wellness)).rejects.toBeInstanceOf(LeaveIneligibleError);
+    /**
+     * ⚠️ d272834b REVERSED THIS ASSERTION — UPDATED, NOT DELETED. It used to expect a
+     * `LeaveIneligibleError`: an employee with no gender recorded could not request a type listing BOTH
+     * genders, because "unknown" matched neither entry in the list.
+     *
+     * `["male","female"]` is every option the eligibility picker offers, so it is how an administrator
+     * says "anybody", and refusing it to the 55 of 75 employees on the reporting account whose gender is
+     * blank was refusing them a type nobody had restricted. The rule that moved is `eligibilityRuleList`:
+     * a list of every picker option normalises to absent before `assertEligible` compares anything.
+     *
+     * The guard did not go away, it moved down one line: a list of SOME genders still refuses exactly as
+     * it always has, which is the property #badc5966 exists to hold.
+     */
+    await expect(req(undisclosed.employmentId, wellness), 'every gender ticked is no restriction').resolves.toMatchObject({ days: 1 });
+    const femaleOnly = await leaveType('WELLNESSF', null);
+    await updateLeaveType(adminCtx(b), { id: femaleOnly, name: 'Wellness F', eligibility: { gender: ['female'] } });
+    await expect(req(undisclosed.employmentId, femaleOnly)).rejects.toBeInstanceOf(LeaveIneligibleError);
   });
 
   it('stores a multi-marital rule and admits ANY selected status while rejecting others', async () => {

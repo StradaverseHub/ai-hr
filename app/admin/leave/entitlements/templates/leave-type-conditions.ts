@@ -29,6 +29,9 @@
  * definition. Substrate: pure derivation, no DomainEvent. // substrate: read-only, no event
  */
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+// d272834b — the picker's option sets, from the CLIENT-SAFE leaf module (no DB import), so this block can
+// apply the universal-list rule without pulling the kernel into a client bundle.
+import { ELIGIBILITY_GENDERS, MARITAL_STATUSES } from '@/lib/person-vocabulary';
 import type { CriteriaSection } from '@/core/org-criteria-form';
 
 /**
@@ -50,10 +53,19 @@ export type LeaveTypeEligibility = {
 export type InheritedCondition = { key: string; label: string; values: string[] };
 
 /** Normalise a scalar-or-array eligibility field to a de-blanked list. Mirrors `asList` (core/leave.ts) —
- *  legacy rows written before multi-select store a scalar, and both shapes must read identically. */
-function asEligList(v: string | string[] | null | undefined): string[] {
+ *  legacy rows written before multi-select store a scalar, and both shapes must read identically.
+ *
+ *  d272834b — and it mirrors `eligibilityRuleList` too, because this block tells HR which conditions a
+ *  leave type INHERITS, and a list holding every option the picker offers inherits no condition at all.
+ *  Printing "Gender: Male or Female" as an inherited condition told HR the type was restricted when it was
+ *  not — the same misreading, on the screen where they would act on it. Kept LOCAL (no core import) for
+ *  the reason the line above already gives; the option sets come from the shared client-safe module, so
+ *  the two copies of the RULE can still only disagree if someone edits one of them. */
+function asEligList(v: string | string[] | null | undefined, pickerOptions?: readonly string[]): string[] {
   if (v == null) return [];
-  return (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
+  const list = (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
+  if (list.length === 0 || pickerOptions == null) return list;
+  return pickerOptions.every((o) => list.includes(o)) ? [] : list;
 }
 
 /** Every criteria field the shared builder produced, flattened by field name. */
@@ -149,9 +161,9 @@ export function inheritedConditions(
     out.push({ key: eligKey, label, values: values.map((v) => valueLabel(axis, v)) });
   };
 
-  pushMapped('gender', asEligList(e.gender));
+  pushMapped('gender', asEligList(e.gender, ELIGIBILITY_GENDERS));
 
-  const marital = asEligList(e.maritalStatus);
+  const marital = asEligList(e.maritalStatus, MARITAL_STATUSES);
   if (marital.length > 0) {
     out.push({ key: 'maritalStatus', label: labels.maritalStatus, values: marital.map(labels.maritalValue) });
   }
