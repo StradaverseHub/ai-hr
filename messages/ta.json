@@ -322,7 +322,7 @@
     "planOvertime": "சுய கூடுதல் நேரம்",
     "myTravel": "எனது பயணம்",
     "myAttendanceRequestStatus": "எனது வருகைக் கோரிக்கை நிலை",
-    "clockingLocation": "நேரப் பதிவு இடம்",
+    "physicalWorkLocation": "உண்மையான பணி இடம்",
     "attendanceImport": "இறக்குமதி",
     "mobilePreview": "மொபைல் ஆப் முன்னோட்டம்",
     "reports": "அறிக்கைகள்",
@@ -8715,8 +8715,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "இடங்கள்",
-      "pageDescription": "ஒவ்வொரு நிறுவனத்திற்கும் உள்ள உடல் வேலை தளங்கள். ஒரு இடம் விடுப்பு மற்றும் வருகைக்குப் பயன்படுத்தப்படும் பொது விடுமுறை நாட்காட்டியை மேலெழுதும் மாநிலத்தை அமைக்கலாம்.",
+      "pageTitle": "உண்மையான பணி இடம்",
+      "pageDescription": "ஒவ்வொரு நிறுவனத்திற்கும் உள்ள உண்மையான பணி இடங்கள், மற்றும் ஒவ்வொன்றும் உள்ளடக்கும் கிளை.",
       "noCompanies": "வரம்பில் நிறுவனங்கள் இல்லை.",
       "code": "குறியீடு",
       "name": "பெயர்",
@@ -8779,7 +8779,7 @@
       "view": "பார்",
       "newClockingTitle": "புதிய பணி பதிவு இடம்",
       "editClockingTitle": "பணி பதிவு இடத்தைத் திருத்து",
-      "backToLocations": "இடங்களுக்குத் திரும்பு",
+      "backToLocations": "உண்மையான பணி இடத்திற்குத் திரும்பு",
       "sectionGps": "GPS மற்றும் பணி பதிவு அமைப்புகள்",
       "radiusMetresLabel": "பணி பதிவு ஆரம் (மீட்டர்)",
       "cancel": "ரத்துசெய்",

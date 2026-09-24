@@ -778,15 +778,33 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/attendance-allowance'],
   },
   {
+    // 639bf4a5 (r336) — Organization › Physical Work Location. The SCREEN moved (Attendance › Clocking
+    // Location, /admin/locations) and its address moved with it; the screenKey did NOT, because a
+    // screenKey is a permission identity that stored role configs may name, and renaming it would
+    // silently revoke every grant that does. Only `href` and `labelKey` follow the menu.
     screenKey: 'locations',
-    href: '/admin/locations',
-    labelKey: 'nav.locations',
+    href: '/admin/work-locations',
+    labelKey: 'nav.physicalWorkLocation',
     guard: 'requireAdmin',
     // f9afd1ce rev 2 (r267): a clocking location is added and edited on a page of its own (the loans
     // list + new + [id] shape below) — same requireAdmin guard as the list, same screen column, no new
     // grant. The page renders read-only for a company-scoped admin exactly as the list does; write
     // authority is the group administrator's (core/clocking-location.ts assertGroupAdmin + RLS).
-    routes: ['/admin/locations', '/admin/locations/clocking/new', '/admin/locations/clocking/[id]'],
+    //
+    // THE THREE OLD ADDRESSES STAY REGISTERED because they still exist as requireAdmin() REDIRECT STUBS
+    // (app/admin/locations/**), exactly as the four /admin/attendance-policy stubs above do: each calls
+    // the guard before it redirects, so test/function-access.test.ts counts it, a non-administrator
+    // following an old bookmark is refused rather than told where the screen went, and a stale link
+    // lands on the register instead of a 404. Both halves are pinned — a route registered here with no
+    // guarded page on disk, or a guarded page with no route here, fails that test in either direction.
+    routes: [
+      '/admin/work-locations',
+      '/admin/work-locations/clocking/new',
+      '/admin/work-locations/clocking/[id]',
+      '/admin/locations',
+      '/admin/locations/clocking/new',
+      '/admin/locations/clocking/[id]',
+    ],
   },
   // 3fb1a611 (r299) — `{ screenKey: 'toilPolicy', href: '/admin/toil', … }` STOOD HERE and is DELIBERATELY
   // GONE. /admin/toil is an unguarded redirect stub to Leave Config › Leave Credit, which holds its ledger

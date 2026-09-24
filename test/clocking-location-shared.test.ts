@@ -14,7 +14,7 @@
  *   • listClockingLocations has no company parameter, and the personnel page calls it without one — that
  *     call was the single line that made assignment per-company in practice.
  *   • The screen renders the forms for group admins only and posts no companyId — since r267 (rev 2) the
- *     forms live on a page of their own (app/admin/locations/clocking/*) and the list carries none.
+ *     forms live on a page of their own (app/admin/work-locations/clocking/*) and the list carries none.
  *
  * Behaviour (the 42501, the service refusal, cross-company assignment landing, the optional link) lives in
  * test/clocking-geofence.test.ts. This file pins the SHAPE those behaviours depend on.
@@ -277,21 +277,21 @@ describe('f9afd1ce — the two screens', () => {
   });
 
   it('the locations page renders ONE tenant-level block and NO clocking form; the page of its own gates on isGroupAdmin and posts no companyId (rev 2, r267)', () => {
-    const page = read('app/admin/locations/page.tsx');
+    const page = read('app/admin/work-locations/page.tsx');
     expect(page).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(page).toContain('await listClockingLocations(s, { includeArchived: true })');
     expect(page).toContain("t('sharedManagedByGroupAdmin')");
     expect(page).toContain("t('usedBy')");
-    // rev 2 (r267): the create / edit forms MOVED to app/admin/locations/clocking/*. The list posts nothing
+    // rev 2 (r267): the create / edit forms MOVED to app/admin/work-locations/clocking/*. The list posts nothing
     // for a site beyond Archive / Restore / Delete; the form of its own is gated the way the list's was.
     expect(page).not.toContain('action={createClockingLocationAction}');
     expect(page).not.toContain('action={updateClockingLocationAction}');
-    const form = read('app/admin/locations/clocking/clocking-form.tsx');
+    const form = read('app/admin/work-locations/clocking/clocking-form.tsx');
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     // The clocking form used to carry <input type="hidden" name="companyId" …> — only the per-company
     // `location` form on the list may still post one.
     expect(form).not.toContain('name="companyId"');
-    for (const rel of ['app/admin/locations/clocking/new/page.tsx', 'app/admin/locations/clocking/[id]/page.tsx']) {
+    for (const rel of ['app/admin/work-locations/clocking/new/page.tsx', 'app/admin/work-locations/clocking/[id]/page.tsx']) {
       const src = read(rel);
       expect(src, `${rel} gates the form on isGroupAdmin`).toContain('const groupAdmin = isGroupAdmin(s);');
       expect(src, `${rel} gives a company-scoped admin the same note the list gives them`).toContain("t('sharedManagedByGroupAdmin')");

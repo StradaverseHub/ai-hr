@@ -9,10 +9,17 @@
  * A plain module: no 'use server', no 'use client', no database — safe to import from either side.
  */
 
-/** The Locations list — the one screen every way out of the page leads to. */
-export const LOCATIONS_LIST = '/admin/locations';
-export const CLOCKING_NEW_PAGE = '/admin/locations/clocking/new';
-export const clockingEditPage = (id: string) => `/admin/locations/clocking/${id}`;
+/**
+ * The Physical Work Location register — the one screen every way out of the page leads to.
+ *
+ * 639bf4a5 (r336): these three addresses moved from `/admin/locations` to `/admin/work-locations` when
+ * the register left Attendance for Organization. They are declared ONCE, here, and read by the screens,
+ * by the two server actions and by the three `/admin/locations` redirect stubs that keep the old
+ * bookmarks working — so the move has one spelling rather than seven.
+ */
+export const LOCATIONS_LIST = '/admin/work-locations';
+export const CLOCKING_NEW_PAGE = '/admin/work-locations/clocking/new';
+export const clockingEditPage = (id: string) => `/admin/work-locations/clocking/${id}`;
 /** The list, landed on ONE site's row and highlighted: what Back, Cancel and a successful Save return to. */
 export const clockingRowHref = (id: string) => `${LOCATIONS_LIST}?focus=${id}#row-${id}`;
 

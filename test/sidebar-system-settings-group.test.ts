@@ -84,6 +84,15 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
  */
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
+  // 639bf4a5 (r336) — Physical Work Location, DECLARED rather than the list being loosened, exactly as
+  // the Notice Board note below requires. The row came from the attendance pack's settings node
+  // (packs/attendance/index.ts), where it read "Clocking location" and opened /admin/locations: the
+  // work-site register is company-scoped master data carrying the branch mapping, not an attendance
+  // setting, and while it hung there MODULE_OF_HREF gated it behind the billable attendance module. It
+  // sits HERE, immediately after Organization, because that is the screen it belongs beside — and as a
+  // SIBLING rather than a route nested under /admin/organization, which has no exactHref and would
+  // therefore have lit two rows at once. Pinned by test/work-location-organization-relocation.test.ts.
+  '/admin/work-locations',
   '/admin/personnel',
   // 6e122302 — the Notice Board is a flat row (one screen; its new/detail pages are routes on it),
   // sitting after PAYROLL_NODE and before /analytics. Added here deliberately: this list is an EXACT

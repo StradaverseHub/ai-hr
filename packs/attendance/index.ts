@@ -19,7 +19,15 @@
  *   (`core/location.ts`, the office/worksite spine, stays kernel).
  * - Routes: `app/attendance/**` (records/daily/individual/import/ot-report + the R63–R65 clock
  *   portal), `app/admin/attendance/`, `app/admin/attendance-policy/**`,
- *   `app/admin/attendance-allowance/`, `app/admin/locations/` (clocking-site admin).
+ *   `app/admin/attendance-allowance/`.
+ *
+ *   639bf4a5 (r336) — `app/admin/locations/` (clocking-site admin) IS NO LONGER ON THIS LIST, and the
+ *   matching entry left test/attendance-pack-drift.test.ts's ALWAYS_ALLOWED in the same commit. The
+ *   register moved to Organization as "Physical Work Location" (app/admin/work-locations/), taking its
+ *   clocking points with it at the reporter's approval. It is an ORGANIZATION surface now, so it reads
+ *   this pack the way every other outside caller does — through `packs/attendance/service` — and the
+ *   ratchet SHRANK by one entry rather than gaining one. The old addresses stay as guarded redirect
+ *   stubs under app/admin/locations/ and import nothing from this pack.
  * - The boundary is enforced by test/attendance-pack-drift.test.ts (D11 criterion 4, shrink-only
  *   ratchet seeded in test/pack-drift-allowlist.json under "attendance").
  *
@@ -63,7 +71,6 @@ import {
   FileUp,
   HandCoins,
   Hourglass,
-  MapPin,
   Plane,
   Table2,
   Users,
@@ -190,9 +197,11 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      *
      * Glyphs, not decoration: the collapsed rail renders icons ONLY, so no row may repeat a sibling's.
      * Plane (travel) and ClipboardList (a list of requests and their outcomes) are unused elsewhere in
-     * this node. MapPin was the obvious pick for travel and is deliberately NOT used — it is the Clocking
-     * location row in the Attendance settings node, and "off-site work window" and "where you may clock
-     * in" are exactly the two things that must not read as one thing.
+     * this node. The map-pin glyph was the obvious pick for travel and is deliberately NOT used: it is the
+     * Physical Work Location row (Administration, components/sidebar.tsx — 639bf4a5 moved it out of this
+     * pack), and "off-site work window" and "where you may clock in" are exactly the two things that must
+     * not read as one thing. The glyph is no longer imported here at all, which is why it is described
+     * rather than named — this pack renders no row that uses it.
      *
      * ⚠️ ONE LEVEL ONLY. NavChildDescriptor has no `children` field and components/nav-flyout.tsx renders
      * a single level, so these are six rows side by side — not rows with sub-rows underneath.
@@ -436,8 +445,24 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // and re-enter it into MODULE_OF_HREF (built by flatMap over these children), which is exactly the
     // entitlement gating the move exists to remove.
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
-    { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).
+    // 639bf4a5 (r336) — THE CLOCKING LOCATION ROW STOOD HERE and is DELIBERATELY GONE. It read
+    // It was one line: href = the old /admin/locations address, labelKey = the clocking-location nav key,
+    // icon = the map pin, adminOnly. DESCRIBED, NEVER QUOTED — four exact-set guards and this pack's own
+    // drift ratchet grep this file for those literals, so a verbatim copy in a comment would satisfy the
+    // assertions the move exists to reverse, and a commented-out row is still a row somebody uncomments.
+    //
+    // The screen is Administration › Physical Work Location now — a flat row beside Organization in
+    // components/sidebar.tsx — because a place the company operates from is master data, not an
+    // attendance setting, and because that screen is the ONLY editor of the work-site register and of
+    // the branch mapping that hangs off it. The clocking points moved with it, which the approved plan
+    // recommended and the reporter accepted; leaving a second row here pointing at the same screen would
+    // be the "one thing maintained in two places" that same paragraph argues against, AND would put the
+    // organization's work-site register back into MODULE_OF_HREF (components/sidebar.tsx builds it by
+    // flatMap over these children), gating master data behind the billable attendance module — exactly
+    // the fault 4509d2b8 moved Holidays out of this node to fix. The OLD ROUTE is the link back: it is a
+    // guarded redirect stub, pinned by test/work-location-organization-relocation.test.ts.
+    //
+    // e776d17d reserves the "Overtime Configuration" child slot here (after Attendance allowance, before Roster).
     // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is
     // DELIBERATELY GONE. That address
     // is a redirect stub to Leave Config › Leave Credit now, which holds the same ledger summary and the two

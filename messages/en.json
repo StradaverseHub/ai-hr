@@ -322,7 +322,7 @@
     "planOvertime": "Self Overtime",
     "myTravel": "My Travel",
     "myAttendanceRequestStatus": "My Attendance Request Status",
-    "clockingLocation": "Clocking location",
+    "physicalWorkLocation": "Physical Work Location",
     "attendanceImport": "Import",
     "mobilePreview": "Mobile App Preview",
     "reports": "Reports",
@@ -8715,8 +8715,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "Locations",
-      "pageDescription": "Physical work sites per company. A location can set a state that overrides the public-holiday calendar used by leave and attendance.",
+      "pageTitle": "Physical Work Location",
+      "pageDescription": "Physical work sites per company, and the branch each one covers.",
       "noCompanies": "No companies in scope.",
       "code": "Code",
       "name": "Name",
@@ -8779,7 +8779,7 @@
       "view": "View",
       "newClockingTitle": "New clocking location",
       "editClockingTitle": "Edit clocking location",
-      "backToLocations": "Back to Locations",
+      "backToLocations": "Back to Physical Work Location",
       "sectionGps": "GPS and clocking settings",
       "radiusMetresLabel": "Clocking radius (metres)",
       "cancel": "Cancel",

@@ -309,3 +309,25 @@ eight. This supersedes ONLY the "two sections" half of the screen bullet under "
   paid geocoding service); kiosk or native-mobile enforcement (neither exists in this codebase);
   additional anti-spoofing hardening; the `location` ↔ `clocking_location` convergence link (this
   last one is no longer deferred — see "Superseded in part by 1fff489c" above).
+
+## Amended 2026-09-24 (639bf4a5, r336) — the screens moved to Organization; every `/admin/locations/…` path above is now the OLD address
+No migration, no service change, no schema change. Nothing in this ADR's model, storage, RLS or
+geofencing behaviour is affected — only where the screens live and what the menu calls them.
+
+- The register is **Administration › Physical Work Location** at **`/admin/work-locations`**, a flat row
+  in `components/sidebar.tsx` beside Organization. The clocking POINTS moved with it, at the reporter's
+  approval: `/admin/work-locations/clocking/new` and `/admin/work-locations/clocking/[id]`, with
+  `app/admin/work-locations/clocking/map-provider.ts` still the one module that knows where tiles come
+  from. Every `/admin/locations/…` path written above should be read as the address this ADR was
+  recorded at; each one still resolves, as a `requireAdmin()` redirect stub, so no bookmark 404s.
+- **This was a PACK-OWNERSHIP change, not a rename.** `packs/attendance/index.ts` had claimed
+  `app/admin/locations/` as one of its own surfaces ("clocking-site admin"), which is what let the list
+  import `core/clocking-location` directly past `test/attendance-pack-drift.test.ts`. The work-site
+  register is company-scoped master data — `location.companyId`, RLS by `app.is_admin_for(company_id)` —
+  it carries the branch mapping, and it is the only editor of either. So the surface claim was REMOVED
+  (the ratchet shrank; nothing was added at the new address) and the screens consume clocking through
+  `packs/attendance/service` like any other outside caller. `core/clocking-location.ts` is still
+  pack-owned and unchanged.
+- Consequence worth stating: the row left `MODULE_OF_HREF`, so the register is no longer hidden from a
+  tenant that has not bought the billable `attendance` module — the same un-gating 4509d2b8 made for
+  Holidays. Pinned by `test/work-location-organization-relocation.test.ts`.

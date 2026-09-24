@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 
 const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
 const PICKER = 'components/attendance/location-assignment.tsx';
-const ADMIN = 'app/admin/locations/page.tsx';
+const ADMIN = 'app/admin/work-locations/page.tsx';
 const read = (p: string) => readFileSync(p, 'utf8');
 const card = read(CARD);
 const picker = read(PICKER);

@@ -322,7 +322,7 @@
     "planOvertime": "Kerja Lebih Masa Sendiri",
     "myTravel": "Perjalanan Saya",
     "myAttendanceRequestStatus": "Status Permohonan Kehadiran Saya",
-    "clockingLocation": "Lokasi merekod masa",
+    "physicalWorkLocation": "Lokasi Kerja Fizikal",
     "attendanceImport": "Import",
     "mobilePreview": "Pratonton Apl Mudah Alih",
     "reports": "Laporan",
@@ -8715,8 +8715,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "Lokasi",
-      "pageDescription": "Tapak kerja fizikal bagi setiap syarikat. Sesuatu lokasi boleh menetapkan negeri yang mengatasi kalendar cuti umum yang digunakan oleh cuti dan kehadiran.",
+      "pageTitle": "Lokasi Kerja Fizikal",
+      "pageDescription": "Tapak kerja fizikal bagi setiap syarikat, dan cawangan yang dilindungi oleh setiap satu.",
       "noCompanies": "Tiada syarikat dalam skop.",
       "code": "Kod",
       "name": "Nama",
@@ -8779,7 +8779,7 @@
       "view": "Lihat",
       "newClockingTitle": "Lokasi daftar masuk baharu",
       "editClockingTitle": "Sunting lokasi daftar masuk",
-      "backToLocations": "Kembali ke Lokasi",
+      "backToLocations": "Kembali ke Lokasi Kerja Fizikal",
       "sectionGps": "Tetapan GPS dan daftar masuk",
       "radiusMetresLabel": "Radius daftar masuk (meter)",
       "cancel": "Batal",
