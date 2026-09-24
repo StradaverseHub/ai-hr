@@ -3030,13 +3030,21 @@ export function leaveBalances(
          * columns carry it. Built from `takenFiledBy` / `m.pending` — the very maps the columns come from,
          * never a second query — so an itemised list that disagreed with its own total is not representable.
          */
-        const contributions = borrowers.map((m) => ({
-          leaveTypeId: m.leaveTypeId,
-          leaveType: m.leaveType,
-          code: m.code,
-          share: (takenFiledBy.get(m.leaveTypeId) ?? 0) || 0,
-          pendingShare: m.pending || 0,
-        }));
+        const contributions = borrowers
+          .map((m) => ({
+            leaveTypeId: m.leaveTypeId,
+            leaveType: m.leaveType,
+            code: m.code,
+            share: (takenFiledBy.get(m.leaveTypeId) ?? 0) || 0,
+            pendingShare: m.pending || 0,
+          }))
+          // ORDERED, because badges sit side by side and a set that reorders between two requests reads as
+          // the figures having changed. The key is the grid's OWN default sort key (`r.code || r.leaveType`,
+          // app/leave/employee-balances/rows.ts), so the badges name the borrowers in the order their rows
+          // appear below — never the order the query happened to return them in.
+          .sort((x, y) =>
+            (x.code || x.leaveType).localeCompare(y.code || y.leaveType, locale, { sensitivity: 'base' }),
+          );
         const info: SharedLeaveBalanceInfo = {
           sourceLeaveTypeId: sourceId,
           sourceLeaveTypeName: source.leaveType,

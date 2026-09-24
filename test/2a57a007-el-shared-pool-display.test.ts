@@ -279,10 +279,16 @@ describe('2a57a007 · (e) the badge is DATA — one per contributing leave type'
     expect(poolRow.share, 'the column is the SUM over both borrowers').toBe(4);
 
     const shareBadges = poolBadges(poolRow.sharedBalance, 'share');
-    expect(shareBadges.map((c) => [c.leaveTypeId, c.share]), 'one badge per contributing type, each with its own days').toEqual([
-      [el, 1],
-      [cpl, 3],
-    ]);
+    expect(
+      Object.fromEntries(shareBadges.map((c) => [c.leaveTypeId, c.share])),
+      'one badge per contributing type, each with its OWN days',
+    ).toEqual({ [el]: 1, [cpl]: 3 });
+    // ORDER IS A CONTRACT, not an accident: badges sit side by side, so they are sorted by the grid's own
+    // default key (code, then name) rather than by whatever order the query returned.
+    expect(
+      shareBadges.map((c) => c.code),
+      'badges are ordered by leave code, as the rows below them are',
+    ).toEqual([...shareBadges.map((c) => c.code)].sort((x, y) => String(x).localeCompare(String(y))));
     expect(
       shareBadges.reduce((n, c) => n + c.share, 0),
       'and the badges add up to the figure they sit beside',
@@ -388,7 +394,14 @@ describe('2a57a007 · the Explain panel lists the breakdown BY LEAVE TYPE', () =
     expect(takenKeys, 'the Taken line introduces the per-type list').toContain('sharedTakenIntro');
     const takenItems = steps.taken.filter((s) => s.key === 'sharedTakenItem');
     expect(takenItems.length, 'one line per contributing leave type').toBe(2);
-    expect(takenItems.map((s) => (s.args!.days as { days: number }).days)).toEqual([1, 3]);
+    expect(
+      takenItems.map((s) => (s.args!.days as { days: number }).days).slice().sort(),
+      'each contributing type gets its own figure',
+    ).toEqual([1, 3]);
+    expect(
+      takenItems.reduce((n, s) => n + (s.args!.days as { days: number }).days, 0),
+      'and they add up to the Share figure on the grid',
+    ).toBe(poolRow.share);
     expect(takenItems.every((s) => s.item === true), 'rendered as a list, not as prose').toBe(true);
 
     const pendingItems = steps.pendingApproval.filter((s) => s.key === 'sharedPendingItem');
