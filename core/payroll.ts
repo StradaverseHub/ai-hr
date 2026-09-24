@@ -92,6 +92,11 @@ import {
   STATUTORY_FILED_STATUSES,
   tp1Relief,
 } from '../db/schema';
+// ADR-0085 step 4 — the filed-period predicate and its evidence formatter. IMPORTED, never
+// re-implemented: `core/statutory-filed.ts` resolves against `STATUTORY_FILED_STATUSES` (owned by
+// db/schema.ts) and refuses rather than answering when a session could not have seen a filing, and a
+// second hand-rolled "has this month been filed" here is exactly the drift that comment forbids.
+import { describeFiledEvidence, periodFiledTx, type FiledEvidence } from './statutory-filed';
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
 // The month-collapse rule for approved TP1 declarations. Imported rather than re-implemented: the
@@ -1597,6 +1602,69 @@ async function warnBatchHolidayCompleteness(
 }
 
 /**
+ * ADR-0085 step 4 — A RUN MAY NOT RESTATE A MONTH THAT HAS ALREADY BEEN FILED.
+ *
+ * ── WHAT THIS REFUSES, AND WHY EXACTLY THAT ─────────────────────────────────────────────────────────
+ * EPF, SOCSO and PCB are worked out on what an employee has been paid SO FAR THIS MONTH, so any run
+ * after the first in a month re-enters the tables on a bigger base and can change a figure an earlier
+ * run already produced. While nothing has left the building that is arithmetic. Once a return has been
+ * lodged or money remitted for that month it is a restatement of a figure an outside party already
+ * holds — an amendment to a statutory submission, with the agency's own process and timing, and
+ * explicitly out of ADR-0085's scope (§6). So it is refused here, loudly, naming what was filed.
+ *
+ * ── THE LINE IS `run_seq > 1`, AND IT IS NOT ARBITRARY ──────────────────────────────────────────────
+ * "A run that changes a figure an earlier run already produced" IS "a run that is not the first in its
+ * month". A lone regular run at seq 1 restates nothing — it is the month's only computation — so it is
+ * deliberately NOT refused, and an ordinary single monthly run is byte-identical to before this change.
+ * That also keeps r292's judgement intact: `batchDownstreamWarnings` warns rather than blocks on
+ * regenerating a filed month precisely so that "a customer who filed a wrong figure could no longer
+ * correct it at all" cannot happen. Correcting the month's one run stays possible; adding a SECOND run
+ * that silently moves the first one's figures does not.
+ *
+ * ── PERIOD GRANULARITY IS COARSE ON PURPOSE, AND IT HAS A COST ──────────────────────────────────────
+ * `periodFiledTx` answers per PERIOD, not per statutory leg (its header records why: no map from report
+ * type to the legs a form asserts exists in this repo, and inventing one would be inventing the scope of
+ * somebody else's form). So a filed EPF return bars an out-of-order run that would only have moved PCB.
+ * That is ADR-0085 §3.0's recorded UNKNOWN, and it errs toward refusing, which on money is the cheap
+ * mistake. The release valve is real and is tested: reverse the filing and the refusal lifts.
+ *
+ * It throws rather than returning a flag, and it never swallows `PeriodFiledError` — a session that
+ * could not have SEEN a filing gets that error, not permission. A money guard must not fail open.
+ */
+export class PeriodAlreadyFiledError extends Error {
+  readonly code = 'PERIOD_ALREADY_FILED' as const;
+  constructor(
+    message: string,
+    readonly companyId: string,
+    readonly payPeriod: string,
+    readonly evidence: FiledEvidence[],
+  ) {
+    super(message);
+    this.name = 'PeriodAlreadyFiledError';
+  }
+}
+
+/**
+ * Refuse when this company-month carries a filing. `what` names the act being refused so the operator
+ * reads a sentence about their own action rather than about the guard.
+ */
+async function refuseIfPeriodFiled(
+  tx: Tx,
+  p: { companyId: string; payPeriod: string; what: string },
+): Promise<void> {
+  const answer = await periodFiledTx(tx, { companyId: p.companyId, periodKey: p.payPeriod });
+  if (!answer.filed) return;
+  throw new PeriodAlreadyFiledError(
+    `${p.what} would change the statutory figures for ${p.payPeriod}, and that month has already been filed: ` +
+      `${describeFiledEvidence(answer.evidence)}. Correcting a lodged return is an amendment made with the ` +
+      `agency, not a recomputation here. Reverse the filing first if it was recorded in error.`,
+    p.companyId,
+    p.payPeriod,
+    answer.evidence,
+  );
+}
+
+/**
  * Wave 2C (ADR-0024) — create an ADDITIONAL same-month run (bonus / off-cycle / adjustment) under the
  * existing pay_period. GATED behind MULTI_CYCLE_PAYROLL_ENABLED, and the regular run must already exist.
  * The run is computed as additional remuneration (the increment method) at generatePayslips.
@@ -1637,6 +1705,11 @@ export async function createAdditionalRun(
       .limit(1);
     if (!period) throw new Error('No pay period for this month yet — create the regular run first.');
     if (period.status === 'closed') throw new Error('This pay period is closed.');
+    // ADR-0085 step 4 — an ADDITIONAL run is by definition a second run in its month, so it restates
+    // figures an earlier run produced. Refuse at CREATE as well as at generate: the generate-time guard
+    // is the one that actually stands between a filing and a moved figure, but learning at the end of
+    // the wizard that the month is closed to you is a worse way to find out than learning at the start.
+    await refuseIfPeriodFiled(tx, { companyId: p.companyId, payPeriod: p.payPeriod, what: 'Adding another payroll run' });
     const runs = await tx
       .select({ runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
       .from(payrollBatch)
@@ -3001,6 +3074,19 @@ export async function generatePayslips(
       if (batch.status !== 'processed') throw new BatchNotResettableError();
     } else if (batch.status !== 'draft') {
       throw new BatchNotDraftError();
+    }
+
+    // ── ADR-0085 step 4 — THE MONEY GUARD. See `refuseIfPeriodFiled` for why the line is `run_seq > 1`.
+    // This is the one that matters: `createAdditionalRun` refuses early, but a run created before a
+    // filing and generated after it would otherwise walk straight past that check. Placed BEFORE any
+    // figure is computed and inside the same transaction, so nothing is written on the refusing path.
+    // A run at seq 1 is untouched — an ordinary single monthly run never reaches this.
+    if (batch.runSeq > 1) {
+      await refuseIfPeriodFiled(tx, {
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        what: subset ? 'Reprocessing this run' : 'Processing this run',
+      });
     }
 
     // Pre-processing validation (feedback f1564110, Phase 1): a full draft→processed generation is

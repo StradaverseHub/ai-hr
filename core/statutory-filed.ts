@@ -293,3 +293,32 @@ export function periodFiled(
 ): Promise<PeriodFiledAnswer> {
   return withTenant(ctx, (tx) => periodFiledTx(tx, p));
 }
+
+/**
+ * ADR-0085 step 4 — RENDER THE EVIDENCE AS A SENTENCE A REFUSAL CAN CARRY.
+ *
+ * The ADR requires the refusal to name *what* was filed and *when*, not merely that something was. The
+ * formatter lives here, beside the type it reads, for the same reason `STATUTORY_FILED_STATUSES` lives
+ * in the schema: the caller that refuses and any later caller that explains must produce ONE description
+ * of the same rows, or an operator gets two accounts of one fact.
+ *
+ * It states only what the evidence rows actually carry. A row with no `on` says "date not recorded"
+ * rather than inventing one, and a missing reference is simply omitted — an absent box asserts nothing
+ * (CLAUDE.md §8), whereas a fabricated reference would assert something false about an agency's record.
+ * At most `MAX` items are named and the remainder is counted, so a month with many filings still yields
+ * a message a person can read.
+ */
+export function describeFiledEvidence(evidence: readonly FiledEvidence[], max = 3): string {
+  if (evidence.length === 0) return 'nothing';
+  const one = (e: FiledEvidence): string => {
+    const what = e.kind === 'pcb-payment' ? `a ${e.what.toUpperCase()} payment` : `return ${e.what}`;
+    const period = e.covers === 'year' ? ` for the year ${e.periodKey}` : '';
+    const when = e.on ? ` on ${e.on}` : ' (date not recorded)';
+    const ref = e.reference ? ` (ref ${e.reference})` : '';
+    const odd = e.anomalous ? ' [status does not account for the acknowledgement]' : '';
+    return `${what}${period}${when}${ref}${odd}`;
+  };
+  const named = evidence.slice(0, max).map(one);
+  const rest = evidence.length - named.length;
+  return rest > 0 ? `${named.join('; ')}; and ${rest} more` : named.join('; ');
+}
