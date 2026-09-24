@@ -357,6 +357,25 @@ export const SCREENS: readonly ScreenEntry[] = [
     hasScopeNote: true,
   },
   {
+    // 99b2d6c0 (r336) — Child relief review (PCB). Its OWN column, for the same reason the duplicates
+    // grid above has one: reading a tax position across the whole payroll population is not the same
+    // capability as managing one employee, and the value of this grid is that it says where a screen
+    // actually lives. The guard MATCHES the page's own `requireAdmin()` — a column claiming a different
+    // guard from the page misreports who can reach it.
+    //
+    // The scope note is worth authoring rather than omitting. This screen prints RINGGIT TOTALS, and RLS
+    // makes them the totals of the companies the reader administers — a company-scoped administrator and
+    // a group administrator will read different numbers off the same page, correctly. It also says in the
+    // reader's own words that nothing on the screen can change a tax setting, because a report about a
+    // money migration must never be mistaken for the migration.
+    screenKey: 'childReliefReview',
+    href: '/admin/personnel/child-relief',
+    labelKey: 'admin.users.screen.childReliefReview',
+    guard: 'requireAdmin',
+    routes: ['/admin/personnel/child-relief'],
+    hasScopeNote: true,
+  },
+  {
     screenKey: 'systemLabels',
     href: '/admin/settings/system-labels',
     labelKey: 'nav.systemLabels',

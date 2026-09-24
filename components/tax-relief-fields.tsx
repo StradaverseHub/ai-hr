@@ -114,6 +114,15 @@ export function ChildReliefModeField(
           </option>
         ))}
       </select>
+      {/* 99b2d6c0 (r336) — THE THIRD OPTION USED TO BE A WORD IN A DROPDOWN AND NOTHING ELSE. It was
+          shipped priced and working in ruleset 2026.7 (item d64d0df4) and then found by almost nobody,
+          because "Auto (from table)" says neither what table nor what it is worth, and its grid only
+          appears AFTER it is picked. This hint is the reachability half of item 99b2d6c0: it says what
+          the option does, that a child in tertiary study is worth several times a child under 18, that
+          an unkeyed grid claims NOTHING (the foot-gun — it would RAISE the employee's tax), and where to
+          see the ringgit for everybody at once. Rendered unconditionally, on both screens that offer the
+          mode, because a hint that appears only once the option is chosen cannot help anybody find it. */}
+      <span className="text-xs text-muted-foreground">{t('childReliefModeAutoTableHint')}</span>
     </Field>
   );
 }
