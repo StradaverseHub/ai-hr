@@ -4700,6 +4700,22 @@ export const replacementLeaveRequestStatusEnum = pgEnum('replacement_leave_reque
 export type ReplacementLeaveRequestUnit = (typeof replacementLeaveRequestUnitEnum.enumValues)[number];
 export type ReplacementLeaveRequestStatus = (typeof replacementLeaveRequestStatusEnum.enumValues)[number];
 
+/**
+ * r336 cbfa8b0b · WHICH OF THE TWO SECTIONS a claim line was filed from.
+ *
+ *  · 'non_working_day' — Section A. A rest day, an off day or a public holiday that was worked. The credit
+ *    is the number of days the employee claims (1 or 0.5).
+ *  · 'extended_hours'  — Section B. Hours past the scheduled shift end of an ORDINARY WORKING DAY. The
+ *    credit is DERIVED by r334's tier ladder from the eligible minutes and is never typed.
+ *
+ * A list rather than a pgEnum for the reason migration 0275 recorded; the DB CHECK in 0487 is the
+ * constraint. `LEGACY_CLAIM_SOURCE_TYPE` names what a NULL column means so no reader has to guess: every
+ * line written before r336 is a Section A claim, because Section B did not exist.
+ */
+export const REPLACEMENT_CLAIM_SOURCE_TYPES = ['non_working_day', 'extended_hours'] as const;
+export type ReplacementClaimSourceType = (typeof REPLACEMENT_CLAIM_SOURCE_TYPES)[number];
+export const LEGACY_CLAIM_SOURCE_TYPE: ReplacementClaimSourceType = 'non_working_day';
+
 export const replacementLeaveRequest = pgTable(
   'replacement_leave_request',
   {
@@ -4753,6 +4769,28 @@ export const replacementLeaveRequestDate = pgTable(
     hours: numeric('hours', { precision: 6, scale: 2 }),
     /** The credit this line minted once approved. NULL while pending, and NULL forever if rejected. */
     accrualId: uuid('accrual_id').references((): AnyPgColumn => toilAccrual.id),
+    // ── r336 cbfa8b0b · the Leave Credit request's TWO KINDS OF CLAIM, on the line that already holds the
+    // date, the times and the days (migration 0487's header records why this is an ALTER rather than a new
+    // claim-line table). Every column is nullable: a line written before r336 has `sourceType` NULL and is
+    // read as a non-working-day claim, which is exactly what it was.
+    //
+    //  · sourceType      — 'non_working_day' (Section A: a rest day, off day or public holiday worked) or
+    //                      'extended_hours' (Section B: hours past the scheduled shift end of a WORKING day).
+    //                      text + a DB CHECK, not a pgEnum — the 0275 widening lesson, the same shape
+    //                      attendance_correction.ot_reason_category uses.
+    //  · workedDayKind   — the kind resolved from the roster AT SUBMISSION, so an approver reads the day the
+    //                      employee was shown rather than re-deriving it against a roster that has moved.
+    //                      NOT the control: submission and approval both re-resolve it and refuse a mismatch.
+    //  · shiftEnd        — Section B's read-only "Scheduled shift end", from the resolved schedule.
+    //  · actualClockOut  — Section B's read-only "Actual clock-out", from the attendance row.
+    //  · eligibleMinutes — Section B's derived "Eligible minutes": the claimed window intersected with
+    //                      [shift end, actual clock-out] and capped by the measured figure. ⚠️ MONEY — this
+    //                      is a RECORD, never a valuation input. See migration 0487's header.
+    sourceType: text('source_type').$type<ReplacementClaimSourceType>(),
+    workedDayKind: text('worked_day_kind').$type<ToilWorkedDayKind>(),
+    shiftEnd: time('shift_end'),
+    actualClockOut: time('actual_clock_out'),
+    eligibleMinutes: integer('eligible_minutes'),
     createdAt: createdAt(),
   },
   (t) => [
