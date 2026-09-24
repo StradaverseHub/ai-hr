@@ -6922,6 +6922,7 @@
       "sectionContactInfo": "Thông tin liên hệ",
       "companyCode": "Mã công ty",
       "companyCodeHint": "Tên viết tắt, chữ viết tắt hoặc mã nội bộ",
+      "companyCodeDuplicate": "{company} đã sử dụng mã này.",
       "industry": "Ngành",
       "website": "Trang web",
       "websiteHint": "https://example.com",

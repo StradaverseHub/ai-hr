@@ -6922,6 +6922,7 @@
       "sectionContactInfo": "தொடர்பு தகவல்",
       "companyCode": "நிறுவனக் குறியீடு",
       "companyCodeHint": "சுருக்கப் பெயர், சுருக்கம் அல்லது உள் குறியீடு",
+      "companyCodeDuplicate": "{company} ஏற்கனவே இந்தக் குறியீட்டைப் பயன்படுத்துகிறது.",
       "industry": "தொழில்துறை",
       "website": "வலைத்தளம்",
       "websiteHint": "https://example.com",

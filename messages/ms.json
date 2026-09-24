@@ -6922,6 +6922,7 @@
       "sectionContactInfo": "Maklumat Perhubungan",
       "companyCode": "Kod syarikat",
       "companyCodeHint": "Nama pendek, singkatan, atau kod dalaman",
+      "companyCodeDuplicate": "{company} sudah menggunakan kod ini.",
       "industry": "Industri",
       "website": "Laman Web",
       "websiteHint": "https://contoh.com",
