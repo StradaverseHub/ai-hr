@@ -19,6 +19,7 @@
 // total beside them.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 
+import { bestFaceFor, embedPayslipFaces, payslipFaceScripts, type PayslipFace } from './payslip-pdf-fonts';
 import { formatMoney, formatRate } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
@@ -289,9 +290,14 @@ export type PayslipPdfLabels = {
   /**
    * f35f758a — the pay period as a MONTH NAME: "August 2026", not the stored "2026-08". Resolved by the
    * caller (lib/payslip-pdf-strings.ts) and REQUIRED, so tsc keeps both PDF routes printing the same
-   * heading. Deliberately English on the document whatever the reader's locale: the embedded font is
-   * Latin-1, and `safe()` below would fold a Chinese, Thai or Tamil month name to question marks. The
-   * SCREENS show the month in the reader's own language; the file cannot yet.
+   * heading. Deliberately English on the document whatever the reader's locale.
+   *
+   * 5b2a7f0f — AND THE REASON HAS CHANGED, so the note is corrected rather than left to mislead. It used
+   * to be a font limit: Helvetica is Latin-1 and `safe()` folded a Chinese, Thai or Tamil month name to
+   * question marks. The faces embedded by `lib/payslip-pdf-fonts.ts` can now draw all four scripts, so
+   * nothing stops a localized month name any more. It stays English because localizing it would CHANGE
+   * WHAT EVERY EXISTING PAYSLIP SAYS, which is outside this round's scope — `lib/payslip-pdf-strings.ts`
+   * carries the same correction on `englishMonthYear` and `englishLongDate`.
    */
   periodLabel: string;
   // ─── f35f758a — the Non-payable box. REQUIRED for the same reason every 5c198931 label is: tsc is what
@@ -517,6 +523,40 @@ const FOOTER_H = 24;
 
 type Row = { label: string; sub?: string | null; amount?: number; text?: string; muted?: boolean };
 
+/**
+ * 5b2a7f0f — every string this document could draw, for deciding which font faces to embed.
+ *
+ * A WALK, not a hand-written list. `PayslipPdfLabels` is 68 fields and `PayslipPdfData` carries nested pay
+ * item names, absence lines, employer-borne captions and non-payable lines; a list would go stale the next
+ * time a label is added and the failure would be silent — a Chinese payslip with one un-embedded string on
+ * it, printing '?' exactly where the new label goes. Every string the renderer draws is either one of these
+ * or built out of them plus ASCII digits and separators, so this is the closed set.
+ *
+ * Typed arrays are skipped: `PayslipPdfData.logo.bytes` is image data, not text, and walking it would cost
+ * a megabyte of per-byte work on every payslip with a logo.
+ */
+function payslipDrawableStrings(...roots: unknown[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<object>();
+  const walk = (v: unknown): void => {
+    if (typeof v === 'string') {
+      out.push(v);
+      return;
+    }
+    if (v == null || typeof v !== 'object') return;
+    if (ArrayBuffer.isView(v) || v instanceof ArrayBuffer) return;
+    if (seen.has(v)) return;
+    seen.add(v);
+    if (Array.isArray(v)) {
+      for (const x of v) walk(x);
+      return;
+    }
+    for (const x of Object.values(v as Record<string, unknown>)) walk(x);
+  };
+  for (const r of roots) walk(r);
+  return out;
+}
+
 // ───────────────────────────────── the renderer ─────────────────────────────────
 
 export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): Promise<Uint8Array> {
@@ -526,22 +566,98 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  // Helvetica is WinAnsi (Latin-1) — guard non-Latin codepoints so a CJK/Tamil name never crashes the
-  // render (phase 1; embedding a Unicode font is the deferred follow-up per ADR-0036).
-  //
   // FOLD FIRST, THEN STRIP. The punctuation this product deliberately emits sits just outside Latin-1:
   // the bullet the bank-account mask is built from (`••••8901`, core/payroll-view.ts) and the typographic
   // dashes and quotes in the translated strings. Stripping those to '?' printed "????8901" where an
   // account number belongs — a masked number that reads as a rendering fault. Folding them to their
   // Latin-1 equivalents keeps the mask a mask.
-  const safe = (s: string) =>
+  //
+  // 5b2a7f0f — THE FOLD STAYS; THE CLAMP BECAME FONT-SPECIFIC. This normalisation is the half of `safe()`
+  // that earns its place whatever font draws the text: it is why ms and en never lost a string, and it is
+  // why pulling in a 6 MB CJK face for one typographic dash cannot happen. What changed is the line that
+  // used to follow it — `[^\x20-\x7E\xA0-\xFF] → '?'` — which is a fact about HELVETICA, not about the
+  // document. It now applies only to text actually drawn in a standard font (`safe`), while text drawn in
+  // an embedded face is clamped to what THAT face can draw (`safeIn`). A character no available face
+  // carries still becomes '?': visible, predictable, and never a throw mid-render.
+  const fold = (s: string) =>
     (s ?? '')
       .replace(/[•∙]/g, '·') // bullet / operator dot → middle dot
       .replace(/[‘’‛]/g, "'")
       .replace(/[“”]/g, '"')
       .replace(/[‐-―]/g, '-')
-      .replace(/…/g, '...')
-      .replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+      .replace(/…/g, '...');
+  /** The text as the BUILT-IN Helvetica will draw it — the fold, then the WinAnsi clamp, unchanged. */
+  const safe = (s: string) => fold(s).replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+
+  // 5b2a7f0f — THE UNICODE FACES, and none at all when none is needed.
+  //
+  // `payslipFaceScripts` reads the strings this document will actually draw. An en or ms payslip has no
+  // codepoint outside Latin-1 once folded, so this reads no font file, imports no fontkit, embeds nothing,
+  // and the document below is byte-for-byte what it was before this change — which is the regression guard
+  // in test/payslip-pdf-unicode.test.ts. A zh payslip embeds one CJK face, subsetted to its own glyphs.
+  const faces: PayslipFace[] = await embedPayslipFaces(
+    doc,
+    payslipFaceScripts(payslipDrawableStrings(d, t).map(fold)),
+  );
+
+  /**
+   * Which font actually draws `s`.
+   *
+   * PER STRING, not per document. An en-locale payslip for an employee whose name is written in Chinese
+   * characters is an ordinary Malaysian payslip: its labels and its figures stay in Helvetica and only the
+   * name reaches the CJK face. Resolving once for the whole document would have redrawn every number on
+   * that employee's payslip in a different typeface from their colleague's.
+   *
+   * A font that is ALREADY a face is returned untouched. That is what lets a caller resolve once and pass
+   * the answer to both `wrap` (which measures) and `at` (which draws) — a wrapped line of a Tamil string
+   * must not be measured in one font and drawn in another, or the column it was fitted to stops holding.
+   */
+  const faceOf = (s: string, f: PDFFont): PDFFont => {
+    if (f !== font && f !== bold) return f;
+    const face = bestFaceFor(fold(s), faces);
+    return face ? (f === bold ? face.bold : face.regular) : f;
+  };
+  const charsOf = (f: PDFFont) => faces.find((x) => x.regular === f || x.bold === f)?.chars ?? null;
+  /** The text as `f` will draw it: the fold, then a clamp to what `f` actually carries. */
+  const safeIn = (s: string, f: PDFFont): string => {
+    const chars = charsOf(f);
+    if (!chars) return safe(s);
+    let out = '';
+    for (const ch of fold(s)) {
+      const cp = ch.codePointAt(0);
+      out += cp != null && chars.has(cp) ? ch : '?';
+    }
+    return out;
+  };
+  /** How wide `s` will be once drawn — the face AND the clamp both move the answer. */
+  const widthOf = (s: string, f: PDFFont, size: number) => {
+    const ff = faceOf(s, f);
+    return ff.widthOfTextAtSize(safeIn(s, ff), size);
+  };
+  /**
+   * 5b2a7f0f — THE LARGEST SIZE AT OR BELOW `base` AT WHICH `s` FITS `maxW`.
+   *
+   * For the two places on this document that put a LABEL and an AMOUNT on ONE baseline with no wrapping
+   * between them: a box's total row and a Year-to-date row. Everything else on the page wraps, and this
+   * cannot (the total band is a fixed 21pt and a second line would put a rule through it).
+   *
+   * THE DEFECT THIS FIXES WAS INVISIBLE UNTIL THE FONTS ARRIVED. While every non-Latin label folded to
+   * '?', the longest total caption on the document was English. Rendered for real, Vietnamese's
+   * "TỔNG CHI PHÍ NGƯỜI SỬ DỤNG LAO ĐỘNG" is half as wide again as the column and printed straight THROUGH
+   * "MYR 8,141.55" — two strings overlapping on a payroll document, which is worse than the clipping
+   * f35f758a removed, because the reader cannot tell which characters belong to the amount.
+   *
+   * SHRINK, NOT WRAP AND NOT CLIP: the band height is load-bearing (`BOX_TOTAL_H` aligns the two columns'
+   * totals, a96d320c rev 3), and nothing on this document ends in dots. A label that still does not fit at
+   * the 5.5pt floor would overlap — no label in any of the six catalogues comes close, and
+   * test/payslip-pdf-unicode.test.ts renders all six and checks the floor was never reached.
+   */
+  const fitSize = (s: string, f: PDFFont, base: number, maxW: number): number => {
+    if (maxW <= 0) return base;
+    let size = base;
+    while (size > 5.5 && widthOf(s, f, size) > maxW) size -= 0.25;
+    return size;
+  };
   // 5c198931 — the ISO code is a PREFIX via lib/money.ts, so a company paid in SGD stops being told its
   // payroll is in ringgit. An absent currency prints the bare number: unlabelled is honest, "RM" is a claim.
   const money = (v: unknown) => formatMoney(v, d.currency ?? null);
@@ -552,10 +668,15 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const logo = await embedLogo(doc, d.logo);
 
   // ─── page-scoped drawing primitives ───
-  const at = (page: PDFPage, s: string, x: number, y: number, size: number, f: PDFFont = font, color = INK) =>
-    page.drawText(safe(s), { x, y, size, font: f, color });
-  const atR = (page: PDFPage, s: string, xr: number, y: number, size: number, f: PDFFont = font, color = INK) =>
-    page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color });
+  const at = (page: PDFPage, s: string, x: number, y: number, size: number, f: PDFFont = font, color = INK) => {
+    const ff = faceOf(s, f);
+    page.drawText(safeIn(s, ff), { x, y, size, font: ff, color });
+  };
+  const atR = (page: PDFPage, s: string, xr: number, y: number, size: number, f: PDFFont = font, color = INK) => {
+    const ff = faceOf(s, f);
+    const txt = safeIn(s, ff);
+    page.drawText(txt, { x: xr - ff.widthOfTextAtSize(txt, size), y, size, font: ff, color });
+  };
   /**
    * Break a string across a column, measured against the REAL font.
    *
@@ -571,25 +692,28 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * only silent.
    */
   const wrap = (s: string, f: PDFFont, size: number, maxW: number): string[] => {
+    // 5b2a7f0f — measured in the face that will DRAW it. `faceOf` is idempotent on a face, so a caller
+    // that resolved first and passed its answer in gets exactly that font here and at every `at` below.
+    const ff = faceOf(s, f);
     const lines: string[] = [];
     /** Emit whole-column slices of an over-long word; returns the remainder that still fits. */
     const chop = (w: string) => {
       let rest = w;
-      while (rest.length > 1 && f.widthOfTextAtSize(rest, size) > maxW) {
+      while (rest.length > 1 && ff.widthOfTextAtSize(rest, size) > maxW) {
         let cut = rest.length;
-        while (cut > 1 && f.widthOfTextAtSize(rest.slice(0, cut), size) > maxW) cut -= 1;
+        while (cut > 1 && ff.widthOfTextAtSize(rest.slice(0, cut), size) > maxW) cut -= 1;
         lines.push(rest.slice(0, cut));
         rest = rest.slice(cut);
       }
       return rest;
     };
     let line = '';
-    for (const w of safe(s).split(/\s+/).filter(Boolean)) {
+    for (const w of safeIn(s, ff).split(/\s+/).filter(Boolean)) {
       const trial = line ? `${line} ${w}` : w;
-      if (line && f.widthOfTextAtSize(trial, size) > maxW) {
+      if (line && ff.widthOfTextAtSize(trial, size) > maxW) {
         lines.push(line);
         line = chop(w);
-      } else if (!line && f.widthOfTextAtSize(w, size) > maxW) {
+      } else if (!line && ff.widthOfTextAtSize(w, size) > maxW) {
         line = chop(w);
       } else line = trial;
     }
@@ -599,7 +723,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
 
   /** One row of a box, already wrapped and MEASURED — the height it will occupy is known before anything
    *  is drawn, which is what lets the page flow below decide where a block breaks. */
-  type BoxRowPlan = { lines: string[]; value: string; muted?: boolean; h: number };
+  // 5b2a7f0f — `labelFont` is the face `planRow` MEASURED the lines in; `paintBox` must draw them in the
+  //  same one or a wrapped Tamil description stops fitting the column it was wrapped for.
+  type BoxRowPlan = { lines: string[]; labelFont: PDFFont; value: string; muted?: boolean; h: number };
   /** A whole box, measured. `paintBox` draws exactly what `planBox` measured. */
   type BoxPlan = {
     w: number;
@@ -608,6 +734,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     rows: BoxRowPlan[];
     total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     noteLines: string[];
+    /** The face `noteLines` were measured in — see `BoxRowPlan.labelFont`. */
+    noteFont: PDFFont;
     /**
      * a96d320c rev 3 — THE ONE THING THAT PUTS TWO TOTALS ON ONE BASELINE.
      *
@@ -628,9 +756,10 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const label = r.sub ? `${r.label} · ${r.sub}` : r.label;
     // The label gets whatever the amount leaves, measured per row. The floor keeps a pathologically wide
     // amount from collapsing the label column to nothing and wrapping it one letter per line.
-    const labelW = Math.max(60, w - 28 - font.widthOfTextAtSize(safe(value), 8.5));
-    const lines = wrap(label, font, 8.5, labelW);
-    return { lines, value, muted: r.muted, h: Math.max(ROW_H, 4.5 + lines.length * LINE_H) };
+    const labelW = Math.max(60, w - 28 - widthOf(value, font, 8.5));
+    const labelFont = faceOf(label, font);
+    const lines = wrap(label, labelFont, 8.5, labelW);
+    return { lines, labelFont, value, muted: r.muted, h: Math.max(ROW_H, 4.5 + lines.length * LINE_H) };
   };
 
   const noteHeightOf = (noteLines: string[]) => (noteLines.length > 0 ? noteLines.length * 9 + 7 : 0);
@@ -646,14 +775,18 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     w: number; title: string; rows: Row[];
     dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     note?: string;
-  }): BoxPlan => ({
-    w: o.w,
-    title: o.title,
-    dot: o.dot,
-    total: o.total,
-    rows: o.rows.map((r) => planRow(r, o.w)),
-    noteLines: o.note ? wrap(o.note, font, 7, o.w - 20) : [],
-  });
+  }): BoxPlan => {
+    const noteFont = faceOf(o.note ?? '', font);
+    return {
+      w: o.w,
+      title: o.title,
+      dot: o.dot,
+      total: o.total,
+      rows: o.rows.map((r) => planRow(r, o.w)),
+      noteFont,
+      noteLines: o.note ? wrap(o.note, noteFont, 7, o.w - 20) : [],
+    };
+  };
 
   /**
    * One bordered block: a header band, a body of rows and an optional total row. The body is sized to WHAT
@@ -709,7 +842,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       const color = r.muted ? MUTED : INK;
       // The amount sits on the row's FIRST baseline whatever the label does below it, so a column of
       // figures still reads as a column when one description above it took two lines.
-      r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 10.5 - j * LINE_H, 8.5, font, color));
+      r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 10.5 - j * LINE_H, 8.5, r.labelFont, color));
       atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
       ry -= r.h;
       // a96d320c — EDGE TO EDGE. This rule was inset 6pt either side, so it read as a floating divider
@@ -740,11 +873,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     let by = totalTop;
     if (p.total) {
       pg.drawLine({ start: { x, y: by }, end: { x: x + p.w, y: by }, thickness: 0.8, color: RULE });
-      at(pg, p.total.label.toUpperCase(), x + 10, by - 14, 8, bold, INK);
+      const totalLabel = p.total.label.toUpperCase();
+      const totalSize = fitSize(totalLabel, bold, 8, p.w - 26 - widthOf(p.total.value, bold, 9.5));
+      at(pg, totalLabel, x + 10, by - 14, totalSize, bold, INK);
       atR(pg, p.total.value, x + p.w - 10, by - 14, 9.5, bold, p.total.color ?? INK);
       by -= BOX_TOTAL_H;
     }
-    p.noteLines.forEach((line, i) => at(pg, line, x + 10, by - 10 - i * 9, 7, font, MUTED));
+    p.noteLines.forEach((line, i) => at(pg, line, x + 10, by - 10 - i * 9, 7, p.noteFont, MUTED));
     return h;
   };
 
@@ -838,8 +973,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     page = doc.addPage([A4_W, A4_H]);
     pages.push(page);
     y = A4_H - M;
-    const nameLines = wrap(d.company, bold, 12, CONTENT_W - 200);
-    nameLines.forEach((line, i) => at(page, line, M, y - 12 - i * 13, 12, bold));
+    const nameFont = faceOf(d.company, bold);
+    const nameLines = wrap(d.company, nameFont, 12, CONTENT_W - 200);
+    nameLines.forEach((line, i) => at(page, line, M, y - 12 - i * 13, 12, nameFont));
     atR(page, `${t.title} · ${t.periodLabel}`, A4_W - M, y - 11, 9, font, MUTED);
     y -= 20 + (nameLines.length - 1) * 13;
     page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 1.2, color: RULE });
@@ -1085,7 +1221,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const netH = 46;
   ensure(netH);
   page.drawRectangle({ x: M, y: y - netH, width: CONTENT_W, height: netH, color: PRIMARY });
-  at(page, t.netPay.toUpperCase(), M + 14, y - 28, 9.5, bold, WHITE);
+  const netLabel = t.netPay.toUpperCase();
+  at(page, netLabel, M + 14, y - 28, fitSize(netLabel, bold, 9.5, CONTENT_W - 28 - widthOf(money(d.net), bold, 15) - 12), bold, WHITE);
   atR(page, money(d.net), A4_W - M - 14, y - 30, 15, bold, WHITE);
   y -= netH + GAP;
 
@@ -1127,8 +1264,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     }
     // The legal name WRAPS rather than clipping: a company whose registered name is long is not a company
     // whose payslip may say half of it. 150pt is reserved on the right for the month and payment date.
-    const nameLines = wrap(d.company, bold, 16, A4_W - M - textX - 150);
-    nameLines.forEach((line, i) => at(pg, line, textX, top - 16 - i * 18, 16, bold));
+    const nameFont = faceOf(d.company, bold);
+    const nameLines = wrap(d.company, nameFont, 16, A4_W - M - textX - 150);
+    nameLines.forEach((line, i) => at(pg, line, textX, top - 16 - i * 18, 16, nameFont));
     const below = top - 16 - (nameLines.length - 1) * 18;
     const sub = [t.documentSubtitle, d.cycleLabel].filter(Boolean).join(' · ');
     at(pg, sub, textX, below - 13, 9, font, MUTED);
@@ -1145,8 +1283,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // /page.tsx) off its own read, the builder is the one place that resolves it, and a LABELLED
     // registration line is the obvious next request. What may not survive is the SPACE it reserved —
     // see the height below, which is the half of this change that has no visible cause.
-    // "August 2026", not "2026-08" (f35f758a). Resolved by the caller; English on the document because the
-    // embedded font is Latin-1 — see PayslipPdfLabels.periodLabel.
+    // "August 2026", not "2026-08" (f35f758a). Resolved by the caller; English on the document by choice
+    // now that the font no longer forces it — see PayslipPdfLabels.periodLabel.
     atR(pg, t.periodLabel, A4_W - M, top - 16, 13, bold);
     if (d.payDate) atR(pg, t.paymentDate, A4_W - M, top - 29, 8.5, font, MUTED);
     // a96d320c rev 3 — ONE height, not two. This read `(d.companyReg ? 46 : 34)`: 46 when a registration
@@ -1168,8 +1306,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const rightW = CONTENT_W - leftW - GAP;
 
     // The employee's own name was clipped by the same `fit()` the pay items were. It wraps now.
-    const nameLines = wrap(d.employee, bold, 14, leftW);
-    nameLines.forEach((line, i) => at(pg, line, M, top - 14 - i * 16, 14, bold));
+    const nameFont = faceOf(d.employee, bold);
+    const nameLines = wrap(d.employee, nameFont, 14, leftW);
+    nameLines.forEach((line, i) => at(pg, line, M, top - 14 - i * 16, 14, nameFont));
     const nameH = 27 + (nameLines.length - 1) * 16;
     if (d.employeeCode) at(pg, `${t.employeeCode}: ${d.employeeCode}`, M, top - nameH, 9, font, MUTED);
     const headH = nameH + 7;
@@ -1287,10 +1426,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // rather than running into it.
     const GUTTER = 12;
     const textW = cw - GUTTER;
-    const planned = cells.map(([k, v]) => ({
-      k: wrap(k.toUpperCase(), font, 6.5, textW),
-      v: wrap(v, bold, 8.5, textW),
-    }));
+    const planned = cells.map(([k, v]) => {
+      const kf = faceOf(k.toUpperCase(), font);
+      const vf = faceOf(v, bold);
+      return { kf, vf, k: wrap(k.toUpperCase(), kf, 6.5, textW), v: wrap(v, vf, 8.5, textW) };
+    });
     // Measured first, drawn second — the caller needs the height to align the half beside this one, and
     // a row is as tall as the tallest pair in it so a wrapped job title pushes its whole row down.
     const rowHs: number[] = [];
@@ -1306,8 +1446,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       rowCells.forEach((c, i) => {
         const cx = x + i * cw;
         const cy = top - drawn;
-        c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, font, MUTED));
-        c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, bold));
+        c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, c.kf, MUTED));
+        c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, c.vf));
       });
       drawn += rowHs[r];
     }
@@ -1353,7 +1493,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     rows.forEach(([label, cur, tot], i) => {
       const last = i === rows.length - 1;
       const f = last ? bold : font;
-      at(pg, label, M + 10, ry - 11, 8.5, f);
+      // Same one-baseline problem as a box total, same answer — the YTD label shares its line with two
+      // amounts and cannot wrap without breaking the 15pt row pitch this table's height is derived from.
+      at(pg, label, M + 10, ry - 11, fitSize(label, f, 8.5, c2 - (M + 10) - widthOf(money(cur), f, 8.5) - 8), f);
       atR(pg, money(cur), c2, ry - 11, 8.5, f);
       atR(pg, money(tot), c3 - 10, ry - 11, 8.5, f);
       ry -= 15;
@@ -1375,7 +1517,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   function drawFooter(pg: PDFPage) {
     const fy = M + 8;
     pg.drawLine({ start: { x: M, y: fy + 14 }, end: { x: A4_W - M, y: fy + 14 }, thickness: 0.8, color: RULE });
-    const w = font.widthOfTextAtSize(safe(t.generatedNote), 7.5);
+    const w = widthOf(t.generatedNote, font, 7.5);
     at(pg, t.generatedNote, M + (CONTENT_W - w) / 2, fy, 7.5, font, MUTED);
   }
 }
