@@ -57,6 +57,12 @@ const NO_BACK_ALLOWLIST = new Set([
   'app/payroll/reports/page.tsx',
   'app/payroll/setup/page.tsx',
   'app/payroll/transactions/page.tsx',
+  // 20f6c6a8 (r336) — Payment Submission is the fifth, and it is allowlisted for the same reason as
+  // `/payroll/reports`, whose shape it shares exactly: pick a month, see the files this employer can file
+  // for it, download them. An operator does not arrive here from a payroll run the way they arrive at
+  // back-pay or statutory-adjustment — they come from the sidebar to FILE, which is why a Back link here
+  // would point at Payroll Process, a screen that is not its parent.
+  'app/payroll/payment-submission/page.tsx',
 ]);
 
 function pagesRenderingPageHeader(): string[] {
