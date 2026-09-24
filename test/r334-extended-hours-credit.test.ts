@@ -26,6 +26,7 @@ import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '..
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   accrueToil,
+  runToilExpiry,
   extendedHoursCreditDays,
   extendedMinutesAfterShiftEnd,
   grantLeaveCredit,
@@ -617,6 +618,45 @@ describe('r334 · HR’s Add Leave Credit on a working day', () => {
     await expect(
       grantLeaveCredit(ctx, { employmentId, workedDate: WORKDAY, days: 0.5, reason: 'Stayed late', today: TODAY }),
     ).rejects.toBeInstanceOf(ToilExtendedHoursBelowThresholdError);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r334 · ⚠️ MONEY · what an unused extended-hours credit is worth when it expires', () => {
+  /**
+   * THE REASON `dayType` IS NULL ON THE ROW, PINNED RATHER THAN COMMENTED.
+   *
+   * `convertAmountFor` prices a First-Schedule employee's unused credit as the EXACT statutory cash for the
+   * stored `day_type` over the stored `ot_minutes` — but only when a day type IS stored. A tier ROUNDS DOWN
+   * from the measured minutes, so pricing 0.5 of a day through `overtimePay({ dayType: 'workday', minutes:
+   * 479 })` would cash out nearly eight hours of s.60A overtime against half a day of banked leave. The
+   * honest basis is the contractual ORP × remaining days, and this test is what stops a future change from
+   * "helpfully" stamping the day type back on.
+   */
+  it('converts on the generic ORP basis, never the exact statutory one', async () => {
+    const { employmentId, shiftId } = await hire(3000); // First Schedule ⇒ convert-on-expiry is forced
+    await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '17:59:00'); // 239 min — deliberately just under
+    await workShift(employmentId, shiftId, WORKDAY_2, '06:00:00', '18:00:00'); // 240 min ⇒ 0.5 day
+    await setToilPolicy(ctx, extendedPolicy({ allowFirstScheduleEligible: true, expiryDays: 1 }));
+    const r = await accrueToil(ctx, { employmentId, workedDate: WORKDAY_2, firstScheduleConsent: true });
+    expect(r.daysCredited).toBe(0.5);
+    expect(r.forcedConvertOnExpiry, 'the statutory floor: it converts, it never lapses').toBe(true);
+
+    const acc = await accrualRow(employmentId);
+    // A year past the expiry, derived from the clock — never a hardcoded future date.
+    const afterExpiry = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 400 * 86_400_000).toISOString().slice(0, 10);
+    const res = await runToilExpiry(ctx, { today: afterExpiry });
+    expect(res.converted).toBe(1);
+
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, acc.id), eq(schema.domainEvent.eventType, 'toil.converted')));
+    const payload = ev.payload as Record<string, unknown>;
+    expect(payload.valuationBasis, 'the exact statutory branch must NOT have run').toBe('generic_orp');
+    // ORP × remaining days = 3000/26 × 0.5 = 57.69. The statutory branch on 240 minutes of workday OT at
+    // 1.5x would be a different, larger figure — which is the whole point of not taking it.
+    expect(payload.amountOwed).toBeCloseTo(57.69, 2);
   });
 });
 
