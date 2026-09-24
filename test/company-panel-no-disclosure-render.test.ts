@@ -233,6 +233,38 @@ const inMarkup = (s: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
 
+/**
+ * ── ITEM 3783fd87 — READING A CARD'S FACE OUT OF THE MARKUP ──────────────────────────────────────
+ *
+ * ⚠️ `<script>` IS STRIPPED AND THE SLICE STOPS AT THE OPEN CONTROL, and both halves are load-bearing.
+ * AGENTS §8: a key is not a screen. Every editor on this panel stays MOUNTED (hidden with CSS), so each
+ * value appears in the markup twice over — once as the face's text, once as an input's `value=` — and
+ * every <select>'s full option list is in there too. A bare `toContain` therefore proves nothing about
+ * what is ON SCREEN: it passes on a face that renders nothing at all, and it finds "No Contribution"
+ * inside the HRD Corp band picker of a company that has no identity row. So assertions about the face
+ * are made on the face SLICE: from each authority row's own <li> up to that row's Open control.
+ *
+ * The class string is the row's exact opener (EIS adds `pl-6` for its indent and still starts with it),
+ * so this cannot pick up an <li> belonging to some other list on the panel.
+ */
+function cardFaces(html: string, en: Record<string, string>): string[] {
+  const chunks = html.replace(/<script\b[\s\S]*?<\/script>/g, '').split('<li class="flex flex-col bg-card').slice(1);
+  expect(chunks.length, 'one <li> per statutory body').toBe(STATUTORY_AUTHORITIES.length);
+  return chunks.map((chunk, i) => {
+    const cut = chunk.indexOf(inMarkup(en.authorityOpen));
+    expect(cut, `${STATUTORY_AUTHORITIES[i]}: the row carries its Open control`).toBeGreaterThan(0);
+    return chunk.slice(0, cut);
+  });
+}
+
+/**
+ * The summary VALUES, read out of a face's <dd>s. A substring count would not do: the status badge on an
+ * unconfigured body reads "Not set up", and "Not set" is a PREFIX of it — so counting the not-set string
+ * would count the badge as a value and pass on a face with one value missing. The <dd>s pin exactly
+ * which facts are shown and exactly what each one says.
+ */
+const faceValues = (face: string) => [...face.matchAll(/<dd[^>]*>([\s\S]*?)<\/dd>/g)].map((m) => m[1]);
+
 describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalogues', () => {
   for (const locale of LOCALES) {
     for (const [label, props] of [
@@ -281,6 +313,97 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     // One Open/Edit per body, and nothing native about it.
     const opens = html.split(inMarkup(en.authorityOpen)).length - 1;
     expect(opens, 'one Open-settings control per statutory body').toBe(STATUTORY_AUTHORITIES.length);
+  });
+
+  /**
+   * ── ITEM 3783fd87 — WHAT IS SET, READ OFF THE FACE, WITH NO INTERACTION ──────────────────────────
+   *
+   * The approved plan promised the reporter a card "showing what is set without opening anything — the
+   * employer number and the bank account it is paid from — and saying plainly where nothing is set yet".
+   * A source scan cannot prove that: it can see the JSX and still miss a card whose summary renders
+   * empty, or one whose values only appear once the editor is open.
+   *
+   * ⚠️ `<script>` IS STRIPPED FIRST, and that is the whole reason this case is worth writing. AGENTS §8:
+   * a key is not a screen. The editor below the face is MOUNTED and merely hidden with CSS, so every
+   * value on this panel appears in the markup twice over — once as the face's text and once as an
+   * input's `value=` — and `toContain('E123')` would pass on a face that renders nothing at all. So the
+   * assertions below are made on the FACE SLICE: the markup from the card's opening `<li>` up to its
+   * Open control, with scripts removed. A value found there was on screen before anybody clicked.
+   */
+  it('shows each body\u2019s employer number and paying account on the face, before any interaction', () => {
+    const en = messagesFor('en').admin.organization as Record<string, string>;
+    const html = render('en', richProps);
+
+    const faces = cardFaces(html, en);
+
+    // richProps: statutory.epfEmployerNo = 'E123', authority[0] (= epf) accountNo 'ACC-1' paid from bp1
+    // ("Payroll — Maybank" / 512345678901). All three are on the face, each under its own caption.
+    const epfFace = faces[STATUTORY_AUTHORITIES.indexOf('epf')];
+    expect(epfFace, 'the EPF employer number, captioned').toContain(inMarkup(en.epfEmployerNo));
+    expect(epfFace, 'the payment reference, captioned').toContain(inMarkup(en.authorityAccountNo));
+    expect(epfFace, 'the account it is paid from, captioned').toContain(inMarkup(en.authorityBankAccount));
+    /**
+     * AND THE SUMMARY IS VISIBLE, not merely present. Everything on this panel is mounted and hidden
+     * with CSS rather than unmounted, which is deliberate — but it means "in the markup" and "on the
+     * screen" are different claims here, and the promise made to the reporter was the second one. A
+     * `hidden` (or `sr-only`) class on this list would satisfy every other assertion in this case while
+     * putting the values straight back behind the click they were taken out of.
+     */
+    const dlTag = /<dl class="([^"]*)"/.exec(epfFace);
+    expect(dlTag, 'the summary is a <dl> on the face').not.toBeNull();
+    expect(dlTag![1].split(/\s+/), 'the summary is not hidden from the reader').not.toContain('hidden');
+    expect(dlTag![1].split(/\s+/)).not.toContain('sr-only');
+    expect(faceValues(epfFace)).toEqual(['E123', 'ACC-1', inMarkup('Payroll — Maybank · 512345678901')]);
+
+    // …and a body with NOTHING on file says so in words rather than showing a blank. LHDN has no
+    // authority row in richProps but the company DOES carry its filing number, so this face proves both
+    // halves at once: the number that exists is shown, the two that do not are named as not set.
+    const lhdnFace = faces[STATUTORY_AUTHORITIES.indexOf('lhdn')];
+    expect(lhdnFace).toContain(inMarkup(en.lhdnENumber));
+    expect(faceValues(lhdnFace)).toEqual(['L123', en.authorityValueNotSet, en.authorityValueNotSet]);
+
+    // EIS carries NO filing line at all: it has no number of its own, it files under SOCSO's PERKESO
+    // code, and inventing a third caption for it would say something untrue. Two facts, not three.
+    expect(faceValues(faces[STATUTORY_AUTHORITIES.indexOf('eis')])).toHaveLength(2);
+  });
+
+  /**
+   * The HRD Corp band is the one summary value that could be INVENTED, so it is pinned on both sides.
+   * Payroll resolves a missing `company_statutory_my` row to 'not_registered' and charges nothing — but
+   * printing "Not registered" for a company that has no row at all would assert a registration decision
+   * nobody made. sparseProps has `statutory: null`; richProps has `hrdfStatus: 'mandatory'`.
+   */
+  it('states HRD Corp\u2019s band only when the identity row actually carries one', () => {
+    const en = messagesFor('en').admin.organization as Record<string, string>;
+    const strip = (h: string) => h.replace(/<script\b[\s\S]*?<\/script>/g, '');
+
+    const hrdfFace = (props: unknown) => cardFaces(render('en', props), en)[STATUTORY_AUTHORITIES.indexOf('hrdf')];
+
+    // richProps carries hrdfStatus: 'mandatory' — a real decision on file, so the face states it.
+    expect(faceValues(hrdfFace(richProps))[0]).toBe(inMarkup(en.hrdfMandatory));
+
+    /**
+     * A MALAYSIAN company with NO `company_statutory_my` row at all. (sparseProps is the wrong shape for
+     * this: it is an SG company, and a country with no pack renders `noStatutoryPack` instead of the
+     * authority list, so it could never have shown or hidden an HRDF band either way.)
+     *
+     * Payroll resolves a missing row to 'not_registered' and charges nothing — but printing that band
+     * here would assert a registration decision nobody made (§8: an absent box asserts nothing). So the
+     * face says "Not set", for this fact and for every other one.
+     */
+    const bare = hrdfFace({ ...richProps, statutory: null, statutoryAuthorities: [], bankProfiles: [] });
+    expect(faceValues(bare), 'an absent identity row is never read as a band').toEqual([
+      en.authorityValueNotSet,
+      en.authorityValueNotSet,
+      en.authorityValueNotSet,
+    ]);
+    for (const band of [en.hrdfNotRegistered, en.hrdfMandatory, en.hrdfOptional]) {
+      expect(bare, `the face must not claim ${band}`).not.toContain(inMarkup(band));
+    }
+    // The empty-state the plan said to reuse rather than reinvent, for a company with no bank accounts.
+    expect(strip(render('en', { ...richProps, bankProfiles: [] }))).toContain(
+      inMarkup(en.authoritiesNoBankAccounts),
+    );
   });
 
   /**

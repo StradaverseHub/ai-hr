@@ -8,7 +8,7 @@ import { listCompanyBankProfiles } from '@/core/bank-profile';
 import { listCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/packs/payroll/service';
 import { listPayrollCycles } from '@/packs/payroll/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { CompanyPanel } from '@/components/company-panel';
 import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
 import { resolveGroupTree } from '../group-tree';
@@ -119,6 +119,13 @@ export default async function CompanyMaintenancePage({
       />
       <ErrorBanner message={error} />
 
+      {/* 3783fd87 — THE WHITE CARD THE REST OF THE MODULE ALREADY HAS. The listing wraps each of its
+          sections in a <Card>; this screen put the panel straight onto the page, whose ground is
+          `--background` (#f5f6fa). So the one screen the reporter spends the most time on was the one
+          screen with no card at all — grey page, grey tab shell, grey blocks — which is the "excessive
+          grey background" of the request. The Card is the wrapper, not a new component: everything
+          inside it is unchanged except its own greys (see components/company-panel.tsx). */}
+      <Card>
       <CompanyPanel
         company={{
           id: c.id,
@@ -182,6 +189,7 @@ export default async function CompanyMaintenancePage({
           saveGeneralTab: saveCompanyGeneralTabAction,
         }}
       />
+      </Card>
     </div>
   );
 }

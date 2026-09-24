@@ -155,7 +155,7 @@ function TabButton({
 /** A short explainer + a link out to the real home of a config area we deliberately do NOT duplicate here. */
 function CrossLinkTab({ text, href, action }: { text: string; href: string; action: string }) {
   return (
-    <div className="space-y-3 rounded-lg bg-background p-4">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-4">
       <p className="text-sm text-muted-foreground">{text}</p>
       <Link href={href} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
         {action}
@@ -262,8 +262,10 @@ const badge = {
     'rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   emerald:
     'rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  // 3783fd87 — a LINED chip, not a filled grey one. Same reason as the section blocks: on a white card
+  // a grey fill is the thing the reporter asked us to take out, and a border carries the same boundary.
   muted:
-    'rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
+    'rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
 };
 
 function SubHeader({ children }: { children: React.ReactNode }) {
@@ -533,6 +535,56 @@ function StatutoryAuthorityCard({
   const showHrdf = filingCountry === 'MY' && authority === 'hrdf';
   const sharesSocsoCode = filingCountry === 'MY' && authority === 'eis';
 
+  /**
+   * ── ITEM 3783fd87 — WHAT IS SET, WITHOUT OPENING ANYTHING ─────────────────────────────────────
+   *
+   * The reporter's complaint about this section was not that it expands; it was that the expansion is
+   * the ONLY way to learn anything. Every body read as a closed row, so answering "is LHDN configured?"
+   * meant opening LHDN, and comparing two meant opening both and remembering the first. The approved
+   * plan's promise, in its own words: one card per authority "showing what is set without opening
+   * anything — the employer number and the bank account it is paid from — and saying plainly where
+   * nothing is set yet".
+   *
+   * ⚠️ THIS IS DISPLAY ONLY. It reads the two props the editor below already receives and writes
+   * nothing. `company_statutory_authority` is also what localization/my/reports.ts reads for the EA
+   * foot's officer block and the CP39 preparer block, so neither its shape nor its writes are touched.
+   *
+   * ⚠️ THREE FACTS, EACH UNDER ITS OWN CAPTION, AND THAT IS r226's RULE NOT A FLOURISH. A body has TWO
+   * different numbers — the FILING number on its filed form (company_statutory_my) and the employer
+   * account on its PAYMENT slip (company_statutory_authority) — and r226 exists because the screen once
+   * showed one of them unlabelled next to the other and nothing said they were different things.
+   * Summarising them into a single anonymous "employer number" would put that fault straight back.
+   *
+   * ⚠️ AN ABSENT VALUE SAYS "Not set"; IT NEVER GUESSES. HRD Corp's band is shown only when the identity
+   * row actually carries one: payroll resolves a MISSING row to 'not_registered' and charges nothing,
+   * but printing "Not registered" for a company that has no row at all would assert a registration
+   * decision nobody made. EIS gets no filing line because it has none — it files under SOCSO's PERKESO
+   * code, which the editor says in words.
+   */
+  const hrdfBandKey =
+    statutory?.hrdfStatus === 'mandatory'
+      ? 'hrdfMandatory'
+      : statutory?.hrdfStatus === 'optional'
+        ? 'hrdfOptional'
+        : statutory?.hrdfStatus === 'not_registered'
+          ? 'hrdfNotRegistered'
+          : null;
+  const paidFrom = bankProfiles.find((bp) => bp.id === r?.bankProfileId);
+  const summary: { key: string; label: string; value: string | null }[] = [
+    ...(filing
+      ? [{ key: 'filing', label: t(filing.labelKey as never), value: statutory?.[filing.name] || null }]
+      : []),
+    ...(showHrdf
+      ? [{ key: 'hrdf', label: t('hrdfStatusLabel'), value: hrdfBandKey ? t(hrdfBandKey as never) : null }]
+      : []),
+    { key: 'account', label: t('authorityAccountNo'), value: r?.accountNo || null },
+    {
+      key: 'bank',
+      label: t('authorityBankAccount'),
+      value: paidFrom ? (paidFrom.accountLabel || myBankLabel(paidFrom.bank)) + ' · ' + paidFrom.debitAccountNo : null,
+    },
+  ];
+
   // The searchable option list: this company's active employees, plus — only when the saved signatory is
   // no longer among them — the stored person, so the hidden input keeps posting the id already on record.
   const signatoryOptions: EmployeeSearchOption[] = signatories.map((sg) => ({
@@ -551,7 +603,7 @@ function StatutoryAuthorityCard({
   return (
     <li
       className={cn(
-        'flex flex-col bg-background',
+        'flex flex-col bg-card',
         // efe424b0 — rows in a divided list: the border and the rounding belong to the <ul> now, not to
         // each entry, which is what turns seven boxes into one list.
         subordinate && 'pl-6',
@@ -575,7 +627,7 @@ function StatutoryAuthorityCard({
           <span
             className={cn(
               'grid size-10 shrink-0 place-items-center rounded-lg',
-              logo ? 'bg-background' : 'bg-primary/10 text-primary',
+              logo ? 'bg-card' : 'bg-primary/10 text-primary',
             )}
             aria-hidden
           >
@@ -602,6 +654,25 @@ function StatutoryAuthorityCard({
           <span className={configured ? badge.emerald : badge.muted}>
             {configured ? t('authorityConfigured') : t('authorityNotConfigured')}
           </span>
+          {/* 3783fd87 — the summary, on the FACE. A <dl> because each entry is a caption and its value,
+              and the caption is what stops the two numbers being mistaken for each other. Rendered as
+              plain text, never as a disabled input: a greyed-out box looks like something you can fix
+              here, and this half of the card is read-only. */}
+          <dl className="flex flex-wrap gap-x-4 gap-y-0.5 pt-0.5 text-xs">
+            {summary.map((f) => (
+              <div key={f.key} className="flex min-w-0 max-w-full items-baseline gap-1">
+                <dt className="shrink-0 text-muted-foreground">{f.label}</dt>
+                <dd
+                  className={cn(
+                    'truncate',
+                    f.value ? 'font-medium text-foreground' : 'italic text-muted-foreground',
+                  )}
+                >
+                  {f.value ?? t('authorityValueNotSet')}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
 
@@ -648,7 +719,7 @@ function StatutoryAuthorityCard({
               whichever of the two is present. */}
           {(filing || showHrdf) && <input type="hidden" name="filingCountry" value={filingCountry} />}
           {filing && (
-            <div className="space-y-2 rounded-md bg-muted/40 p-2.5 sm:col-span-3">
+            <div className="space-y-2 rounded-md border border-border/60 p-2.5 sm:col-span-3">
               <SubHeader>{t('authorityFilingSection')}</SubHeader>
               <p className="text-xs text-muted-foreground">{t('authorityFilingHint')}</p>
               <Field label={t(filing.labelKey as never)}>
@@ -657,7 +728,7 @@ function StatutoryAuthorityCard({
             </div>
           )}
           {showHrdf && (
-            <div className="space-y-2 rounded-md bg-muted/40 p-2.5 sm:col-span-3">
+            <div className="space-y-2 rounded-md border border-border/60 p-2.5 sm:col-span-3">
               <SubHeader>{t('authorityRegistrationSection')}</SubHeader>
               <p className="text-xs text-muted-foreground">{t('authorityRegistrationHint')}</p>
               <Field label={t('hrdfStatusLabel')}>
@@ -677,7 +748,7 @@ function StatutoryAuthorityCard({
               PERKESO employer code. Saying so is the whole point: an empty EIS card otherwise reads as a
               number somebody forgot to fill in. */}
           {sharesSocsoCode && (
-            <p className="rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground sm:col-span-3">
+            <p className="rounded-md border border-border/60 p-2.5 text-xs text-muted-foreground sm:col-span-3">
               {t('authorityEisSharesSocso')}
             </p>
           )}
@@ -991,7 +1062,13 @@ export function CompanyPanel({
         </div>
       </div>
 
-      <div className="border-t border-border/60 bg-muted/20 px-4 py-4">
+      {/* 3783fd87 — THE GREY. This wash (`bg-muted/20`) over `bg-background` section blocks was the
+          "excessive grey background" the reporter reported: the panel is not inside a white card by
+          itself, so the whole maintenance screen read as grey-on-grey. The page now wraps the panel in a
+          Card (app/admin/organization/[companyId]/page.tsx) and every block below is a white card with a
+          LINE around it instead of a filled grey rectangle. A border-t still separates the tabs from the
+          identity strip — separation by line, not by fill. */}
+      <div className="border-t border-border px-4 py-4">
         {/* Tab bar — groups the company detail sections so the panel reads as tabs, not one long scroll. */}
         <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
           <TabButton active={tab === 'general'} onClick={() => selectTab('general')}>
@@ -1012,7 +1089,7 @@ export function CompanyPanel({
         {/* Company logo — FIRST on the tab, and edited the way the Personnel profile photo is: a pencil
             trigger over the upload/remove forms, with the picked file previewed before it is saved
             (3c2f55d7 rev 2). Storage, the PNG/JPG rule and the 2 MB limit are untouched. */}
-        <div className="space-y-2.5 rounded-lg bg-background p-3">
+        <div className="space-y-2.5 rounded-lg border border-border bg-card p-3">
           <SubHeader>{t('logoSection')}</SubHeader>
           <CompanyLogoEdit
             companyId={c.id}
@@ -1068,7 +1145,7 @@ export function CompanyPanel({
         <form
           action={actions.updateCompany}
           data-save-section="company"
-          className="space-y-4 rounded-lg bg-background p-3"
+          className="space-y-4 rounded-lg border border-border bg-card p-3"
         >
           <input type="hidden" name="id" value={c.id} />
 
@@ -1079,8 +1156,13 @@ export function CompanyPanel({
               <input name="legalName" required defaultValue={c.name} className={inputCls} />
             </Field>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Field label={t('companyLabel')}>
-                <input name="companyLabel" defaultValue={c.companyLabel ?? ''} className={inputCls} placeholder={t('companyLabelHint')} />
+              {/* 3783fd87 — ONE CAPTION FOR ONE COLUMN. The column, the input name and the service field
+                  are untouched (`companyLabel` throughout); only what the screen CALLS it changed. It read
+                  "Company Label" here and "Code" on the listing, for the same `company.company_label` —
+                  which is why the reporter filed the create-form gap as "Company Code is missing" and why
+                  their request asks for "consistent labels". The create form uses this same key. */}
+              <Field label={t('companyCode')}>
+                <input name="companyLabel" defaultValue={c.companyLabel ?? ''} className={inputCls} placeholder={t('companyCodeHint')} />
               </Field>
               <Field label={t('regNo')}>
                 <input name="registrationNo" defaultValue={c.registrationNo ?? ''} className={inputCls} />
@@ -1181,7 +1263,7 @@ export function CompanyPanel({
         <form
           action={actions.updateCompanyDefaultCycle}
           data-save-section="cycle"
-          className="space-y-2.5 rounded-lg bg-background p-3"
+          className="space-y-2.5 rounded-lg border border-border bg-card p-3"
         >
           <SubHeader>{t('defaultPayrollCycle')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
@@ -1223,7 +1305,7 @@ export function CompanyPanel({
             r226 drew it in a two-column grid beside archive/delete; it is lifted out of that grid here
             because the archive and delete controls are bucket (b) and have to sit outside the Save.
             Nothing about the card itself changed — same form, same action, same audit trail. */}
-        <form action={actions.setParent} data-save-section="parent" className="space-y-2.5 rounded-lg bg-background p-3">
+        <form action={actions.setParent} data-save-section="parent" className="space-y-2.5 rounded-lg border border-border bg-card p-3">
           <SubHeader>{t('groupParent')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
           <Field label={t('parentCompany')}>
@@ -1246,7 +1328,7 @@ export function CompanyPanel({
             what it does. Both keep their own immediate controls, and Delete keeps its confirmation. */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="space-y-3">
-            <div className="flex items-center gap-1.5 rounded-lg bg-background p-3">
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card p-3">
               {c.archivedAt ? (
                 <form action={actions.archiveCompany}>
                   <input type="hidden" name="id" value={c.id} />
@@ -1304,7 +1386,7 @@ export function CompanyPanel({
         <div className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>
         {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
         {isMY ? (
-          <div className="space-y-3 rounded-lg bg-background p-3">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-3">
             <SubHeader>{t('bankProfilesTitle')}</SubHeader>
             {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
                 saved account is its own editable form (identity is the row id) rather than one upsert box. */}
@@ -1355,7 +1437,7 @@ export function CompanyPanel({
             <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
           </div>
         ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+          <p className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
             {t('bankAccountNonMY', { country: c.country })}
           </p>
         )}
@@ -1381,7 +1463,7 @@ export function CompanyPanel({
               This form now posts only the two boxes it renders. That is safe because the writer is a
               PARTIAL PATCH (localization/my/company-statutory.ts): before r226 it was a full-row
               overwrite, and a form this shape would have silently NULLed EPF, SOCSO and LHDN. */}
-          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
+          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg border border-border bg-card p-3">
             <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
             <input type="hidden" name="companyId" value={c.id} />
             <input type="hidden" name="country" value="MY" />
@@ -1414,7 +1496,7 @@ export function CompanyPanel({
               the controlled set is listed whether configured or not, so nothing is silently missing.
               3c2f55d7 rev 2 — they are a GRID OF CARDS (icon, name, description, status, Open/Edit)
               instead of a stack of identical form blocks. */}
-          <div className="space-y-2.5 rounded-lg bg-background p-3">
+          <div className="space-y-2.5 rounded-lg border border-border bg-card p-3">
             <SubHeader>{t('authoritiesTitle')}</SubHeader>
             <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
             {bankProfiles.length === 0 && (
@@ -1456,7 +1538,7 @@ export function CompanyPanel({
           </div>
           </>
         ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+          <p className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
             {t('noStatutoryPack', { country: c.country })}
           </p>
         )}
