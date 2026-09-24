@@ -62,7 +62,10 @@ import {
   liveArrangementsTx,
   pickArrangementOn,
 } from './shift-arrangement-resolve';
-import { maybeAutoAccrueOnApprovalTx } from './toil';
+import { extendedMinutesAfterShiftEnd, maybeAutoAccrueOnApprovalTx } from './toil';
+// r336 cbfa8b0b — the ONE double-claim predicate, shared with core/replacement-request.ts. See that file's
+// header for why a second copy of the rule here would have been the defect rather than the fix.
+import { assertNoCreditClaimForDatesTx } from './credit-ot-overlap';
 import {
   assignment,
   attendance,
@@ -2994,6 +2997,22 @@ export async function requestAttendanceCorrection(
           `You already have an approved overtime plan for ${p.date}. Withdraw it first if it is wrong.`,
         );
       }
+      // ── r336 cbfa8b0b · DIRECTION 2 OF THE DOUBLE-CLAIM CHECK ────────────────────────────────────────
+      // The same worked day is cash XOR time in lieu. core/payroll.ts already enforces that once a credit
+      // is BANKED (`EXCLUDE_TOIL_BANKED_DAYS`), but between submission and approval both sides were open:
+      // an employee could file an overtime claim and a Leave Credit claim for the same date and have
+      // whichever approved second quietly win. This refuses the second claim at the door.
+      //
+      // ONLY ON THE OT BRANCH, and only where `requestedOtMinutes` is present. A plain clock-time
+      // correction (a forgotten punch) is not a claim on the day's hours and must stay filable on a date
+      // whose credit is pending — refusing it would make a live credit claim un-correctable.
+      //
+      // THE PREDICATE IS SHARED, NOT MIRRORED. `assertNoCreditClaimForDatesTx` is the same module
+      // core/replacement-request.ts asks the opposite question of, so "pending and approved block;
+      // rejected and cancelled release" is defined once. See core/credit-ot-overlap.ts.
+      if (requestedOtMinutes != null && requestedOtMinutes > 0) {
+        await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
+      }
     }
     const [row] = await tx
       .insert(attendanceCorrection)
@@ -3647,6 +3666,54 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
   if (s.dayType === 'rest_day') return 'rest_day';
   if (s.source === 'default-shift-rest') return 'off_day';
   return 'workday';
+}
+
+/**
+ * r336 cbfa8b0b · THE FOUR READ-ONLY FACTS SECTION B OF THE LEAVE CREDIT REQUEST SHOWS FOR ONE DATE.
+ *
+ * The reporter's Section B row is: date worked, SCHEDULED SHIFT END (read-only), ACTUAL CLOCK-OUT
+ * (read-only, from Attendance), the employee's claimed window, and the derived eligible minutes. Three of
+ * those four are facts this engine already owns, and this is the one read that hands them over together —
+ * one `scheduleFor` and one attendance row rather than three round trips from the leave side.
+ *
+ * ⚠️ IT MEASURES NOTHING NEW, and that is the whole design. `measuredExtendedMinutes` is r334's
+ * `extendedMinutesAfterShiftEnd` over this day's stored `ot_minutes` and `calc_trace` — the figure
+ * core/toil.ts's tier ladder already runs on, produced by the same function rather than re-derived from
+ * `checkOutAt − shiftEnd` here. Re-deriving it would put a SECOND owner on "how long did this person work
+ * past their shift end", and the two would diverge the first time a shift's OT rule, its rounding band or
+ * its daily cap moved, while payroll kept paying the first one. The clock-out below is shown to the
+ * EMPLOYEE so they can see what the system has; it is not what the credit is computed from.
+ *
+ * NULLS ARE HONEST ANSWERS, not failures. `shiftEnd` is NULL on the company-policy branch (no assigned
+ * shift, so there is no scheduled end to claim past — ResolvedSchedule documents this). `actualClockOut`
+ * is NULL when the day has no attendance row or was never clocked out. A screen renders "—" for either;
+ * the REFUSAL for a day that cannot earn anything comes from the minutes, not from a missing time.
+ */
+export type ExtendedHoursDayView = {
+  kind: WorkedDayKind;
+  /** The resolved schedule's shift end (HH:MM:SS), or null on the company-policy branch. */
+  shiftEnd: string | null;
+  /** The attendance row's clock-out (HH:MM:SS), or null when the day has no row or no clock-out. */
+  actualClockOut: string | null;
+  /** r334's measured extended figure for the day: `ot_minutes` less any folded pre-shift minutes. */
+  measuredExtendedMinutes: number;
+};
+
+export async function extendedHoursDayForTx(tx: Tx, employmentId: string, date: string): Promise<ExtendedHoursDayView> {
+  const s = await scheduleFor(tx, employmentId, date);
+  const kind: WorkedDayKind =
+    s.dayType === 'holiday' ? 'holiday' : s.dayType === 'rest_day' ? 'rest_day' : s.source === 'default-shift-rest' ? 'off_day' : 'workday';
+  const [row] = await tx
+    .select({ checkOutAt: attendance.checkOutAt, otMinutes: attendance.otMinutes, calcTrace: attendance.calcTrace })
+    .from(attendance)
+    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
+    .limit(1);
+  return {
+    kind,
+    shiftEnd: s.shiftEnd ?? null,
+    actualClockOut: row?.checkOutAt ?? null,
+    measuredExtendedMinutes: row ? extendedMinutesAfterShiftEnd({ otMinutes: row.otMinutes, calcTrace: row.calcTrace }) : 0,
+  };
 }
 
 /**
