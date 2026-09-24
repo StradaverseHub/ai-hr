@@ -17,6 +17,12 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type LeaveCreditPreviewView = {
   workedDayKind: 'workday' | 'rest_day' | 'off_day' | 'holiday';
   eligibleDay: boolean;
+  /** r334 · the company's "Extended hours on working day" switch. */
+  extendedHoursEnabled: boolean;
+  /** r334 · counted minutes past the scheduled shift end; null when the question does not apply. */
+  extendedHoursMinutes: number | null;
+  /** r334 · the tier those minutes earn. Non-null ⇒ the credit field below is PINNED to it. */
+  extendedHoursDays: number | null;
   overtimeMinutes: number;
   defaultExpiresOn: string | null;
   policyEnabled: boolean;
@@ -78,6 +84,11 @@ export function LeaveCreditAddDialog({
       if (mine !== req.current) return; // a newer employee/date was picked meanwhile
       setPreview(r);
       if (r?.defaultExpiresOn && !expiryTouched.current) setExpiresOn(r.defaultExpiresOn);
+      // r334 · an ordinary working day's credit is NOT HR's to choose: `grantLeaveCredit` refuses anything
+      // but the tier the day's extended hours earned, so the field is set to it and made read-only below.
+      // Overwrites whatever is in the box, including a figure HR typed for a previous date — that figure is
+      // meaningless for this one, and leaving it would submit a value the save is guaranteed to reject.
+      if (r?.extendedHoursDays != null) setDays(String(r.extendedHoursDays));
     });
   }, [employmentId, workedDate, previewAction]);
 
@@ -87,6 +98,7 @@ export function LeaveCreditAddDialog({
     off_day: t('dayKind.offDay'),
     holiday: t('dayKind.holiday'),
   };
+  const pinnedDays = preview?.extendedHoursDays ?? null;
   const fsBlocked = preview != null && preview.firstSchedule && !preview.allowFirstSchedule;
   const blocked =
     preview != null && (!preview.eligibleDay || preview.alreadyCredited || !preview.policyEnabled || fsBlocked);
@@ -138,6 +150,10 @@ export function LeaveCreditAddDialog({
                 />
               </Field>
               <Field label={t('add.credit')}>
+                {/* r334 · READ-ONLY on an ordinary working day, because the tier is measured rather than
+                    chosen. `readOnly` (not `disabled`) is load-bearing: a disabled input posts NOTHING, and
+                    `grantLeaveCredit` requires the amount — the form would fail its own validation instead
+                    of submitting the figure it is showing. The server refuses a mismatch either way. */}
                 <input
                   type="number"
                   name="days"
@@ -146,12 +162,13 @@ export function LeaveCreditAddDialog({
                   max={366}
                   step={0.5}
                   value={days}
+                  readOnly={pinnedDays != null}
                   onChange={(e) => setDays(e.target.value)}
                   onBlur={(e) => {
                     const next = normalizeDayText(e.currentTarget.value);
                     if (next !== e.currentTarget.value) setDays(next);
                   }}
-                  className={inputCls}
+                  className={pinnedDays != null ? `${inputCls} bg-muted` : inputCls}
                 />
               </Field>
               <Field label={t('add.expiry')}>
@@ -180,9 +197,25 @@ export function LeaveCreditAddDialog({
                     </span>
                     {t('add.dayKind', { kind: kindLabel[preview.workedDayKind] })}
                   </p>
+                ) : preview.workedDayKind === 'workday' && preview.extendedHoursEnabled ? (
+                  /* r334 · the company DOES credit extended hours; this particular day simply did not run
+                     long enough. A different sentence from "wrong kind of day", because the remedy is
+                     different: there is nothing to fix on this form. */
+                  <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {t('add.extendedShort', { minutes: preview.extendedHoursMinutes ?? 0 })}
+                  </p>
                 ) : (
                   <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {t('add.workingDay')}
+                  </p>
+                )}
+                {/* r334 · what the day earned and why, on the one screen that decides it. */}
+                {preview.extendedHoursDays != null && (
+                  <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                    {t('add.extendedEarned', {
+                      minutes: preview.extendedHoursMinutes ?? 0,
+                      days: preview.extendedHoursDays,
+                    })}
                   </p>
                 )}
                 {preview.alreadyCredited && (

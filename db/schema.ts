@@ -4553,6 +4553,31 @@ export const toilPolicy = pgTable(
     // absent ⇒ no restriction on that criterion. NULL ⇒ everyone, which is the only safe backfill for a
     // switch that is itself off by default. Resolved by core/replacement-eligibility.ts.
     requestEligibility: jsonb('request_eligibility').$type<ReplacementRequestEligibility | null>(),
+    // ── r334 928f0454 (migration 0486) · EXTENDED HOURS ON AN ORDINARY WORKING DAY ─────────────────────
+    //
+    // The five settings that let work past a workday's scheduled shift end earn a Leave Credit. Until r334
+    // only a rest day, an off day or a public holiday could (core/toil.ts `RL_ELIGIBLE_DAY_TYPES`, the
+    // "RL Control Engine" rule) — a plain workday's overtime was cash-only. That rule is NOT relaxed; it
+    // is left exactly as it was, and this switch opens a SEPARATE, tiered path beside it. See the block
+    // comment above `RL_ELIGIBLE_DAY_TYPES` for why the set's membership must never be widened instead.
+    //
+    // ⚠️ MONEY. A credit SUPPRESSES that day's overtime pay (core/payroll.ts `EXCLUDE_TOIL_BANKED_DAYS`,
+    // both reads, unconditional). Switching this on therefore moves real money off a payslip, which is why
+    // it is OFF by default on every existing row and why every threshold below has a column default that
+    // reproduces the reporter's stated figures rather than a guess.
+    //
+    // NOT NULLABLE, with defaults, deliberately: `setToilPolicy` is a FULL-REPLACE upsert, so an omitting
+    // caller must land on the pre-r334 policy rather than on NULL arithmetic.
+    /** OFF by default. When off, every workday election is refused with the pre-r334 message, byte for byte. */
+    extendedHoursEnabled: boolean('extended_hours_enabled').notNull().default(false),
+    /** ≥ this many counted minutes past shift end ⇒ 0.5 day. Reporter's default: 4 hours. */
+    extendedHalfDayMinutes: integer('extended_half_day_minutes').notNull().default(240),
+    /** ≥ this many counted minutes ⇒ 1.0 day, and that is the per-day CAP — never more. Default: 8 hours. */
+    extendedFullDayMinutes: integer('extended_full_day_minutes').notNull().default(480),
+    /** An unpaid break taken AFTER shift end, deducted before the tiers are tested. Default 0 ⇒ no-op. */
+    extendedBreakMinutes: integer('extended_break_minutes').notNull().default(0),
+    /** The first N minutes past shift end do not count at all. Default 0 ⇒ no-op. */
+    extendedGraceMinutes: integer('extended_grace_minutes').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

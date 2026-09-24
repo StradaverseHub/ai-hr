@@ -27,6 +27,7 @@ type Locale = keyof typeof CATALOGUES;
 const LOCALES = Object.keys(CATALOGUES) as Locale[];
 const unresolved = (text: string) => /MISSING_MESSAGE|admin\.leaveCredit\.|replacementRequest\.|\badd\.[a-z]+[A-Z]?/.test(text);
 const lc = (loc: Locale) => (CATALOGUES[loc] as unknown as { admin: { leaveCredit: Record<string, unknown> } }).admin.leaveCredit;
+const lcAdd = (loc: Locale) => lc(loc).add as Record<string, string>;
 
 const PREVIEW: LeaveCreditPreviewView = {
   workedDayKind: 'rest_day',
@@ -37,6 +38,11 @@ const PREVIEW: LeaveCreditPreviewView = {
   firstSchedule: true,
   allowFirstSchedule: true,
   alreadyCredited: false,
+  // r334 · the extended-hours question does not arise on a rest day, which is what this base fixture is.
+  // Left in its OFF shape on purpose so every assertion below still describes the pre-r334 dialog exactly.
+  extendedHoursEnabled: false,
+  extendedHoursMinutes: null,
+  extendedHoursDays: null,
 };
 
 function renderAdd(locale: Locale, preview: LeaveCreditPreviewView) {
@@ -91,6 +97,90 @@ describe('+ Add Leave Credit', () => {
       expect((dialog.querySelector('input[name="expiresOn"]') as HTMLInputElement).min).toBe('2026-08-06');
     });
   }
+
+  // ── r334 928f0454 · EXTENDED HOURS ON A WORKING DAY, in every locale ────────────────────────────────
+  //
+  // THIS IS THE §8 RENDER CHECK FOR THE DIALOG, and it is here rather than on a curled page for a reason
+  // that is a property of the component and not a convenience: the dialog body is a Radix `Dialog.Portal`
+  // that mounts only on open, so it is not in the server HTML at all — fetching the Leave Credit page and
+  // grepping it would prove nothing about these strings. Rendering it per locale and reading the dialog's
+  // own textContent is the equivalent check, and `unresolved()` above is what catches a MISSING_MESSAGE or
+  // an unformatted ICU placeholder.
+  const EXTENDED_EARNED = {
+    ...PREVIEW,
+    workedDayKind: 'workday' as const,
+    eligibleDay: true,
+    overtimeMinutes: 240,
+    extendedHoursEnabled: true,
+    extendedHoursMinutes: 240,
+    extendedHoursDays: 0.5,
+  };
+
+  for (const locale of LOCALES) {
+    it(`[${locale}] r334: names the extended hours, the tier, and PINS the credit amount`, async () => {
+      renderAdd(locale, EXTENDED_EARNED);
+      await openAndPick();
+      await waitFor(() => expect(screen.getByTestId('leave-credit-preview')).toBeTruthy());
+      const dialog = screen.getByRole('dialog');
+      const text = dialog.textContent ?? '';
+      expect(unresolved(text), `${locale}: ${text.slice(0, 200)}`).toBe(false);
+      // The ICU message really formatted — an unsubstituted `{minutes}` would survive `unresolved`.
+      expect(text).not.toMatch(/\{minutes\}|\{days\}/);
+      expect(text).toContain('240');
+      // The credit is the measured tier and HR cannot retype it; `readOnly`, never `disabled`, or the
+      // field would post nothing and the save would fail its own required-amount check.
+      const days = dialog.querySelector('input[name="days"]') as HTMLInputElement;
+      expect(days.value).toBe('0.5');
+      expect(days.readOnly).toBe(true);
+      expect(days.disabled).toBe(false);
+      expect((screen.getByRole('button', { name: lcAdd(locale).submit }) as HTMLButtonElement).disabled).toBe(false);
+    });
+  }
+
+  for (const locale of LOCALES) {
+    it(`[${locale}] r334: a working day that fell short says how far, and the save stays disabled`, async () => {
+      renderAdd(locale, {
+        ...PREVIEW,
+        workedDayKind: 'workday',
+        eligibleDay: false,
+        overtimeMinutes: 180,
+        firstSchedule: false,
+        extendedHoursEnabled: true,
+        extendedHoursMinutes: 180,
+        extendedHoursDays: null,
+      });
+      await openAndPick();
+      const dialog = await waitFor(() => screen.getByRole('dialog'));
+      await waitFor(() => expect(screen.getByTestId('leave-credit-preview')).toBeTruthy());
+      const text = dialog.textContent ?? '';
+      expect(unresolved(text), `${locale}: ${text.slice(0, 200)}`).toBe(false);
+      expect(text).not.toMatch(/\{minutes\}|\{days\}/);
+      expect(text).toContain('180');
+      // The "wrong kind of day" sentence must NOT be the one shown: the day is the right kind, it simply
+      // did not run long enough, and telling HR to pick a rest day would be wrong advice.
+      const lcx = CATALOGUES[locale] as unknown as { admin: { leaveCredit: { add: Record<string, string> } } };
+      expect(text).not.toContain(lcx.admin.leaveCredit.add.workingDay);
+      expect((screen.getByRole('button', { name: lcAdd(locale).submit }) as HTMLButtonElement).disabled).toBe(true);
+    });
+  }
+
+  it('r334: with the company switch OFF, an ordinary working day still shows the pre-r334 sentence', async () => {
+    renderAdd('en', {
+      ...PREVIEW,
+      workedDayKind: 'workday',
+      eligibleDay: false,
+      overtimeMinutes: 0,
+      firstSchedule: false,
+      extendedHoursEnabled: false,
+      extendedHoursMinutes: null,
+      extendedHoursDays: null,
+    });
+    await openAndPick('2026-08-03');
+    await waitFor(() => expect(screen.getByText(en.admin.leaveCredit.add.workingDay)).toBeTruthy());
+    // And the credit field is HR's again, as it has always been on this form.
+    const days = document.querySelector('input[name="days"]') as HTMLInputElement;
+    expect(days.readOnly).toBe(false);
+  });
 
   it('refuses an ordinary working day before save — the submit is disabled and the reason is shown', async () => {
     renderAdd('en', { ...PREVIEW, workedDayKind: 'workday', eligibleDay: false, overtimeMinutes: 0, firstSchedule: false });

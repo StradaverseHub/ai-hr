@@ -2787,6 +2787,13 @@
       "when": 1789980195344,
       "tag": "0485_marriage_leave",
       "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1789980196344,
+      "tag": "0486_toil_extended_hours_on_workday",
+      "breakpoints": true
     }
   ]
 }

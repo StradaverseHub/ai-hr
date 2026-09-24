@@ -9047,7 +9047,15 @@
       "empTypeFullTime": "Full-time",
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
-      "empTypeIntern": "Intern"
+      "empTypeIntern": "Intern",
+      "extendedTitle": "工作日的延长工时",
+      "extendedEnabledLabel": "将普通工作日的延长工时计入假期额度",
+      "extendedEnabledHint": "默认关闭。开启后，普通工作日中超出排班下班时间的工作可获得假期额度。当日的加班费就不会再另行支付 — 这一天改以假期补偿。班次开始前的提前打卡永远不计入。",
+      "extendedHalfDay": "半天阈值（分钟）",
+      "extendedFullDay": "整天阈值（分钟）",
+      "extendedBreak": "下班后的休息（分钟）",
+      "extendedGrace": "计入前的宽限期（分钟）",
+      "extendedHint": "休息和宽限期会先从下班后的工作时间中扣除；剩余部分决定额度。低于半天阈值则完全不计 — 没有部分额度。达到或超过该阈值，计半天。达到或超过整天阈值，计一天，而一天是任何单一日期的上限。本设置仅适用于普通工作日；休息日、休假日或公共假期保持不变，仍然使用上方的累计基准。"
     },
     "entitlementArchive": {
       "pageDescription": "在重置清除之前记录下来的额度表和福利方案的只读记录。",
@@ -9628,7 +9636,9 @@
         "policyOff": "该员工所在公司已关闭假期额度。请先在“规则”标签页中开启。",
         "firstScheduleConsent": "该员工属于第一附表范围，适用法定加班工资。记入额度须有其已记录的同意，以假期代替该工资；未使用的额度到期时将折现支付。",
         "firstScheduleConsentLabel": "员工已同意以假期代替法定加班工资。",
-        "firstScheduleBlocked": "该员工属于第一附表范围，其公司不允许以假期额度代替法定加班工资。请先在“规则”标签页中修改。"
+        "firstScheduleBlocked": "该员工属于第一附表范围，其公司不允许以假期额度代替法定加班工资。请先在“规则”标签页中修改。",
+        "extendedShort": "这是普通工作日。该员工在排班下班时间之后仅计入 {minutes} 分钟，低于公司的半天阈值，因此该日期无法获得假期额度。",
+        "extendedEarned": "该员工在排班下班时间之后计入 {minutes} 分钟，可获得 {days} 天。额度数量已按该数字固定，在此无法更改。"
       },
       "rulesIntro": "按公司设置谁可获得假期额度、如何获得以及额度有效期。此处的修改适用于之后发放的额度；已发放的额度保留原到期日。"
     },
