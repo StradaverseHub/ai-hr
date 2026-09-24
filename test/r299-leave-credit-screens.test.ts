@@ -164,8 +164,25 @@ describe('My Leave — the Leave Credit request and the Apply form', () => {
     expect(en.replacementRequest.trigger).toBe('+ Leave Credit request');
     expect(en.replacementRequest.title).toBe('Leave Credit request');
     const dialog = read('components/leave/replacement-leave-request-dialog.tsx');
-    expect(dialog).toContain("t('eligibleDaysNote')");
-    expect(dialog).toContain("t('workingDayRefused')");
+    /*
+     * cbfa8b0b (r336) — BOTH SENTENCES MOVED, AND THE RULE THEY STATE GOT WIDER.
+     *
+     * r299 pinned `eligibleDaysNote` ("Only a rest day, off day or public holiday can earn a credit") and
+     * a bare `workingDayRefused` ("An ordinary working day cannot earn a credit"). The approved plan for
+     * cbfa8b0b put both kinds of claim in one request, so BOTH became false by omission: extended hours
+     * past the shift end on an ordinary WORKING day now earn a credit.
+     *
+     * The dialog states the wider rule in `description`, and a working day in Section A is refused by
+     * `sectionA.workingDayRefused` — which no longer merely says no, it says where the claim belongs
+     * ("This date is a working day. Use Extended ordinary-day work instead."), in the reporter's own
+     * approved words. The two superseded keys still exist in the catalogues with no renderer, so pinning
+     * them here would have kept passing against dead strings while the screen said something else.
+     *
+     * The rule is still asserted — that is this case's subject — but at the keys that carry it now.
+     */
+    expect(dialog).toContain("t('description')");
+    expect(dialog).toContain("t('sectionA.workingDayRefused')");
+    expect(en.replacementRequest.sectionA.workingDayRefused).toMatch(/Extended ordinary-day work/);
     expect(read('app/leave/page.tsx')).toContain('dayKindAction={leaveCreditDayKindAction}');
   });
 
