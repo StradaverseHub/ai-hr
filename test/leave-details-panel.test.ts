@@ -140,8 +140,17 @@ describe('1f6fd6d8: the panel is ONE Leave Summary column in the reporter’s or
     // Brought Forward Forfeited carries the expiry date as its own sub-line, not as a separate row.
     expect(field('forfeited').noteSelect!(DATA)).toBe('2026-03-31');
     expect(field('forfeited').noteLabelKey).toBe('expiresOn');
-    // …and no OTHER row does, so the date appears exactly once, beside the figure it explains.
-    expect(summary().fields!.filter((f) => f.noteSelect).map((f) => f.key)).toEqual(['forfeited']);
+    // …and no other row carries the EXPIRY note, so the date appears exactly once, beside the figure it
+    // explains. r335 (6af80f5d) — UPDATED, NOT LOOSENED: the sub-line mechanism now also carries the
+    // rounded Earned to Date, so the set of rows with a note grew by one while the property this
+    // assertion exists for — one expiry date, on Brought Forward Forfeited — is asserted directly.
+    expect(summary().fields!.filter((f) => f.noteLabelKey === 'expiresOn').map((f) => f.key)).toEqual(['forfeited']);
+    expect(summary().fields!.filter((f) => f.noteSelect).map((f) => f.key)).toEqual(['ytdEntitled', 'forfeited']);
+    // The rounded figure is a note and NOT an addend: no sign, so it can never be read as part of the sum.
+    expect(field('ytdEntitled').noteLabelKey).toBe('roundedTo');
+    expect(field('ytdEntitled').sign).toBeUndefined();
+    // This fixture configures no rounding, so the sub-line is absent — every case below is untouched.
+    expect(field('ytdEntitled').noteSelect!(DATA)).toBeNull();
   });
 });
 
