@@ -2298,7 +2298,11 @@
         "availableDiffers": "{available} is the leave balance record's own figure, not added up from the lines above, which come to {column}.",
         "entitlementProrated": "They joined part way through the leave year, so the {annual} day allowance is prorated: {eligibleDays} eligible days out of {yearDays} gives {unrounded} days.",
         "entitlementRounded": "The Entitlement rounding rule in force takes {unrounded} to {final} days.",
-        "entitlementNotRounded": "No Entitlement rounding rule is in force, so the figure stands at {final} days."
+        "entitlementNotRounded": "No Entitlement rounding rule is in force, so the figure stands at {final} days.",
+        "sharedTakenIntro": "Drawn from this balance by each leave type that shares it:",
+        "sharedTakenItem": "{type}: {days}",
+        "sharedPendingIntro": "Awaiting approval against this balance, by each leave type that shares it:",
+        "sharedPendingItem": "{type}: {days}"
       }
     },
     "preview": {
@@ -3006,7 +3010,7 @@
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
         "balance": "Your remaining balance: total entitlement, including any brought forward and adjustments, minus leave taken.",
-        "share": "Days moved between leave types that share one balance: a minus where they were lent out, a plus where they were used.",
+        "share": "Days moved between leave types that share one balance, shown as a plain number of days on both halves: what a type drew from the pool, and on the pool's own row what it lent out.",
         "pendingShare": "The same, for days reserved by an application that is still waiting for a decision."
       },
       "statusGenerated": "Generated",
@@ -3029,7 +3033,11 @@
       "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
       "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})",
       "colShare": "Share",
-      "colPendingShare": "Pending Share"
+      "colPendingShare": "Pending Share",
+      "shareBadgeTip": "{cat, select, one {{v} day} other {{v} days}} of approved {type}, drawn from the {pool} pool.",
+      "pendingShareBadgeTip": "{cat, select, one {{v} day} other {{v} days}} of {type} awaiting approval, drawn from the {pool} pool.",
+      "colShareSource": "Share Source",
+      "colPendingShareSource": "Pending Share Source"
     },
     "typeLabel": "Type",
     "fromLabel": "From",

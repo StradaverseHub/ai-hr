@@ -2298,7 +2298,11 @@
         "availableDiffers": "{available} ialah angka rekod baki cuti itu sendiri, bukan dijumlahkan daripada baris di atas, yang berjumlah {column}.",
         "entitlementProrated": "Mereka menyertai pertengahan tahun cuti, jadi kelayakan {annual} hari dibahagikan pro rata: {eligibleDays} hari layak daripada {yearDays} memberi {unrounded} hari.",
         "entitlementRounded": "Peraturan pembundaran Kelayakan yang berkuat kuasa menjadikan {unrounded} kepada {final} hari.",
-        "entitlementNotRounded": "Tiada peraturan pembundaran Kelayakan berkuat kuasa, jadi angka kekal pada {final} hari."
+        "entitlementNotRounded": "Tiada peraturan pembundaran Kelayakan berkuat kuasa, jadi angka kekal pada {final} hari.",
+        "sharedTakenIntro": "Diambil daripada baki ini oleh setiap jenis cuti yang berkongsinya:",
+        "sharedTakenItem": "{type}: {days}",
+        "sharedPendingIntro": "Menunggu kelulusan terhadap baki ini, mengikut setiap jenis cuti yang berkongsinya:",
+        "sharedPendingItem": "{type}: {days}"
       }
     },
     "preview": {
@@ -3006,7 +3010,7 @@
         "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
         "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
         "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil.",
-        "share": "Hari yang dipindahkan antara jenis cuti yang berkongsi satu baki: tolak di tempat ia dipinjamkan, tambah di tempat ia digunakan.",
+        "share": "Hari yang dipindahkan antara jenis cuti yang berkongsi satu baki, ditunjukkan sebagai bilangan hari biasa pada kedua-dua belah: yang diambil daripada kumpulan, dan pada baris kumpulan itu sendiri yang dipinjamkan.",
         "pendingShare": "Sama, untuk hari yang ditempah oleh permohonan yang masih menunggu keputusan."
       },
       "statusGenerated": "Telah dijana",
@@ -3029,7 +3033,11 @@
       "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
       "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})",
       "colShare": "Kongsi",
-      "colPendingShare": "Kongsi Menunggu"
+      "colPendingShare": "Kongsi Menunggu",
+      "shareBadgeTip": "{cat, select, other {{v} hari}} {type} yang diluluskan, diambil daripada kumpulan {pool}.",
+      "pendingShareBadgeTip": "{cat, select, other {{v} hari}} {type} yang menunggu kelulusan, diambil daripada kumpulan {pool}.",
+      "colShareSource": "Sumber Kongsi",
+      "colPendingShareSource": "Sumber Kongsi Menunggu"
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",

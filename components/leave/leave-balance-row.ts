@@ -66,11 +66,14 @@ export type LeaveBalanceRow = {
    *  beside the status caption that already explains it, not a gap. null ⇒ no breakdown loaded at all, or
    *  the `eligible` ESS row is hidden for this type. */
   fullEntitlement: number | null;
-  /** 39136455 — SHARE: the finalised transfer between members of one pooled balance. Negative on the row
-   *  that LENDS the days out (the pool's own type), positive and equal on the row that used them. 0 for a
-   *  leave type that spends its own balance — an honest zero, because "how many days moved" always has an
-   *  answer for such a type. Gated on Taken, because it is the same days seen from the pool's side: a
-   *  tenant that hides what an employee has taken must not get the figure back through this column. */
+  /** 39136455 — SHARE: the finalised transfer between members of one pooled balance. On the row that LENDS
+   *  the days out (the pool's own type) it is the sum of what every borrower took; on a borrower it is what
+   *  that borrower took. 0 for a leave type that spends its own balance — an honest zero, because "how many
+   *  days moved" always has an answer for such a type. Gated on Taken, because it is the same days seen from
+   *  the pool's side: a tenant that hides what an employee has taken must not get the figure back through
+   *  this column.
+   *  2a57a007 — BOTH HALVES ARE POSITIVE. The pool row used to carry a minus; the sign is decided in
+   *  core/read.ts and that comment records why the pooled-balance invariant does not depend on it. */
   share: number | null;
   /** 39136455 — PENDING SHARE: the same, for days reserved by an application that is still awaiting a
    *  decision. Gated on Available, which is the figure pending already moves. */

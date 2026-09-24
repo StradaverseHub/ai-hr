@@ -137,9 +137,13 @@ describe('39136455 · Taken lands on the code it was filed under, and Share carr
     expect(byId.get(borrower)!.taken, 'the days show on the code the employee chose').toBe(2);
     expect(byId.get(pool)!.taken, 'and NOT on the pool, which is the whole complaint').toBe(0);
 
-    // …and the transfer is visible from both sides, equal and opposite.
+    // …and the transfer is visible from both sides.
+    // 2a57a007 — the pool's half USED TO BE −2. The minus was a display convention and the reporter read it
+    // as a deduction taken twice; it is gone, on this line and on every screen. The invariant that made the
+    // minus look load-bearing is about `balance`, not about this column — it is asserted untouched below and
+    // again in test/2a57a007-el-shared-pool-display.test.ts.
     expect(byId.get(borrower)!.share).toBe(2);
-    expect(byId.get(pool)!.share).toBe(-2);
+    expect(byId.get(pool)!.share).toBe(2);
   });
 
   it('a PENDING application shows as Pending Share, not yet as Share', async () => {
@@ -154,7 +158,8 @@ describe('39136455 · Taken lands on the code it was filed under, and Share carr
 
     const byId = await rowsById(employmentId);
     expect(byId.get(borrower)!.pendingShare).toBe(3);
-    expect(byId.get(pool)!.pendingShare).toBe(-3);
+    // 2a57a007 — was −3; see the note on Share above.
+    expect(byId.get(pool)!.pendingShare).toBe(3);
     expect(byId.get(borrower)!.share, 'nothing is finalised until it is approved').toBe(0);
     expect(byId.get(pool)!.share).toBe(0);
     // Pending is the reservation filed under THIS code…

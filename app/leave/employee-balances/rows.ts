@@ -7,7 +7,7 @@ import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 // row CARRY the breakdown it was derived from instead of the screen fetching one for itself.
 import type { EntitlementBreakdownData } from '@/components/leave/EntitlementBreakdown';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
-import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
+import { balanceStoryTypeId, isPoolBorrower, type SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
 /**
  * The Employee Balances table body (feedback 20c699f8), shared by the screen and its export so a
@@ -38,9 +38,11 @@ export type EmployeeBalanceRow = {
    *  row already shows as Eligible. Carried off the SAME `bd` as every other figure here, so the grid and
    *  the panel cannot quote two different full-year allowances. */
   fullEntitlement: number | null;
-  /** 39136455 — the pooled TRANSFER, between Adjustment and Balance. Negative on the row lending the days
-   *  out, positive on the row that used them. Carried off the same `deriveBalanceRow` the employee's own
-   *  grid uses, so HR's column and the employee's cannot disagree about how many days moved. */
+  /** 39136455 — the pooled TRANSFER, between Adjustment and Balance. Carried off the same
+   *  `deriveBalanceRow` the employee's own grid uses, so HR's column and the employee's cannot disagree
+   *  about how many days moved.
+   *  2a57a007 — POSITIVE ON BOTH HALVES now (the pool's row used to carry a minus); the sign, and why the
+   *  pooled-balance invariant is unaffected by it, are decided and explained in core/read.ts. */
   share: number | null;
   pendingShare: number | null;
   /** 31e39d74 — why YTD Entitled reads what it reads. Same value the employee's own screen shows, through
@@ -127,6 +129,27 @@ export async function employeeBalanceRows(
       // its export, and in the side-sheet. Identity for every type that is not in a pool.
       const bd = byType.get(balanceStoryTypeId(b)) ?? null;
       const row = deriveBalanceRow({ ...b, essView: {} }, bd);
+      /**
+       * 2a57a007 — A BORROWER'S DAYS ARE REPORTED UNDER SHARE, AND THEREFORE NOT ALSO UNDER TAKEN.
+       *
+       * 690d4400 and 39136455 between them made `taken` the days FILED UNDER THIS CODE, which was right and
+       * must not be reverted: before it, the Emergency Leave row printed the POOL's taken figure. But a
+       * borrower's `share` is the very same days seen from the pool's side, so the row printed one day twice —
+       * Taken 1.00 AND Share 1.00 — and a reader adding the columns found two days of Emergency Leave where
+       * one was taken. Pending Approval and Pending Share are the identical pair, one decision earlier.
+       *
+       * ⚠️ WHICH LAYER, AND WHY THIS ONE. The zero happens HERE, in the Employee Balances row builder, which
+       * is a DISPLAY layer shared by the screen and its export (so the downloaded file cannot disagree with
+       * the screen it exports — this file's header states that invariant). It deliberately does NOT happen in
+       * core/read.ts: `leaveBalances(...).taken` is `takenFiledBy`, still the honest answer to "how many days
+       * of Emergency Leave did this person take", and it is what the /me grid, the Explain panel's Taken line
+       * and every future consumer must keep reading. Nor in `deriveBalanceRow`, which is the pure mapping the
+       * employee's own grid shares: this is a decision about ONE screen's two adjacent columns, not about what
+       * a leave-balance row means.
+       *
+       * The POOL's row is untouched — its Taken is its own applications, and its Share is what it lent out.
+       */
+      const borrower = isPoolBorrower({ leaveTypeId: b.leaveTypeId, sharedBalance: row.sharedBalance });
       return {
         leaveTypeId: b.leaveTypeId,
         leaveType: row.leaveType,
@@ -140,8 +163,10 @@ export async function employeeBalanceRows(
         entitlementTemplateName: bd?.entitlementTemplateName ?? null,
         sharedBalance: row.sharedBalance,
         broughtForward: row.broughtForward,
-        taken: row.taken,
-        pending: b.pending,
+        // 2a57a007 — see `borrower` above: a borrower's days print under Share / Pending Share only.
+        // `row.taken` (null) stays null — an ESS-hidden figure must not become a 0.00 claim.
+        taken: borrower ? (row.taken == null ? null : 0) : row.taken,
+        pending: borrower ? 0 : b.pending,
         adjustment: row.adjustment,
         overutilized: row.overutilized,
         forfeitedBf: bd ? bd.forfeited : null,

@@ -10,14 +10,14 @@ import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { EmployeeSearchField } from '@/components/employee-search-field';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
-import { formatDays } from '@/lib/day-format';
+import { dayPluralCategory, formatDays } from '@/lib/day-format';
 // 31e39d74: HR's grid captions a 0.00 exactly as the employee's own grid does — one mapping, one wording.
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
   ENTITLEMENT_STATUS_TIP_KEY,
   entitlementStatusNeedsNotice,
 } from '@/lib/entitlement-status';
-import { otherContributors } from '@/lib/shared-leave-balance';
+import { isPoolBorrower, otherContributors, poolBadges } from '@/lib/shared-leave-balance';
 // r219 (7966ee35) — HR's half of "why is Replacement Leave in Lieu not available for this person". The
 // employee's own screen gained the same notice from the same read and the same component, which is the
 // point: an employee ringing HR about a missing button and the HR admin looking that person up must be
@@ -127,6 +127,55 @@ export default async function EmployeeBalancesPage({
   // Every column still renders through this ONE formatter — no per-column rounding, and a null figure
   // stays an em dash rather than becoming a "0.00" HR would read as a real zero balance.
   const num = (v: number | null) => formatDays(v);
+
+  /**
+   * 2a57a007 — WHOSE DAYS MADE UP THIS FIGURE, BESIDE THE FIGURE.
+   *
+   * Share on the pool's row is a SUM over every type that borrows from it, and a sum cannot be read: the
+   * reporter's own account has TWO pools (Emergency → Annual and Compassionate → Special), so "3.00" on the
+   * Annual row could be three days of Emergency Leave, or two of one code and one of another. One badge per
+   * contributing type, carrying that type's own LEAVE CODE and, in its tooltip, that type's own figure.
+   *
+   * ⚠️ THE BADGE IS DATA, NEVER THE LITERAL "EL". It is `code` off the contributing leave type, resolved by
+   * core/read.ts in the same pass that computed the figure (lib/shared-leave-balance.ts `poolBadges`). A
+   * hardcoded "EL" would be right on one tenant's Annual Leave row and wrong on the Special Leave row three
+   * rows below it, on the same screen, for the same employee.
+   *
+   * ⚠️ THE POOL'S ROW ONLY. On a BORROWER's row the figure is that row's own days and the row is already
+   * named by its own Leave Code cell; a badge there would say "EL" beside the Emergency Leave row.
+   *
+   * The tooltip is a native `title`, so it is IN THE HTML of a plain GET — the render check can read it, and
+   * it needs no hover, no JavaScript and no client island on a screen that already carries thirteen columns.
+   * `cat` SELECTS the plural and `v` PRINTS the figure — see lib/day-format.ts `dayPluralCategory` for why
+   * those are two arguments and not one.
+   */
+  const poolBadgeCells = (
+    r: (typeof rows)[number],
+    which: 'share' | 'pendingShare',
+    tipKey: 'shareBadgeTip' | 'pendingShareBadgeTip',
+  ) => {
+    if (!r.sharedBalance || isPoolBorrower(r)) return null;
+    const badges = poolBadges(r.sharedBalance, which);
+    if (badges.length === 0) return null;
+    return (
+      <div className="mt-0.5 flex flex-wrap justify-end gap-1" data-testid={`pool-badges-${which}`}>
+        {badges.map((c) => (
+          <span
+            key={c.leaveTypeId}
+            className="rounded border border-border px-1 text-[10px] font-medium text-muted-foreground"
+            title={tMe(`leaveBalanceTable.${tipKey}`, {
+              v: formatDays(c[which]),
+              cat: dayPluralCategory(c[which], locale),
+              type: c.leaveType,
+              pool: r.sharedBalance!.sourceLeaveTypeName,
+            })}
+          >
+            {c.code ?? c.leaveType}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   const params = () => {
     const p = new URLSearchParams();
@@ -458,8 +507,18 @@ export default async function EmployeeBalancesPage({
                       <td className={tdNum}>{num(r.taken)}</td>
                       <td className={tdNum}>{num(r.pending)}</td>
                       <td className={tdNum}>{num(r.adjustment)}</td>
-                      <td className={tdNum}>{num(r.share)}</td>
-                      <td className={tdNum}>{num(r.pendingShare)}</td>
+                      {/* 2a57a007 — the figure, and under it one badge per contributing leave type. Same
+                          shape as the YTD Entitled cell three columns left: a caption UNDER the figure, in
+                          the existing column, because thirteen columns already overflow this table on a
+                          laptop (026e16b9 measured the last 23px out of the header). */}
+                      <td className={tdNum}>
+                        <div>{num(r.share)}</div>
+                        {poolBadgeCells(r, 'share', 'shareBadgeTip')}
+                      </td>
+                      <td className={tdNum}>
+                        <div>{num(r.pendingShare)}</div>
+                        {poolBadgeCells(r, 'pendingShare', 'pendingShareBadgeTip')}
+                      </td>
                       <td className={tdNum}>{num(r.overutilized)}</td>
                       <td className={tdNum}>{num(r.forfeitedBf)}</td>
                       <td className={`${tdNum} font-medium`}>{num(r.balance)}</td>

@@ -2298,7 +2298,11 @@
         "availableDiffers": "{available} là số liệu riêng của bản ghi số dư nghỉ phép, không cộng từ các dòng trên, vốn cộng lại bằng {column}.",
         "entitlementProrated": "Nhân viên vào làm giữa năm nghỉ phép, nên quyền lợi {annual} ngày được chia theo tỷ lệ: {eligibleDays} ngày đủ điều kiện trên {yearDays} ngày cho ra {unrounded} ngày.",
         "entitlementRounded": "Quy tắc làm tròn Quyền lợi đang áp dụng đưa {unrounded} thành {final} ngày.",
-        "entitlementNotRounded": "Không có quy tắc làm tròn Quyền lợi nào đang áp dụng, nên con số giữ nguyên {final} ngày."
+        "entitlementNotRounded": "Không có quy tắc làm tròn Quyền lợi nào đang áp dụng, nên con số giữ nguyên {final} ngày.",
+        "sharedTakenIntro": "Đã lấy từ số dư này theo từng loại phép dùng chung:",
+        "sharedTakenItem": "{type}: {days}",
+        "sharedPendingIntro": "Đang chờ duyệt trên số dư này, theo từng loại phép dùng chung:",
+        "sharedPendingItem": "{type}: {days}"
       }
     },
     "preview": {
@@ -3006,7 +3010,7 @@
         "adjustment": "Thay đổi thủ công hoặc một lần đối với số dư, chẳng hạn ngày nghỉ lễ.",
         "overutilized": "Mức số dư của bạn xuống dưới 0, nếu có.",
         "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng.",
-        "share": "Số ngày chuyển giữa các loại phép dùng chung một số dư: âm ở nơi cho mượn, dương ở nơi sử dụng.",
+        "share": "Số ngày chuyển giữa các loại phép dùng chung một số dư, hiển thị là số ngày thông thường ở cả hai bên: số mà một loại đã lấy từ nguồn chung, và trên dòng của chính nguồn chung là số đã cho mượn.",
         "pendingShare": "Tương tự, cho số ngày được giữ bởi đơn còn chờ duyệt."
       },
       "statusGenerated": "Đã tạo",
@@ -3029,7 +3033,11 @@
       "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
       "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})",
       "colShare": "Chia sẻ",
-      "colPendingShare": "Chia sẻ chờ duyệt"
+      "colPendingShare": "Chia sẻ chờ duyệt",
+      "shareBadgeTip": "{cat, select, other {{v} ngày}} {type} đã duyệt, lấy từ nguồn chung {pool}.",
+      "pendingShareBadgeTip": "{cat, select, other {{v} ngày}} {type} đang chờ duyệt, lấy từ nguồn chung {pool}.",
+      "colShareSource": "Nguồn chia sẻ",
+      "colPendingShareSource": "Nguồn chia sẻ chờ duyệt"
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",

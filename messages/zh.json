@@ -2298,7 +2298,11 @@
         "availableDiffers": "{available} 是假期余额记录本身的数字，并非由上方各行相加得出；上方各行合计为 {column}。",
         "entitlementProrated": "该员工在休假年度中途入职，因此 {annual} 天额度按比例折算：{yearDays} 天中有 {eligibleDays} 天符合条件，得出 {unrounded} 天。",
         "entitlementRounded": "当前生效的额度取整规则将 {unrounded} 变为 {final} 天。",
-        "entitlementNotRounded": "当前没有生效的额度取整规则，因此数字保持为 {final} 天。"
+        "entitlementNotRounded": "当前没有生效的额度取整规则，因此数字保持为 {final} 天。",
+        "sharedTakenIntro": "按共用此余额的各假期类型列出的取用天数：",
+        "sharedTakenItem": "{type}：{days}",
+        "sharedPendingIntro": "按共用此余额的各假期类型列出的待审批天数：",
+        "sharedPendingItem": "{type}：{days}"
       }
     },
     "preview": {
@@ -3006,7 +3010,7 @@
         "adjustment": "对余额的手动或一次性变更，例如节日额度。",
         "overutilized": "您的余额低于零的程度（如有）。",
         "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。",
-        "share": "在共用同一余额的假期类型之间调剂的天数：借出方为负，使用方为正。",
+        "share": "在共用同一余额的假期类型之间调剂的天数，两边均显示为普通天数：使用方从额度池中取用的天数，以及额度池本行借出的天数。",
         "pendingShare": "同上，适用于尚待审批的申请所预留的天数。"
       },
       "statusGenerated": "已生成",
@@ -3029,7 +3033,11 @@
       "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
       "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）",
       "colShare": "调剂",
-      "colPendingShare": "待批调剂"
+      "colPendingShare": "待批调剂",
+      "shareBadgeTip": "已批准的 {type} {cat, select, other {{v} 天}}，取自 {pool} 额度池。",
+      "pendingShareBadgeTip": "待审批的 {type} {cat, select, other {{v} 天}}，取自 {pool} 额度池。",
+      "colShareSource": "调剂来源",
+      "colPendingShareSource": "待批调剂来源"
     },
     "typeLabel": "类型",
     "fromLabel": "从",
