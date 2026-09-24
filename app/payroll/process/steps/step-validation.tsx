@@ -86,7 +86,16 @@ export function StepValidation({
       .then((a) => {
         if (!live) return;
         setAdvisory(a);
-        const hasBlockers = a.missingCompensation.length + (a.zeroBasic?.length ?? 0) > 0;
+        // Item 1bb09a73 adds tp3YearMismatch, so the Process button is disabled for exactly the runs
+        // generatePayslips will refuse. It must agree with the `blockers` count further down this file;
+        // one file counting blockers two ways is how a card and a button disagree.
+        //
+        // ⚠️ MEASURED, PRE-EXISTING AND DELIBERATELY NOT CHANGED HERE: `unpayablePayMode` (ADR-0078) is
+        // enforced server-side in generatePayslips but is counted by NEITHER of this file's two counts,
+        // nor by the batch card's, nor by app/payroll/actions.ts. A custom_period employee therefore
+        // leaves Process enabled and the run throws. That belongs to ADR-0078's own item, not this one.
+        const hasBlockers =
+          a.missingCompensation.length + (a.zeroBasic?.length ?? 0) + (a.tp3YearMismatch?.length ?? 0) > 0;
         onStatusChange({ loading: false, hasBlockers });
       })
       .catch(() => {

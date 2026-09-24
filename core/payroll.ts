@@ -265,13 +265,23 @@ export class ResetReasonRequiredError extends Error {
 }
 
 /** Pre-processing validation (feedback f1564110, Phase 1): one or more in-scope, period-active
- *  employees have NO current compensation row. Before this check they were SILENTLY dropped from the
- *  run (the generation employee query inner-joins compensation) — now generation fails closed until
- *  the employee profiles are completed (or the batch scope is narrowed to exclude them). */
+ *  employees fail a BLOCKING readiness check. It began as "no current compensation row" (before the
+ *  check they were SILENTLY dropped, because the generation employee query inner-joins compensation)
+ *  and has since taken on `zeroBasic`, `unpayablePayMode` (ADR-0078) and `tp3YearMismatch` (item
+ *  1bb09a73). Generation fails closed until the profiles are completed (or the scope narrowed).
+ *
+ *  ⚠️ THE MESSAGE NAMES NO CAUSE, and item 1bb09a73 is why it stopped: it used to end "has no current
+ *  salary record", which was already untrue for two of the four blockers and would have sent an
+ *  operator hunting a salary record over a Form TP3 year mismatch. The per-employee CAUSE is on the
+ *  pre-processing checks card and in the screen's own translated message; this class carries the count.
+ *
+ *  ⚠️ THE PREFIX IS LOAD-BEARING. `reasonForError` in core/payroll-run-group.ts matches
+ *  `/^Payroll cannot be processed: \d+ employees? in scope /` to map this to PRE_PROCESS_BLOCKED, so the
+ *  text up to and including "in scope " may not change without changing that regex with it. */
 export class PreProcessBlockedError extends Error {
   constructor(public readonly count: number) {
     super(
-      `Payroll cannot be processed: ${count} employee${count === 1 ? '' : 's'} in scope ${count === 1 ? 'has' : 'have'} no current salary record`,
+      `Payroll cannot be processed: ${count} employee${count === 1 ? '' : 's'} in scope ${count === 1 ? 'is' : 'are'} not ready — see the pre-processing checks`,
     );
     this.name = 'PreProcessBlockedError';
   }
