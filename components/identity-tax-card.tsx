@@ -3,7 +3,12 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { TaxCategoryField } from './tax-category-field';
-import { ChildReliefModeField, DisabledReliefField, DisabledReliefHints } from './tax-relief-fields';
+import {
+  ChildReliefModeField,
+  ChildReliefModeHint,
+  DisabledReliefField,
+  DisabledReliefHints,
+} from './tax-relief-fields';
 
 // Inlined design tokens (server module) so this stays a clean client island — same pattern as bank-info-card.tsx.
 const inputCls =
@@ -241,6 +246,13 @@ export function IdentityTaxCard({
               />
             </Field>
           </div>
+          {/* 99b2d6c0 (r336) — what the third mode IS, said before it is chosen rather than after. The
+              grid below only appears once "Auto (from table)" is picked, so without this line the option
+              is a word whose consequence — a tertiary-study child worth several times a child under 18,
+              and an unkeyed grid worth nothing at all — is invisible at the moment of choosing. Rendered
+              outside the two-column grid above so it spans the fieldset and stays out of the select's
+              accessible name (see the note on ChildReliefModeHint). */}
+          <ChildReliefModeHint />
           {/* Item d64d0df4 — the official five-category grid, rendered ONLY for 'auto_table'. Whole
               numbers of zero or more; the 100% and 50% columns are the LHDN claim split (100% to one
               parent, or 50% each when parents share the claim), and a 50% child is worth exactly half

@@ -114,17 +114,31 @@ export function ChildReliefModeField(
           </option>
         ))}
       </select>
-      {/* 99b2d6c0 (r336) — THE THIRD OPTION USED TO BE A WORD IN A DROPDOWN AND NOTHING ELSE. It was
-          shipped priced and working in ruleset 2026.7 (item d64d0df4) and then found by almost nobody,
-          because "Auto (from table)" says neither what table nor what it is worth, and its grid only
-          appears AFTER it is picked. This hint is the reachability half of item 99b2d6c0: it says what
-          the option does, that a child in tertiary study is worth several times a child under 18, that
-          an unkeyed grid claims NOTHING (the foot-gun — it would RAISE the employee's tax), and where to
-          see the ringgit for everybody at once. Rendered unconditionally, on both screens that offer the
-          mode, because a hint that appears only once the option is chosen cannot help anybody find it. */}
-      <span className="text-xs text-muted-foreground">{t('childReliefModeAutoTableHint')}</span>
     </Field>
   );
+}
+
+/**
+ * 99b2d6c0 (r336) — WHAT "AUTO (FROM TABLE)" ACTUALLY IS.
+ *
+ * THE THIRD OPTION USED TO BE A WORD IN A DROPDOWN AND NOTHING ELSE. It shipped priced and working in
+ * ruleset 2026.7 (item d64d0df4) and was then found by almost nobody: "Auto (from table)" says neither
+ * what table nor what it is worth, and its five-category grid only appears AFTER the option is picked.
+ * This hint is the reachability half of item 99b2d6c0. It says what the option does, that a child in
+ * full-time tertiary study is worth several times a child under 18, that an UNKEYED grid claims NOTHING
+ * — the foot-gun, because it would RAISE the employee's tax — and where to see the ringgit for everybody
+ * at once (the Child relief review screen).
+ *
+ * ⚠️ A SEPARATE COMPONENT, NOT A LINE INSIDE `Field`, and that is not a style choice. `Field` renders its
+ * children INSIDE the `<label>`, so a paragraph placed there becomes part of the select's ACCESSIBLE
+ * NAME: a screen reader would announce the whole hint as the name of the control, and
+ * `getByLabelText('Child relief mode')` stops matching — which is exactly how
+ * test/draft-record-fields.dom.test.tsx caught the first attempt. Rendered as a sibling instead, the same
+ * shape `DisabledReliefHints` above already uses, so each screen places it where its own grid has room.
+ */
+export function ChildReliefModeHint() {
+  const t = useTranslations('people.detail');
+  return <p className="text-xs text-muted-foreground">{t('childReliefModeAutoTableHint')}</p>;
 }
 
 /**
