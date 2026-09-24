@@ -39,7 +39,10 @@
  * them — the same fail-open class scripts/check-audit-chain-gate.ts documents.
  */
 import postgres from 'postgres';
-import { eligibilityRuleList, isProfileEligible, type LeaveEligibility } from '../core/leave';
+// ⚠️ THROUGH THE PACK FACADE, not `core/leave` (ADR-0080 D9/D11, test/leave-pack-drift.test.ts). The
+// audited kernel-contract-debt allowlist only ever SHRINKS, so a new script adding a fifth `scripts/` entry
+// to silence the ratchet would be the wrong direction — r90's approval-rule script settled that precedent.
+import { eligibilityRuleList, isProfileEligible, type LeaveEligibility } from '../packs/leave/service';
 import { ELIGIBILITY_GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 
 type Row = {

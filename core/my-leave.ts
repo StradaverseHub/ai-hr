@@ -288,8 +288,8 @@ export async function myLeaveDashboard(
     // the eligible-but-inactive tail adds a row for every active type they ARE eligible for, so nothing
     // survives only when nothing applies to them. Offering 2025 because the ledger holds a Maternity
     // accrual they were never eligible for would put the removed card's history back in the year
-    // selector, which is the same leak in a smaller control. `leaveYearsFor` remains the reading for
-    // anybody who asks the ledger that question directly.
+    // selector, which is the same leak in a smaller control. The helper that used to be called here
+    // (`leaveYearsFor`) was deleted rather than left uncalled — see the note where it stood.
     return { today, currentYear, selectedYear: currentYear, years: [currentYear], cards: [] };
   }
 

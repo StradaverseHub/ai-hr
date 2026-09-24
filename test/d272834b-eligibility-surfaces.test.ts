@@ -378,9 +378,37 @@ describe('d272834b · the remediation report lists and never reverses', () => {
 
   it('and it decides with the gate rather than a restated copy of the rule', () => {
     const src = readFileSync(new URL('../scripts/report-ineligible-leave-balances.ts', import.meta.url), 'utf8');
-    expect(src).toContain("from '../core/leave'");
+    // Through the pack facade (ADR-0080 D9/D11), never `core/leave` directly — the ratchet's allowlist only
+    // shrinks, so a new script must not be added to it.
+    expect(src).toContain("from '../packs/leave/service'");
+    expect(src).not.toMatch(/from '\.\.\/core\/leave'/);
     expect(src).toContain('isProfileEligible(elig, { gender: r.gender, marital: r.marital_status }, \'exclude\')');
     expect(src).toContain('eligibilityRuleList(');
+  });
+});
+
+describe('d272834b · the Mobile App Preview carries no leave data to gate', () => {
+  /**
+   * ⚠️ THE BRIEF NAMED FOUR SURFACES AND ONE OF THEM DOES NOT EXIST AS A SURFACE. `/mobile-preview` is a
+   * design mock (ca2f2fef): `app/mobile-preview/page.tsx`'s only server call is the session guard, and
+   * `components/mobile-preview/mobile-app.tsx` prints THREE hardcoded figures — Annual 12.0, Sick 14.0,
+   * Unpaid 0.0 — from the message catalogue. It never reads `leave_type`, never reads an employment, and
+   * never mentions Maternity Leave, so there is nothing on it for an eligibility rule to apply to. Saying
+   * "the mobile preview is now gated" would have been a claim about a screen that holds no data.
+   *
+   * This guard exists so that stays TRUE rather than merely true today. The moment that mock is wired to a
+   * real balance read it becomes a fourth employee-facing surface, and it goes red here until whoever wires
+   * it has decided which side of `includeIneligible` it is on.
+   */
+  it('reads no employee, no leave type and no balance — so wiring it up must fail this guard', () => {
+    const src = readFileSync(new URL('../components/mobile-preview/mobile-app.tsx', import.meta.url), 'utf8');
+    const page = readFileSync(new URL('../app/mobile-preview/page.tsx', import.meta.url), 'utf8');
+    for (const forbidden of ['leaveBalances', 'myLeaveDashboard', 'listEligibleLeaveTypesFor', '@/core/read', '@/core/my-leave']) {
+      expect(src.includes(forbidden), `the mock must not read ${forbidden}`).toBe(false);
+      expect(page.includes(forbidden), `the preview page must not read ${forbidden}`).toBe(false);
+    }
+    // And the figures really are literals rather than a read that merely looks like one.
+    expect(src).toMatch(/\[t\('leaveBalance\.annual'\), '12\.0'\]/);
   });
 });
 
