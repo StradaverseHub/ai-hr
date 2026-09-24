@@ -47,6 +47,14 @@ import { ChildReliefAmountsCard, ChildReliefReviewTable } from '@/components/chi
  * in its own right; RLS decides which employments exist at all, so a company-scoped administrator sees
  * their companies and the totals are the totals of what they can see.
  */
+/**
+ * The SAME ringgit formatting the table uses — two fixed decimals, en-MY grouping, in every locale.
+ * Declared here rather than imported from the client island: a non-component export of a 'use client'
+ * module becomes a client reference, which a server component cannot call.
+ */
+const money = (n: number) =>
+  new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
 export default async function ChildReliefReviewPage() {
   const s = await requireAdmin();
   const t = await getTranslations('people.childRelief');
@@ -83,11 +91,11 @@ export default async function ChildReliefReviewPage() {
             <p className="mt-1 text-xs text-muted-foreground">{t('statChildren')}</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold tabular-nums">{view.totals.todayRM.toFixed(2)}</p>
+            <p className="text-2xl font-semibold tabular-nums">{money(view.totals.todayRM)}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t('statTodayRM')}</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold tabular-nums">{view.totals.switchRM.toFixed(2)}</p>
+            <p className="text-2xl font-semibold tabular-nums">{money(view.totals.switchRM)}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t('statSwitchRM')}</p>
           </div>
           <div>
@@ -96,7 +104,7 @@ export default async function ChildReliefReviewPage() {
                 view.totals.deltaRM < 0 ? 'text-amber-700 dark:text-amber-400' : ''
               }`}
             >
-              {view.totals.deltaRM > 0 ? `+${view.totals.deltaRM.toFixed(2)}` : view.totals.deltaRM.toFixed(2)}
+              {view.totals.deltaRM > 0 ? `+${money(view.totals.deltaRM)}` : money(view.totals.deltaRM)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{t('statDeltaRM')}</p>
           </div>
