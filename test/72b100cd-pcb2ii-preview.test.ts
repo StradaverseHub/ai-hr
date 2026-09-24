@@ -127,8 +127,27 @@ const url = (
 
 const ok = () => ({ companyId: b.companyId, year: YEAR, ids: [employmentId] });
 
-/** The PDF, with pdf-lib's own CreationDate/ModDate blanked — two renders a second apart differ only there. */
-const stable = (buf: Buffer) => buf.toString('latin1').replace(/D:\d{14}/g, 'D:00000000000000');
+/**
+ * The PDF, made byte-comparable between two renders.
+ *
+ * ⚠️ BLANKING `D:\d{14}` IN THE RAW BYTES IS NOT ENOUGH, AND THAT IS WHY THIS IS NOT A ONE-LINER.
+ * `pdf-lib`'s `save()` defaults to `useObjectStreams: true`, so the Info dictionary — CreationDate and
+ * ModDate with it — lands INSIDE A DEFLATE STREAM, where a text regex cannot reach. Two renders that
+ * straddle a second therefore differ by a few bytes inside a compressed block, and the raw comparison
+ * fails. r331 measured exactly that and said so ("the delta is pdf-lib's timestamp inside a deflate
+ * stream"); the regex was written anyway. It then passed three gates by luck and went red under gate
+ * load in r334 chunk 5.
+ *
+ * So: reload, stamp both dates to a constant, and re-save WITHOUT object streams, which puts the whole
+ * document back in the clear where a difference in CONTENT is still a difference.
+ */
+const stable = async (buf: Buffer): Promise<string> => {
+  const doc = await PDFDocument.load(buf);
+  const fixed = new Date(0);
+  doc.setCreationDate(fixed);
+  doc.setModificationDate(fixed);
+  return Buffer.from(await doc.save({ useObjectStreams: false })).toString('latin1');
+};
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -188,7 +207,7 @@ describe('72b100cd · the preview is the download, opened instead of saved', () 
     expect(p.status).toBe(200);
     expect(d.status).toBe(200);
     const [pb, db] = [Buffer.from(await p.arrayBuffer()), Buffer.from(await d.arrayBuffer())];
-    expect(stable(pb)).toBe(stable(db));
+    expect(await stable(pb)).toBe(await stable(db));
     expect(d.headers.get('Content-Disposition')).toMatch(/^attachment;/);
     // Same file NAME too — a previewed form and a downloaded one land on disk identically.
     const nameOf = (h: string | null) => (h ?? '').replace(/^(inline|attachment); /, '');
