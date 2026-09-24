@@ -1,0 +1,121 @@
+<meta charset="utf-8">
+<title>Draft employee — both pieces already exist on the active screen</title>
+<!--
+  da7463b4. Measured 2026-09-24 on main at 5d0e0c6b.
+  IC -> DOB ALREADY EXISTS TWICE: `setIcAction` (item 354a500d, app/admin/personnel/[employmentId]/actions.ts:1675)
+  is the manual-entry path on the ACTIVE employee's Profile tab, and core/import.ts:1068 (b9fd8fd5) makes
+  the importer "behave like manual entry", calling `pack.statutory.dobFromIC(...)`. `dobOnlyIfEmpty`
+  guarantees an existing DOB is never overwritten; an IC whose first six digits form no real calendar date
+  derives nothing and is skipped, not failed.
+  BOTH ADDRESS BLOCKS ALREADY EXIST ON `person`: permanentAddressLine1..3 / permanentPostcode /
+  permanentCity / permanentState / permanentCountry (the block r253 made the Contact & Address card write),
+  and the correspondence* set beside it.
+  The draft wizard is app/admin/personnel/new/{wizard,create-form,actions}.tsx and uses neither.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1040px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;background:#e3f3ea;color:var(--ok)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .card{border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+ .ch{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .f{display:flex;justify-content:space-between;gap:10px;padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9}
+ .f:last-child{border-bottom:none}
+ .f .k{color:var(--mf)}
+ .f .box{flex:1;max-width:175px;border:1px solid var(--rule);border-radius:4px;height:17px;background:#fdfdfe}
+ .f .val{font-weight:700;font-variant-numeric:tabular-nums}
+ .f.derived{background:#f4faf6}
+ .f.derived .k{color:var(--ok);font-weight:600}
+ .f.missing{background:#fdf6f5;color:var(--bad)}
+ .f.new{background:#eef0fb}
+ .f.new .k{color:var(--primary);font-weight:700}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Draft employee &mdash; both things you asked for already work elsewhere</h1>
+  <p class="sub">The active employee screen derives the date of birth and keeps both addresses. The draft screen just never learned.</p>
+
+  <div class="sec">
+    <h2><span class="pill">ALREADY BUILT ELSEWHERE</span><b>1.</b> NRIC fills in Date of Birth and Age</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">Draft screen today</p>
+          <div class="card">
+            <div class="ch">Create New Employee &mdash; Profile</div>
+            <div class="f"><span class="k">Nationality</span><span class="val">Malaysian</span></div>
+            <div class="f"><span class="k">NRIC</span><span class="val">880214-10-5566</span></div>
+            <div class="f missing"><span class="k">Date of birth</span><span class="val">&mdash; typed by hand &mdash;</span></div>
+            <div class="f missing"><span class="k">Age</span><span class="val">Not available</span></div>
+          </div>
+        </div>
+        <div>
+          <p class="tag a">Draft screen after &mdash; the same behaviour the active screen has</p>
+          <div class="card">
+            <div class="ch">Create New Employee &mdash; Profile</div>
+            <div class="f"><span class="k">Nationality</span><span class="val">Malaysian</span></div>
+            <div class="f"><span class="k">NRIC</span><span class="val">880214-10-5566</span></div>
+            <div class="f derived"><span class="k">Date of birth</span><span class="val">14 Feb 1988</span></div>
+            <div class="f derived"><span class="k">Age</span><span class="val">38</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="okbox">
+        <b>This is not new arithmetic.</b> The active employee&rsquo;s Profile tab already reads the date of
+        birth out of the NRIC, and so does the bulk importer &mdash; deliberately, so that an imported
+        employee&rsquo;s Age never shows &ldquo;Not available&rdquo;. The draft screen is the one place that
+        does not. It will use the same routine, with the same two safeguards: <b>an incomplete or impossible
+        NRIC fills in nothing</b>, and <b>a date of birth already typed in is never overwritten</b>.
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill">ALREADY STORED</span><b>2.</b> Permanent and correspondence address</h2>
+    <div class="bd">
+      <div class="card" style="max-width:480px">
+        <div class="ch">Create New Employee &mdash; Profile</div>
+        <div class="f new"><span class="k">Permanent address</span><span class="box"></span></div>
+        <div class="f new"><span class="k">Postcode / City / State</span><span class="box"></span></div>
+        <div class="f new"><span class="k">Correspondence same as permanent</span><span class="val">&#10004;</span></div>
+        <div class="f new"><span class="k">Correspondence address</span><span class="val" style="color:var(--mf);font-weight:400">follows the permanent one</span></div>
+      </div>
+      <p class="note"><b>Both address blocks already exist on the employee record</b> &mdash; the permanent
+        one the Contact &amp; Address card writes, and a second correspondence block beside it for post that
+        goes somewhere other than home. The draft screen simply does not offer them, so the address has to be
+        added after the employee is activated.</p>
+      <p class="note">Ticking <b>Same as permanent</b> keeps the two in step rather than copying once and
+        letting them drift &mdash; so correcting the permanent address later does not leave old post going to
+        the wrong place.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Why this is smaller than it looks</h3>
+    <p><b>Nothing new is stored and nothing new is calculated.</b> Every field already exists on the employee
+      record and every behaviour already exists on the active screen. The work is bringing the draft screen to
+      the same place, using the same code rather than a second copy of it &mdash; which is what keeps the two
+      screens from drifting apart again.</p>
+    <p><b>No existing employee is touched</b>, and a draft saved today keeps everything already entered.</p>
+  </div>
+</div>
