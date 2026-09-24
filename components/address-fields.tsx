@@ -39,6 +39,7 @@
 
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
+import { SameAsPermanentAddressControlled } from '@/components/same-as-permanent-address';
 import { ProfileOptionSelect, ProfileOptionSelectControlled, type ProfileOptionChoice } from '@/components/profile-option-select';
 
 /** The seven values one block holds, keyed by the id suffix rather than by column, so ONE type serves
@@ -127,6 +128,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
           />
         ) : (
           <ProfileOptionSelectControlled
+            id={id('state')}
             value={value.state}
             options={stateOptions}
             disabled={disabled}
@@ -148,6 +150,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
           />
         ) : (
           <ProfileOptionSelectControlled
+            id={id('country')}
             value={value.country}
             options={countryOptions}
             disabled={disabled}
@@ -156,6 +159,88 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
             onChange={(v) => props.onChange({ country: v })}
           />
         )}
+      </Field>
+    </>
+  );
+}
+
+
+/**
+ * The two block headings and the tick's label — read HERE, in a single-namespace file, rather than passed
+ * down as props (the precedent is `PassportSectionTitle`, components/passport-fields.tsx).
+ *
+ * THAT IS NOT A STYLE CHOICE. app/admin/personnel/new/wizard.tsx uses `people.wizard` and nothing else;
+ * the moment it reads a second namespace, test/i18n-coverage.test.ts check C SKIPS THE WHOLE FILE and
+ * every `people.wizard.*` key in that screen silently stops being checked. So the record's own words come
+ * across inside components that already speak `people.detail`, and the draft gains no key of its own —
+ * which also means it cannot word an address question differently from the record it becomes.
+ */
+export function PermanentAddressTitle({ className }: { className?: string }) {
+  const t = useTranslations('people.detail');
+  return <p className={className ?? 'text-sm font-medium text-foreground'}>{t('permanentAddressTitle')}</p>;
+}
+
+export function CorrespondenceAddressTitle({ className }: { className?: string }) {
+  const t = useTranslations('people.detail');
+  return <p className={className ?? 'text-sm font-medium text-foreground'}>{t('correspondenceAddressTitle')}</p>;
+}
+
+/** The tick, labelled with the record's own `people.detail.sameAsPermanent`. See
+ *  SameAsPermanentAddressControlled for what it promises on a draft and how that differs from the
+ *  activated record's transient version. */
+export function SameAsPermanentTick({
+  checked,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  const t = useTranslations('people.detail');
+  return <SameAsPermanentAddressControlled label={t('sameAsPermanent')} checked={checked} onChange={onChange} className={className} />;
+}
+
+/**
+ * The Correspondence block's OWN Mobile / Home phone pair (item bf953339), as the activated record
+ * renders it: independent of the person's `phone` / `homePhone` so the correspondence contact may differ,
+ * and copied together with the address by "same as permanent" (lib/address-blocks.ts pairs them).
+ *
+ * CONTROLLED ONLY. The activated record's copy of this pair is plain `name`d inputs inside its own
+ * server-action form, written inline in that page beside the `corr-` ids the island needs; there is
+ * nothing for a `form` mode here to add that the page does not already say more directly.
+ */
+export function CorrespondencePhoneFields({
+  mobile,
+  home,
+  disabled,
+  onChange,
+}: {
+  mobile?: string;
+  home?: string;
+  disabled?: boolean;
+  onChange: (patch: { correspondenceMobilePhone?: string; correspondenceHomePhone?: string }) => void;
+}) {
+  const t = useTranslations('people.detail');
+  return (
+    <>
+      <Field label={t('phone')}>
+        <input
+          id="corr-mobile-phone"
+          className={inputCls}
+          value={mobile ?? ''}
+          disabled={disabled}
+          onChange={(e) => onChange({ correspondenceMobilePhone: e.target.value })}
+        />
+      </Field>
+      <Field label={t('homePhone')}>
+        <input
+          id="corr-home-phone"
+          className={inputCls}
+          value={home ?? ''}
+          disabled={disabled}
+          onChange={(e) => onChange({ correspondenceHomePhone: e.target.value })}
+        />
       </Field>
     </>
   );

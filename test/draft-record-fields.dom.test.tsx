@@ -65,6 +65,8 @@ const OPTIONS = {
   },
   relationshipOptions: [{ value: 'spouse', label: 'Spouse' }],
   countryOptions: [{ value: 'Malaysia', label: 'Malaysia' }],
+  // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks render.
+  stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
 };
 
 /** A draft as it arrives after Create, plus the two values page.tsx seeds (item a72610af). */

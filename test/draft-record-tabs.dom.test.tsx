@@ -73,6 +73,8 @@ const OPTIONS = {
     { value: 'child', label: 'Child' },
   ],
   countryOptions: [{ value: 'Malaysia', label: 'Malaysia' }],
+  // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks render.
+  stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
 };
 
 /** A draft as it really arrives after Create: a company, a name, an e-mail, a held ID, nothing else. */

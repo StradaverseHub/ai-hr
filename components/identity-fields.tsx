@@ -158,9 +158,6 @@ export function IdentityNumberField(
          */
         dateOfBirth?: string;
         onDateOfBirthChange?: (dateOfBirth: string) => void;
-        /** Shown when twelve digits do not form a real date. The record's own key, passed in by the
-         *  caller that has it — this component is rendered by a client parent in controlled mode. */
-        invalidDateNote?: string;
       }
   ),
 ) {
@@ -193,8 +190,6 @@ export function IdentityNumberField(
             onChange={props.onChange}
             dateOfBirth={props.dateOfBirth}
             onDateOfBirthChange={props.onDateOfBirthChange}
-            invalidDateNote={props.invalidDateNote}
-            label={t('icNumber')}
           />
         )}
       </Field>
@@ -224,16 +219,17 @@ function ControlledIcNumberInput({
   onChange,
   dateOfBirth,
   onDateOfBirthChange,
-  invalidDateNote,
-  label,
 }: {
   icNumber?: string;
   onChange: (icNumber: string) => void;
   dateOfBirth?: string;
   onDateOfBirthChange?: (dateOfBirth: string) => void;
-  invalidDateNote?: string;
-  label: string;
 }) {
+  // The labels are read HERE rather than passed in, so this file stays single-namespace and
+  // test/i18n-coverage.test.ts check C keeps resolving every key in it (a file using two namespaces is
+  // SKIPPED by that check, silently — which is how the wizard would have lost its whole coverage had the
+  // note been handed down as a prop).
+  const t = useTranslations('people.detail');
   const [showNote, setShowNote] = useState(false);
   // The last date WE derived — a ref, not state, because nothing re-renders when it changes. It is what
   // lets a CORRECTED IC number move the Date of Birth while a hand-typed one is never touched.
@@ -259,9 +255,9 @@ function ControlledIcNumberInput({
         onChange={(e) => apply(e.target.value)}
         placeholder={IC_PLACEHOLDER}
         className={inputCls}
-        aria-label={label}
+        aria-label={t('icNumber')}
       />
-      {showNote && invalidDateNote ? <span className="text-xs text-destructive">{invalidDateNote}</span> : null}
+      {showNote ? <span className="text-xs text-destructive">{t('icDobInvalidDate')}</span> : null}
     </>
   );
 }

@@ -104,6 +104,7 @@ export default async function CreateEmployeePage({
     nationalities,
     dependentRelationships,
     countries,
+    states,
     salutations,
     religions,
     races,
@@ -123,6 +124,10 @@ export default async function CreateEmployeePage({
     // falls back to the five built-ins, exactly as that tab does.
     listProfileOptions(session, 'dependentRelationship', { activeOnly: true }),
     listProfileOptions(session, 'country', { activeOnly: true }),
+    // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks need, read exactly as
+    // the Personnel Contact & Address card reads it. The COUNTRY catalog beside it is the same list that
+    // card uses, so the address blocks share `countries` rather than resolving a second copy of one list.
+    listProfileOptions(session, 'state', { activeOnly: true }),
     // a72610af — the three catalogs behind Salutation, Religion and Race, read exactly as the Personnel
     // profile card reads them (active options only), so a value HR can pick on a draft is one
     // `updatePerson`'s catalog check will accept at Activate.
@@ -218,6 +223,7 @@ export default async function CreateEmployeePage({
         }}
         relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
         countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
+        stateOptions={states.map((o) => ({ value: o.value, label: o.label }))}
       />
     </div>
   );
