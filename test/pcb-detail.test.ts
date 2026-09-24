@@ -755,6 +755,11 @@ describe('45df860a — the shared screen, and the two entry points that reach it
       'netMtdSystem', 'netMtdMonth', 'netMtdDeducted', 'netMtdRun',
       'finalPcbSystem', 'finalPcbMonth', 'finalPcbDeducted', 'finalPcbRun',
       'overrideNote', 'deltaNote', 'deltaOverrideNote', 'additionalMtdDeducted', 'additionalMtdMonth',
+      // 7f251381 adds ~59 more computed keys — the LHDN worksheet's symbols, captions, section headings
+      // and absence markers. They are NOT repeated here: `test/7f251381-pcb-lhdn-worksheet.test.ts`
+      // derives that list back out of `pcbWorksheet`'s own source and asserts it is EXHAUSTIVE, which a
+      // hand-maintained copy in a second file could only drift from. The set-equality check below still
+      // covers every one of them across all six catalogs.
     ];
     const keysOf = (loc: string) =>
       Object.keys(
