@@ -98,11 +98,12 @@ import {
 import {
   CLOCKING_FIELDS,
   CLOCKING_NEW_PAGE,
+  LOCATIONS_LIST,
   UUID_RE,
   clockingEditPage,
   typedKey,
   type ClockingFormValues,
-} from './locations/clocking/form-fields';
+} from './work-locations/clocking/form-fields';
 import { countEmployeesInScope, listEmployeePickOptions } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
@@ -243,7 +244,9 @@ const TOIL_POLICY = '/admin/leave-config/leave-credit';
 // rules entirely (not re-gated there); the three banners moved with the form, so `?saved=` / `?warning=` /
 // `?error=` land on the screen the change was made on.
 const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';
-const LOCATIONS = '/admin/locations';
+// 639bf4a5 (r336) — the register is Organization › Physical Work Location now; `/admin/locations` is a
+// guarded redirect stub. Read from the shared contract so the actions cannot land on the old address.
+const LOCATIONS = LOCATIONS_LIST;
 
 export async function createCompanyAction(formData: FormData) {
   const s = await getSession();
@@ -2499,14 +2502,14 @@ export async function restoreLocationAction(fd: FormData) {
 // that reaches the banner, and RLS (app.is_group_admin() on INSERT/UPDATE/DELETE) says the same thing
 // underneath. Assigning a site to an employee (personnel actions) is unchanged.
 //
-// f9afd1ce rev 2 (r267) — THE FORM LIVES ON A PAGE OF ITS OWN NOW (app/admin/locations/clocking/new and
+// f9afd1ce rev 2 (r267) — THE FORM LIVES ON A PAGE OF ITS OWN NOW (app/admin/work-locations/clocking/new and
 // …/clocking/[id]); the list renders no inline forms. WHERE A SAVE LANDS, the r265 schedule-assignment idiom:
 //   saved   → the LIST with `saved=1`, `focus=<id>` and the `#row-<id>` fragment — the administrator lands
 //             on the row they just saved, highlighted, not at the top. A radius advisory (1fff489c) rides
 //             along as `toast=`, read by the same global ToastFromQuery that read it before: the write
 //             already SUCCEEDED, an unusual radius is a warning, never a refusal.
 //   refused → the PAGE the form was on, `error=<reason>` beside the fields, plus EVERYTHING typed echoed
-//             under the `typed*` keys of app/admin/locations/clocking/form-fields.ts (blank included — on
+//             under the `typed*` keys of app/admin/work-locations/clocking/form-fields.ts (blank included — on
 //             the new page "what is on file" is nothing, and a link the operator cleared must not come back
 //             pre-picked), so the page re-renders the operator's own values rather than what is on file.
 //             The page shape-checks each echoed value before rendering it.

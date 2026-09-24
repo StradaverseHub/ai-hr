@@ -321,7 +321,7 @@
     "planOvertime": "自助加班",
     "myTravel": "我的出差",
     "myAttendanceRequestStatus": "我的考勤申请状态",
-    "clockingLocation": "打卡地点",
+    "physicalWorkLocation": "实际办公地点",
     "attendanceImport": "导入",
     "mobilePreview": "移动应用预览",
     "reports": "报表",
@@ -8625,8 +8625,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "地点",
-      "pageDescription": "每家公司的实际办公地点。地点可设置一个州，用以覆盖请假和考勤所使用的公共假期日历。",
+      "pageTitle": "实际办公地点",
+      "pageDescription": "每家公司的实际办公地点，以及各地点所覆盖的分行。",
       "noCompanies": "范围内没有公司。",
       "code": "代码",
       "name": "名称",
@@ -8689,7 +8689,7 @@
       "view": "查看",
       "newClockingTitle": "新建打卡地点",
       "editClockingTitle": "编辑打卡地点",
-      "backToLocations": "返回地点",
+      "backToLocations": "返回实际办公地点",
       "sectionGps": "GPS 与打卡设置",
       "radiusMetresLabel": "打卡半径（米）",
       "cancel": "取消",

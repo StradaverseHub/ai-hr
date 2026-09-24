@@ -321,7 +321,7 @@
     "planOvertime": "ล่วงเวลาด้วยตนเอง",
     "myTravel": "การเดินทางของฉัน",
     "myAttendanceRequestStatus": "สถานะคำขอด้านการลงเวลาของฉัน",
-    "clockingLocation": "สถานที่ลงเวลา",
+    "physicalWorkLocation": "สถานที่ทำงานจริง",
     "attendanceImport": "นำเข้า",
     "mobilePreview": "ตัวอย่างแอปมือถือ",
     "reports": "รายงาน",
@@ -8625,8 +8625,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "สถานที่",
-      "pageDescription": "สถานที่ทำงานจริงต่อบริษัท สถานที่หนึ่งสามารถกำหนดรัฐที่ลบล้างปฏิทินวันหยุดราชการที่ใช้โดยการลาและการเข้างานได้",
+      "pageTitle": "สถานที่ทำงานจริง",
+      "pageDescription": "สถานที่ทำงานจริงของแต่ละบริษัท และสาขาที่แต่ละแห่งครอบคลุม",
       "noCompanies": "ไม่มีบริษัทในขอบเขต",
       "code": "รหัส",
       "name": "ชื่อ",
@@ -8689,7 +8689,7 @@
       "view": "ดู",
       "newClockingTitle": "สถานที่ลงเวลาใหม่",
       "editClockingTitle": "แก้ไขสถานที่ลงเวลา",
-      "backToLocations": "กลับไปที่สถานที่",
+      "backToLocations": "กลับไปที่สถานที่ทำงานจริง",
       "sectionGps": "การตั้งค่า GPS และการลงเวลา",
       "radiusMetresLabel": "รัศมีการลงเวลา (เมตร)",
       "cancel": "ยกเลิก",

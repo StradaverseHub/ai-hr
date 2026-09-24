@@ -321,7 +321,7 @@
     "planOvertime": "Tự đăng ký làm thêm giờ",
     "myTravel": "Công tác của tôi",
     "myAttendanceRequestStatus": "Trạng thái đề nghị chấm công của tôi",
-    "clockingLocation": "Địa điểm chấm công",
+    "physicalWorkLocation": "Địa điểm làm việc thực tế",
     "attendanceImport": "Nhập",
     "mobilePreview": "Xem trước ứng dụng di động",
     "reports": "Báo cáo",
@@ -8625,8 +8625,8 @@
       "configMovedLink": "Go to Replacement Leave settings"
     },
     "locations": {
-      "pageTitle": "Địa điểm",
-      "pageDescription": "Các địa điểm làm việc thực tế theo từng công ty. Một địa điểm có thể đặt tiểu bang ghi đè lịch ngày lễ công cộng được dùng cho nghỉ phép và chấm công.",
+      "pageTitle": "Địa điểm làm việc thực tế",
+      "pageDescription": "Các địa điểm làm việc thực tế theo từng công ty, và chi nhánh mà mỗi địa điểm phụ trách.",
       "noCompanies": "Không có công ty trong phạm vi.",
       "code": "Mã",
       "name": "Tên",
@@ -8689,7 +8689,7 @@
       "view": "Xem",
       "newClockingTitle": "Địa điểm chấm công mới",
       "editClockingTitle": "Sửa địa điểm chấm công",
-      "backToLocations": "Quay lại Địa điểm",
+      "backToLocations": "Quay lại Địa điểm làm việc thực tế",
       "sectionGps": "Cài đặt GPS và chấm công",
       "radiusMetresLabel": "Bán kính chấm công (mét)",
       "cancel": "Hủy",
