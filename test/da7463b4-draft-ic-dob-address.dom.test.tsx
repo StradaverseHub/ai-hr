@@ -33,11 +33,14 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(''),
 }));
 
-const saveDraftAction = vi.fn(async () => ({ id: 'draft-1' }));
+// TYPED ARGUMENTS on purpose: the assertions below read what the screen SENT, which is the only way to
+// prove that a value is stored rather than merely displayed. An untyped `vi.fn(async () => …)` records
+// calls as `[]` and tsc refuses to index them.
+const saveDraftAction = vi.fn(async (_id: string | undefined, _data: EmployeeDraftData, _step: number) => ({ id: 'draft-1' }));
 const discardDraftAction = vi.fn(async () => {});
 const createEmployeeAction = vi.fn(async () => ({ employmentId: 'emp-1' }));
 vi.mock('../app/admin/personnel/new/actions', () => ({
-  saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as [])),
+  saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as Parameters<typeof saveDraftAction>)),
   discardDraftAction: (...a: unknown[]) => discardDraftAction(...(a as [])),
   createEmployeeAction: (...a: unknown[]) => createEmployeeAction(...(a as [])),
 }));
@@ -143,7 +146,7 @@ describe('da7463b4 — the draft Profile tab, rendered', () => {
     // that refuses to save until it is correct is not a draft. The value goes to the server as typed.
     await user.click(screen.getByRole('button', { name: /save draft/i }));
     expect(saveDraftAction, 'an unreal NRIC stopped Save Draft').toHaveBeenCalled();
-    expect(saveDraftAction.mock.calls[0][1].profile.icNumber).toBe(IC_UNREAL);
+    expect(saveDraftAction.mock.calls[0][1].profile!.icNumber).toBe(IC_UNREAL);
   });
 
   it('(c) CHANGING the NRIC moves the Date of Birth — but never over a hand-typed one', async () => {
@@ -215,7 +218,7 @@ describe('da7463b4 — the draft Profile tab, rendered', () => {
     // And it is STORED, not merely displayed: a Save carries the tick, so the correction still follows
     // after the draft is closed and reopened days later.
     await user.click(screen.getByRole('button', { name: /save draft/i }));
-    const sent = saveDraftAction.mock.calls.at(-1)![1] as EmployeeDraftData;
+    const sent = saveDraftAction.mock.calls.at(-1)![1];
     expect(sent.profile!.sameAsPermanent).toBe('yes');
     expect(sent.profile!.correspondenceAddressLine1).toBe('2 Jalan Baru');
   });
