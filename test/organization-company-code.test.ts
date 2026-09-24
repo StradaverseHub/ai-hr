@@ -120,8 +120,23 @@ describe('3783fd87 — the create form carries the Company Code, and the code is
   it('renders an input for it, bound to the SAME field name the General tab posts', async () => {
     const html = renderToStaticMarkup((await NewCompanyPage({ searchParams: Promise.resolve({}) })) as never);
     expect(html, 'the create form offers the code').toContain('name="companyLabel"');
-    // …and it is NOT required. The column is nullable and the edit form can clear it; see the header.
-    expect(html).toMatch(/name="companyLabel"(?![^>]*\brequired\b)/);
+    /**
+     * …and it is NOT required. The column is nullable and the edit form can clear it; see the header.
+     *
+     * ⚠️ REWRITTEN BY ITEM 7d2df42a BECAUSE IT HAD GONE VACUOUS, WHICH IS WORSE THAN ABSENT. It read
+     * `expect(html).toMatch(/name="companyLabel"(?![^>]*\brequired\b)/)` — a lookahead that only sees
+     * attributes printed AFTER `name`. React's server renderer does not print them in JSX order: with
+     * `required` on the input it emits `<input required="" class="…" placeholder="…" name="companyLabel"
+     * value=""/>`, so `name="companyLabel"` is followed by `value=""/>` and the old line matched happily
+     * while the field WAS required. Verified by adding `required` and watching this case stay green.
+     *
+     * The tag is extracted and checked whole instead, which no attribute order can defeat.
+     */
+    const codeInputTag = /<input\b[^>]*name="companyLabel"[^>]*>/.exec(html)?.[0] ?? '';
+    expect(codeInputTag, 'the Company Code input is in the markup').not.toBe('');
+    expect(codeInputTag, 'the code stays OPTIONAL — 7 of the 13 production companies have none').not.toMatch(
+      /\brequired\b/,
+    );
   });
 
   it('stores what was typed — the markup is not the assertion, the row is', async () => {
@@ -278,6 +293,13 @@ describe('7d2df42a — a duplicate Company Code is a WARNING, and the database s
     expect(to).not.toContain('error=');
     expect(await codeOf('Second Mover Sdn Bhd'), 'and it stores what was typed, trimmed — not rewritten to ASG').toBe('asg');
     expect(await codeOf('Chin Hin Construction Engineering Sdn Bhd'), 'the first row is untouched').toBe('ASG');
+
+    // And the EXACT duplicate too, because a case-SENSITIVE unique rule would let the line above pass:
+    // ' asg ' normalises to 'asg', which `=` does not match against 'ASG'. Both shapes have to be here or
+    // half the rule could be added without either of them noticing.
+    const exact = await create({ legalName: 'Third Mover Sdn Bhd', companyLabel: 'ASG' });
+    expect(exact, 'an exact duplicate is not a failure either').toBe('/admin/organization');
+    expect(await codeOf('Third Mover Sdn Bhd')).toBe('ASG');
   });
 });
 
