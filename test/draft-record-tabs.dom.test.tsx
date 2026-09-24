@@ -246,7 +246,10 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // holds the mechanism; this one is the administrator's own round trip through the screen.)
     wrap();
     // Profile: a phone number, on the Contact & address card.
-    await userEvent.type(within(shownPanel()).getByLabelText(messages.people.wizard.fields.phone), '+60123456789');
+    // BY ID (da7463b4): the Correspondence block now renders its OWN "Mobile Phone Number" beside this
+    // one, as the activated record does, so the label alone identifies neither. `perm-mobile-phone` is
+    // the person's own — the record's id for the same field.
+    await userEvent.type(document.getElementById('perm-mobile-phone') as HTMLInputElement, '+60123456789');
 
     // Employment: a department, three tabs away.
     await openTab(messages.people.detail.tabs.job);

@@ -466,8 +466,13 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
             </Field>
+            {/* da7463b4 — `perm-mobile-phone`, the id the activated record's Contact & Address card gives
+                this same field. Two fields on this tab are now labelled "Mobile Phone Number" (this one and
+                the Correspondence block's own, exactly as on the record), so the id is what tells them
+                apart — and it is the id the "same as permanent" pairing is declared against. */}
             <Field label={t('fields.phone')}>
               <input
+                id="perm-mobile-phone"
                 className={inputCls}
                 value={data.profile?.phone ?? ''}
                 onChange={(e) => set('profile', { phone: e.target.value })}
@@ -479,6 +484,7 @@ export function EmployeeWizard({
             <PersonContactExtraFields
               mode="controlled"
               value={data.profile ?? {}}
+              homePhoneId="perm-home-phone"
               onChange={(patch) => set('profile', patch)}
             />
           </div>

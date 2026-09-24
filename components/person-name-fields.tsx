@@ -150,7 +150,13 @@ export type PersonContactExtraPatch = { [K in keyof PersonContactExtraValue]?: s
 export function PersonContactExtraFields(
   props:
     | { mode: 'form'; value: PersonContactExtraValue; homePhoneId?: string }
-    | { mode: 'controlled'; value: PersonContactExtraValue; onChange: (patch: PersonContactExtraPatch) => void },
+    // da7463b4 — `homePhoneId` in CONTROLLED mode too. The draft now renders the Correspondence block's
+    // own Mobile/Home pair beside this one, exactly as the activated record does, so BOTH screens carry
+    // two fields labelled "Home Phone Number" and the label alone no longer identifies either. The id is
+    // how the record has told them apart since 3a25f5ee (`perm-home-phone` / `corr-home-phone`), and it
+    // is what the "same as permanent" island resolves — so the draft uses the same ids rather than a
+    // second convention.
+    | { mode: 'controlled'; value: PersonContactExtraValue; onChange: (patch: PersonContactExtraPatch) => void; homePhoneId?: string },
 ) {
   const t = useTranslations('people.detail');
   const v = props.value;
@@ -158,9 +164,10 @@ export function PersonContactExtraFields(
     <>
       <Field label={t('homePhone')}>
         <input
+          id={props.homePhoneId}
           className={inputCls}
           {...(props.mode === 'form'
-            ? { id: props.homePhoneId, name: 'homePhone', defaultValue: v.homePhone ?? '' }
+            ? { name: 'homePhone', defaultValue: v.homePhone ?? '' }
             : { value: v.homePhone ?? '', onChange: (e) => props.onChange({ homePhone: e.target.value }) })}
         />
       </Field>
