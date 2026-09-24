@@ -2605,6 +2605,31 @@ export function leaveBalances(
      *  Any THIRD caller on an employee-facing path is a leak until it can say which of these it is. */
     includeHidden?: boolean;
     /**
+     * ⚠️ d272834b — KEEP LEAVE TYPES THIS EMPLOYEE IS NOT ELIGIBLE FOR. Default false: an employee's own
+     * screens never draw a card for a leave type that is not theirs, however the rows got into the ledger.
+     *
+     * THE DEFECT THIS EXISTS FOR. The eligible-but-inactive tail below has gated on `isProfileEligible`
+     * since 508d3acd, but it only decides whether to INVENT a row. A row that came from the ledger or from
+     * a pending request was never asked the question at all — so a male employee (EMP-0002 on the
+     * reporting account) kept a Maternity Leave card reading Entitlement 98.00 / Balance 0.00, because a
+     * pre-508d3acd year-open had credited him 98 days and the corrective adjustment had taken them back
+     * again. Both rows are still in the ledger; the card was summing them. The apply dropdown
+     * (`mayAppearInApplyMenu`) HAD always gated, which is why the same screen said he could apply for 0.00
+     * of a type it was still showing him.
+     *
+     * WHY IT IS A FLAG AND NOT AN UNCONDITIONAL FILTER, which is the part that must not be simplified
+     * away. HR has to be able to SEE those rows — they are the 5,390 days of wrongly-granted Maternity
+     * Leave this item's remediation report lists (`scripts/report-ineligible-leave-balances.ts`), and a
+     * reversal nobody can see is a reversal nobody can check. So it follows `includeHidden` exactly: the
+     * restrictive answer is the default, employee self-service keeps it, and the two ADMIN screens plus
+     * the shared-pool summer opt out and say why at their call sites.
+     *
+     * IT IS THE IDENTITY HALF ONLY — `isProfileEligible`, never `isLeaveEligible`. Minimum service and
+     * probation say when somebody may TAKE leave, not whose leave it is, and the reporter asked in these
+     * words that minimum service must not hide a card. See 508d3acd's note on the tail below.
+     */
+    includeIneligible?: boolean;
+    /**
      * ec991c2a — keep leave types an administrator has ARCHIVED. Default false: self-service does not show
      * a retired type, which is the whole of this item.
      *
@@ -2870,7 +2895,7 @@ export function leaveBalances(
     // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
     const visualByType = new Map<
       string,
-      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null; archivedAt: Date | null }
+      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null; archivedAt: Date | null; eligibility: unknown }
     >();
     if (seenIds.length > 0) {
       const visuals = await tx
@@ -2881,10 +2906,14 @@ export function leaveBalances(
         // already runs over exactly the ids in hand, and the archived gate at the bottom needs the column.
         // Read EXPLICITLY rather than inferred from "absent from `types`" — the two are equivalent today
         // (`types` is the non-archived catalogue) but only one of them says so in the code.
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt })
+        // d272834b — `eligibility` rides along for the same reason `archivedAt` does: this select already
+        // runs over exactly the ids in hand, and the identity gate at the bottom needs the rule for EVERY
+        // seen type. It cannot read `types` for it: `types` is the non-archived catalogue, and a row that
+        // came from an old ledger entry on an ARCHIVED type is absent from it.
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt, eligibility: leaveType.eligibility })
         .from(leaveType)
         .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId, archivedAt: v.archivedAt });
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId, archivedAt: v.archivedAt, eligibility: v.eligibility });
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -3110,7 +3139,42 @@ export function leaveBalances(
         ? pooledAway
         : pooledAway.filter((r) => !archivedTypeIds.has(r.leaveTypeId));
 
-    return live.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+    /**
+     * ⚠️ d272834b — THE IDENTITY GATE, ON EVERY ROW RATHER THAN ONLY ON THE ONE IT INVENTS.
+     *
+     * The eligible-but-inactive tail above has asked `isProfileEligible` since 508d3acd, and it answers a
+     * different question from this one:
+     *   · the tail asks "should a card be INVENTED for a type this employee has no activity on?" — always
+     *     gated, no flag, because inventing a Maternity card for a man is never right for anybody;
+     *   · this asks "should a card built from HISTORY be shown TO THIS PERSON?" — gated for self-service,
+     *     kept for HR, because the history is real and somebody has to be able to see it.
+     * They are the SAME predicate called twice, never two copies of the matching logic. That matters: the
+     * gate's own reading of a rule changed in this item (`eligibilityRuleList` — a list holding every
+     * option the picker offers restricts nobody), and a second copy here would have kept the old reading.
+     *
+     * THE SAME CHOKE POINT AS THE OTHER TWO GATES, and for the identical reason: three ways into `out`
+     * and one place that decides what leaves it. It runs AFTER the pooling pass for the reason the
+     * archived gate does — a live borrower must keep the engine's figure even when its source is dropped
+     * here — and it takes the `emp` row already fetched for the tail, so it costs no extra query.
+     *
+     * ⚠️ THIS REVERSES 508d3acd's EDGE CASE 1, which said in those words that activity keeps the card "so
+     * her history is never hidden". The reporter has since asked for the opposite on their own screen, in
+     * this item, and both halves of what they asked for are honoured rather than one: the employee no
+     * longer sees a type that is not theirs, and the history is not hidden — it moved to the screens whose
+     * job is to show it. Pinned in both directions in test/508d3acd-ineligible-grants.test.ts.
+     */
+    const forThisPerson =
+      opts.includeIneligible
+        ? live
+        : live.filter((r) =>
+            isProfileEligible(
+              (visualByType.get(r.leaveTypeId)?.eligibility ?? null) as LeaveEligibility | null,
+              emp,
+              'exclude',
+            ),
+          );
+
+    return forThisPerson.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
 
@@ -3172,6 +3236,10 @@ export async function subordinateLeaveSummary(
   // for the same leave type; the moment the employee's own list stops carrying an archived type, a manager
   // summary that still carried it would be the two disagreeing. HR's full picture lives on the Personnel
   // profile and Employee Balances, which both opt in.
+  // d272834b — NO `includeIneligible`, and that is the deliberate answer for the same reason the line
+  // above gives for `includeArchived`: this section's whole contract is that a manager and the employee
+  // read the same numbers for the same leave type. HR's full picture lives on the Personnel profile and
+  // Employee Balances, which both opt in; a manager is not who reverses a wrong grant.
   const balances = await leaveBalances(ctx, employmentId, locale, { includeArchived: false });
   if (balances.length === 0) return [];
 

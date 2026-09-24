@@ -344,7 +344,11 @@ export default async function EmployeePage({
     // which is a rule about what the EMPLOYEE sees and never about what HR may look up on this profile.
     // ec991c2a: `includeArchived` is the same statement about an ARCHIVED type. The employee's own list
     // stops offering a retired type; this profile must still show the balance standing under it.
-    leaveBalances(s, employmentId, undefined, { includeHidden: true, includeArchived: true }),
+    // d272834b — `includeIneligible` joins the other two ADMIN flags for the same reason they are here:
+    // HR's own picture of an employee must not lose a balance the employee's screen has stopped showing.
+    // A wrongly-granted Maternity Leave balance on a male employment is exactly the row this screen has
+    // to keep, because HR is who reverses it.
+    leaveBalances(s, employmentId, undefined, { includeHidden: true, includeArchived: true, includeIneligible: true }),
     leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:

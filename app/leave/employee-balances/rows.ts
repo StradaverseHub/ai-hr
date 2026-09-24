@@ -106,7 +106,10 @@ export async function employeeBalanceRows(
   // the screen HR opens to answer "what does this person hold". Production has ANNUAL archived with 759
   // days across 55 employments — an admin screen that stopped showing those days would be a worse defect
   // than the one this item fixes.
-  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf });
+  // d272834b — `includeIneligible: true` joins `includeHidden` / `includeArchived`, same call, same asOf.
+  // This is the HR screen the item's remediation is read from: the 55 employments holding a net 98-day
+  // Maternity balance they were never eligible for are findable here and nowhere the employee can see.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf });
   // r303 (31492f74): `derivation: true` — this is an HR screen, and its Explain panel prints the per-line working.
   // Same read, same date; the working rides on the very `bd` every figure in the row comes from.
   const breakdowns = await Promise.all(

@@ -283,8 +283,11 @@ describe('3ddae357: the page comment no longer claims something false', () => {
     // ec991c2a: `includeArchived: true` joined `includeHidden: true` here — this is an ADMIN read and an
     // archived leave type must keep showing the balance standing under it. The decision this guard pins is
     // untouched: the SAME asOf reaches both reads.
+    // d272834b UPDATED THIS PIN, it did not loosen it: `includeIneligible: true` joined the flag list so
+    // HR keeps seeing a balance standing under a leave type the employee is not eligible for (the 55
+    // wrongly-granted Maternity balances are read from this screen). Same read, same asOf, same helper.
     expect(rows).toContain(
-      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
+      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf })',
     );
     // r303 (31492f74): the breakdown read now also asks for HR's per-line working. The decision this guard pins is
     // untouched — the SAME asOf reaches both reads — so the pin is updated to the new call, not loosened.

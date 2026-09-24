@@ -447,9 +447,15 @@ export async function sharedLeaveGroupBalances(
   // `archived_at` — no more than it consults `visible_to_employee` — so summing the FILTERED list would put
   // a number on screen that disagrees with the verdict the engine gives, which is the one thing that must
   // not happen. No archived type's own name or per-type figure reaches the employee through this path.
+  // d272834b — `includeIneligible` for the THIRD time and the same argument: this sum must not depend on
+  // which cards happen to be drawn. `enforceSharedLeaveGroupLimit` has never consulted eligibility any
+  // more than it consults `visible_to_employee` or `archived_at`, so summing the FILTERED list would put
+  // a number on screen that disagrees with the verdict the engine gives. No ineligible type's own name or
+  // per-type figure reaches the employee through this path.
   const balances = await leaveBalances(ctx, employmentId, opts.locale, {
     includeHidden: true,
     includeArchived: true,
+    includeIneligible: true,
     ...(opts.asOf ? { asOf: opts.asOf } : {}),
   });
   const availableByType = new Map(balances.map((b) => [b.leaveTypeId, b.available]));

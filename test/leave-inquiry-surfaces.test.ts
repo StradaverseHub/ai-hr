@@ -158,8 +158,11 @@ describe('20c699f8: Employee Balances', () => {
     // to hold, and a screen where the two reads disagree about the date is the bug returning.
     // ec991c2a: `includeArchived: true` joined `includeHidden: true` — an ADMIN read keeps showing the
     // balance standing under a retired leave type. Same two reads, same helper; only the flag list grew.
+    // d272834b UPDATED THIS PIN, it did not loosen it: `includeIneligible: true` joined the flag list so
+    // HR keeps seeing a balance standing under a leave type the employee is not eligible for (the 55
+    // wrongly-granted Maternity balances are read from this screen). Same read, same asOf, same helper.
     expect(rowsHelper).toContain(
-      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, asOf })',
+      'leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf })',
     );
     // r303 (31492f74) UPDATED THIS PIN, it did not retire it: the SAME read at the SAME asOf and locale, now
     // asking for the per-line working HR's Explain panel prints (`derivation: true`). Still ONE read.

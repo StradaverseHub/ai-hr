@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { isStatutoryApplyLeaveType, STATUTORY_APPLY_SEEDED_CODES } from '@/lib/leave-statutory';
-import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
+import { ELIGIBILITY_GENDERS, MARITAL_STATUSES } from '@/lib/person-vocabulary';
 import type { LeaveFormulaEntry } from '@/core/leave-formula';
 import { cn } from '@/lib/utils';
 import { Button, Field, inputCls } from '@/components/ui';
@@ -117,8 +117,13 @@ const DOC_MIME_OPTIONS = [
 /** The five day types, in the order the reporter listed them; mirrors core/leave.ts. */
 const DAY_TYPE_INCLUSION_OPTIONS = ['offDay', 'restDay', 'publicHoliday', 'companyHoliday', 'shutdownDay'] as const;
 
-/** Gender stays a SHORTER, deliberate list: 'undisclosed' is a valid PROFILE value but never a rule value. */
-const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
+/** Gender stays a SHORTER, deliberate list: 'undisclosed' is a valid PROFILE value but never a rule value.
+ *  d272834b — drawn from the shared module instead of a hand-synced copy, for the same reason the marital
+ *  list already was, and now with teeth: the GATE (core/leave.ts `eligibilityRuleList`) reads a saved list
+ *  containing every option THIS PICKER offers as carrying no restriction at all. If this copy and the
+ *  gate's copy ever disagreed about the option set, the form and the engine would disagree about whether a
+ *  saved rule restricts anybody. */
+const ELIGIBILITY_GENDER_OPTIONS = ELIGIBILITY_GENDERS;
 const ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES;
 
 /** Everything one leave type stores that these tabs render. Plain, serialisable data only — the page

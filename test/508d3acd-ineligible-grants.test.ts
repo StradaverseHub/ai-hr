@@ -125,7 +125,26 @@ describe('508d3acd · the identity gate, on its own', () => {
     expect(isProfileEligible(MATERNITY, { gender: 'male', marital: 'married' }, 'allow'), 'recorded and contradicted').toBe(false);
     const everyGender = { gender: ['male', 'female'] };
     expect(isProfileEligible(everyGender, { gender: null, marital: null }, 'allow'), 'a list that restricts nobody must exclude nobody').toBe(true);
-    expect(isProfileEligible(everyGender, { gender: null, marital: null }, 'exclude'), 'and under exclude it does — which is why the caller must choose').toBe(false);
+    /**
+     * ⚠️ d272834b UPDATED THIS ASSERTION, and the reversal is the point of that item rather than a
+     * casualty of it. It used to read `.toBe(false)` — "and under exclude it does exclude them, which is
+     * why the caller must choose". That was true and it was the defect: `["male","female"]` is every
+     * option the eligibility PICKER offers (core/admin.ts ELIGIBILITY_GENDER_OPTIONS), so it is a list an
+     * administrator ticked to mean "anybody", and reading it as a restriction denied all eight such types
+     * on the reporting account to the 55 of 75 employees whose gender is blank — on their balance cards
+     * AND in their Request-leave dropdown, both of which pass 'exclude'.
+     *
+     * `eligibilityRuleList` now normalises such a list to absent BEFORE the policy is consulted, so the
+     * answer is the same under both policies and the caller's choice stops mattering for this shape. The
+     * caller must still choose, and `UnknownAttributePolicy` still has no default: what changed is that
+     * the choice is now only ever made about a GENUINE restriction, which is the only place the two
+     * answers were ever meaningfully different.
+     */
+    expect(isProfileEligible(everyGender, { gender: null, marital: null }, 'exclude'), 'a list of every picker option is no restriction under EITHER policy').toBe(true);
+    // The guard that must bite if anyone widens that rule: a list of SOME options is still a restriction,
+    // and 'exclude' still refuses an unrecorded attribute against it.
+    expect(isProfileEligible({ gender: ['female'] }, { gender: null, marital: null }, 'exclude'), 'a real restriction still excludes the unplaced').toBe(false);
+    expect(isProfileEligible({ gender: ['female'] }, { gender: null, marital: null }, 'allow'), '…and allow still lets them through').toBe(true);
   });
 
   it('a type with NO identity condition is open to everybody', () => {
@@ -232,11 +251,21 @@ describe('508d3acd · the card, once the data is right', () => {
   });
 
   /**
-   * EDGE CASE 1, verbatim from the ticket: someone currently ineligible who already has activity keeps
-   * the card so her history is not hidden. This already behaved correctly — the wrong credits were
-   * exactly why the reported card would not go away — so it is pinned rather than built.
+   * ⚠️ EDGE CASE 1, REVERSED BY d272834b ON THE EMPLOYEE'S OWN SCREEN — UPDATED, NOT DELETED.
+   *
+   * 508d3acd pinned that someone currently ineligible who already has activity KEEPS the card, "so her
+   * history is not hidden". The reporter came back with the consequence of exactly that: EMP-0002, a male
+   * employee, was still looking at a Maternity Leave card reading Entitlement 98.00 while the same screen
+   * told him he could apply for 0.00 of it, because a pre-508d3acd year-open had credited him 98 days and
+   * the corrective adjustment had taken them straight back.
+   *
+   * Both halves of what they asked for are honoured rather than one. The card is gone from the employee's
+   * own surfaces; the history is NOT hidden, it moved to the screens whose job it is — anything passing
+   * `includeIneligible: true` (the Personnel profile, Employee Balances, the shared-pool summer). A
+   * reversal nobody can see is a reversal nobody can check, so the second half is asserted here as hard as
+   * the first.
    */
-  it('an ineligible employee WITH activity keeps the card, so history is never hidden', async () => {
+  it('an ineligible employee with activity loses the card on their OWN screens', async () => {
     const mtl = await leaveTypeWith(MATERNITY);
     const he = await hire('male', 'married');
     await owner.db.insert(schema.leaveLedger).values({
@@ -248,7 +277,25 @@ describe('508d3acd · the card, once the data is right', () => {
       effectiveOn: '2026-09-20',
     });
     const rows = await leaveBalances(adminCtx(b), he, 'en');
-    expect(rows.some((r) => r.leaveTypeId === mtl), 'the 98.00 must stay visible until it is reversed').toBe(true);
+    expect(rows.some((r) => r.leaveTypeId === mtl), 'the reported card: a man, a Maternity balance').toBe(false);
+  });
+
+  it('…and HR still sees that balance, because HR is who reverses it', async () => {
+    const mtl = await leaveTypeWith(MATERNITY);
+    const he = await hire('male', 'married');
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: he,
+      leaveTypeId: mtl,
+      entryType: 'accrual',
+      days: '98.00',
+      effectiveOn: '2026-09-20',
+    });
+    const row = (await leaveBalances(adminCtx(b), he, 'en', { includeIneligible: true })).find(
+      (r) => r.leaveTypeId === mtl,
+    );
+    expect(row, 'the 98.00 must stay visible to the people who can reverse it').toBeDefined();
+    expect(row!.accrued).toBe(98);
   });
 
   /** The reporter's explicit exclusion: minimum service must NOT hide a card. */

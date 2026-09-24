@@ -28,6 +28,11 @@ import {
 // derives from; a fixed-approver warning that used its own rule would disagree with the profile it points at.
 import { isEmploymentEnded } from './employment-status';
 import { todayInKualaLumpur } from '../lib/hr-date';
+// d272834b — the option sets the eligibility PICKER offers, needed by `eligibilityRuleList` below. A LEAF
+// client-safe module on purpose: `core/admin.ts` (the write validator) imports THIS file, so the arrow
+// cannot be reversed, and the picker itself is a client component that can reach neither. See the header
+// of ELIGIBILITY_GENDERS for why all three read from one place.
+import { ELIGIBILITY_GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 // 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
 // same function, and so `@/core/leave` stays their public server-side door.
@@ -936,6 +941,58 @@ export function asList(v: string | string[] | null | undefined): string[] {
   return (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
 }
 
+/**
+ * ⚠️ d272834b — THE ONE READING OF A CONFIGURED ELIGIBILITY LIST. `asList` plus the UNIVERSAL-LIST rule,
+ * and every gate, read and write goes through here so they cannot disagree about what a saved rule means.
+ *
+ * THE RULE: a configured list that contains EVERY option the eligibility picker offers carries NO
+ * restriction, and is normalised to the empty list — exactly as if the administrator had left the field
+ * blank. There is nothing else such a list could mean: the picker is the whole of what an administrator can
+ * express, so ticking all of it is ticking none of it.
+ *
+ * WHY IT MATTERS, WHICH IS THE PART TO READ BEFORE TOUCHING THIS. On the reporting account EIGHT of eleven
+ * leave types store `["male","female"]`. Read literally that is a restriction, so:
+ *   · the READ gates (`isProfileEligible(..., 'exclude')` — the balance-card tail and the apply dropdown)
+ *     refused all eight to every employee whose gender is blank, which is 55 of 75 active employments. They
+ *     were being denied by a rule nobody wrote.
+ *   · the `unknown` policy (`UnknownAttributePolicy`) was consulted for all eight, which is what made
+ *     `'exclude'` catastrophic on the grant/sweep side — the production dry run recorded in that type's
+ *     header would have taken real Annual Leave off 33 people because a field was blank.
+ * Normalising the list to absent means the `unknown` policy is NEVER consulted for such a field. That is
+ * why this is the fix and flipping the policy is not: it removes the false restrictions instead of choosing
+ * which way to be wrong about them.
+ *
+ * ⚠️ "EVERY OPTION THE PICKER OFFERS", NOT "EVERY VALUE OF THE VOCABULARY". `GENDERS` has THREE values
+ * (`lib/person-vocabulary.ts`) — 'undisclosed' is a choosable value on an employee RECORD — but
+ * `ELIGIBILITY_GENDERS` offers TWO, because no statute writes a rule for 'undisclosed'. So
+ * `["male","female"]` is all-inclusive here even though it omits a vocabulary value. Production holds ZERO
+ * people with gender 'undisclosed', so today this distinction changes nothing either way; it is written
+ * down so the next reader does not "fix" the comparison to `GENDERS` and quietly turn all eight of those
+ * types back into restrictions.
+ *
+ * ⚠️ NOT EVERY LIST IS ALL-INCLUSIVE, and assuming so is the other way to get this wrong. On the same
+ * account `ANNUAL` lists all six marital values (no restriction), while `CGL` and `NDL` list FIVE, omitting
+ * 'other' — those ARE genuine restrictions and must keep excluding an employee whose marital status is
+ * 'other'.
+ *
+ * `pickerOptions` omitted ⇒ plain `asList`. That is the honest answer for the eight organisation-assignment
+ * criteria: their options come from the `profile_option` catalogue, which an administrator can add to and
+ * deactivate, so "every option offered" is not a fact this module can know. A list of every ACTIVE division
+ * today is not a statement that the rule is open to a division created tomorrow.
+ */
+export function eligibilityRuleList(
+  v: string | string[] | null | undefined,
+  pickerOptions?: readonly string[],
+): string[] {
+  const list = asList(v);
+  if (list.length === 0 || pickerOptions == null || pickerOptions.length === 0) return list;
+  return pickerOptions.every((o) => list.includes(o)) ? [] : list;
+}
+
+/** The picker option sets the rule above is measured against, re-exported so a caller reading a stored
+ *  eligibility rule reaches for the pair together and cannot pass the wrong list. */
+export { ELIGIBILITY_GENDERS, MARITAL_STATUSES as ELIGIBILITY_MARITALS };
+
 // ── Day Type Inclusion (feedback ef6d7146) ───────────────────────────────────────────────────────
 // A per-leave-type vector of five INDEPENDENT booleans deciding whether each day type is COUNTED when
 // calculating a leave's duration. It REFINES leave_type.counting: a calendar_days type already counts every
@@ -1270,8 +1327,12 @@ type EligibilityEmp = ProfileEligibilityEmp & {
  *  is genuinely open to all, and so a newly-added criterion is picked up here rather than at each call site. */
 export function hasAnyEligibilityRestriction(elig: LeaveEligibility | null | undefined): boolean {
   if (!elig) return false;
-  if (asList(elig.gender).length > 0) return true;
-  if (asList(elig.maritalStatus).length > 0) return true;
+  // d272834b — through `eligibilityRuleList`, so a list of every picker option reports NO restriction here
+  // too. Otherwise this probe would answer "restricted" for the eight types that store ["male","female"],
+  // the employee fetch would run for them, and the two halves of the gate would be describing different
+  // rules to each other.
+  if (eligibilityRuleList(elig.gender, ELIGIBILITY_GENDERS).length > 0) return true;
+  if (eligibilityRuleList(elig.maritalStatus, MARITAL_STATUSES).length > 0) return true;
   if (elig.minServiceMonths) return true;
   if (elig.probation) return true;
   for (const c of ORG_ASSIGNMENT_CRITERIA) {
@@ -1287,11 +1348,14 @@ function assertEligible(
 ): void {
   // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
   // field, AND across fields). An empty list carries no restriction. asList() normalizes legacy scalar rows.
-  const genders = asList(elig.gender);
+  // d272834b — `eligibilityRuleList`, not `asList`: a list holding every option the picker offers is no
+  // restriction, so it must not produce a refusal message either. The message below quotes the list, and
+  // "available to male or female employees only" was never a sentence anyone meant to write.
+  const genders = eligibilityRuleList(elig.gender, ELIGIBILITY_GENDERS);
   if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) {
     throw new LeaveIneligibleError(`This leave type is available to ${genders.join(' or ')} employees only.`);
   }
-  const maritals = asList(elig.maritalStatus);
+  const maritals = eligibilityRuleList(elig.maritalStatus, MARITAL_STATUSES);
   if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) {
     throw new LeaveIneligibleError(`This leave type requires marital status “${maritals.join(' or ')}”.`);
   }
@@ -1567,8 +1631,12 @@ export function isProfileEligible(
     if (v === '') return unknown === 'exclude'; // the fact is missing, not contradicted
     return !configured.includes(v);
   };
-  if (fails(asList(elig.gender), emp?.gender)) return false;
-  if (fails(asList(elig.maritalStatus), emp?.marital)) return false;
+  // d272834b — `eligibilityRuleList` normalises a list of EVERY picker option to the empty list, so `fails`
+  // takes its "no restriction on this field" exit and `unknown` is never consulted for it. That is what
+  // makes an employee with a blank gender keep all eight of the types that store ["male","female"], under
+  // EITHER policy — the regression guard for the incident recorded above UnknownAttributePolicy.
+  if (fails(eligibilityRuleList(elig.gender, ELIGIBILITY_GENDERS), emp?.gender)) return false;
+  if (fails(eligibilityRuleList(elig.maritalStatus, MARITAL_STATUSES), emp?.marital)) return false;
   for (const c of ORG_ASSIGNMENT_CRITERIA) {
     if (fails(asList(elig[c.key]), emp?.[c.key])) return false;
   }

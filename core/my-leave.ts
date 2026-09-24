@@ -269,13 +269,24 @@ export async function myLeaveDashboard(
   const { today, locale } = opts;
   const currentYear = Number(today.slice(0, 4));
 
-  // The same type list the page has always read: visible, not archived, eligible-or-active, pooled (r209).
+  // The same type list the page has always read: visible, not archived, pooled (r209) — and, since
+  // d272834b, ELIGIBLE. That last word is the whole of the reported defect: this dashboard asked
+  // `leaveBalances` for rows and filtered them on `placement` alone, so a leave type whose eligibility
+  // says it is not this employee's still drew a card whenever the ledger held a row for it. The gate is
+  // not repeated here — it is `leaveBalances`'s own `includeIneligible` (default: gated), the SAME
+  // `isProfileEligible` the apply dropdown has always used, so the card and the dropdown can no longer
+  // disagree about whether a type is this person's.
   const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false })).filter(
     (b) => b.placement !== 'hidden',
   );
   if (balances.length === 0) {
-    const years = await leaveYearsFor(ctx, employmentId, today);
-    return { today, currentYear, selectedYear: resolveSelectedLeaveYear(opts.year, years, currentYear), years, cards: [] };
+    // d272834b — NO YEAR BUT THIS ONE. An empty list here means the employee has no leave type at all:
+    // the eligible-but-inactive tail adds a row for every active type they ARE eligible for, so nothing
+    // survives only when nothing applies to them. Offering 2025 because the ledger holds a Maternity
+    // accrual they were never eligible for would put the removed card's history back in the year
+    // selector, which is the same leak in a smaller control. `leaveYearsFor` remains the reading for
+    // anybody who asks the ledger that question directly.
+    return { today, currentYear, selectedYear: currentYear, years: [currentYear], cards: [] };
   }
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];
