@@ -3426,6 +3426,15 @@ export async function decideAttendanceCorrection(
         // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
         // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise. Per ADR-0069
         // it reads the POLICY-ADJUSTED attendance.otMinutes written above (single source of truth).
+        //
+        // r334 928f0454 — "dayType ∈ {rest_day, holiday}" ABOVE IS NO LONGER THE WHOLE GATE, and the sentence
+        // is left standing rather than quietly rewritten because it is still the gate for every company that
+        // has not opted in. A company with `toil_policy.extended_hours_enabled` on also admits an ORDINARY
+        // WORKING DAY here, where the hours past the scheduled shift end are tiered into a 0.5 / 1.0-day
+        // credit; `maybeAutoAccrueOnApprovalTx` reads that flag itself (it had to move its day-type filter
+        // BELOW the policy read to do so) and `accrueToilTx` re-checks it. Nothing changes for a company with
+        // the switch off, which is every company on release. ⚠️ MONEY: such a credit suppresses that day's
+        // overtime pay, so this call now reaches the payslip on a workday too.
         await maybeAutoAccrueOnApprovalTx(tx, ctx, {
           employmentId: cor.employmentId,
           workedDate: cor.attendanceDate,
@@ -3924,6 +3933,9 @@ async function applyApprovedOtPlanTx(
   // `requestedOn` is the PLAN's own creation date (00307068): the credit's Request Date is when the employee
   // asked, never when they happened to clock out. Self-gates on rest_day/holiday + policy; refusals are
   // swallowed inside the helper exactly as they are on the immediate path.
+  //
+  // r334 928f0454 — and, for a company that has switched extended hours ON, on an ordinary working day too:
+  // see the longer note at the immediate call site. The gate is read inside the helper, not restated here.
   await maybeAutoAccrueOnApprovalTx(tx, ctx, {
     employmentId: p.employmentId,
     workedDate: p.date,

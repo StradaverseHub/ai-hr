@@ -21,6 +21,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { assignShift, createShift, setRestDay } from '../core/roster';
+import { decideAttendanceCorrection, requestAttendanceCorrection } from '../core/attendance';
 import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '../core/payroll';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
@@ -449,6 +450,48 @@ describe('r334 · (g) the First-Schedule consent gate is ridden, not bypassed', 
     const acc = await accrualRow(employmentId);
     expect(acc.firstScheduleConsent).toBe(true);
     expect(acc.expiryAction).toBe('convert_to_pay');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r334 · auto-accrual on an approved attendance correction', () => {
+  /**
+   * `maybeAutoAccrueOnApprovalTx` used to decide the day type BEFORE it had read the company policy, which
+   * made the new switch unreachable from this path however it was set. The filter moved below the read; these
+   * two tests are what say the move was needed AND that it changed nothing for a company with the switch off.
+   */
+  const approveLateClockOut = async (a: SessionContext, employmentId: string, date: string) => {
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId,
+      date,
+      checkIn: '06:00',
+      checkOut: '23:00',
+      reason: 'Forgot to clock out after the release',
+    });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: TODAY });
+  };
+
+  it('with the switch OFF, approving a workday correction banks nothing (and does not fail the approval)', async () => {
+    const { a, employmentId, shiftId } = await hire(5000);
+    await assignShift(a, { employmentId, shiftDate: WORKDAY, shiftId });
+    await setToilPolicy(ctx, policy({ autoAccrueOnApproval: true })); // opted in, switch OFF
+    await approveLateClockOut(a, employmentId, WORKDAY);
+    expect(await accrualRow(employmentId), 'nothing banked, and the approval still went through').toBeUndefined();
+    expect(await replacementBalance(employmentId)).toBe(0);
+  });
+
+  it('with the switch ON, approving the same correction banks the tier', async () => {
+    const { a, employmentId, shiftId } = await hire(5000);
+    await assignShift(a, { employmentId, shiftDate: WORKDAY, shiftId });
+    await setToilPolicy(ctx, extendedPolicy({ autoAccrueOnApproval: true }));
+    await approveLateClockOut(a, employmentId, WORKDAY);
+    const acc = await accrualRow(employmentId);
+    expect(acc, 'the approval must have minted a credit').toBeDefined();
+    expect(Number(acc.daysCredited), '540 minutes past the 14:00 end ⇒ one day, capped').toBe(1);
+    expect(acc.workedDayKind).toBe('workday');
+    expect(acc.dayType).toBeNull();
+    expect(acc.source).toBe('auto_approval');
+    expect(await replacementBalance(employmentId)).toBe(1);
   });
 });
 
