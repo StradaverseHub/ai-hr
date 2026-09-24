@@ -26,7 +26,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { eq, sql } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 const scope: { s: unknown; scopeIds: string[] } = { s: null, scopeIds: [] };
@@ -217,13 +217,15 @@ describe('20f6c6a8 (c) — generating a file writes NOTHING', () => {
     await runPayroll();
   });
 
-  /** Read as the OWNER: a count taken as the app role with no tenant context returns 0 through RLS. */
+  /**
+   * Read as the OWNER, and through drizzle rather than raw SQL: a count taken as the APP role with no
+   * tenant context returns 0 through RLS, which would make this assertion pass without measuring
+   * anything (CLAUDE.md §5).
+   */
   async function counts() {
-    const one = async (t: string) => {
-      const r = await owner.db.execute(sql.raw(`select count(*)::int as n from ${t}`));
-      return Number((r as unknown as { rows: { n: number }[] }).rows[0].n);
-    };
-    return { artefacts: await one('statutory_report'), events: await one('domain_event') };
+    const [a] = await owner.db.select({ n: count() }).from(schema.statutoryReport);
+    const [e] = await owner.db.select({ n: count() }).from(schema.domainEvent);
+    return { artefacts: a.n, events: e.n };
   }
 
   it('no statutory_report row and no domain event, for every format on the shelf', async () => {
