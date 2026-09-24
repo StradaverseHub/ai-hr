@@ -1,3 +1,57 @@
+## r336 (2026-09-24) — eleven items, six concurrent builders, and eight defects only the gate could see. `main@94ec3522`, migration **0487**.
+
+Closed: `1bb09a73`, `3783fd87`, `7f251381`, `8d3a7bff`, `20f6c6a8`, `da7463b4`, `7d2df42a`, `639bf4a5`, `cbfa8b0b`, `99b2d6c0`, `2a57a007`.
+Gate: **988 files — equal to the suite file count**, 14 chunks, `tsc` 0, `next build` 0, `gate:shadow` **PASS 400/400**. Render check: 5 screens × 6 locales, 30 × 200, zero poison tokens, the one new string asserted to resolve per-locale rather than by English fallback. Chunks 1–10 were **re-run on the final tree** because two fixes touched product code; a green gate has to be green on what ships.
+
+### THE CONCURRENCY MODEL CHANGED, AND THE OLD RULE WAS MY OWN WRONG INFERENCE
+
+"Two builders max" came from watching three agents stall and blaming the agent count. Measured: 12 cores sat **~57% idle** at 284 MB free. RAM binds only while *vitest* runs — an agent costs ~200 MB reading code and 1.5–3 GB testing. So `~/.aihr-gate-state/testlock.sh` caps **test runs** at 2 while any number of agents read and edit. Six ran concurrently on hardware that had held two.
+
+A second lock followed, and an agent found the need, not me: `pnpm db:seed` **truncates the one shared `ai_hr_dev`** every render check reads, so two overlapping checks silently swap each other's data. `devdb-lock.sh` serialises the whole check — seed, server, curls, kill — because holding it only for the seed leaves exactly the window it closes. It was live risk for several hours.
+
+### FOUR VACUOUS GUARDS, FOUND BY FOUR DIFFERENT AGENTS AND BY THE GATE
+
+- **r332's holiday-claim guard** — and this one had shipped a lie. ADR-0086 removed the work site's hold on public holidays a fortnight earlier, but only the `stateNote` KEY went; the sentence survived in `admin.locations.pageDescription` and was **live on production in all six languages**. The guard could not have caught it twice over: it matched `stateNote`'s exact words, which the other key's wording never matched, *and* that case mocks `getTranslations` to echo key names, so no English sentence was ever in the markup it searched.
+- **A clocking-grouping test** asserting order and the unlinked group's existence — so a page that had stopped grouping altogether stayed green.
+- **`3783fd87`'s "not required" check** — `/name="companyLabel"(?![^>]*\brequired\b)/` scans forward from `name=`, and React emits attributes out of JSX order, putting `required` first. It was green **with the field required**.
+- **`cbfa8b0b`'s own submit-blocking assertions** — passing because an empty form disables the button anyway.
+
+### EIGHT INTEGRATION FAILURES THE GATE CAUGHT THAT NO BRANCH COULD
+
+Only one was a product defect: the Leave Credit dialog's rewrite dropped its `lib/day-format` import and printed **raw day counts — `0.5` where every other leave surface says `0.50`** — the fault a `toFixed` grep cannot see, because the screen never formatted at all. The other seven were guards following code that legitimately moved; each was **updated with its reason, none loosened**, and four would otherwise have kept passing against **dead keys or renamed ids** while the screen said something else.
+
+### MY BRIEFS WERE WRONG FIVE TIMES; THE SOURCE WON EACH TIME
+
+- The **LHDN e-Data writer already ships** (`localization/my/cp39-file.ts`, served by `/payroll/reports/cp39-file`). I verified no *specimen* existed and read that as no *writer*. Listing it unavailable would have reshipped the r296 defect — a screen denying a file another screen hands over.
+- The draft employee's **IC→DOB server path already existed** (`core/employee-draft.ts:755`); the gap was that nothing derived *while the draft was being filled in*.
+- **`isValidIC` is `/^\d{12}$/`** — a digit count with no date check. Month 13 passes, the DOB silently comes back null, and the employee is created without one. Nothing refuses it anywhere.
+- **An off day IS bankable** from the employee-request path; r334's finding held only for the roster election. The divergence is between *paths*, not day kinds.
+- **"Most of point 1 is DONE" was false.** Only Balance is zero on a pooled borrower; Entitlement and Earned to Date still print the POOL's figures, because `rows.ts` resolves the breakdown through `balanceStoryTypeId`. Left open deliberately — reversing it re-opens the r209 red-notice trap and is load-bearing for `8d3a7bff`, which shipped this round.
+
+### DECISIONS
+
+- **`20f6c6a8`** — `verification` is a REQUIRED field on every payment format: `filed-file` (EPF, SOCSO — byte-equal to files the customer really filed), `specification-sample` (LHDN), `field-table-only`. The lesson from the wrong Borang A is not "only ship formats with a filed file", which would delete a shipped capability; it is that **a file's provenance may never be invisible**. Its LHDN row was taken OFF the new shelf **during the gate** rather than add debt to a ratchet that only shrinks — the row stays listed, with its provenance, pointing at the screen that serves it today.
+- **`99b2d6c0`** — not one disabled-relief amount changed. The LHDN spec was never supplied, and `childByCategory` turns out to be flagged RATE-ONLY too. Also pinned **two kernel gates no test reached**: deleting either `auto_table` mode read would have left the whole suite green while every such employee silently reverted to flat child-relief counting — a wrong PCB with nothing on screen.
+- **`cbfa8b0b`** — `eligible_minutes` is a record, never a valuation input (`day_type` stays NULL); `EXCLUDE_TOIL_BANKED_DAYS` byte-untouched, proven by a mutation showing **RM173.04 of overtime** would be paid on a banked day without it. Ticket point 4 stayed unbuilt as the plan promised. Migration **0487 extends** `replacement_leave_request_date` rather than adding a claim-line table, because a separate table would give "what did this employee claim for this date" two owners.
+- **`2a57a007`** — the pooled Share columns go positive. Verified safe first: nothing computes from them, and the `sum(balance)` invariant is about `balance`, not the displayed share. Said so **at the line that decides the sign**, or the next reader restores the minus.
+- **`639bf4a5`** — the work-site register MOVED pack surface rather than merely stopping being advertised, because the pack's surface claim was the only thing authorising its direct `core/clocking-location` import. The ratchet **shrank** by one entry and nothing was added at the new address.
+
+### CORRECTIONS OWED TO THE REPORTER
+
+- **`7f251381`'s approved mockup mislabels four symbols.** It captions `Y1` "Previous employment income" and `Yt` "Accumulated remuneration"; the engine has `Y1 = p.monthlyWage` (this month's wage) and `Yt = p.additional` (the bonus). Building to it would have printed a bonus under an accumulator caption — the exact defect the item exists to remove. The screen is right; the picture they approved is not.
+- **`73ddd5a1` is wider than we told them**: three leave types, not one (Maternity 5,390 days, Paternity 385, Marriage 147 — 5,922 standing across 74 employees). Sent with the correction at the top. The useful half: **all 19 clear-cut cases are already reversed at net 0.00**, so every remaining day hangs on a blank field and filling them in genuinely resolves it.
+- **`20f6c6a8`'s plan says we are waiting on their LHDN file.** We are not waiting to *write* it — it exists. We are waiting to *verify* it against a real filed one, which moves the entry to `filed-file`: a one-word registry change, not a build.
+
+### THE DEPLOY, AND A REAL BUG IN `deploy.sh`
+
+Four attempts. The script capped the build heap at **4096 MB on a box with ~2.5 GB available**, so V8 never approached its own limit, never collected hard, and the kernel killed it first — a bare `Killed`/137, unlike the two earlier OOMs this file records, which died as V8's own `Ineffective mark-compacts`. **Different failure, opposite fix.** Lowering to 2560 converted 137 into V8's own `FatalProcessOutOfMemory`, proving the mechanism and showing 2560 was simply too low; **3584** got it through.
+
+The rule is now stated correctly in the file: the cap must fit **RAM + free swap**, not RAM alone. And the confounder is recorded, because it cost a wrong diagnosis: a killed `pnpm build` leaves a **~2.5 GB `next` worker reparented to init in D state for ~10 minutes**, which starves the retry and makes a capacity problem out of a cleanup one. Check `ps --sort=-rss` before blaming the number. `typescript.ignoreBuildErrors` was never on the table — that pass catches RSC boundary errors `tsc` alone does not.
+
+### NOT DONE
+
+`23e7dac3` is **built and gated-pending** on `build/r337-23e7dac3`, deliberately unmerged so these eleven could ship against a known sha. `73ddd5a1` step 2 is the reporter's own data entry. Three items await their answer (`bb2b2e86`, `4ca06dea`, `00e28308`). The `unpayablePayMode` screen/server mismatch and the missing `pay_period.statutory_version` were **raised, not fixed** — both sit on the money path and both are the reporter's call.
+
 ## r335 (2026-09-24) — two items, and both corrected something I had written. `main@6281abb3`, no migration.
 
 Closed: `0fe1ca2e` (rev 6), `6af80f5d` (rev 2). Gate: **971 files — equal to the suite file count**, 14 chunks, ~15,040 tests, **zero red chunks on the first pass**, `tsc` 0, `next build` 0. No shadow gate: no migration, journal verified unchanged at 399 entries / max idx 486. Render check clean.
