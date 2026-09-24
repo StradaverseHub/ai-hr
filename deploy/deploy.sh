@@ -215,7 +215,28 @@ dstate phase build
 # available) and 3.9 GB of swap, so 4096 overcommits physical memory by design and leans on swap for the
 # tail of the type pass; that is slower but it completes. If it OOMs a third time, check `free -m` first:
 # past ~4096 this stops being a headroom problem and becomes a "needs a bigger box" one.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=4096" pnpm build
+#
+# ⚠️ LOWERED 4096 -> 2560 on 2026-09-24 deploying r336, AND THE DIRECTION IS THE POINT. The advice above
+# ("raise the number") holds only while the cap still sits under what the box can actually give. It no
+# longer does, and raising it again would make things worse, not better:
+#
+#   R52 and r83 both died as "Ineffective mark-compacts near heap limit" — V8 hitting ITS OWN limit and
+#   saying so. r336 died twice as a bare "Killed", exit 137: the kernel OOM killer, with no V8 message at
+#   all. Those are different failures. A cap ABOVE available physical memory means V8 never approaches its
+#   limit, so it never GCs hard — it just grows until the OS shoots it. The cap has to sit BELOW what is
+#   free for V8 to compact instead of balloon, which is the only mechanism that gets a big type pass
+#   through a small box.
+#
+#   Measured on 2026-09-24: `free -m` showed 2573 MB available at the start of the second attempt (the
+#   first had been starved by an orphaned worker from the first failure — a killed `pnpm build` can leave a
+#   ~2.5 GB next child reparented to init, in D state, for ~10 minutes; check `ps --sort=-rss` before
+#   blaming capacity). It still died at "Running TypeScript" with 4096. r336 added +13,900/-1,325 lines
+#   across 126 files, which is what tipped it.
+#
+# If 2560 also fails, the next honest step is NOT another number: it is more RAM (or more swap) on the box.
+# Do NOT reach for typescript.ignoreBuildErrors — the build's type pass catches RSC client/server boundary
+# errors that tsc alone does not, which is the whole reason it runs here.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=2560" pnpm build
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
