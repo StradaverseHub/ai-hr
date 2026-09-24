@@ -542,32 +542,76 @@ describe('639bf4a5 (d) — branch mapping still proposes, and still reports what
 });
 
 describe('639bf4a5 (e) — clocking points still group under the work site they belong to', () => {
-  it('a linked point renders under its site heading, and an unlinked one under its own', async () => {
-    const { id: loc } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+  /**
+   * ⚠️ THIS CASE WAS VACUOUS ON ITS FIRST WRITING, AND MUTATION IS WHAT SAID SO.
+   *
+   * It asserted that the site heading came BEFORE the point's row and that the unlinked group existed.
+   * Forcing every point into the unlinked bucket (`if (true) unlinked.push(cl)`) left both true: the
+   * empty-group loop still renders a heading for every live site, and the unlinked group renders after
+   * the groups — so the heading was still before the row, and the run stayed GREEN on a page that had
+   * stopped grouping altogether.
+   *
+   * CONTAINMENT, NOT ORDER, is the property. Each point is located INSIDE its own site's slice of the
+   * register, that slice is asserted NOT to be the empty state, and TWO sites are used — a bug that
+   * herded every point under the first site would satisfy a one-site test.
+   */
+  it('each point renders inside ITS OWN site block, and an unlinked one renders under the unlinked group', async () => {
+    const { id: hq } = await createLocation(ADMIN, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+    const { id: yard } = await createLocation(ADMIN, { companyId: b.companyId, code: 'YARD', name: 'North Yard' });
     const { id: gate } = await createClockingLocation(ADMIN, {
-      name: 'North Gate', lat: 3.139, lng: 101.6869, radiusM: 200, locationId: loc,
+      name: 'North Gate', lat: 3.139, lng: 101.6869, radiusM: 200, locationId: hq,
     });
-    await createClockingLocation(ADMIN, { name: 'Floating Point', lat: 3.14, lng: 101.69, radiusM: 200 });
+    const { id: yardGate } = await createClockingLocation(ADMIN, {
+      name: 'Yard Gate', lat: 3.14, lng: 101.687, radiusM: 200, locationId: yard,
+    });
+    const { id: floating } = await createClockingLocation(ADMIN, { name: 'Floating Point', lat: 3.15, lng: 101.69, radiusM: 200 });
 
     const html = await renderList();
-    // The register comes first on the page (r267), so the group heading and its row are both inside it.
+    // The register comes first on the page (r267); the per-company site register follows it.
     const registerStart = html.indexOf('clockingHeading');
     const registerEnd = html.indexOf('name="code"');
     expect(registerStart, 'the clocking register renders').toBeGreaterThan(-1);
     expect(registerEnd, 'the per-company site register follows it').toBeGreaterThan(registerStart);
     const register = html.slice(registerStart, registerEnd);
 
-    // GROUPING, not mere presence: the site heading must come before the point that hangs off it, and the
-    // point must be inside the register rather than anywhere on the page.
-    const heading = register.indexOf('HQ · Headquarters');
-    const row = register.indexOf(`id="row-${gate}"`);
-    expect(heading, 'the site heading is the group title').toBeGreaterThan(-1);
-    expect(row, 'the point is in the register').toBeGreaterThan(-1);
-    expect(heading, 'the point sits UNDER its site').toBeLessThan(row);
-    expect(register, 'the unlinked point keeps its own group').toContain('unlinkedGroupTitle');
+    // Groups are sorted by code, so the register reads: HQ block, YARD block, then the unlinked block.
+    const at = (needle: string, label: string) => {
+      const i = register.indexOf(needle);
+      expect(i, `${label} is in the clocking register`).toBeGreaterThan(-1);
+      return i;
+    };
+    const hqAt = at('HQ · Headquarters', 'the HQ group heading');
+    const yardAt = at('YARD · North Yard', 'the YARD group heading');
+    const unlinkedAt = at('unlinkedGroupTitle', 'the unlinked group heading');
+    expect([hqAt, yardAt, unlinkedAt], 'the three blocks are in that order').toEqual(
+      [...[hqAt, yardAt, unlinkedAt]].sort((x, y) => x - y),
+    );
+
+    const hqBlock = register.slice(hqAt, yardAt);
+    const yardBlock = register.slice(yardAt, unlinkedAt);
+    const unlinkedBlock = register.slice(unlinkedAt);
+
+    expect(hqBlock, 'North Gate hangs off Headquarters').toContain(`id="row-${gate}"`);
+    expect(hqBlock, "…and not off anybody else's site").not.toContain(`id="row-${yardGate}"`);
+    expect(hqBlock, 'so the HQ block is NOT the empty state').not.toContain('groupNoPoints');
+    expect(yardBlock, 'Yard Gate hangs off North Yard').toContain(`id="row-${yardGate}"`);
+    expect(yardBlock, "…and not off anybody else's site").not.toContain(`id="row-${gate}"`);
+    expect(yardBlock, 'so the YARD block is NOT the empty state either').not.toContain('groupNoPoints');
+    expect(unlinkedBlock, 'the point with no site keeps its own group').toContain(`id="row-${floating}"`);
+
     // The way in and out of a point is the page of its own, at the NEW address.
-    expect(register, 'Edit opens the relocated editor').toContain(`href="${clockingEditPage(gate)}"`);
+    expect(hqBlock, 'Edit opens the relocated editor').toContain(`href="${clockingEditPage(gate)}"`);
     expect(register, 'and Add opens the relocated new page').toContain(`href="${CLOCKING_NEW_PAGE}"`);
+  });
+
+  it('a site with no points shows the empty state and the way out of it — the other half of grouping', async () => {
+    // Without this, "no groupNoPoints in the block" above could be satisfied by a page that never renders
+    // the empty state at all, which is the state 1fff489c's "Add a clocking point" link lives in.
+    const { id: empty } = await createLocation(ADMIN, { companyId: b.companyId, code: 'SOLO', name: 'Empty Site' });
+    const html = await renderList();
+    const block = html.slice(html.indexOf('SOLO · Empty Site'));
+    expect(block, 'the empty site says so').toContain('groupNoPoints');
+    expect(block, 'and offers the way out, with the site pre-picked').toContain(`href="${CLOCKING_NEW_PAGE}?addPoint=${empty}"`);
   });
 });
 
