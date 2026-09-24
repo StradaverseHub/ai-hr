@@ -47,13 +47,14 @@ import { deleteTp3Action, saveTp3Action } from './actions';
  * LAID OUT IN THE FORM'S OWN FIVE SECTIONS, in the form's own order, so somebody holding the paper TP3
  * can work down it. That was promised in the approved plan and it is the layout's only organising idea.
  *
- * ── ⚠️ STAGE 1: THIS SCREEN CHANGES NO TAX, AND IT SAYS SO ON ITSELF ───────────────────────────────
+ * ── ⚠️ SECTION C NOW MOVES THE MONTHLY DEDUCTION, AND SECTION D STILL DOES NOT ────────────────────
  *
- * `core/payroll.ts` seeds the PCB accumulators from `employee_statutory_my.tp3_*`, and it still does.
- * Nothing here is read by the kernel. The `stageNote` banner is not decoration: an HR operator keying
- * seventeen relief figures into a payroll screen will reasonably assume they move the monthly
- * deduction, and in stage 1 they do not. Saying so is the difference between a staged build and a
- * surprise.
+ * Item 1bb09a73. `core/payroll.ts` still seeds the PCB accumulators from `employee_statutory_my.tp3_*`
+ * — but `saveTp3` now writes those four columns from this form's Section C, so saving here DOES change
+ * the monthly deduction. `stageNote` is rewritten to say exactly that, and to keep saying what is still
+ * true: Section D's seventeen reliefs are captured and printed and are NOT yet read by the calculation.
+ * An operator who reads the old banner and a screen that now moves money is the surprise this banner
+ * exists to prevent, in whichever direction it runs.
  *
  * ── THE RECONCILIATION STRIP IS THE HONEST HALF OF THE OVERLAP ─────────────────────────────────────
  *
@@ -91,6 +92,8 @@ export default async function Tp3Page({
     year?: string;
     error?: string;
     toast?: string;
+    /** Item 1bb09a73 — the assessment year that holds the payroll columns, when this save did not. */
+    heldBy?: string;
     confirmDelete?: string;
   }>;
 }) {
@@ -163,8 +166,8 @@ export default async function Tp3Page({
 
       <ErrorBanner message={sp.error} />
 
-      {/* ⚠️ THE STAGE BANNER. See the header: an operator keying reliefs into a payroll screen will
-          reasonably assume they move the monthly deduction, and in stage 1 they do not. */}
+      {/* ⚠️ THE STAGE BANNER. See the header: Section C now reaches the PCB calculation (item 1bb09a73)
+          and Section D still does not, and an operator keying either has to be told which. */}
       <Card className="border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
         {t('tp3.stageNote')}
       </Card>
@@ -476,6 +479,14 @@ export default async function Tp3Page({
                   {t('tp3.save')}
                 </button>
                 {sp.toast === 'saved' ? <span className="text-sm text-emerald-600">{t('tp3.saved')}</span> : null}
+                {/* Item 1bb09a73 — the save landed but the four payroll figures did NOT move, because a
+                    LATER assessment year holds them. AMBER, not green, and it names the year: a "Saved"
+                    that quietly did not reach the tax calculation is the defect this item removes. */}
+                {sp.toast === 'savedFormOnly' ? (
+                  <span className="text-sm text-amber-700 dark:text-amber-400">
+                    {t('tp3.savedFormOnly', { year: Number(sp.heldBy) })}
+                  </span>
+                ) : null}
                 {sp.toast === 'deleted' ? <span className="text-sm text-emerald-600">{t('tp3.deleted')}</span> : null}
               </div>
             </form>

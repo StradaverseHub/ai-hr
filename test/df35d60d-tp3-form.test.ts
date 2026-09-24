@@ -10,9 +10,12 @@
  *    report it. The identity case below is `toBe`, not `toEqual`: a COPY that happens to be equal today
  *    fails it, which is the whole point.
  *
- * 2. STAGE 2 ARRIVING EARLY. The PCB accumulators are seeded from `employee_statutory_my.tp3_*` and
- *    stage 1 changes nothing about that. The stage cases read the sources and fail if `core/tp3.ts`
- *    learns to write a tax column, or if `core/payroll.ts` starts reading `employee_tp3`.
+ * 2. ~~STAGE 2 ARRIVING EARLY~~ — STAGE 2 ARRIVED (item 1bb09a73), so this guard is UPDATED, not
+ *    deleted. It used to fail if `core/tp3.ts` learned to write a tax column or `core/payroll.ts`
+ *    learned to read `employee_tp3`; both are now REQUIRED, and the cases below assert the required
+ *    shape instead. What survives unchanged is the property the guard was really protecting: saving a
+ *    form for an EARLIER assessment year must never demote the `tp3_year` the PCB kernel matches on.
+ *    The behaviour of the projection itself is pinned in `test/1bb09a73-tp3-pcb-sync.test.ts`.
  *
  * 3. A FORM THAT ASSERTS WHAT NOBODY SAID. An empty box asserts nothing; a printed `0.00` asserts that
  *    the money does not exist, which on a PREVIOUS employer's figures is a claim we are in no position
@@ -80,6 +83,20 @@ const messages = Object.fromEntries(
 
 let b: Base;
 const YEAR = 2026;
+
+/**
+ * Item 1bb09a73 — a Malaysian statutory row for this person, so a money-carrying form has somewhere to
+ * land. `saveTp3` refuses one that does not (a form whose figures reach nothing is the defect that item
+ * fixed), which is why the three cases below that key real amounts now call this first. The cases that
+ * key NO money deliberately do not: a blank form still saves without a statutory profile.
+ */
+async function withStatutoryRow(personId: string) {
+  await owner.db.insert(schema.employeeStatutoryMy).values({
+    tenantId: b.tenantId,
+    personId,
+    icNumber: `900101-10-${Math.floor(Math.random() * 9000 + 1000)}`,
+  });
+}
 
 async function hire(name = 'TP3 Subject') {
   return hireEmployee(adminCtx(b), {
@@ -190,6 +207,7 @@ describe('df35d60d · Section C, and the arithmetic that could not be run backwa
 
   it('derives the accumulator seed as (C1 − ΣC2) − C3, which is what could not be inverted', async () => {
     const { personId } = await hire();
+    await withStatutoryRow(personId);
     await saveTp3(adminCtx(b), {
       personId,
       assessmentYear: YEAR,
@@ -241,22 +259,31 @@ describe('df35d60d · Section C, and the arithmetic that could not be run backwa
 // 3 · THE STAGE BOUNDARY
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('df35d60d · stage 1 moves no tax, and the sources say so', () => {
-  it('the TP3 service writes employee_tp3 and no tax column', () => {
+describe('df35d60d · the stage boundary, as item 1bb09a73 moved it', () => {
+  it('the TP3 service writes employee_tp3 AND projects onto the four tax columns', () => {
     expect(CORE_TP3).toMatch(/insert\(employeeTp3\)/);
-    expect(CORE_TP3, 'never updates the statutory row').not.toMatch(/update\(employeeStatutoryMy\)/);
-    expect(CORE_TP3, 'never writes a payroll input').not.toMatch(/payrollInput/);
-    // It READS the five columns (the reconciliation strip needs them) and that read is a select.
+    // ⚠️ REVERSED BY 1bb09a73 AND SAID SO IN WORDS. Stage 1 asserted `.not.toMatch` here: the whole
+    // point of that stage was that the form moved no tax. The reporter's item is that the form reaching
+    // nothing is the defect, so the assertion is inverted rather than dropped — a deleted guard leaves
+    // no record that the decision changed.
+    expect(CORE_TP3, 'projects the seed onto the statutory row').toMatch(/update\(employeeStatutoryMy\)/);
+    expect(CORE_TP3, 'still never writes a payroll input').not.toMatch(/payrollInput/);
     expect(CORE_TP3).toMatch(/employeeStatutoryMy\.tp3NetRemuneration/);
   });
 
-  it('the payroll kernel still seeds its accumulators from the five columns, untouched', () => {
+  it('the payroll kernel still seeds its accumulators from the five columns, and now guards the year', () => {
     expect(CORE_PAYROLL).toMatch(/tp3Applies = e\.tp3Year === pYear/);
     expect(CORE_PAYROLL).toMatch(/netRemuneration: tp3Applies/);
-    expect(CORE_PAYROLL, 'and knows nothing about the new table').not.toMatch(/employeeTp3/);
+    // ⚠️ ALSO REVERSED. `employeeTp3` is now read by the PRE-PROCESSING GATE — not by the calculation,
+    // which still takes its figures from the five columns. That distinction is what the next two lines
+    // pin: the kernel reads the form to REFUSE a run, never to compute one.
+    expect(CORE_PAYROLL, 'reads the form table to guard the run').toMatch(/from\(employeeTp3\)/);
+    expect(CORE_PAYROLL, 'and the accumulator seed is still the columns').toMatch(
+      /netRemuneration: tp3Applies \? Number\(e\.tp3Net/,
+    );
   });
 
-  it('saving a TP3 leaves the employee’s opening-balance columns byte-identical', async () => {
+  it('saving a TP3 for an EARLIER year never demotes the year the PCB kernel matches on', async () => {
     const { personId } = await hire();
     await owner.db.insert(schema.employeeStatutoryMy).values({
       tenantId: b.tenantId,
@@ -268,12 +295,7 @@ describe('df35d60d · stage 1 moves no tax, and the sources say so', () => {
       tp3PcbPaid: '3120.50',
       tp3ZakatPaid: '500.00',
     });
-    const before = await owner.db
-      .select()
-      .from(schema.employeeStatutoryMy)
-      .where(eq(schema.employeeStatutoryMy.personId, personId));
-
-    // Deliberately DISAGREEING figures: a difference is information, and it must not be "corrected".
+    // Deliberately DISAGREEING figures, so a projection that ran for the wrong year is visible.
     const disagreeing = {
       sectionC: { c1: { amount: 99999 }, c3: { amount: 1 }, c5: { amount: 2 }, c4: { subItems: { i: 3, ii: 0 } } },
     };
@@ -290,11 +312,19 @@ describe('df35d60d · stage 1 moves no tax, and the sources say so', () => {
       .select()
       .from(schema.employeeStatutoryMy)
       .where(eq(schema.employeeStatutoryMy.personId, personId));
-    expect(after).toEqual(before);
+    // ⚠️ UPDATED FOR 1bb09a73, and the load-bearing half is unchanged. The SAME-year save now DOES
+    // write the columns — that is the item. What must still hold, and what the original case was really
+    // built to catch, is that the following EARLIER-year save leaves `tp3_year` alone: a demotion there
+    // would swap a live statutory figure for a stale one with nothing on screen to say so.
     expect(after[0].tp3Year, 'the year the PCB kernel matches on is untouched').toBe(YEAR);
+    expect(Number(after[0].tp3NetRemuneration), 'the SAME-year form’s figures, not the earlier form’s').toBe(
+      99999 - 1,
+    );
+    expect(Number(after[0].tp3PcbPaid)).toBe(2);
+    expect(Number(after[0].tp3ZakatPaid)).toBe(3);
   });
 
-  it('the screen tells the operator that nothing here changes the monthly deduction', () => {
+  it('the screen still carries a stage banner, now saying which section moves the deduction', () => {
     expect(PAGE).toContain("t('tp3.stageNote')");
     for (const l of LOCALES) {
       const note = (messages[l] as unknown as { taxRelief: { tp3: { stageNote: string } } }).taxRelief.tp3.stageNote;
@@ -622,6 +652,7 @@ describe('df35d60d · the record', () => {
 
   it('keeps ONE record per person per assessment year, updating in place', async () => {
     const { personId } = await hire();
+    await withStatutoryRow(personId);
     await saveTp3(adminCtx(b), { personId, assessmentYear: YEAR, sectionC: { c1: { amount: 100 } } });
     await saveTp3(adminCtx(b), { personId, assessmentYear: YEAR, sectionC: { c1: { amount: 200 } } });
     const rows = await owner.db
@@ -676,6 +707,7 @@ describe('df35d60d · the record', () => {
 
   it('appends a before/after event on every write, and on the delete', async () => {
     const { personId } = await hire();
+    await withStatutoryRow(personId);
     await saveTp3(adminCtx(b), { personId, assessmentYear: YEAR, sectionC: { c1: { amount: 1000 } } });
     await saveTp3(adminCtx(b), { personId, assessmentYear: YEAR, sectionC: { c1: { amount: 2000 } } });
     await deleteTp3(adminCtx(b), { personId, assessmentYear: YEAR });

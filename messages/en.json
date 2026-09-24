@@ -4017,6 +4017,7 @@
       "preChecksTitle": "Pre-processing checks",
       "preChecksAllClear": "All checks passed — employee information is complete for this run.",
       "preChecksBlockerHint": "{n} employee(s) have no current salary record. Previously they would have been silently left out of the run — payroll cannot be processed until this is fixed (or the run scope excludes them).",
+      "preChecksTp3BlockerHint": "{n} employee(s) have a Form TP3 for this year that their Payroll tab figures do not match, so this run would treat their previous employment as nothing and under-deduct PCB. Open Form TP3 for each of them and save it, then run payroll again.",
       "preChecksWarningHint": "{n} check(s) need your attention. You can still process payroll, but you will be asked to confirm.",
       "preChecksBlockerBadge": "Blocks processing",
       "preChecksWarningBadge": "Warning",
@@ -4027,10 +4028,12 @@
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
-        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
+        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksBlockedTp3Error": "Cannot process payroll: {n} employee(s) have a Form TP3 for this year that has not reached their payroll figures. Open Form TP3 for each of them and save it first.",
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
       "skipped": {
         "title": "Employees skipped by this run",
@@ -5697,7 +5700,8 @@
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
-        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
+        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "unattachedScopeTitle": "{n} employee(s) have transactions this run will not collect",
       "unattachedScopeWarning": "A run collects only the employees it includes, and only the transactions marked for its own pay cycle (or marked for none). Anything else stays outstanding until a run that covers it is calculated. You can continue — this is a warning, not a block.",
@@ -11403,7 +11407,7 @@
     "tp3": {
       "title": "Form TP3 — previous employment",
       "intro": "The previous employment's figures for an employee who joined part-way through the year, laid out in the official form's own sections so a paper TP3 can be worked down in order. Stage 1: this record is captured and printed. It changes no tax — the monthly PCB still reads the four opening-balance figures on the employee's Payroll tab.",
-      "stageNote": "Stage 1 of two. Nothing on this screen changes the monthly tax deduction. Section D's reliefs are connected to the PCB calculation in stage 2, together with the across-both-employers limit check.",
+      "stageNote": "Section C now reaches the monthly tax deduction: saving this form writes the previous employment's remuneration, EPF, PCB and zakat into the figures the payroll run reads. Section D's reliefs are still recorded and printed only — they are not yet part of the PCB calculation.",
       "sectionA": "Section A — Employer information",
       "sectionAFootnote": "*Please use additional attachment for the next employment",
       "sectionB": "Section B — Employee information",
@@ -11451,7 +11455,7 @@
         }
       },
       "reconcileHeading": "Against the figures the tax calculation uses",
-      "reconcileNote": "The monthly PCB reads the four opening-balance figures on the employee's Payroll tab, and it still does. These are the same four worked out from the boxes above — gross less the exempt allowances less EPF. They are shown so the two can be compared; nothing here is copied into the tax calculation, and a difference is not an error.",
+      "reconcileNote": "The monthly PCB reads the four opening-balance figures on the employee's Payroll tab. Saving this form writes them from the boxes above — gross less the exempt allowances less EPF, the EPF itself, the PCB already deducted, and the zakat. They are shown here so you can see what the tax calculation will use; a difference means someone edited them by hand on the Payroll tab afterwards.",
       "reconcileDerived": "From this form",
       "reconcileStored": "Used by the tax calculation",
       "reconcileNet": "Accumulated net remuneration",
@@ -11467,6 +11471,7 @@
       "lastSaved": "Last saved {at}",
       "save": "Save",
       "saved": "Form TP3 saved.",
+      "savedFormOnly": "Form TP3 saved. The payroll figures were not changed: they are held against {year}, a later year than this form.",
       "deleted": "Form TP3 record removed.",
       "downloadPdf": "Download Form TP3 (English)",
       "downloadPdfMs": "Download Form TP3 (Bahasa Malaysia)",

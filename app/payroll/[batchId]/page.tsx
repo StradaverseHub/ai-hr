@@ -121,7 +121,13 @@ export default async function BatchPage({
   const skippedEmployees = batch.status === 'draft' ? [] : await listSkippedEmployees(s, [batchId]);
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing/period-miss/zero); the old
   // BASIC-pay-item existence blocker is gone. A stale BASIC pay item is a confirm-to-proceed warning.
-  const preBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
+  const preSalaryBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
+  // Item 1bb09a73 — COUNTED SEPARATELY, and that is not tidiness. `preChecksBlockerHint` says in words
+  // that the named employees "have no current salary record"; folding a TP3 year mismatch into that
+  // count would print that sentence about people whose salary record is fine. The group gets its own
+  // red banner below, which says what is actually wrong.
+  const preTp3Blockers = preChecks.tp3YearMismatch?.length ?? 0;
+  const preBlockers = preSalaryBlockers + preTp3Blockers;
   // 297ae65a — the non-MYR/mixed-currency salary notice counts among the confirm-to-proceed warnings.
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company joins the confirm-to-proceed
   // warnings: the run records the employee as subject and charges nothing, and until now said so nowhere.
@@ -720,9 +726,14 @@ export default async function BatchPage({
             <p className="px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400">✓ {t('preChecksAllClear')}</p>
           ) : (
             <div className="space-y-4 px-4 py-4">
-              {preBlockers > 0 && (
+              {preSalaryBlockers > 0 && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-                  {t('preChecksBlockerHint', { n: preBlockers })}
+                  {t('preChecksBlockerHint', { n: preSalaryBlockers })}
+                </div>
+              )}
+              {preTp3Blockers > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+                  {t('preChecksTp3BlockerHint', { n: preTp3Blockers })}
                 </div>
               )}
               {preBlockers === 0 && preWarnings > 0 && (
@@ -734,6 +745,7 @@ export default async function BatchPage({
                 [
                   ['missingCompensation', preChecks.missingCompensation, true],
                   ['zeroBasic', preChecks.zeroBasic ?? [], true],
+                  ['tp3YearMismatch', preChecks.tp3YearMismatch ?? [], true],
                   ['missingStatutory', preChecks.missingStatutory, false],
                   ['missingBank', preChecks.missingBank, false],
                   ['staleBasicComponent', preChecks.staleBasicComponent ?? [], false],

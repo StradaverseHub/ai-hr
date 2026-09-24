@@ -117,7 +117,12 @@ export function StepValidation({
     );
   }
 
-  const blockers = advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0);
+  // Item 1bb09a73 — a Form TP3 for this pay year that the run would seed as ZERO is a BLOCKER here too.
+  // `validationBlockerHint` is generic ("Payroll cannot proceed until these are corrected"), so unlike
+  // the batch card this count folds in without any sentence becoming untrue; the group row below names
+  // what is wrong.
+  const blockers =
+    advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0) + (advisory.tp3YearMismatch?.length ?? 0);
   // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company is AMBER for the same reason:
   // the run is honest work that must not be blocked, but the contradiction has to be seen before Process.
@@ -179,6 +184,7 @@ export function StepValidation({
   const groups: [keyof PreProcessAdvisory, typeof advisory.missingCompensation, boolean][] = [
     ['missingCompensation', advisory.missingCompensation, true],
     ['zeroBasic', advisory.zeroBasic ?? [], true],
+    ['tp3YearMismatch', advisory.tp3YearMismatch ?? [], true],
     ['missingStatutory', advisory.missingStatutory, false],
     ['missingBank', advisory.missingBank, false],
     ['staleBasicComponent', advisory.staleBasicComponent ?? [], false],

@@ -1,5 +1,5 @@
 /**
- * LHDN TP3 (1/2026) — the PREVIOUS-EMPLOYMENT record (item df35d60d, STAGE 1).
+ * LHDN TP3 (1/2026) — the PREVIOUS-EMPLOYMENT record (item df35d60d; item 1bb09a73 joined it to PCB).
  *
  * ══ WHAT THIS IS, AND WHAT IT DELIBERATELY IS NOT ═══════════════════════════════════════════════════
  *
@@ -8,22 +8,38 @@
  * was already deducted, and which reliefs they already claimed through that employer. This file is the
  * one service that reads and writes that record.
  *
- * ⚠️ IT MOVES NO TAX, AND THAT IS THE STAGE BOUNDARY, NOT AN OVERSIGHT. `core/payroll.ts` seeds the PCB
- * accumulators from `employee_statutory_my.tp3_*` — `tp3Applies = e.tp3Year === pYear`, then
- * netRemuneration / epfClaimed / pcbPaid / zakatPaid, LHDN's ∑(Y−K), K, X and Z — and it still does,
- * unchanged, reading columns this file never writes. Stage 2 connects Section D to the computation with
- * the cross-employer limit check and decides, once and deliberately, which side owns the accumulator
- * seed. Nothing here may be wired into that path before it does.
+ * ⚠️ IT NOW MOVES TAX — item 1bb09a73, and this is STAGE 2 of the boundary stage 1 wrote down.
  *
- * ══ THE OVERLAP IS REAL, SO IT IS SHOWN RATHER THAN HIDDEN ══════════════════════════════════════════
+ * `core/payroll.ts` seeds the PCB accumulators from `employee_statutory_my.tp3_*` — `tp3Applies =
+ * e.tp3Year === pYear`, then netRemuneration / epfClaimed / pcbPaid / zakatPaid, LHDN's ∑(Y−K), K, X and
+ * Z. Stage 1 wrote the form into `employee_tp3` and stopped, so the figures HR keyed off the paper form
+ * reached nothing: production carried ONE `employee_tp3` row (person b57268ae) and ONE statutory row
+ * with a `tp3_year` (person d4ef0b58) — two stores holding DIFFERENT PEOPLE, a form-filler contributing
+ * nothing to payroll and payroll figures with no form behind them. `saveTp3` now writes both.
  *
- * Two stores now hold previous-employment money: the five columns (authoritative for tax) and this row
- * (authoritative for the form). `deriveAccumulatorSeed` computes what the accumulator seed WOULD be from
- * the form's own boxes — (C1 − ΣC2) − C3, C3, C5, C4(i) — and the screen prints it beside the stored
- * columns. A difference is INFORMATION, not an error: nothing here acts on it, nothing refuses a save
- * because of it, and no figure is copied from one side to the other. Making the overlap visible is what
- * keeps it from becoming the silent second source of truth CLAUDE.md §1 forbids, and it is the exact
- * bridge stage 2 formalises.
+ * ══ WHICH SIDE OWNS THE ACCUMULATOR SEED — THE DECISION STAGE 1 DEFERRED ════════════════════════════
+ *
+ * THE FORM OWNS IT FOR A PERSON-YEAR THAT HAS A FORM. `employee_tp3.payload` is the authoritative record
+ * and the five columns become its DERIVED PROJECTION for that person; for a person with NO form they
+ * stay exactly what they are today, a hand-keyed opening balance (migration / pre-system months) that
+ * nothing here touches. That is the only reading that leaves one authoritative owner per fact
+ * (CLAUDE.md §1) without taking the migration case away from HR.
+ *
+ * THE COLUMNS HOLD ONE YEAR AND THE FORM TABLE HOLDS MANY, so the projection is CONDITIONAL: a form for
+ * assessment year Y writes the columns only when the stored `tp3_year` is absent or is Y or EARLIER.
+ * Recording a 2025 form after 2026's figures are in place must never demote the year the PCB kernel
+ * matches on — that is a statutory regression with no error message, and `test/df35d60d-tp3-form.test.ts`
+ * has pinned exactly that ordering since stage 1. The save still succeeds (the form is a real record);
+ * it reports `applied: false` and the screen says which year holds the columns, so nothing is silent.
+ *
+ * ══ THE OVERLAP IS STILL SHOWN, BECAUSE A LATER HAND EDIT IS STILL ALLOWED ══════════════════════════
+ *
+ * `deriveAccumulatorSeed` computes the seed from the form's own boxes — (C1 − ΣC2) − C3, C3, C5, C4(i) —
+ * and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
+ * read the same function, so the figure an operator is shown is the figure that lands. The Payroll tab's
+ * `setTp3Action` still edits the columns by hand afterwards and this file does not fight it; the strip
+ * shows the difference. What is NOT tolerated is the YEAR diverging, which `core/payroll.ts` refuses at
+ * the pre-processing gate rather than seeding a silent zero onto a statutory deduction.
  *
  * ══ THE TAXONOMY IS THE TP1'S, READ FOR A DIFFERENT EMPLOYER ════════════════════════════════════════
  *
@@ -44,7 +60,7 @@
  * paper form the employee hands in; an employee does not self-declare a previous employer's figures.
  */
 import { and, eq } from 'drizzle-orm';
-import { type SessionContext } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE — the same binding core/tax-relief.ts uses and for the same reason: a
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
 import { withPayrollTenant as withTenant } from './module-gate';
@@ -249,11 +265,20 @@ function readRemarks(raw: unknown): string | null {
 // ── The derived accumulator seed — the bridge, and it is read-only ──────────────────────────────────
 
 /**
- * What the PCB accumulator seed WOULD be, computed from the form's own boxes.
+ * The PCB accumulator seed, computed from the form's own boxes.
  *
- * ⚠️ NOTHING CONSUMES THIS FOR TAX. It exists so the screen can print the derived figures beside the
- * stored `employee_statutory_my.tp3_*` columns and let an operator SEE whether the two agree. Stage 2
- * decides what to do about a disagreement; stage 1 refuses to decide it silently.
+ * ⚠️ THE ONE PLACE THE SECTION-LINE → PAYROLL-COLUMN MAPPING EXISTS (item 1bb09a73). The reconciliation
+ * strip on the TP3 screen prints it, `saveTp3` writes it into `employee_statutory_my`, and the payroll
+ * pre-processing gate re-derives it to decide whether a run is about to drop a declared figure. One
+ * function, three readers: the figure the operator is shown is the figure the PCB calculation uses.
+ * A second transcription of these four lines is the competing source of truth CLAUDE.md §1 forbids.
+ *
+ * ⚠️ READ OFF THE FORM'S OWN DEFINITION, NEVER GUESSED FROM THE COLUMN NAMES. Every line below is named
+ * by `MY_TP3_2026_SECTION_C` in `localization/my/statutory-tables.ts` (C1 "is LHDN's Y before anything is
+ * taken off it"; C3 "is LHDN's K"; C4(i) "Total Zakat", and its comment says why it is NOT the TP1's
+ * rebate line; C5 "is LHDN's X", excluding CP38) and printed in those words on the form itself
+ * (`messages/*.json` → `taxRelief.tp3.money`). C4(ii) — the Umrah / religious-travel departure levy — is
+ * a RELIEF and not zakat, so it is deliberately not part of Z.
  *
  * The arithmetic is LHDN's own, and it is the arithmetic that could not be run backwards:
  *
@@ -371,8 +396,10 @@ export function listTp3YearsForPerson(ctx: SessionContext, p: { personId: string
  * The B1–B3 identity the form prints, and the five stored accumulator columns the screen reconciles
  * against. ONE read rather than two, because the screen always wants both together.
  *
- * ⚠️ THE STORED COLUMNS ARE RETURNED AS-READ AND NEVER WRITTEN BY THIS FILE. They are the PCB kernel's
- * input; this service shows them and stops there.
+ * ⚠️ THE STORED COLUMNS ARE RETURNED AS-READ. They are the PCB kernel's input, and since item 1bb09a73
+ * `saveTp3` PROJECTS this form's Section C onto them (see the file header) — so the strip that renders
+ * this now shows, for the form's own year, what the tax calculation will actually use. It still reads
+ * them rather than re-deriving them, which is what makes a later hand edit visible instead of hidden.
  */
 export type Tp3Identity = {
   employee: { name: string; idNumber: string | null; tin: string | null };
@@ -427,17 +454,179 @@ export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Pr
 // ── The write ───────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Create or replace ONE person's TP3 for ONE assessment year.
+ * What the save did to the four figures the payroll run reads. Returned so the caller can SAY so: a
+ * projection that quietly did not happen is the defect this item exists to remove, one level up.
+ */
+export type Tp3SeedOutcome =
+  /** The four columns and `tp3_year` now hold this form's figures. */
+  | { applied: true; seed: Tp3AccumulatorSeed }
+  /** A LATER assessment year holds the columns; this form is recorded and the columns are untouched. */
+  | { applied: false; reason: 'laterYearHoldsColumns'; heldBy: number }
+  /** The person has no `employee_statutory_my` row, and this form asserts no money to put in one. */
+  | { applied: false; reason: 'noStatutoryProfile' };
+
+/**
+ * `employee_statutory_my` is UNIQUE ON `person_id` (`employee_statutory_my_person_uq`), so the four
+ * figures are a PERSON-level fact and always have been — `core/payroll.ts` joins
+ * employment → person → this row, and a person holding two concurrent employments already seeds both
+ * runs from the one row. This projection inherits that grain and changes nothing about it; it is stated
+ * here because writing the columns from a person-keyed form makes it look like a new decision. It is
+ * not, and a per-employment previous-employment balance would need a new column before it could be one.
+ */
+async function projectSeedOntoStatutory(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { personId: string; assessmentYear: number; seed: Tp3AccumulatorSeed },
+): Promise<Tp3SeedOutcome> {
+  const [stat] = await tx
+    .select({
+      id: employeeStatutoryMy.id,
+      tp3Year: employeeStatutoryMy.tp3Year,
+      net: employeeStatutoryMy.tp3NetRemuneration,
+      epf: employeeStatutoryMy.tp3EpfClaimed,
+      pcb: employeeStatutoryMy.tp3PcbPaid,
+      zakat: employeeStatutoryMy.tp3ZakatPaid,
+    })
+    .from(employeeStatutoryMy)
+    .where(eq(employeeStatutoryMy.personId, p.personId))
+    .limit(1);
+
+  // NO ROW TO PROJECT INTO. Refusing (and rolling the form back with it) rather than creating a bare one:
+  // an `employee_statutory_my` row is what `preProcessChecksTx` reads as "this employee HAS a statutory
+  // profile", so inserting an empty one here would silence a real readiness warning on the payroll run.
+  // A form whose money cannot reach the calculation must not save quietly — that is the whole defect.
+  throwIfNowhereToLand(stat, p.seed);
+  if (!stat) return { applied: false, reason: 'noStatutoryProfile' };
+
+  // A LATER year holds the columns. See the file header: demoting `tp3_year` is a statutory regression
+  // with no error message, so the form is kept and the projection is REPORTED as not applied.
+  if (stat.tp3Year != null && stat.tp3Year > p.assessmentYear) {
+    return { applied: false, reason: 'laterYearHoldsColumns', heldBy: stat.tp3Year };
+  }
+
+  const money = (n: number) => n.toFixed(2);
+  const after = {
+    tp3Year: p.assessmentYear,
+    tp3NetRemuneration: money(p.seed.netRemuneration),
+    tp3EpfClaimed: money(p.seed.epfClaimed),
+    tp3PcbPaid: money(p.seed.pcbPaid),
+    tp3ZakatPaid: money(p.seed.zakatPaid),
+  };
+  await tx
+    .update(employeeStatutoryMy)
+    .set({ ...after, updatedAt: new Date() })
+    .where(eq(employeeStatutoryMy.id, stat.id));
+
+  // THE SAME EVENT TYPE THE HAND PATH EMITS (`setTp3ProfileMY`), on the same aggregate, so an auditor
+  // reconstructing the opening balances that seeded a PCB figure reads ONE stream and does not have to
+  // know which screen moved them. `source` is what distinguishes the two.
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employee-statutory',
+    aggregateId: stat.id,
+    eventType: 'employee.tp3.updated',
+    actor: actorOf(ctx),
+    subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+    payload: {
+      personId: p.personId,
+      source: 'tp3-form',
+      assessmentYear: p.assessmentYear,
+      before: {
+        tp3Year: stat.tp3Year,
+        tp3NetRemuneration: stat.net,
+        tp3EpfClaimed: stat.epf,
+        tp3PcbPaid: stat.pcb,
+        tp3ZakatPaid: stat.zakat,
+      },
+      after,
+    },
+  });
+  return { applied: true, seed: p.seed };
+}
+
+/**
+ * Withdraw the projection this year's form put onto the statutory row. See `deleteTp3`'s header for why
+ * the year equality is the test for "these figures came from that form", and why a different year is
+ * left alone.
+ */
+async function clearProjectionForYear(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { personId: string; assessmentYear: number },
+): Promise<void> {
+  const [stat] = await tx
+    .select({
+      id: employeeStatutoryMy.id,
+      tp3Year: employeeStatutoryMy.tp3Year,
+      net: employeeStatutoryMy.tp3NetRemuneration,
+      epf: employeeStatutoryMy.tp3EpfClaimed,
+      pcb: employeeStatutoryMy.tp3PcbPaid,
+      zakat: employeeStatutoryMy.tp3ZakatPaid,
+    })
+    .from(employeeStatutoryMy)
+    .where(eq(employeeStatutoryMy.personId, p.personId))
+    .limit(1);
+  if (!stat || stat.tp3Year !== p.assessmentYear) return;
+  const after = {
+    tp3Year: null,
+    tp3NetRemuneration: null,
+    tp3EpfClaimed: null,
+    tp3PcbPaid: null,
+    tp3ZakatPaid: null,
+  };
+  await tx
+    .update(employeeStatutoryMy)
+    .set({ ...after, updatedAt: new Date() })
+    .where(eq(employeeStatutoryMy.id, stat.id));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employee-statutory',
+    aggregateId: stat.id,
+    eventType: 'employee.tp3.updated',
+    actor: actorOf(ctx),
+    subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+    payload: {
+      personId: p.personId,
+      source: 'tp3-form-deleted',
+      assessmentYear: p.assessmentYear,
+      before: {
+        tp3Year: stat.tp3Year,
+        tp3NetRemuneration: stat.net,
+        tp3EpfClaimed: stat.epf,
+        tp3PcbPaid: stat.pcb,
+        tp3ZakatPaid: stat.zakat,
+      },
+      after,
+    },
+  });
+}
+
+/** Does this form assert any money at all? An all-blank Section C carries nothing to lose. */
+const seedCarriesMoney = (s: Tp3AccumulatorSeed) =>
+  s.gross !== 0 || s.exemptTotal !== 0 || s.epfClaimed !== 0 || s.pcbPaid !== 0 || s.zakatPaid !== 0;
+
+function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
+  if (stat == null && seedCarriesMoney(seed)) {
+    throw new Tp3Error(
+      'This Form TP3 records previous-employment pay, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
+    );
+  }
+}
+
+/**
+ * Create or replace ONE person's TP3 for ONE assessment year, AND project its Section C figures onto the
+ * four `employee_statutory_my` columns the payroll run reads (item 1bb09a73).
  *
  * UPSERT ON THE GRAIN, not an append: see the header on db/schema's `employeeTp3` for why a record of
  * fact keeps its history in the event log where a declaration keeps it in rows. The unique index is what
  * makes the grain true; this is `onConflictDoUpdate` against it, so two concurrent saves cannot produce
  * two records for one year.
  *
- * ⚠️ WRITES NOTHING OUTSIDE `employee_tp3`. Not `employee_statutory_my`, not `payroll_input`, not a
- * single tax figure. Stage 1.
+ * ONE TRANSACTION covers the form row, the projection and both events: a form that saved while its
+ * figures did not reach payroll is precisely the state this item was raised about, and a partial commit
+ * would recreate it.
  */
-export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ id: string }> {
+export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ id: string; seed: Tp3SeedOutcome }> {
   const personId = requireAdminTarget(ctx, p.personId);
   const assessmentYear = validateYear(p.assessmentYear);
   const deductionMonth = validateMonth(p.deductionMonth);
@@ -524,7 +713,26 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
       },
     });
 
-    return { id: saved.id };
+    // ── The projection onto the four figures the payroll run reads (item 1bb09a73) ──────────────────
+    //
+    // AFTER the form row and INSIDE the same transaction. `deriveAccumulatorSeed` cannot return null
+    // here — the payload is built two lines above with `form: 'tp3-2026'` — but the non-null assertion
+    // is a `??` fallback rather than a `!`, so a future payload revision that this function does not yet
+    // understand raises rather than silently seeding zeros onto a statutory deduction.
+    const seed = deriveAccumulatorSeed(payload);
+    if (!seed) throw new Tp3Error('This Form TP3 could not be read for the tax calculation.');
+    // A NEGATIVE ∑(Y−K) is a keying error, and it is the one `deriveAccumulatorSeed` deliberately does
+    // not clamp (see its header). Clamping it to zero here would understate previous-employment income
+    // and under-deduct PCB; writing it through would put a negative accumulator into LHDN's formula.
+    // Both are wrong figures on a statutory deduction, so the save refuses and names the boxes.
+    if (seed.netRemuneration < 0) {
+      throw new Tp3Error(
+        'Section C does not add up: the tax-exempt amounts (C2) plus the EPF contributions (C3) are more than the total remuneration (C1). Check those boxes before saving.',
+      );
+    }
+    const outcome = await projectSeedOntoStatutory(tx, ctx, { personId, assessmentYear, seed });
+
+    return { id: saved.id, seed: outcome };
   });
 }
 
@@ -536,6 +744,13 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
  * declared. A TP3 keyed against the wrong person or the wrong year is a data-entry mistake with no
  * statutory meaning of its own — the paper form the employee handed in is the record, and the employer
  * keeps it for seven years as the form's own note says. The event log carries the before-image.
+ *
+ * ⚠️ IT ALSO CLEARS THE PROJECTION IT PUT THERE (item 1bb09a73), and only that one: the four columns are
+ * cleared when `tp3_year` equals the year being deleted, and left alone otherwise. Since `saveTp3` for
+ * year Y sets `tp3_year = Y`, that equality is what says "these figures came from the form now being
+ * withdrawn". Leaving them behind would leave payroll seeding from a form that no longer exists, which
+ * is the half of the production defect that had figures with no form behind them. A hand-keyed opening
+ * balance for a DIFFERENT year is untouched, and the before-image is on the event either way.
  */
 export async function deleteTp3(ctx: SessionContext, p: { personId: string; assessmentYear: number }): Promise<void> {
   const personId = requireAdminTarget(ctx, p.personId);
@@ -548,6 +763,7 @@ export async function deleteTp3(ctx: SessionContext, p: { personId: string; asse
       .limit(1);
     if (!existing) return;
     await tx.delete(employeeTp3).where(eq(employeeTp3.id, existing.id));
+    await clearProjectionForYear(tx, ctx, { personId, assessmentYear });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-tp3',

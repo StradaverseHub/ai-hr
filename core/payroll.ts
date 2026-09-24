@@ -60,6 +60,7 @@ import {
   domainEvent,
   employeeLoan,
   employeeStatutoryMy,
+  employeeTp3,
   employment,
   employmentPayComponent,
   jobGrade,
@@ -97,6 +98,11 @@ import { cp38ForPeriod } from './cp38';
 // limit check, the screen's remaining strip, the printed ACCUMULATED column and this feed must all
 // agree on which row is the record for a month, and one function is the only way that stays true.
 import { TP1_COUNTABLE_COLUMNS, tp1CountForYear } from './tax-relief';
+// Item 1bb09a73 — the ONE place the TP3 Section-C → accumulator-seed mapping lives. Imported, never
+// re-derived: the pre-processing gate below has to decide whether a run is about to drop a figure the
+// employee's own Form TP3 declares, and it must read that figure exactly as the form's screen and
+// `saveTp3` read it, or the gate would guard a different number from the one at risk.
+import { deriveAccumulatorSeed } from './tp3';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
@@ -3002,10 +3008,14 @@ export async function generatePayslips(
       // authoritative pay source, so an internal BASIC pay item is never a processing prerequisite.
       // ADR-0078 adds unpayablePayMode: a custom_period employee has NO calculation and must not be quietly
       // paid their monthly-equivalent basic. staleBasicComponent is a WARNING and never blocks.
+      // Item 1bb09a73 adds tp3YearMismatch: a declared previous-employment figure that this run would
+      // seed as ZERO. EXACT SET, UPDATED AND NOT LOOSENED — a new blocker that is not added here is a
+      // card on the screen that the server never enforces.
       const blocked =
         checks.missingCompensation.length +
         (checks.zeroBasic?.length ?? 0) +
-        (checks.unpayablePayMode?.length ?? 0);
+        (checks.unpayablePayMode?.length ?? 0) +
+        (checks.tp3YearMismatch?.length ?? 0);
       if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
 
@@ -8348,6 +8358,24 @@ export type PreProcessAdvisory = {
   // above) — it is a confirm-to-proceed warning so the contradiction is stated at the moment it has an
   // effect. OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
   hrdfSubjectUnregistered?: PreProcessCheckRow[];
+  // BLOCKER (item 1bb09a73) — THE SILENT ZERO ON A STATUTORY FIGURE.
+  //
+  // The employee has a Form TP3 for THIS pay year declaring previous-employment money, and the four
+  // opening-balance columns the PCB kernel actually reads are stamped with a DIFFERENT `tp3_year` (or
+  // none). `tp3Applies = e.tp3Year === pYear` then seeds ∑(Y−K), K, X and Z with ZERO — the run does
+  // not fail, nothing is reported, and every PCB figure for that employee is computed as though they
+  // had earned nothing before joining. Under-deducted PCB on a filed payslip is an employer liability,
+  // and it is invisible in the output, so it BLOCKS rather than warns: there is no reading of a payslip
+  // that tells an operator this happened.
+  //
+  // NARROW ON PURPOSE. A TP3 for a DIFFERENT year is not this (last year's opening balances correctly
+  // do not seed this year). An all-blank Section C is not this (nothing is being dropped). Columns
+  // that hold the pay year but disagree in AMOUNT are not this either — a hand edit on the Payroll tab
+  // is still allowed and the TP3 screen's reconciliation strip shows the difference. Only the YEAR,
+  // which is the one divergence whose consequence is a silent zero.
+  //
+  // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  tp3YearMismatch?: PreProcessCheckRow[];
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -8384,7 +8412,13 @@ async function preProcessChecksTx(
       compRate: compensation.rateAmount,
       // 297ae65a — the record's salary currency, for the non-MYR / mixed-currency warning below.
       compCurrency: compensation.currency,
+      // Item 1bb09a73 — the PERSON, because `employee_tp3` is keyed on it (the statutory row is too:
+      // `employee_statutory_my_person_uq`). Two employments of one person therefore share one TP3 and
+      // one set of opening balances, which is the grain this table has always had.
+      personId: employment.personId,
       statPersonId: employeeStatutoryMy.personId,
+      // Item 1bb09a73 — the year the kernel matches on (`tp3Applies = e.tp3Year === pYear`).
+      statTp3Year: employeeStatutoryMy.tp3Year,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
       // r79 — the tri-state per-employee HRDF flag. Only an EXPLICIT true can contradict an unregistered
@@ -8465,6 +8499,29 @@ async function preProcessChecksTx(
   // company that has genuinely registered simply produces no rows below). Mirrors generatePayslips' own
   // default exactly (`companyStatutoryMy` absent ⇒ not_registered), so what this check reports is what the
   // run will actually do — six of eight live companies have no row at all.
+  // Item 1bb09a73 — the Form TP3 records for THIS pay year, for exactly the people on this run. Read
+  // here rather than per row so the check costs ONE query, and skipped entirely when the run is empty.
+  // `y` is the pay-period year parsed at the top of this function, which is the same value the kernel
+  // compares `tp3_year` against, so the gate and the thing it guards cannot drift apart.
+  const tp3MoneyPersonIds = new Set<string>();
+  if (rows.length > 0) {
+    const tp3Rows = await tx
+      .select({ personId: employeeTp3.personId, payload: employeeTp3.payload })
+      .from(employeeTp3)
+      .where(
+        and(
+          inArray(employeeTp3.personId, [...new Set(rows.map((r) => r.personId))]),
+          eq(employeeTp3.assessmentYear, y),
+        ),
+      );
+    for (const t of tp3Rows) {
+      const seed = deriveAccumulatorSeed(t.payload);
+      // An all-blank Section C declares nothing, so nothing can be dropped by not reading it.
+      if (seed && (seed.netRemuneration !== 0 || seed.epfClaimed !== 0 || seed.pcbPaid !== 0 || seed.zakatPaid !== 0)) {
+        tp3MoneyPersonIds.add(t.personId);
+      }
+    }
+  }
   const anyExplicitHrdfYes = rows.some((r) => r.subjectToHrdf === true);
   let hrdfUnregistered = false;
   if (anyExplicitHrdfYes) {
@@ -8475,7 +8532,7 @@ async function preProcessChecksTx(
       .limit(1);
     hrdfUnregistered = (coStat?.hrdfStatus ?? 'not_registered') === 'not_registered';
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
@@ -8511,6 +8568,10 @@ async function preProcessChecksTx(
     // makes structurally uncollectable. Independent of every check above (a row can carry both) and NOT
     // gated on a compensation row: the contradiction is in the statutory setup, not in the salary record.
     if (hrdfUnregistered && r.subjectToHrdf === true) out.hrdfSubjectUnregistered!.push(row);
+    // Item 1bb09a73 — BLOCKER. See the type's own note for why the year alone, and why it blocks.
+    // Independent of every check above (a row can carry both) and NOT gated on a compensation row: the
+    // contradiction is between two statutory records, not in the salary record.
+    if (tp3MoneyPersonIds.has(r.personId) && r.statTp3Year !== y) out.tp3YearMismatch!.push(row);
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).
@@ -8645,6 +8706,9 @@ export function listPayslipLessEligible(
     push(blockerBy, flagsOf(checks.missingCompensation, 'missingCompensation'));
     push(blockerBy, flagsOf(checks.zeroBasic, 'zeroBasic'));
     push(blockerBy, flagsOf(checks.unpayablePayMode, 'unpayablePayMode'));
+    // Item 1bb09a73 — a declared Form TP3 figure this run would seed as zero blocks the ADD too, for
+    // the same reason it blocks the run: the person would be paid with a wrong PCB and nothing would say so.
+    push(blockerBy, flagsOf(checks.tp3YearMismatch, 'tp3YearMismatch'));
     push(warningBy, flagsOf(checks.missingStatutory, 'missingStatutory'));
     push(warningBy, flagsOf(checks.missingBank, 'missingBank'));
 
@@ -8691,6 +8755,10 @@ export function preProcessAdvisoryForSelection(
       // Validation step at all; merging it restores the parity this function's contract claims.
       currencyMismatch: [],
       hrdfSubjectUnregistered: [],
+      // Item 1bb09a73 — a BLOCKER, so a missing merge here would let the wizard's Validation step show
+      // all-clear for a run the terminal Process action then refuses. Same parity trap the note above
+      // records for currencyMismatch.
+      tp3YearMismatch: [],
     };
     for (const companyId of input.companyIds) {
       const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope }, isModuleEnabled(ctx, 'typed_pay_components'));
@@ -8702,6 +8770,7 @@ export function preProcessAdvisoryForSelection(
       merged.missingBank.push(...a.missingBank);
       merged.currencyMismatch!.push(...(a.currencyMismatch ?? []));
       merged.hrdfSubjectUnregistered!.push(...(a.hrdfSubjectUnregistered ?? []));
+      merged.tp3YearMismatch!.push(...(a.tp3YearMismatch ?? []));
     }
     return merged;
   });
