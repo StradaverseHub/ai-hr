@@ -81,6 +81,12 @@ const PERSONNEL_COMPONENTS = [
   'components/employment-period-fields.tsx',
   'components/employer-bears-fields.tsx',
   'components/tax-relief-fields.tsx',
+  // da7463b4 (r336) — the SEVENTH shared group, and it arrived the same way as the five above: the draft
+  // employee screen was given the record's two address blocks, so the permanent/correspondence fields were
+  // extracted out of the Personnel page into one component that BOTH screens mount. The Personnel card
+  // renders exactly the same seven labels it always did — addressLine1..3, postcode, city, stateLabel,
+  // country — in the same namespace; only the file changed. This list is the reason that is not a failure.
+  'components/address-fields.tsx',
 ];
 const PERSONNEL_SRC = PERSONNEL_PAGE + PERSONNEL_COMPONENTS.map(read).join('\n');
 
