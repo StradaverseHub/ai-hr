@@ -342,6 +342,17 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(epfFace, 'the EPF employer number, captioned').toContain(inMarkup(en.epfEmployerNo));
     expect(epfFace, 'the payment reference, captioned').toContain(inMarkup(en.authorityAccountNo));
     expect(epfFace, 'the account it is paid from, captioned').toContain(inMarkup(en.authorityBankAccount));
+    /**
+     * AND THE SUMMARY IS VISIBLE, not merely present. Everything on this panel is mounted and hidden
+     * with CSS rather than unmounted, which is deliberate — but it means "in the markup" and "on the
+     * screen" are different claims here, and the promise made to the reporter was the second one. A
+     * `hidden` (or `sr-only`) class on this list would satisfy every other assertion in this case while
+     * putting the values straight back behind the click they were taken out of.
+     */
+    const dlTag = /<dl class="([^"]*)"/.exec(epfFace);
+    expect(dlTag, 'the summary is a <dl> on the face').not.toBeNull();
+    expect(dlTag![1].split(/\s+/), 'the summary is not hidden from the reader').not.toContain('hidden');
+    expect(dlTag![1].split(/\s+/)).not.toContain('sr-only');
     expect(faceValues(epfFace)).toEqual(['E123', 'ACC-1', inMarkup('Payroll — Maybank · 512345678901')]);
 
     // …and a body with NOTHING on file says so in words rather than showing a blank. LHDN has no
