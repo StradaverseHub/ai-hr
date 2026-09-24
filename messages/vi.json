@@ -5652,6 +5652,7 @@
       "cycleDisabled": "không khả dụng",
       "paymentDate": "Ngày thanh toán",
       "multiCycleOffNote": "Chỉ có sẵn đợt Hàng tháng. Các chu kỳ bổ sung (Thưởng, Ngoài chu kỳ, Tạm ứng lương, Giữa tháng) đã bị tắt cho租户 này.",
+      "anyCycleOrderNote": "Bạn có thể chạy chu kỳ Thưởng, Ngoài chu kỳ hoặc Lương ứng trước kỳ lương Hàng tháng — xử lý theo đúng thứ tự các khoản thanh toán thực tế diễn ra. Ngoại lệ là tháng đã nộp tờ khai luật định: lần chạy đó sẽ bị từ chối, và thông báo sẽ nêu rõ những gì đã nộp.",
       "existingRunsTitle": "Các đợt hiện có cho kỳ này",
       "resumeDraft": "Tiếp tục bản nháp",
       "draftNotFoundOrNoAccess": "Không tìm thấy bản nháp này hoặc bạn không có quyền truy cập.",

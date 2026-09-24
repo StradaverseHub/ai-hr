@@ -5652,6 +5652,7 @@
       "cycleDisabled": "unavailable",
       "paymentDate": "Payment date",
       "multiCycleOffNote": "Only Monthly runs are available. Additional cycles (Bonus, Off-cycle, Advance Salary, Mid-Month) are switched off for this tenant.",
+      "anyCycleOrderNote": "You can run a Bonus, Off-cycle or Advance Salary cycle before the Monthly run — process them in the order the payments actually happen. The exception is a month whose statutory returns have already been filed: that run is refused, and the message names what was filed.",
       "existingRunsTitle": "Existing runs for this period",
       "resumeDraft": "Resume draft",
       "draftNotFoundOrNoAccess": "This draft could not be found or you don’t have access to it.",
