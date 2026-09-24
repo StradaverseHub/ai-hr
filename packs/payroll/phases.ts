@@ -107,6 +107,13 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   '/payroll/reports': 7,
   // 956cec85 — filing comes AFTER the figures are reported: the last thing you do with a month.
   '/payroll/statutory-forms': 8,
+  // 20f6c6a8 — Payment Submission: the machine-readable FILES you hand the agencies and the bank, once
+  // the figures have been reported (7) and the forms reviewed (8). Ranked LAST because it is genuinely
+  // the last step of a month — you download these having already checked everything they are built from,
+  // and nothing downstream of it exists. Deliberately a rank of its own rather than sharing 8 with
+  // Statutory Forms: those are documents a human reads and signs, these are files a portal ingests, and
+  // an operator who conflates the two uploads a PDF to i-Akaun.
+  '/payroll/payment-submission': 9,
 };
 
 /** Sort key for a payroll menu href. An href with no declared rank sorts last, never crashes. */
