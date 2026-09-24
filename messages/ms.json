@@ -2432,6 +2432,8 @@
       "laterOther": "Termasuk entri bertarikh selepas tahun cuti ini",
       "panelLaterIncludes": "Tahun cuti ini sahaja. Baki pada kad turut mengira {span, select, next {tahun cuti seterusnya: {parts}} other {tahun-tahun cuti berikutnya: {parts}}}",
       "panelLaterOther": "Tahun cuti ini sahaja. Baki pada kad turut mengira entri bertarikh selepas tahun cuti ini",
+      "sharedFromPool": "Hari-hari ini diambil daripada baki {pool}.",
+      "sharedPoolHolder": "Hari-hari ini dikongsi dengan {types}.",
       "takenOnlyCaption": "Diambil — tiada kelayakan",
       "cycleDates": "Tahun cuti {from} – {to}",
       "details": "Butiran",
