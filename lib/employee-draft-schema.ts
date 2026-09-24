@@ -32,6 +32,7 @@
  * both onto the Create screen, which is where `missingToCreate` now judges them.
  */
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
+import { copyPermanentToCorrespondence } from './address-blocks';
 
 export type EmployeeDraftProfile = {
   fullName?: string;
@@ -83,6 +84,59 @@ export type EmployeeDraftProfile = {
   homePhone?: string;
   /** The employee's own address, distinct from `primaryEmail` (the work / login address). */
   personalEmail?: string;
+  /**
+   * ITEM da7463b4 — THE TWO ADDRESS BLOCKS THE ACTIVATED RECORD HAS AND THE DRAFT DID NOT.
+   *
+   * NO MIGRATION AND NO NEW COLUMN: every one of these is a `person` column that has existed since item
+   * 3a25f5ee (permanent/correspondence, migration 0213) and bf953339 (the correspondence phone pair,
+   * migration 0304). The draft simply never carried them, so an address typed on the Create New Employee
+   * screen had nowhere to go — which is the reporter's complaint, not a feature request.
+   *
+   * They land through `updatePerson`, the SAME writer `setContactAddressAction` uses on the record and
+   * `commitEmployeeImport` uses for its address block. There is no second update and no second idea of
+   * which columns these are.
+   *
+   * OPTIONAL, like every other profile field here, and judged by nothing: `missingByTab` returns no
+   * required field on the profile tab ON PURPOSE (item 06f0cb8f split creation from completion so that
+   * details stop blocking creation). `permanentState` / `permanentCountry` / `correspondenceState` /
+   * `correspondenceCountry` are CATALOG-BACKED, so the wizard offers the tenant's ACTIVE options exactly
+   * as it does for nationality and a value HR can pick is one `updatePerson`'s catalog check accepts.
+   */
+  permanentAddressLine1?: string;
+  permanentAddressLine2?: string;
+  permanentAddressLine3?: string;
+  permanentPostcode?: string;
+  permanentCity?: string;
+  permanentState?: string;
+  permanentCountry?: string;
+  correspondenceAddressLine1?: string;
+  correspondenceAddressLine2?: string;
+  correspondenceAddressLine3?: string;
+  correspondencePostcode?: string;
+  correspondenceCity?: string;
+  correspondenceState?: string;
+  correspondenceCountry?: string;
+  /** bf953339 — the Correspondence block's OWN mobile/home pair, independent of `phone` / `homePhone`
+   *  above so the correspondence contact may differ from the person's own. */
+  correspondenceMobilePhone?: string;
+  correspondenceHomePhone?: string;
+  /**
+   * ITEM da7463b4 — "SAME AS PERMANENT ADDRESS", AND IT IS A STORED RULE, NOT A PRESSED BUTTON.
+   *
+   * 'yes' means the correspondence block is a DERIVED VIEW of the permanent one: correcting the permanent
+   * address later moves the correspondence address with it, on the screen AND at Activate
+   * (`copyPermanentToCorrespondence`, lib/address-blocks.ts, applied by `completeEmployeeDraft`). Absent
+   * or anything else means the two are independent.
+   *
+   * IT HAS NO COLUMN AND MUST NOT GET ONE. A draft is one jsonb blob, so storing the tick here costs no
+   * migration; on the ACTIVATED record the same tick is transient browser state precisely because there
+   * is no `person` column for it, and inventing one is out of scope for a drift complaint. That is a real
+   * divergence between the two screens and it is recorded in this round's entry rather than smoothed over.
+   *
+   * A STRING, 'yes' | absent, like the statutory switches — `hasAnyStatutory`-style trimming elsewhere in
+   * this blob throws on a boolean, and every other value here is a string.
+   */
+  sameAsPermanent?: string;
   /**
    * ITEM a72610af — THE PASSPORT BLOCK, landing through the company pack's `setPassport`.
    *
@@ -656,4 +710,23 @@ export function missingToCreate(data: EmployeeDraftData, opts: MissingOptions = 
 /** The drafts list needs a name even before one is typed; '' is rendered as "Untitled" by the screen. */
 export function draftLabel(data: EmployeeDraftData): string {
   return (data.profile?.fullName ?? '').trim().slice(0, 200);
+}
+
+
+/**
+ * APPLY "SAME AS PERMANENT ADDRESS" — item da7463b4. ONE rule, THREE callers, which is the whole design.
+ *
+ * The wizard calls it on every profile edit so the screen shows what is stored; `saveEmployeeDraft` stores
+ * exactly that; and `completeEmployeeDraft` calls it AGAIN before writing, so the server is the authority
+ * and a draft blob hand-edited to disagree with its own tick cannot produce a record that disagrees with
+ * the screen. Same shape as `missingByTab` above and for the same reason: a rule the browser applies and
+ * the server does not re-apply is a rule the browser can be talked out of.
+ *
+ * NOT IDEMPOTENT-BY-LUCK, idempotent BY CONSTRUCTION: the correspondence side is overwritten from the
+ * permanent side outright (including with `undefined`), so applying it twice cannot differ from once, and
+ * a permanent field CLEARED clears the correspondence one with it rather than leaving a stale line behind.
+ */
+export function withSameAsPermanent(profile: EmployeeDraftProfile | undefined): EmployeeDraftProfile {
+  const p = profile ?? {};
+  return p.sameAsPermanent === 'yes' ? copyPermanentToCorrespondence(p) : p;
 }

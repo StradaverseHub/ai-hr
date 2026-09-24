@@ -73,6 +73,8 @@ const OPTIONS = {
     { value: 'child', label: 'Child' },
   ],
   countryOptions: [{ value: 'Malaysia', label: 'Malaysia' }],
+  // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks render.
+  stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
 };
 
 /** A draft as it really arrives after Create: a company, a name, an e-mail, a held ID, nothing else. */
@@ -244,7 +246,10 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // holds the mechanism; this one is the administrator's own round trip through the screen.)
     wrap();
     // Profile: a phone number, on the Contact & address card.
-    await userEvent.type(within(shownPanel()).getByLabelText(messages.people.wizard.fields.phone), '+60123456789');
+    // BY ID (da7463b4): the Correspondence block now renders its OWN "Mobile Phone Number" beside this
+    // one, as the activated record does, so the label alone identifies neither. `perm-mobile-phone` is
+    // the person's own — the record's id for the same field.
+    await userEvent.type(document.getElementById('perm-mobile-phone') as HTMLInputElement, '+60123456789');
 
     // Employment: a department, three tabs away.
     await openTab(messages.people.detail.tabs.job);
@@ -260,7 +265,10 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     // …and every one of them is still there on the way back. Nothing was saved in between: this is the
     // in-progress record surviving navigation, which is what "fill it in over several days" needs first.
     await openTab(messages.people.detail.tabs.profile);
-    expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.phone) as HTMLInputElement).value)
+    // BY ID (da7463b4), for the reason given where it is typed above: two fields on this tab now carry
+    // the label "Mobile Phone Number" — the person's own and the Correspondence block's — exactly as the
+    // activated record does, so only the id identifies one.
+    expect((document.getElementById('perm-mobile-phone') as HTMLInputElement).value)
       .toBe('+60123456789');
     await openTab(messages.people.detail.tabs.job);
     expect((within(shownPanel()).getByLabelText(messages.people.wizard.fields.department) as HTMLSelectElement).value)

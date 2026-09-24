@@ -89,6 +89,16 @@ import { IdentityNumberField, NationalityPicker } from '@/components/identity-fi
 // the value encodings live in the component, so the draft and the record cannot word a question
 // differently. See each component's header for what it is and why it could be shared.
 import { PersonNameFields, PersonContactExtraFields } from '@/components/person-name-fields';
+// da7463b4 — the two address blocks and the tick that pairs them, both the SHARED controls the Personnel
+// Contact & Address card renders. See components/address-fields.tsx for why they were extracted rather
+// than copied: this item IS a drift complaint, and a second address form would be the same complaint again.
+import {
+  AddressBlockFields,
+  CorrespondenceAddressTitle,
+  CorrespondencePhoneFields,
+  PermanentAddressTitle,
+  SameAsPermanentTick,
+} from '@/components/address-fields';
 import { PassportFields, PassportSectionTitle } from '@/components/passport-fields';
 import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
 import { EpfCategoryField } from '@/components/epf-election';
@@ -104,6 +114,7 @@ import {
   missingForCreation,
   openingTab,
   stepNumber,
+  withSameAsPermanent,
   type DraftTabKey,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
@@ -132,6 +143,7 @@ export function EmployeeWizard({
   profileOptions,
   relationshipOptions,
   countryOptions,
+  stateOptions,
 }: {
   today: string;
   draftId: string;
@@ -164,6 +176,10 @@ export function EmployeeWizard({
    *  falls back to the five built-in relationships, so an unseeded tenant never sees a blank dropdown. */
   relationshipOptions: { value: string; label: string }[];
   countryOptions: { value: string; label: string }[];
+  /** da7463b4 — the `state` catalog the two address blocks need, read exactly as the Personnel Contact &
+   *  Address card reads it (active options only). `countryOptions` above is the SAME country catalog that
+   *  card uses, so the address blocks share it rather than resolving a second copy of one list. */
+  stateOptions: { value: string; label: string }[];
 }) {
   const t = useTranslations('people.wizard');
   const router = useRouter();
@@ -201,7 +217,16 @@ export function EmployeeWizard({
 
   const set = <K extends keyof EmployeeDraftData>(section: K, patch: Partial<NonNullable<EmployeeDraftData[K]>>) => {
     setSaved(false);
-    setData((d) => ({ ...d, [section]: { ...(d[section] ?? {}), ...patch } }));
+    setData((d) => {
+      const merged = { ...(d[section] ?? {}), ...patch };
+      // da7463b4 — "same as permanent address" is a RULE, not a button: while it is ticked the
+      // correspondence block is re-derived from the permanent one on EVERY profile edit, so correcting a
+      // permanent line later moves the correspondence line with it. Applied to the STORED data rather
+      // than only at render, so what is on screen is what a Save writes; `completeEmployeeDraft` applies
+      // the same function again at Activate and is the authority.
+      const next = section === 'profile' ? withSameAsPermanent(merged as EmployeeDraftData['profile']) : merged;
+      return { ...d, [section]: next };
+    });
   };
 
   /** 759dfc7d — family needs its own setter: `set` MERGES an object into a section, and merging into a
@@ -354,11 +379,20 @@ export function EmployeeWizard({
               options={nationalityOptions}
               onChange={(nationality) => set('profile', { nationality })}
             />
+            {/* da7463b4 — THE DATE OF BIRTH AND AGE NOW FILL THEMSELVES FROM THE NRIC HERE TOO.
+                They already did on the activated record (item 354a500d) and in the bulk importer
+                (feedback b9fd8fd5) and not on the draft, so the Age beside it read "Not Available" for
+                the whole time a record was a draft — the exact "the draft screen is not the employee
+                screen" complaint this item is. The decision is the SHARED one
+                (`deriveDobFromIcInput` + `nextAutofilledDob`, components/ic-dob-autofill.tsx), reached
+                through the country pack (`identity.dobFromIC`), never by importing localization/my. */}
             <IdentityNumberField
               mode="controlled"
               nationality={data.profile?.nationality}
               icNumber={data.profile?.icNumber}
               onChange={(icNumber) => set('profile', { icNumber })}
+              dateOfBirth={data.profile?.dateOfBirth}
+              onDateOfBirthChange={(dateOfBirth) => set('profile', { dateOfBirth })}
             />
             {/* 35b7af0a group 3 — Date of Birth is the SAME field group the Personnel profile card renders
                 (components/birth-date-fields.tsx), and it brings the Age with it. The wizard had a bare date
@@ -432,8 +466,13 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
             </Field>
+            {/* da7463b4 — `perm-mobile-phone`, the id the activated record's Contact & Address card gives
+                this same field. Two fields on this tab are now labelled "Mobile Phone Number" (this one and
+                the Correspondence block's own, exactly as on the record), so the id is what tells them
+                apart — and it is the id the "same as permanent" pairing is declared against. */}
             <Field label={t('fields.phone')}>
               <input
+                id="perm-mobile-phone"
                 className={inputCls}
                 value={data.profile?.phone ?? ''}
                 onChange={(e) => set('profile', { phone: e.target.value })}
@@ -445,8 +484,100 @@ export function EmployeeWizard({
             <PersonContactExtraFields
               mode="controlled"
               value={data.profile ?? {}}
+              homePhoneId="perm-home-phone"
               onChange={(patch) => set('profile', patch)}
             />
+          </div>
+          {/* ── da7463b4 — THE TWO ADDRESS BLOCKS, the SAME seven fields the Personnel Contact & Address
+              card renders (components/address-fields.tsx), under the same two headings, in the same
+              order, validated against the same two catalogs.
+
+              NOTHING NEW WAS MODELLED FOR THIS. Every column already exists on `person` (item 3a25f5ee,
+              migration 0213; the correspondence phone pair bf953339, migration 0304) and every value
+              lands through `updatePerson`, the writer the record's own card saves through. The draft
+              simply never carried them, so an address typed here had nowhere to go — the reporter's
+              complaint, which is about drift rather than about a missing feature. This item adds NO
+              column and NO migration.
+
+              WHY THE TICK IS BETWEEN THEM AND NOT BESIDE THEM: it governs the block below it. Same
+              placement as the record's card. What it MEANS here is stronger than there — see
+              SameAsPermanentAddressControlled. */}
+          <div className="border-t border-border p-4">
+            <PermanentAddressTitle className="mb-3 text-sm font-medium text-foreground" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AddressBlockFields
+                mode="controlled"
+                side="perm"
+                value={{
+                  addressLine1: data.profile?.permanentAddressLine1,
+                  addressLine2: data.profile?.permanentAddressLine2,
+                  addressLine3: data.profile?.permanentAddressLine3,
+                  postcode: data.profile?.permanentPostcode,
+                  city: data.profile?.permanentCity,
+                  state: data.profile?.permanentState,
+                  country: data.profile?.permanentCountry,
+                }}
+                stateOptions={stateOptions}
+                countryOptions={countryOptions}
+                onChange={(patch) =>
+                  set('profile', {
+                    ...(patch.addressLine1 !== undefined ? { permanentAddressLine1: patch.addressLine1 ?? '' } : {}),
+                    ...(patch.addressLine2 !== undefined ? { permanentAddressLine2: patch.addressLine2 ?? '' } : {}),
+                    ...(patch.addressLine3 !== undefined ? { permanentAddressLine3: patch.addressLine3 ?? '' } : {}),
+                    ...(patch.postcode !== undefined ? { permanentPostcode: patch.postcode ?? '' } : {}),
+                    ...(patch.city !== undefined ? { permanentCity: patch.city ?? '' } : {}),
+                    ...(patch.state !== undefined ? { permanentState: patch.state ?? '' } : {}),
+                    ...(patch.country !== undefined ? { permanentCountry: patch.country ?? '' } : {}),
+                  })
+                }
+              />
+            </div>
+          </div>
+          <div className="border-t border-border p-4">
+            <SameAsPermanentTick
+              checked={data.profile?.sameAsPermanent === 'yes'}
+              onChange={(on) => set('profile', { sameAsPermanent: on ? 'yes' : '' })}
+            />
+          </div>
+          <div className="border-t border-border p-4">
+            <CorrespondenceAddressTitle className="mb-3 text-sm font-medium text-foreground" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AddressBlockFields
+                mode="controlled"
+                side="corr"
+                disabled={data.profile?.sameAsPermanent === 'yes'}
+                value={{
+                  addressLine1: data.profile?.correspondenceAddressLine1,
+                  addressLine2: data.profile?.correspondenceAddressLine2,
+                  addressLine3: data.profile?.correspondenceAddressLine3,
+                  postcode: data.profile?.correspondencePostcode,
+                  city: data.profile?.correspondenceCity,
+                  state: data.profile?.correspondenceState,
+                  country: data.profile?.correspondenceCountry,
+                }}
+                stateOptions={stateOptions}
+                countryOptions={countryOptions}
+                onChange={(patch) =>
+                  set('profile', {
+                    ...(patch.addressLine1 !== undefined ? { correspondenceAddressLine1: patch.addressLine1 ?? '' } : {}),
+                    ...(patch.addressLine2 !== undefined ? { correspondenceAddressLine2: patch.addressLine2 ?? '' } : {}),
+                    ...(patch.addressLine3 !== undefined ? { correspondenceAddressLine3: patch.addressLine3 ?? '' } : {}),
+                    ...(patch.postcode !== undefined ? { correspondencePostcode: patch.postcode ?? '' } : {}),
+                    ...(patch.city !== undefined ? { correspondenceCity: patch.city ?? '' } : {}),
+                    ...(patch.state !== undefined ? { correspondenceState: patch.state ?? '' } : {}),
+                    ...(patch.country !== undefined ? { correspondenceCountry: patch.country ?? '' } : {}),
+                  })
+                }
+              />
+              {/* bf953339 — the Correspondence block's OWN Mobile/Home pair, as on the record. Disabled
+                  with the rest of the block while the tick is on, because they are copied with it. */}
+              <CorrespondencePhoneFields
+                mobile={data.profile?.correspondenceMobilePhone}
+                home={data.profile?.correspondenceHomePhone}
+                disabled={data.profile?.sameAsPermanent === 'yes'}
+                onChange={(patch) => set('profile', patch)}
+              />
+            </div>
           </div>
         </Card>
       </>

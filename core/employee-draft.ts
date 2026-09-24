@@ -64,6 +64,7 @@ import {
   missingForCreation,
   missingToCreate,
   stepKey,
+  withSameAsPermanent,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
 } from '../lib/employee-draft-schema';
@@ -519,7 +520,12 @@ export async function completeEmployeeDraft(
   if (!draft) throw new Error('Draft not found (or not visible).');
   const data = draft.data;
 
-  const p = data.profile ?? {};
+  // da7463b4 — "SAME AS PERMANENT ADDRESS" IS RE-APPLIED HERE, ON THE SERVER, and that is the point of
+  // it. The wizard applies the same function as the form is typed so the screen shows what is stored;
+  // this call makes the SERVER the authority, so a draft blob that was hand-edited (or written by an
+  // older build) to hold a ticked flag beside a diverged correspondence address activates as the flag
+  // says, not as the stale copy says. Idempotent by construction — see `withSameAsPermanent`.
+  const p = withSameAsPermanent(data.profile);
   const e = data.employment ?? {};
   const s = data.statutory ?? {};
   const pay = data.payroll ?? {};
@@ -795,6 +801,30 @@ export async function completeEmployeeDraft(
     race: str(p.race),
     homePhone: str(p.homePhone),
     personalEmail: str(p.personalEmail),
+    // ── item da7463b4 — the Permanent and Correspondence address blocks ───────────────────────────
+    // THROUGH THE SAME WRITER AS EVERYTHING ELSE IN THIS OBJECT, which is the whole of what was needed:
+    // `updatePerson` has accepted all sixteen of these columns since 3a25f5ee/bf953339 (they are what
+    // `setContactAddressAction` posts on the activated record, and what `commitEmployeeImport` writes
+    // for its address block), so the draft carrying them costs NO migration and NO second update path.
+    //
+    // THE CORRESPONDENCE SIDE HAS ALREADY BEEN DERIVED at the top of this function when the draft's
+    // "same as permanent" tick is on, so what is written here is what the screen showed.
+    permanentAddressLine1: str(p.permanentAddressLine1),
+    permanentAddressLine2: str(p.permanentAddressLine2),
+    permanentAddressLine3: str(p.permanentAddressLine3),
+    permanentPostcode: str(p.permanentPostcode),
+    permanentCity: str(p.permanentCity),
+    permanentState: str(p.permanentState),
+    permanentCountry: str(p.permanentCountry),
+    correspondenceAddressLine1: str(p.correspondenceAddressLine1),
+    correspondenceAddressLine2: str(p.correspondenceAddressLine2),
+    correspondenceAddressLine3: str(p.correspondenceAddressLine3),
+    correspondencePostcode: str(p.correspondencePostcode),
+    correspondenceCity: str(p.correspondenceCity),
+    correspondenceState: str(p.correspondenceState),
+    correspondenceCountry: str(p.correspondenceCountry),
+    correspondenceMobilePhone: str(p.correspondenceMobilePhone),
+    correspondenceHomePhone: str(p.correspondenceHomePhone),
   };
   if (Object.values(profileFields).some((v) => v !== undefined)) {
     await updatePerson(ctx, {

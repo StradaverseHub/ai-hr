@@ -65,6 +65,8 @@ const OPTIONS = {
   },
   relationshipOptions: [{ value: 'spouse', label: 'Spouse' }],
   countryOptions: [{ value: 'Malaysia', label: 'Malaysia' }],
+  // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks render.
+  stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
 };
 
 /** A draft as it arrives after Create, plus the two values page.tsx seeds (item a72610af). */
@@ -97,6 +99,21 @@ const shownPanel = () => {
   return open[0];
 };
 const field = (label: string) => within(shownPanel()).getByLabelText(label);
+/**
+ * BY ID, NOT BY LABEL — item da7463b4.
+ *
+ * The Profile tab now carries the Correspondence block's OWN Mobile / Home phone pair beside the
+ * person's own, exactly as the activated record has since bf953339. So TWO fields on this tab are
+ * labelled "Home Phone Number" and two "Mobile Phone Number", and `getByLabelText` is ambiguous for
+ * both — on this screen and on the record. The id is how the record tells them apart (`perm-` is the
+ * person's own, `corr-` the correspondence one) and it is the id the "same as permanent" pairing is
+ * declared against, so it is an invariant rather than a position.
+ */
+const byId = (id: string) => {
+  const el = document.getElementById(id);
+  expect(el, `no element carries id="${id}"`).toBeTruthy();
+  return el as HTMLInputElement;
+};
 /** The draft as Save posted it — the only thing that ever reaches the server. */
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
 const save = async () => {
@@ -151,7 +168,7 @@ describe('Profile — the names, the demographics, the contact pair and the pass
     await userEvent.type(field(detail.preferredName), 'Nad');
     await userEvent.selectOptions(field(detail.religion), 'Islam');
     await userEvent.selectOptions(field(detail.race), 'Malay');
-    await userEvent.type(field(detail.homePhone), '+60322223333');
+    await userEvent.type(byId('perm-home-phone'), '+60322223333');
     await userEvent.type(field(detail.personalEmail), 'nadia@home.test');
     await userEvent.type(field(detail.passportNumber), 'A1234567');
     await userEvent.type(field(detail.passportRemark), 'Renewed at Putrajaya');

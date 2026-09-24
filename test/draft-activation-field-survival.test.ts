@@ -77,6 +77,36 @@ const LANDS: Record<string, Record<string, string | null>> = {
     race: 'person.race',
     homePhone: 'person.home_phone',
     personalEmail: 'person.personal_email',
+    // ── item da7463b4 ────────────────────────────────────────────────────────────────────────────
+    // The two address blocks. Every one of these columns ALREADY EXISTED on `person` (3a25f5ee /
+    // bf953339) and is written by the SAME `updatePerson` call the eight fields above go through — the
+    // draft simply never carried them, which is what made the Create New Employee screen and the
+    // employee record ask different questions about one person. No migration, no new column.
+    permanentAddressLine1: 'person.permanent_address_line1',
+    permanentAddressLine2: 'person.permanent_address_line2',
+    permanentAddressLine3: 'person.permanent_address_line3',
+    permanentPostcode: 'person.permanent_postcode',
+    permanentCity: 'person.permanent_city',
+    permanentState: 'person.permanent_state',
+    permanentCountry: 'person.permanent_country',
+    correspondenceAddressLine1: 'person.correspondence_address_line1',
+    correspondenceAddressLine2: 'person.correspondence_address_line2',
+    correspondenceAddressLine3: 'person.correspondence_address_line3',
+    correspondencePostcode: 'person.correspondence_postcode',
+    correspondenceCity: 'person.correspondence_city',
+    correspondenceState: 'person.correspondence_state',
+    correspondenceCountry: 'person.correspondence_country',
+    correspondenceMobilePhone: 'person.correspondence_mobile_phone',
+    correspondenceHomePhone: 'person.correspondence_home_phone',
+    // A RULE, NOT A VALUE, and the third entry in this table to carry `null`. 'yes' means the
+    // correspondence block is a DERIVED VIEW of the permanent one, so what lands is the fourteen
+    // columns above with the permanent side's values in them — `completeEmployeeDraft` applies
+    // `withSameAsPermanent` before it writes. Storing the tick itself would need a `person` column that
+    // does not exist and that this item deliberately did not add. §2 below activates with it OFF (so the
+    // two blocks can be asserted independently, each with its own distinct value); the ON case and the
+    // follow-up edit that is the whole point of a stored flag are in
+    // test/da7463b4-draft-ic-dob-address.test.ts.
+    sameAsPermanent: null,
     // The passport block lands through the company pack's `setPassport`, called only when the draft
     // carries one — calling it unconditionally would make a non-Malaysian's passport MANDATORY and the
     // wizard stricter than `hireEmployee` and the bulk importer.
@@ -193,6 +223,29 @@ function everyField(): EmployeeDraftData {
       race: 'Malay',
       homePhone: '+60 3-2222 3333',
       personalEmail: `nadia.personal.${tag}@survival.test`,
+      // item da7463b4 — both address blocks, every one of the sixteen values distinct, so a mapping that
+      // crossed permanent with correspondence (the one mistake this pairing invites) could not pass.
+      permanentAddressLine1: '12 Jalan Tetap Satu',
+      permanentAddressLine2: 'Taman Tetap Dua',
+      permanentAddressLine3: 'Seksyen Tetap Tiga',
+      permanentPostcode: '43650',
+      permanentCity: 'Bandar Baru Bangi',
+      permanentState: 'Selangor',
+      permanentCountry: 'Malaysia',
+      correspondenceAddressLine1: '99 Jalan Surat Satu',
+      correspondenceAddressLine2: 'Taman Surat Dua',
+      correspondenceAddressLine3: 'Seksyen Surat Tiga',
+      correspondencePostcode: '50480',
+      correspondenceCity: 'Kuala Lumpur',
+      correspondenceState: 'Wilayah Persekutuan Kuala Lumpur',
+      correspondenceCountry: 'Malaysia',
+      correspondenceMobilePhone: '+60 12-111 2222',
+      correspondenceHomePhone: '+60 3-4444 5555',
+      // OFF here ON PURPOSE. 'yes' would make the correspondence block a copy of the permanent one and
+      // the eight assertions below would be asserting the same eight values twice — the exact "two fields
+      // sharing a value" hole this file's own header warns about. The ON case is a behaviour, not a
+      // landing, and it is tested where behaviours are (test/da7463b4-draft-ic-dob-address.test.ts).
+      sameAsPermanent: 'no',
       // The passport TRIO IS COMPLETE, because an incomplete one is refused by `missingForCreation`
       // before anything is created (all-or-nothing, the same rule the Bank tab carries).
       passportNumber: `A${tag.toUpperCase()}`,
@@ -393,6 +446,30 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(person.race, 'person.race').toBe('Malay');
     expect(person.homePhone, 'person.home_phone').toBe('+60 3-2222 3333');
     expect(person.personalEmail, 'person.personal_email').toBe(data.profile!.personalEmail);
+    // item da7463b4 — both address blocks, through the same `updatePerson` call. Read back column by
+    // column rather than as an object, so a crossed permanent/correspondence mapping names itself.
+    expect(person.permanentAddressLine1, 'person.permanent_address_line1').toBe('12 Jalan Tetap Satu');
+    expect(person.permanentAddressLine2, 'person.permanent_address_line2').toBe('Taman Tetap Dua');
+    expect(person.permanentAddressLine3, 'person.permanent_address_line3').toBe('Seksyen Tetap Tiga');
+    expect(person.permanentPostcode, 'person.permanent_postcode').toBe('43650');
+    expect(person.permanentCity, 'person.permanent_city').toBe('Bandar Baru Bangi');
+    expect(person.permanentState, 'person.permanent_state').toBe('Selangor');
+    expect(person.permanentCountry, 'person.permanent_country').toBe('Malaysia');
+    expect(person.correspondenceAddressLine1, 'person.correspondence_address_line1').toBe('99 Jalan Surat Satu');
+    expect(person.correspondenceAddressLine2, 'person.correspondence_address_line2').toBe('Taman Surat Dua');
+    expect(person.correspondenceAddressLine3, 'person.correspondence_address_line3').toBe('Seksyen Surat Tiga');
+    expect(person.correspondencePostcode, 'person.correspondence_postcode').toBe('50480');
+    expect(person.correspondenceCity, 'person.correspondence_city').toBe('Kuala Lumpur');
+    expect(person.correspondenceState, 'person.correspondence_state')
+      .toBe('Wilayah Persekutuan Kuala Lumpur');
+    expect(person.correspondenceCountry, 'person.correspondence_country').toBe('Malaysia');
+    expect(person.correspondenceMobilePhone, 'person.correspondence_mobile_phone').toBe('+60 12-111 2222');
+    expect(person.correspondenceHomePhone, 'person.correspondence_home_phone').toBe('+60 3-4444 5555');
+    // AND THE TWO BLOCKS ARE NOT THE SAME BLOCK. The tick was off, so a `withSameAsPermanent` that ran
+    // unconditionally — the plausible wrong implementation — would have overwritten every line above
+    // with the permanent one and still passed seven of the fourteen assertions.
+    expect(person.correspondenceAddressLine1, 'the two blocks stayed independent')
+      .not.toBe(person.permanentAddressLine1);
     // AND THE CORE TRIO SURVIVED THAT WRITE. `updatePerson` REWRITES fullName / primaryEmail / phone on
     // every call rather than leaving an omitted one alone, so a caller that forgot to pass the phone
     // through would blank the number `hireEmployee` had just stored — silently, on every activation that
