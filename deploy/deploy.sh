@@ -253,11 +253,21 @@ dstate phase build
 #   `ps --sort=-rss`: a killed `pnpm build` leaves a ~2.5 GB next worker reparented to init (D state, up to
 #   ~10 min) that starves the retry and makes a capacity problem out of a cleanup one.
 #
-# If 3584 also fails as a V8 self-OOM on a box with swap to spare, the window really has closed and the
-# answer is more RAM (or a bigger swapfile — there is 267 GB of disk). Do NOT reach for
-# typescript.ignoreBuildErrors: the build's type pass catches RSC client/server boundary errors that tsc
-# alone does not, which is the whole reason it runs here.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3584" pnpm build
+# 3584 -> 4096 on 2026-09-24 deploying r337, ONE ROUND LATER, as a V8 self-OOM again. r337 added ~1,270
+# lines to the payroll kernel and that was enough. Back to r83's number, and it fits now for a reason the
+# r336 attempts did not have: RAM+swap free was 2727+2895 = 5.6 GB, against the 4.1 GB those attempts had
+# while an orphaned worker sat on the swap. 4096 + node overhead is ~4.5 GB, which that backing covers.
+#
+# ⚠️ READ THE TREND, NOT JUST THE NUMBER. 2048 (R52) -> 3072 (r83) -> 4096 (r83) -> 3584 (r336, after the
+# orphan confound) -> 4096 (r337). The type pass has needed a bump in consecutive rounds, and 4096 + ~0.5
+# GB overhead is already 80% of this box's entire 5.6 GB of RAM+swap. THE NEXT BUMP DOES NOT FIT. Before
+# raising this again, add RAM or grow /swap.img (267 GB of disk is free) — raising the cap past what the
+# box can back does not buy headroom, it converts a clean V8 self-OOM into a kernel kill, which is the
+# r336 story above.
+#
+# Still never typescript.ignoreBuildErrors: the build's type pass catches RSC client/server boundary
+# errors that tsc alone does not, which is the whole reason it runs here.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=4096" pnpm build
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
