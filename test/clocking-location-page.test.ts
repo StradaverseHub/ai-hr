@@ -195,10 +195,8 @@ describe('f9afd1ce rev 2 — the page of its own: ONE section in the reporter’
     // assertion that merely found them would have passed on the two-card layout too.
     const order = ['<ClockingAddressSearch', 'name="address"', 'name="lat"', 'name="lng"', 'name="radiusM"', 'name="name"', 'name="reportLabel"', 'name="locationId"', 'name="remarks"'];
     const seen = order.map((needle) => ({ needle, at: at(form, needle) }));
-    expect(
-      seen.map((s) => s.needle),
-      `the reporter's order, as measured: ${[...seen].sort((a, b) => a.at - b.at).map((s) => s.needle).join(' → ')}`,
-    ).toEqual([...seen].sort((a, b) => a.at - b.at).map((s) => s.needle));
+    const measured = [...seen].sort((a, b) => a.at - b.at).map((s) => s.needle);
+    expect(measured, `the source order, as measured: ${measured.join(' → ')}`).toEqual(order);
 
     expect(form, 'the radius is posted raw so a blank reaches the service’s sentence').toContain('name="radiusM" type="number" min={1} step={1}');
     expect(form, 'the report label hint sits under the grid that holds the box').toContain("t('reportLabelHint')");
