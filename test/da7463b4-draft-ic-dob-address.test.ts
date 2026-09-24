@@ -41,8 +41,11 @@
  * ── AND ONE THING THAT MUST NEVER BECOME A REFUSAL ────────────────────────────────────────────────────
  *
  * Feedback b9fd8fd5: an IC whose first six digits form no real calendar date "derives nothing (null) and
- * is skipped, not failed". §1 and §5 pin that on the screen and on the server: such an NRIC shows a note,
- * fills nothing, and does not stop the draft being saved.
+ * is skipped, not failed". §1 and §5 pin that on the screen and on the server — and §5 records something
+ * MEASURED that is stronger than the brief for this item assumed: `isValidIC` is `/^\d{12}$/` and asks
+ * nothing about the date, so such an NRIC does not stop Save Draft AND does not stop Activate either. It
+ * produces an employee with no date of birth. What IS refused at Activate is a number that is not twelve
+ * digits at all (§5b), and that refusal pre-dates this item.
  *
  * The SCREEN behaviours (typing, ticking, disabling) are in the sibling .dom file; this one is the rules,
  * the wiring and the database.
@@ -359,16 +362,29 @@ describe('da7463b4 — a draft becomes an employee carrying both addresses', () 
     expect((await personOf(employmentId)).dateOfBirth).toBe(DOB_A);
   });
 
-  it('§5 an UNREAL NRIC does not block SAVE DRAFT, and derives nothing', async () => {
-    // "Skipped, not failed" (feedback b9fd8fd5). A draft that refuses to save until it is correct is not a
-    // draft — `saveEmployeeDraft` validates nothing on purpose, and this pins that the new autofill did
-    // not quietly introduce a validation into it.
+  it('§5 an UNREAL NRIC blocks NOTHING — not Save, not Activate — and simply derives no date', async () => {
+    // "Skipped, not failed" (feedback b9fd8fd5), and it holds further than the brief for this item assumed.
+    // MEASURED, not inferred: `isValidIC` is `/^\d{12}$/` (localization/my/statutory.ts:131) — it asks for
+    // twelve digits and says nothing about whether the first six are a real calendar date. So month 13
+    // passes validation, `dobFromIC` returns null, and the employee is created with NO date of birth
+    // rather than a refusal. That is the correct behaviour and it is the whole of the ticket's "an invalid
+    // NRIC must never block the form": it does not block the form, and it does not block Activate either.
     const ctx = adminCtx(b);
     const saved = await saveEmployeeDraft(ctx, { data: draft({ nationality: 'Malaysian', icNumber: IC_UNREAL }), currentStep: 1 });
     expect(saved.id, 'an unreal NRIC must not stop a draft being saved').toBeTruthy();
-    // ACTIVATE is where an invalid IC is refused, and that refusal PRE-DATES this item (an invalid MyKad
-    // stored now is a payroll fault later). Named here so the distinction is on the record: the ticket's
-    // "must not block the form" is about the form, not about creating a real employee from bad data.
+    const { employmentId } = await completeEmployeeDraft(ctx, saved.id);
+    const p = await personOf(employmentId);
+    expect(p.dateOfBirth, 'an unreal NRIC must derive nothing at all').toBeNull();
+  });
+
+  it('§5b a MALFORMED NRIC still does not block SAVE, and is refused only at Activate', async () => {
+    // The other kind of wrong number: eleven digits, which `isValidIC` really does reject. The draft must
+    // still SAVE — a draft that refuses to save until it is correct is not a draft, and the reporter is
+    // typing — and the refusal lands at Activate, where it always has (item e3ce0d4d). This pins that the
+    // new client-side autofill did not quietly introduce a validation into the save path.
+    const ctx = adminCtx(b);
+    const saved = await saveEmployeeDraft(ctx, { data: draft({ nationality: 'Malaysian', icNumber: '90010101123' }), currentStep: 1 });
+    expect(saved.id, 'a malformed NRIC stopped a draft being saved').toBeTruthy();
     await expect(completeEmployeeDraft(ctx, saved.id)).rejects.toThrow(/Invalid identity number/);
   });
 
