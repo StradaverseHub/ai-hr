@@ -35,6 +35,14 @@
  *     says which at the top, lands every working on `pcbSystem`, and prints the deduction on its own
  *     labelled line — never as the quiet answer to a formula that did not produce it.
  *
+ * 7f251381 — AND THE SAME FIGURES AGAIN, IN LHDN'S ORDER. The block at the top of the screen is the
+ * identical set of recorded numbers laid out as LHDN's worksheet lays them out, under LHDN's symbols, so
+ * a reader can put the two sheets side by side and find the ROW that disagrees instead of only the total.
+ * It is NOT a second calculation and not even a second mapping: `core/pcb-explain.ts` builds the row list
+ * (symbol, caption key, value) and this file only paints it, so the mapping that could be wrong is
+ * testable without rendering anything. The symbols are language-neutral and come from core untranslated;
+ * only the captions are looked up, which is why no Malay caption is hardcoded here.
+ *
  * WHAT AN OLD PAYSLIP GETS. Runs processed before 45df860a carry no `trace`, so `explainPcb` hands back
  * `trace: null` and this screen says "not recorded for this run" in the places the legs would have gone.
  * It does NOT print them as RM 0.00 and it does NOT back-derive them from P: both would be a statement
@@ -44,7 +52,7 @@
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
-import type { PcbExplanation } from '@/core/pcb-explain';
+import type { PcbExplanation, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
 
 export type PcbDetailContext = {
   employeeCode: string | null;
@@ -96,6 +104,46 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+/**
+ * 7f251381 — ONE LINE OF LHDN's WORKSHEET: its symbol, its caption, its figure.
+ *
+ * THE SYMBOL IS NOT TRANSLATED AND NOT STORED IN A CATALOGUE. Y, K₁, Σ(Y−K), M, R, B, Z, X are the same
+ * characters on every copy of the form in every language — they are what the two sheets are matched on,
+ * so a locale that "translated" one would break the matching this screen exists to enable. They come
+ * through from `core/pcb-explain.ts` as data. The CAPTION beside each one is a key, resolved here, which
+ * is why nothing in this file hardcodes a caption in any language.
+ */
+function WorksheetRow({
+  symbol,
+  label,
+  value,
+  previous,
+}: {
+  symbol: string;
+  label: string;
+  value: React.ReactNode;
+  previous?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0 ${
+        previous ? 'bg-amber-500/5' : ''
+      }`}
+    >
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span
+          aria-hidden={symbol ? undefined : true}
+          className="inline-block w-16 shrink-0 font-mono text-xs font-semibold text-primary"
+        >
+          {symbol}
+        </span>
+        <span className="min-w-0">{label}</span>
+      </span>
+      <span className="shrink-0 tabular-nums font-medium">{value}</span>
+    </div>
+  );
+}
+
 /** Formula and its substitution, side by side — requirement 14: never the symbols alone. */
 function Formula({
   formulaLabel,
@@ -133,9 +181,13 @@ function Formula({
 export async function PcbDetailView({
   ctx,
   explanation,
+  worksheet,
 }: {
   ctx: PcbDetailContext;
   explanation: PcbExplanation;
+  /** 7f251381 — the same figures in LHDN's worksheet order, assembled in core/. NULL only when the caller
+   *  could not build one; the sheet is then simply absent rather than drawn empty. */
+  worksheet: PcbWorksheet | null;
 }) {
   const t = await getTranslations('payroll.pcbDetail');
   const cur = ctx.currency;
@@ -145,6 +197,38 @@ export async function PcbDetailView({
   const b2 = (v: number) => v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (r: number) => `${(r * 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
   const NotRecorded = () => <span className="font-normal text-muted-foreground">{t('notRecordedShort')}</span>;
+  /**
+   * 7f251381 — ONE WORKSHEET CELL. This switch chooses a FORMATTER; it never chooses or computes a value.
+   * Every `money` amount was read out of the payslip's stamp by `pcbWorksheet` in core/, so nothing on the
+   * sheet is this file's arithmetic.
+   *
+   * THE THREE ABSENCES ARE THREE DIFFERENT SENTENCES and must not collapse into one dash:
+   *   · notRecorded           — the run predates 45df860a and this leg was never written down.
+   *   · notSeparatelyRecorded — the figure is real and was used, but only ever persisted netted into
+   *                             another line (LHDN's gross Y lives inside Σ(Y − K)).
+   *   · didNotRun             — §D.2 never executed, because the month paid no additional remuneration.
+   * Printing "0.00" for any of the three would be a claim about someone's tax that nobody made.
+   */
+  const wsValue = (v: PcbWorksheetValue): React.ReactNode => {
+    switch (v.kind) {
+      case 'money':
+        return rm(v.amount);
+      case 'rate':
+        return pct(v.rate);
+      case 'count':
+        return v.count;
+      case 'text':
+        return v.text;
+      case 'caption':
+        return <span className="font-normal text-muted-foreground">{t(v.caption)}</span>;
+      case 'notSeparatelyRecorded':
+        return <span className="font-normal text-muted-foreground">{t('worksheetNotSeparate')}</span>;
+      case 'didNotRun':
+        return <span className="font-normal text-muted-foreground">{t('worksheetDidNotRun')}</span>;
+      case 'notRecorded':
+        return <NotRecorded />;
+    }
+  };
 
   const cycleKey = CYCLE_LABEL[ctx.runType];
   const taxYear = /^\d{4}/.exec(ctx.payPeriod)?.[0] ?? ctx.payPeriod;
@@ -209,6 +293,34 @@ export async function PcbDetailView({
             <Row label={t('overrideReason')} value={basis.reason || t('notRecordedShort')} />
           )}
         </Card>
+      )}
+
+      {/* ── 7f251381: THE SAME FIGURES, IN LHDN'S WORKSHEET ORDER, UNDER LHDN'S SYMBOLS ──
+          FIRST on the screen, above our own arrangement, because its entire job is to be laid beside the
+          reporter's copy of LHDN's sheet and read down. The rows come from `pcbWorksheet` in core/; this
+          loop paints them. The previous-employment rows are marked because they are the four the
+          reporter's case turns on and the four LHDN's own sheet gives no line of their own. ── */}
+      {worksheet && worksheet.shape !== 'unavailable' && (
+        <Block title={t('worksheetHeading')}>
+          <p className="mb-4 text-sm text-muted-foreground">{t(worksheet.note)}</p>
+          {worksheet.sections.map((sec) => (
+            <div key={sec.heading} className="mt-5 first:mt-0">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t(sec.heading)}
+              </h3>
+              {sec.rows.map((r) => (
+                <WorksheetRow
+                  key={r.caption}
+                  symbol={r.symbol}
+                  label={t(r.caption)}
+                  value={wsValue(r.value)}
+                  previous={r.previousEmployment}
+                />
+              ))}
+              {sec.note && <p className="pt-2 text-xs text-muted-foreground">{t(sec.note)}</p>}
+            </div>
+          ))}
+        </Block>
       )}
 
       {/* ── The working was never recorded at all (imported history, or a run predating the stamp). ── */}

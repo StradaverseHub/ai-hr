@@ -19,8 +19,8 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { currentPcbReliefs, payslipForReview } from '@/core/payroll-view';
-import { explainPcb } from '@/core/pcb-explain';
+import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
+import { explainPcb, pcbWorksheet } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { Card, PageHeader } from '@/components/ui';
 import { PcbDetailView } from './pcb-detail-view';
@@ -68,6 +68,24 @@ export default async function PcbDetailPage({
   const explanation = row ? explainPcb(row.statutory, fallbackReliefs) : null;
   const prov = row ? payslipProvenance(row.statutory) : null;
 
+  // Item 7f251381 — the Form TP3 figures behind LHDN's Y, K, X and Z, for their OWN labelled rows on the
+  // worksheet. The tax YEAR is the payslip's pay period's, parsed the same way the view parses it for the
+  // "Calculation source" block, because that is the year `core/payroll.ts` compares `tp3_year` against
+  // (`tp3Applies = e.tp3Year === pYear`) when it seeds the accumulators. A pay period that does not parse
+  // yields NaN, which matches no declared year — the rows then read 0.00 and "did not apply", which is the
+  // truthful answer for a row whose own period is unreadable, not a guess at one.
+  const previousEmployment = row
+    ? await previousEmploymentForPayslip(s, {
+        companyIds: scopeIds,
+        employmentId: row.employmentId,
+        taxYear: Number(/^\d{4}/.exec(row.payPeriod)?.[0] ?? Number.NaN),
+      })
+    : null;
+  // The worksheet is assembled OUTSIDE the view, in core/, for the reason the whole screen exists: the
+  // mapping from a stored figure to an LHDN symbol is the thing that can be wrong, and a mapping inside a
+  // React component can only be tested by rendering it. It derives nothing; see core/pcb-explain.ts.
+  const worksheet = explanation ? pcbWorksheet(explanation, previousEmployment) : null;
+
   const backHref = row
     ? `/payroll/individual-payslip?${new URLSearchParams({
         employmentId: row.employmentId,
@@ -106,6 +124,7 @@ export default async function PcbDetailPage({
             rulesetVersion: prov?.rulesetVersion ?? null,
           }}
           explanation={explanation}
+          worksheet={worksheet}
         />
       )}
     </div>

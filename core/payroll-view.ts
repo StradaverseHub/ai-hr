@@ -52,7 +52,7 @@ import {
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
 // 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
-import type { PcbReliefBreakdown } from './pcb-explain';
+import type { PcbPreviousEmployment, PcbReliefBreakdown } from './pcb-explain';
 // 510f4bd1 — "is this one-off transaction in the employee's latest payslip?", pure and db-free so this
 // server read and the client-side panel derivation (existing-context.ts) apply ONE rule, not two.
 import { individualTxnReprocessRequired } from './individual-txn-status';
@@ -1500,6 +1500,68 @@ export function currentPcbReliefs(
       // explainPcb, never re-derived here.
       lp: 0,
       total: r.individual + spouse + children + disabledIndividual + disabledSpouse,
+    };
+  });
+}
+
+/**
+ * Feedback 7f251381 — THE PREVIOUS-EMPLOYMENT FIGURES, READ FOR DISPLAY ONLY.
+ *
+ * The reporter's case turns on four numbers a Form TP3 declares for a mid-year joiner: the remuneration
+ * they earned before joining, the EPF claimed on it, the MTD their previous employer already paid, and
+ * the zakat. LHDN's worksheet folds all four into Y, K, X and Z, so on a sheet they are invisible — which
+ * is how a run that seeded them with ZERO went unnoticed until a figure came out wrong (item 1bb09a73).
+ * The PCB detail screen therefore gives them their own labelled rows, and this is the read behind them.
+ *
+ * THE SAME COLUMNS THE RUN SEEDS FROM, AND DELIBERATELY NOT A SECOND SOURCE. `core/payroll.ts` builds the
+ * PCB accumulators from `employee_statutory_my.tp3_year / tp3_net_remuneration / tp3_epf_claimed /
+ * tp3_pcb_paid / tp3_zakat_paid`, gated on `tp3Applies = e.tp3Year === pYear`. This read selects those
+ * five columns and applies that one comparison, so the screen shows what the kernel seeds from rather
+ * than a parallel reading of `employee_tp3`'s payload — two readings of one fact is how a screen ends up
+ * disagreeing with the run it is describing.
+ *
+ * IT IS TODAY'S DECLARATION, NOT A STAMP FROM THE RUN, AND THE SCREEN SAYS SO. The payslip's `pcbMeta`
+ * carries the COMBINED accumulators only, and this item may not change what a payslip records, so there
+ * is no run-time stamp to read. If the columns were edited after the run these figures will differ from
+ * the ones it used. That is the identical posture — and carries the identical warning on screen — as
+ * `currentPcbReliefs` above, which exists for exactly the same reason.
+ *
+ * NOT CLAMPED TO THE ANNUAL EPF RELIEF CAP. The kernel seeds `min(tp3Epf, cap)`; this returns the figure
+ * the form declares. Clamping here would print a number the employee's form does not carry, on a screen
+ * whose entire promise is that every figure on it was read rather than worked out — and the capped figure
+ * is already visible one row below, as K.
+ *
+ * Fails CLOSED on an empty scope, like every read in this file.
+ */
+export function previousEmploymentForPayslip(
+  ctx: SessionContext,
+  p: { companyIds: string[]; employmentId: string; taxYear: number },
+): Promise<PcbPreviousEmployment | null> {
+  if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no figures
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        tp3Year: employeeStatutoryMy.tp3Year,
+        tp3Net: employeeStatutoryMy.tp3NetRemuneration,
+        tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
+        tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
+        tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
+      })
+      .from(employment)
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(and(eq(employment.id, p.employmentId), inArray(employment.companyId, p.companyIds)))
+      .limit(1);
+    if (!row) return null;
+    const declaredYear = row.tp3Year === null || row.tp3Year === undefined ? null : Number(row.tp3Year);
+    return {
+      declaredYear,
+      // The kernel's own gate, restated as the one comparison this function makes. A declaration for a
+      // different year seeds NOTHING, and the screen must be able to say that in those words.
+      applies: declaredYear === p.taxYear,
+      netRemuneration: Number(row.tp3Net ?? 0),
+      epfClaimed: Number(row.tp3Epf ?? 0),
+      pcbPaid: Number(row.tp3Pcb ?? 0),
+      zakatPaid: Number(row.tp3Zakat ?? 0),
     };
   });
 }

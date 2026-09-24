@@ -428,3 +428,283 @@ export function explainPcb(
     ...figures,
   };
 }
+
+// ═══════════════════════════════ 7f251381 — LHDN's own worksheet order ═══════════════════════════════
+
+/**
+ * Feedback 7f251381 — THE SAME RECORDED FIGURES, LAID OUT AS LHDN LAYS THEM OUT.
+ *
+ * WHY A SECOND LAYOUT IS NOT A SECOND ANSWER. `explainPcb` above already returns every figure the tax
+ * working used, and `app/payroll/pcb-detail/pcb-detail-view.tsx` already explains them in an order that
+ * reads well. The reporter's problem is not that the figures are wrong or missing — it is that they are in
+ * OUR arrangement, so their sheet and ours cannot be laid side by side and read down. This function
+ * re-orders what `explainPcb` returned into LHDN's worksheet sequence, under LHDN's symbols, so a
+ * disagreement lands on a ROW rather than on a total.
+ *
+ * IT DERIVES NOTHING, AND THAT IS THE WHOLE DISCIPLINE. Every `amount` below is a member of the
+ * explanation (or of the Form TP3 seed) read straight through — no sum, no difference, no re-rounding, no
+ * fallback arithmetic. `test/7f251381-pcb-lhdn-worksheet.test.ts` asserts it field by field AND sweeps
+ * every emitted amount against the set of numbers actually present in the inputs, so an arithmetic
+ * expression introduced here fails even where a hand-written assertion has not been written for that row.
+ *
+ * THREE THINGS THE SHEET MUST SAY RATHER THAN DRAW:
+ *
+ *   1. LHDN's Y IS A GROSS ACCUMULATED FIGURE AND WE DO NOT STORE ONE. The engine keeps Σ(Y − K) — the
+ *      accumulated remuneration ALREADY net of EPF — and K separately; the gross Y is never persisted.
+ *      Y therefore gets a labelled row saying it is not recorded separately, with Σ(Y − K) and K beneath
+ *      it, instead of Σ(Y − K) + K printed under Y's symbol. That addition would be correct arithmetic
+ *      and still a number this system never wrote down, which is exactly the class of figure this whole
+ *      screen exists to stop printing.
+ *
+ *   2. AN ABSENT TRACE IS "NOT RECORDED", NEVER ZERO. A run predating 45df860a has no `trace`, and every
+ *      row fed from it carries `notRecorded`. A sheet of RM 0.00 in LHDN's shape is more convincing and
+ *      more wrong than our own layout was — it looks like a completed worksheet.
+ *
+ *   3. A FLAT-RATE PAYEE HAS NO WORKSHEET AT ALL. See `flatWorksheet` below.
+ */
+
+/**
+ * The previous-employment figures a Form TP3 declares for the payslip's tax year — item 1bb09a73's
+ * output, read for display.
+ *
+ * WHY IT IS AN INPUT RATHER THAN PART OF THE SNAPSHOT. `pcbMonth` is handed the ALREADY-COMBINED
+ * accumulators (Σ(Y − K), K, X, Z each include the seed), so the payslip's own stamp cannot separate the
+ * previous employer's share from this employer's months — and this item may not change what a payslip
+ * records. The four figures therefore come from the same columns `core/payroll.ts` seeds the replay from
+ * (`employee_statutory_my.tp3_*`), read at display time by `previousEmploymentForPayslip`, and the screen
+ * says so: they are the employee's CURRENT declaration, not a stamp taken at the moment of the run. Same
+ * posture, and the same reason, as `reliefSource: 'current'`.
+ */
+export type PcbPreviousEmployment = {
+  /** `employee_statutory_my.tp3_year`, or null when nothing is declared for this employee at all. */
+  declaredYear: number | null;
+  /** `declaredYear === the payslip's tax year` — the exact gate `core/payroll.ts` seeds on
+   *  (`tp3Applies = e.tp3Year === pYear`). False ⇒ the run seeded all four accumulators with zero. */
+  applies: boolean;
+  /** LHDN C1 − ΣC2 − C3: previous-employment remuneration already net of its EPF, as declared. */
+  netRemuneration: number;
+  /** C3 — EPF claimed in the previous employment, as declared. NOT clamped to the annual relief cap
+   *  here: the cap is applied by the engine and its effect is visible on the K row, and clamping a
+   *  declared figure for display would print a number the form does not carry. */
+  epfClaimed: number;
+  /** C5 — MTD already paid by the previous employer. Part of LHDN's X. */
+  pcbPaid: number;
+  /** C4(i) — zakat paid through the previous employment. Part of LHDN's Z. C4(ii) is the religious-travel
+   *  levy, which is a RELIEF and is deliberately not summed in (item 1bb09a73). */
+  zakatPaid: number;
+};
+
+/** What a worksheet row prints. A missing figure is a KIND, never a zero and never a blank. */
+export type PcbWorksheetValue =
+  | { kind: 'money'; amount: number }
+  | { kind: 'rate'; rate: number }
+  | { kind: 'count'; count: number }
+  | { kind: 'text'; text: string }
+  /** A caption key instead of a figure — "none declared", "does not apply to this run". */
+  | { kind: 'caption'; caption: string }
+  /** The run predates 45df860a and never wrote this leg down. */
+  | { kind: 'notRecorded' }
+  /** Real, used, and never persisted apart from the figure it was netted into (LHDN's Y). */
+  | { kind: 'notSeparatelyRecorded' }
+  /** §D.2 in a month that paid no additional remuneration — the step did not run, which is a different
+   *  statement from a result of zero. */
+  | { kind: 'didNotRun' };
+
+export type PcbWorksheetRow = {
+  /** LHDN's own symbol. Language-neutral and NEVER translated — the symbol is the thing the two sheets
+   *  are matched on. Empty for a line LHDN's sheet gives no symbol to. */
+  symbol: string;
+  /** Key under `payroll.pcbDetail`. Captions ARE translated; the symbol beside them is not. */
+  caption: string;
+  value: PcbWorksheetValue;
+  /** The previous-employment lines. The reporter's case turns on exactly these four, so they are flagged
+   *  rather than merely ordered — the screen marks them and the test can find them without an index. */
+  previousEmployment?: true;
+};
+
+export type PcbWorksheetSection = {
+  heading: string;
+  rows: PcbWorksheetRow[];
+  /** An optional sentence under the section — a key, resolved by the screen. */
+  note?: string;
+};
+
+export type PcbWorksheet = {
+  /** 'mtd' — the computerised-calculation worksheet. 'flat' — there is NO such worksheet for this payee
+   *  and the sheet says so. 'unavailable' — nothing was recorded; the screen's own unavailable card
+   *  already carries that sentence and this adds no empty sheet beside it. */
+  shape: 'mtd' | 'flat' | 'unavailable';
+  sections: PcbWorksheetSection[];
+  /** The sentence stating what this sheet is, and what it is not. Always present for a rendered shape. */
+  note: string;
+};
+
+const money = (amount: number): PcbWorksheetValue => ({ kind: 'money', amount });
+/** A trace-fed row: the figure when the run recorded one, the honest absence when it did not. */
+const fromTrace = (t: PcbTrace | null, pick: (t: PcbTrace) => number): PcbWorksheetValue =>
+  t ? { kind: 'money', amount: pick(t) } : { kind: 'notRecorded' };
+
+/**
+ * THE FLAT-RATE DECISION, STATED RATHER THAN DRAWN AS EMPTY ROWS.
+ *
+ * A non-resident (30%) or REP / Knowledge-Worker (15%) payee is not computed through LHDN's computerised
+ * calculation at all: `localization/my/payroll.ts` returns from the flat branch BEFORE `pcbMonth` is
+ * called and never reads the accumulators, so there is no P, no M/R/B bracket row, no D/S/Q relief, no Z
+ * and no X — and no previous-employment seed either, because the seed only ever reaches `pcbMonth`.
+ *
+ * Drawing those symbols with "not recorded" beside them would be a lie of a particular kind: it says the
+ * figures exist for this employee and were merely not saved. They do not exist. The sheet therefore shows
+ * the three lines that DO exist — the remuneration the percentage was applied to, the additional
+ * remuneration, and the rate — and states in one sentence that LHDN publishes no worksheet to compare a
+ * flat deduction against, so there is nothing to lay side by side. That is the answer, not a gap.
+ */
+function flatWorksheet(x: Extract<PcbExplanation, { kind: 'flat' }>): PcbWorksheet {
+  const t = x.trace;
+  const rows: PcbWorksheetRow[] = [
+    { symbol: 'Y', caption: 'worksheetFlatY', value: t ? money(t.remuneration) : { kind: 'notRecorded' } },
+    { symbol: 'Yt', caption: 'worksheetFlatYt', value: t ? money(t.additional) : { kind: 'notRecorded' } },
+    // NO SYMBOL, AND DELIBERATELY NOT 'R'. R is the rate of the TAX-TABLE BRACKET P fell into, and a
+    // flat-rate payee has no bracket and no P. Borrowing the symbol would invite a reader to match this
+    // line against R on a computerised-calculation sheet that describes a different mechanism entirely.
+    { symbol: '', caption: 'worksheetFlatRate', value: { kind: 'rate', rate: x.rate } },
+  ];
+  return {
+    shape: 'flat',
+    sections: [
+      { heading: 'worksheetFlatHeading', rows },
+      { heading: 'worksheetResultHeading', rows: resultRows(x) },
+    ],
+    note: 'worksheetFlatNote',
+  };
+}
+
+/**
+ * The last rows of every sheet: what the working lands on, and — only when they are different numbers —
+ * what the payslip actually deducted.
+ *
+ * The caption on the first row turns on `basis` for the reason the whole screen turns on it: on an
+ * additional run or a hand-set PCB the working explains a figure the payslip does not contain, and a
+ * sheet whose final line is captioned "deducted" beside the month's total is the failure this item's
+ * own screen was built to remove. The deduction gets its OWN labelled row, never the quiet answer.
+ */
+function resultRows(x: PcbExplanation): PcbWorksheetRow[] {
+  const rows: PcbWorksheetRow[] = [
+    { symbol: '', caption: x.basis ? 'worksheetMtdSystem' : 'worksheetMtd', value: money(x.pcbSystem) },
+  ];
+  if (x.basis) rows.push({ symbol: '', caption: 'worksheetMtdDeducted', value: money(x.pcb) });
+  return rows;
+}
+
+/**
+ * The previous-employment section. ALWAYS four money rows, and always a figure — RM 0.00 where nothing is
+ * declared, never a blank. §8: an absent box asserts nothing, where 0.00 asserts the money does not
+ * exist, and "does this employee have previous-employment income in this tax year" is precisely the
+ * question the reporter's case turned on. A blank there is how it went unnoticed.
+ *
+ * NO SYMBOL ON THESE FOUR, ON PURPOSE. LHDN's sheet has no separate line for a previous employer: the
+ * figures are folded into Y, K, X and Z, which is exactly why the reporter could not see them. The
+ * captions name the line each one feeds; inventing a symbol LHDN does not use would defeat the matching
+ * the rest of the sheet exists for.
+ */
+function previousSection(p: PcbPreviousEmployment | null): PcbWorksheetSection {
+  const rows: PcbWorksheetRow[] = [
+    {
+      symbol: '',
+      caption: 'worksheetPrevYear',
+      value:
+        p && p.declaredYear !== null ? { kind: 'text', text: String(p.declaredYear) } : { kind: 'caption', caption: 'worksheetPrevNone' },
+    },
+    {
+      symbol: '',
+      caption: 'worksheetPrevApplies',
+      value: { kind: 'caption', caption: p?.applies ? 'worksheetPrevAppliesYes' : 'worksheetPrevAppliesNo' },
+    },
+    { symbol: '', caption: 'worksheetPrevNet', value: money(p?.netRemuneration ?? 0), previousEmployment: true },
+    { symbol: '', caption: 'worksheetPrevEpf', value: money(p?.epfClaimed ?? 0), previousEmployment: true },
+    { symbol: '', caption: 'worksheetPrevPcb', value: money(p?.pcbPaid ?? 0), previousEmployment: true },
+    { symbol: '', caption: 'worksheetPrevZakat', value: money(p?.zakatPaid ?? 0), previousEmployment: true },
+  ];
+  return { heading: 'worksheetPreviousHeading', rows, note: 'worksheetPreviousNote' };
+}
+
+/**
+ * @param x  what `explainPcb` read off the payslip.
+ * @param previous the employee's Form TP3 declaration for this payslip's tax year, or null when it could
+ *        not be resolved (an unscoped or missing read). Null is NOT the same as "nothing declared": the
+ *        section still renders, still shows 0.00, and `worksheetPrevAppliesNo` still says the run seeded
+ *        nothing — which is what a null resolves to and what the reader needs to be told.
+ */
+export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment | null): PcbWorksheet {
+  // Nothing was recorded at all. The screen's own "unavailable" card already says that in full sentences,
+  // so an LHDN-shaped sheet with every line reading "not recorded" is added beside it — which would be a
+  // worksheet asserting that this employee HAS a computerised calculation that merely went unsaved. The
+  // note reuses that card's existing caption rather than minting a second wording of the same fact.
+  if (x.kind === 'unavailable') return { shape: 'unavailable', sections: [], note: 'unavailable' };
+  if (x.kind === 'flat') return flatWorksheet(x);
+
+  const t = x.trace;
+  const income: PcbWorksheetRow[] = [
+    // LHDN's Y is the GROSS accumulated remuneration for the year. We store Σ(Y − K) and K; the gross is
+    // never written down. Said as a row, not reconstructed. See the header.
+    { symbol: 'Y', caption: 'worksheetY', value: { kind: 'notSeparatelyRecorded' } },
+    { symbol: 'Σ(Y−K)', caption: 'worksheetSumYK', value: money(x.ytdNetRemuneration) },
+    { symbol: 'K', caption: 'worksheetK', value: money(x.epfClaimedYtd) },
+    { symbol: 'Y1', caption: 'worksheetY1', value: fromTrace(t, (v) => v.Y1) },
+    { symbol: 'K1', caption: 'worksheetK1', value: fromTrace(t, (v) => v.K1) },
+    { symbol: 'Y2', caption: 'worksheetY2', value: fromTrace(t, (v) => v.Y2) },
+    { symbol: 'K2', caption: 'worksheetK2', value: fromTrace(t, (v) => v.K2) },
+    { symbol: 'n', caption: 'worksheetN', value: { kind: 'count', count: x.remainingMonths } },
+  ];
+  const additional: PcbWorksheetRow[] = [
+    { symbol: 'Yt', caption: 'worksheetYt', value: fromTrace(t, (v) => v.Yt) },
+    { symbol: 'Kt', caption: 'worksheetKt', value: fromTrace(t, (v) => v.Kt) },
+    { symbol: 'K2t', caption: 'worksheetK2t', value: fromTrace(t, (v) => v.K2t) },
+  ];
+  const reliefs: PcbWorksheetRow[] = [
+    { symbol: 'D', caption: 'worksheetD', value: money(x.reliefs.individual) },
+    { symbol: 'S', caption: 'worksheetS', value: money(x.reliefs.spouse) },
+    { symbol: 'Du', caption: 'worksheetDu', value: money(x.reliefs.disabledIndividual) },
+    { symbol: 'Su', caption: 'worksheetSu', value: money(x.reliefs.disabledSpouse) },
+    { symbol: 'Q', caption: 'worksheetQ', value: money(x.reliefs.children) },
+    { symbol: 'C', caption: 'worksheetC', value: t ? { kind: 'count', count: t.childCount } : { kind: 'notRecorded' } },
+    { symbol: 'ΣLP', caption: 'worksheetLpAccumulated', value: fromTrace(t, (v) => v.lpAccumulated) },
+    { symbol: 'LP1', caption: 'worksheetLpCurrent', value: fromTrace(t, (v) => v.lpCurrent) },
+  ];
+  const bracket: PcbWorksheetRow[] = [
+    { symbol: 'P', caption: 'worksheetP', value: money(x.chargeableIncome) },
+    {
+      symbol: 'P2',
+      caption: 'worksheetP2',
+      // NULL means §D.2 never ran — this month paid no additional remuneration. Not "the answer was zero".
+      value:
+        x.chargeableIncomeWithAdditional === null ? { kind: 'didNotRun' } : money(x.chargeableIncomeWithAdditional),
+    },
+    { symbol: 'M', caption: 'worksheetM', value: fromTrace(t, (v) => v.M) },
+    { symbol: 'R', caption: 'worksheetR', value: t ? { kind: 'rate', rate: t.R } : { kind: 'notRecorded' } },
+    { symbol: 'B', caption: 'worksheetB', value: fromTrace(t, (v) => v.B) },
+    { symbol: '', caption: 'worksheetTaxOnP', value: fromTrace(t, (v) => v.taxOnP1) },
+  ];
+  const result: PcbWorksheetRow[] = [
+    { symbol: 'Z', caption: 'worksheetZ', value: fromTrace(t, (v) => v.Z) },
+    { symbol: 'X', caption: 'worksheetX', value: money(x.pcbPaidYtd) },
+    // Z₁ is stamped on the blob independently of the trace (`statutory.zakat`), so an old run still has
+    // a real figure here rather than an absence — the same fallback the existing screen already makes.
+    { symbol: 'Z1', caption: 'worksheetZ1', value: t ? money(t.zakatCurrent) : money(x.zakat) },
+    { symbol: 'A', caption: 'worksheetA', value: fromTrace(t, (v) => v.mtdNormalFloored) },
+    { symbol: 'E', caption: 'worksheetE', value: fromTrace(t, (v) => v.mtdAdditionalFloored) },
+    ...resultRows(x),
+  ];
+
+  return {
+    shape: 'mtd',
+    sections: [
+      previousSection(previous),
+      { heading: 'worksheetIncomeHeading', rows: income, note: 'worksheetIncomeNote' },
+      { heading: 'worksheetAdditionalHeading', rows: additional },
+      { heading: 'worksheetReliefHeading', rows: reliefs },
+      { heading: 'worksheetBracketHeading', rows: bracket },
+      { heading: 'worksheetResultHeading', rows: result },
+    ],
+    note: 'worksheetNote',
+  };
+}
