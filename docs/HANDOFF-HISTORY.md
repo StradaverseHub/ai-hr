@@ -1,3 +1,55 @@
+## r334 (2026-09-24) — three items, and a flake that had been measured and written down before it was written in. `main@86fa1231`, **migration 0486**.
+
+Closed: `d272834b`, `928f0454`, `5b2a7f0f`. Gate: **969 files — equal to the suite file count**, 14 chunks, ~15,007 tests, `tsc` 0, `next build` 0, shadow **PASS 399/399**. Render check clean.
+
+⚠️ **Round numbering: this one is right.** The number was taken from this file's top entry *before* the worktrees were named, which is the fix recorded after r332 and r333 both shipped under the previous round's prefix. Branches and commits all read `r334`.
+
+### THE RED CHUNK WAS REAL, AND THE DIAGNOSIS WAS ALREADY IN THE REPO
+
+Chunk 5 failed with a genuine `AssertionError` on `test/2a1a6f42-ea-preview.test.ts` — the §4 rule (`grep -c AssertionError` first) separated real from environment in one command, though it needed `grep -a` because a PDF diff makes the log binary.
+
+The helper blanked `D:\d{14}` in the raw bytes and called two renders comparable. They are not: `pdf-lib`'s `save()` defaults to `useObjectStreams: true`, so the Info dictionary — and the dates with it — lands **inside a deflate stream** where a text regex cannot reach.
+
+**r331 measured exactly this and wrote it down** — *"the delta is pdf-lib's timestamp inside a deflate stream"* — and the regex was written anyway. It then passed the r332 and r333 gates by luck and went red under r334's load. The identical helper sat in the sibling `72b100cd` test; **both** now reload, stamp the dates to a constant and re-save without object streams. Non-vacuity is built in: the same test asserts the Malay sheet is not the English one, so an over-normalising helper fails it.
+
+### `d272834b` — TWO CHALLENGES TO MY BRIEF, BOTH RIGHT
+
+- **It refused to flip the grant path to `'exclude'`.** After the normalisation the only lists still reaching that policy are *genuine* restrictions, including CGL and NDL's five-of-six marital lists. I measured what it could not (it was refused production reads): **48 of 76** active employees have no marital status, so flipping would have withheld Caregiver and Natural Disaster Leave from 48 people — the failure mode `UnknownAttributePolicy`'s own header records. Raised separately as `73ddd5a1`.
+- **It rejected my location for the fix.** I said the write-time normaliser in `core/admin.ts`; that runs only on *save*, so the eight production types already storing `["male","female"]` would be unreached until each was re-opened and re-saved — and a write-time strip would show an admin who ticked both genders a form with neither ticked. It went at interpretation time, and found a **third** copy of `['male','female']` in the picker on the way.
+
+**It also fixed a live defect nobody reported, in the opposite direction.** The read gates pass `'exclude'`, eight types list both genders, and **55 of 76** active employees have no gender recorded — so those 55 were losing all eight types from their cards *and* their apply dropdown. And it corrected the mechanism: `leaveBalances` *did* gate, but only on the tail deciding whether to **invent** a row; a row backed by ledger activity was never asked, which is why Daniel Tan's +98/−98 pair kept its card.
+
+### `928f0454` — THE MONEY FINDING WAS WORTH 50%
+
+The accrual stamps `dayType: null`, not `'workday'`. `convertAmountFor` prices an expired First-Schedule credit as **exact statutory cash** over the stored minutes, but a tier **rounds down** — so 7h59m banks 0.5 day and would have cashed out as nearly eight hours of overtime. Measured: **RM86.52** of s.60A cash against a **RM57.69** credit. Same over-valuation r299 closed one function away.
+
+The named rule is **not** widened — `RL_ELIGIBLE_DAY_TYPES` still reads `{rest_day, holiday}` with the new path forked beside it. A mutation was initially vacuous (`overtimePay` answers `eligible: false` above the RM4,000 ceiling, so the payslip read 0 either way) and was fixed with an RM3,000 fixture plus a control employee in the same payroll run.
+
+Two measured contradictions of the ticket: an **off day has never been bankable from the roster election**, left byte-identical rather than silently closed; and `maybeAutoAccrueOnApprovalTx` decided the day type *before* reading the policy, so the new switch was unreachable from that path however it was set.
+
+### `5b2a7f0f` — THREE FINDINGS, NONE OF THEM VISIBLE TO A TEST
+
+- **`@pdf-lib/fontkit`, which my brief named as required, writes corrupt subsets.** Its CFF output rendered as a row of unrelated ASCII letters — and `/ToUnicode` extraction returned *perfect Chinese* from the broken document. **Only rasterising the page found it.** Upstream `fontkit@1.9.0` does it correctly.
+- **Turbopack takes fontkit's ESM build**, which imports a dead `@swc/helpers` export: a **500 on both payslip PDF routes with the vitest suite green either way**. `serverExternalPackages: ['fontkit']`. Caught by the §8 dev-server check and nothing else.
+- **A real translation is longer than a question mark.** Vietnamese's `TỔNG CHI PHÍ NGƯỜI SỬ DỤNG LAO ĐỘNG` printed straight through `MYR 8,141.55` on the one baseline that cannot wrap.
+
+Mixed script resolves **per drawn string** against a face that covers both, because splitting the run would mean splitting every measurement and `wrap()` measuring against the real font is what keeps this document from clipping. 6.5 MB of brotli-compressed fonts, largest face 5.81 MiB (16.4 MB and 17.8 MB alternatives measured and rejected). EN payslips are byte-identical — three SHA-256 digests pinned.
+
+**A correction to an item I raised:** I said Malay loses 10 of 65 strings. Measured properly it is **0 of 68** — seven em dashes the existing fold already handles, in English too. The Tamil/Chinese/Thai figures stand.
+
+### OPERATIONAL
+
+- ⚠️ **`fontkit` is a new dependency, and installing it is not routine here.** `node_modules` was built by **pnpm@12.3.4** while the pnpm on PATH is **10.33.2**; an older pnpm refuses and demands a full purge, and eleven worktrees symlink to that directory. Corepack's cached pnpm 12 is broken (missing file). `CI=true pnpm install` rebuilt it in 5.9s from the local store. **Worth a line in §2 for the next agent who adds a dependency** — the symlink recipe cannot carry one.
+- **§8 gap stated, not papered over:** `/admin/leave-config/leave-credit/rules` returns 307 in every locale from a plain seed — the ADR-0077 module gate, because `db:seed` does not activate `toil`. Its own build render-checked it with the module activated.
+
+### WHAT WAS NOT DONE
+
+- **Four items approved and unbuilt**: `6af80f5d` (rev 2, the corrected rounding — Balance must stay exact), `0fe1ca2e` (rev 6, the clocking form merged into one card), `3783fd87`, `20f6c6a8`.
+- **Five open and unplanned**: `73ddd5a1` (ours — 55 blank genders, 48 blank marital statuses), `99b2d6c0`, `7f251381`, `1bb09a73`, `da7463b4`.
+- `20f6c6a8` cannot start its LHDN writer until the reporter supplies a **real filed LHDN file**; the plan says why, quoting what building from a field table produced last time.
+
+### RECORDED
+
 ## r333 (2026-09-23) — two items, a migration the brief said was not needed, and RLS that would have killed the feature. `main@dd61bf1f`, **migration 0485**.
 
 ⚠️ **THE COMMITS OF THIS ROUND ARE PREFIXED `r332`, AND THAT IS WRONG AGAIN.** r332 is `main@1f28867c` / migration 0484, recorded directly below. I chose the worktree names (`r332-<item>`) when briefing the builders, before this round had a number, and the prefix followed them into the commit messages. **Second round running that this has happened.** The rule that keeps being skipped: the branch name must be chosen from this file's top entry, not from "the round I just shipped". Content is accurate; only the prefix is wrong.
