@@ -1,0 +1,153 @@
+<meta charset="utf-8">
+<title>Organization — company code, statutory setup, and the grey</title>
+<!--
+  3783fd87. Measured 2026-09-24 on main at 61cbd049.
+  (1) THE CODE FIELD ALREADY EXISTS. company.company_label, commented in db/schema.ts:235 as
+      "short name / abbreviation / internal code". app/admin/organization/company-rows.tsx:85 maps
+      `code: c.companyLabel` — the LISTING already calls it Code. It is editable after creation
+      ([companyId]/page.tsx:129, actions.ts:1538). It is simply ABSENT from app/admin/organization/new/page.tsx,
+      whose only fields are legalName, registrationNo, country, currency, defaultPayrollCycle.
+      Production consequence: 6 of 13 companies have a code, 7 are blank, and the ones that are set are
+      inconsistent (ASG, CHCE, SMSB, XYZ — but also "PRIVATE CO." and one holding the full legal name).
+  (2) The expand/dropdown is admin.organization.authorityOpen = "Open settings" under
+      authoritiesTitle = "Statutory payment setup"; the page also uses native <details>/<summary>
+      (organization/page.tsx:166) for group structure.
+  NO MIGRATION NEEDED for (1).
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--grey:#e8e9f0}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;background:#e3f3ea;color:var(--ok)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .card{border:1px solid var(--rule);border-radius:8px;background:#fff;overflow:hidden}
+ .ch{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .f{padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9;display:flex;justify-content:space-between;gap:10px}
+ .f:last-child{border-bottom:none}
+ .f .k{color:var(--mf)}
+ .f .box{flex:1;max-width:180px;border:1px solid var(--rule);border-radius:4px;height:17px;background:#fdfdfe}
+ .f.new{background:#eef0fb}
+ .f.new .k{color:var(--primary);font-weight:700}
+ .grey{background:var(--grey);padding:10px;border-radius:7px}
+ .acc{border:1px solid var(--rule);border-radius:6px;background:#fff;margin-bottom:6px}
+ .accs{display:flex;justify-content:space-between;padding:7px 10px;font-size:11.5px}
+ .accs .o{color:var(--primary);font-size:10.5px;font-weight:600}
+ .auth{border:1px solid var(--rule);border-radius:7px;padding:9px 10px;margin-bottom:7px;background:#fff}
+ .auth .n{font-size:11.5px;font-weight:700;margin-bottom:5px}
+ .auth .r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mf);padding:1px 0}
+ .nums{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:9px}
+ .n{border:1px solid var(--rule);border-radius:7px;padding:9px;text-align:center}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .n b{display:block;font-size:17px}
+ .n span{font-size:10.5px;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:10px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:10px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Organization &mdash; the code, the statutory setup, and the grey</h1>
+  <p class="sub">The Company Code you are missing already exists. It is just not on the form that creates the company.</p>
+
+  <div class="sec">
+    <h2><span class="pill">NO MIGRATION NEEDED</span><b>1.</b> Company Code on Add New Company</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">Before &mdash; Add New Company</p>
+          <div class="card">
+            <div class="ch">Add New Company</div>
+            <div class="f"><span class="k">Legal name</span><span class="box"></span></div>
+            <div class="f"><span class="k">Registration no.</span><span class="box"></span></div>
+            <div class="f"><span class="k">Country</span><span class="box"></span></div>
+            <div class="f"><span class="k">Currency</span><span class="box"></span></div>
+            <div class="f"><span class="k">Default payroll cycle</span><span class="box"></span></div>
+          </div>
+          <p class="note">No code. You create the company, then go and find it on another screen to set one
+            &mdash; so most of the time nobody does.</p>
+        </div>
+        <div>
+          <p class="tag a">After</p>
+          <div class="card">
+            <div class="ch">Add New Company</div>
+            <div class="f"><span class="k">Legal name</span><span class="box"></span></div>
+            <div class="f new"><span class="k">Company code</span><span class="box"></span></div>
+            <div class="f"><span class="k">Registration no.</span><span class="box"></span></div>
+            <div class="f"><span class="k">Country</span><span class="box"></span></div>
+            <div class="f"><span class="k">Currency</span><span class="box"></span></div>
+            <div class="f"><span class="k">Default payroll cycle</span><span class="box"></span></div>
+          </div>
+          <div class="okbox"><b>It is the same field your company list already shows as &ldquo;Code&rdquo;.</b>
+            Nothing new is stored and nothing is migrated &mdash; it simply appears at the moment you are
+            creating the company instead of only afterwards.</div>
+        </div>
+      </div>
+      <div class="nums">
+        <div class="n hot"><b>7 of 13</b><span>of your companies have NO code today</span></div>
+        <div class="n"><b>6</b><span>have one &mdash; ASG, CHCE, SMSB, XYZ&hellip;</span></div>
+      </div>
+      <p class="note">And of the six that are set, two are not really codes &mdash; one reads
+        &ldquo;PRIVATE CO.&rdquo; and one holds the whole legal name. That is what happens when a field is
+        only reachable after the fact.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>2.</b> Statutory Payment Setup &mdash; cards instead of Open settings</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">Before</p>
+          <div class="grey">
+            <div class="acc"><div class="accs"><span>LHDN</span><span class="o">Open settings &rsaquo;</span></div></div>
+            <div class="acc"><div class="accs"><span>EPF (KWSP)</span><span class="o">Open settings &rsaquo;</span></div></div>
+            <div class="acc"><div class="accs"><span>SOCSO (PERKESO)</span><span class="o">Open settings &rsaquo;</span></div></div>
+          </div>
+          <p class="note">Every authority is a closed row. To see whether one is configured you have to open
+            it, and to compare two you have to open both and remember.</p>
+        </div>
+        <div>
+          <p class="tag a">After</p>
+          <div class="auth"><div class="n">LHDN</div>
+            <div class="r"><span>Employer no.</span><span>E 1234567890</span></div>
+            <div class="r"><span>Paid from</span><span>Maybank &middot; 5124&hellip;1123</span></div></div>
+          <div class="auth"><div class="n">EPF (KWSP)</div>
+            <div class="r"><span>Employer no.</span><span>A 0123456789</span></div>
+            <div class="r"><span>Paid from</span><span>Maybank &middot; 5124&hellip;1123</span></div></div>
+          <div class="auth"><div class="n">SOCSO (PERKESO)</div>
+            <div class="r"><span>Employer no.</span><span style="color:#a8453a">not set</span></div>
+            <div class="r"><span>Paid from</span><span style="color:#a8453a">not set</span></div></div>
+          <p class="note">One white card per authority, on a white page, showing what is set
+            <b>without opening anything</b> &mdash; and saying plainly where nothing is set yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>3. The grey, and one thing we want to check with you</h3>
+    <p><b>The grey goes.</b> White cards on a light page, with lines rather than filled blocks separating
+      things &mdash; the same direction we took the payslip this week.</p>
+    <p><b>We are not removing the expand behaviour everywhere.</b> Your Group structure panel is also a
+      collapsed section, and it collapses because a company group can be long. We are changing Statutory
+      Payment Setup, which has a fixed handful of authorities and should just show them. If you want the
+      group panel opened out too, say so and we will do both.</p>
+    <p><b>No company data changes</b>, and no existing code, employer number or bank routing is touched.</p>
+  </div>
+</div>

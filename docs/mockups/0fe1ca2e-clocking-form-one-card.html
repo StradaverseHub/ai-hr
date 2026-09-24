@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<title>Clocking Location — one card, the search next to the coordinates</title>
+<!--
+  0fe1ca2e contest (2026-09-24). Measured on main at 61cbd049.
+  The form is app/admin/locations/clocking/clocking-form.tsx. TWO cards today:
+    Card 1 `sectionInfo` ("Location information", :112-156) — ClockingAddressSearch at :116 (already
+      FIRST in the card), then name, reportLabel, address, clockingLocationLink, remarks.
+    Card 2 `sectionGps` ("GPS and clocking settings", :161-177) — lat :164, lng :167, radius :173.
+  ⚠️ THE FUNCTIONAL HALF IS ALREADY BUILT. address-search.tsx's header (fa2db8cb rev 2, r279) states it:
+  "press Search, pick the right hit, and `address`, `lat` and `lng` fill themselves in." So "Find an
+  address should populate Latitude and Longitude" already works, and the search is already BEFORE
+  Latitude — just in a different card, which is the actual complaint.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1020px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .card{border:1px solid var(--rule);border-radius:8px;background:#fff;margin-bottom:11px;overflow:hidden}
+ .card.b{border-color:#e4c2bd}
+ .card.a{border-color:#bcdccb}
+ .ch{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .f{padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9;display:flex;justify-content:space-between;gap:10px}
+ .f:last-child{border-bottom:none}
+ .f .k{color:var(--mf)}
+ .f .box{flex:1;max-width:190px;border:1px solid var(--rule);border-radius:4px;height:17px;background:#fdfdfe}
+ .f.search{background:#eef0fb}
+ .f.search .k{color:var(--primary);font-weight:700}
+ .f.gps .k{color:var(--fg);font-weight:600}
+ .gap{height:16px;display:flex;align-items:center;justify-content:center;color:var(--bad);font-size:10.5px;font-weight:700;letter-spacing:.05em}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:16px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{margin-top:16px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Clocking Location &mdash; one card, with the search beside the coordinates</h1>
+  <p class="sub">You are right that they are apart. The searching itself already works.</p>
+
+  <div class="two">
+    <div>
+      <p class="tag b">Before &mdash; two cards</p>
+      <div class="card b">
+        <div class="ch">Location information</div>
+        <div class="f search"><span class="k">Find an address</span><span class="box"></span></div>
+        <div class="f"><span class="k">Name</span><span class="box"></span></div>
+        <div class="f"><span class="k">Report label</span><span class="box"></span></div>
+        <div class="f"><span class="k">Address</span><span class="box"></span></div>
+        <div class="f"><span class="k">Clocking location link</span><span class="box"></span></div>
+        <div class="f"><span class="k">Remarks</span><span class="box"></span></div>
+      </div>
+      <div class="gap">&darr; a card boundary in between &darr;</div>
+      <div class="card b">
+        <div class="ch">GPS and clocking settings</div>
+        <div class="f gps"><span class="k">Latitude</span><span class="box"></span></div>
+        <div class="f gps"><span class="k">Longitude</span><span class="box"></span></div>
+        <div class="f gps"><span class="k">Clocking radius (metres)</span><span class="box"></span></div>
+      </div>
+      <p class="note">The search <b>is</b> above Latitude already &mdash; but with a whole card between
+        them, so the connection is invisible. That is the complaint, and it is fair.</p>
+    </div>
+
+    <div>
+      <p class="tag a">After &mdash; one card, your order</p>
+      <div class="card a">
+        <div class="ch">GPS and clocking settings</div>
+        <div class="f search"><span class="k">Find an address</span><span class="box"></span></div>
+        <div class="f"><span class="k">Address</span><span class="box"></span></div>
+        <div class="f gps"><span class="k">Latitude</span><span class="box"></span></div>
+        <div class="f gps"><span class="k">Longitude</span><span class="box"></span></div>
+        <div class="f gps"><span class="k">Clocking radius (metres)</span><span class="box"></span></div>
+        <div class="f"><span class="k">Name</span><span class="box"></span></div>
+        <div class="f"><span class="k">Report label</span><span class="box"></span></div>
+        <div class="f"><span class="k">Clocking location link</span><span class="box"></span></div>
+        <div class="f"><span class="k">Remarks</span><span class="box"></span></div>
+      </div>
+      <p class="note">One card. No separate Location information heading anywhere on the page, and the
+        search sits directly above the two fields it fills.</p>
+      <p class="note"><b>Address stays, right under the search.</b> Your sketch did not list it, but it is
+        the field the search writes and the one that prints on reports &mdash; dropping it would lose the
+        address you just looked up.</p>
+    </div>
+  </div>
+
+  <div class="okbox">
+    <b>The behaviour you describe already works, and has since r279.</b> Type a building, street or
+    landmark, press Search, pick the right result, and the Address, Latitude and Longitude fill themselves
+    in &mdash; and stay editable by hand afterwards. Nothing about that changes here. What changes is only
+    where the boxes sit.
+  </div>
+
+  <div class="foot">
+    <h3>One consequence worth naming</h3>
+    <p><b>Name moves below the coordinates.</b> Your layout puts Find an address, Latitude, Longitude and
+      Clocking radius at the top of the card, so the descriptive fields follow them. Naming a place after
+      you have located it reads slightly oddly &mdash; if you would rather Name stayed at the very top,
+      say so and we will lift it, and the rest of your order is unaffected.</p>
+    <p><b>Nothing is stored differently.</b> Same eight fields, same saves, same validation. No existing
+      clocking location changes.</p>
+  </div>
+</div>

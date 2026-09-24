@@ -1,0 +1,117 @@
+<meta charset="utf-8">
+<title>Payment Submission — the module, and the one thing we need from you</title>
+<!--
+  20f6c6a8. Measured 2026-09-24 on main at 61cbd049.
+  TWO statutory file writers already exist: lib/kwsp-borang-a-file.ts (EPF i-Akaun EPFORMA2) and
+  lib/perkeso-socso-file.ts, with real sample files at test/fixtures/kwsp-borang-a-epforma2.txt and
+  test/fixtures/perkeso-brg8a.txt.
+  ⚠️ THERE IS NO LHDN SAMPLE FILE ANYWHERE IN THE REPO. test/fixtures/ holds only those two.
+  kwsp-borang-a-file.ts's header records what happens without one, verbatim: "The previous transcription
+  came from the field tables in item 3aae0789, which were reverse-engineered WITHOUT a sample, and it put
+  the wages where the employer's contribution belongs and the two contributions added together where the
+  employee's belongs. A file with the right shape and the wrong numbers in it is the worst kind: it looks
+  valid." Its golden test rebuilds the fourteen employees of the real sample and asserts byte equality.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1060px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .scr{border:1px solid var(--rule);border-radius:8px;overflow:hidden;max-width:560px}
+ .sb{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .grp{padding:6px 11px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);background:#fbfbfd;border-bottom:1px solid #f2f3f8}
+ .row{display:flex;justify-content:space-between;align-items:center;padding:7px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9}
+ .row:last-child{border-bottom:none}
+ .badge{font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:2px 8px;border-radius:99px}
+ .badge.ready{background:#e3f3ea;color:var(--ok)}
+ .badge.wait{background:#fdeee2;color:var(--warn)}
+ .badge.later{background:#f1f2f7;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .quote{margin:8px 0 0;padding:8px 11px;border-left:3px solid #d9a9a2;background:#fdf6f5;font-size:11px;color:#8a3d33;line-height:1.5}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Payment Submission &mdash; and the one thing we need from you first</h1>
+  <p class="sub">We have written two of these files before. The second time taught us how to do it.</p>
+
+  <div class="sec">
+    <h2><b>The module</b> &mdash; Payroll &rsaquo; Payment Submission</h2>
+    <div class="bd">
+      <div class="scr">
+        <div class="sb">Payment Submission &mdash; September 2026</div>
+        <div class="grp">Salary payments</div>
+        <div class="row"><span>Bank payment file</span><span class="badge later">later</span></div>
+        <div class="grp">Bank statutory payments</div>
+        <div class="row"><span>EPF &mdash; KWSP i-Akaun (EPFORMA2)</span><span class="badge ready">already written</span></div>
+        <div class="row"><span>SOCSO &mdash; PERKESO</span><span class="badge ready">already written</span></div>
+        <div class="grp">Government statutory payments</div>
+        <div class="row"><span>LHDN &mdash; monthly tax deduction</span><span class="badge wait">needs your file</span></div>
+      </div>
+      <p class="note">One screen, one period, one place to generate and download. Each format is a
+        self-contained writer behind a common seam, so adding the next one is adding a writer &mdash; not
+        reopening the module.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>Two of these already exist</b> &mdash; and that is what makes the design safe</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">We have already written the EPF i-Akaun upload file and the
+        PERKESO file. They work, they are checked against real files, and they will be the first two things
+        plugged into this module.</p>
+      <p class="note"><b>That matters for a reason beyond saving work.</b> A design that claims to support
+        many formats but has only ever been used for one is not actually proven. Wiring the two we already
+        have in on day one is what demonstrates the module is genuinely format-agnostic rather than
+        LHDN-shaped.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>⚠️ What we need before we write the LHDN file</b></h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0"><b>A real LHDN file. Not a specification of one.</b> We do not
+        have one &mdash; we checked.</p>
+      <div class="warnbox">
+        <b>This exact thing has already cost us once, on the EPF file.</b> We built it from the field
+        tables in the written spec, without a sample. What our own code now says about that attempt:
+        <div class="quote">&ldquo;it put the wages where the employer&rsquo;s contribution belongs and the
+          two contributions added together where the employee&rsquo;s belongs. A file with the right shape
+          and the wrong numbers in it is the worst kind: it looks valid.&rdquo;</div>
+        <div style="margin-top:8px">It was only fixed when the customer sent an actual EPFORMA2 file. We
+          now rebuild that exact file in a test and check it character by character &mdash; and we would do
+          the same for LHDN.</div>
+      </div>
+      <p class="note"><b>So: one real LHDN submission file, for a month you have already filed.</b> Ideally
+        with the figures you filed alongside it, so we can prove ours reproduces yours exactly rather than
+        merely looking right. A blank template or a PDF of the field layout is not enough &mdash; that is
+        precisely what went wrong last time.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What we will do meanwhile</h3>
+    <p><b>We will build the module and put LHDN first in it, as you asked</b> &mdash; the submenu, the
+      screen, the period picker, the format seam and the download. The LHDN writer itself is the one piece
+      that waits for your file; everything around it does not.</p>
+    <p><b>Salary payments to employees are deliberately last.</b> A bank payment file moves real money to
+      real accounts, and each bank has its own format. We would rather get the statutory files right first
+      and come to that with the same discipline &mdash; and a real file from your bank.</p>
+    <p><b>Nothing is filed automatically.</b> The module generates and downloads a file for you to submit.
+      It does not transmit anything to LHDN, EPF or SOCSO.</p>
+  </div>
+</div>
