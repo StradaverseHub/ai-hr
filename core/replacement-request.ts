@@ -55,13 +55,32 @@ import {
   replacementLeaveRequestDate,
   toilAccrual,
   toilPolicy,
+  LEGACY_CLAIM_SOURCE_TYPE,
+  type ReplacementClaimSourceType,
   type ReplacementLeaveRequestStatus,
   type ReplacementLeaveRequestUnit,
+  type ToilWorkedDayKind,
 } from '../db/schema';
 import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isReplacementRequestEligibleTx } from './replacement-eligibility';
-import { accrueSelfDeclaredToilTx, resolveWorkedDayKindTx, ToilAlreadyAccruedError, ToilOrdinaryWorkingDayError } from './toil';
+import {
+  accrueExtendedWorkdayToilTx,
+  accrueSelfDeclaredToilTx,
+  eligibleExtendedMinutes,
+  extendedHoursCreditDays,
+  extendedHoursDayForEmploymentTx,
+  extendedHoursPolicyForCompanyTx,
+  LeaveCreditSectionMismatchError,
+  resolveWorkedDayKindTx,
+  ToilAlreadyAccruedError,
+  ToilExtendedHoursBelowThresholdError,
+  ToilNotEligibleError,
+  ToilOrdinaryWorkingDayError,
+} from './toil';
+// r336 cbfa8b0b — DIRECTION 1 of the double-claim check, from the ONE module that also serves direction 2
+// (core/attendance.ts's overtime request). See core/credit-ot-overlap.ts for why it is not two queries.
+import { assertNoOvertimeClaimForDatesTx } from './credit-ot-overlap';
 // r219 — the reason union lives in lib/ so the service and the screens that EXPLAIN it share one list. A
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
@@ -95,12 +114,30 @@ export class ReplacementRequestNotPendingError extends Error {
   }
 }
 
-/** One worked-date row as the employee typed it. `days` for a Day request; `fromTime`/`toTime` for Hour. */
+/**
+ * One worked-date row as the employee typed it. `days` for a Day request; `fromTime`/`toTime` for Hour.
+ *
+ * ── r336 cbfa8b0b · `sourceType` IS WHICH SECTION OF THE SCREEN THE ROW CAME FROM ───────────────────────
+ * The Leave Credit request is one modal holding two different claims, and they are not two flavours of one
+ * thing — they are validated against opposite facts (Section A requires a NON-working day, Section B
+ * requires a working day) and produce the credit by opposite routes (A is declared, B is derived from
+ * measured minutes and can never be typed).
+ *
+ * ABSENT MEANS SECTION A, and that is a compatibility decision with teeth: every row already in production
+ * and every existing caller of this function omits it, and all of them are non-working-day claims, because
+ * Section B did not exist. `LEGACY_CLAIM_SOURCE_TYPE` names that mapping once so no reader re-decides it.
+ *
+ * On a Section B row `fromTime`/`toTime` are the CLAIMED EXTENDED WINDOW — the "Extended start" and
+ * "Extended end" the employee types — and `days` is ignored on input entirely. The credit for such a row is
+ * derived server-side from the attendance record through r334's tier ladder; a client that posted a days
+ * figure would be posting a number nothing reads.
+ */
 export type ReplacementRequestLineInput = {
   workedDate: string;
   days?: number;
   fromTime?: string;
   toTime?: string;
+  sourceType?: ReplacementClaimSourceType;
 };
 
 /**
@@ -304,9 +341,38 @@ export async function submitReplacementLeaveRequest(
       throw new ReplacementRequestInvalidError('The same worked date appears more than once.');
     seen.add(l.workedDate);
   }
-  // Throws on a bad row (zero days, reversed times) before anything is written.
-  const { totalDays, totalHours, perLine } = totalsFor(p.unit, p.lines);
-  if (totalDays <= 0) throw new ReplacementRequestInvalidError('The total must be greater than zero.');
+
+  // ── r336 cbfa8b0b · THE TWO SECTIONS, SPLIT BEFORE ANYTHING IS TOTALLED ────────────────────────────────
+  // A row's section decides which facts it is validated against and how its credit is produced, so nothing
+  // downstream may treat the list as homogeneous. An untagged row is Section A, which is what every row
+  // written before this round is (migration 0487's header).
+  const sectionOf = (l: ReplacementRequestLineInput): ReplacementClaimSourceType => l.sourceType ?? LEGACY_CLAIM_SOURCE_TYPE;
+  const aLines = p.lines.filter((l) => sectionOf(l) === 'non_working_day');
+  const bLines = p.lines.filter((l) => sectionOf(l) === 'extended_hours');
+
+  // "Unit is always Day and is derived, not selectable" — r333's precedent for the leave TYPE, applied to
+  // the unit. Enforced HERE rather than only by the form, because an Hour-unit request carrying a Section B
+  // row would have two different answers for what that row credits: the claimed hours over a standard day,
+  // and the tier the minutes actually earn. There is no honest total to put at the bottom of that form.
+  if (bLines.length > 0 && p.unit !== 'day')
+    throw new ReplacementRequestInvalidError('Extended ordinary-day work is always credited in days.');
+  for (const l of bLines) {
+    if (!l.fromTime || !l.toTime)
+      throw new ReplacementRequestInvalidError('Enter the extended start and end time for every date in Extended ordinary-day work.');
+  }
+  // A Section A row the NEW screen tagged is a whole non-working day or half of one, which is what the
+  // approved plan specifies and what the form offers. Deliberately NOT applied to an UNTAGGED row: that is
+  // the pre-r336 contract (any figure above zero), it is what production rows carry, and tightening it here
+  // would refuse a claim the HR-side paths still create. A tagged row can only come from this round's form.
+  for (const l of p.lines) {
+    if (l.sourceType === 'non_working_day' && l.days !== 1 && l.days !== 0.5)
+      throw new ReplacementRequestInvalidError('A rest day, off day or public holiday earns either 1 day or 0.5 day.');
+  }
+
+  // Throws on a bad row (zero days, reversed times) before anything is written. Section B rows are absent
+  // from this call on purpose: their credit is not a figure the employee typed, so there is nothing here to
+  // validate — it is derived inside the transaction below, from the attendance record.
+  const aTotals = totalsFor(p.unit, aLines);
 
   return withTenant(ctx, async (tx) => {
     const resolved = await resolvePolicyForTx(tx, p.employmentId);
@@ -336,10 +402,61 @@ export async function submitReplacementLeaveRequest(
       consent: p.firstScheduleConsent === true,
     });
 
+    // ── r336 · SECTION B, DERIVED — never read off the form ─────────────────────────────────────────────
+    // The employee types a window; everything else on the row is a fact the system already owns. The same
+    // four gates run again at approval (`accrueExtendedWorkdayToilTx`), which is the binding moment; this
+    // half exists so the employee is told at submit rather than after a manager has approved nothing.
+    type DerivedB = {
+      workedDate: string;
+      claimStart: string;
+      claimEnd: string;
+      days: number;
+      eligibleMinutes: number;
+      shiftEnd: string | null;
+      actualClockOut: string | null;
+    };
+    const bDerived: DerivedB[] = [];
+    if (bLines.length > 0) {
+      const extended = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
+      if (!extended.extendedHoursEnabled)
+        throw new ReplacementRequestDisabledError('Extended hours on an ordinary working day are not switched on for this company.');
+      for (const l of bLines) {
+        const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate);
+        // A rest day, off day or public holiday belongs in Section A, and the message says which.
+        if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [l.workedDate]);
+        const minutes = eligibleExtendedMinutes({
+          claimStart: l.fromTime!,
+          claimEnd: l.toTime!,
+          shiftEnd: day.shiftEnd,
+          actualClockOut: day.actualClockOut,
+          measuredExtendedMinutes: day.measuredExtendedMinutes,
+        });
+        const { countedMinutes, days } = extendedHoursCreditDays(minutes, extended);
+        if (days <= 0)
+          throw new ToilExtendedHoursBelowThresholdError(l.workedDate, countedMinutes, extended.extendedHalfDayMinutes);
+        bDerived.push({
+          workedDate: l.workedDate,
+          claimStart: l.fromTime!,
+          claimEnd: l.toTime!,
+          days,
+          eligibleMinutes: countedMinutes,
+          shiftEnd: day.shiftEnd,
+          actualClockOut: day.actualClockOut,
+        });
+      }
+    }
+
+    // The grand total the employee saw: both sections summed, in days. `totalHours` stays the same
+    // convention it has always had (minutes over 60) so the stored pair cannot disagree with itself.
+    const bMinutes = bDerived.reduce((s, b) => s + b.eligibleMinutes, 0);
+    const totalDays = round2(aTotals.totalDays + bDerived.reduce((s, b) => s + b.days, 0));
+    const totalHours = round2(aTotals.totalHours + bMinutes / 60);
+    if (totalDays <= 0) throw new ReplacementRequestInvalidError('The total must be greater than zero.');
+
     // The double-bank guard, applied EARLY as a courtesy. `toil_accrual`'s unique index is the real one and
     // it is re-checked at approval — a manager could bank one of these dates off the roster in between —
     // but refusing at submit is a much better experience than an approval that half-fails.
-    const dates = perLine.map((l) => l.workedDate);
+    const dates = p.lines.map((l) => l.workedDate);
     const already = await tx
       .select({ workedDate: toilAccrual.workedDate })
       .from(toilAccrual)
@@ -362,11 +479,31 @@ export async function submitReplacementLeaveRequest(
     // not. Checked per line, through the same schedule the attendance engine uses, and every offending date is
     // named at once. This is the courtesy half — the binding check runs again at approval, inside
     // accrueSelfDeclaredToilTx, because a roster can change in between.
-    const workingDays: string[] = [];
-    for (const d of dates) {
-      if ((await resolveWorkedDayKindTx(tx, p.employmentId, d)) === 'workday') workingDays.push(d);
+    //
+    // r336 — SECTION A ONLY, and the kinds are KEPT. Section B's dates are ordinary working days by
+    // definition and were checked against the opposite fact above; running this loop over them would refuse
+    // every extended-hours claim ever made. The resolved kind is stored on each Section A line so an
+    // approver reads the day the employee was shown rather than re-deriving it against a moved roster.
+    const aKinds = new Map<string, ToilWorkedDayKind>();
+    const taggedWorkingDays: string[] = [];
+    const untaggedWorkingDays: string[] = [];
+    for (const l of aLines) {
+      const kind = await resolveWorkedDayKindTx(tx, p.employmentId, l.workedDate);
+      aKinds.set(l.workedDate, kind);
+      if (kind === 'workday') (l.sourceType ? taggedWorkingDays : untaggedWorkingDays).push(l.workedDate);
     }
-    if (workingDays.length > 0) throw new ToilOrdinaryWorkingDayError(workingDays);
+    // A row the new screen tagged gets the screen's own sentence, which tells the employee WHICH SECTION the
+    // date belongs in — the only useful thing to say inside a modal that holds both. An untagged row keeps
+    // r299's message verbatim, because nothing about the callers that send untagged rows has changed.
+    if (taggedWorkingDays.length > 0) throw new LeaveCreditSectionMismatchError('A', taggedWorkingDays);
+    if (untaggedWorkingDays.length > 0) throw new ToilOrdinaryWorkingDayError(untaggedWorkingDays);
+
+    // ── r336 · DIRECTION 1 OF THE DOUBLE-CLAIM CHECK ────────────────────────────────────────────────────
+    // The same worked day is cash XOR time in lieu (ADR-0033). An overtime claim already open for one of
+    // these dates refuses the credit; rejecting or cancelling it releases the block. The mirror question —
+    // an overtime claim filed on a date whose credit is open — is asked by core/attendance.ts through the
+    // SAME predicate, which is the only reason the two can never disagree about what "open" means.
+    await assertNoOvertimeClaimForDatesTx(tx, p.employmentId, dates);
 
     const [header] = await tx
       .insert(replacementLeaveRequest)
@@ -384,17 +521,44 @@ export async function submitReplacementLeaveRequest(
       })
       .returning({ id: replacementLeaveRequest.id });
 
+    const aPerLine = new Map(aTotals.perLine.map((l) => [l.workedDate, l]));
+    const bByDate = new Map(bDerived.map((b) => [b.workedDate, b]));
     await tx.insert(replacementLeaveRequestDate).values(
-      p.lines.map((l, i) => ({
-        tenantId: ctx.tenantId,
-        requestId: header.id,
-        subjectEmploymentId: p.employmentId,
-        workedDate: l.workedDate,
-        days: perLine[i].days.toFixed(2),
-        fromTime: p.unit === 'hour' ? (l.fromTime ?? null) : null,
-        toTime: p.unit === 'hour' ? (l.toTime ?? null) : null,
-        hours: p.unit === 'hour' ? round2(perLine[i].minutes / 60).toFixed(2) : null,
-      })),
+      p.lines.map((l) => {
+        const base = { tenantId: ctx.tenantId, requestId: header.id, subjectEmploymentId: p.employmentId, workedDate: l.workedDate };
+        const b = bByDate.get(l.workedDate);
+        if (sectionOf(l) === 'extended_hours' && b) {
+          return {
+            ...base,
+            days: b.days.toFixed(2),
+            // The claimed window IS `from_time`/`to_time` — the columns 0381 already added for a time
+            // claim. A second pair named claim_start/claim_end would have been the same two facts twice.
+            fromTime: b.claimStart,
+            toTime: b.claimEnd,
+            hours: round2(b.eligibleMinutes / 60).toFixed(2),
+            sourceType: 'extended_hours' as const,
+            workedDayKind: 'workday' as const,
+            shiftEnd: b.shiftEnd,
+            actualClockOut: b.actualClockOut,
+            eligibleMinutes: b.eligibleMinutes,
+          };
+        }
+        const a = aPerLine.get(l.workedDate);
+        return {
+          ...base,
+          days: (a?.days ?? 0).toFixed(2),
+          fromTime: p.unit === 'hour' ? (l.fromTime ?? null) : null,
+          toTime: p.unit === 'hour' ? (l.toTime ?? null) : null,
+          hours: p.unit === 'hour' ? round2((a?.minutes ?? 0) / 60).toFixed(2) : null,
+          // NULL for an untagged legacy row, on purpose: the column's documented meaning is "written before
+          // r336 ⇒ Section A", and writing a value onto a caller that never said one would erase that.
+          sourceType: l.sourceType ?? null,
+          workedDayKind: aKinds.get(l.workedDate) ?? null,
+          shiftEnd: null,
+          actualClockOut: null,
+          eligibleMinutes: null,
+        };
+      }),
     );
 
     await appendEvent(tx, {
@@ -404,7 +568,17 @@ export async function submitReplacementLeaveRequest(
       eventType: 'replacement-leave-request.submitted',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { unit: p.unit, totalDays, totalHours, dates, submittedOn: p.today },
+      payload: {
+        unit: p.unit,
+        totalDays,
+        totalHours,
+        dates,
+        submittedOn: p.today,
+        // r336 — the two sections named on the audit event, so a reader of the log can tell an
+        // extended-hours claim from a rest-day one without joining back to the lines.
+        nonWorkingDayDates: aLines.map((l) => l.workedDate),
+        extendedHoursDates: bDerived.map((b) => ({ workedDate: b.workedDate, eligibleMinutes: b.eligibleMinutes, days: b.days })),
+      },
     });
 
     return { requestId: header.id, totalDays, totalHours };
@@ -508,38 +682,94 @@ export async function decideReplacementLeaveRequest(
 
     let granted = 0;
     let daysCredited = 0;
+    /** r336 — the minutes actually banked across both sections, so the header's hours total follows too. */
+    let creditedMinutes = 0;
     let expiresOn: string | undefined;
     for (const line of lines) {
       const days = Number(line.days ?? 0);
       const minutes = line.hours != null ? Math.round(Number(line.hours) * 60) : Math.round(days * STD_DAY_MINUTES);
+      // ── r336 cbfa8b0b · THE LINE'S SECTION CHOOSES ITS EXECUTOR ────────────────────────────────────────
+      // Section B is not a variant of the self-declared path: it requires the OPPOSITE day fact (an
+      // ordinary working day, which `accrueSelfDeclaredToilTx` refuses outright and must keep refusing),
+      // and its credit is DERIVED from the live attendance record through r334's tiers rather than taken
+      // from what was stored at submission. So it has its own entry point rather than a flag that would
+      // turn r299's day-type gate off.
+      //
+      // The stored `days`/`hours` on a Section B line are NOT read here, deliberately. They are what the
+      // employee was shown and what the totals were built from; a corrected clock-out between submission
+      // and approval must change the credit, and it does, because `accrueExtendedWorkdayToilTx` re-reads
+      // the day. Trusting the stored figure would make the claim line a second owner of the measurement.
+      //
+      // Either way a refusal (a date banked in the meantime, a First-Schedule employee whose company
+      // override was switched off between submission and approval, a roster that moved) rolls the WHOLE
+      // approval back — a request is approved as a unit, and a half-granted one would leave the employee
+      // unable to tell what they had been given.
+      const extendedLine = line.sourceType === 'extended_hours';
+      const banked = extendedLine
+        ? await accrueExtendedWorkdayToilTx(tx, ctx, {
+            employmentId: req.employmentId,
+            workedDate: line.workedDate,
+            claimStart: line.fromTime ?? '',
+            claimEnd: line.toTime ?? '',
+            approvedOn: decidedAt,
+            requestedOn: req.submittedOn,
+            firstScheduleConsent: req.firstScheduleConsent === true,
+          })
+        : null;
       // The shared executor: skips the attendance lookup and the rest-day/holiday restriction, KEEPS the
-      // double-bank guard, the First Schedule gate, the ledger credit and the register row. A refusal here
-      // (a date banked in the meantime, a First-Schedule employee whose company override was switched off
-      // between submission and approval) rolls the WHOLE approval back — a request is approved as a unit,
-      // and a half-granted one would leave the employee unable to tell what they had been given.
-      const res = await accrueSelfDeclaredToilTx(tx, ctx, {
-        employmentId: req.employmentId,
-        workedDate: line.workedDate,
-        declaredDays: days,
-        declaredMinutes: minutes,
-        // THE ANCHOR. Not the submission date, not the date worked — the moment of this decision.
-        approvedOn: decidedAt,
-        // The employee's own request date, so the register can show both without guessing either.
-        requestedOn: req.submittedOn,
-        firstScheduleConsent: req.firstScheduleConsent === true,
-      });
+      // double-bank guard, the First Schedule gate, the ledger credit and the register row.
+      const res =
+        banked ??
+        (await accrueSelfDeclaredToilTx(tx, ctx, {
+          employmentId: req.employmentId,
+          workedDate: line.workedDate,
+          declaredDays: days,
+          declaredMinutes: minutes,
+          // THE ANCHOR. Not the submission date, not the date worked — the moment of this decision.
+          approvedOn: decidedAt,
+          // The employee's own request date, so the register can show both without guessing either.
+          requestedOn: req.submittedOn,
+          firstScheduleConsent: req.firstScheduleConsent === true,
+        }));
       await tx
         .update(replacementLeaveRequestDate)
-        .set({ accrualId: res.accrualId })
+        .set(
+          // r336 — a Section B line records WHAT WAS ACTUALLY BANKED, not what was projected at
+          // submission. The approval re-reads the attendance row, so a clock-out corrected in between
+          // moves the eligible minutes and therefore the credit; writing the re-derived figures back is
+          // what stops the line telling an approver one number while the ledger holds another. A
+          // Section A line has nothing to re-derive and is untouched, byte-identical to before.
+          banked
+            ? {
+                accrualId: banked.accrualId,
+                days: banked.daysCredited.toFixed(2),
+                hours: round2(banked.eligibleMinutes / 60).toFixed(2),
+                eligibleMinutes: banked.eligibleMinutes,
+                shiftEnd: banked.shiftEnd,
+                actualClockOut: banked.actualClockOut,
+              }
+            : { accrualId: res.accrualId },
+        )
         .where(eq(replacementLeaveRequestDate.id, line.id));
       granted += 1;
       daysCredited = round2(daysCredited + res.daysCredited);
+      creditedMinutes += banked ? banked.eligibleMinutes : minutes;
       expiresOn = res.expiresOn;
     }
 
     await tx
       .update(replacementLeaveRequest)
-      .set({ status: 'approved', decidedAt, decidedByUserId: ctx.userId ?? null, decisionNote: p.note?.trim() || null })
+      .set({
+        status: 'approved',
+        decidedAt,
+        decidedByUserId: ctx.userId ?? null,
+        decisionNote: p.note?.trim() || null,
+        // r336 — the header totals follow the lines for the same reason the lines follow the ledger: after
+        // a re-derivation the stored grand total is the only figure left that could disagree with what was
+        // credited, and the employee's own Replacement Leave table reads it.
+        totalDays: daysCredited.toFixed(2),
+        totalHours: round2(creditedMinutes / 60).toFixed(2),
+      })
       .where(eq(replacementLeaveRequest.id, p.requestId));
 
     await appendEvent(tx, {
@@ -574,6 +804,37 @@ export async function decideReplacementLeaveRequest(
  * approvals page renders it (like the leave queue does) with the buttons replaced by "Your request" — a row
  * hidden from its own subject reads as a lost request, which is the failure this whole round is about.
  */
+/**
+ * r336 · the one place a stored claim line becomes the view both screens render. A second copy of this
+ * mapping is how the approver's queue and the employee's own list would start describing the same row
+ * differently — the exact split 5ff7daff's header records for the approve path itself.
+ */
+function claimLineView(l: {
+  workedDate: string;
+  days: string | null;
+  fromTime: string | null;
+  toTime: string | null;
+  hours: string | null;
+  sourceType: ReplacementClaimSourceType | null;
+  workedDayKind: ToilWorkedDayKind | null;
+  shiftEnd: string | null;
+  actualClockOut: string | null;
+  eligibleMinutes: number | null;
+}): ReplacementClaimLineView {
+  return {
+    workedDate: l.workedDate,
+    days: l.days != null ? Number(l.days) : null,
+    fromTime: l.fromTime ?? null,
+    toTime: l.toTime ?? null,
+    hours: l.hours != null ? Number(l.hours) : null,
+    sourceType: l.sourceType ?? LEGACY_CLAIM_SOURCE_TYPE,
+    workedDayKind: l.workedDayKind ?? null,
+    shiftEnd: l.shiftEnd ?? null,
+    actualClockOut: l.actualClockOut ?? null,
+    eligibleMinutes: l.eligibleMinutes ?? null,
+  };
+}
+
 export type PendingReplacementRequestRow = {
   id: string;
   employmentId: string;
@@ -586,7 +847,34 @@ export type PendingReplacementRequestRow = {
   submittedOn: string;
   createdAt: Date;
   reason: string | null;
-  dates: { workedDate: string; days: number | null; fromTime: string | null; toTime: string | null; hours: number | null }[];
+  dates: ReplacementClaimLineView[];
+};
+
+/**
+ * r336 cbfa8b0b · ONE CLAIM LINE AS A SCREEN READS IT — the shape both the approver's queue and the
+ * employee's own list return.
+ *
+ * `sourceType` is what the APPROVER needs before anything else: a Section A row is "you worked a rest day,
+ * here is the day you are claiming", and a Section B row is "you stayed late on a working day, here is the
+ * shift end, the clock-out, the window you claimed and the minutes that earned it". Those are different
+ * decisions and the approved plan asks for the credit source to be shown per row rather than inferred from
+ * whether a time happens to be filled in — which is not inferable anyway, because an Hour-unit Section A
+ * claim also carries times.
+ *
+ * NULL `sourceType` is a line written before r336. It is mapped to `LEGACY_CLAIM_SOURCE_TYPE` on the way
+ * out rather than left null, so no screen has to carry a third case that means the same as the first.
+ */
+export type ReplacementClaimLineView = {
+  workedDate: string;
+  days: number | null;
+  fromTime: string | null;
+  toTime: string | null;
+  hours: number | null;
+  sourceType: ReplacementClaimSourceType;
+  workedDayKind: ToilWorkedDayKind | null;
+  shiftEnd: string | null;
+  actualClockOut: string | null;
+  eligibleMinutes: number | null;
 };
 
 export async function listPendingReplacementLeaveRequests(
@@ -625,16 +913,10 @@ export async function listPendingReplacementLeaveRequests(
       .from(replacementLeaveRequestDate)
       .where(inArray(replacementLeaveRequestDate.requestId, heads.map((h) => h.id)))
       .orderBy(replacementLeaveRequestDate.workedDate);
-    const byRequest = new Map<string, PendingReplacementRequestRow['dates']>();
+    const byRequest = new Map<string, ReplacementClaimLineView[]>();
     for (const l of lines) {
       const arr = byRequest.get(l.requestId) ?? [];
-      arr.push({
-        workedDate: l.workedDate,
-        days: l.days != null ? Number(l.days) : null,
-        fromTime: l.fromTime ?? null,
-        toTime: l.toTime ?? null,
-        hours: l.hours != null ? Number(l.hours) : null,
-      });
+      arr.push(claimLineView(l));
       byRequest.set(l.requestId, arr);
     }
     return heads.map((h) => ({
@@ -656,7 +938,7 @@ export type ReplacementRequestRow = {
   submittedOn: string;
   decidedAt: string | null;
   reason: string | null;
-  dates: { workedDate: string; days: number | null; fromTime: string | null; toTime: string | null; hours: number | null }[];
+  dates: ReplacementClaimLineView[];
 };
 
 /** One employee's replacement-leave requests, newest first, with their worked-date lines. */
@@ -676,16 +958,10 @@ export async function listReplacementLeaveRequests(
       .from(replacementLeaveRequestDate)
       .where(inArray(replacementLeaveRequestDate.requestId, heads.map((h) => h.id)))
       .orderBy(replacementLeaveRequestDate.workedDate);
-    const byRequest = new Map<string, ReplacementRequestRow['dates']>();
+    const byRequest = new Map<string, ReplacementClaimLineView[]>();
     for (const l of lines) {
       const arr = byRequest.get(l.requestId) ?? [];
-      arr.push({
-        workedDate: l.workedDate,
-        days: l.days != null ? Number(l.days) : null,
-        fromTime: l.fromTime ?? null,
-        toTime: l.toTime ?? null,
-        hours: l.hours != null ? Number(l.hours) : null,
-      });
+      arr.push(claimLineView(l));
       byRequest.set(l.requestId, arr);
     }
     return heads.map((h) => ({
