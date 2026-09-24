@@ -1,3 +1,38 @@
+## r337 (2026-09-24) — one item, and it caught a silent under-remittance to LHDN. `main@9cff0a25`, no migration.
+
+Closed: `23e7dac3` (payroll cycles in any order).
+Gate: **991 files — equal to the suite file count**, 14 chunks, **zero red chunks on the first pass**, `tsc` 0, `next build` 0. No shadow gate: no migration, journal verified unchanged after the merge at 400 entries / max idx 487. Render check: 3 screens × 6 locales, 18 × 200, zero poison tokens in the dev log and in `<script>`-stripped markup.
+
+### THE FINDING: OPENING THE SELECTOR NAIVELY WOULD HAVE UNDER-PAID LHDN
+
+The reporter asked to run BONUS or Off Cycle before Monthly. Measured through the real kernel **before any code was written**: RM5,000 salary + RM500 overtime + RM3,000 bonus, bonus first, produced month **PCB 60.00 instead of 100.00**; a variant put EPF employer at **1,030 instead of 1,080**. The regular run was not a delta — it recomputed the whole normal-wage month beside an increment taken on a base that did not yet contain the overtime.
+
+So the load-bearing half of this item is **the month restating when the regular run lands**, which ADR-0085 lists and the brief did not emphasise. Both orders now telescope to the same month, pinned as literals, with the same month paid as a single run as an independent oracle.
+
+### AND THE ADR WAS WRONG ABOUT WHY IT WAS BLOCKED
+
+ADR-0085 §1.2 said order-independence is unbuildable without signed deltas (step 3), because the first run would be "taxed as though its payment were the employee's normal monthly pay". **False against the kernel**: `wagesExOt` is recomputed per employee from the COMPENSATION RECORD on every run, so the month's normal wage is in the statutory base whether or not the regular run has happened — Y1 was never taken from the runs. Recorded as a correction in the ADR rather than relied on silently. **Step 3 remains NOT STARTED; `clampDelta` and `deltaStat` are untouched.**
+
+### BUILD ORDER WAS THE SAFETY ARGUMENT, AND IT WAS HONOURED LITERALLY
+
+Step 4 — the refusal for a month already filed with LHDN, EPF or SOCSO — is commits 1 and 2, **proven before a line of the selector or the kernel order moved**. It consumes r330's `periodFiledTx` unchanged and adds `describeFiledEvidence` so the message names the return, its period, its filing date and the acknowledgement. Three doors: `createAdditionalRun`, `createBatch`, `generatePayslips`. The line is `run_seq > 1` — "a run that changes a figure an earlier run already produced" IS "a run that is not the month's first" — which keeps a lone regular run byte-identical and preserves r292's judgement that a wrongly filed month must stay correctable.
+
+### ONE RESIDUAL, BOUNDED AND DISCLOSED
+
+The EPF Third Schedule steps the EMPLOYER column at RM5,000 and `deltaStat` still clamps at zero, so whichever run crosses the step contributes RM0 rather than handing the difference back. **Bound RM38.00** — the step's size — and **upward only**, so an out-of-order month is never under-remitted, only over, and the excess lands in the employee's own EPF account. Absorbing it on the regular run works arithmetically and was **rejected**: that is step 3 under another name, and it would make a regular run's EPF disagree with the Third Schedule row for its own wage on a payslip an employee reads.
+
+ADR-0085 also gained the **§7 worksheet its own build order cites and did not have** — the citation pointed at ADR-0024 §7, which always runs the regular run first and so structurally cannot answer "does the order matter?". The example is traced both ways with every per-run figure pinned as a literal in the test, so document and kernel cannot drift.
+
+### THE DEPLOY, AND THE BOX IS OUT OF RUNWAY
+
+Two attempts. r337's ~1,270 added kernel lines pushed the type pass past the 3584 cap r336 had settled on — a clean V8 self-OOM — and 4096 got it through on 5.6 GB of RAM+swap.
+
+⚠️ **The trend now matters more than the number**: `2048 → 3072 → 4096 → 3584 → 4096` across R52, r83, r336, r337. The pass has needed a bump in **consecutive rounds**, and 4096 plus node overhead is already **~80% of this box's entire RAM+swap**. The next bump does not fit, and raising past what the box can back converts a clean V8 self-OOM into a kernel kill (the r336 story). **Add RAM or grow `/swap.img` — 267 GB of disk is free — before touching that number again.** Recorded in `deploy/deploy.sh`.
+
+### NOT DONE
+
+`batchDownstreamWarnings` is **narrower than the filed-period predicate**, so a month can read *filed* to the new refusal and *not-filed* to the amber banner an operator is looking at. Widening it changes a warning four screens rely on and wants its own round — **this is the one open decision handed back**. Per-leg filed granularity is still period-coarse (a filed Borang A bars a run that would only have moved PCB); the release valve — reverse the filing — is tested. The multi-cycle worksheet screen still excludes out-of-order months, documented in place rather than fixed, because teaching it the restating rule would move ADR-0024 §7's signed-off figures for no live caller.
+
 ## r336 (2026-09-24) — eleven items, six concurrent builders, and eight defects only the gate could see. `main@94ec3522`, migration **0487**.
 
 Closed: `1bb09a73`, `3783fd87`, `7f251381`, `8d3a7bff`, `20f6c6a8`, `da7463b4`, `7d2df42a`, `639bf4a5`, `cbfa8b0b`, `99b2d6c0`, `2a57a007`.
