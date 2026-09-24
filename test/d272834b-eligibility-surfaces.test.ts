@@ -35,6 +35,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -230,6 +231,36 @@ describe('d272834b · (a) a male employee gets no Maternity Leave on any surface
   });
 });
 
+describe('d272834b · (a) the year selector when the hidden card was the ONLY card', () => {
+  /**
+   * THE OTHER BRANCH of the year selector, and it needed its own case because it is reached by a different
+   * line: `myLeaveDashboard` returns early when the balance list is EMPTY, and that branch used to ask
+   * `leaveYearsFor`, which reads the ledger with no notion of leave type at all. With every other type
+   * archived, this employee's only ledger rows are the Maternity ones he must not see — so the early exit
+   * is the one place the removed card could still put its history on screen.
+   */
+  it('offers only the current year when every surviving row was gated away', async () => {
+    const mtl = await leaveTypeWith(MATERNITY, 'Maternity Leave');
+    const he = await hire('male', 'married');
+    // Retire every seeded type, so the eligible-but-inactive tail has nothing to add and the balance list
+    // is genuinely empty rather than merely short.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ archivedAt: new Date() })
+      .where(eq(schema.leaveType.tenantId, b.tenantId));
+    await owner.db
+      .update(schema.leaveType)
+      .set({ archivedAt: null })
+      .where(eq(schema.leaveType.id, mtl));
+    await ledger(he.employmentId, mtl, 'accrual', 98, `${YEAR - 1}-01-01`);
+
+    const dash = await myLeaveDashboard(he.ctx, he.employmentId, { today: TODAY, locale: 'en' });
+    expect(dash.cards, 'nothing to show').toEqual([]);
+    expect(dash.years, 'and no year that only the hidden history could justify').toEqual([YEAR]);
+    expect(dash.selectedYear).toBe(YEAR);
+  });
+});
+
 describe('d272834b · (b) an eligible employee is untouched on all four surfaces', () => {
   it('a female married employee keeps card, dropdown, balance row and entitlement', async () => {
     const mtl = await leaveTypeWith(MATERNITY, 'Maternity Leave');
@@ -322,6 +353,34 @@ describe('d272834b · (e) marital status reads the same rule, and a five-value l
     const included = await surfaces(married, cgl);
     expect(included.card, 'and the same rule leaves a married employee alone').toBe(true);
     expect(included.dropdown).toBe(true);
+  });
+});
+
+describe('d272834b · the remediation report lists and never reverses', () => {
+  /**
+   * ⚠️ THE PROMISE THIS GUARD HOLDS. The approved plan tells the reporter, in those words, that the 5,390
+   * wrongly-granted Maternity days are NOT reversed until they say so. A report that quietly learned to
+   * write would break a promise made to a person, not a test — and it is the kind of change that looks
+   * like a small improvement in a later round ("while we are listing them, we may as well fix them").
+   * Pinned on the SOURCE because there is no safe way to prove it by running it.
+   */
+  it('scripts/report-ineligible-leave-balances.ts contains no write of any kind', () => {
+    const src = readFileSync(new URL('../scripts/report-ineligible-leave-balances.ts', import.meta.url), 'utf8');
+    // Strip the block comments first: the header explains at length what it must never do, and a guard
+    // that reads prose as code would either fail on the explanation or teach the next author to delete it.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const verb of ['insert', 'update', 'delete', 'begin', 'commit', 'truncate', 'alter']) {
+      expect(new RegExp(`\\b${verb}\\b`, 'i').test(code), `the report must not ${verb}`).toBe(false);
+    }
+    expect(code, 'and it must never reach for the app role, which RLS would silence').not.toContain('DATABASE_URL}');
+    expect(code).toContain('MIGRATION_DATABASE_URL');
+  });
+
+  it('and it decides with the gate rather than a restated copy of the rule', () => {
+    const src = readFileSync(new URL('../scripts/report-ineligible-leave-balances.ts', import.meta.url), 'utf8');
+    expect(src).toContain("from '../core/leave'");
+    expect(src).toContain('isProfileEligible(elig, { gender: r.gender, marital: r.marital_status }, \'exclude\')');
+    expect(src).toContain('eligibilityRuleList(');
   });
 });
 
