@@ -1,0 +1,130 @@
+<meta charset="utf-8">
+<title>The second Special Leave card — it is Compassionate Leave</title>
+<!--
+  8d3a7bff. Measured 2026-09-24 on main and on PRODUCTION.
+  PRODUCTION: exactly ONE leave type matches Special Leave — code SP, role null, NOT archived,
+  balance_source_type_id null, with 79 ledger rows summing to 790.00 days. So the two cards are not two
+  leave types.
+  THE POOL: leave_type CPL "Compassionate Leave" has balance_source_type_id = SP "Special Leave"
+  (the r209 shared-balance feature). Only two pooled types exist on the account: EL -> AL and CPL -> SP.
+  WHY IT LOOKS DUPLICATED: lib/shared-leave-balance.ts `balanceStoryTypeId` returns the POOL's id for a
+  pooled row, so the borrower's card tells the POOL's breakdown; and
+  components/leave/my-leave-dashboard.tsx:91-97 renders a `sharedBalanceWith` caption naming
+  `sourceLeaveTypeName` on every card in the group. The card TITLE is the row's own type
+  (core/my-leave.ts:360 `leaveType: b.leaveType`), so the words "Special Leave" appear on more than one
+  card by design.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1040px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;background:#fdeee2;color:var(--warn)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .card{border:1px solid var(--rule);border-radius:8px;padding:11px;background:#fff;margin-bottom:9px}
+ .card h4{margin:0 0 6px;font-size:12px}
+ .card .r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mf);padding:1px 0}
+ .card .r b{color:var(--fg)}
+ .cap{margin-top:7px;font-size:10px;color:var(--mf);border-top:1px solid #f3f4f9;padding-top:5px}
+ .cap.hot{color:var(--bad)}
+ .cap.good{color:var(--ok)}
+ .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:99px;background:#eef0fb;color:var(--primary);margin-left:6px;vertical-align:middle}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #d9a9a2;background:#fdf6f5;border-radius:8px;padding:11px;font-size:11.5px;color:#8a3d33;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>The second Special Leave card &mdash; it is Compassionate Leave, and it is load-bearing</h1>
+  <p class="sub">You asked us to check before removing. We checked, and it must stay.</p>
+
+  <div class="sec">
+    <h2><span class="pill">DO NOT REMOVE</span><b>What it actually is</b></h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0"><b>There is only ONE Special Leave in your system</b> &mdash; one
+        leave type, not archived, with 79 movements on it totalling 790 days. So the two cards are not two
+        leave types.</p>
+      <p class="note"><b>Compassionate Leave is set up to spend from the Special Leave balance.</b> That is a
+        real, deliberate setting on your account &mdash; one of only two such arrangements you have (the
+        other is Emergency Leave drawing on Annual Leave). Because the two share one pot, both cards have to
+        talk about the same pot, so the words &ldquo;Special Leave&rdquo; appear on both.</p>
+      <div class="warnbox">
+        <b>Removing it would take Compassionate Leave off the employee&rsquo;s screen entirely</b> &mdash;
+        along with the days they can actually spend on it. It is not a leftover component; it is the second
+        half of a shared balance.
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>What we&rsquo;ll change instead</b> &mdash; make the relationship unmistakable</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">Today &mdash; reads as a duplicate</p>
+          <div class="card">
+            <h4>Special Leave</h4>
+            <div class="r"><span>Entitlement</span><b>10.00</b></div>
+            <div class="r"><span>Balance</span><b>7.50</b></div>
+            <div class="cap hot">Shared balance with Compassionate Leave</div>
+          </div>
+          <div class="card">
+            <h4>Compassionate Leave</h4>
+            <div class="r"><span>Entitlement</span><b>10.00</b></div>
+            <div class="r"><span>Balance</span><b>7.50</b></div>
+            <div class="cap hot">Shared balance with Special Leave</div>
+          </div>
+          <p class="note">Same figures, same pot, and a caption on each mentioning the other. At a glance
+            it reads as the same card twice.</p>
+        </div>
+        <div>
+          <p class="tag a">After &mdash; one pot, stated once</p>
+          <div class="card" style="border-color:#bcdccb">
+            <h4>Special Leave <span class="badge">SHARED POT</span></h4>
+            <div class="r"><span>Entitlement</span><b>10.00</b></div>
+            <div class="r"><span>Balance</span><b>7.50</b></div>
+            <div class="cap good">These days are shared. Compassionate Leave is taken from this balance.</div>
+          </div>
+          <div class="card" style="border-color:#bcdccb">
+            <h4>Compassionate Leave <span class="badge">FROM SPECIAL LEAVE</span></h4>
+            <div class="r"><span>You can apply for</span><b>7.50</b></div>
+            <div class="cap good">Taken from your Special Leave balance &mdash; not days of its own.</div>
+          </div>
+          <p class="note">The borrower stops repeating the pot&rsquo;s entitlement as though it were its own,
+            and says where its days come from. Neither card disappears.</p>
+        </div>
+      </div>
+      <div class="okbox">
+        <b>No setting, balance or entitlement changes.</b> The same days are available for the same things.
+        This is only about the two cards no longer looking like an accident.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>One check we could not do from here</h3>
+    <p><b>We have not seen your screen.</b> Everything above is measured from your data and the code, and it
+      explains a second card carrying the words &ldquo;Special Leave&rdquo;. If the bottom card you are
+      looking at says something different from this, reject this plan and send a screenshot &mdash; that
+      settles it in one message rather than us guessing at a card we cannot see.</p>
+    <p><b>Emergency Leave has the same arrangement with Annual Leave</b>, so whatever we do here we will do
+      for that pair too &mdash; otherwise the same question comes back about a different pot.</p>
+  </div>
+</div>
