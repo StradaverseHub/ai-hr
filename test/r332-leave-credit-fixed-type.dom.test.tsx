@@ -69,15 +69,33 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
       // …and it carries no `name`, so it cannot post anything of its own even if `disabled` were removed.
       expect(box.getAttribute('name')).toBeNull();
 
-      // NO CHOICE IS ON OFFER. The one <select> left in this dialog is the day/hour unit; nothing in the
-      // form selects a leave type, and there is no <option> naming one.
+      /*
+       * NO CHOICE IS ON OFFER — and cbfa8b0b (r336) took one MORE choice away, so this reads differently
+       * from r332 while pinning the same thing more tightly.
+       *
+       * r332 asserted "the one <select> left is the day/hour unit". The unit is no longer selectable:
+       * both of the dialog's sections credit in DAYS, so an Hour request had nothing left to mean. It is
+       * now a hidden `unit=day` plus a read-only display — exactly what 2a237f5f did to the leave TYPE,
+       * which is what this file exists to pin. The one remaining <select> is Section A's 1-or-0.5 day
+       * picker, the only two answers a non-working day has.
+       *
+       * So: still exactly one select, still nothing selecting a leave type, and now the unit is fixed
+       * too. Asserting the unit posts as a constant is strictly stronger than asserting it was a
+       * two-option dropdown.
+       */
       const selects = Array.from(dialog.querySelectorAll('select'));
       expect(selects).toHaveLength(1);
-      expect(selects[0].getAttribute('aria-label')).toBe(rr.unit);
+      expect(selects[0].getAttribute('aria-label'), 'the one select is Section A’s day count').toBe(rr.days);
       expect(dialog.querySelector('select[name="leaveTypeId"]')).toBeNull();
+      expect(dialog.querySelector('select[name="unit"]'), 'the unit stopped being a choice').toBeNull();
+
+      const unitField = dialog.querySelector('input[name="unit"]') as HTMLInputElement | null;
+      expect(unitField, 'the unit is posted as a constant, not picked').toBeTruthy();
+      expect(unitField!.value).toBe('day');
+
       const optionLabels = Array.from(dialog.querySelectorAll('option')).map((o) => o.textContent);
-      expect(optionLabels).toEqual([rr.unitDay, rr.unitHour]);
       expect(optionLabels).not.toContain(TENANT_TYPE.name);
+      expect(optionLabels, 'no leftover Hour option now that nothing credits in hours').not.toContain(rr.unitHour);
     });
   }
 
