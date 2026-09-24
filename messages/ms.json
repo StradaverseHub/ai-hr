@@ -5652,6 +5652,7 @@
       "cycleDisabled": "tidak tersedia",
       "paymentDate": "Tarikh bayaran",
       "multiCycleOffNote": "Hanya larian Bulanan tersedia. Kitaran tambahan (Bonus, Luar kitaran, Gaji Pendahuluan, Pertengahan Bulan) dimatikan untuk penyewa ini.",
+      "anyCycleOrderNote": "Anda boleh menjalankan kitaran Bonus, Luar Kitaran atau Gaji Pendahuluan sebelum proses Bulanan — proseskan mengikut susunan pembayaran sebenar. Pengecualiannya ialah bulan yang penyata berkanunnya telah difailkan: proses itu akan ditolak, dan mesejnya menyatakan apa yang telah difailkan.",
       "existingRunsTitle": "Larian sedia ada untuk tempoh ini",
       "resumeDraft": "Sambung draf",
       "draftNotFoundOrNoAccess": "Draf ini tidak ditemui atau anda tidak mempunyai akses kepadanya.",

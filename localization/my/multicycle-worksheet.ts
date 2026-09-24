@@ -108,7 +108,19 @@ export const WORKSHEET_SKIP_REASONS = [
   'needs_recalc',
   /** A payslip predates the charged-bases stamp, so what each agency was charged on is not recorded. */
   'bases_not_recorded',
-  /** run_seq 1 is not the regular run. ADR-0024 §6 requires the regular run to lead the month. */
+  /**
+   * run_seq 1 is not the regular run.
+   *
+   * ⚠️ r337 — THIS IS NO LONGER AN ODDITY, IT IS A SUPPORTED WORKFLOW. ADR-0024 §6's requirement that
+   * the regular run lead the month was lifted for item 23e7dac3, so a customer may legitimately process
+   * a bonus or an advance salary first. This worksheet still EXCLUDES such a month rather than
+   * comparing it, and that is deliberate: `computeMonthlyRuns`, the model it replays history against,
+   * is documented `runs[0] = regular` and was signed off that way, so a comparison of an out-of-order
+   * month would be measuring this module's assumption rather than the customer's figures. The month is
+   * reported with its reason and left out of the totals, which is the honest answer. Teaching the
+   * replay the restating rule is a separate round; ADR-0085 §7 is where an out-of-order month's figures
+   * are traced in the meantime.
+   */
   'first_run_not_regular',
   /** A statutory figure on this month was set by hand, so no computation explains it. */
   'manual_statutory_adjustment',

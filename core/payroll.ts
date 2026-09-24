@@ -92,6 +92,11 @@ import {
   STATUTORY_FILED_STATUSES,
   tp1Relief,
 } from '../db/schema';
+// ADR-0085 step 4 — the filed-period predicate and its evidence formatter. IMPORTED, never
+// re-implemented: `core/statutory-filed.ts` resolves against `STATUTORY_FILED_STATUSES` (owned by
+// db/schema.ts) and refuses rather than answering when a session could not have seen a filing, and a
+// second hand-rolled "has this month been filed" here is exactly the drift that comment forbids.
+import { describeFiledEvidence, periodFiledTx, type FiledEvidence } from './statutory-filed';
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
 // The month-collapse rule for approved TP1 declarations. Imported rather than re-implemented: the
@@ -561,7 +566,12 @@ const roundAmount = (n: number, method?: string | null): number => {
 const DELTA_KEYS = [
   'epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer', 'pcb', 'pcbBonus',
 ] as const;
-function deltaStat<T extends Record<string, unknown>>(now: T, before: T): T {
+/**
+ * `before` is deliberately NOT `T`. It is read for the DELTA_KEYS and for `pcb` and nothing else, and
+ * ADR-0085 step 5 hands it a bare bag of those keys — "what this month's earlier runs were already
+ * charged" — which is not a statutory result and must not have to pretend to be one.
+ */
+function deltaStat<T extends Record<string, unknown>>(now: T, before: Record<string, unknown>): T {
   const out = { ...now };
   for (const k of DELTA_KEYS) {
     (out as Record<string, unknown>)[k] = Math.max(0, round2(Number(now[k] ?? 0) - Number(before[k] ?? 0)));
@@ -1485,15 +1495,29 @@ export async function createBatch(
   },
 ) {
   return withTenant(ctx, async (tx) => {
-    // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month). Reject a second one exactly
-    // as before — with MULTI_CYCLE_PAYROLL_ENABLED off there is still one run per month. Additional
-    // same-month runs are a separate, gated path (2C-4); this function always creates run_seq=1/regular.
-    const [existing] = await tx
-      .select({ id: payrollBatch.id })
+    // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month), and there is still exactly one
+    // of those. What changed for item 23e7dac3 (ADR-0085 step 5) is WHICH runs count as "already there":
+    // the test used to be "any batch for this company-month", which also refused the regular run when a
+    // BONUS or off-cycle run had legitimately been processed first. It is now the regular run itself.
+    // With `multi_cycle_payroll` off no other run can exist, so this is the same test it always was.
+    // The message is preserved verbatim — `reasonForError` maps it to PERIOD_ALREADY_PROCESSED.
+    const siblings = await tx
+      .select({ id: payrollBatch.id, runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
       .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.payPeriod)))
-      .limit(1);
-    if (existing) throw new Error('A payroll process already exists for this period');
+      .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.payPeriod)));
+    if (siblings.some((b) => b.runType === 'regular')) {
+      throw new Error('A payroll process already exists for this period');
+    }
+    // ADR-0085 step 4 — a regular run landing AFTER other runs restates what they were charged, so the
+    // filed-month refusal applies to it exactly as it does to an additional run. A first run (the
+    // ordinary case, and every run that exists today) never reaches this.
+    if (siblings.length > 0) {
+      await refuseIfPeriodFiled(tx, {
+        companyId: p.companyId,
+        payPeriod: p.payPeriod,
+        what: 'Adding the monthly payroll run to a month that already has runs',
+      });
+    }
 
     // Every batch belongs to a pay_period parent (the statutory month). Find-or-create it; a period
     // row may already exist (e.g. an earlier draft run was deleted) — reuse it. The month-level
@@ -1525,13 +1549,18 @@ export async function createBatch(
     // write-only — no report/export read it). A validated ISO date wins; else fall back to the
     // existing '<period>-28' default (unchanged behaviour for every pre-wizard caller/test).
     const batchDate = validPaymentDate(p.paymentDate) ?? `${p.payPeriod}-28`;
+    // ADR-0085 step 5 — the regular run is no longer always run_seq 1. It is 1 whenever it leads the
+    // month (every run on production today, and every run when multi-cycle is off), and the next free
+    // sequence when a bonus or off-cycle run was processed first. `payroll_batch_period_run_uq` is on
+    // (pay_period_id, run_seq), so this is allocated from the sequences actually taken, never counted.
+    const nextRegularSeq = siblings.length ? Math.max(...siblings.map((b) => b.runSeq)) + 1 : 1;
     const [row] = await tx
       .insert(payrollBatch)
       .values({
         tenantId: ctx.tenantId,
         companyId: p.companyId,
         payPeriodId: periodId,
-        runSeq: 1,
+        runSeq: nextRegularSeq,
         runType: 'regular',
         payPeriod: p.payPeriod,
         batchDate,
@@ -1550,7 +1579,7 @@ export async function createBatch(
         companyId: p.companyId,
         payPeriod: p.payPeriod,
         payPeriodId: periodId,
-        runSeq: 1,
+        runSeq: nextRegularSeq,
         runType: 'regular',
         scope: normalizeScope(p.scope),
         paymentDate: batchDate,
@@ -1597,9 +1626,74 @@ async function warnBatchHolidayCompleteness(
 }
 
 /**
- * Wave 2C (ADR-0024) — create an ADDITIONAL same-month run (bonus / off-cycle / adjustment) under the
- * existing pay_period. GATED behind MULTI_CYCLE_PAYROLL_ENABLED, and the regular run must already exist.
- * The run is computed as additional remuneration (the increment method) at generatePayslips.
+ * ADR-0085 step 4 — A RUN MAY NOT RESTATE A MONTH THAT HAS ALREADY BEEN FILED.
+ *
+ * ── WHAT THIS REFUSES, AND WHY EXACTLY THAT ─────────────────────────────────────────────────────────
+ * EPF, SOCSO and PCB are worked out on what an employee has been paid SO FAR THIS MONTH, so any run
+ * after the first in a month re-enters the tables on a bigger base and can change a figure an earlier
+ * run already produced. While nothing has left the building that is arithmetic. Once a return has been
+ * lodged or money remitted for that month it is a restatement of a figure an outside party already
+ * holds — an amendment to a statutory submission, with the agency's own process and timing, and
+ * explicitly out of ADR-0085's scope (§6). So it is refused here, loudly, naming what was filed.
+ *
+ * ── THE LINE IS `run_seq > 1`, AND IT IS NOT ARBITRARY ──────────────────────────────────────────────
+ * "A run that changes a figure an earlier run already produced" IS "a run that is not the first in its
+ * month". A lone regular run at seq 1 restates nothing — it is the month's only computation — so it is
+ * deliberately NOT refused, and an ordinary single monthly run is byte-identical to before this change.
+ * That also keeps r292's judgement intact: `batchDownstreamWarnings` warns rather than blocks on
+ * regenerating a filed month precisely so that "a customer who filed a wrong figure could no longer
+ * correct it at all" cannot happen. Correcting the month's one run stays possible; adding a SECOND run
+ * that silently moves the first one's figures does not.
+ *
+ * ── PERIOD GRANULARITY IS COARSE ON PURPOSE, AND IT HAS A COST ──────────────────────────────────────
+ * `periodFiledTx` answers per PERIOD, not per statutory leg (its header records why: no map from report
+ * type to the legs a form asserts exists in this repo, and inventing one would be inventing the scope of
+ * somebody else's form). So a filed EPF return bars an out-of-order run that would only have moved PCB.
+ * That is ADR-0085 §3.0's recorded UNKNOWN, and it errs toward refusing, which on money is the cheap
+ * mistake. The release valve is real and is tested: reverse the filing and the refusal lifts.
+ *
+ * It throws rather than returning a flag, and it never swallows `PeriodFiledError` — a session that
+ * could not have SEEN a filing gets that error, not permission. A money guard must not fail open.
+ */
+export class PeriodAlreadyFiledError extends Error {
+  readonly code = 'PERIOD_ALREADY_FILED' as const;
+  constructor(
+    message: string,
+    readonly companyId: string,
+    readonly payPeriod: string,
+    readonly evidence: FiledEvidence[],
+  ) {
+    super(message);
+    this.name = 'PeriodAlreadyFiledError';
+  }
+}
+
+/**
+ * Refuse when this company-month carries a filing. `what` names the act being refused so the operator
+ * reads a sentence about their own action rather than about the guard.
+ */
+async function refuseIfPeriodFiled(
+  tx: Tx,
+  p: { companyId: string; payPeriod: string; what: string },
+): Promise<void> {
+  const answer = await periodFiledTx(tx, { companyId: p.companyId, periodKey: p.payPeriod });
+  if (!answer.filed) return;
+  throw new PeriodAlreadyFiledError(
+    `${p.what} would change the statutory figures for ${p.payPeriod}, and that month has already been filed: ` +
+      `${describeFiledEvidence(answer.evidence)}. Correcting a lodged return is an amendment made with the ` +
+      `agency, not a recomputation here. Reverse the filing first if it was recorded in error.`,
+    p.companyId,
+    p.payPeriod,
+    answer.evidence,
+  );
+}
+
+/**
+ * Wave 2C (ADR-0024) — create an ADDITIONAL same-month run (bonus / off-cycle / adjustment). GATED
+ * behind the `multi_cycle_payroll` entitlement. The run is computed as additional remuneration (the
+ * increment method) at generatePayslips.
+ *
+ * ⚠️ The regular run NO LONGER has to exist first (ADR-0085 step 5, item 23e7dac3) — see the body.
  */
 export async function createAdditionalRun(
   ctx: SessionContext,
@@ -1630,21 +1724,56 @@ export async function createAdditionalRun(
     throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
   return withTenant(ctx, async (tx) => {
-    const [period] = await tx
+    const [existingPeriod] = await tx
       .select({ id: payPeriod.id, status: payPeriod.status })
       .from(payPeriod)
       .where(and(eq(payPeriod.companyId, p.companyId), eq(payPeriod.period, p.payPeriod)))
       .limit(1);
-    if (!period) throw new Error('No pay period for this month yet — create the regular run first.');
-    if (period.status === 'closed') throw new Error('This pay period is closed.');
+    if (existingPeriod?.status === 'closed') throw new Error('This pay period is closed.');
+    // ADR-0085 step 4 — a run that is not the month's first restates figures an earlier run produced.
+    // Refuse at CREATE as well as at generate: the generate-time guard is the one that actually stands
+    // between a filing and a moved figure, but learning at the END of the wizard that the month is
+    // closed to you is a worse way to find out than learning at the start. Asked BEFORE the pay period
+    // is opened, so a refused attempt leaves no row behind.
+    await refuseIfPeriodFiled(tx, { companyId: p.companyId, payPeriod: p.payPeriod, what: 'Adding another payroll run' });
+
+    /**
+     * ADR-0085 step 5 (item 23e7dac3) — A NON-REGULAR RUN MAY NOW LEAD THE MONTH.
+     *
+     * ADR-0024 §6 put "standalone off-cycle with no regular run" out of scope for v1 and this function
+     * enforced it twice: no pay period meant "create the regular run first", and a period with no
+     * regular run in it was refused outright. The reporter's case is exactly that shape — a BONUS, an
+     * Off Cycle or an advance salary paid BEFORE the monthly salary — and the statutory arithmetic is
+     * now order-independent (the regular run restates the month when it lands; see `restatesMonth` in
+     * generatePayslips), so the order is no longer what keeps the figures right. The FILED-month
+     * refusal above is: out-of-order runs are bounded to months nothing has been lodged for.
+     *
+     * The pay period is therefore find-or-created here exactly as `createBatch` does it, including the
+     * `pay-period.opened` event — one month, one parent, whichever run opens it.
+     */
+    let periodId = existingPeriod?.id;
+    if (!periodId) {
+      const [createdPeriod] = await tx
+        .insert(payPeriod)
+        .values({ tenantId: ctx.tenantId, companyId: p.companyId, period: p.payPeriod, status: 'open' })
+        .returning({ id: payPeriod.id });
+      periodId = createdPeriod.id;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'pay-period',
+        aggregateId: periodId,
+        eventType: 'pay-period.opened',
+        actor: actorOf(ctx),
+        payload: { companyId: p.companyId, period: p.payPeriod },
+      });
+    }
     const runs = await tx
       .select({ runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
       .from(payrollBatch)
-      .where(eq(payrollBatch.payPeriodId, period.id));
-    if (!runs.some((r) => r.runType === 'regular')) {
-      throw new Error('Create the regular run for this month before adding a run.');
-    }
-    const nextSeq = Math.max(...runs.map((r) => r.runSeq)) + 1;
+      .where(eq(payrollBatch.payPeriodId, periodId));
+    // `Math.max()` of an empty list is -Infinity, which would write a nonsense sequence rather than
+    // fail — the month's first run takes seq 1 explicitly.
+    const nextSeq = runs.length ? Math.max(...runs.map((r) => r.runSeq)) + 1 : 1;
     const batchDate = validPaymentDate(p.paymentDate) ?? `${p.payPeriod}-28`;
     const scope = normalizeScope(p.scope);
     const [row] = await tx
@@ -1652,7 +1781,7 @@ export async function createAdditionalRun(
       .values({
         tenantId: ctx.tenantId,
         companyId: p.companyId,
-        payPeriodId: period.id,
+        payPeriodId: periodId,
         runSeq: nextSeq,
         runType: p.runType,
         payPeriod: p.payPeriod,
@@ -1672,7 +1801,7 @@ export async function createAdditionalRun(
       payload: {
         companyId: p.companyId,
         payPeriod: p.payPeriod,
-        payPeriodId: period.id,
+        payPeriodId: periodId,
         runSeq: nextSeq,
         runType: p.runType,
         paymentDate: batchDate,
@@ -3003,6 +3132,19 @@ export async function generatePayslips(
       throw new BatchNotDraftError();
     }
 
+    // ── ADR-0085 step 4 — THE MONEY GUARD. See `refuseIfPeriodFiled` for why the line is `run_seq > 1`.
+    // This is the one that matters: `createAdditionalRun` refuses early, but a run created before a
+    // filing and generated after it would otherwise walk straight past that check. Placed BEFORE any
+    // figure is computed and inside the same transaction, so nothing is written on the refusing path.
+    // A run at seq 1 is untouched — an ordinary single monthly run never reaches this.
+    if (batch.runSeq > 1) {
+      await refuseIfPeriodFiled(tx, {
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        what: subset ? 'Reprocessing this run' : 'Processing this run',
+      });
+    }
+
     // Pre-processing validation (feedback f1564110, Phase 1): a full draft→processed generation is
     // BLOCKED while any scoped, period-active employee has no current compensation row — previously
     // those employees were silently dropped by the inner join below. Fails closed BEFORE any write,
@@ -3993,8 +4135,21 @@ export async function generatePayslips(
     // wage (Y1) is recomputed per employee from compensation below — identical to the regular run's, so
     // the runs sum to the single-batch month by construction.
     const isAdditionalRun = batch.runType !== 'regular';
+    /**
+     * ADR-0085 step 5 (item 23e7dac3) — THE MONTH IS RESTATED WHEN THE REGULAR RUN LANDS LATE.
+     *
+     * Until now the earlier-runs read was gated on `isAdditionalRun`, which was the same test as
+     * `runSeq > 1` because `createBatch` always wrote run_seq 1. Once a BONUS or off-cycle run may be
+     * processed BEFORE the monthly one, the two part company, and the regular run has to see what the
+     * month has already been charged — otherwise it recomputes the whole normal-wage month from scratch
+     * beside an increment that was taken on a different base, and the month's PCB comes out UNDER the
+     * one-batch figure (measured: RM5,000 salary + RM3,000 bonus + RM500 overtime pays RM60 instead of
+     * RM100 when the bonus lands first). Gating on `runSeq > 1` is a no-op for every run that exists
+     * today; it is what makes the late regular run restate rather than silently under-remit.
+     */
+    const restatesMonth = !isAdditionalRun && batch.runSeq > 1;
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
-    if (isAdditionalRun) {
+    if (isAdditionalRun || restatesMonth) {
       const earlier = await tx
         .select({
           employmentId: payslip.employmentId,
@@ -5474,23 +5629,64 @@ export async function generatePayslips(
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
       }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
+      // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
+      // because the baseline means "the month WITHOUT this run's additional remuneration" and a carve-out
+      // describing money this run is paying must not sit on that side (017d9c25). The wage-side carve-outs
+      // stay on both sides — both calls re-fold the same recurring components.
+      const additionalBaseline = { ...stOpts, epfAdditionalExcluded: 0, socsoWageExtra: 0 };
+      /**
+       * ADR-0085 step 5 — WHAT THE MONTH'S EARLIER RUNS HAVE ALREADY BEEN CHARGED.
+       *
+       * The kernel's model is that the month's NORMAL WAGE is always present in the statutory base — it
+       * comes from the employment's compensation record, not from whether the regular run has been
+       * processed — and the regular run is the one that pays it. So each run's charge is:
+       *
+       *     additional run   S(W, A≤, T≤) − S(W, A<, T<)                     (its marginal)
+       *     regular run      S(W, A≤, T≤) − S(W, A<, T<)  +  S(W, 0, 0)      (its marginal + the base)
+       *
+       * which telescopes to S(W, A_total, T_total) — the month as ONE computation — in ANY order the runs
+       * land. `chargedByEarlierRuns` is the middle term rearranged into the single `before` bag deltaStat
+       * subtracts: (the month as the earlier runs left it) − (the month with no additional at all).
+       *
+       * At run_seq 1 there are no earlier runs, so this is never reached and the regular run keeps its
+       * literal `computeMonth(bonus, otStat)` — byte-identical, not merely arithmetically equal.
+       */
+      const chargedByEarlierRuns = (
+        earlierCum: Record<string, unknown>,
+        baseMonth: Record<string, unknown>,
+      ): Record<string, number> => {
+        const out: Record<string, number> = {};
+        for (const k of DELTA_KEYS) out[k] = round2(Number(earlierCum[k] ?? 0) - Number(baseMonth[k] ?? 0));
+        return out;
+      };
       const stCore = isAdditionalRun
         ? deltaStat(
             computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
-            computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {
-              ...stOpts,
-              epfAdditionalExcluded: 0,
-              socsoWageExtra: 0,
-            }),
+            computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, additionalBaseline),
           )
-        : computeMonth(bonus, otStat);
+        : restatesMonth
+          ? deltaStat(
+              computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat)),
+              chargedByEarlierRuns(
+                computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, additionalBaseline),
+                computeMonth(0, 0, effectiveZakat, additionalBaseline),
+              ),
+            )
+          : computeMonth(bonus, otStat);
       // ── Feedback 017d9c25 (r187) — THE WORKING BETWEEN the pay items and the answers ──
       // "Today you can see the pay items and you can see the answers, but not the working in between."
       // These are the four figures each agency was actually charged on, for THIS computation (on an
       // additional run that is the cumulative month, matching the `now` side of the delta). Read as
       // absent on every payslip written before r187, which is exactly what the disclosure renders.
-      const statAdditional = isAdditionalRun ? round2(earlierRun.additional + bonus) : bonus;
-      const statOvertime = isAdditionalRun ? earlierRun.overtime : otStat;
+      // A restating regular run was charged on the CUMULATIVE month exactly as an additional run is, so
+      // the disclosed bases follow the same figures — or `bases` would stop being what the contribution
+      // was actually charged on, which is the one property item 0253dc7c's screen relies on.
+      const statAdditional = isAdditionalRun || restatesMonth ? round2(earlierRun.additional + bonus) : bonus;
+      const statOvertime = isAdditionalRun
+        ? earlierRun.overtime
+        : restatesMonth
+          ? round2(earlierRun.overtime + otStat)
+          : otStat;
       // 2333b7fb — the deduction reductions belong here too, or `bases` stops being the figure the
       // contribution was actually charged on, which is the ONE property item 0253dc7c's screen relies
       // on. Each line mirrors the pack's own expression term for term (localization/my/payroll.ts:

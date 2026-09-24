@@ -75,14 +75,26 @@ export function StepPeriod({
   // old literal 'regular' compare did — but keyed off the resolved runType, not the label.
   const selectedRunType = cycleOptions.find((c) => c.id === cycleId)?.runType;
 
-  // Each configured cycle becomes an option. A regular-mapped cycle is disabled once a regular run exists;
-  // a non-regular cycle is disabled until one does (unchanged behaviour). The multiCycle flag continues to
-  // gate visibility upstream (page.tsx / wizard filter this list to regular-only when the flag is off).
+  // Each configured cycle becomes an option. A regular-mapped cycle is still disabled once a regular run
+  // exists — there is exactly one monthly run per month and that has not changed.
+  //
+  // ── 23e7dac3 / ADR-0085 step 5 — A NON-REGULAR CYCLE IS NO LONGER DISABLED UNTIL A REGULAR RUN EXISTS.
+  // It used to be `!regularExists`, which forced the Monthly run to be processed before a BONUS, an Off
+  // Cycle or an advance salary could be run at all, even when the money was actually paid the other way
+  // round. The order was carrying a load it could not carry: what keeps the statutory figures right is
+  // the kernel restating the month when the regular run lands (core/payroll.ts `restatesMonth`), and
+  // what keeps an out-of-order run SAFE is the filed-month refusal beside it (`refuseIfPeriodFiled`).
+  //
+  // ⚠️ THIS RELAXATION IS ONLY CORRECT WHILE THAT REFUSAL IS LIVE. Whether a month has been filed is not
+  // knowable in this component — it is a company-and-month database read, and the month is chosen here —
+  // so the server is what refuses, and the wizard surfaces its message. `test/23e7dac3-cycle-order-
+  // selector.dom.test.tsx` pins both halves together: delete the server guard and the test that asserts
+  // this select is open fails with it.
   const options = cycleOptions.map((c) => ({
     id: c.id,
     label: c.name,
     runType: c.runType,
-    disabled: c.runType === 'regular' ? regularExists : !regularExists,
+    disabled: c.runType === 'regular' ? regularExists : false,
   }));
 
   // Whether a REGULAR run already exists for a given company this period — surfaced per row so the admin
@@ -179,6 +191,15 @@ export function StepPeriod({
 
       {!multiCycle && (
         <p className="text-xs text-muted-foreground">{t('multiCycleOffNote')}</p>
+      )}
+
+      {/* 23e7dac3 — say WHY the non-regular cycles are now selectable before the Monthly run, and say
+          the one thing that closes them again, so an operator who meets the refusal is not surprised by
+          it. Shown only where there is actually a choice to make: multi-cycle on, and at least one
+          non-regular cycle configured for this company (which is also why a company with none sees
+          nothing new). */}
+      {multiCycle && cycleOptions.some((c) => c.runType !== 'regular') && !regularExists && (
+        <p className="text-xs text-muted-foreground">{t('anyCycleOrderNote')}</p>
       )}
 
       {runsForPeriod.length > 0 && (

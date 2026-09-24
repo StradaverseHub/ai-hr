@@ -130,9 +130,16 @@ same month use different figures.
 - **Reversals / clawbacks** (negative SOCSO/EIS top-up, voiding a closed run). The single-monthly-
   contribution principle (s.6(9)) doesn't specify the mechanics of a negative delta; v1 clamps to ≥ 0
   and forbids voiding a closed run. A later ADR will handle reversals.
-- **Standalone off-cycle with no regular run** (a pure mid-month bonus when no salary run exists yet):
-  v1 requires `run_seq = 1` to be `regular`. If a bonus is the first payment, the regular run is created
-  first (it may be zero). Revisit if the workflow demands otherwise.
+- ~~**Standalone off-cycle with no regular run**~~ **— LIFTED 2026-09-24 (r337, item `23e7dac3`,
+  ADR-0085 §5 step 5 and §7).** v1 required `run_seq = 1` to be `regular`, and said "revisit if the
+  workflow demands otherwise". The workflow demanded otherwise: the reporter pays a bonus, an off-cycle
+  amount or an advance salary before the monthly salary and was being forced to run Monthly first. A
+  non-regular run may now open the month and take `run_seq` 1; the regular run then takes the next
+  sequence and **restates the month** when it lands, so the runs still sum to the month as one
+  computation in either order (ADR-0085 §7.2 traces the figures). What makes it safe is not the order
+  but ADR-0085 step 4: a run that would restate a month whose returns have already been FILED is
+  refused, naming the filing. The `computeMonthlyRuns` pure module (`localization/my/multicycle.ts`) is
+  NOT part of this and still documents `runs[0] = regular`; the kernel is what changed.
 - **Salary installments / arrears-of-wages runs that must enter the SOCSO/EIS monthly base.** v1 treats
   every non-regular run as additional remuneration excluded from SOCSO/EIS (the off-cycle *bonus* case the
   consultant asked for). A run that pays part of the **ordinary wage** (a salary installment, or arrears of

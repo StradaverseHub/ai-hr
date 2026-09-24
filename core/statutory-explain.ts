@@ -140,6 +140,8 @@ export type StatutoryExplanation = {
    * An additional (bonus / off-cycle / adjustment) run stamps the bases of the CUMULATIVE MONTH, not of
    * the money that run alone paid — A0006's 2026-01 bonus payslip is all zeros yet stamps an EPF base of
    * 5,100. Without this flag the screen would appear to charge a wage the slip beside it does not show.
+   * Since r337 a REGULAR run that landed after a bonus run does the same thing (it restates the month),
+   * so this is no longer the same question as "is the run type non-regular" — see `carriesDeltaStamp`.
    *
    * The SAME flag means the AMOUNTS are increments (`deltaStat`), which is why it also suppresses every
    * effective rate: the two terms come from different quantities and their quotient is not a rate. The
@@ -181,7 +183,32 @@ type Blob = {
   eisEmployer?: unknown;
   hrdf?: unknown;
   pcb?: unknown;
+  pcbMeta?: unknown;
 };
+
+/**
+ * r337 — DID THIS PAYSLIP'S FIGURES COME OUT OF `deltaStat`? Read off the PAYSLIP, not off the run type.
+ *
+ * `runType !== 'regular'` used to be the whole test, and it was exact while the regular run was always
+ * run_seq 1. Item 23e7dac3 (ADR-0085 §5 step 5) lets a bonus or off-cycle run open the month, and the
+ * regular run then RESTATES it — so a run whose `runType` is 'regular' can now carry increments against
+ * a cumulative base, which is precisely the state this module's banner exists to disclose. Left on the
+ * run type alone, the screen would print a cumulative wage beside an incremental amount and call it a
+ * month's figure: the exact mislead documented above, on the one run an operator is least expecting it.
+ *
+ * The signal is `pcbMeta.delta`, which `deltaStat` stamps and nothing else writes — so the payslip says
+ * for itself how it was computed, rather than a caller having to remember to say. Presence is the gate,
+ * with the three members `deltaStat` always writes together, so a half-written blob is not read as one.
+ * For a run that never went through `deltaStat` this is absent and the answer is the old one exactly.
+ */
+function carriesDeltaStamp(st: Blob): boolean {
+  const meta = st.pcbMeta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  const d = (meta as { delta?: unknown }).delta;
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+  const o = d as Record<string, unknown>;
+  return ['cumulative', 'prior', 'cumulativeBonus'].every((k) => typeof o[k] === 'number');
+}
 
 /**
  * Build the six-item explanation from ONE payslip's stored statutory blob.
@@ -199,9 +226,11 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
   const bases: StatutoryBases | null = payslipStatutoryBases(statutory);
   const eb = payslipEmployerBorne(statutory);
   const socsoEisBase = bases ? bases.socsoEis : null;
-  // `isAdditionalRun`, core/payroll.ts:3700 — the same test, so this module's notion of "additional"
-  // cannot drift from the one that decided to stamp increments against a cumulative base.
-  const amountsAreIncremental = runType !== 'regular';
+  // `isAdditionalRun` in core/payroll.ts, OR a regular run that restated the month (r337 — see
+  // `carriesDeltaStamp`). Either way the amounts are increments against a cumulative base, which is the
+  // one thing the banner has to say; the two arms are OR-ed rather than replaced so every payslip
+  // written before r337 is read exactly as it was.
+  const amountsAreIncremental = runType !== 'regular' || carriesDeltaStamp(st);
 
   // EPF is charged on TWO streams and the reader must see both terms, so the rate is taken over their
   // sum — that is the wage the recorded employee share was actually produced from.
