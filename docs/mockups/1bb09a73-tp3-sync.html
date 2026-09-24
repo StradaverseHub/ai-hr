@@ -1,0 +1,135 @@
+<meta charset="utf-8">
+<title>TP3 — two stores that never speak to each other</title>
+<!--
+  1bb09a73 + 7f251381. Measured 2026-09-24 on main at 92610a59 and on PRODUCTION.
+  TWO SEPARATE STORES:
+    · employee_tp3 (db/schema.ts:5374) — the full Form TP3: person_id, assessment_year, deduction_month,
+      previous_employers, payload (sectionC/sectionD). Written by core/tp3.ts.
+    · employee_statutory_my.tp3_year / tp3_net_remuneration / tp3_epf_claimed / tp3_pcb_paid /
+      tp3_zakat_paid (db/schema.ts:3116-3122) — the ONLY figures payroll reads.
+  core/tp3.ts NEVER writes the second set (no update(employeeStatutoryMy) in the file).
+  core/payroll.ts:3303-3307 selects the second set; :3937 `const tp3Applies = e.tp3Year === pYear;` and
+  :3939-3942 zero ALL FOUR when it is false.
+  PRODUCTION PROOF — the two stores hold DIFFERENT PEOPLE:
+    employee_tp3: person b57268ae, assessment_year 2026, payload C1 60000, C2 3600, C3 8979, C5 3000
+    employee_statutory_my: person d4ef0b58, tp3_year 2026, net 70000.00, epf 4500.00, pcb 3400.00
+  So the person who filled in the form has nothing in the fields payroll reads.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .flow{display:grid;grid-template-columns:1fr 54px 1fr;align-items:center;gap:6px}
+ .store{border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+ .store.b{border-color:#e4c2bd}
+ .sh{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .sh small{display:block;font-weight:400;color:var(--mf);font-size:10px;margin-top:1px}
+ .r{display:flex;justify-content:space-between;padding:5px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9}
+ .r:last-child{border-bottom:none}
+ .r .k{color:var(--mf)}
+ .r b{font-weight:700}
+ .gap{text-align:center;color:var(--bad);font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1.35}
+ .gap .x{font-size:20px;display:block}
+ .arrow{text-align:center;color:var(--ok);font-size:20px;font-weight:700}
+ .who{font-size:10px;color:var(--bad);font-weight:700;padding:4px 11px;background:#fdf6f5}
+ .note{font-size:11.5px;color:var(--mf);margin-top:12px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:12px;border:1px dashed #d9a9a2;background:#fdf6f5;border-radius:8px;padding:11px;font-size:11.5px;color:#8a3d33;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .okbox{margin-top:12px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Form TP3 and the PCB calculation &mdash; one cause, both of your reports</h1>
+  <p class="sub">The form saves. Payroll reads somewhere else. Nothing joins them up.</p>
+
+  <div class="sec">
+    <h2><b>What is happening today</b></h2>
+    <div class="bd">
+      <div class="flow">
+        <div class="store b">
+          <div class="sh">Form TP3 &mdash; where you type<small>the full form, with every section</small></div>
+          <div class="who">person b57268ae</div>
+          <div class="r"><span class="k">Previous employment income</span><b>60,000.00</b></div>
+          <div class="r"><span class="k">EPF claimed</span><b>3,600.00</b></div>
+          <div class="r"><span class="k">PCB already paid</span><b>8,979.00</b></div>
+          <div class="r"><span class="k">Zakat paid</span><b>3,000.00</b></div>
+        </div>
+        <div class="gap"><span class="x">&#10007;</span>nothing<br>copies</div>
+        <div class="store b">
+          <div class="sh">Previous Employment &mdash; what payroll reads<small>the only figures the PCB calculation sees</small></div>
+          <div class="who">person d4ef0b58 &mdash; a different employee</div>
+          <div class="r"><span class="k">Previous employment income</span><b>70,000.00</b></div>
+          <div class="r"><span class="k">EPF claimed</span><b>4,500.00</b></div>
+          <div class="r"><span class="k">PCB already paid</span><b>3,400.00</b></div>
+          <div class="r"><span class="k">Zakat paid</span><b>&mdash;</b></div>
+        </div>
+      </div>
+      <div class="warnbox">
+        <b>These are not two views of one record. They are two different employees.</b> On your live system
+        the person who filled in the TP3 form has <b>nothing at all</b> in the boxes the payroll run looks
+        at &mdash; so their July PCB was worked out as if they had earned nothing before joining and paid
+        no tax. <b>RM60,000 of income and RM8,979 of tax already paid were simply not there.</b>
+        <div style="margin-top:8px">And the figures that <i>are</i> in the payroll boxes belong to somebody
+        else entirely, typed in by hand, with no TP3 form behind them.</div>
+      </div>
+      <p class="note"><b>There is a second way to lose the same money.</b> Payroll only uses these figures
+        when the year recorded against them matches the payroll year exactly. If it does not, all four
+        amounts silently become zero &mdash; no warning, no note on the payslip, and a PCB that looks
+        perfectly reasonable.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>What we&rsquo;ll change</b></h2>
+    <div class="bd">
+      <div class="flow">
+        <div class="store">
+          <div class="sh">Form TP3 &mdash; where you type</div>
+          <div class="r"><span class="k">Previous employment income</span><b>60,000.00</b></div>
+          <div class="r"><span class="k">EPF claimed</span><b>3,600.00</b></div>
+          <div class="r"><span class="k">PCB already paid</span><b>8,979.00</b></div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="store">
+          <div class="sh">What payroll reads</div>
+          <div class="r"><span class="k">Previous employment income</span><b>60,000.00</b></div>
+          <div class="r"><span class="k">EPF claimed</span><b>3,600.00</b></div>
+          <div class="r"><span class="k">PCB already paid</span><b>8,979.00</b></div>
+        </div>
+      </div>
+      <div class="okbox">
+        <b>Saving the TP3 form fills in the Previous Employment figures, in the same save.</b> One set of
+        numbers, one owner. You can still see and correct them, but they can no longer disagree with the
+        form they came from &mdash; and a mismatched year stops being a silent zero.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>This answers both of your reports</h3>
+    <p><b>The PCB one is caused by this one.</b> You asked why AIHR's PCB differs from the LHDN
+      calculator for a 1 July joiner even though the TP3 was filled in. It differs because the TP3 numbers
+      never reached the calculation &mdash; not because the formula is wrong. We will prove that by
+      reproducing your case and reconciling against the official calculator before we call it fixed.</p>
+    <p><b>Your existing records are not touched until you say so.</b> One employee already has
+      hand-entered figures with no form behind them. We will show you what the sync would change before it
+      changes anything.</p>
+    <p><b>The calculation-detail screen is a separate piece of work</b> and we will come back to it with
+      its own plan &mdash; getting the right numbers into the calculation comes first.</p>
+  </div>
+</div>

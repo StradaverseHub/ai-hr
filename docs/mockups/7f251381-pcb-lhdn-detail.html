@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<title>PCB detail — every LHDN variable is already recorded</title>
+<!--
+  7f251381. Measured 2026-09-24 on main at 5d0e0c6b.
+  THE WRONG NUMBER is item 1bb09a73's root cause: core/tp3.ts never writes
+  employee_statutory_my.tp3_*, which is the only set core/payroll.ts:3303-3307 reads, and :3937 zeroes all
+  four when tp3_year != payroll year. Production proof: the person with a TP3 form (RM60,000 prior income,
+  RM8,979 PCB paid) has nothing in the payroll fields.
+  THE PRESENTATION is this item. localization/my/payroll.ts:669-690 already records the FULL LHDN variable
+  set on every run — M, R, B, taxOnP1, category, childCount, Y1, K1, Y2, K2, Yt, Kt, K2t, Z,
+  lpAccumulated, lpCurrent, zakatCurrent, totalTaxYear, totalMtdYear, mtdNormalCalc — and
+  core/pcb-explain.ts + app/payroll/pcb-detail/pcb-detail-view.tsx (562 lines) already render a structured
+  breakdown. The gap is the SHAPE, not the data.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1060px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px}
+ .pill.have{background:#e3f3ea;color:var(--ok)}
+ .pill.fix{background:#fdeee2;color:var(--warn)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px;color:var(--mf)}
+ .panel{border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+ .ph{padding:6px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11px;font-weight:700}
+ .pr{display:flex;justify-content:space-between;padding:4px 11px;font-size:11px;border-bottom:1px solid #f4f5f9}
+ .pr:last-child{border-bottom:none}
+ .pr .k{color:var(--mf)}
+ .pr .v{font-weight:600;font-variant-numeric:tabular-nums}
+ .pr.sym .k b{color:var(--primary);font-family:ui-monospace,monospace;margin-right:5px}
+ .pr.tot{background:#f4faf6;font-weight:700;color:var(--ok)}
+ .pr.miss{background:#fdf6f5;color:var(--bad)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #d9a9a2;background:#fdf6f5;border-radius:8px;padding:11px;font-size:11.5px;color:#8a3d33;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>PCB &mdash; the wrong number and the unfamiliar working are two different problems</h1>
+  <p class="sub">One is a missing input. The other is a layout. Neither is the formula.</p>
+
+  <div class="sec">
+    <h2><span class="pill fix">ROOT CAUSE &mdash; SEPARATE ITEM</span><b>1.</b> Why your July figure differs from LHDN&rsquo;s</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">Not the formula. <b>The TP3 income never reached it.</b> The form
+        saves to one place and the payroll run reads another, and nothing joins them up &mdash; so your
+        1 July joiner was taxed as though they had earned nothing before joining.</p>
+      <div class="panel" style="max-width:480px">
+        <div class="ph">What went into the July calculation</div>
+        <div class="pr miss"><span class="k">Previous employment income</span><span class="v">0.00 &nbsp;(should be 60,000.00)</span></div>
+        <div class="pr miss"><span class="k">PCB already paid</span><span class="v">0.00 &nbsp;(should be 8,979.00)</span></div>
+        <div class="pr miss"><span class="k">EPF claimed previously</span><span class="v">0.00 &nbsp;(should be 3,600.00)</span></div>
+      </div>
+      <p class="note">That is written up as its own request, and it is the one that changes the figure. We
+        will reconcile your exact case against the official calculator before calling it fixed.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill have">DATA ALREADY RECORDED</span><b>2.</b> The calculation detail in LHDN&rsquo;s own shape</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag">Today &mdash; our own structure</p>
+          <div class="panel">
+            <div class="ph">PCB / MTD calculation detail</div>
+            <div class="pr"><span class="k">Employee / Company / Period</span><span class="v">&mdash;</span></div>
+            <div class="pr"><span class="k">System figure</span><span class="v">1,284.55</span></div>
+            <div class="pr"><span class="k">Applied figure</span><span class="v">1,284.55</span></div>
+            <div class="pr"><span class="k">Reliefs (total)</span><span class="v">13,000.00</span></div>
+            <div class="pr tot"><span class="k">Net MTD</span><span class="v">1,284.55</span></div>
+          </div>
+          <p class="note">Correct, and traceable &mdash; but it is our arrangement, so you cannot lay it
+            beside LHDN&rsquo;s worksheet line for line.</p>
+        </div>
+        <div>
+          <p class="tag">After &mdash; LHDN&rsquo;s worksheet order</p>
+          <div class="panel">
+            <div class="ph">Pengiraan PCB &mdash; LHDN format</div>
+            <div class="pr sym"><span class="k"><b>Y</b>Current month remuneration</span><span class="v">8,500.00</span></div>
+            <div class="pr sym"><span class="k"><b>K</b>EPF this month</span><span class="v">935.00</span></div>
+            <div class="pr sym"><span class="k"><b>Y1</b>Previous employment income</span><span class="v">60,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>K1</b>EPF claimed previously</span><span class="v">3,600.00</span></div>
+            <div class="pr sym"><span class="k"><b>Yt</b>Accumulated remuneration</span><span class="v">68,500.00</span></div>
+            <div class="pr sym"><span class="k"><b>Kt</b>Accumulated EPF</span><span class="v">4,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>D</b>Individual relief</span><span class="v">9,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>S</b>Spouse relief</span><span class="v">4,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>Q</b>Child relief</span><span class="v">2,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>P</b>Chargeable income</span><span class="v">49,500.00</span></div>
+            <div class="pr sym"><span class="k"><b>M / R / B</b>Bracket</span><span class="v">35,000 / 8% / 600</span></div>
+            <div class="pr sym"><span class="k"><b>Z</b>Zakat and rebates</span><span class="v">3,000.00</span></div>
+            <div class="pr sym"><span class="k"><b>X</b>PCB already paid</span><span class="v">8,979.00</span></div>
+            <div class="pr tot"><span class="k">MTD for the month</span><span class="v">1,284.55</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="okbox">
+        <b>Every one of those symbols is already recorded on every payroll run.</b> M, R, B, Y1, K1, Yt, Kt,
+        Z, the bracket tax, the accumulated year figures &mdash; the system writes them down each time it
+        calculates. Nothing new has to be computed. What changes is that they are shown in LHDN&rsquo;s order,
+        under LHDN&rsquo;s symbols, so you can put the two sheets side by side and find the line that differs.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What we will and will not do</h3>
+    <p><b>We will not rewrite the formula.</b> You asked that our result match the official calculator. Our
+      reading is that the formula is already right and was fed the wrong inputs &mdash; so the fix is the
+      inputs, and the proof is reconciling your case line by line once they arrive. If a line still
+      disagrees after that, it will be visible on this screen, which is the point of reshaping it.</p>
+    <p><b>The previous-employment lines are the ones to watch.</b> They are the only places your case and
+      LHDN&rsquo;s currently differ, and on this layout they have their own labelled rows instead of being
+      folded into an accumulated total.</p>
+    <p><b>Nothing about any payslip changes</b> &mdash; this screen explains a calculation, it does not
+      perform one.</p>
+  </div>
+</div>

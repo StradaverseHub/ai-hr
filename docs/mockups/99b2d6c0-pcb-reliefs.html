@@ -1,0 +1,119 @@
+<meta charset="utf-8">
+<title>PCB reliefs — one half already exists, the other needs the spec</title>
+<!--
+  99b2d6c0. Measured 2026-09-24 on main and on PRODUCTION.
+  childByCategory SHIPPED in ruleset 2026.7 (d64d0df4): localization/my/statutory-tables.ts:143-146 —
+  study_preu 2000, study_tertiary 8000, disabled 6000, disabled_study 14000, plus perChild 2000 (:92).
+  Read ONLY for an employee whose child_relief_mode = 'auto_table'; db/schema.ts:3056 defaults it to
+  'manual'. disabledSpouse shipped 2026.7, disabledIndividual 2026.6.
+  ⚠️ statutory-tables.ts:99-100 already warns about disabledIndividual: "RATE-ONLY, NOT YET VERIFIED.
+  Every other figure in this object was transcribed from the LHDN MTD computerised-calculation spec PDF
+  itself. This one is sourced from PwC Worldwide Tax Summaries" — i.e. the codebase itself records that
+  one of these numbers did not come from the spec.
+  PRODUCTION: child_relief_mode manual 70 / auto 3 / auto_table 2; 29 employees have children (63 total);
+  disabled_individual 0, disabled_spouse 0.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1060px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px}
+ .pill.have{background:#e3f3ea;color:var(--ok)}
+ .pill.need{background:#fdeee2;color:var(--warn)}
+ .bd{padding:14px}
+ table{border-collapse:collapse;width:100%;font-size:11.5px}
+ th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+ th{background:#f6f7fb;font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ th:first-child,td:first-child{text-align:left}
+ td.hot{background:#fdf6f5;color:var(--bad);font-weight:700}
+ td.ok{background:#f4faf6;color:var(--ok);font-weight:700}
+ .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+ .n{border:1px solid var(--rule);border-radius:8px;padding:10px;text-align:center}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .n b{display:block;font-size:19px}
+ .n span{font-size:10.5px;color:var(--mf)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .quote{margin-top:7px;padding:8px 11px;border-left:3px solid #d9a9a2;background:#fdf6f5;font-size:11px;color:#8a3d33;line-height:1.5}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>PCB reliefs &mdash; the child half already exists, the disabled half needs your document</h1>
+  <p class="sub">Two 70s tell the story: 70 of your 75 employees count children flat, and 0 are flagged disabled.</p>
+
+  <div class="sec">
+    <h2><span class="pill have">ALREADY BUILT</span><b>2.</b> Children by LHDN relief category</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">The system already knows the five LHDN child categories and the
+        amount for each. It is a <b>per-employee setting</b>, and almost nobody is using it:</p>
+      <table>
+        <tr><th>Category</th><th>Relief per child</th></tr>
+        <tr><td>Child under 18</td><td>2,000</td></tr>
+        <tr><td>Pre-university study</td><td>2,000</td></tr>
+        <tr><td>Tertiary study</td><td>8,000</td></tr>
+        <tr><td>Disabled child</td><td>6,000</td></tr>
+        <tr><td>Disabled child in further education</td><td>14,000</td></tr>
+      </table>
+      <div class="nums">
+        <div class="n hot"><b>70</b><span>counting children flat<br>(&ldquo;manual&rdquo;)</span></div>
+        <div class="n"><b>3</b><span>on &ldquo;auto&rdquo;<br>&mdash; also flat</span></div>
+        <div class="n" style="border-color:#bcdccb;background:#f4faf6"><b>2</b><span>using the<br>category grid</span></div>
+      </div>
+      <p class="note"><b>That is your complaint, and the fix is a setting rather than a rebuild.</b> 29 of
+        your employees have children between them. For 73 of 75 people the system multiplies the number of
+        children by a flat 2,000 &mdash; so a tertiary-educated or disabled child is worth the same as a
+        toddler. Switching them to the category grid is what makes it follow LHDN.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill need">NEEDS YOUR DOCUMENT</span><b>1.</b> The disabled reliefs</h2>
+    <div class="bd">
+      <div class="nums" style="grid-template-columns:repeat(2,1fr)">
+        <div class="n hot"><b>0</b><span>employees flagged<br>disabled individual</span></div>
+        <div class="n hot"><b>0</b><span>employees flagged<br>disabled spouse</span></div>
+      </div>
+      <p class="note"><b>Nobody on your system is affected by these two figures today.</b> That does not
+        make them unimportant &mdash; it means we have time to get them right rather than fast.</p>
+      <div class="warnbox">
+        <b>We will not change a statutory relief amount on an unverified number, and our own code already
+        says why.</b> Beside one of these very values it records:
+        <div class="quote">&ldquo;RATE-ONLY, NOT YET VERIFIED. Every other figure in this object was
+          transcribed from the LHDN MTD computerised-calculation spec PDF itself. This one is sourced from
+          PwC Worldwide Tax Summaries&hellip;&rdquo;</div>
+        <div style="margin-top:8px">You also told us you could not confirm the page references yourself.
+          So neither of us currently has the authority for these amounts &mdash; and a relief figure that is
+          wrong is wrong on every payslip and every return, quietly.</div>
+      </div>
+      <p class="note"><b>Send us the LHDN MTD calculation specification &mdash; the pages you referred to.</b>
+        We will transcribe the 2026 values from it, the same way every other figure in that table was
+        transcribed, and record which page each came from.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What we will do now, and what waits</h3>
+    <p><b>Now:</b> make the LHDN category grid reachable and obvious, so children are relieved by category
+      rather than counted &mdash; and tell you exactly which of your 29 parents would change, and by how
+      much, before anything changes.</p>
+    <p><b>Waits for your document:</b> the disabled-individual and disabled-spouse amounts. Nothing on your
+      system depends on them today, so waiting costs you nothing and guessing could cost every employee who
+      is later flagged.</p>
+    <p><b>Also worth knowing:</b> the configuration already records which assessment year it belongs to,
+      which is the thing you asked for to stop one year's values being mixed with another's.</p>
+  </div>
+</div>
