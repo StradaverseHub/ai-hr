@@ -470,7 +470,12 @@ describe('7f251381 — the previous-employment lines are their own rows, never a
     for (const p of [null, { declaredYear: null, applies: false, netRemuneration: 0, epfClaimed: 0, pcbPaid: 0, zakatPaid: 0 }]) {
       const w = pcbWorksheet(x, p);
       for (const cap of ['worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat']) {
-        expect(byCaption(w, cap)!.value, `${cap} with no declaration`).toEqual({ kind: 'money', amount: 0 });
+        const row = byCaption(w, cap);
+        // PRESENCE FIRST, AND BY NAME. Dropping the row entirely is the exact regression this case is
+        // about, and asserting straight into `.value` would report it as a TypeError about undefined
+        // rather than as "the row is missing".
+        expect(row, `${cap} must still be a ROW when nothing is declared — an absent box asserts nothing`).toBeTruthy();
+        expect(row!.value, `${cap} with no declaration`).toEqual({ kind: 'money', amount: 0 });
       }
       expect(byCaption(w, 'worksheetPrevYear')!.value).toEqual({ kind: 'caption', caption: 'worksheetPrevNone' });
       expect(byCaption(w, 'worksheetPrevApplies')!.value).toEqual({ kind: 'caption', caption: 'worksheetPrevAppliesNo' });
