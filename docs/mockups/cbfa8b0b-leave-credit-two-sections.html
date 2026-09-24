@@ -1,0 +1,122 @@
+<meta charset="utf-8">
+<title>Leave Credit Request — two sections, and one thing that is not a screen change</title>
+<!--
+  cbfa8b0b. Measured 2026-09-24 on main after the r336 merges.
+  ALREADY SHIPPED IN r334 (item 928f0454): the extended-hours tiers (<4h nothing, >=4h 0.5 day, >=8h 1.0
+  day, capped, rounded down), the per-company switch (default OFF) and its thresholds
+  (extendedBreakMinutes / extendedGraceMinutes, core/toil.ts:342-344), hours measured from shift end via
+  attendance.ot_minutes, and the First-Schedule consent gate. So Section B's ARITHMETIC exists.
+  ⚠️ POINT 4 IS NOT A SCREEN CHANGE. core/payroll.ts:536 EXCLUDE_TOIL_BANKED_DAYS matches on
+  `ta.worked_date = attendance.attendance_date` — THE WHOLE DAY. A credit today suppresses that day's
+  overtime pay entirely; :2660 calls it "unconditional". Splitting one evening into credited minutes and
+  paid minutes does not exist and is a change to a money path that shipped two rounds ago.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1060px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .sec>h2 .pill{float:right;font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px}
+ .pill.have{background:#e3f3ea;color:var(--ok)}
+ .pill.new{background:#eef0fb;color:var(--primary)}
+ .pill.warn{background:#fdeee2;color:var(--warn)}
+ .bd{padding:14px}
+ .dlg{border:1px solid var(--rule);border-radius:8px;overflow:hidden;max-width:620px}
+ .dh{padding:8px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .band{padding:5px 11px;background:#eef0fb;font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--primary);border-bottom:1px solid var(--rule)}
+ .row{display:grid;grid-template-columns:1.1fr .9fr .8fr .7fr;gap:8px;padding:5px 11px;font-size:10.5px;border-bottom:1px solid #f4f5f9}
+ .row.hd{color:var(--mf);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;background:#fbfbfd}
+ .row b{font-weight:700}
+ .add{padding:5px 11px;font-size:10.5px;color:var(--primary);font-weight:600;border-bottom:1px solid #f4f5f9}
+ .tot{display:flex;justify-content:space-between;padding:6px 11px;font-size:11px;font-weight:700;background:#f4faf6;color:var(--ok)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #d9a9a2;background:#fdf6f5;border-radius:8px;padding:11px;font-size:11.5px;color:#8a3d33;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .tl{display:flex;margin-top:9px;border:1px solid var(--rule);border-radius:6px;overflow:hidden;font-size:10px;text-align:center}
+ .tl div{padding:6px 4px}
+ .tl .shift{flex:3;background:#f1f2f7;color:var(--mf)}
+ .tl .cred{flex:2;background:#e3f3ea;color:var(--ok);font-weight:700}
+ .tl .ot{flex:2;background:#fdeee2;color:var(--warn);font-weight:700}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Leave Credit Request &mdash; two sections, and one item that is not a screen change at all</h1>
+  <p class="sub">Most of Section B was built a fortnight ago. Point 4 is the one that moves money.</p>
+
+  <div class="sec">
+    <h2><span class="pill new">THE SCREEN</span><b>1&ndash;3.</b> One request, two sections</h2>
+    <div class="bd">
+      <div class="dlg">
+        <div class="dh">Leave Credit Request</div>
+        <div class="band">A &middot; NON-WORKING-DAY WORK</div>
+        <div class="row hd"><span>Date worked</span><span>Day type</span><span></span><span>Days</span></div>
+        <div class="row"><span>Sun 14 Sep</span><span>Rest day</span><span></span><span><b>1.0</b></span></div>
+        <div class="add">+ Add date</div>
+        <div class="band">B &middot; EXTENDED ORDINARY-DAY WORK</div>
+        <div class="row hd"><span>Date worked</span><span>Shift end / clock-out</span><span>Claimed</span><span>Credit</span></div>
+        <div class="row"><span>Tue 16 Sep</span><span>18:00 &middot; 23:10</span><span>18:00&ndash;22:00</span><span><b>0.5</b></span></div>
+        <div class="add">+ Add date</div>
+        <div class="tot"><span>Total A 1.0 &nbsp;&middot;&nbsp; Total B 0.5</span><span>Grand total 1.5 days</span></div>
+      </div>
+      <div class="okbox">
+        <b>Section B&rsquo;s arithmetic already exists.</b> The thresholds you describe &mdash; under four
+        hours nothing, four to eight a half day, eight or more a full day, capped at one, rounded down
+        &mdash; were built a fortnight ago, along with the per-company switch, the break deduction and the
+        grace period. What is new here is the screen: one request holding both kinds of claim, and letting
+        the employee name the hours they are claiming.
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><span class="pill warn">NOT A SCREEN CHANGE</span><b>4.</b> Splitting an evening between credit and overtime</h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">You ask that 18:00&ndash;22:00 can be a leave credit while
+        22:00&ndash;00:00 is still paid as overtime:</p>
+      <div class="tl">
+        <div class="shift">Shift &nbsp;09:00&ndash;18:00</div>
+        <div class="cred">18:00&ndash;22:00 &nbsp;credit</div>
+        <div class="ot">22:00&ndash;00:00 &nbsp;paid OT</div>
+      </div>
+      <div class="warnbox">
+        <b>Today the system cannot do that, and it is not because nobody wrote the screen.</b> A leave
+        credit currently cancels that day&rsquo;s overtime pay <b>for the whole day</b> &mdash; it is one or
+        the other, by date, and the code calls that unconditional. There is no notion anywhere of
+        &ldquo;these minutes were banked and those minutes are payable&rdquo;.
+        <div style="margin-top:8px">Making that split real means changing how overtime pay is worked out,
+          on a path that has been live for two weeks and that we deliberately kept simple <b>because it
+          moves money off a payslip</b>. It is the right thing to want &mdash; it is just not a layout
+          change, and we are not going to slip it in behind one.</div>
+      </div>
+      <p class="note"><b>So we propose building it in two steps.</b> First the screen, with both sections,
+        the claimed hours and the double-claim checks against overtime &mdash; useful on its own, and it
+        stops anyone claiming the same evening twice. Then the payroll split as its own piece of work, with
+        its own plan, because it deserves to be looked at on its own.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Two smaller things worth knowing</h3>
+    <p><b>You already have the configuration switch.</b> Section B is off by default per company, with the
+      thresholds, break deduction and grace period you would expect. Nothing appears for anyone until it is
+      turned on.</p>
+    <p><b>What gets stored per row becomes finer.</b> Today we record a credit per date. You are asking for
+      the claimed start and end, the actual clock-out and the eligible minutes as well &mdash; which is what
+      makes an approver able to check the claim, and what the payroll split would later need. That part is
+      worth doing now even though the split comes later.</p>
+  </div>
+</div>

@@ -1,0 +1,117 @@
+<meta charset="utf-8">
+<title>Work sites to Organization — the reason given no longer exists</title>
+<!--
+  639bf4a5. Measured 2026-09-24 on main at the r336 merge.
+  The screen is app/admin/locations/page.tsx, registered in the ATTENDANCE pack nav:
+  packs/attendance/index.ts:439 { href: '/admin/locations', labelKey: 'clockingLocation', adminOnly: true },
+  and :22 calls it "clocking-site admin". So the reporter's description of where it lives is right.
+  ⚠️ THE STATED REASON IS STALE. "A location can set a state that overrides the public-holiday calendar
+  used by Leave and Attendance" was true until r332 (item 0fe1ca2e / ADR-0086), which the reporter
+  approved: the site left BOTH holiday readers, migration 0484 dropped location.holiday_group_id, and the
+  State control plus admin.locations.state / stateNote were removed from all six locales because the note
+  had become false. Measured now: 0 occurrences of name="state" on that page; `state` and `stateNote` keys
+  absent from en.json.
+  The data is already company-scoped (location.companyId, RLS by app.is_admin_for(company_id)), so
+  "maintained by Company" needs no migration.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1040px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:17px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 54px 1fr;align-items:center;gap:6px}
+ .nav{border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+ .nh{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .ni{padding:5px 11px;font-size:11.5px;border-bottom:1px solid #f4f5f9;color:var(--mf)}
+ .ni:last-child{border-bottom:none}
+ .ni.hit{background:#eef0fb;color:var(--primary);font-weight:700}
+ .arrow{text-align:center;color:var(--ok);font-size:20px;font-weight:700}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .quote{margin-top:7px;padding:8px 11px;border-left:3px solid #d9a9a2;background:#fdf6f5;font-size:11px;color:#8a3d33;line-height:1.5}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Moving work sites to Organization &mdash; yes, but not for the reason you gave</h1>
+  <p class="sub">The holiday connection you are describing was removed a fortnight ago, at your own request.</p>
+
+  <div class="sec">
+    <h2><b>The move itself</b> &mdash; we agree</h2>
+    <div class="bd">
+      <div class="two">
+        <div class="nav">
+          <div class="nh">Today</div>
+          <div class="ni">Attendance</div>
+          <div class="ni">&nbsp;&nbsp;Schedule</div>
+          <div class="ni">&nbsp;&nbsp;Shifts</div>
+          <div class="ni hit">&nbsp;&nbsp;Clocking Location</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="nav">
+          <div class="nh">After</div>
+          <div class="ni">Organization</div>
+          <div class="ni">&nbsp;&nbsp;Companies</div>
+          <div class="ni">&nbsp;&nbsp;Group structure</div>
+          <div class="ni hit">&nbsp;&nbsp;Physical Work Location</div>
+        </div>
+      </div>
+      <div class="okbox">
+        <b>A place your company operates from is master data, not an attendance setting.</b> It is also the
+        only screen where a work site can be created or edited at all &mdash; which is why we kept it when
+        you asked us to remove it, and why it belongs somewhere findable. Moving it is right.
+      </div>
+      <p class="note"><b>Nothing is migrated, because nothing needs to be.</b> Every work site already
+        belongs to a company and is already only visible to administrators of that company. The move
+        changes where the menu item sits, not what the data is or who can see it.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>⚠️ The reason you gave is out of date</b></h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">Your request says:</p>
+      <div class="quote">&ldquo;A location can set a state that overrides the public-holiday calendar used
+        by Leave and Attendance.&rdquo;</div>
+      <div class="warnbox">
+        <b>That stopped being true two weeks ago, and you approved the change.</b> We removed the work
+        site&rsquo;s hold on public holidays entirely: the state control is gone from the screen, the
+        holiday-calendar field was dropped from the database, and the sentence that described this
+        behaviour was deleted from all six languages &mdash; because once the behaviour went, the sentence
+        was a lie.
+        <div style="margin-top:8px">Public holidays now come from the <b>employee&rsquo;s own work
+          state</b>, which is what you approved. We verified at the time that not one employee&rsquo;s
+          holidays moved.</div>
+      </div>
+      <p class="note"><b>So the move is still right, for a different reason:</b> a work site is where
+        people work, it carries the branch mapping, and the clocking points hang off it. Those are
+        organisational facts. It is just no longer anything to do with holidays.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>One thing to decide, and one to watch</h3>
+    <p><b>Do the clocking points move with it?</b> Clocking points are grouped under their work site on that
+      same screen today. If the site moves to Organization and the clocking points stay under Attendance,
+      you would be maintaining one thing in two places. Our recommendation: the site moves, and the
+      clocking points move with it, with a link from Attendance so the old route still finds them.</p>
+    <p><b>The menu entry belongs to the Attendance module today</b>, so moving it is a small piece of
+      plumbing rather than a rename &mdash; it changes which part of the system owns the screen. Nothing
+      you can see changes beyond where you click.</p>
+  </div>
+</div>
