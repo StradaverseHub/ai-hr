@@ -2988,11 +2988,6 @@ export function leaveBalances(
         if (!source) continue;
         const members = memberIds.map((id) => rowById.get(id)).filter((x): x is typeof source => x != null);
         const pooledPending = members.reduce((n, m) => n + m.pending, 0);
-        const info: SharedLeaveBalanceInfo = {
-          sourceLeaveTypeId: sourceId,
-          sourceLeaveTypeName: source.leaveType,
-          contributingLeaveTypes: members.map((m) => m.leaveType),
-        };
         /**
          * 39136455 — EACH ROW TELLS ITS OWN STORY, AND THE TRANSFER IS A COLUMN.
          *
@@ -3006,8 +3001,9 @@ export function leaveBalances(
          *   · `taken` is now the days filed under THIS code (takenFiledBy, above).
          *   · `pending` is this code's own reservation — `pendingBy` already grouped by the FILED type; it
          *     was only the line below that overwrote it with the pool's.
-         *   · `share` is the finalised transfer: a borrower draws IN what it took (+), and the source lends
-         *     OUT the sum of what every borrower took (−).
+         *   · `share` is the finalised transfer: what a borrower took, and on the source the sum of what every
+         *     borrower took. ⚠️ 2a57a007 REMOVED THE MINUS the source used to carry — see the comment on the
+         *     line that decides the sign, below, which also restates why the balance invariant is unaffected.
          *   · `pendingShare` is the same for days still awaiting approval.
          *   · a borrower's `accrued` and `balance` are 0.00 — it has no entitlement and no balance of its
          *     own, which is the honest statement and the one the reporter asked for. The POOL's balance
@@ -3019,20 +3015,62 @@ export function leaveBalances(
          * submit guard and the apply form read `available`; zeroing it would make Emergency Leave
          * unapplyable for everyone, which is the defect this change is one careless line away from.
          *
-         * THE INVARIANT: across a pool, sum(balance) equals the pool's own ledger balance, because the
-         * shares cancel — the source's −N is exactly the borrowers' +N.
+         * THE INVARIANT: across a pool, sum(balance) equals the pool's own ledger balance. It holds because
+         * a borrower's `balance` is 0 and the source keeps its own — NOT because of the sign on `share`,
+         * which is a display column nothing sums. 2a57a007 flipped that sign and this invariant did not move.
          */
         const borrowers = members.filter((m) => m.leaveTypeId !== sourceId);
         const lentOut = borrowers.reduce((n, m) => n + (takenFiledBy.get(m.leaveTypeId) ?? 0), 0);
         const lentPending = borrowers.reduce((n, m) => n + m.pending, 0);
+        /**
+         * 2a57a007 — the pool's Share is a SUM over the borrowers, and a sum cannot say who spent it. The
+         * same figures, itemised by the code the days were filed under, so the badge beside the figure, the
+         * Explain panel's per-type list and the export's two source columns read ONE list instead of three
+         * derivations of it. Positive, like the columns they add up to. `|| 0` for the same `-0` reason the
+         * columns carry it. Built from `takenFiledBy` / `m.pending` — the very maps the columns come from,
+         * never a second query — so an itemised list that disagreed with its own total is not representable.
+         */
+        const contributions = borrowers.map((m) => ({
+          leaveTypeId: m.leaveTypeId,
+          leaveType: m.leaveType,
+          code: m.code,
+          share: (takenFiledBy.get(m.leaveTypeId) ?? 0) || 0,
+          pendingShare: m.pending || 0,
+        }));
+        const info: SharedLeaveBalanceInfo = {
+          sourceLeaveTypeId: sourceId,
+          sourceLeaveTypeName: source.leaveType,
+          contributingLeaveTypes: members.map((m) => m.leaveType),
+          contributions,
+        };
         for (const m of members) {
           const isSource = m.leaveTypeId === sourceId;
           const ownTaken = takenFiledBy.get(m.leaveTypeId) ?? 0;
           m.taken = ownTaken;
-          // `|| 0` is NOT redundant: `-0` is a real JavaScript value, it fails Object.is against 0, and it
-          // formats as "-0.00" on the grid — a minus sign against a row that lent nothing out.
-          m.share = isSource ? -lentOut || 0 : ownTaken;
-          m.pendingShare = isSource ? -lentPending || 0 : m.pending;
+          /**
+           * 2a57a007 — THE SIGN IS DECIDED HERE, AND IT IS NO LONGER SIGNED. READ THIS BEFORE RESTORING A MINUS.
+           *
+           * 39136455 (the header above) modelled the pooled transfer as a SIGNED one: the pool carried −N and
+           * the borrower +N, so the two cancelled. The reporter reads the pool row as a deduction taken twice —
+           * Annual Leave already shows the days under its own Balance, and a −1.00 beside it says the pool lost
+           * them again. Every other figure on this grid is a magnitude; Share is the only column that was not.
+           *
+           * ⚠️ THE INVARIANT IN THE HEADER ABOVE IS ABOUT `balance`, NOT ABOUT THIS COLUMN, and it is untouched.
+           * "Across a pool, sum(balance) equals the pool's own ledger balance" still holds for the reason it
+           * always did: a borrower's `balance` is set to 0 eight lines below and the source keeps its own ledger
+           * figure. NOTHING sums `share` or `pendingShare` — they are rendered (app/leave/employee-balances/
+           * page.tsx, components/leave/leave-balance-table.tsx), passed through (rows.ts, leave-balance-row.ts)
+           * and exported (export/route.ts), and no consumer performs arithmetic on either. Flipping the DISPLAY
+           * sign therefore cannot move a balance, and test/2a57a007-el-shared-pool-display.test.ts pins both
+           * halves: the columns are positive AND the pool's balance is byte-identical.
+           *
+           * ⚠️ `|| 0` IS STILL NOT REDUNDANT, and it is not here for the negation that used to be above it.
+           * `-0` is a real JavaScript value that formats as "-0.00" on the grid, and `takenFiledBy` holds
+           * `Math.round(x * 100) / 100` values, which is a `-0` factory for any tiny negative. A row that lent
+           * nothing out must print "0.00"; `|| 0` is what guarantees it, on BOTH halves and in `contributions`.
+           */
+          m.share = isSource ? lentOut || 0 : ownTaken || 0;
+          m.pendingShare = isSource ? lentPending || 0 : m.pending || 0;
           if (!isSource) {
             m.accrued = 0;
             m.balance = 0;
