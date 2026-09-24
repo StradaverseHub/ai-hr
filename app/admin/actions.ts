@@ -253,6 +253,10 @@ export async function createCompanyAction(formData: FormData) {
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
       registrationNo: (formData.get('registrationNo') as string) || undefined,
+      // 3783fd87 — the Company Code, posted from the create form under the SAME field name the General
+      // tab's save uses (`companyLabel`, app/admin/actions.ts applyCompanyDetailsSection). One name, one
+      // column, one normaliser: there is no second source for this value anywhere.
+      companyLabel: String(formData.get('companyLabel') ?? '').trim(),
       // Organization Module (361e3b15): the Default Payroll Cycle picker (pre-set to Monthly). createCompany
       // resolves it against the standard catalog it seeds, defaulting to 'Monthly' for any unknown/blank value.
       defaultPayrollCycle: (formData.get('defaultPayrollCycle') as string) || undefined,

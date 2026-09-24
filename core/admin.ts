@@ -391,6 +391,24 @@ export async function createCompany(
     country?: string;
     currency?: string;
     registrationNo?: string;
+    /**
+     * Item 3783fd87 — THE COMPANY CODE, at the moment the company is born.
+     *
+     * Same column, same semantics, same normalisation as the General tab's save (`updateCompany` →
+     * `normNullableText`): trimmed, and blank ⇒ NULL. It is NOT a new field and NOT a second source —
+     * `company.company_label` has existed since bc5d4891 and the listing has headed it "Code" since
+     * defd4644; the only thing that was missing was a way to set it on the create form, which is why 7 of
+     * the 13 production companies have no code and two of the six that do hold something that is not one
+     * (a full legal name, and "PRIVATE CO.").
+     *
+     * ⚠️ DELIBERATELY NOT VALIDATED AND NOT UNIQUE. It stays nullable free text, exactly as the edit path
+     * has always treated it. Requiring it here would contradict an edit form that lets you clear it and
+     * would refuse every company the operator has no code for yet; adding a uniqueness constraint is a
+     * DATA decision about what a code IS, which the reporter has not made and which two live rows would
+     * immediately make contentious. Either is a rule change, to be asked for and then built — never
+     * slipped in behind a UI round.
+     */
+    companyLabel?: string | null;
     defaultPayrollCycle?: string;
     /**
      * ADR-0080 D-14 — declare this company NON-STATUTORY. Required (and only accepted) when the
@@ -427,6 +445,10 @@ export async function createCompany(
         currency,
         statutoryTier,
         registrationNo: p.registrationNo?.trim() || null,
+        // 3783fd87 — the create form's Company Code. `normNullableText` is the SAME normaliser
+        // updateCompany uses for this column, so a code typed on the create form and a code typed on the
+        // General tab cannot be stored differently (e.g. '' on one path and NULL on the other).
+        companyLabel: normNullableText(p.companyLabel) ?? null,
         defaultPayrollCycle,
       })
       .returning({ id: company.id });

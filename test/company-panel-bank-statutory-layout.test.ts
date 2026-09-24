@@ -417,6 +417,46 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(face).toContain("t('authorityNotConfigured')");
   });
 
+  /**
+   * ⚠️ EXTENDED BY ITEM 3783fd87 — the face now carries the VALUES, not only the status.
+   *
+   * "Configured / Not set up" answered whether a body had a row. It did not answer WHICH employer
+   * number is on file or WHICH bank account pays it, so the only way to learn either was to open the
+   * body — and comparing two meant opening both and remembering the first. The approved plan's words:
+   * one card per authority "showing what is set without opening anything — the employer number and the
+   * bank account it is paid from — and saying plainly where nothing is set yet".
+   *
+   * The three captions are asserted SEPARATELY and on the FACE slice (everything before `aria-expanded`,
+   * i.e. before the Open control) because collapsing them into one anonymous "employer number" is
+   * precisely the fault r226 was raised for: a body has TWO different numbers and the screen has to say
+   * which is which. A future edit that moves any of them behind the disclosure fails here.
+   */
+  it('shows the employer number and the paying bank account on the FACE too (3783fd87)', () => {
+    const face = CARD_SRC.slice(0, CARD_SRC.indexOf('aria-expanded'));
+    // The summary is built once and rendered on the face; both halves are pinned.
+    expect(CARD_SRC, 'the at-a-glance summary is derived').toContain('const summary:');
+    expect(face, 'the summary is rendered before the Open control').toContain('summary.map(');
+    // The FILING number, under the body's own caption (epfEmployerNo / socsoEmployerCode / lhdnENumber).
+    expect(CARD_SRC).toContain('label: t(filing.labelKey as never)');
+    expect(CARD_SRC).toContain('value: statutory?.[filing.name] || null');
+    // The PAYMENT reference and the bank account that pays it.
+    expect(CARD_SRC).toContain("label: t('authorityAccountNo')");
+    expect(CARD_SRC).toContain("label: t('authorityBankAccount')");
+    expect(CARD_SRC).toContain("bankProfiles.find((bp) => bp.id === r?.bankProfileId)");
+    // "Not set" where nothing is on file — an absent value says so rather than rendering an empty gap.
+    expect(face).toContain("t('authorityValueNotSet')");
+    // HRD Corp's band is shown only when the identity row CARRIES one. Payroll resolves a missing row to
+    // 'not_registered', but printing "Not registered" for a company with no row at all would assert a
+    // registration decision nobody made (§8: an absent box asserts nothing).
+    expect(CARD_SRC).toContain("statutory?.hrdfStatus === 'not_registered'");
+    expect(CARD_SRC).toContain('hrdfBandKey ? t(hrdfBandKey as never) : null');
+    // READ-ONLY. The face must not grow a second set of controls over the same columns — the editor
+    // below is the only writer, and `company_statutory_authority` is also what the EA officer block and
+    // the CP39 preparer block read (localization/my/reports.ts).
+    expect(face, 'the face renders text, never a second input').not.toMatch(/<input\b/);
+    expect(face, 'the face renders text, never a second form').not.toMatch(/<form\b/);
+  });
+
   it('carries a DESCRIPTION for every authority in all six locales (dynamic keys, added by hand)', () => {
     // authority_* and authorityDesc_* are both computed at render time, so test/i18n-coverage.test.ts
     // cannot see either. Adding an authority means adding BOTH strings to SIX files or the card renders
@@ -427,7 +467,10 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
         expect(org[`authority_${a}`], `${loc}: authority_${a}`).toBeTruthy();
         expect(org[`authorityDesc_${a}`], `${loc}: authorityDesc_${a}`).toBeTruthy();
       }
-      for (const k of ['authorityOpen', 'authorityClose']) {
+      // 3783fd87 — `authorityValueNotSet` is the face's "nothing on file yet". It is a STATIC key, so
+      // test/i18n-coverage.test.ts check C sees it; it is listed here anyway because this is the file
+      // that owns what the card says, and a reader adding an authority reads this list, not that one.
+      for (const k of ['authorityOpen', 'authorityClose', 'authorityValueNotSet']) {
         expect(org[k], `${loc}: ${k}`).toBeTruthy();
       }
     }

@@ -186,7 +186,10 @@ export function CompanyRows({
             <span
               className={
                 r.archived
-                  ? 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+                  // 3783fd87 — the Archived chip is LINED, not filled grey, to match the rest of the
+                  // module. The Active chip keeps its emerald wash: that one carries meaning, and the
+                  // request was to remove grey, not colour.
+                  ? 'inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground'
                   : 'inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
               }
             >

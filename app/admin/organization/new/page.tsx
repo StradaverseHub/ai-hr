@@ -16,11 +16,26 @@ import Link from 'next/link';
  * to the listing with `?error=` on failure — that redirect target lives in app/admin/actions.ts, which
  * is outside this module).
  *
- * FIELDS ARE EXACTLY WHAT `createCompanyAction` READS — legalName, country, currency, registrationNo
- * and defaultPayrollCycle. Nothing else is posted, because a field the action ignores is a field that
- * silently discards what the operator typed. Everything else about a company (its statutory identity,
- * bank accounts, group parent, logo, contact details) is set up afterwards on the company's own
+ * FIELDS ARE EXACTLY WHAT `createCompanyAction` READS — legalName, companyLabel, country, currency,
+ * registrationNo and defaultPayrollCycle. Nothing else is posted, because a field the action ignores is
+ * a field that silently discards what the operator typed. Everything else about a company (its statutory
+ * identity, bank accounts, group parent, logo, contact details) is set up afterwards on the company's own
  * maintenance page, which is what `createDescription` tells the reader.
+ *
+ * ── THE COMPANY CODE (item 3783fd87) ──────────────────────────────────────────────────────────────
+ * `companyLabel` is the SIXTH field, and it is not a new one. `company.company_label` has existed since
+ * bc5d4891; the listing has headed it "Code" since defd4644 and the General tab has edited it all along.
+ * The only screen it was missing from was this one — so a company was created without a code and the
+ * operator had to go and find it again on another screen to give it one. On production that is 7 of 13
+ * companies with no code at all, and of the six that have something, one holds the entire legal name and
+ * one reads "PRIVATE CO.": a field reachable only after the fact gets filled in badly or not at all.
+ *
+ * ⚠️ IT IS NOT REQUIRED AND IT IS NOT UNIQUE-CHECKED, and both of those are decisions, not omissions.
+ * The column is nullable free text and the General tab lets you clear it; a create form that REFUSED a
+ * blank would contradict the edit form and would block every company whose code is not decided yet.
+ * Uniqueness is a DATA decision about what a code IS — see the note on `createCompany` in core/admin.ts.
+ * The input therefore carries no `required` attribute: test/organization-list-detail.test.ts pins that
+ * `legalName` is the only required field on this form.
  *
  * ⚠️ ONE i18n NAMESPACE (`admin.organization`) — see the note on the listing page. `common.cancel`
  * would be a second one, so the Cancel affordance is a link labelled with this namespace's own key.
@@ -49,6 +64,12 @@ export default async function NewCompanyPage({
         <form action={createCompanyAction} className="space-y-4 px-4 py-4">
           <Field label={t('legalName')}>
             <input name="legalName" required autoFocus className={inputCls} />
+          </Field>
+          {/* 3783fd87 — the Company Code, directly under the legal name, which is where the approved plan
+              told the reporter it would go. `name="companyLabel"` is the SAME field name the General tab
+              posts, so the create path and the edit path write one column through one normaliser. */}
+          <Field label={t('companyCode')}>
+            <input name="companyLabel" className={inputCls} placeholder={t('companyCodeHint')} />
           </Field>
           <Field label={t('regNo')}>
             <input name="registrationNo" className={inputCls} />

@@ -240,9 +240,14 @@ export default async function OrganizationPage({
           </button>
         </form>
 
-        <div className={tableWrapCls}>
+        {/* 3783fd87 — lines rather than filled grey. `tableWrapCls`'s own rounded border is dropped
+            because this table sits INSIDE a Card that already draws one; two borders 4px apart is the
+            "unnecessary grey" the request names, and the Card's own edge is the boundary. The shared
+            constants are reused rather than re-written by hand — overriding them HERE keeps every other
+            admin table on the house look, which is the drift components/ui.tsx exists to prevent. */}
+        <div className={cn(tableWrapCls, 'rounded-none border-0')}>
           <table className="w-full text-sm">
-            <thead className={theadCls}>
+            <thead className={cn(theadCls, 'border-y border-border bg-transparent')}>
               <tr>
                 <th className={thCls}>
                   <Link href={sortHref('code')}>{t('colCode')}</Link>
