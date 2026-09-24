@@ -6,6 +6,12 @@ import { CurrencySelect } from '@/components/currency-select';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
 import { createCompanyAction } from '../../actions';
 import Link from 'next/link';
+// 7d2df42a — the duplicate-code WARNING. The read it is fed from is `listCompanies(..., adminOnly: true)`
+// below; the rules (archived companies do not collide, case/whitespace do not distinguish two codes) are
+// stated once in lib/company-code.ts and applied by `companyCodeHolders`.
+import { listCompanies } from '@/core/read';
+import { companyCodeHolders } from '@/lib/company-code';
+import { CompanyCodeField } from '@/components/company-code-field';
 
 /**
  * Admin → Organization → Add new company (item defd4644).
@@ -46,9 +52,21 @@ export default async function NewCompanyPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   // Same admin gate as the rest of the module. The create itself is re-authorised by the service.
-  await scopedAdmin();
+  const { s } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
+
+  /**
+   * 7d2df42a — the codes already in use, for the warning under the Company Code field.
+   *
+   * `adminOnly: true` is the database's own `app.is_admin_for` — the SAME set the Organization listing
+   * already shows this person by name, so the warning cannot name a company they could not otherwise
+   * reach. For a group-wide hr_admin that is every company in the tenant. Archived companies are
+   * excluded twice over: this read leaves `includeArchived` off, and `companyCodeHolders` drops them
+   * anyway, because a code recycled from a company retired years ago is not a collision worth a warning.
+   * ⚠️ DO NOT widen either of those to make the warning fire more often — see lib/company-code.ts.
+   */
+  const codesInUse = companyCodeHolders(await listCompanies(s, { adminOnly: true }));
 
   return (
     <div className={pageWideCls}>
@@ -67,9 +85,14 @@ export default async function NewCompanyPage({
           </Field>
           {/* 3783fd87 — the Company Code, directly under the legal name, which is where the approved plan
               told the reporter it would go. `name="companyLabel"` is the SAME field name the General tab
-              posts, so the create path and the edit path write one column through one normaliser. */}
+              posts, so the create path and the edit path write one column through one normaliser.
+
+              7d2df42a — and it now warns, as you type, when another company already uses the code, naming
+              that company. It is a WARNING: no `required`, no refusal, and a duplicate save still lands on
+              the listing rather than on `?error=`. The field itself is components/company-code-field.tsx,
+              shared with the General tab so the two screens cannot disagree about what a duplicate is. */}
           <Field label={t('companyCode')}>
-            <input name="companyLabel" className={inputCls} placeholder={t('companyCodeHint')} />
+            <CompanyCodeField codesInUse={codesInUse} />
           </Field>
           <Field label={t('regNo')}>
             <input name="registrationNo" className={inputCls} />

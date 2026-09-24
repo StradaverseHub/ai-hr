@@ -32,7 +32,7 @@
  *      through the same normaliser. `one column, three screens` is that, asserted end to end.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SessionContext } from '../db/client';
 
@@ -71,6 +71,12 @@ import { listCompanies } from '../core/read';
 import { selectCompanyRows } from '../app/admin/organization/company-rows';
 import NewCompanyPage from '../app/admin/organization/new/page';
 import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
+// 7d2df42a — the two components whose PROPS carry the duplicate-code warning's data. Asserted as
+// elements, not as markup: the warning is invisible until somebody types, so the only thing a server
+// render can prove is that each screen was handed the right list (§8, "pin it across both files").
+import { CompanyCodeField } from '../components/company-code-field';
+import { CompanyPanel } from '../components/company-panel';
+import type { CompanyCodeHolder } from '../lib/company-code';
 
 let b: Base;
 
@@ -114,8 +120,23 @@ describe('3783fd87 — the create form carries the Company Code, and the code is
   it('renders an input for it, bound to the SAME field name the General tab posts', async () => {
     const html = renderToStaticMarkup((await NewCompanyPage({ searchParams: Promise.resolve({}) })) as never);
     expect(html, 'the create form offers the code').toContain('name="companyLabel"');
-    // …and it is NOT required. The column is nullable and the edit form can clear it; see the header.
-    expect(html).toMatch(/name="companyLabel"(?![^>]*\brequired\b)/);
+    /**
+     * …and it is NOT required. The column is nullable and the edit form can clear it; see the header.
+     *
+     * ⚠️ REWRITTEN BY ITEM 7d2df42a BECAUSE IT HAD GONE VACUOUS, WHICH IS WORSE THAN ABSENT. It read
+     * `expect(html).toMatch(/name="companyLabel"(?![^>]*\brequired\b)/)` — a lookahead that only sees
+     * attributes printed AFTER `name`. React's server renderer does not print them in JSX order: with
+     * `required` on the input it emits `<input required="" class="…" placeholder="…" name="companyLabel"
+     * value=""/>`, so `name="companyLabel"` is followed by `value=""/>` and the old line matched happily
+     * while the field WAS required. Verified by adding `required` and watching this case stay green.
+     *
+     * The tag is extracted and checked whole instead, which no attribute order can defeat.
+     */
+    const codeInputTag = /<input\b[^>]*name="companyLabel"[^>]*>/.exec(html)?.[0] ?? '';
+    expect(codeInputTag, 'the Company Code input is in the markup').not.toBe('');
+    expect(codeInputTag, 'the code stays OPTIONAL — 7 of the 13 production companies have none').not.toMatch(
+      /\brequired\b/,
+    );
   });
 
   it('stores what was typed — the markup is not the assertion, the row is', async () => {
@@ -183,5 +204,169 @@ describe('3783fd87 — one column, three screens: create, listing, detail', () =
     // (3) and it is ONE column. Read straight from the table and compare — if a second source ever
     // appeared, the listing or the detail screen would drift from this and these would stop agreeing.
     expect(await codeOf('Threeway Sdn Bhd')).toBe(row.code);
+  });
+});
+
+/**
+ * ── ITEM 7d2df42a — "Company Code: should it be required, and must it be unique?" ─────────────────
+ *
+ * The reporter asked for a COMPULSORY field and an ENFORCED unique rule. We recommended against both
+ * and they approved that recommendation. What ships is a WARNING that names the other company; the two
+ * refusals stay unbuilt. The three `describe`s above already pin "not required" and "not unique" from
+ * the CREATE ACTION's side and are unchanged by this item — the block below pins the same two
+ * decisions from the two places a later round would actually break them:
+ *
+ *   · the DATABASE, so a migration that adds a unique index or a CHECK on `company_label` has to come
+ *     past a test that names the decision, rather than a customer finding it on a save;
+ *   · the two SCREENS' data, so the warning keeps being fed from a read that is scoped to what this
+ *     admin can already see by name, and that leaves archived companies out.
+ *
+ * ⚠️ THE WARNING ITSELF IS NOT ASSERTED HERE, AND DELIBERATELY SO. It only exists once somebody has
+ * TYPED into the field, so it is unreachable from a server render and from a GET of either screen.
+ * test/7d2df42a-company-code-duplicate.dom.test.tsx drives it, in all six catalogues.
+ */
+/** Walk a rendered-but-not-yet-committed element tree for the first element of a given component. */
+type AnyEl = { type?: unknown; props?: Record<string, unknown> };
+function findElement(node: unknown, type: unknown): AnyEl | null {
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const hit = findElement(n, type);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  const el = node as AnyEl;
+  if (el.type === type) return el;
+  return findElement(el.props?.children, type);
+}
+
+const codesOnCreateForm = async (): Promise<CompanyCodeHolder[]> => {
+  const tree = await NewCompanyPage({ searchParams: Promise.resolve({}) });
+  const field = findElement(tree, CompanyCodeField);
+  expect(field, 'the create form renders components/company-code-field.tsx').not.toBeNull();
+  return field!.props!.codesInUse as CompanyCodeHolder[];
+};
+
+describe('7d2df42a — a duplicate Company Code is a WARNING, and the database still says so', () => {
+  it('there is NO unique index and NO CHECK on company_label — the decision, asserted against the live schema', async () => {
+    const res = await owner.db.execute(sql`
+      select 'unique index ' || i.indexrelid::regclass::text || ' — ' || pg_get_indexdef(i.indexrelid) as rule
+        from pg_index i
+       where i.indrelid = 'company'::regclass
+         and i.indisunique
+         and pg_get_indexdef(i.indexrelid) ilike '%company_label%'
+      union all
+      select 'constraint ' || conname || ' — ' || pg_get_constraintdef(oid)
+        from pg_constraint
+       where conrelid = 'company'::regclass
+         and contype in ('c', 'u', 'x')
+         and pg_get_constraintdef(oid) ilike '%company_label%'`);
+    const rows = (res as unknown as { rows?: { rule: string }[] }).rows ?? (res as unknown as { rule: string }[]);
+    expect(
+      rows.map((r) => r.rule),
+      'A rule on company_label appeared. That is the change item 7d2df42a explicitly declined: of the 13 ' +
+        'production companies 7 hold no code and two of the six that do hold something that is not one ' +
+        '("PRIVATE CO." and a full legal name), so a unique rule rejects real rows the next time anybody ' +
+        'edits them, and a NOT NULL blocks seven companies from being saved at all. If this is now wanted, ' +
+        'it is a DATA decision for the reporter to take — ask, then change this test with the answer.',
+    ).toEqual([]);
+  });
+
+  it('the column is still NULLABLE — "not required" is a database fact, not only a missing attribute', async () => {
+    const res = await owner.db.execute(sql`
+      select is_nullable from information_schema.columns
+       where table_schema = 'public' and table_name = 'company' and column_name = 'company_label'`);
+    const rows = (res as unknown as { rows?: { is_nullable: string }[] }).rows ??
+      (res as unknown as { is_nullable: string }[]);
+    expect(rows, 'company.company_label exists').toHaveLength(1);
+    expect(rows[0].is_nullable, 'a NOT NULL here would block the 7 production companies that have no code').toBe('YES');
+  });
+
+  it('SAVING a duplicate still SUCCEEDS and stores it — a duplicate never travels the failure redirect', async () => {
+    await create({ legalName: 'Chin Hin Construction Engineering Sdn Bhd', companyLabel: 'ASG' });
+    // Typed differently on purpose: the warning treats these as the same code, and the SAVE still must
+    // not care. `failCompany` / `fail` land on `?error=`; landing on the bare listing is the proof that
+    // this went through `ok()`, i.e. that nothing turned the warning into a refusal.
+    const to = await create({ legalName: 'Second Mover Sdn Bhd', companyLabel: ' asg ' });
+    expect(to, 'a duplicate is NOT a failure and must not redirect through ?error=').toBe('/admin/organization');
+    expect(to).not.toContain('error=');
+    expect(await codeOf('Second Mover Sdn Bhd'), 'and it stores what was typed, trimmed — not rewritten to ASG').toBe('asg');
+    expect(await codeOf('Chin Hin Construction Engineering Sdn Bhd'), 'the first row is untouched').toBe('ASG');
+
+    // And the EXACT duplicate too, because a case-SENSITIVE unique rule would let the line above pass:
+    // ' asg ' normalises to 'asg', which `=` does not match against 'ASG'. Both shapes have to be here or
+    // half the rule could be added without either of them noticing.
+    const exact = await create({ legalName: 'Third Mover Sdn Bhd', companyLabel: 'ASG' });
+    expect(exact, 'an exact duplicate is not a failure either').toBe('/admin/organization');
+    expect(await codeOf('Third Mover Sdn Bhd')).toBe('ASG');
+  });
+});
+
+describe('7d2df42a — the codes the warning may name: administrable, and never archived', () => {
+  it('the CREATE form is fed the codes in use, and the warning can name the company that holds one', async () => {
+    await create({ legalName: 'Chin Hin Construction Engineering Sdn Bhd', companyLabel: 'ASG' });
+    const codes = await codesOnCreateForm();
+    expect(
+      codes.find((h) => h.code === 'ASG')?.name,
+      'the create form can name the holder — "already in use" without a name is not this feature',
+    ).toBe('Chin Hin Construction Engineering Sdn Bhd');
+  });
+
+  it('a company with NO code is not in that list — there is nothing to collide with', async () => {
+    await create({ legalName: 'Nameless Sdn Bhd' });
+    const codes = await codesOnCreateForm();
+    expect(codes.some((h) => h.name === 'Nameless Sdn Bhd'), 'blank is not a code').toBe(false);
+  });
+
+  it('an ARCHIVED company is not in it either — a code recycled from a retired company is not a collision', async () => {
+    await create({ legalName: 'Retired Holdings Bhd', companyLabel: 'OLD' });
+    await create({ legalName: 'Still Trading Sdn Bhd', companyLabel: 'LIVE' });
+    await owner.db
+      .update(schema.company)
+      .set({ archivedAt: new Date() })
+      .where(eq(schema.company.legalName, 'Retired Holdings Bhd'));
+
+    const codes = await codesOnCreateForm();
+    expect(codes.some((h) => h.code === 'LIVE'), 'a live company still warns').toBe(true);
+    expect(
+      codes.map((h) => h.name),
+      'and the archived one is not merely un-warned — its NAME never reaches the browser for this feature',
+    ).not.toContain('Retired Holdings Bhd');
+  });
+
+  it('the COMPANY DETAIL form is fed the same list, from the same administrable read', async () => {
+    await create({ legalName: 'Chin Hin Construction Engineering Sdn Bhd', companyLabel: 'ASG' });
+    const companies = await listCompanies(ADMIN, { includeArchived: true, adminOnly: true });
+    const self = companies.find((c) => c.name === 'Chin Hin Construction Engineering Sdn Bhd')!;
+
+    const tree = await CompanyMaintenancePage({
+      params: Promise.resolve({ companyId: self.id }),
+      searchParams: Promise.resolve({}),
+    });
+    const panel = findElement(tree, CompanyPanel);
+    expect(panel, 'the detail screen renders CompanyPanel').not.toBeNull();
+    const codes = panel!.props!.codesInUse as CompanyCodeHolder[];
+    expect(
+      codes.find((h) => h.id === self.id)?.code,
+      'the company being edited IS in the list — it is `excludeId` on the field, not a hole in the data, ' +
+        'that stops the tab warning about its own stored code (pinned in the .dom test)',
+    ).toBe('ASG');
+  });
+
+  it('it never names a company this admin cannot administer — the warning does not widen what they can see', async () => {
+    // A second company, then the session narrowed to the FIRST one only. `app.is_admin_for` is the
+    // database's own predicate and the same one the Organization listing filters by; the warning must not
+    // reach past it, because naming a company is exactly the disclosure feedback ab77dc1f was raised over.
+    await create({ legalName: 'Out Of Scope Sdn Bhd', companyLabel: 'OOS' });
+    const before = await codesOnCreateForm();
+    expect(before.some((h) => h.code === 'OOS'), 'precondition: a group-wide admin does see it').toBe(true);
+
+    ADMIN = { ...adminCtx(b), grants: [{ role: 'hr_admin', companyId: b.companyId }] };
+    const codes = await codesOnCreateForm();
+    expect(
+      codes.map((h) => h.name),
+      'a company-scoped admin is not told the name of a company outside their scope',
+    ).not.toContain('Out Of Scope Sdn Bhd');
   });
 });

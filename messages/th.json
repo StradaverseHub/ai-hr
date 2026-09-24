@@ -7011,6 +7011,7 @@
       "sectionContactInfo": "ข้อมูลการติดต่อ",
       "companyCode": "รหัสบริษัท",
       "companyCodeHint": "ชื่อย่อ ตัวย่อ หรือรหัสภายใน",
+      "companyCodeDuplicate": "{company} ใช้รหัสนี้อยู่แล้ว",
       "industry": "อุตสาหกรรม",
       "website": "เว็บไซต์",
       "websiteHint": "https://example.com",

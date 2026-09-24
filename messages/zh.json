@@ -7011,6 +7011,7 @@
       "sectionContactInfo": "联系信息",
       "companyCode": "公司代码",
       "companyCodeHint": "简称、缩写或内部代码",
+      "companyCodeDuplicate": "{company} 已使用此代码。",
       "industry": "行业",
       "website": "网站",
       "websiteHint": "https://example.com",

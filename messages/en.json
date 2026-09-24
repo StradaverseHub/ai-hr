@@ -7011,6 +7011,7 @@
       "sectionContactInfo": "Contact Information",
       "companyCode": "Company code",
       "companyCodeHint": "Short name, abbreviation, or internal code",
+      "companyCodeDuplicate": "{company} already uses this code.",
       "industry": "Industry",
       "website": "Website",
       "websiteHint": "https://example.com",

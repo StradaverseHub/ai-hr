@@ -11,6 +11,8 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { CompanyPanel } from '@/components/company-panel';
 import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
+// 7d2df42a — the duplicate-code warning's data, from the administrable read already taken below.
+import { companyCodeHolders } from '@/lib/company-code';
 import { resolveGroupTree } from '../group-tree';
 import {
   archiveCompanyAction,
@@ -156,6 +158,11 @@ export default async function CompanyMaintenancePage({
         // shows. Re-parenting into a company you cannot administer is refused by the service anyway;
         // not offering it keeps the screen from disclosing that the company exists.
         companies={companies}
+        // 7d2df42a — the codes already in use, for the warning under the Company Code field. Derived from
+        // the SAME `adminOnly` read above (no second query, no second source), and `companyCodeHolders`
+        // drops the archived ones: a code recycled from a company retired years ago is not a collision
+        // worth a warning, and an archived company's name is not shipped to the browser for one either.
+        codesInUse={companyCodeHolders(companies)}
         statutory={statutory}
         bankProfiles={bankProfiles}
         statutoryAuthorities={authorities}

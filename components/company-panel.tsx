@@ -24,6 +24,10 @@ import { TabSaveScope } from './tab-save-scope';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 import { Button, Field, inputCls } from './ui';
+// 7d2df42a — the Company Code input and its duplicate warning, shared with the create form so the two
+// screens that edit this column cannot disagree about what a duplicate is.
+import { CompanyCodeField } from './company-code-field';
+import type { CompanyCodeHolder } from '@/lib/company-code';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { CompanyLogo, CompanyLogoEdit } from './company-logo';
 import { EmployeeSearchField, type EmployeeSearchOption } from './employee-search-field';
@@ -896,6 +900,7 @@ function StatutoryAuthorityCard({
 export function CompanyPanel({
   company,
   companies,
+  codesInUse = [],
   statutory,
   bankProfiles,
   statutoryAuthorities = [],
@@ -907,6 +912,14 @@ export function CompanyPanel({
 }: {
   company: PanelCompany;
   companies: { id: string; name: string }[];
+  /**
+   * 7d2df42a — the companies that already hold a Company Code, so the General tab can warn (and NAME
+   * the other company) when the operator types one that is taken. Built on the server by
+   * `companyCodeHolders` from the same `adminOnly` read `companies` comes from, so it can never name a
+   * company this admin could not already see by name on the listing. Defaulted to `[]` because it is a
+   * WARNING: a caller that does not pass it gets no warning, never a broken form.
+   */
+  codesInUse?: readonly CompanyCodeHolder[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
   // R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped
@@ -1161,8 +1174,12 @@ export function CompanyPanel({
                   "Company Label" here and "Code" on the listing, for the same `company.company_label` —
                   which is why the reporter filed the create-form gap as "Company Code is missing" and why
                   their request asks for "consistent labels". The create form uses this same key. */}
+              {/* 7d2df42a — warns, as you type, when another company already uses this code, and names it.
+                  `excludeId` is this company: its OWN stored code is not a duplicate of itself, or the tab
+                  would warn about every coded company the moment it opened. Still not required, still not
+                  refused — the save path is untouched. */}
               <Field label={t('companyCode')}>
-                <input name="companyLabel" defaultValue={c.companyLabel ?? ''} className={inputCls} placeholder={t('companyCodeHint')} />
+                <CompanyCodeField defaultValue={c.companyLabel ?? ''} codesInUse={codesInUse} excludeId={c.id} />
               </Field>
               <Field label={t('regNo')}>
                 <input name="registrationNo" defaultValue={c.registrationNo ?? ''} className={inputCls} />
