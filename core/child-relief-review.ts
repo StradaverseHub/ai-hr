@@ -308,7 +308,11 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
       familyBy.set(d.personId, list);
     }
 
-    const asOfDate = new Date(`${asOf}T00:00:00+08:00`);
+    // `childAgeYears` parses a date of birth as `${dob}T00:00:00Z`, so the OTHER endpoint of the age
+    // subtraction is built the same way — otherwise an eight-hour offset could flip a child's whole-year
+    // age on their birthday, which is the one day the eligibility rule turns on. The DATE itself is the
+    // Kuala Lumpur date (§8), not the server's.
+    const asOfDate = new Date(`${asOf}T00:00:00Z`);
     const people: ChildReliefReviewPerson[] = [];
     const seen = new Map<string, ChildReliefReviewPerson>();
     for (const r of rows) {
