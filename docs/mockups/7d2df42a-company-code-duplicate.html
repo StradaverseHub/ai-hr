@@ -1,0 +1,117 @@
+<meta charset="utf-8">
+<title>Company Code — warn on a duplicate, do not refuse</title>
+<!--
+  7d2df42a. Measured 2026-09-24 on main and on PRODUCTION.
+  company.company_label is nullable free text (db/schema.ts:235, "short name / abbreviation / internal
+  code"). The create form now writes it (r336, item 3783fd87) through the same normNullableText the update
+  path uses. NOT required and NOT unique-checked, per the approved plan.
+  PRODUCTION, 13 companies: 7 blank. Set: ASG, CHCE, CHCE_v1, SMSB, XYZ, plus "ISEDECOR BINA SDN BHD"
+  (the full legal name) and "PRIVATE CO." — the two that a uniqueness constraint would make contentious.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:960px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .tag{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0 0 7px}
+ .tag.b{color:var(--bad)}.tag.a{color:var(--ok)}
+ .card{border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:#fff}
+ .ch{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .f{padding:6px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9}
+ .f:last-child{border-bottom:none}
+ .f .k{color:var(--mf);display:block;font-size:10px;margin-bottom:2px}
+ .inp{border:1px solid var(--rule);border-radius:4px;padding:4px 7px;font-size:11px;background:#fdfdfe}
+ .inp.warn{border-color:#e0b483;background:#fdfaf4}
+ .inp.bad{border-color:#d9a9a2;background:#fdf6f5}
+ .msg{font-size:10.5px;margin-top:4px}
+ .msg.warn{color:var(--warn)}
+ .msg.bad{color:var(--bad)}
+ table{border-collapse:collapse;width:100%;font-size:11px;margin-top:8px}
+ th,td{border:1px solid var(--rule);padding:5px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.odd{background:#fdf6f5;color:var(--bad)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .okbox{margin-top:11px;border:1px solid #bcdccb;background:#f4faf6;border-radius:8px;padding:11px;font-size:11.5px;color:var(--ok);line-height:1.55}
+ .okbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Company Code &mdash; catch the duplicate, don&rsquo;t forbid it</h1>
+  <p class="sub">You asked for both a required field and a duplicate check. We are proposing one of them, and telling you why.</p>
+
+  <div class="sec">
+    <h2><b>What we propose</b> &mdash; tell you at the moment it matters</h2>
+    <div class="bd">
+      <div class="two">
+        <div>
+          <p class="tag b">A hard rule would do this</p>
+          <div class="card">
+            <div class="ch">Add New Company</div>
+            <div class="f"><span class="k">Company code *</span>
+              <div class="inp bad">CHCE</div>
+              <div class="msg bad">This code is already in use. You cannot save.</div></div>
+          </div>
+          <p class="note">Correct, and unhelpful: it stops the work until somebody resolves a naming
+            question they may not be able to answer today.</p>
+        </div>
+        <div>
+          <p class="tag a">What we propose instead</p>
+          <div class="card">
+            <div class="ch">Add New Company</div>
+            <div class="f"><span class="k">Company code</span>
+              <div class="inp warn">CHCE</div>
+              <div class="msg warn">Chin Hin Construction Engineering Sdn Bhd already uses this code.</div></div>
+          </div>
+          <div class="okbox"><b>It names the company that already has it</b>, so you can tell an accident
+            from an intention &mdash; and you can still save if you meant it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>Why not compulsory, and why not enforced</b></h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">Your thirteen companies today:</p>
+      <table>
+        <tr><th>Code</th><th>Company</th></tr>
+        <tr><td>ASG</td><td>Ajiya Safety Glass Sdn Bhd</td></tr>
+        <tr><td>CHCE</td><td>Chin Hin Construction Engineering Sdn Bhd</td></tr>
+        <tr><td>CHCE_v1</td><td>CHIN HIN CONSTRUCTION ENGINEERING SDN BHD</td></tr>
+        <tr><td>SMSB</td><td>Signature Manufacturing Sdn Bhd</td></tr>
+        <tr><td>XYZ</td><td>XYZ Bina Sdn Bhd</td></tr>
+        <tr><td class="odd">PRIVATE CO.</td><td>Kerjaya Riang Sdn Bhd</td></tr>
+        <tr><td class="odd">ISEDECOR BINA SDN BHD</td><td>Isedecor Bina Sdn Bhd</td></tr>
+        <tr><td>&mdash; none &mdash;</td><td><i>and seven more with no code at all</i></td></tr>
+      </table>
+      <p class="note"><b>A required field would block seven of your companies</b> from being edited and
+        saved until somebody invents a code for each. <b>An enforced unique rule would reject the two
+        highlighted rows</b> the first time anyone touched them &mdash; and would decide, permanently, what
+        a code is allowed to be. Neither is a decision a form should make for you.</p>
+      <p class="note">The warning gives you what you actually asked for &mdash; not duplicating codes by
+        accident &mdash; without either of those consequences.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>If you do want the hard rules</h3>
+    <p><b>Say so and we will build them</b> &mdash; but tidy first. We will give you the list above as a
+      report so you can fix &ldquo;PRIVATE CO.&rdquo; and the one holding a legal name, and fill in the
+      seven blanks. Turning on the rules after that costs nothing and breaks nothing; turning them on now
+      would leave you unable to save two of your own companies.</p>
+  </div>
+</div>

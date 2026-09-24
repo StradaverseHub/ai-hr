@@ -1,0 +1,107 @@
+<meta charset="utf-8">
+<title>Missing profile facts — fill them in before deciding what a blank means</title>
+<!--
+  73ddd5a1. Measured 2026-09-23/24 on PRODUCTION.
+  76 active employees: 55 have no gender recorded, 48 no marital status.
+  MTL ledger by employee gender: male 11 accruals +1078.00 with 11 adjustments -1078.00 (net 0);
+  BLANK gender 56 accruals +5488.00 with ONE adjustment -98.00 => 55 employments hold a net 98-day
+  Maternity balance (5,390 days); female 12 accruals +1176.00, 7 adjustments -686.00.
+  r334 (item d272834b) fixed the SCREENS: a type you do not qualify for no longer appears on the balance
+  cards or in the Request Leave list. The GRANT path still treats a MISSING fact as qualifying
+  (core/leave.ts, unknown policy 'allow'), deliberately: after the r334 normalisation the only lists still
+  reaching that policy are genuine restrictions, including CGL and NDL's five-of-six marital lists, so
+  flipping it to 'exclude' would withhold Caregiver and Natural Disaster Leave from the 48.
+  scripts/report-ineligible-leave-balances.ts already exists (r334) and is read-only.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1000px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+ .n{border:1px solid var(--rule);border-radius:8px;padding:10px;text-align:center}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .n b{display:block;font-size:20px}
+ .n span{font-size:10.5px;color:var(--mf)}
+ .steps{counter-reset:s;margin-top:4px}
+ .step{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid #f3f4f9}
+ .step:last-child{border-bottom:none}
+ .step .num{flex:0 0 22px;height:22px;border-radius:99px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+ .step .num.wait{background:#cfd0dc;color:var(--mf)}
+ .step .txt{font-size:11.5px;line-height:1.5}
+ .step .txt b{display:block;margin-bottom:2px}
+ table{border-collapse:collapse;width:100%;font-size:10.5px;margin-top:8px}
+ th,td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Fill the profiles in first &mdash; then the hard question stops being hard</h1>
+  <p class="sub">More than half your workforce has no gender recorded, and that field decides who gets which leave.</p>
+
+  <div class="sec">
+    <h2><b>The shape of it</b></h2>
+    <div class="bd">
+      <div class="nums">
+        <div class="n hot"><b>55</b><span>of 76 active employees<br>have no gender recorded</span></div>
+        <div class="n hot"><b>48</b><span>have no<br>marital status</span></div>
+        <div class="n hot"><b>5,390</b><span>days of Maternity Leave held<br>by 55 people we cannot place</span></div>
+      </div>
+      <p class="note"><b>The screens are already fixed.</b> Since last week a leave type you do not qualify
+        for no longer appears on your balance cards or in your Request Leave list. What is left is the
+        history: entitlement that was granted before, to people whose profile does not say whether they
+        qualify.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>What we propose</b> &mdash; in this order, because the order is the point</h2>
+    <div class="bd">
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div class="txt"><b>We send you the list.</b>
+          Every affected employee, which leave type, how many days, and which fact is missing. The report
+          already exists and only reads &mdash; it changes nothing.</div></div>
+        <div class="step"><div class="num">2</div><div class="txt"><b>You fill the fields in.</b>
+          For most of these people it is a two-minute job, and it is the only step that actually solves the
+          problem rather than working around it.</div></div>
+        <div class="step"><div class="num wait">3</div><div class="txt"><b>Then you tell us what a blank
+          should mean</b> &mdash; once the number is small enough that the answer barely matters either
+          way.</div></div>
+        <div class="step"><div class="num wait">4</div><div class="txt"><b>And only then we reverse</b> the
+          Maternity days still standing for anyone who genuinely should not have them. Not before you say
+          so.</div></div>
+      </div>
+      <div class="warnbox">
+        <b>Why we are not just changing the rule now.</b> Treating a blank as &ldquo;does not qualify&rdquo;
+        would take Caregiver Leave and Natural Disaster Leave away from the 48 people with no marital
+        status recorded &mdash; because those two types genuinely restrict by it. We would be fixing one
+        wrong grant by cancelling two real ones, for more people.
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Nothing is broken while this sits</h3>
+    <p><b>The cards and the Request Leave list are already correct.</b> This is about what was granted in
+      the past, and what happens at the next year-open. Nobody can currently apply for leave they do not
+      qualify for.</p>
+    <p><b>We will not delete a balance on a guess.</b> Those are days on real employees' records. Step 4
+      happens when you say it does, and we will show you exactly what it would change first.</p>
+  </div>
+</div>
