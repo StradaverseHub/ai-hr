@@ -193,6 +193,16 @@ describe('r336 · Section B derives its figures and never offers them as inputs'
     const user = userEvent.setup();
     mount('en', { extended: WORKING_DAY });
     await openModal(user, 'en');
+    // ⚠️ NON-VACUITY. A VALID Section A row is filled FIRST, so the grand total is above zero and the
+    // submit button would be enabled but for the offending Section B row. Without it this assertion passes
+    // on an empty form — the button is disabled because nothing is claimed, not because of the refusal.
+    await user.type(
+      screen.getByTestId('leave-credit-section-a').querySelector('input[name="aWorkedDate"]') as HTMLInputElement,
+      '2026-09-20',
+    );
+    await waitFor(() => expect(screen.getByTestId('leave-credit-grand-total')).toHaveTextContent('1'));
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
+
     const section = screen.getByTestId('leave-credit-section-b');
     await user.type(section.querySelector('input[name="bWorkedDate"]') as HTMLInputElement, '2026-09-16');
     await user.type(section.querySelector('input[name="bStart"]') as HTMLInputElement, '18:00');
@@ -207,6 +217,12 @@ describe('r336 · Section B derives its figures and never offers them as inputs'
     const user = userEvent.setup();
     mount('en', { extended: REST_DAY_VIEW });
     await openModal(user, 'en');
+    // ⚠️ NON-VACUITY, as above: a valid Section A row first, so the button is enabled before the bad row.
+    await user.type(
+      screen.getByTestId('leave-credit-section-a').querySelector('input[name="aWorkedDate"]') as HTMLInputElement,
+      '2026-09-19',
+    );
+    await waitFor(() => expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false));
     const section = screen.getByTestId('leave-credit-section-b');
     await user.type(section.querySelector('input[name="bWorkedDate"]') as HTMLInputElement, '2026-09-20');
     await waitFor(() => expect(screen.getByTestId('leave-credit-section-b-refusal')).toBeTruthy());
@@ -225,10 +241,14 @@ describe('r336 · Section A refuses a working day, by name, and blocks the submi
     const section = screen.getByTestId('leave-credit-section-a');
     await user.type(section.querySelector('input[name="aWorkedDate"]') as HTMLInputElement, '2026-09-16');
     await waitFor(() => expect(screen.getByTestId('leave-credit-section-a-refusal')).toBeTruthy());
+    // ⚠️ NON-VACUITY: the row carries a date and a days figure, so the grand total is 1 and the button
+    // would be enabled but for the refusal — the assertion below is about the refusal, not about an
+    // empty form.
+    expect(screen.getByTestId('leave-credit-grand-total')).toHaveTextContent('1');
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('leave-credit-section-a-refusal')).toHaveTextContent(
       'This date is a working day. Use Extended ordinary-day work instead.',
     );
-    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('the day type is read-only, resolved from the roster — never an input', async () => {
