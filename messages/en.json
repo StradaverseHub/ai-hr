@@ -2432,6 +2432,8 @@
       "laterOther": "Includes entries dated after this leave year",
       "panelLaterIncludes": "This leave year only. The Balance on the card also counts {span, select, next {next leave year: {parts}} other {later leave years: {parts}}}",
       "panelLaterOther": "This leave year only. The Balance on the card also counts entries dated after this leave year",
+      "sharedFromPool": "These days come from the {pool} balance.",
+      "sharedPoolHolder": "These days are shared with {types}.",
       "takenOnlyCaption": "Taken — no entitlement",
       "cycleDates": "Leave year {from} – {to}",
       "details": "Details",

@@ -2432,6 +2432,8 @@
       "laterOther": "Bao gồm các mục có ngày sau năm nghỉ phép này",
       "panelLaterIncludes": "Chỉ năm nghỉ phép này. Số dư trên thẻ còn tính {span, select, next {năm nghỉ phép tiếp theo: {parts}} other {các năm nghỉ phép sau: {parts}}}",
       "panelLaterOther": "Chỉ năm nghỉ phép này. Số dư trên thẻ còn tính các mục có ngày sau năm nghỉ phép này",
+      "sharedFromPool": "Những ngày này được lấy từ số dư {pool}.",
+      "sharedPoolHolder": "Những ngày này được dùng chung với {types}.",
       "takenOnlyCaption": "Đã nghỉ — không có định mức",
       "cycleDates": "Năm nghỉ phép {from} – {to}",
       "details": "Chi tiết",

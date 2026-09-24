@@ -85,15 +85,33 @@ export function MyLeaveDashboard({
     setOpen(true);
   };
 
+  /**
+   * 8d3a7bff — WHICH HALF OF A SHARED BALANCE THIS CARD IS.
+   *
+   * `leave_type.balance_source_type_id` makes one type spend another's ledger (production has two such
+   * pairs: Emergency → Annual, Compassionate → Special). BOTH halves get a card, and both must: the
+   * borrower is a type the employee can really apply for, and the pool is where the days live. What the
+   * reporter saw was that the two cards were the same card twice — because `balanceStoryTypeId`
+   * (lib/shared-leave-balance.ts) builds a borrower's figures from the POOL's breakdown, so Entitlement,
+   * Earned so far, Taken, Pending and Balance printed on the borrower were the pool's, digit for digit.
+   *
+   * ⚠️ THE FIGURES ARE NOT THE BUG AND MUST NOT BE "FIXED" HERE. Read that file's header: giving a
+   * borrower its own breakdown produced "YTD Entitled 0.00 … Balance 10.00" under a red notice telling HR
+   * to create an entitlement table — the one change that would stop it borrowing. Nothing about which
+   * figures are computed changes; this decides only which of them a borrower REPEATS, and what each card
+   * says about the other. `null` for an ordinary type, which takes the untouched path.
+   */
+  const poolRole = (c: MyLeaveDashboardCard): 'pool' | 'borrower' | null =>
+    c.sharedBalance == null ? null : c.sharedBalance.sourceLeaveTypeId === c.leaveTypeId ? 'pool' : 'borrower';
+
   /** Lines every card shares under its headline: caption, shared pool, cycle dates, Details. */
   const footer = (c: MyLeaveDashboardCard) => (
     <>
       {c.sharedBalance && otherContributors(c.sharedBalance, c.leaveType).length > 0 && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {tTable('sharedBalanceWith', {
-            pool: c.sharedBalance.sourceLeaveTypeName,
-            types: otherContributors(c.sharedBalance, c.leaveType).join(', '),
-          })}
+        <p className="mt-2 text-[11px] text-muted-foreground" data-testid="shared-balance-caption">
+          {poolRole(c) === 'borrower'
+            ? t('sharedFromPool', { pool: c.sharedBalance.sourceLeaveTypeName })
+            : t('sharedPoolHolder', { types: otherContributors(c.sharedBalance, c.leaveType).join(', ') })}
         </p>
       )}
       {entitlementStatusNeedsNotice(c.entitlementStatus) && (
@@ -248,6 +266,12 @@ export function MyLeaveDashboard({
   const smallCard = (c: MyLeaveDashboardCard) => {
     const v = leaveVisual({ color: c.color, icon: c.icon, code: c.code });
     const Icon = v.Icon;
+    // A borrower's headline is the one figure that is ABOUT this type: how much of the pool is still
+    // applicable for. For the cycle in force it is the Apply form's figure verbatim (`canApplyFor`); for an
+    // earlier leave year there is no applying to do, so it is that year's Remaining — the same pair of
+    // labels, chosen the same way, as the ring's third arc (`segmentLabel`).
+    const borrowed = poolRole(c) === 'borrower';
+    const borrowedValue = c.isCurrentCycle ? c.canApplyFor : c.remaining;
     return (
       <article
         key={c.leaveTypeId}
@@ -265,6 +289,21 @@ export function MyLeaveDashboard({
           <>
             <p className="mt-2 text-xl font-bold tabular-nums">{fmt(c.taken)}</p>
             <p className="text-[11px] text-muted-foreground">{t('takenOnlyCaption')}</p>
+          </>
+        ) : borrowed ? (
+          // 8d3a7bff — the borrowing half of a shared balance. Entitlement, Earned so far, Taken, Pending and
+          // Balance are the POOL's figures (see `poolRole`); printing them here said this type had an
+          // allowance of its own and made the pool's card look duplicated. The pool's card still prints every
+          // one of them, unchanged, and the caption under this one names it.
+          <>
+            <p
+              className={`mt-2 text-xl font-bold tabular-nums ${borrowedValue != null && borrowedValue < 0 ? 'text-destructive' : ''}`}
+              data-testid={c.isCurrentCycle ? 'can-apply-for' : undefined}
+            >
+              {fmt(borrowedValue)}
+            </p>
+            <p className="text-[11px] text-muted-foreground">{c.isCurrentCycle ? t('canApplyFor') : t('remaining')}</p>
+            {laterLine(c)}
           </>
         ) : (
           <>
