@@ -27,8 +27,11 @@ import { resolveEssView } from '@/core/ess-view';
 // 296fc027 — the employee replacement-leave request path, reached through the leave-pack facade.
 import {
   decideReplacementLeaveRequest,
+  extendedHoursDayForEmployment,
   submitReplacementLeaveRequest,
   workedDayKindForEmployment,
+  type LeaveCreditExtendedDayView,
+  type ReplacementRequestLineInput,
 } from '@/packs/leave/service';
 import { localizeLeaveError } from '@/app/me/actions';
 // 5ff7daff — the ONE return-URL builder every /approvals decide action redirects through, so a replacement
@@ -428,6 +431,27 @@ export async function leaveCreditDayKindAction(
 }
 
 /**
+ * r336 cbfa8b0b · Section B's four read-only facts for one date — the scheduled shift end, the actual
+ * clock-out and the measured extended minutes the row's credit is derived from.
+ *
+ * Best-effort (null on anything unexpected) and NEVER the control, exactly like `leaveCreditDayKindAction`
+ * above: the submit action's service re-resolves all of it, and the approval re-resolves it again against
+ * the live attendance row. What this is for is that the employee sees the day's real times before they
+ * type a window, rather than guessing and being refused after the round trip.
+ */
+export async function leaveCreditExtendedDayAction(workedDate: string): Promise<LeaveCreditExtendedDayView | null> {
+  const session = await getSession();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;
+  try {
+    const me = await myEmployment(session);
+    if (!me) return null;
+    return await extendedHoursDayForEmployment(session, me.employmentId, workedDate);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 296fc027 · Submit an employee replacement-leave request.
  *
  * The form posts one repeated field per worked-date row (`workedDate`, plus `days` OR `fromTime`/`toTime`
@@ -444,19 +468,49 @@ export async function leaveCreditDayKindAction(
 export async function submitReplacementLeaveRequestAction(formData: FormData) {
   const session = await getSession();
   const unit = String(formData.get('unit') ?? 'day') === 'hour' ? ('hour' as const) : ('day' as const);
-  const workedDates = formData.getAll('workedDate').map(String);
-  const daysRaw = formData.getAll('days').map(String);
-  const fromTimes = formData.getAll('fromTime').map(String);
-  const toTimes = formData.getAll('toTime').map(String);
 
-  const lines = workedDates
-    .map((workedDate, i) => ({
+  // ── r336 cbfa8b0b · TWO SECTIONS, TWO SETS OF FIELD NAMES ────────────────────────────────────────────
+  // Section A posts `aWorkedDate` + `aDays`; Section B posts `bWorkedDate` + `bStart` + `bEnd`. They are
+  // deliberately NOT one shared `workedDate` list: this zip is BY INDEX, and a shared list would be longer
+  // than either section's own value list the moment both sections had rows, silently shifting every row
+  // after the first onto the wrong days or the wrong window. With separate names each array is the same
+  // length as its own section's rows by construction, which is the property the zip needs.
+  //
+  // THE LEGACY NAMES ARE STILL READ, and that is not dead code: `workedDate`/`days`/`fromTime`/`toTime` are
+  // what the pre-r336 form posted, and a browser holding a cached page would otherwise post a request this
+  // action silently read as empty. They map to Section A with NO `sourceType`, which is exactly what the
+  // service calls a legacy line (migration 0487's header).
+  const aDates = formData.getAll('aWorkedDate').map(String);
+  const aDays = formData.getAll('aDays').map(String);
+  const bDates = formData.getAll('bWorkedDate').map(String);
+  const bStarts = formData.getAll('bStart').map(String);
+  const bEnds = formData.getAll('bEnd').map(String);
+  const legacyDates = formData.getAll('workedDate').map(String);
+  const legacyDays = formData.getAll('days').map(String);
+  const legacyFrom = formData.getAll('fromTime').map(String);
+  const legacyTo = formData.getAll('toTime').map(String);
+
+  const lines: ReplacementRequestLineInput[] = [
+    ...aDates.map((workedDate, i) => ({
       workedDate: workedDate.trim(),
-      days: unit === 'day' ? Number(daysRaw[i] ?? 0) : undefined,
-      fromTime: unit === 'hour' ? (fromTimes[i] ?? '').trim() : undefined,
-      toTime: unit === 'hour' ? (toTimes[i] ?? '').trim() : undefined,
-    }))
-    .filter((l) => l.workedDate !== '');
+      days: Number(aDays[i] ?? 0),
+      sourceType: 'non_working_day' as const,
+    })),
+    ...bDates.map((workedDate, i) => ({
+      workedDate: workedDate.trim(),
+      // The claimed window. The CREDIT is not posted at all — the service derives it from the attendance
+      // record, so there is no figure here for a client to get wrong or to lie about.
+      fromTime: (bStarts[i] ?? '').trim(),
+      toTime: (bEnds[i] ?? '').trim(),
+      sourceType: 'extended_hours' as const,
+    })),
+    ...legacyDates.map((workedDate, i) => ({
+      workedDate: workedDate.trim(),
+      days: unit === 'day' ? Number(legacyDays[i] ?? 0) : undefined,
+      fromTime: unit === 'hour' ? (legacyFrom[i] ?? '').trim() : undefined,
+      toTime: unit === 'hour' ? (legacyTo[i] ?? '').trim() : undefined,
+    })),
+  ].filter((l) => l.workedDate !== '');
 
   try {
     const employmentId = (await myEmployment(session))?.employmentId;

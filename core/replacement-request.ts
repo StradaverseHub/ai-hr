@@ -84,6 +84,7 @@ import { assertNoOvertimeClaimForDatesTx } from './credit-ot-overlap';
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
 import type { ReplacementUnavailableReason } from '../lib/replacement-availability';
+import type { ExtendedHoursTiers } from '../lib/extended-hours';
 
 const STD_DAY_MINUTES = 480; // 8h — the same standard-day convention core/toil.ts and payroll use
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -304,6 +305,57 @@ async function resolvePolicyForTx(tx: Tx, employmentId: string) {
  */
 export function workedDayKindForEmployment(ctx: SessionContext, employmentId: string, date: string) {
   return withTenant(ctx, (tx) => resolveWorkedDayKindTx(tx, employmentId, date));
+}
+
+/**
+ * r336 cbfa8b0b · SECTION B'S READ-ONLY ROW, for one date — the scheduled shift end, the actual clock-out
+ * and the measured extended minutes the credit will be derived from. Read-only, RLS-scoped (an employee can
+ * resolve their own schedule and their own attendance), and NOT the control: submission and approval both
+ * re-resolve every one of these and refuse a date that no longer qualifies.
+ */
+export type LeaveCreditExtendedDayView = {
+  kind: ToilWorkedDayKind;
+  shiftEnd: string | null;
+  actualClockOut: string | null;
+  measuredExtendedMinutes: number;
+};
+
+export function extendedHoursDayForEmployment(
+  ctx: SessionContext,
+  employmentId: string,
+  date: string,
+): Promise<LeaveCreditExtendedDayView> {
+  return withTenant(ctx, (tx) => extendedHoursDayForEmploymentTx(tx, employmentId, date));
+}
+
+/**
+ * r336 · WHETHER SECTION B IS OFFERED TO THIS EMPLOYEE AT ALL, and on what figures.
+ *
+ * Returns null when the company has not switched extended hours on, which is every company on release
+ * (r334 shipped the switch defaulting to false). The page draws no Section B for a null, and the service
+ * refuses an extended-hours line for the same company regardless — the hidden section is the courtesy and
+ * the refusal is the control, the same arrangement the employee-request switch already uses.
+ *
+ * The TIERS come back with it because the form has to show the employee the credit their window earns as
+ * they type it, and a form that used r334's defaults while the company had moved a threshold would promise
+ * a credit the approval refuses.
+ */
+export function extendedHoursOfferForEmployment(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<ExtendedHoursTiers | null> {
+  return withTenant(ctx, async (tx) => {
+    const resolved = await resolvePolicyForTx(tx, employmentId);
+    if (!resolved) return null;
+    const policy = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
+    if (!policy.extendedHoursEnabled) return null;
+    return {
+      extendedHalfDayMinutes: policy.extendedHalfDayMinutes,
+      extendedFullDayMinutes: policy.extendedFullDayMinutes,
+      extendedBreakMinutes: policy.extendedBreakMinutes,
+      extendedGraceMinutes: policy.extendedGraceMinutes,
+    };
+  });
 }
 
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };
