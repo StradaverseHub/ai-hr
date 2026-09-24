@@ -77,7 +77,10 @@ and the fold handles all of them. Nothing about ms was ever Latin-1-bound.)
    **byte-for-byte** the document it was before this change. That is asserted, as three digests taken from
    main@fbe66e35, in `test/payslip-pdf-unicode.test.ts`.
 3. **Subset per document** (`embedFont(bytes, { subset: true })`). Measured deltas against the same
-   fixture: en +0, ms +0, **zh +53,361**, **ta +17,400**, **th +13,140**, **vi +13,955** bytes.
+   fixture: en +0, ms +0, **zh +54,039**, **ta +17,397**, **th +13,138**, **vi +14,025** bytes — a
+   Chinese payslip is 56,765 bytes against an English one's 2,931, from an 8.3 MB face. Render time,
+   same fixture: en 5 ms, zh 244 ms cold (of which ~61 ms is inflating the CJK face, once per process)
+   and 69 ms warm.
 4. **`fontkit@1.9.0`, NOT `@pdf-lib/fontkit`.** pdf-lib's own README names the fork; the fork writes
    corrupt subsets. Its CFF output rendered as unrelated ASCII letters, its TrueType output lost most of
    its glyphs (the embedded stream will not parse at all), and Tamil threw
