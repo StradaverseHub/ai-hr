@@ -64,7 +64,6 @@
 import { borangAUploadFilename, loadBorangAFile } from '../borang-a/shared';
 import { loadBorang8AFile } from '../borang-8a/shared';
 import { perkesoUploadFilename } from '@/lib/perkeso-socso-file';
-import { cp39FileForBatch, Cp39NotReadyError } from '@/localization/my/cp39-file';
 import { scopedAdmin } from '@/lib/scope';
 
 /**
@@ -212,36 +211,30 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
     descriptionKey: 'lhdnCp39Desc',
     periodKind: 'month',
     verification: 'specification-sample',
-    available: true,
-    build: async ({ companyId, periodKey }) => {
-      // ⚠️ `scopedAdmin`, NOT `isAdmin`. The existing `/payroll/reports/cp39-file` route gates on
-      // `isAdmin(s)`, which is true for an hr_admin grant on ANY company — so a guessed companyId there
-      // exports another company's employee names, identity card numbers and tax numbers. Both
-      // `loadBorangAFile` and `loadBorang8AFile` already refuse that way and say so in as many words; this
-      // module applies the stronger check to all three of its formats rather than inheriting the weaker
-      // one from the route it is NOT calling. Same bare 404 for every way of being refused, so the URL
-      // cannot be used to enumerate companies.
-      const { s, scopeIds } = await scopedAdmin();
-      if (!scopeIds.includes(companyId)) return { ok: false, status: 404, message: 'Not found' };
-      try {
-        // Select-only (audited): no artefact row, no domain event. The `recordFileReport` call that the
-        // download ROUTE makes is not reached from here, by construction — see the header.
-        const file = await cp39FileForBatch(s, { companyId, periodKey });
-        return {
-          ok: true,
-          filename: file.filename,
-          bytes: file.content,
-          contentType: 'text/plain; charset=us-ascii',
-        };
-      } catch (e) {
-        // A readiness failure is operator-fixable and names what is missing. Anything else is a bug and
-        // must not be dressed up as one.
-        if (e instanceof Cp39NotReadyError) {
-          return { ok: false, status: 422, message: `Cannot produce an LHDN e-Data PCB file: ${e.message}` };
-        }
-        throw e;
-      }
-    },
+    /*
+     * ⚠️ LISTED, NOT BUILT HERE — AND THE REASON IS THE PACK BOUNDARY, NOT A MISSING WRITER.
+     *
+     * The writer exists and ships: `localization/my/cp39-file.ts` (`buildCp39File` pure +
+     * `cp39FileForBatch` over the DB), served today by `/payroll/reports/cp39-file`. Saying "not
+     * available" would be the r296 defect — a screen denying a file that another screen one menu row
+     * away hands over.
+     *
+     * But THIS module is generic. `cp39FileForBatch` is reached by naming `localization/my` directly,
+     * which `test/country-pack-drift.test.ts` refuses for any file outside the audited debt allowlist —
+     * and that allowlist only ever SHRINKS (ADR-0080 D1/D7). The two formats below do not have the
+     * problem: `loadBorangAFile` / `loadBorang8AFile` ride `reportPreview`, and their own headers record
+     * that "`app/` never names `localization/my`". The e-Data FILE has no such read, so wiring it here
+     * would have meant adding debt to a ratchet designed to forbid exactly that.
+     *
+     * Fixing it properly means splitting `cp39FileForBatch` the way `loadBorangA` is split — a generic
+     * DB read in `app/` over a pure pack-side builder — or moving the MY format entries behind the pack
+     * surface beside `plannedForms`. Either is a statutory-file refactor and belongs in its own round
+     * with its own checking (CLAUDE.md §8), not in a screen's integration.
+     *
+     * So the row is listed with its provenance, and points at the screen that genuinely serves it today.
+     */
+    available: false,
+    unavailableReasonKey: 'lhdnCp39Pending',
   },
 
   /**

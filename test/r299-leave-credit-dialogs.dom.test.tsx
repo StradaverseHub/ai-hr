@@ -234,8 +234,30 @@ describe('The employee’s Leave Credit request', () => {
       fireEvent.click(screen.getByText(rr.trigger as string));
       const dialog = screen.getByRole('dialog');
       expect(dialog.textContent).toContain(rr.title as string);
-      expect(dialog.textContent).toContain(rr.eligibleDaysNote as string);
-      const date = dialog.querySelector('input[name="workedDate"]') as HTMLInputElement;
+      /*
+       * cbfa8b0b (r336) — THIS ASSERTION FOLLOWED THE SENTENCE, IT WAS NOT DROPPED.
+       *
+       * r299 pinned `eligibleDaysNote` ("Only a rest day, off day or public holiday can earn a credit"),
+       * which was true while the dialog held ONE kind of claim. The approved plan for cbfa8b0b put both
+       * kinds in one request, so that sentence became false by omission — extended hours on an ordinary
+       * WORKING day now earn a credit too — and the dialog renders `description` instead, which says both
+       * halves and keeps r299's "nothing is credited until your manager approves" clause verbatim.
+       *
+       * `eligibleDaysNote` still exists in all six catalogues with no renderer (cbfa8b0b left it rather
+       * than take a six-file deletion risk mid-round), so asserting it here would have gone on passing as
+       * a string comparison against a dead key while the screen said something else. Pinning what the
+       * dialog ACTUALLY shows is the point of this case.
+       */
+      expect(dialog.textContent).toContain(rr.description as string);
+      /*
+       * cbfa8b0b (r336) — `workedDate` became `aWorkedDate` (Section A's own field set).
+       *
+       * Not cosmetic: the dialog now holds TWO sections, and `app/leave/actions.ts` zips repeated form
+       * fields BY INDEX. One shared `workedDate` list across both sections would silently shift every row
+       * after the first as soon as both had rows, so the two sets are disjoint by construction. This case
+       * is Section A's, which is the claim r299 was written about.
+       */
+      const date = dialog.querySelector('input[name="aWorkedDate"]') as HTMLInputElement;
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-08' } });
       });
@@ -243,7 +265,24 @@ describe('The employee’s Leave Credit request', () => {
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-03' } });
       });
-      await waitFor(() => expect(screen.getByTestId('leave-credit-day-kind').textContent).toBe(rr.workingDayRefused as string));
+      /*
+       * cbfa8b0b (r336) — the refusal SEPARATED from the day-kind chip, and this case now pins both.
+       *
+       * r299 had one message doing two jobs: the chip printed "An ordinary working day cannot earn a
+       * credit", which named the day AND refused it. With Section B added that sentence became false —
+       * an ordinary working day CAN earn a credit now, for extended hours past the shift end — so the
+       * chip states the day kind from the roster and the refusal says where the claim belongs instead,
+       * in the reporter's own approved words.
+       *
+       * Asserting both is stronger than what it replaces: the old single assertion would have passed on
+       * a chip that refused without naming the day, or named the day without refusing.
+       */
+      const dayKindCopy = rr.dayKind as Record<string, string>;
+      const sectionACopy = rr.sectionA as Record<string, string>;
+      await waitFor(() => expect(screen.getByTestId('leave-credit-day-kind').textContent).toBe(dayKindCopy.workday));
+      expect(dialog.textContent, 'a working day in Section A must say where the claim belongs').toContain(
+        sectionACopy.workingDayRefused,
+      );
       expect(unresolved(dialog.textContent ?? '')).toBe(false);
     });
   }

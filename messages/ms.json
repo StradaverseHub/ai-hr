@@ -6910,6 +6910,7 @@
       "groupGovernmentStatutoryEmpty": "Tiada fail statutori kerajaan tersedia untuk syarikat ini.",
       "lhdnCp39": "e-Data PCB (CP39)",
       "lhdnCp39Desc": "Potongan cukai bulan ini (PCB dan CP38) untuk portal e-PCB Plus LHDN.",
+      "lhdnCp39Pending": "Muat turun fail ini daripada Payroll → Reports buat masa ini. Ia akan dipindahkan ke sini dalam kemas kini kemudian.",
       "epfBorangA": "Borang A (EPFORMA2)",
       "epfBorangADesc": "Caruman KWSP bulan ini untuk portal majikan i-Akaun KWSP.",
       "socsoPerkeso": "Caruman PERKESO dan SIP",

@@ -6910,6 +6910,7 @@
       "groupGovernmentStatutoryEmpty": "No government statutory file is available for this company.",
       "lhdnCp39": "e-Data PCB (CP39)",
       "lhdnCp39Desc": "The month's tax deductions (PCB and CP38) for LHDN's e-PCB Plus portal.",
+      "lhdnCp39Pending": "Download this file from Payroll → Reports for now. It moves here in a later update.",
       "epfBorangA": "Borang A (EPFORMA2)",
       "epfBorangADesc": "The month's EPF contributions for the KWSP i-Akaun employer portal.",
       "socsoPerkeso": "SOCSO and EIS contributions",

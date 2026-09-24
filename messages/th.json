@@ -6910,6 +6910,7 @@
       "groupGovernmentStatutoryEmpty": "ไม่มีไฟล์ตามกฎหมายของรัฐสำหรับบริษัทนี้",
       "lhdnCp39": "e-Data PCB (CP39)",
       "lhdnCp39Desc": "ภาษีหัก ณ ที่จ่ายของเดือนนี้ (PCB และ CP38) สำหรับพอร์ทัล e-PCB Plus ของ LHDN",
+      "lhdnCp39Pending": "ดาวน์โหลดไฟล์นี้จาก Payroll → Reports ไปก่อน โดยจะย้ายมาที่นี่ในการอัปเดตถัดไป",
       "epfBorangA": "Borang A (EPFORMA2)",
       "epfBorangADesc": "เงินสมทบ EPF ของเดือนนี้ สำหรับพอร์ทัลนายจ้าง i-Akaun ของ KWSP",
       "socsoPerkeso": "เงินสมทบ SOCSO และ EIS",

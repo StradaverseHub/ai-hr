@@ -6910,6 +6910,7 @@
       "groupGovernmentStatutoryEmpty": "此公司暂无可用的政府法定文件。",
       "lhdnCp39": "e-Data PCB（CP39）",
       "lhdnCp39Desc": "本月的税务扣缴（PCB 和 CP38），用于内陆税收局 e-PCB Plus 门户网站。",
+      "lhdnCp39Pending": "目前请在 Payroll → Reports 中下载此文件。后续更新会将其移至此处。",
       "epfBorangA": "Borang A（EPFORMA2）",
       "epfBorangADesc": "本月的公积金缴款，用于公积金局 i-Akaun 雇主门户网站。",
       "socsoPerkeso": "社险与就业保险缴款",
