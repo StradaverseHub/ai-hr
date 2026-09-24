@@ -7,7 +7,7 @@
  * paid supplier later replaces the same screen by configuration rather than by a rebuild.
  *
  * TWO HALVES, in the house style. The SEAM half is a pure unit test of
- * app/admin/locations/clocking/map-provider.ts against fabricated environments — above all the EMPTY
+ * app/admin/work-locations/clocking/map-provider.ts against fabricated environments — above all the EMPTY
  * one, which is what production is: `.env.production` on the box holds fifteen variables and not one of
  * them is a map key, so "no key present" is the configuration that has to work and never throw. The
  * SOURCE-SHAPE half pins the promises that no behaviour test would notice a later round undoing: search
@@ -29,8 +29,8 @@ import {
   geocodeRequestUrl,
   parseGeocodeResults,
   resolveMapProvider,
-} from '../app/admin/locations/clocking/map-provider';
-import { CLOCKING_FIELDS } from '../app/admin/locations/clocking/form-fields';
+} from '../app/admin/work-locations/clocking/map-provider';
+import { CLOCKING_FIELDS } from '../app/admin/work-locations/clocking/form-fields';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -42,10 +42,10 @@ const withoutComments = (src: string) =>
     .filter((l) => !/^\s*(\/\/|\*)/.test(l))
     .join('\n');
 
-const SEARCH = 'app/admin/locations/clocking/address-search.tsx';
-const MAP = 'app/admin/locations/clocking/clocking-map.tsx';
-const BRIDGE = 'app/admin/locations/clocking/form-bridge.ts';
-const PROVIDER = 'app/admin/locations/clocking/map-provider.ts';
+const SEARCH = 'app/admin/work-locations/clocking/address-search.tsx';
+const MAP = 'app/admin/work-locations/clocking/clocking-map.tsx';
+const BRIDGE = 'app/admin/work-locations/clocking/form-bridge.ts';
+const PROVIDER = 'app/admin/work-locations/clocking/map-provider.ts';
 
 // ────────────────────────────────── THE SEAM ──────────────────────────────────
 

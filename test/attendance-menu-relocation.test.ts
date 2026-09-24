@@ -90,7 +90,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       '/admin/attendance/schedule',
       '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
-      '/admin/locations',
+      // 639bf4a5 (r336) — '/admin/locations' STOOD HERE. The row left this node for the Administration
+      // group in components/sidebar.tsx, reading "Physical Work Location" and opening
+      // /admin/work-locations: the work-site register is company-scoped master data carrying the branch
+      // mapping, not an attendance setting, and while it hung here MODULE_OF_HREF gated it behind the
+      // billable attendance module. Its guard case moved with it, to
+      // test/work-location-organization-relocation.test.ts — the SAME move 4509d2b8 made for Holidays,
+      // and the same reason this file's premise demands the case be moved rather than dropped.
       // 3fb1a611 (r299) — '/admin/toil' STOOD HERE: the row left with the page, which is a redirect stub to
       // Leave Config › Leave Credit now (see test/r299-leave-credit-screens.test.ts).
     ]);
@@ -129,7 +135,13 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/attendance/schedule',
     '/admin/attendance/schedule-assignment',
     '/admin/attendance-allowance',
-    '/admin/locations',
+    // 639bf4a5 (r336) — '/admin/locations' left this loop the way 4509d2b8's /admin/holidays did: MOVED,
+    // never dropped. The identical requireAdmin-in-its-own-page-body case now lives in
+    // test/work-location-organization-relocation.test.ts, which covers BOTH the relocated screen at
+    // /admin/work-locations and the three redirect stubs left at the old addresses — each of which calls
+    // the guard BEFORE it redirects, so a non-administrator following an old bookmark is refused rather
+    // than told where the screen went. Losing the case entirely would be the exact failure this file
+    // exists to prevent.
     // 3fb1a611 (r299) — '/admin/toil' left this loop: it is an UNGUARDED redirect stub now (a stub has nothing
     // to guard — the function-access precedent). Its destination, /admin/leave-config/leave-credit, calls
     // requireAdmin in its own page body, pinned by test/r299-leave-credit-screens.test.ts and

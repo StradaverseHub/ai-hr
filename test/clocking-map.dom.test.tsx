@@ -14,7 +14,7 @@
  *     dead button.
  *
  * ⚠️ THE HARNESS BUILDS ITS INPUTS FROM `CLOCKING_FIELDS`, not from a hand-copied list. The islands find
- * the fields through the enclosing <form> (app/admin/locations/clocking/form-bridge.ts), so a test form
+ * the fields through the enclosing <form> (app/admin/work-locations/clocking/form-bridge.ts), so a test form
  * whose field names had drifted from the real one would pass while the screen was broken.
  *
  * ⚠️ LEAFLET IS FAKED. The real library wants a layout engine jsdom does not have, and the point here is
@@ -27,10 +27,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import { ClockingAddressSearch } from '../app/admin/locations/clocking/address-search';
-import { ClockingMap } from '../app/admin/locations/clocking/clocking-map';
-import { OSM_PROVIDER, type MapProvider } from '../app/admin/locations/clocking/map-provider';
-import { CLOCKING_FIELDS } from '../app/admin/locations/clocking/form-fields';
+import { ClockingAddressSearch } from '../app/admin/work-locations/clocking/address-search';
+import { ClockingMap } from '../app/admin/work-locations/clocking/clocking-map';
+import { OSM_PROVIDER, type MapProvider } from '../app/admin/work-locations/clocking/map-provider';
+import { CLOCKING_FIELDS } from '../app/admin/work-locations/clocking/form-fields';
 
 type FakeState = {
   mapOptions: Record<string, unknown> | null;
@@ -191,8 +191,8 @@ vi.mock('../app/admin/actions', () => ({
 }));
 
 import * as leafletModule from 'leaflet';
-import { ClockingLocationForm } from '../app/admin/locations/clocking/clocking-form';
-import type { ClockingFormValues } from '../app/admin/locations/clocking/form-fields';
+import { ClockingLocationForm } from '../app/admin/work-locations/clocking/clocking-form';
+import type { ClockingFormValues } from '../app/admin/work-locations/clocking/form-fields';
 const fake = leafletModule as unknown as { __state: FakeState; __reset: () => void };
 
 /** A point that is NOT the island's fallback centre, so "the marker moved" cannot pass by accident. */
@@ -476,7 +476,7 @@ describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fil
           mode="new"
           values={{ ...blank, locationId: LINK }}
           linkableLocations={[{ id: LINK, code: 'HQ', name: 'Headquarters', companyName: 'Acme' }]}
-          cancelHref="/admin/locations"
+          cancelHref="/admin/work-locations"
         />
       </NextIntlClientProvider>,
     );

@@ -54,9 +54,9 @@ vi.mock('next/headers', () => ({
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import LocationsPage from '../app/admin/locations/page';
-import NewClockingLocationPage from '../app/admin/locations/clocking/new/page';
-import EditClockingLocationPage from '../app/admin/locations/clocking/[id]/page';
+import LocationsPage from '../app/admin/work-locations/page';
+import NewClockingLocationPage from '../app/admin/work-locations/clocking/new/page';
+import EditClockingLocationPage from '../app/admin/work-locations/clocking/[id]/page';
 import { createClockingLocationAction, updateClockingLocationAction } from '../app/admin/actions';
 import {
   CLOCKING_FIELDS,
@@ -66,19 +66,19 @@ import {
   clockingRowHref,
   readTypedClockingValues,
   typedKey,
-} from '../app/admin/locations/clocking/form-fields';
+} from '../app/admin/work-locations/clocking/form-fields';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 
-const LIST = 'app/admin/locations/page.tsx';
-const FORM = 'app/admin/locations/clocking/clocking-form.tsx';
-const NEW = 'app/admin/locations/clocking/new/page.tsx';
-const EDIT = 'app/admin/locations/clocking/[id]/page.tsx';
+const LIST = 'app/admin/work-locations/page.tsx';
+const FORM = 'app/admin/work-locations/clocking/clocking-form.tsx';
+const NEW = 'app/admin/work-locations/clocking/new/page.tsx';
+const EDIT = 'app/admin/work-locations/clocking/[id]/page.tsx';
 const ACTIONS = 'app/admin/actions.ts';
-const FIELDS = 'app/admin/locations/clocking/form-fields.ts';
-const NEW_ROUTE = '/admin/locations/clocking/new';
-const EDIT_ROUTE = '/admin/locations/clocking/[id]';
+const FIELDS = 'app/admin/work-locations/clocking/form-fields.ts';
+const NEW_ROUTE = '/admin/work-locations/clocking/new';
+const EDIT_ROUTE = '/admin/work-locations/clocking/[id]';
 
 /** The index of `needle` in `src`, asserted PRESENT first — `indexOf` gives -1 for an absent needle. */
 const at = (src: string, needle: string) => {
@@ -108,14 +108,39 @@ describe('f9afd1ce rev 2 — the two routes exist, guard themselves, and sit on 
     const column = permissions.slice(at(permissions, "screenKey: 'locations'"), permissions.indexOf('screenKey:', at(permissions, "screenKey: 'locations'") + 1));
     expect(column, 'on the SAME column, not a new SCREENS entry').toContain(`'${NEW_ROUTE}'`);
     expect(column).toContain(`'${EDIT_ROUTE}'`);
-    // No nav row: the pages are reached from the list.
+    // No nav row: the pages are reached from the list. Asserted for BOTH the old address and the new
+    // one (639bf4a5) — the pack must not regrow a row for either.
     expect(read('packs/attendance/index.ts')).not.toContain('/admin/locations/clocking');
+    expect(read('packs/attendance/index.ts')).not.toContain('/admin/work-locations/clocking');
   });
 
-  it('the menu row still opens /admin/locations (no fragment — the active predicate would never match), and the page leads with the clocking register', () => {
-    // packs/attendance/index.ts: the row's href is what MODULE_OF_HREF, the active predicate and three
-    // exact-set guards key on. "Lands on the clocking list" is delivered by PAGE ORDER instead.
-    expect(read('packs/attendance/index.ts')).toContain("{ href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true }");
+  /**
+   * 639bf4a5 (r336) — UPDATED, NOT LOOSENED. Until this round the first assertion read
+   *
+   *   expect(read('packs/attendance/index.ts')).toContain(
+   *     "{ href: <the old /admin/locations address>, labelKey: 'clockingLocation', icon: MapPin, adminOnly: true }");
+   *
+   * and pinned the menu row INSIDE the attendance pack. That is the decision this item reverses: the
+   * register is Administration › Physical Work Location now, a flat row in components/sidebar.tsx beside
+   * Organization, and the pack carries no row for it at all. So the same property — "exactly one row,
+   * and it opens the register with no fragment" — is asserted at the row's new home, and the pack is
+   * asserted EMPTY of it, which is the half that would fail if somebody put the old row back.
+   *
+   * (The old row is described rather than quoted: this file greps the pack source for that literal, and
+   * a quoted copy in a comment would satisfy the very assertion it replaced.)
+   *
+   * The r267 reasoning is unchanged and still load-bearing: no `#clocking` fragment on the href, because
+   * the sidebar's active predicate (components/nav-flyout.tsx isHrefActive) splits on `?` only and a
+   * fragment would stop the row ever lighting up. "Lands on the clocking list" is delivered by PAGE
+   * ORDER, which is what the rest of this case measures.
+   */
+  it('the menu row opens /admin/work-locations from the Administration group (no fragment), the pack carries none, and the page leads with the clocking register', () => {
+    const sidebar = read('components/sidebar.tsx');
+    expect(sidebar).toContain("{ href: '/admin/work-locations', labelKey: 'physicalWorkLocation', icon: MapPin }");
+    expect(sidebar.split("'/admin/work-locations'").length - 1, 'exactly one row in the rail').toBe(1);
+    expect(read('packs/attendance/index.ts'), 'the attendance pack advertises it no more').not.toContain(
+      "labelKey: 'clockingLocation',",
+    );
     const code = withoutComments(read(LIST));
     expect(at(code, "t('clockingHeading')"), 'the clocking register precedes the per-company holiday register').toBeLessThan(at(code, 'visible.map((c) => {'));
     expect(at(code, "t('clockingSharedTitle')")).toBeLessThan(at(code, 'action={createLocationAction}'));
@@ -749,7 +774,7 @@ describe('f9afd1ce rev 2 — the pages render', () => {
       expect(count(html, `name="${kept}"`), `the ${kept} control survives`).toBeGreaterThan(0);
     }
 
-    // ⚠️ THE MUTATION TARGET. Put either <select name="state"> back on app/admin/locations/page.tsx and
+    // ⚠️ THE MUTATION TARGET. Put either <select name="state"> back on app/admin/work-locations/page.tsx and
     // the first line fails; restore the <p>{t('stateNote')}</p> and the second does.
     expect(count(html, 'name="state"'), 'no State control on the edit row or the create form').toBe(0);
     const en = JSON.parse(read('messages/en.json')) as { admin: { locations: Record<string, string> } };

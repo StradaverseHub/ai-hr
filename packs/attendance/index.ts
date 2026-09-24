@@ -446,9 +446,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // entitlement gating the move exists to remove.
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     // 639bf4a5 (r336) — THE CLOCKING LOCATION ROW STOOD HERE and is DELIBERATELY GONE. It read
-    // `{ href: <the old /admin/locations address>, labelKey: 'clockingLocation', icon: MapPin, adminOnly: true }`
-    // (spelled out rather than quoted: three exact-set guards and this pack's own drift ratchet grep for
-    // the quoted specifier, and a commented-out copy is still a copy a future reader uncomments).
+    // It was one line: href = the old /admin/locations address, labelKey = the clocking-location nav key,
+    // icon = the map pin, adminOnly. DESCRIBED, NEVER QUOTED — four exact-set guards and this pack's own
+    // drift ratchet grep this file for those literals, so a verbatim copy in a comment would satisfy the
+    // assertions the move exists to reverse, and a commented-out row is still a row somebody uncomments.
     //
     // The screen is Administration › Physical Work Location now — a flat row beside Organization in
     // components/sidebar.tsx — because a place the company operates from is master data, not an

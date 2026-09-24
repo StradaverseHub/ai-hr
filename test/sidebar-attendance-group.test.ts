@@ -57,7 +57,6 @@ const SRC = SIDEBAR + PACK;
 const TICKET_HREFS = [
   '/admin/attendance',
   '/admin/attendance-allowance',
-  '/admin/locations',
 ] as const;
 
 /**
@@ -78,8 +77,29 @@ const TICKET_FOLDED = ['/admin/toil'] as const;
  * test/holidays-system-settings-relocation.test.ts and test/sidebar-system-settings-group.test.ts.
  */
 const TICKET_MOVED_OUT = ['/admin/holidays'] as const;
+
+/**
+ * 639bf4a5 (r336) — the SECOND ticket screen to leave this node, and the first to change address doing it.
+ *
+ * Clocking Location is Administration › Physical Work Location now, at `/admin/work-locations`, a flat row
+ * beside Organization in components/sidebar.tsx. The work-site register is `location.companyId`-scoped
+ * master data — it carries the branch mapping and is the only editor of either — and while it hung off
+ * this node MODULE_OF_HREF gated it behind the billable `attendance` module, which is the same fault
+ * 4509d2b8 moved Holidays out for. The clocking points moved with the site at the reporter's approval.
+ *
+ * Declared as a PAIR (`was` → `now`) rather than a bare href, because the rail-wide invariants below have
+ * to be asserted at the address the row carries today: "exactly once across the rail" read at the OLD
+ * address would be satisfied by a row that no longer exists anywhere. The old address is not gone — it is
+ * a guarded redirect stub — it simply has no menu row, which is asserted too.
+ */
+const TICKET_RE_ADDRESSED = [{ was: '/admin/locations', now: '/admin/work-locations' }] as const;
+
 /** Every ticket screen, wherever it now lives — the rail-wide invariants below hold for all five. */
-const ALL_TICKET_HREFS = [...TICKET_HREFS, ...TICKET_MOVED_OUT] as const;
+const ALL_TICKET_HREFS = [
+  ...TICKET_HREFS,
+  ...TICKET_MOVED_OUT,
+  ...TICKET_RE_ADDRESSED.map((r) => r.now),
+] as const;
 
 /**
  * ad52212d ROUND 1 — the four that still hold the ticket's relative order among themselves.
@@ -94,7 +114,10 @@ const ALL_TICKET_HREFS = [...TICKET_HREFS, ...TICKET_MOVED_OUT] as const;
  * the part of the ticket order this item did not touch, so it is still asserted.
  */
 // 3fb1a611 (r299) — two long now: /admin/toil was folded into Leave Credit (TICKET_FOLDED above).
-const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/locations'] as const;
+// 639bf4a5 (r336) — ONE long now: Clocking Location left the node (TICKET_RE_ADDRESSED above), so the
+// "relative order among themselves" the ticket asked for has only one member left inside this node and the
+// sequence case below says so rather than asserting an order over a single element.
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -133,7 +156,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
     const positions = TICKET_TAIL_HREFS.map((href) => node.indexOf(`'${href}'`));
     const sorted = [...positions].sort((a, b) => a - b);
-    expect(positions, 'the three keep the ticket order (Allowance → Locations → TOIL)').toEqual(sorted);
+    expect(positions, 'the tail keeps the ticket order among whichever members are still in this node').toEqual(sorted);
   });
 
   it('3fb1a611: Time off in lieu has LEFT the rail — folded into Leave Credit, its address a redirect', () => {
@@ -143,6 +166,22 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       expect(page, `${href} must still resolve, as a redirect to Leave Credit`).toContain(
         'redirect(`/admin/leave-config/leave-credit',
       );
+    }
+  });
+
+  it('639bf4a5: Clocking Location has LEFT this node — for Administration, at a new address, not for nowhere', () => {
+    // Stated positively, both halves, exactly as the Holidays case below: gone from the attendance node
+    // AND present in the Administration group. A row deleted from one file and never added to the other
+    // passes "not here" and strands the only screen that can create a work site.
+    for (const { was, now } of TICKET_RE_ADDRESSED) {
+      expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the Attendance settings node`).toBe(-1);
+      expect(node.indexOf(`'${now}'`), `${now} is NOT a child of the Attendance settings node either`).toBe(-1);
+      expect(countQuoted(SIDEBAR, now), `${now} is a row in components/sidebar.tsx`).toBe(1);
+      // …and the OLD address keeps no row anywhere, while still resolving as a guarded redirect stub.
+      expect(countQuoted(SRC, was), `${was} must have no menu row left anywhere in the rail`).toBe(0);
+      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx'), 'utf8');
+      expect(stub, `${was} must still resolve, guard first, as a redirect to ${now}`).toContain('requireAdmin()');
+      expect(stub, `${was} must forward to the register's new address`).toContain('LOCATIONS_LIST');
     }
   });
 
