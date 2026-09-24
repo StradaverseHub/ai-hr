@@ -103,10 +103,13 @@ export type SubmissionGroupKey = (typeof SUBMISSION_GROUPS)[number]['key'];
  *   `filed-file`          — a REAL file the customer actually filed with the agency is in `test/fixtures/`
  *                           and a golden test asserts our bytes equal it. The strongest claim available,
  *                           and the only one that has ever caught a transposed column.
- *   `specification-sample`— the agency's own PUBLISHED specification, INCLUDING a worked sample file from
- *                           that specification, golden-tested against the sample. Strong, and still not
- *                           the same thing: nothing produced this way has been through the agency's
- *                           portal, so an undocumented quirk of the real intake is not ruled out.
+ *   `specification-sample`— the agency's own PUBLISHED specification, plus a WORKED EXAMPLE from it that a
+ *                           test drives the writer with. Weaker than it first sounds, and the difference
+ *                           is worth stating: there is no sample FILE on disk to compare against, so the
+ *                           test reconstructs the expected record from the same field table the writer
+ *                           read. Two transcriptions of one table agreeing is not the same evidence as a
+ *                           filed document disagreeing with you — and nothing produced this way has been
+ *                           through the agency's portal either.
  *   `field-table-only`    — a field table with NO sample of any kind. THIS IS THE ONE THAT WENT WRONG.
  *                           Declarable so that a format in this state must say so on screen; there is
  *                           deliberately no entry carrying it today.
@@ -187,12 +190,16 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
    * exact file — which is the r296 PERKESO defect (readiness item 3.1) repeated: two surfaces disagreeing
    * about one capability, with nothing on either saying which is right.
    *
-   * WHAT IS HONESTLY TRUE of these bytes is `specification-sample`, and the screen prints it: the layout
-   * comes from LHDN's published "Specification for MTD Calculations" Exhibit 4, golden-tested against that
-   * specification's OWN worked sample file (Exhibit 5) — but no file from this system has ever been
-   * through e-PCB Plus, and `localization/my/cp39-file.ts` flags even the line terminator as unconfirmed.
-   * That is a weaker claim than EPF's and SOCSO's and a much stronger one than the field tables that
-   * produced the wrong Borang A. Saying exactly which is the job this registry took on.
+   * WHAT IS HONESTLY TRUE of these bytes is `specification-sample`, and the screen prints it. The layout
+   * comes from LHDN's published "Specification for MTD Calculations" Exhibit 4, and `test/slice0.test.ts`
+   * drives the writer with Exhibit 5's worked example. ⚠️ BUT THAT TEST RECONSTRUCTS THE EXPECTED 136-
+   * CHARACTER LINE FROM THE FIELD TABLE rather than comparing against a sample file — there is no
+   * Exhibit-5 file in `test/fixtures/` — so the writer and its test are two transcriptions of one table,
+   * which agree. No file from this system has been through e-PCB Plus, and `localization/my/cp39-file.ts`
+   * flags even the line terminator as unconfirmed. That is a weaker claim than EPF's and SOCSO's, whose
+   * tests assert equality with a document the customer really filed, and a stronger one than the bare
+   * field tables that produced the wrong Borang A. Saying exactly which is the job this registry took on,
+   * and the reporter's real filed PCB file is what would move this entry to `filed-file`.
    *
    * FIRST IN THE GOVERNMENT SHELF (`rank: 10`), as the brief asked.
    */
