@@ -75,7 +75,6 @@ import {
   resolveWorkedDayKindTx,
   ToilAlreadyAccruedError,
   ToilExtendedHoursBelowThresholdError,
-  ToilNotEligibleError,
   ToilOrdinaryWorkingDayError,
 } from './toil';
 // r336 cbfa8b0b — DIRECTION 1 of the double-claim check, from the ONE module that also serves direction 2
