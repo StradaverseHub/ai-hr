@@ -27,9 +27,11 @@ import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
 import {
+  ChildReliefAmountsCard,
   ChildReliefReviewTable,
   type ChildReliefReviewTableRow,
 } from '../components/child-relief-review-table';
+import { CHILD_RELIEF_CATEGORY_KEYS } from '../localization/my/statutory-tables';
 
 const LOCALES = [
   ['en', en],
@@ -162,6 +164,32 @@ describe.each(LOCALES)('99b2d6c0 · %s — the populated report resolves against
       expect(a.getAttribute('href')).toMatch(/^\/admin\/personnel\/e\d\?tab=bankStatutory$/);
       resolves(a, 'the open-record link');
     }
+  });
+
+  it('the amounts card substitutes BOTH ICU arguments and names every one of the five categories', () => {
+    // The amounts the card is handed are DELIBERATELY not the shipped statutory figures: this asserts
+    // that the card prints what it is given, so correcting a RATE-ONLY figure never touches this test.
+    const categories = CHILD_RELIEF_CATEGORY_KEYS.map((key, i) => ({ key, amount: 1000 * (i + 1) }));
+    const { container } = wrap(
+      loc,
+      m,
+      <ChildReliefAmountsCard version="2026.7" asOf="2026-09-24" perChild={2000} categories={categories} />,
+    );
+    const text = container.textContent ?? '';
+    resolves(container.firstElementChild, 'the amounts card heading');
+    expect(text, 'the ruleset version').toContain('2026.7');
+    expect(text, 'the as-at date').toContain('2026-09-24');
+    expect(text, 'unresolved ICU argument').not.toMatch(/\{(version|asOf)\}/);
+    const c = (m as { people: { childRelief: Record<string, string> } }).people.childRelief;
+    for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
+      expect(text, `category ${key} must be named in this locale's words`).toContain(c[`cat_${key}`]);
+    }
+    // ⚠️ The caveat travels with the figures. A ringgit report without it invites acting on a number
+    // localization/my/statutory-tables.ts marks RATE-ONLY, NOT YET VERIFIED.
+    expect(text).toContain(c.amountsPendingSignOff);
+    expect(text).toMatch(/1,000\.00/);
+    expect(text).toMatch(/2,000\.00/);
+    expect(text).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
   });
 
   it('the three mode names are the locale’s own words, never the stored value', () => {

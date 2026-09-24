@@ -21,6 +21,65 @@
 import { useTranslations } from 'next-intl';
 import { tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
 
+/** Ringgit, two fixed decimals, en-MY grouping — the way a payslip prints it, in every locale. */
+const money = (n: number) =>
+  new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+/** Signed, so "less relief" reads as less at a glance and never as an unexplained smaller number. */
+const signedMoney = (n: number) => (n > 0 ? `+${money(n)}` : money(n));
+
+/**
+ * THE AMOUNTS EVERY FIGURE ON THE SCREEN WAS PRICED WITH — and the caveat that must travel with them.
+ *
+ * ⚠️ EXTRACTED FOR THE SAME REASON THE TABLE IS. This card renders only when somebody is listed, so on
+ * the seeded database (which has no employee with children) a dev-server render check never reaches it —
+ * and `pricedBy` carries TWO ICU arguments, which is precisely the shape that paints a FORMATTING_ERROR
+ * in a browser while passing tsc, the suite and `next build`. It is proved against all six catalogues in
+ * test/child-relief-review-locales.dom.test.tsx instead.
+ *
+ * ⚠️ THE PENDING-SIGN-OFF LINE IS NOT DECORATION. The five `childByCategory` figures are marked
+ * RATE-ONLY, NOT YET VERIFIED in localization/my/statutory-tables.ts — transcribed from a published
+ * summary because the LHDN spec URL 404s — and this is the screen where somebody reads a ringgit number
+ * and decides to act on it. The same sentence is on the PCB configuration screen; it is repeated here
+ * rather than linked, because a caveat one click away is a caveat nobody reads.
+ */
+export function ChildReliefAmountsCard({
+  version,
+  asOf,
+  perChild,
+  categories,
+}: {
+  version: string | null;
+  asOf: string;
+  perChild: number | null;
+  categories: { key: string; amount: number }[];
+}) {
+  const t = useTranslations('people.childRelief');
+  return (
+    <>
+      <h2 className="text-sm font-semibold">{t('amountsTitle')}</h2>
+      <p className="mt-1 text-xs text-muted-foreground">{t('pricedBy', { version: version ?? '—', asOf })}</p>
+      <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
+        {perChild != null && (
+          <p className="flex justify-between gap-4 text-sm">
+            <span className="text-muted-foreground">{t('amountPerChild')}</span>
+            <span className="font-mono tabular-nums">{money(perChild)}</span>
+          </p>
+        )}
+        {categories.map((c) => (
+          <p key={c.key} className="flex justify-between gap-4 text-sm">
+            <span className="text-muted-foreground">{t(`cat_${c.key}`)}</span>
+            <span className="font-mono tabular-nums">{money(c.amount)}</span>
+          </p>
+        ))}
+      </div>
+      <p className="mt-3 border-t border-border pt-3 text-xs text-amber-700 dark:text-amber-400">
+        {t('amountsPendingSignOff')}
+      </p>
+    </>
+  );
+}
+
 export type ChildReliefReviewTableRow = {
   personId: string;
   name: string;
@@ -35,12 +94,6 @@ export type ChildReliefReviewTableRow = {
   familyEligible: number;
   familyCategorised: number;
 };
-
-const money = (n: number) =>
-  new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-
-/** Signed, so "less relief" reads as less at a glance and never as an unexplained smaller number. */
-const signedMoney = (n: number) => (n > 0 ? `+${money(n)}` : money(n));
 
 export function ChildReliefReviewTable({ rows }: { rows: ChildReliefReviewTableRow[] }) {
   const t = useTranslations('people.childRelief');

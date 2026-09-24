@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { childReliefReview } from '@/core/child-relief-review';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
-import { ChildReliefReviewTable } from '@/components/child-relief-review-table';
+import { ChildReliefAmountsCard, ChildReliefReviewTable } from '@/components/child-relief-review-table';
 
 /**
  * 99b2d6c0 (r336) — CHILD RELIEF REVIEW (PCB).
@@ -107,32 +107,17 @@ export default async function ChildReliefReviewPage() {
       {/* The amounts every figure above was priced with — the SAME resolved ruleset the payroll run uses,
           quoted rather than restated. `statutoryVersion` is the stamp core/payroll.ts already writes onto
           a payslip, so this page names the version that priced it instead of introducing a second year
-          marker of its own. */}
+          marker of its own. Rendered only when somebody is listed: with nobody to report on there is no
+          ringgit figure to caveat, and an amounts card on an empty screen invites a sign-off decision
+          about a population that does not exist. */}
       {view.categoryAmounts.length > 0 && (
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">{t('amountsTitle')}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('pricedBy', { version: view.statutoryVersion ?? '—', asOf: view.asOf })}
-          </p>
-          <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
-            {view.perChild != null && (
-              <p className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t('amountPerChild')}</span>
-                <span className="font-mono tabular-nums">{view.perChild.toFixed(2)}</span>
-              </p>
-            )}
-            {view.categoryAmounts.map((c) => (
-              <p key={c.key} className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t(`cat_${c.key}`)}</span>
-                <span className="font-mono tabular-nums">{c.amount.toFixed(2)}</span>
-              </p>
-            ))}
-          </div>
-          {/* ⚠️ Said here and not only on the PCB configuration screen: this is where somebody reads a
-              ringgit figure and decides to act on it. */}
-          <p className="mt-3 border-t border-border pt-3 text-xs text-amber-700 dark:text-amber-400">
-            {t('amountsPendingSignOff')}
-          </p>
+          <ChildReliefAmountsCard
+            version={view.statutoryVersion}
+            asOf={view.asOf}
+            perChild={view.perChild}
+            categories={view.categoryAmounts}
+          />
         </Card>
       )}
 
