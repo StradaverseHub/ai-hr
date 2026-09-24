@@ -1,0 +1,104 @@
+<meta charset="utf-8">
+<title>Earned to Date — rounded, without breaking the balance</title>
+<!--
+  6af80f5d rev 2. Measured 2026-09-24 on main at 55e148d3 — CORRECTS rev 1's mockup, which showed the
+  Balance column rounding from 6.18 to 6.00. It must not.
+  core/read.ts:3372 states the invariant: "Because the six buckets tile the ledger, `totalEntitlement −
+  takenThisCycle − forfeitedThisCycle` [is the balance]". components/leave/entitlement-panel-config.ts:128:
+  "balance is an identity, not an agreement". And leave-balance-row.ts:76-79: the balance is "the
+  authoritative ledger remaining balance ... surfaced directly — NOT re-derived (6574c6b4)".
+  So cycleAccrual (core/read.ts:3696/3710, feeding totalEntitlement at :3749 and currentYearEntitlement at
+  :3956) must NOT be rounded at source, or the tiling identity stops holding.
+  The rounding rule is ALREADY resolved in that scope (roundingMethod at :3876) and already REPORTED to the
+  Explain panel as derivation.earned.rounding (:3898-3904, including 'custom_no_table' for the schema's
+  method-AND-bands rule at db/schema.ts:1607). It is reported and not applied.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--bad:#a8453a;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1020px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 18px;font-size:12.5px;color:var(--mf)}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .sec>h2 b{color:var(--primary)}
+ .bd{padding:14px}
+ table{border-collapse:collapse;width:100%;font-size:11.5px}
+ th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+ th{background:#f6f7fb;font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ th:first-child,td:first-child{text-align:left}
+ td.fix{background:#f4faf6;color:var(--ok);font-weight:700}
+ td.keep{background:#eef0fb;color:var(--primary);font-weight:700}
+ td.was{background:#fdf6f5;color:var(--bad);text-decoration:line-through}
+ .panel{border:1px solid var(--rule);border-radius:8px;margin-top:10px;max-width:420px;overflow:hidden}
+ .ph{padding:7px 11px;background:#f6f7fb;border-bottom:1px solid var(--rule);font-size:11.5px;font-weight:700}
+ .pr{display:flex;justify-content:space-between;padding:5px 11px;font-size:11.5px;border-bottom:1px solid #f3f4f9}
+ .pr:last-child{border-bottom:none}
+ .pr .k{color:var(--mf)}
+ .pr.hl{background:#f4faf6}
+ .pr.hl .k{color:var(--ok);font-weight:600}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .warnbox{margin-top:11px;border:1px dashed #e0b483;background:#fdfaf4;border-radius:8px;padding:11px;font-size:11.5px;color:#8a5a22;line-height:1.55}
+ .warnbox b{color:var(--fg)}
+ .foot{background:#fff;border:1px solid var(--border);border-radius:10px;padding:15px 17px}
+ .foot h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf)}
+ .foot p{margin:0 0 8px;font-size:12px;line-height:1.55}
+ .foot p:last-child{margin-bottom:0}
+ .foot b{color:var(--fg)}
+</style>
+<div class="wrap">
+  <h1>Earned to Date &mdash; rounded, and the balance left exact</h1>
+  <p class="sub">A correction to what we sent you yesterday. We had one column wrong.</p>
+
+  <div class="sec">
+    <h2><b>What changes</b> &mdash; and what deliberately does not</h2>
+    <div class="bd">
+      <table>
+        <tr><th>Leave type</th><th>Earned to Date</th><th>Taken</th><th>Balance</th></tr>
+        <tr><td>Before</td><td class="was">11.18</td><td>5.00</td><td>6.18</td></tr>
+        <tr><td>After</td><td class="fix">11.00</td><td>5.00</td><td class="keep">6.18</td></tr>
+      </table>
+      <div class="warnbox">
+        <b>Yesterday we told you the Balance would round too, to 6.00. That was wrong and we are correcting
+        it before building.</b> The Balance is not a display figure &mdash; it is the employee&rsquo;s actual
+        remaining days, read straight from the record of what was credited and taken. Rounding it would make
+        the screen disagree with the record, and the employee would be told they have a number of days that
+        nobody ever gave them.
+      </div>
+      <p class="note">So <b>Earned to Date rounds, and the Balance stays exact.</b> They can differ by the
+        rounding &mdash; which is honest, because they are two different things: one is how much has been
+        earned so far, the other is what is actually left after everything.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2><b>So the two never look like a contradiction</b></h2>
+    <div class="bd">
+      <p class="note" style="margin-top:0">The Explain panel beside the row already tells you which rounding
+        rule the type uses. It will now also show the working, so a 0.18 difference is never a mystery:</p>
+      <div class="panel">
+        <div class="ph">Explain &mdash; Annual Leave, as at 24/09/2026</div>
+        <div class="pr"><span class="k">Earned so far (exact)</span><span>11.18</span></div>
+        <div class="pr hl"><span class="k">Rounded by your custom table</span><span>11.00</span></div>
+        <div class="pr"><span class="k">Brought forward</span><span>0.00</span></div>
+        <div class="pr"><span class="k">Taken</span><span>5.00</span></div>
+        <div class="pr"><span class="k">Balance (exact)</span><span>6.18</span></div>
+      </div>
+      <p class="note">Both figures on screen, the rule named, and nothing silently disagreeing with anything
+        else.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>Everything else in the plan stands</h3>
+    <p><b>The rule is read from the leave type at run time</b> &mdash; change the table on the settings
+      screen and the column changes with it. Nothing is copied into the code.</p>
+    <p><b>Rounded once, against the running total</b>, never against each daily slice, exactly as you set out.</p>
+    <p><b>Your table is still three rows, not the four in your request</b> (0.00&ndash;0.38, 0.39&ndash;0.68,
+      0.69&ndash;0.99). We are not changing it. Your example lands on 11.00 either way.</p>
+  </div>
+</div>
