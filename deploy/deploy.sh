@@ -233,10 +233,31 @@ dstate phase build
 #   blaming capacity). It still died at "Running TypeScript" with 4096. r336 added +13,900/-1,325 lines
 #   across 126 files, which is what tipped it.
 #
-# If 2560 also fails, the next honest step is NOT another number: it is more RAM (or more swap) on the box.
-# Do NOT reach for typescript.ignoreBuildErrors — the build's type pass catches RSC client/server boundary
-# errors that tsc alone does not, which is the whole reason it runs here.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=2560" pnpm build
+# 2560 -> 3584, SAME DAY, and the correction matters more than the number.
+#
+#   2560 did exactly what it was lowered to do: the bare "Killed"/137 became V8's OWN
+#   FatalProcessOutOfMemory with a native stack trace — i.e. V8 reached its limit and said so, instead of
+#   being shot by the kernel before it ever collected. That confirms the mechanism above. What it also
+#   showed is that 2560 is simply BELOW what this type pass needs.
+#
+#   The rule stated above was half right. The cap must sit under what the box can ACTUALLY back, and that
+#   is RAM **plus free swap**, not RAM alone — swap is exactly what the 4096 era was leaning on, and it
+#   worked until swap ran short. Measured across the three r336 attempts:
+#     attempt 1  cap 4096  ~14 MB RAM / 1.6 GB swap free   -> kernel kill (an orphaned worker had eaten it)
+#     attempt 2  cap 4096  2.5 GB RAM / 1.6 GB swap free   -> kernel kill (4096 + overhead > 4.1 GB backing)
+#     attempt 3  cap 2560  2.5 GB RAM / 2.9 GB swap free   -> V8 self-OOM (cap too low, backing was fine)
+#   So the confounder in 1-2 was the orphan consuming swap, not the cap being "above physical RAM".
+#
+#   3584 sits above the 2560 V8 exhausted and ~1.8 GB under the 5.4 GB of RAM+swap now free, so V8 has
+#   room to compact without the kernel getting involved. ⚠️ BEFORE BLAMING THIS NUMBER, RUN `free -m` AND
+#   `ps --sort=-rss`: a killed `pnpm build` leaves a ~2.5 GB next worker reparented to init (D state, up to
+#   ~10 min) that starves the retry and makes a capacity problem out of a cleanup one.
+#
+# If 3584 also fails as a V8 self-OOM on a box with swap to spare, the window really has closed and the
+# answer is more RAM (or a bigger swapfile — there is 267 GB of disk). Do NOT reach for
+# typescript.ignoreBuildErrors: the build's type pass catches RSC client/server boundary errors that tsc
+# alone does not, which is the whole reason it runs here.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3584" pnpm build
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
