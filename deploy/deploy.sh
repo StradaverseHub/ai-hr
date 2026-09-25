@@ -259,11 +259,25 @@ dstate phase build
 # while an orphaned worker sat on the swap. 4096 + node overhead is ~4.5 GB, which that backing covers.
 #
 # ⚠️ READ THE TREND, NOT JUST THE NUMBER. 2048 (R52) -> 3072 (r83) -> 4096 (r83) -> 3584 (r336, after the
-# orphan confound) -> 4096 (r337). The type pass has needed a bump in consecutive rounds, and 4096 + ~0.5
-# GB overhead is already 80% of this box's entire 5.6 GB of RAM+swap. THE NEXT BUMP DOES NOT FIT. Before
-# raising this again, add RAM or grow /swap.img (267 GB of disk is free) — raising the cap past what the
-# box can back does not buy headroom, it converts a clean V8 self-OOM into a kernel kill, which is the
-# r336 story above.
+# orphan confound) -> 4096 (r337). The type pass has needed a bump in consecutive rounds, so the number
+# below is not a settled fact — it is the current reading of a moving one.
+#
+# ✅ THE CEILING MOVED ON 2026-09-25, AND THIS NOTE USED TO SAY THE OPPOSITE. It read "THE NEXT BUMP DOES
+# NOT FIT", which was true while the box had 5.6 GB of RAM+swap: 4096 plus ~0.5 GB of overhead was ~80% of
+# everything it had. A second swapfile was added that day — /swap2.img, 8 GB, priority -3, persisted in
+# /etc/fstab beside the original /swap.img — taking swap from 3.8 GB to 12.1 GB and total backing from
+# 7.7 GB to 15.7 GB. 4096 now sits at roughly a quarter of what the box can back, not four fifths.
+#
+# WHAT THAT DOES AND DOES NOT BUY. It removes the FAILURE: the r336-r339 deploys died four times, and the
+# rule those failures established still holds — the cap must fit RAM + FREE SWAP, not RAM alone, because a
+# cap above what the box can back converts a clean V8 self-OOM into a kernel kill. It does NOT make the
+# build fast: swap is disk-backed, so a type pass that spills still crawls. The durable fix is RAM on the
+# VM (a VMware guest, 2 cores, 3.9 GB) — at 8 GB the pass would run in memory and the build would drop
+# from ~15-20 minutes to ~5. Until then, expect slow-but-completing.
+#
+# ⚠️ AND CHECK `free -m` AND `ps --sort=-rss` BEFORE BLAMING THIS NUMBER AGAIN. A killed `pnpm build`
+# leaves a ~2.5 GB next worker reparented to init, in D state, for up to ~10 minutes. It starves the retry
+# and looks exactly like capacity. That confounded the first two r336 attempts and cost a wrong diagnosis.
 #
 # Still never typescript.ignoreBuildErrors: the build's type pass catches RSC client/server boundary
 # errors that tsc alone does not, which is the whole reason it runs here.
