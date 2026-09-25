@@ -447,6 +447,51 @@ describe('§C · when a new grade matches no entitlement table, somebody is told
     expect(out.rows.length).toBe(2);
     expect(out.total).toBeGreaterThanOrEqual(3);
   });
+
+  /**
+   * bb2b2e86 (r338) — THE DEFAULT CAP IS FIFTY, and the card is now the only thing that reads it.
+   *
+   * The test above passes an explicit `limit: 2`, so until now nothing anywhere pinned the DEFAULT:
+   * `p.limit ?? 50` could have been raised to 500 and the whole suite would still have been green.
+   * Collapsing the card behind a toggle made that worth closing — an opened section that dumps every
+   * unreached employee is the defect the collapse exists to avoid, one click later.
+   *
+   * The employments are inserted directly rather than hired through the service: what is under test is
+   * the `slice(0, limit)`, and fifty-one entitlement projections would be fifty-one seconds spent
+   * proving something none of them touch.
+   */
+  it('FIFTY is the default, and the screen asks for no limit — so fifty is what bounds the page', async () => {
+    const ctx = adminCtx(b);
+    await twoGrades();
+    const people = await owner.db
+      .insert(schema.person)
+      .values(
+        Array.from({ length: 51 }, (_, i) => ({
+          tenantId: b.tenantId,
+          fullName: `Capped ${String(i).padStart(3, '0')}`,
+          primaryEmail: `capped_${i}_${randomUUID().slice(0, 8)}@t.local`,
+        })),
+      )
+      .returning({ id: schema.person.id });
+    await owner.db.insert(schema.employment).values(
+      people.map((pr) => ({
+        tenantId: b.tenantId,
+        personId: pr.id,
+        companyId: b.companyId,
+        hiredOn: '2026-01-01',
+      })),
+    );
+
+    const out = await listEmploymentsWithoutEntitlementTable(ctx, { asOf: ASOF });
+    expect(out.total).toBeGreaterThanOrEqual(51);
+    // Mutate `const limit = p.limit ?? 50` in core/entitlement-template.ts and THIS is the line that reddens.
+    expect(out.rows.length).toBe(50);
+    // …and "Showing 50 of 70." renders only because the cap bit, which is the other half of the contract.
+    expect(out.total).toBeGreaterThan(out.rows.length);
+    // The card passes no limit at all — pinned in the rendering test, quoted here so the two stay a pair.
+    const card = read('app/admin/leave/entitlements/templates/uncovered-employees.tsx');
+    expect(card).toContain('listEmploymentsWithoutEntitlementTable(s, { asOf })');
+  });
 });
 
 // ── §D · THE COVERS COLUMN ───────────────────────────────────────────────────────────────────────────
