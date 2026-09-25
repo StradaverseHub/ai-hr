@@ -706,7 +706,7 @@ const seedCarriesMoney = (s: Tp3AccumulatorSeed) =>
 function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
   if (stat == null && seedCarriesMoney(seed)) {
     throw new Tp3Error(
-      'This Form TP3 records previous-employment pay, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
+      'This Form TP3 records previous-employment pay or reliefs, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
     );
   }
 }

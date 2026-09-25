@@ -155,6 +155,11 @@ describe('1bb09a73 · the Section-C → payroll-column mapping', () => {
       epfClaimed: 8979,
       pcbPaid: 3000,
       zakatPaid: 500,
+      // Item 20837372 — Section D joins the seed as ∑LP. An EXACT-SET assertion, UPDATED not loosened:
+      // an empty Section D must still produce 0 here, because a form with no reliefs declared may not
+      // start relieving anything. The dedicated non-vacuity for a NON-empty Section D is in
+      // test/20837372-tp3-section-d-lp.test.ts.
+      lpDeclared: 0,
     });
   });
 

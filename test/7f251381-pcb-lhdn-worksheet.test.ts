@@ -521,6 +521,9 @@ describe('7f251381 — every caption the sheet resolves exists in all six catalo
     'worksheetPreviousHeading', 'worksheetPreviousNote', 'worksheetPrevYear', 'worksheetPrevNone',
     'worksheetPrevApplies', 'worksheetPrevAppliesYes', 'worksheetPrevAppliesNo',
     'worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat',
+    // Item 20837372 — the previous employment's ∑LP. On the EXHAUSTIVE list, not appended silently:
+    // this list is what stands between a computed caption key and a MISSING_MESSAGE on a tax screen.
+    'worksheetPrevLp',
     'worksheetIncomeHeading', 'worksheetIncomeNote', 'worksheetY', 'worksheetSumYK', 'worksheetK',
     'worksheetY1', 'worksheetK1', 'worksheetY2', 'worksheetK2', 'worksheetN',
     'worksheetAdditionalHeading', 'worksheetYt', 'worksheetKt', 'worksheetK2t',
@@ -682,7 +685,7 @@ describe('7f251381 — a generated payslip fills the sheet, and the payslip is u
     expect(previous!.declaredYear, 'a profile with no TP3 year at all').toBeNull();
     expect(previous!.applies).toBe(false);
     const w = pcbWorksheet(explainPcb(row!.statutory, null), previous);
-    for (const cap of ['worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat']) {
+    for (const cap of ['worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat', 'worksheetPrevLp']) {
       expect(byCaption(w, cap)!.value, cap).toEqual({ kind: 'money', amount: 0 });
     }
   });
