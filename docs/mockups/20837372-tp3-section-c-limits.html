@@ -1,0 +1,87 @@
+<meta charset="utf-8">
+<title>TP3 Section C — entered, and what counts</title>
+<!--
+  20837372 (contested). Measured on PRODUCTION 2026-09-26. ONE row in employee_tp3, year 2026:
+    C1 60,000.00 | C2 total 3,600.00 (all C2(i), UNDER its 6,000 limit) | C3 8,979.00
+    employee_statutory_my.tp3_net_remuneration = 47,421.00 = 60,000 - 3,600 - 8,979  (UNCAPPED)
+    employee_statutory_my.tp3_epf_claimed      = 8,979.00  (stored raw, capped at READ time to 4,000)
+  Correct seed: 60,000 - 3,600 - min(8,979, 4,000) = 52,400.00. Understated by RM4,979.00, LIVE.
+
+  THE INCONSISTENCY: core/payroll.ts:4349 caps K at pack.payroll.epfReliefCap; line 4348 takes
+  sum(Y-K) from core/tp3.ts:350, which subtracted the UNCAPPED C3. Same box, two answers.
+
+  The C2 figures below are ILLUSTRATIVE of the rule, not this tenant's data - their C2(i) is 3,600 and
+  within its limit, so nothing on their form moves for C2 today. Drawn so the RULE is visible.
+  Limits are real: MY_TP3_2026_SECTION_C subItems c2(i) 6,000, c2(ii) 3,000, c2(iv) 2,000;
+  c2(iii) and c2(v) carry no sourced limit and contribute in full.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1000px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ table{border-collapse:collapse;width:100%;font-size:11px}
+ th,td{border:1px solid var(--rule);padding:5px 9px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ tr.tot td{font-weight:700;background:#f9fafd}
+ .cut{color:var(--warn);font-weight:600}
+ .same{color:var(--mf)}
+ .warn{margin-top:10px;border:1px solid #e6c79f;background:#fdf8f2;border-radius:8px;padding:9px 11px;font-size:11.5px}
+ .warn b{color:var(--warn)}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .calc{border:1px solid var(--rule);border-radius:9px;padding:11px;font-size:11.5px}
+ .calc .row{display:flex;justify-content:space-between;padding:3px 0}
+ .calc .row.t{border-top:1px solid var(--rule);margin-top:5px;padding-top:6px;font-weight:700}
+ .bad{color:var(--bad)} .good{color:var(--ok)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+</style>
+<div class="wrap">
+<h1>TP3 Section C — what was paid, and what counts</h1>
+<p class="sub">Payroll &gt; Transactions &gt; Form TP3 &gt; Section C</p>
+<p class="sketch">Sketch — wording and spacing will differ. The travel figures illustrate the rule; your own form is within that limit.</p>
+
+<div class="sec"><h2>The form keeps what you type, and shows what the calculation may use</h2><div class="bd">
+<table>
+ <tr><th>Section C line</th><th class="n">Entered</th><th class="n">Yearly limit</th><th class="n">Counts</th></tr>
+ <tr><td>C1 &nbsp; Total remuneration</td><td class="n">60,000.00</td><td class="n">—</td><td class="n">60,000.00</td></tr>
+ <tr><td>C2(i) &nbsp; Travel, petrol card, petrol and toll</td><td class="n">7,000.00</td><td class="n">6,000.00</td><td class="n cut">6,000.00</td></tr>
+ <tr><td>C2(ii) &nbsp; Parking and meal allowance</td><td class="n">1,200.00</td><td class="n">3,000.00</td><td class="n same">1,200.00</td></tr>
+ <tr><td>C2(iii) &nbsp; Other allowances</td><td class="n">0.00</td><td class="n">no limit</td><td class="n same">0.00</td></tr>
+ <tr><td>C3 &nbsp; EPF and approved funds</td><td class="n">8,979.00</td><td class="n">4,000.00</td><td class="n cut">4,000.00</td></tr>
+</table>
+<div class="warn"><b>Two boxes are above their yearly limit.</b> The amounts you entered are kept exactly as they are — the part above each limit simply stays taxable, which is what the rules say happens to it. A box well over its limit often means the form was filled from the wrong column, so it is worth a second look.</div>
+</div></div>
+
+<div class="sec"><h2>What it does to the accumulated pay figure — your live form</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <div class="calc">
+   <div class="row"><span>Total remuneration</span><span>60,000.00</span></div>
+   <div class="row"><span>less tax-exempt</span><span>− 3,600.00</span></div>
+   <div class="row"><span>less EPF <span class="bad">(the whole 8,979)</span></span><span class="bad">− 8,979.00</span></div>
+   <div class="row t"><span>Accumulated pay</span><span class="bad">47,421.00</span></div>
+  </div>
+ </div>
+ <div><p class="lbl">Corrected</p>
+  <div class="calc">
+   <div class="row"><span>Total remuneration</span><span>60,000.00</span></div>
+   <div class="row"><span>less tax-exempt</span><span>− 3,600.00</span></div>
+   <div class="row"><span>less EPF <span class="good">(the allowable 4,000)</span></span><span class="good">− 4,000.00</span></div>
+   <div class="row t"><span>Accumulated pay</span><span class="good">52,400.00</span></div>
+  </div>
+ </div>
+</div>
+<p class="note"><b>RM4,979.00 too low today, on your one form.</b> The calculation already uses RM4,000 as the EPF relief — it just subtracts the full RM8,979 when working out accumulated pay, so the same box gives two different answers. That is the defect. <b>We have not printed the resulting PCB figure</b>, because it depends on the whole year and we will not put a number in a picture we have not calculated.</p>
+</div></div>
+
+</div>

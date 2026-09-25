@@ -1,0 +1,104 @@
+<meta charset="utf-8">
+<title>Leave Credit Request — one table</title>
+<!--
+  cbfa8b0b (contested). The contest REVERSES the prior approved design: "Do not create separate
+  sections/screens for these day types. All four types must be submitted from the same screen and
+  displayed in the same request table." So the two-section layout is gone and this draws the single table.
+
+  PRODUCTION 2026-09-26: tenant_module `toil` = active. leave_ledger for REPLACEMENT = 1 row / 1.00 day /
+  1 employment. The TOIL engine, the HR ledger screen (3fb1a611, r299) and core/replacement-eligibility.ts
+  all exist; there is NO employee-initiated request path anywhere in app/ (grep-confirmed).
+
+  The per-row conditional is the honest consequence of one table: an Ordinary Day row earns credit only
+  for hours AFTER the scheduled shift end, so it needs claimed start/end; the other three day types do
+  not. Drawn as disabled cells in the same table, never as a second section.
+  Thresholds 240/480 minutes are from the reporter's own original description.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .hint{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+ table{border-collapse:collapse;width:100%;font-size:10.5px}
+ th,td{border:1px solid var(--rule);padding:5px 7px;text-align:left;vertical-align:middle}
+ th{background:#f6f7fb;font-size:9px;color:var(--mf);text-transform:uppercase;letter-spacing:.04em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ .fld{border:1px solid var(--border);border-radius:5px;padding:3px 6px;background:#fff;display:inline-block;min-width:66px}
+ .fld.sel{padding-right:16px;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5'><path d='M0 0l4 5 4-5z' fill='%2363636f'/></svg>") no-repeat right 5px center}
+ .fld.ro{background:#f4f5f9;color:var(--mf);border-style:dashed}
+ .fld.off{background:#f4f5f9;color:#b9bac6;border-style:dashed}
+ .err{color:var(--bad);font-size:9.5px;display:block;margin-top:3px}
+ .warn{color:var(--warn);font-size:9.5px;display:block;margin-top:3px}
+ tr.bad td{background:#fdf4f3}
+ tr.warnrow td{background:#fdfaf4}
+ .add{display:inline-block;margin-top:9px;border:1px dashed var(--border);border-radius:7px;padding:5px 11px;font-size:11px;color:var(--primary)}
+ .foot{display:flex;justify-content:flex-end;gap:26px;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:12px}
+ .foot b{font-size:15px}
+ .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:7px;padding:6px 14px;font-size:11.5px;font-weight:600;margin-top:12px}
+ .note{font-size:11.5px;color:var(--mf);margin-top:12px;line-height:1.55}
+ .note b{color:var(--fg)}
+</style>
+<div class="wrap">
+<h1>Leave Credit Request</h1>
+<p class="sub">My Leave &gt; Leave Credit Request</p>
+<p class="sketch">Sketch — wording, spacing and colours will differ in the built screen</p>
+
+<div class="sec"><h2>One table, all four day types</h2><div class="bd">
+<p class="hint">Claim a credit for a rest day, off day or public holiday you worked, or for extended hours after your shift on a working day. Nothing is credited until your manager approves.</p>
+<table>
+ <tr>
+  <th>Date worked</th><th>Day type</th><th>Shift start</th><th>Shift end</th>
+  <th>Claimed start</th><th>Claimed end</th><th class="n">Eligible</th><th class="n">Credit</th><th></th>
+ </tr>
+ <tr>
+  <td><span class="fld">12 Sep 2026</span></td>
+  <td><span class="fld sel">Rest Day</span></td>
+  <td><span class="fld off">—</span></td><td><span class="fld off">—</span></td>
+  <td><span class="fld off">—</span></td><td><span class="fld off">—</span></td>
+  <td class="n">—</td><td class="n"><b>1.00</b></td><td>✕</td>
+ </tr>
+ <tr>
+  <td><span class="fld">19 Sep 2026</span></td>
+  <td><span class="fld sel">Public Holiday</span></td>
+  <td><span class="fld off">—</span></td><td><span class="fld off">—</span></td>
+  <td><span class="fld off">—</span></td><td><span class="fld off">—</span></td>
+  <td class="n">—</td><td class="n"><b>1.00</b></td><td>✕</td>
+ </tr>
+ <tr>
+  <td><span class="fld">23 Sep 2026</span></td>
+  <td><span class="fld sel">Ordinary Day</span></td>
+  <td><span class="fld ro">09:00</span></td><td><span class="fld ro">18:00</span></td>
+  <td><span class="fld">18:00</span></td><td><span class="fld">22:30</span></td>
+  <td class="n">270 min</td><td class="n"><b>0.50</b></td><td>✕</td>
+ </tr>
+ <tr class="warnrow">
+  <td><span class="fld">24 Sep 2026</span></td>
+  <td><span class="fld sel">Ordinary Day</span></td>
+  <td><span class="fld ro">09:00</span></td><td><span class="fld ro">18:00</span></td>
+  <td><span class="fld">18:00</span></td><td><span class="fld">21:00</span></td>
+  <td class="n">180 min</td><td class="n">0.00<span class="warn">Under 240 minutes — this row earns no credit.</span></td><td>✕</td>
+ </tr>
+ <tr class="bad">
+  <td><span class="fld">25 Sep 2026</span></td>
+  <td><span class="fld sel">Rest Day</span><span class="err">Your roster has this as an Ordinary Day.</span></td>
+  <td><span class="fld ro">09:00</span></td><td><span class="fld ro">18:00</span></td>
+  <td><span class="fld off">—</span></td><td><span class="fld off">—</span></td>
+  <td class="n">—</td><td class="n">—</td><td>✕</td>
+ </tr>
+</table>
+<span class="add">+ Add date</span>
+<div class="foot"><span>Total credit &nbsp; <b>2.50 days</b></span></div>
+<span class="btn">Submit request</span>
+<p class="note"><b>The time columns stay empty and disabled on a day type that does not use them</b> — a rest day, off day or public holiday earns its credit from the day itself. They are all in one table, as you asked; nobody has to decide which section they are in.</p>
+<p class="note">Each row is checked against your own roster as you type. A day type that disagrees with the roster is flagged on the row and names what the roster actually holds, rather than failing after your manager has approved it.</p>
+</div></div>
+
+</div>
