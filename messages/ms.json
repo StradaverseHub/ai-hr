@@ -4625,6 +4625,7 @@
       "preChecksTitle": "Semakan pra-pemprosesan",
       "preChecksAllClear": "Semua semakan lulus — maklumat pekerja lengkap untuk larian ini.",
       "preChecksBlockerHint": "{n} pekerja tiada rekod gaji semasa. Sebelum ini mereka akan tercicir daripada larian secara senyap — payroll tidak boleh diproses sehingga ini dibetulkan (atau skop larian mengecualikan mereka).",
+      "preChecksPayModeBlockerHint": "{n} pekerja mempunyai struktur gaji Tempoh Tersuai, yang tiada pengiraan payroll untuknya. Jika tidak, larian ini akan membayar mereka gaji asas setara bulanan bagi struktur yang sengaja ditanda bukan bulanan. Tukar Mod Gaji pada rekod Gaji Asas mereka, atau keluarkan mereka daripada larian ini, kemudian jalankan payroll semula.",
       "preChecksTp3BlockerHint": "{n} pekerja mempunyai Borang TP3 untuk tahun ini yang tidak sepadan dengan angka pada tab Payroll mereka, jadi larian ini akan menganggap pekerjaan terdahulu mereka sebagai tiada dan memotong PCB terlalu sedikit. Buka Borang TP3 bagi setiap seorang dan simpan, kemudian jalankan payroll semula.",
       "preChecksWarningHint": "{n} semakan memerlukan perhatian anda. Anda masih boleh memproses payroll, tetapi anda akan diminta mengesahkan.",
       "preChecksBlockerBadge": "Menghalang pemprosesan",
@@ -4637,10 +4638,12 @@
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
         "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
+        "unpayablePayMode": "Struktur gaji Tempoh Tersuai — payroll tiada pengiraan untuknya, jadi tiada apa-apa yang boleh dibayar",
         "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
+      "preChecksBlockedPayModeError": "Payroll tidak boleh diproses: {n} pekerja mempunyai struktur gaji Tempoh Tersuai yang tidak boleh dikira oleh payroll. Tukar Mod Gaji pada rekod Gaji Asas mereka, atau keluarkan mereka daripada larian ini.",
       "preChecksBlockedTp3Error": "Payroll tidak boleh diproses: {n} pekerja mempunyai Borang TP3 untuk tahun ini yang belum sampai kepada angka payroll mereka. Buka Borang TP3 bagi setiap seorang dan simpan dahulu.",
       "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",
       "skipped": {
@@ -5763,6 +5766,7 @@
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
         "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
+        "unpayablePayMode": "Struktur gaji Tempoh Tersuai — payroll tiada pengiraan untuknya, jadi tiada apa-apa yang boleh dibayar",
         "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
       },
       "unattachedScopeTitle": "{n} pekerja mempunyai transaksi yang tidak akan dikutip oleh proses ini",

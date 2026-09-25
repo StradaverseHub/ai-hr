@@ -4078,6 +4078,7 @@
       "preChecksTitle": "Pre-processing checks",
       "preChecksAllClear": "All checks passed — employee information is complete for this run.",
       "preChecksBlockerHint": "{n} employee(s) have no current salary record. Previously they would have been silently left out of the run — payroll cannot be processed until this is fixed (or the run scope excludes them).",
+      "preChecksPayModeBlockerHint": "{n} employee(s) have a Custom Period pay structure, which payroll has no calculation for. This run would otherwise pay them the monthly-equivalent basic for a structure that was deliberately marked as not monthly. Change the Pay Mode on their Basic Salary record, or leave them out of this run, then run payroll again.",
       "preChecksTp3BlockerHint": "{n} employee(s) have a Form TP3 for this year that their Payroll tab figures do not match, so this run would treat their previous employment as nothing and under-deduct PCB. Open Form TP3 for each of them and save it, then run payroll again.",
       "preChecksWarningHint": "{n} check(s) need your attention. You can still process payroll, but you will be asked to confirm.",
       "preChecksBlockerBadge": "Blocks processing",
@@ -4090,10 +4091,12 @@
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
+        "unpayablePayMode": "Custom Period pay structure — payroll has no calculation for it, so nothing can be paid",
         "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksBlockedPayModeError": "Cannot process payroll: {n} employee(s) have a Custom Period pay structure that payroll cannot calculate. Change the Pay Mode on their Basic Salary record, or leave them out of this run.",
       "preChecksBlockedTp3Error": "Cannot process payroll: {n} employee(s) have a Form TP3 for this year that has not reached their payroll figures. Open Form TP3 for each of them and save it first.",
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
       "skipped": {
@@ -5763,6 +5766,7 @@
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
+        "unpayablePayMode": "Custom Period pay structure — payroll has no calculation for it, so nothing can be paid",
         "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "unattachedScopeTitle": "{n} employee(s) have transactions this run will not collect",
