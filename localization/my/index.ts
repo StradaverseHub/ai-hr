@@ -43,6 +43,7 @@ import {
 } from './statutory-config';
 import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
+import { cp39PaymentFile } from './cp39-file';
 import { pcb2iiStatement } from './pcb2ii';
 import type { CountryPack } from '../country-pack';
 
@@ -203,4 +204,13 @@ export const myPack: CountryPack = {
   // 72b100cd — LHDN's PCB 2(II). Optional on the contract; Malaysia implements it.
   pcb2iiStatement,
   eaCompaniesInYear,
+  // 0d02d4a1 (D6) — the monthly statutory UPLOAD FILES this jurisdiction produces, keyed by the format id
+  // the generic Payment Submission registry asks for. This is the door that lets a country-neutral screen
+  // hand over LHDN's e-Data PCB file without naming this pack: before it existed that row had to be listed
+  // as unavailable while /payroll/reports served the identical file. The value is an ADAPTER over
+  // cp39FileForBatch, not a second producer — same read, same bytes, same file name (see cp39-file.ts).
+  // ⚠️ THE KEY IS THE GENERIC REGISTRY'S FORMAT ID and is pinned on both sides by
+  // test/r340-cp39-payment-submission-download.test.ts, so a rename on either side fails rather than
+  // silently taking the row's download away.
+  paymentFiles: { 'my.lhdn.cp39-edata': cp39PaymentFile },
 };

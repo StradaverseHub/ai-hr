@@ -33,6 +33,7 @@ import {
   person,
 } from '../../db/schema';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+import type { StatutoryPaymentFile } from '../country-pack';
 
 export type Cp39Row = {
   /** TIN digits (with or without the "IG" prefix / dashes) — MANDATORY per Exhibit 4. */
@@ -404,4 +405,44 @@ export function cp39FileForBatch(
     const versions = [...versionSet].sort();
     return { ...file, statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION };
   });
+}
+
+/**
+ * 0d02d4a1 — THE PACK'S ANSWER WHEN A GENERIC SCREEN ASKS FOR THIS MONTH'S e-DATA PCB FILE.
+ *
+ * ⚠️ IT IS AN ADAPTER, NOT A SECOND PRODUCER, AND THE DIFFERENCE IS THE POINT OF THE ROUND. It calls
+ * `cp39FileForBatch` - the same function `/payroll/reports/cp39-file` calls - and reshapes the answer.
+ * Nothing about the read, the four readiness gates, the field positions or the totals is restated here, so
+ * the Payment Submission shelf and the shipped report route cannot hand over different bytes for one
+ * employer's month. That equality is asserted, not merely intended
+ * (test/r340-cp39-payment-submission-download.test.ts).
+ *
+ * TWO KINDS OF FAILURE, KEPT APART. A `Cp39NotReadyError` is the operator's problem stated in their own
+ * words - no E-number on the company, a missing tax number, an identity number that will not fit its
+ * fixed-width box - and it becomes `{ ok: false, reason }`, which the generic caller turns into a 422 with
+ * that sentence. Anything else is a BUG and is rethrown untouched: dressing a driver error up as a
+ * readiness problem would tell an operator to go and fix data that is perfectly fine.
+ *
+ * ⚠️ IT IS ALSO WHY THE GENERIC REGISTRY NEEDS NO MY IMPORT. The Payment Submission registry reaches this
+ * through `CountryPack.paymentFiles` and the localization registry, so nothing under `app/` names this
+ * module and the drift allowlist neither grew nor was consulted (ADR-0080 D1/D6/D7).
+ */
+export async function cp39PaymentFile(
+  ctx: SessionContext,
+  p: { companyId: string; periodKey: string },
+): Promise<StatutoryPaymentFile> {
+  try {
+    const file = await cp39FileForBatch(ctx, p);
+    return {
+      ok: true,
+      // The ONE definition of this file's name, from the builder itself - never a second formatting of it.
+      filename: file.filename,
+      content: file.content,
+      // Fixed-width us-ascii, the same content type the shipped report route serves these bytes with.
+      contentType: 'text/plain; charset=us-ascii',
+    };
+  } catch (e) {
+    if (e instanceof Cp39NotReadyError) return { ok: false, reason: e.message };
+    throw e;
+  }
 }

@@ -45,15 +45,15 @@
  * bytes can be produced here without the artefact. `cp39FileForBatch` is select-only — audited, it opens a
  * `withTenant` transaction containing nothing but `.select(...)`.
  *
- * ── THE ONE ADR-0080 D1 DEVIATION IN THIS MODULE, NAMED RATHER THAN SLIPPED IN ───────────────────
- * D1 says `app/` reaches a pack only through the generic core seam, and the three sibling loaders keep
- * that promise: `loadBorangAFile`, `loadBorang8AFile` and `loadCp39Form` all go through `reportPreview`
- * and none of them names `localization/my`. The LHDN e-DATA FILE has no such read — `cp39FileForBatch`
- * IS the read, it lives in the pack, and the shipped route `app/payroll/reports/cp39-file/route.ts:8`
- * imports it directly for want of an alternative. This registry does the same rather than inventing a
- * parallel `reportPreview`-based read of the e-Data file, which would be a second source of the same
- * figures and a much larger change than this round. The deviation is ONE import, it matches what the
- * existing route already does, and building that generic read is the change that removes it.
+ * ── NO ADR-0080 D1 DEVIATION IN THIS MODULE ANY MORE, AND THAT IS WHAT 0d02d4a1 BOUGHT ───────────
+ * D1 says `app/` reaches a pack only through a generic seam, and all three entries below keep that
+ * promise by three different doors, none of which names a pack: `loadBorangAFile` and `loadBorang8AFile`
+ * ride `reportPreview`, and the LHDN e-Data FILE — which has no such read, because the read IS the pack's
+ * — rides `CountryPack.paymentFiles` through `./pack-file`. For one round that third door did not exist,
+ * so the LHDN row shipped UNAVAILABLE while `/payroll/reports` handed over the identical file; r340 built
+ * the door rather than either allowlisting an import or assembling a second read of the same figures
+ * beside the one that already files. Read `./pack-file`'s header for why the second read was the worse
+ * of the two options: two producers of one government file is the r296 defect.
  *
  * ── SALARY IS DELIBERATELY EMPTY, AND SAYING SO IS THE FEATURE ────────────────────────────────────
  * A bank payment file moves real money and every bank's layout differs. `SUBMISSION_GROUPS` declares the
@@ -65,6 +65,7 @@ import { borangAUploadFilename, loadBorangAFile } from '../borang-a/shared';
 import { loadBorang8AFile } from '../borang-8a/shared';
 import { perkesoUploadFilename } from '@/lib/perkeso-socso-file';
 import { scopedAdmin } from '@/lib/scope';
+import { loadPackPaymentFile } from './pack-file';
 
 /**
  * Which shelf a format sits on. ORDER IS DECLARED, NOT ALPHABETICAL, and the screen iterates this array.
@@ -184,6 +185,14 @@ export type SubmissionFormat = FormatCommon &
   );
 
 /**
+ * The LHDN e-Data PCB format id, stated ONCE: it is this row's `id` AND the key its employer's country pack
+ * is asked for (`CountryPack.paymentFiles`). Two spellings of it would mean the screen offered a button
+ * whose file the pack does not answer to, and the failure would be a 404 at download time rather than a
+ * red test. `test/r340-cp39-payment-submission-download.test.ts` pins both sides of the seam to this value.
+ */
+const LHDN_CP39_EDATA = 'my.lhdn.cp39-edata';
+
+/**
  * THE REGISTRY. One array; the screen and the download route both read it and neither holds a list of
  * its own.
  *
@@ -203,10 +212,10 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
    * production today at `/payroll/reports/cp39-file` and linked from BOTH
    * `app/payroll/reports/page.tsx:148` and `app/payroll/statutory-forms/[formId]/page.tsx:358`.
    *
-   * Marking it unavailable HERE would therefore not have withheld anything from anybody. It would have
-   * created a screen that says "LHDN: not available" while the screen one menu row away hands over that
-   * exact file — which is the r296 PERKESO defect (readiness item 3.1) repeated: two surfaces disagreeing
-   * about one capability, with nothing on either saying which is right.
+   * Marking it unavailable here withheld nothing from anybody — it created a screen saying "LHDN: not
+   * available" while the screen one menu row away handed over that exact file, which is the r296 PERKESO
+   * defect (readiness item 3.1) repeated: two surfaces disagreeing about one capability, with nothing on
+   * either saying which is right. 0d02d4a1 closed that gap; see the builder's own note below for how.
    *
    * WHAT IS HONESTLY TRUE of these bytes is `specification-sample`, and the screen prints it. The layout
    * comes from LHDN's published "Specification for MTD Calculations" Exhibit 4, and `test/slice0.test.ts`
@@ -222,7 +231,7 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
    * FIRST IN THE GOVERNMENT SHELF (`rank: 10`), as the brief asked.
    */
   {
-    id: 'my.lhdn.cp39-edata',
+    id: LHDN_CP39_EDATA,
     authority: 'LHDN',
     group: 'governmentStatutory',
     rank: 10,
@@ -230,51 +239,44 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
     descriptionKey: 'lhdnCp39Desc',
     periodKind: 'month',
     verification: 'specification-sample',
+    available: true,
     /*
-     * ⚠️ LISTED, NOT BUILT HERE — AND THE REASON IS THE PACK BOUNDARY, NOT A MISSING WRITER.
+     * ⚠️ DOWNLOADABLE SINCE 0d02d4a1, AND WHAT CHANGED WAS THE DOOR — NOT THE FILE, NOT THE BYTES.
      *
-     * The writer exists and ships: `localization/my/cp39-file.ts` (`buildCp39File` pure +
-     * `cp39FileForBatch` over the DB), served today by `/payroll/reports/cp39-file`. Saying "not
-     * available" would be the r296 defect — a screen denying a file that another screen one menu row
-     * away hands over.
+     * For one round this entry was `available: false, unavailableReasonKey: 'lhdnCp39Pending'`, and the
+     * reason was never a missing writer: the writer ships and is served today by `/payroll/reports`.
+     * The reason was that THIS module is generic and had no honest way to ask a country pack for a file.
+     * Listing the row as unavailable while another screen handed the same file over was the r296 defect
+     * (two surfaces disagreeing about one capability), and allowlisting a pack import would have grown a
+     * ratchet that only ever shrinks. So the round built the seam instead — see `./pack-file`.
      *
-     * But THIS module is generic. `cp39FileForBatch` is reached by naming `localization/my` directly,
-     * which `test/country-pack-drift.test.ts` refuses for any file outside the audited debt allowlist —
-     * and that allowlist only ever SHRINKS (ADR-0080 D1/D7). The two formats below do not have the
-     * problem: `loadBorangAFile` / `loadBorang8AFile` ride `reportPreview`, and their own headers record
-     * that "`app/` never names `localization/my`". The e-Data FILE has no such read, so wiring it here
-     * would have meant adding debt to a ratchet designed to forbid exactly that.
+     * `loadPackPaymentFile` resolves the EMPLOYER'S jurisdiction and asks its pack for the file this id
+     * names, through `CountryPack.paymentFiles` (ADR-0080 D6). Three consequences worth stating:
      *
-     * Fixing it properly means splitting `cp39FileForBatch` the way `loadBorangA` is split — a generic
-     * DB read in `app/` over a pure pack-side builder — or moving the MY format entries behind the pack
-     * surface beside `plannedForms`. Either is a statutory-file refactor and belongs in its own round
-     * with its own checking (CLAUDE.md §8), not in a screen's integration.
+     *   · NO NEW BYTE LAYOUT AND NO SECOND READ. The pack's builder is an adapter over the very function
+     *     the shipped report route calls, so both surfaces emit one month's file identically — asserted as
+     *     an EQUALITY between the two paths, never as a re-derivation, because two producers of one
+     *     government file is the failure r296 spent a round undoing.
+     *   · THE FILE NAME IS THE SPECIFICATION'S, FROM ITS ONE DEFINITION. `xxxxxxxxxxmm_yyyy.txt`, produced
+     *     by the writer's own exported helper exactly as the two entries below use theirs.
+     *   · THE PROVENANCE DID NOT MOVE. `specification-sample`, unchanged: reading a published field table
+     *     more carefully is not the same evidence as a file the customer really filed, and making a row
+     *     downloadable is not a reason to upgrade the claim printed beside it. The reporter's real filed
+     *     PCB file is still what moves this to `filed-file`.
      *
-     * So the row is listed with its provenance, and points at the screen that genuinely serves it today.
-     *
-     * ── r340 (0d02d4a1) RE-READ THIS AND CONFIRMED IT, WITH THE MISSING STEP NAMED ─────────────────
-     * The item was "build the e-Data PCB file"; the file was already correct field-by-field against
-     * Exhibit 4, so the work was this row. It is still not flipped, and the reason is narrower than
-     * "a refactor": the generic read this row needs has nowhere to CALL.
-     *
-     *   · `reportPreview(s, {reportId: 'my.cp39', …})` already returns every field the writer needs —
-     *     `localization/my/reports.ts`'s `cp39()` puts `taxNo`, `ic`, `oldIc`, `passport`, `countryCode`,
-     *     `employeeNo`, `pcb` and `cp38` on each row and the employer header on `meta.formHeader`. So the
-     *     generic DB read of route (a) is genuinely available to `app/`, exactly as `loadBorangAFile`'s is.
-     *   · What is NOT available is the PURE BUILDER. `buildBorangAFile` lives in `lib/`; `buildCp39File`
-     *     lives in the pack, and nothing generic re-exports it. `CountryPack` (localization/country-pack.ts)
-     *     declares `reports`, `plannedForms` and `statutoryLinks` but no payment-file member, and
-     *     `ReportDef.outputs: ['…','file']` is a DISPLAY chip with no generator behind it — audited.
-     *
-     * So finishing this needs ONE of: a `paymentFormats` (or `cp39File`) member on `CountryPack` +
-     * `localization/my/index.ts` (ADR-0080 D6, route (b)), or the pure builder re-homed in `lib/` beside
-     * `kwsp-borang-a-file.ts` (route (a)). Both are outside this module, and the guard test that pins
-     * `available: false` (test/payment-submission-module.test.ts, "LHDN is LISTED … NO builder") is the
-     * third file that has to move in the same commit. `test/pack-drift-allowlist.json` is NOT one of them:
-     * it only shrinks.
+     * An operator-fixable refusal (no LHDN E-number on the company, a missing tax number, an identity
+     * number that will not fit its fixed-width box) comes back as a 422 carrying the pack's own sentence.
      */
-    available: false,
-    unavailableReasonKey: 'lhdnCp39Pending',
+    build: async ({ companyId, periodKey }) => {
+      const loaded = await loadPackPaymentFile({ companyId, periodKey, fileKey: LHDN_CP39_EDATA });
+      if (!loaded.ok) return { ok: false, status: loaded.status, message: loaded.message };
+      return {
+        ok: true,
+        filename: loaded.filename,
+        bytes: loaded.bytes,
+        contentType: loaded.contentType,
+      };
+    },
   },
 
   /**
