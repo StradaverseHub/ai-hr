@@ -413,7 +413,11 @@ export const ME_VISIBLE_FIELD_LABEL_KEYS: Record<MeTabKey, readonly string[]> = 
     'eisCategoryLabel',
     'taxNumber',
     'incomeTaxResident',
-    'childrenPcbRelief',
+    // 04b88724 — the Personnel card split one field into Physical children (this head count, which is
+    // what `num_children` is and what Form E / CP8D / EA read) and Qualifying children (PCB). My Profile
+    // follows the HEAD COUNT under Personnel's new caption; the qualifying figure is accounted for in
+    // ME_UNRENDERED_PERSONNEL_FIELDS below.
+    'childrenPhysical',
     'disabledIndividualLabel',
     'disabledSpouseLabel',
     'subjectToHrdf',
@@ -487,6 +491,11 @@ export const ME_UNRENDERED_PERSONNEL_FIELDS: Readonly<Record<string, string>> = 
   'employmentInfo.contractRemark': 'WITHHELD — the HR note on the contract; the contract dates are shown.',
   salaryColRemarks: 'WITHHELD — HR’s reasoning on each salary revision; the current salary is shown.',
   childReliefModeLabel: 'WITHHELD — the tenant’s child-relief rate table; the employee’s relief count is shown.',
+  childrenQualifying:
+    'WITHHELD (04b88724) — the qualifying-children count the PCB projection counts in. It is worked out from ' +
+    'the relief CLASSIFICATION HR records per child and the rate table above, both of which are already ' +
+    'withheld for the same reason; showing the figure without them would be a number the employee cannot ' +
+    'check. Their own child count is shown as Physical children, and the relief itself lands on the payslip.',
   'emergency.remarks': 'WITHHELD — HR’s free-text note on an emergency contact; the contact itself is shown.',
   'family.remarks': 'WITHHELD — HR’s free-text note about a dependant.',
   'family.occupation': 'WITHHELD — a working spouse’s occupation: a third party’s employment details.',

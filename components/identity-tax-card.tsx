@@ -409,7 +409,7 @@ export function IdentityTaxCard({
               ) : (
                 <output
                   data-child-qualifying-value
-                  className={`${inputCls} bg-muted/50 text-muted-foreground`}
+                  className={`${inputCls} items-center bg-muted/50 text-muted-foreground`}
                 >
                   {fmtCount(qualifying)}
                 </output>

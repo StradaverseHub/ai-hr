@@ -674,7 +674,7 @@ export default async function MePage({
           notSet={notSet}
           pending={pendingFor('taxCategory')}
         />
-        <ReadField label={tp('childrenPcbRelief')} value={st.numChildren == null ? null : String(st.numChildren)} notSet={notSet} pending={pendingFor('numChildren')} />
+        <ReadField label={tp('childrenPhysical')} value={st.numChildren == null ? null : String(st.numChildren)} notSet={notSet} pending={pendingFor('numChildren')} />
         <ReadField label={tp('disabledIndividualLabel')} value={yesNo(st.disabledIndividual)} notSet={notSet} />
         <ReadField label={tp('disabledSpouseLabel')} value={yesNo(st.disabledSpouse)} notSet={notSet} />
       </ReadCard>

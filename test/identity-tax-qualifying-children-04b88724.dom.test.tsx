@@ -29,7 +29,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { IdentityTaxCard, type ChildReliefPricing } from '../components/identity-tax-card';
 
-const D = en.people.detail as Record<string, string>;
+// The catalogue holds nested groups (family, leaveSummary, …) alongside the flat captions, so the cast
+// goes through `unknown`; every key read below is one of the flat string ones.
+const D = en.people.detail as unknown as Record<string, string>;
 
 /** The 2026 ruleset's prices, as core/dependents.ts hands them to the card: RM and RM ÷ perChild. */
 const PRICING: ChildReliefPricing = {
