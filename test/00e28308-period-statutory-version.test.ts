@@ -18,7 +18,12 @@
  *       backfill: we know which rules were CURRENT when an old month ran, not which that run used;
  *   (d) the payslip is byte-identical to what today's engine produces — every stored column, golden,
  *       captured from the pre-change code;
- *   (e) the Borang A read and the CP39 file still carry their OWN version, resolved their own way.
+ *   (e) the Borang A read and the CP39 file still carry their OWN version, resolved their own way;
+ *   (f) an IMPOSSIBLE month still opens. `pay_period.period` is free text with no CHECK and the wizard's
+ *       only guard is `<input type="month">`, which Firefox and desktop Safari render as a text box, so a
+ *       run under '2026-13' is reachable and the suite already pins that it commits. Resolving a ruleset
+ *       'as of' a date that does not exist threw out of createBatch when this round was first written —
+ *       found by test/cp39-form-report.test.ts, and pinned here at the stamp rather than at the screen.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -356,5 +361,24 @@ describe('00e28308 · the month records the ruleset version it was opened under'
     // Both filings read the PAYSLIPS' own versions, not the period's — which is why they are unaffected
     // by the column this round started writing, and why they stay right for a month with no period stamp.
     expect((await periodRow()).statutoryVersion).toBe(DEFAULT_MY_STATUTORY.version);
+  });
+
+  it('(f) an impossible month still opens, and records no version rather than failing', async () => {
+    // Reachable only this way, and the reason is worth stating: createBatch derives batch_date as
+    // `<period>-28`, which Postgres refuses as a DATE for '2026-13', so the wizard's own payment-date
+    // field has to be supplied for the batch to commit at all. That is the same route
+    // test/cp39-form-report.test.ts takes.
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-13',
+      paymentDate: '2026-12-28',
+    });
+    expect(batchId, 'opening a month the period text cannot represent must still succeed').toBeTruthy();
+    const period = await periodRow('2026-13');
+    expect(period, 'the pay_period row is there — this is not the refused path').toBeTruthy();
+    expect(
+      period.statutoryVersion,
+      'a month that does not exist has no ruleset to resolve, so nothing is recorded',
+    ).toBeNull();
   });
 });

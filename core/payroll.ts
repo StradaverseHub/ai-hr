@@ -1522,11 +1522,20 @@ function validPaymentDate(paymentDate?: string | null): string | null {
  * which is the mid-month change ADR-0024 D7 wanted visible rather than silent.
  */
 async function openingStatutoryVersion(tx: Tx, companyId: string, period: string): Promise<string | null> {
+  // AN IMPOSSIBLE MONTH RECORDS NOTHING, AND MUST NOT THROW. `pay_period.period` is plain text with no
+  // CHECK, `createBatch` does not validate it, and the wizard's only guard is `<input type="month">`,
+  // which Firefox and desktop Safari render as a free text box — so a run under '2026-13' is reachable
+  // and the suite pins that it commits (test/cp39-form-report.test.ts, "degrades even when a real run
+  // EXISTS under an impossible month"). Resolving a ruleset "as of" a date that does not exist would
+  // turn a tolerated nonsense month into a failure to open one at all, which is a behaviour change this
+  // round has no business making. Nothing is recorded instead: there is no statutory month to resolve a
+  // ruleset for, and an absent record is the honest answer to a question that has none.
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period);
+  if (!m) return null;
   const [co] = await tx.select({ country: company.country }).from(company).where(eq(company.id, companyId)).limit(1);
   const pack = packFor(co?.country);
   if (!pack) return null;
-  const [pYear, pMonth] = period.split('-').map(Number);
-  const periodEnd = `${period}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+  const periodEnd = `${period}-${String(daysInMonth(Number(m[1]), Number(m[2]))).padStart(2, '0')}`;
   return (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).version;
 }
 
