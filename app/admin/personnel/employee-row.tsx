@@ -54,6 +54,16 @@ export type EmployeeRowProps = {
   columns: readonly EmployeeColumnKey[];
   /** Plain text per column, from the SAME projection the Excel export prints. */
   text: Partial<Record<EmployeeColumnKey, string | null>>;
+  /**
+   * 597c810a — the PERSON id to render a profile photo for, or null/absent for initials.
+   *
+   * WHY IT IS A PERSON ID AND NOT A BOOLEAN: the serve route is keyed by person (a photo is a person fact,
+   * shared by concurrent employments) and the listing's projection carries only `employmentId`, so the id
+   * has to travel. WHY IT IS OPTIONAL AND PRE-RESOLVED: the page does ONE bulk RLS-scoped existence read
+   * (core/person-photo.ts `employmentPhotoIds`) and passes this only for the employments that have a
+   * visible photo. A row must never be given a src speculatively — see the note on `Avatar`.
+   */
+  photoPersonId?: string | null;
 };
 
 export function EmployeeRow({
@@ -65,6 +75,7 @@ export function EmployeeRow({
   statusLabel,
   columns,
   text,
+  photoPersonId,
 }: EmployeeRowProps) {
   const href = employeeRowHref(employmentId);
   return (
@@ -75,7 +86,7 @@ export function EmployeeRow({
             // The ONE named, focusable link of the row. Its own `::after` covers this cell, so the name
             // cell needs no overlay of its own — and hovering anywhere in it still tints the name.
             <div className="flex items-center gap-3">
-              <Avatar name={name} />
+              <Avatar name={name} src={photoPersonId ? `/personnel/photo/${photoPersonId}` : undefined} />
               <div className="min-w-0">
                 <Link href={href} className={ROW_NAME_LINK_CLS}>
                   {name}

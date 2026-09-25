@@ -24,6 +24,7 @@ import {
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
+import { PhotoLightbox } from './photo-lightbox';
 import { listEntitlementRecalcAudit } from '@/core/leave';
 // 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
 // already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
@@ -139,7 +140,7 @@ import { CurrencySelect } from '@/components/currency-select';
 import { getCompanyCurrency } from '@/core/read';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { listDependents, eligibleChildReliefCount, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 // Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
 import { listQualifications, type QualificationRow } from '@/core/qualifications';
@@ -386,6 +387,15 @@ export default async function EmployeePage({
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
   const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  // 04b88724 — the QUALIFYING-CHILDREN figure and its working. `num_children` (the head count Form E, CP8D
+  // and the EA statement read) and C (what the projection of P counts in) are two different numbers, and the
+  // card used to show one of them under a caption that implied both. This resolves the ruleset and returns
+  // the pack's own prices plus the Family register's child rows; the card multiplies those prices by the
+  // counts on screen so the figure stays true while the admin types. null ⇒ no pack / no PCB reliefs, and
+  // the card then names no figure rather than inventing a rate. 'MY' matches this page's own packFor('MY').
+  const qualifyingChildRelief = admin
+    ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
+    : null;
   // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview warns
   // at filing time; the approved plan asks for the same warning on the screen where the number is typed,
   // because five of the reporter's numbers are each filed against two or three different people and they
@@ -3157,6 +3167,18 @@ export default async function EmployeePage({
         employmentId={emp.employmentId}
         personId={emp.personId}
         derivedChildCount={eligibleChildReliefCount(dependents)}
+        childRelief={
+          qualifyingChildRelief
+            ? {
+                perChild: qualifyingChildRelief.perChild,
+                categories: qualifyingChildRelief.categories,
+                statutoryVersion: qualifyingChildRelief.statutoryVersion,
+                familyChildren: qualifyingChildRelief.familyChildren,
+                uncategorisedChildren: qualifyingChildRelief.uncategorisedChildren,
+                familyRows: qualifyingChildRelief.familyRows,
+              }
+            : null
+        }
         taxNumberSharedWith={taxNumberSharedWith}
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,
@@ -4974,6 +4996,21 @@ export default async function EmployeePage({
               />
             ) : (
               <Avatar name={emp.name} className="size-24 text-2xl" />
+            )}
+            {/* 597c810a point 3 — VIEW. Only when there IS a photo: a View control over an initials
+                placeholder is a button that can only disappoint. It sits with the Edit trigger under the
+                avatar, and it is available to EVERY reader of this record, not only an admin — inspecting
+                a photo is a read, and the read rule is can_see_person, which this reader has already
+                passed to be on this page at all. The island holds no t(): every caption is resolved here
+                (see components/photo-edit-menu.tsx for why that matters to the i18n guard). */}
+            {photoExists && (
+              <PhotoLightbox
+                src={`/personnel/photo/${emp.personId}`}
+                viewLabel={t('photoView')}
+                closeLabel={t('photoViewClose')}
+                dialogLabel={t('photoViewTitle', { name: emp.name })}
+                alt={emp.name}
+              />
             )}
             {admin && (
               // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a

@@ -10,11 +10,11 @@
  * Substrate: every write appends a DomainEvent (aggregateType 'person') with ONLY derived, non-PII payload
  * fields — never the bytes and never the raw user-supplied fileName (PDPA / ADR-0030 posture).
  */
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { personPhoto } from '../db/schema';
+import { employment, personPhoto } from '../db/schema';
 
 export const PHOTO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB, same cap the company logo uses
 export const ALLOWED_PHOTO_MIME = ['image/png', 'image/jpeg'] as const;
@@ -112,5 +112,70 @@ export async function hasPersonPhoto(ctx: SessionContext, personId: string): Pro
       .where(eq(personPhoto.personId, personId))
       .limit(1);
     return row != null;
+  });
+}
+
+/**
+ * 597c810a — WHICH of these people have a photo, in ONE query. The Personnel listings need this to render
+ * a photo in the row avatar without asking the browser to discover the answer by firing a request per row.
+ *
+ * WHY A BULK READ AND NOT `hasPersonPhoto` PER ROW: production holds 89 persons and 2 photos, so the naive
+ * version issues 89 HTTP requests per list load, 87 of which are 404s that each cost a session read and an
+ * RLS-scoped query. This is one round trip for the whole page.
+ *
+ * THIS IS NOT A WAY TO PROBE EXISTENCE OUTSIDE `can_see_person`. The predicate is RLS's, not a filter this
+ * function applies: person_photo's read policy is app.can_see_person(person_id), so a person the caller may
+ * not see contributes NO ROW and is simply absent from the returned set — indistinguishable from "has no
+ * photo". Passing an id from another tenant, or one the caller cannot see, therefore tells the caller
+ * nothing. Pinned by test/person-photo-bulk.test.ts as a non-admin whose scope excludes a person who HAS
+ * a photo.
+ *
+ * Returns a Set of the person ids that have a visible photo. An empty input list short-circuits (an
+ * `inArray` on an empty array is a SQL syntax error in some dialects and a pointless round trip in all).
+ */
+export async function personsWithPhotos(
+  ctx: SessionContext,
+  personIds: readonly string[],
+): Promise<Set<string>> {
+  const ids = [...new Set(personIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return new Set();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ personId: personPhoto.personId })
+      .from(personPhoto)
+      .where(inArray(personPhoto.personId, ids));
+    return new Set(rows.map((r) => r.personId));
+  });
+}
+
+/**
+ * 597c810a — the same answer keyed by EMPLOYMENT, because that is what the listings hold.
+ *
+ * WHY THIS EXISTS ALONGSIDE `personsWithPhotos`. Both Personnel listings render rows from
+ * `core/read.ts#listEmployeesPage`, whose projection carries `employmentId` and no `personId`, and the
+ * photo route is keyed by person (a photo is a PERSON fact — concurrent employments share one). Rather
+ * than widen that projection, this resolves the two together: one query joins employment → person_photo
+ * and returns employmentId → personId for the employments whose person has a photo the caller may see.
+ * The Map's VALUE is what the row needs anyway (the serve URL is `/personnel/photo/<personId>`), so the
+ * caller never has to hold a second lookup.
+ *
+ * SAME RLS ARGUMENT AS ABOVE, and it is the person_photo side that fences it: employment is readable more
+ * widely than a face photo is, so an employment whose person is outside can_see_person yields no joined
+ * photo row and is absent from the Map. An employment id from outside the caller's scope yields nothing
+ * either way.
+ */
+export async function employmentPhotoIds(
+  ctx: SessionContext,
+  employmentIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return new Map();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ employmentId: employment.id, personId: personPhoto.personId })
+      .from(employment)
+      .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
+      .where(inArray(employment.id, ids));
+    return new Map(rows.map((r) => [r.employmentId, r.personId]));
   });
 }
