@@ -162,7 +162,31 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
     { href: '/admin/attendance-policy', labelKey: 'scheduleGroup', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
-    { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
+    /**
+     * 639bf4a5 rev 2 (r338) — THE SAME ROW, RE-ADDRESSED AND RE-LABELLED, AND STILL IN THIS PACK.
+     *
+     * WHAT IT WAS: `{ href: '/admin/locations', labelKey: 'clockingLocation' }` — the clocking-site
+     * register, a child of the Attendance settings node since the pre-retrofit capture. That is written
+     * out here so the update does not erase the record.
+     *
+     * WHERE IT WENT AND CAME BACK FROM: r336 moved it OUT, to Administration › Physical Work Location in
+     * components/sidebar.tsx, at `/admin/work-locations`, and declared it MOVED_OUT below. It shipped;
+     * the reporter contested it and asked for the screen back under Attendance, renamed "Locations",
+     * with a company listing and dedicated Add / View / Edit screens. Their structure to decide, so r338
+     * puts the row back in this node and the MOVED_OUT entry goes with it.
+     *
+     * THE ADDRESS DID NOT COME BACK. They asked to rename the FUNCTION, not the URL — a second move in
+     * two days would churn every bookmark and re-point three redirect stubs for nothing — so the row
+     * carries r336's address and r338's label key. `nav.locations` has read "Locations" in all six
+     * catalogues since ADR-0054; `nav.physicalWorkLocation` is deleted (see the orphan case at the foot
+     * of this file).
+     *
+     * This is the f3e6c36e / ad52212d / 870b79e2 precedent: a row whose ADDRESS and LABEL changed
+     * together, and which never left the pack for good, has its oracle line UPDATED rather than being
+     * re-declared in ADDED_SINCE — every parity property this oracle exists for is unchanged and still
+     * asserted below (same icon ref, same gate, still exactly once, still in the settings node).
+     */
+    { href: '/admin/work-locations', labelKey: 'locations', icon: MapPin, adminOnly: true },
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
@@ -267,11 +291,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
    */
   const MOVED_OUT = [
     { href: '/admin/holidays', to: 'components/sidebar.tsx SYSTEM_SETTINGS_NODE', nowAt: '/admin/holidays' },
-    {
-      href: '/admin/locations',
-      to: 'components/sidebar.tsx, the Administration group, beside Organization',
-      nowAt: '/admin/work-locations',
-    },
+    // 639bf4a5 rev 2 (r338) — the Clocking Location / Physical Work Location ENTRY STOOD HERE and is
+    // gone, because the row it described came BACK to this pack. It is in EXPECTED again, at r336's
+    // address and r338's label key, with the whole story on the line. `nowAt` stays on the type because
+    // Holidays keeps needing `to`, and because a future re-addressed departure will need it again.
   ] as const;
   const movedOutHrefs: string[] = MOVED_OUT.map((r) => r.href);
 
@@ -420,9 +443,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/admin/attendance/schedule', // Schedule (tabbed configuration — now the only schedule-config row)
       '/admin/attendance/schedule-assignment', // Schedule Assignment
       '/admin/attendance-allowance',
-      // 639bf4a5 (r336) — the Clocking Location row STOOD HERE and is gone: MOVED_OUT above. It is
-      // Administration › Physical Work Location now, at /admin/work-locations, hardcoded in
-      // components/sidebar.tsx beside Organization.
+      // 639bf4a5 rev 2 (r338) — the register is a child of this node again, in the 5cb199b3 order it
+      // always held relative to Attendance allowance, at the address r336 gave it and under the label
+      // the reporter asked for. r336 had moved it to components/sidebar.tsx and they contested that.
+      '/admin/work-locations',
       // 3fb1a611 (r299) — '/admin/toil' (Time off in lieu) STOOD HERE and is gone: RETIRED above.
     ]);
     // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
@@ -678,10 +702,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // manager or an employee reaches.
       '/admin/card-assignment',
       '/admin/attendance-allowance',
-      // 639bf4a5 (r336) — the Clocking Location row left this list with the row itself (MOVED_OUT). Its
-      // gate did not weaken: the Administration GROUP that now holds it is adminOnly wholesale, and the
-      // page still calls requireAdmin() in its own body — pinned by
-      // test/work-location-organization-relocation.test.ts, which is where the screen's guards live now.
+      // 639bf4a5 rev 2 (r338) — back on this list with the row. Its gate never weakened through either
+      // move: the page calls requireAdmin() in its own body throughout, which is this file's premise and
+      // is pinned by test/work-location-organization-relocation.test.ts.
+      '/admin/work-locations',
     ]) {
       expect(gate(href), `${href} stays adminOnly`).toEqual({ adminOnly: true, managerUp: undefined });
     }
@@ -834,10 +858,12 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // SCHEDULE (which shift) ASSIGNED (to whom), not another settings category.
       '/admin/attendance/schedule-assignment': 'Schedule Assignment',
       '/admin/attendance-allowance': 'Attendance allowance',
-      // 639bf4a5 (r336) — the Clocking Location entry STOOD HERE and is gone with its row (MOVED_OUT).
-      // The label changed with the home: it reads "Physical Work Location" now, under `nav`'s new
-      // `physicalWorkLocation` key, and `nav.clockingLocation` was deleted from all six catalogues
-      // because nothing rendered it any more. Pinned in test/work-location-organization-relocation.test.ts.
+      // 639bf4a5 rev 2 (r338) — back, and reading "Locations": the reporter's own word for the function.
+      // The KEY is `nav.locations`, which is the camelCase of that string, so this row satisfies THE
+      // GUARD below without an exemption — and it is the key ADR-0054 minted, left unrendered when r336
+      // introduced `nav.physicalWorkLocation`. That newer key is deleted (see the orphan case at the
+      // foot of this file); `nav.clockingLocation` stays deleted from r336.
+      '/admin/work-locations': 'Locations',
 
       // 3fb1a611 (r299) — '/admin/toil': 'Time off in lieu' STOOD HERE: the row is RETIRED (a redirect stub to
       // Leave Config › Leave Credit). `nav.timeOffInLieu` stays in the catalogues, unrendered.
@@ -895,7 +921,14 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // it was retired with. Its replacement is asserted present, in all six, right beside it — a
       // deletion with nothing on the other side would be a lost label, not a rename.
       expect(cat.nav.clockingLocation, `${loc}: dead nav.clockingLocation`).toBeUndefined();
-      expect(typeof cat.nav.physicalWorkLocation, `${loc}: nav.physicalWorkLocation labels the moved row`).toBe('string');
+      // 639bf4a5 rev 2 (r338) — AND NOW `nav.physicalWorkLocation` IS DEAD TOO, for exactly the reason
+      // the line above kills `clockingLocation`: r336 minted it for the Administration row, the reporter
+      // contested that move, and the row is back in this pack reading "Locations". A live-looking nav
+      // key nothing renders is how a retired row comes back, so it is deleted from all six rather than
+      // left lying about. Its replacement is asserted present beside it — a deletion with nothing on the
+      // other side would be a lost label, not a rename.
+      expect(cat.nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation`).toBeUndefined();
+      expect(typeof cat.nav.locations, `${loc}: nav.locations labels the row again`).toBe('string');
       expect(typeof cat.nav.attendance, `${loc}: nav.attendance is still used by the matrix`).toBe('string');
       // 0bade264 (r209) — AND IT MUST NOT SAY THE SAME THING AS THE MENU ABOVE IT, IN ANY LOCALE. This
       // node's label went back to plain "Attendance" at the reporter's request while `nav.attendance`
