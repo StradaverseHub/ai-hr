@@ -190,6 +190,45 @@ describe('2a57a007 (r340) · (b) the r209 GUARD — the suppression must not wid
     expect(entitlementStatusNeedsNotice(row.entitlementStatus), 'and it is still said out loud, in amber').toBe(true);
   });
 
+  /**
+   * THE SHAPE THAT MAKES THE EXPORT'S COLUMN DANGEROUS, AND IT WAS NOT COVERED UNTIL THIS CASE.
+   *
+   * A borrower inherits the POOL's entitlement STATUS (`balanceStoryTypeId`), so while the pool has a real
+   * table the borrower resolves `granted` and the status column reads "Generated" — harmless. The borrower
+   * only reaches `no_entitlement_table` when THE POOL ITSELF has none, and that is the state whose sentence
+   * is the r209 instruction: "No entitlement table … Create an entitlement table for it", printed on the row
+   * of a type that must never have one. Production can reach it in one click (archive the pool's table, or
+   * point a borrower at a type nobody has configured yet), so it is asserted here rather than reasoned about.
+   */
+  it('a borrower whose POOL has no table inherits “no entitlement table” — and STILL says it draws on the pool', async () => {
+    const pool = await leaveTypeRow({ name: uniq('Unconfigured Pool') });
+    const el = await leaveTypeRow({ name: uniq('Pool Emergency'), balanceSourceTypeId: pool });
+    const { employmentId } = await hire();
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    const screen = await screenRows(employmentId);
+
+    const borrower = screen.get(el)!;
+    const poolRow = screen.get(pool)!;
+    // The RAW state, unchanged — this item suppressed no status and moved no diagnostic.
+    expect(borrower.entitlementStatus, 'the borrower still tells the POOL’s entitlement story').toBe('no_entitlement_table');
+    expect(borrower.entitlementStatus).toBe(poolRow.entitlementStatus);
+    expect(
+      ENTITLEMENT_STATUS_LABEL_KEY[borrower.entitlementStatus],
+      'so the raw status map WOULD have printed the r209 instruction on this row',
+    ).toBe('statusNoEntitlementTable');
+    expect(entitlementStatusNeedsNotice(borrower.entitlementStatus), 'and in amber').toBe(true);
+    // …and the pooled caption outranks it, on the screen and in the export both, because on THIS row the
+    // absence of a table is correct. The POOL's own row keeps the diagnostic: its missing table IS a defect.
+    const c = pooledEntitlementCaption(borrower);
+    expect(c, 'the borrower says where its days come from instead').not.toBeNull();
+    expect(c!.pool).toBe(poolRow.leaveType);
+    expect(pooledEntitlementCaption(poolRow), 'the pool is not borrowing, so it is still told to fix itself').toBeNull();
+    // And the two columns this item is about are the borrower's own on this shape too.
+    expect(borrower.fullEntitlement).toBe(0);
+    expect(borrower.ytdEntitled).toBe(0);
+    expect(borrower.entitlementTemplateName).toBeNull();
+  });
+
   it('an ordinary unpooled type WITH a table is untouched in every entitlement column', async () => {
     const medical = await leaveTypeRow({ name: uniq('Unpooled Medical') });
     await table(medical, 14, 'Standard Medical Leave');
@@ -229,7 +268,14 @@ describe('2a57a007 (r340) · (c) the three surfaces read ONE decision', () => {
     );
   });
 
-  it('the export prints the pooled sentence where it used to print “No entitlement table”', async () => {
+  /**
+   * ⚠️ WHAT THIS CASE PINS AND WHAT IT DOES NOT. Its fixture gives the POOL a real table, so the borrower
+   * resolves `granted` and the raw status map would have printed "Generated" on this row — harmless, and
+   * asserted below so the fixture cannot be misread as the dangerous one. The dangerous shape (a pool with
+   * NO table, where the raw map prints the r209 instruction) is §(b)'s third case, and the EXPORT'S OWN
+   * CELLS are exercised — route invoked, CSV parsed — in test/2a57a007-borrower-export-cells.test.ts.
+   */
+  it('the borrower’s status sentence is the pooled one, and it never mentions an entitlement table', async () => {
     const { el, pool, employmentId } = await elPool();
     const screen = await screenRows(employmentId);
     // `statusNotConfigured` and `statusNoEntitlementTable` are THE SAME English sentence, which is why the
@@ -312,11 +358,70 @@ describe('2a57a007 (r340) · six locales, present and distinct', () => {
 });
 
 /** A type guard rather than a comment: the row type must carry the pool name to both surfaces. */
+/**
+ * 2a57a007 (r340) — THE EXPLAIN PANEL'S TWO NEW STRINGS. The panel is the plan's THIRD surface; the sentences
+ * are RENDERED, in all six locales, in test/2a57a007-borrower-explain-panel.dom.test.tsx. This block pins the
+ * catalogue half: present, translated rather than copied, and interpolating the name the caller passes.
+ *
+ * `leave.breakdown.explain.pooledOwnEntitlement` names `{source}` and not `{pool}` on purpose — it is the
+ * argument name its sibling `poolFigures` already uses, and the one r303's catalogue guard has a value for.
+ */
+describe('2a57a007 (r340) · the Explain panel’s pooled statement, in six locales', () => {
+  const brk = (loc: Locale) =>
+    (CATALOGUES[loc] as unknown as { leave: { breakdown: Record<string, unknown> } }).leave.breakdown;
+  const explain = (loc: Locale) => brk(loc).explain as Record<string, string>;
+
+  it.each(LOCALES)('%s carries both keys', (loc) => {
+    expect(typeof brk(loc).pooledOwnEntitlement, `leave.breakdown.pooledOwnEntitlement missing in ${loc}`).toBe('string');
+    expect(typeof explain(loc).pooledOwnEntitlement, `explain.pooledOwnEntitlement missing in ${loc}`).toBe('string');
+  });
+
+  it('both are translated, not copied', () => {
+    const banners = LOCALES.map((l) => String(brk(l).pooledOwnEntitlement));
+    const lines = LOCALES.map((l) => explain(l).pooledOwnEntitlement);
+    expect(new Set(banners).size, 'the panel statement is identical across locales — it was copied').toBe(LOCALES.length);
+    expect(new Set(lines).size, 'the per-line sentence is identical across locales — it was copied').toBe(LOCALES.length);
+  });
+
+  it('every locale interpolates the pool the caller passes, under the name its caller uses', () => {
+    for (const loc of LOCALES) {
+      expect(String(brk(loc).pooledOwnEntitlement).includes('{pool}'), `${loc}: the panel statement drops {pool}`).toBe(true);
+      expect(explain(loc).pooledOwnEntitlement.includes('{source}'), `${loc}: the per-line sentence drops {source}`).toBe(true);
+    }
+  });
+
+  it('neither sentence tells HR to create an entitlement table', () => {
+    for (const loc of LOCALES) {
+      for (const msg of [String(brk(loc).pooledOwnEntitlement), explain(loc).pooledOwnEntitlement]) {
+        expect(/create an entitlement table/i.test(msg), `${loc}: r209’s wrong instruction`).toBe(false);
+      }
+    }
+  });
+});
+
 describe('2a57a007 (r340) · the row carries the fact', () => {
   it('EmployeeBalanceRow declares entitlementFromPool', () => {
     const src = read('app/leave/employee-balances/rows.ts');
     expect(src).toContain('entitlementFromPool: string | null;');
     const typed: keyof EmployeeBalanceRow = 'entitlementFromPool';
     expect(typed).toBe('entitlementFromPool');
+  });
+
+  /**
+   * THE THIRD SURFACE'S WIRING, AS A FACT ABOUT THE ROW RATHER THAN AS A GREP. The panel cannot derive
+   * "this row borrows" for itself: for a borrower it is handed the POOL's breakdown, so from inside the panel
+   * the borrower's row and the pool's own row are identical. The row builder is the only place that knows.
+   */
+  it('the row hands the Explain panel the same pool fact its own cells were built from', async () => {
+    const { pool, el, employmentId } = await elPool();
+    const screen = await screenRows(employmentId);
+
+    const borrower = screen.get(el)!;
+    expect(borrower.breakdown!.leaveTypeId, 'the panel is still fed the POOL’s breakdown (r209)').toBe(pool);
+    expect(
+      borrower.hrExplanation.entitlementFromPool,
+      'and is told whose it is, so it cannot print the pool’s Entitlement under a row reading 0.00',
+    ).toBe(borrower.entitlementFromPool);
+    expect(screen.get(pool)!.hrExplanation.entitlementFromPool, 'the pool’s own panel is unchanged').toBeNull();
   });
 });

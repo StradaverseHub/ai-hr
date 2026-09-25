@@ -86,8 +86,12 @@ export type EmployeeBalanceRow = {
   /** r242 — display-only per-type theming (639fdf77) for the panel header. Already on the balance row. */
   visual: { color: string | null; icon: string | null; code: string | null };
   /** r303 (31492f74) — the HR explanation switch for the Explain panel, carrying whose pool the row's figures
-   *  are (`sharedBalance` off the same balance row). Always set: this screen is HR's. */
-  hrExplanation: { sharedBalance: SharedLeaveBalanceInfo | null };
+   *  are (`sharedBalance` off the same balance row). Always set: this screen is HR's.
+   *  2a57a007 (r340) — and `entitlementFromPool`, the one fact the panel cannot derive for itself: for a
+   *  borrower the breakdown it is handed IS the pool's, so the borrower's row and the pool's own row look
+   *  identical from inside the panel. Structural mirror of `HrLeaveSummaryExplanation`
+   *  (components/leave/EntitlementBreakdown.tsx), which is where the consequence is documented. */
+  hrExplanation: { sharedBalance: SharedLeaveBalanceInfo | null; entitlementFromPool: string | null };
 };
 
 export async function employeeBalanceRows(
@@ -157,13 +161,11 @@ export async function employeeBalanceRows(
        */
       const borrower = isPoolBorrower({ leaveTypeId: b.leaveTypeId, sharedBalance: row.sharedBalance });
       /**
-       * r279 — THE TWO ENTITLEMENT FIGURES AS `deriveBalanceRow` DERIVED THEM OFF `bd`, and off nothing else:
-       * one breakdown, one derivation, never a second resolver (test/r279-earned-and-full-entitlement.test.ts
-       * pins that property on this very expression). They are NAMED here only because 2a57a007 (r340) gives a
-       * pooled borrower its own pair instead — see the branch below. Moving the read itself anywhere but `row`
-       * is what this and r279's guard forbid.
+       * 2a57a007 (r340) — THE POOL THIS ROW BORROWS FROM, NAMED ONCE AND READ THREE TIMES: the Entitlement
+       * caption on the grid, the same caption in the export, and the Explain panel's statement of whose
+       * figures it is showing (`hrExplanation` below). Null on the pool's own row and on every unpooled type.
        */
-      const derivedEntitlement = { ytdEntitled: row.ytdEntitled, fullEntitlement: row.fullEntitlement };
+      const fromPool = borrower ? (row.sharedBalance?.sourceLeaveTypeName ?? null) : null;
       return {
         leaveTypeId: b.leaveTypeId,
         leaveType: row.leaveType,
@@ -180,14 +182,19 @@ export async function employeeBalanceRows(
          * sets a borrower's `accrued` and `balance` to 0.00 for exactly this reason ("it has no entitlement
          * and no balance of its own, which is the honest statement").
          *
+         * r279's PROPERTY IS UNCHANGED AND IS WHY THE NON-BORROWER HALF READS `row.` AND NOTHING ELSE: one
+         * breakdown, one `deriveBalanceRow`, never a second resolver
+         * (test/r279-earned-and-full-entitlement.test.ts pins both halves of each expression by name — it was
+         * UPDATED for this item, because the decision it pinned is the one this item reverses).
+         *
          * UNCONDITIONAL, not `row.x == null ? null : 0` like `taken` below, and the difference is deliberate:
          * `taken`'s null is an ESS-HIDDEN figure, which must never become a 0.00 claim, whereas these two
          * read null only when NO breakdown resolved — and a borrower's own entitlement is 0.00 whether or
          * not the POOL resolved one. This builder empties `essView` (see the file header), so no ESS gate
          * reaches here; if it ever gains an ESS-gated caller, gate these the way `taken` is gated.
          */
-        ytdEntitled: borrower ? 0 : derivedEntitlement.ytdEntitled,
-        fullEntitlement: borrower ? 0 : derivedEntitlement.fullEntitlement,
+        ytdEntitled: borrower ? 0 : row.ytdEntitled,
+        fullEntitlement: borrower ? 0 : row.fullEntitlement,
         share: row.share,
         pendingShare: row.pendingShare,
         entitlementStatus: row.entitlementStatus,
@@ -197,7 +204,7 @@ export async function employeeBalanceRows(
         entitlementTemplateName: borrower ? null : (bd?.entitlementTemplateName ?? null),
         // 2a57a007 (r340) — the pool's NAME, which is the whole of what a borrower has to say about its own
         // entitlement. Off `row.sharedBalance` (the descriptor `leaveBalances` attached), never re-derived.
-        entitlementFromPool: borrower ? (row.sharedBalance?.sourceLeaveTypeName ?? null) : null,
+        entitlementFromPool: fromPool,
         sharedBalance: row.sharedBalance,
         broughtForward: row.broughtForward,
         // 2a57a007 — see `borrower` above: a borrower's days print under Share / Pending Share only.
@@ -212,7 +219,12 @@ export async function employeeBalanceRows(
         breakdown: bd,
         available: b.available,
         visual: { color: b.color, icon: b.icon, code: b.code },
-        hrExplanation: { sharedBalance: row.sharedBalance },
+        // 2a57a007 (r340) — AND THE PANEL IS TOLD THE SAME FACT, off the same local, because the panel is the
+        // plan's THIRD surface and it was reading the pool's Entitlement under a grid row that reads 0.00.
+        // See components/leave/LeaveDetailsPanel.tsx: the figures below the statement stay the POOL's whole
+        // closing column (zeroing them there would break the identity §1 adds up to and trip the explain
+        // module's sum-guards); what the panel gains is the borrower's own fact, said before they are read.
+        hrExplanation: { sharedBalance: row.sharedBalance, entitlementFromPool: fromPool },
       };
     })
     .filter((r) => (typeIds.length ? typeIds.includes(r.leaveTypeId) : true))

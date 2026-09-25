@@ -109,7 +109,24 @@ export type EntitlementBreakdownData = {
  * record); the employee's My Leave never passes it, so what an employee sees is untouched. Carries the one thing
  * the sentences need that the breakdown does not: whose shared balance the row's figures are, when they are.
  */
-export type HrLeaveSummaryExplanation = { sharedBalance: SharedLeaveBalanceInfo | null };
+export type HrLeaveSummaryExplanation = {
+  sharedBalance: SharedLeaveBalanceInfo | null;
+  /**
+   * 2a57a007 (r340) — THE POOL A BORROWER'S DAYS COME FROM, on a BORROWER's row only; null (or absent) on the
+   * pool's own row, on every unpooled type, and on every mount that has not been taught this fact.
+   *
+   * ⚠️ IT CANNOT BE DERIVED IN HERE, AND THAT IS WHY IT IS A FIELD. `data` is the POOL's breakdown for a
+   * borrower (`balanceStoryTypeId`), so `data.leaveTypeId === sharedBalance.sourceLeaveTypeId` on the
+   * borrower's row AND on the pool's own row — the two are indistinguishable from what this component
+   * receives. `isPoolBorrower` needs the ROW's leave type, which only the row builder has.
+   *
+   * What it changes: the panel STATES the borrower's own entitlement (nothing) before the figures, and the
+   * Entitlement / Earned to Date sentences say whose working follows. It does NOT rewrite the figures — see
+   * LeaveDetailsPanel for why the column stays the pool's whole closing arithmetic. Omit it and this panel is
+   * byte-identical to what it rendered before.
+   */
+  entitlementFromPool?: string | null;
+};
 
 export function EntitlementBreakdown({
   data,

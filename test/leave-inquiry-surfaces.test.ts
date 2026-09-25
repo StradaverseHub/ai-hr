@@ -259,7 +259,17 @@ describe('20c699f8: Employee Balances', () => {
   it('r303: both HR mounts switch the sentences on, off the row they already hold; the employee mount does not', () => {
     const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
     expect(mount.slice(0, mount.indexOf('/>'))).toContain('hrExplanation={r.hrExplanation}');
-    expect(rowsHelper).toContain('hrExplanation: { sharedBalance: row.sharedBalance },');
+    // 2a57a007 (r340) — THE OBJECT GAINED A SECOND FIELD AND THIS LITERAL WAS UPDATED TO MATCH, because the
+    // claim it makes is unchanged: the switch is still built off the SAME balance row this screen's figures came
+    // from, in the row builder, with no second read. `entitlementFromPool` is the one fact the panel cannot
+    // derive for itself — for a borrower the breakdown it is handed IS the pool's, so the borrower's row and the
+    // pool's own row are indistinguishable from inside the panel — and without it the panel printed the pool's
+    // Entitlement one click from a grid row reading 0.00. Both halves are read off `row`/`fromPool` here, which
+    // is what this case exists to protect.
+    expect(rowsHelper).toContain('hrExplanation: { sharedBalance: row.sharedBalance, entitlementFromPool: fromPool },');
+    expect(rowsHelper, 'and that fact is decided by the ONE shared predicate, not re-derived').toContain(
+      'const fromPool = borrower ? (row.sharedBalance?.sourceLeaveTypeName ?? null) : null;',
+    );
     expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'still exactly one breakdown read').toBe(1);
     const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
     // The Personnel record is HR-only for the sentences by the page's OWN admin predicate: the read and the switch

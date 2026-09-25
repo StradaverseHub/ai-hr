@@ -186,6 +186,9 @@ export const LEAVE_SUMMARY_EXPLAIN_KEYS = [
   'itemsDoNotAddUp',
   'addsUpTo',
   'poolFigures',
+  // 2a57a007 (r340) — a BORROWER's own two figures, stated on the two lines they belong to. See
+  // `entitlementFromPool` in explainLeaveSummary for why this is said rather than computed.
+  'pooledOwnEntitlement',
   // Full Entitlement
   'eligibleNoTable',
   'eligibleNoMatch',
@@ -320,6 +323,22 @@ export function explainLeaveSummary(
     available: number;
     /** The row's shared-pool descriptor, when its figures are a pool's (`balanceStoryTypeId`). */
     sharedBalance?: SharedLeaveBalanceInfo | null;
+    /**
+     * 2a57a007 (r340) — THE POOL A BORROWER'S DAYS COME FROM, set ONLY on a borrower's row (the pool's own row
+     * and every unpooled type pass null/nothing). `sharedBalance` alone cannot tell the two apart: both halves
+     * of a pool carry the same descriptor, and the figures handed in are the POOL's on both.
+     *
+     * It adds ONE SENTENCE to each of the two lines that are statements about the leave TYPE rather than about
+     * the ledger — Full Entitlement and Earned to Date — saying that this type's own figures are nothing and
+     * that the working which follows is the pool's. The grid and the export already print those 0.00s
+     * (app/leave/employee-balances/rows.ts); this is how the panel stops contradicting them.
+     *
+     * ⚠️ IT DOES NOT TOUCH A FIGURE, AND THEREFORE NOT THE SUM-GUARD EITHER. The guards below keep comparing
+     * the POOL's itemised records against the POOL's own figures, which is the comparison that holds by
+     * construction. Substituting 0.00 for the figures here is what would make a guard fire on a panel where
+     * nothing is wrong — and a guard made to fire, or made quiet, is worse than the contradiction it replaced.
+     */
+    entitlementFromPool?: string | null;
   },
 ): Record<LeaveSummaryLineKey, ExplainStep[]> {
   const d = f.derivation;
@@ -331,9 +350,17 @@ export function explainLeaveSummary(
   }
   const pool = p.sharedBalance ?? null;
   const status = f.entitlementStatus;
+  /**
+   * 2a57a007 (r340) — the borrower's own fact, FIRST on both lines it is about, because it is what the reader
+   * came for: the grid cell beside the button reads 0.00, and this says why and whose figures follow.
+   */
+  const borrowed = p.entitlementFromPool ?? null;
+  const ownEntitlementIsNothing: ExplainStep[] = borrowed
+    ? [{ key: 'pooledOwnEntitlement', args: { source: text(borrowed) } }]
+    : [];
 
   // ── Full Entitlement ────────────────────────────────────────────────────────────────────────────────
-  const eligible: ExplainStep[] = [];
+  const eligible: ExplainStep[] = [...ownEntitlementIsNothing];
   if (pool) {
     eligible.push({
       key: 'poolFigures',
@@ -405,7 +432,7 @@ export function explainLeaveSummary(
   }
 
   // ── Earned to Date ──────────────────────────────────────────────────────────────────────────────────
-  const ytd: ExplainStep[] = [];
+  const ytd: ExplainStep[] = [...ownEntitlementIsNothing];
   const earned = d.earned;
   if (earned.method && status !== 'earning_method_missing') {
     ytd.push({ key: 'earnedMethod', args: { method: choice(earned.method) } });
