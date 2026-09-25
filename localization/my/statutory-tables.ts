@@ -1067,6 +1067,16 @@ export type Tp3MoneyLineSubItem = {
   readonly code: string;
   /** A restriction the form states in words. Captured and printed, never enforced. */
   readonly frequency?: string;
+  /**
+   * The STATUTORY EXEMPTION LIMIT for this line, per year, in ringgit — or absent when none is sourced.
+   *
+   * ⚠️ READ OFF THE SPECIFICATION, NOT OFF THIS FORM, AND THEREFORE SHOWN AND NEVER ENFORCED.
+   * `MY_TP3_2026_SECTION_C`'s header records the whole reasoning; the short version is that the TP3's
+   * Section C prints ONE column (`AMAUN TERKUMPUL (RM)`) and no limit column at all, so under ADR-0008
+   * there is no cap on this form to block against. The figure here is guidance for the operator and the
+   * input to a non-blocking over-limit warning; it never reduces a stored box and never refuses a save.
+   */
+  readonly exemptionLimit?: number | null;
 };
 
 /** One numbered TP3 Section C line (C1–C5). */
@@ -1082,20 +1092,76 @@ export type Tp3MoneyLine = {
  *
  * The form's own caption over this section: "Please state the total amount from previous employment(s)
  * during the current year."
+ *
+ * ══ WHY THE EXEMPTION LIMITS ARE SHOWN AND NEVER ENFORCED (item 20837372) ═══════════════════════════
+ *
+ * THE FORM PRINTS NO LIMIT COLUMN ON SECTION C. Read on the agency's own PDFs, both of them: Exhibit 2
+ * of `spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf` (printed page 39) and the standalone
+ * `bm-borang-tp3-2026.pdf` (page 1) each give Bahagian C exactly ONE money column, `AMAUN TERKUMPUL
+ * (RM)`. Bahagian D on the very next page gives TWO — `HAD TAHUNAN (RM)` and `POTONGAN TERKUMPUL (RM)`.
+ * The agency put a limit column on the section that has limits and left it off the section that does
+ * not, so ADR-0008's rule ("an item with no printed cap is captured and never blocked") is decided here
+ * by the form itself: Section C is captured, never blocked.
+ *
+ * THE LIMITS STILL EXIST — they are just somewhere else, and they bind a DIFFERENT step. Specification
+ * printed page 20, item 9: "MTD is to be deducted from the employee's taxable remuneration only. All
+ * the tax exemption on allowances, benefit-in-kind and perquisites shall be excluded from the
+ * remuneration for MTD purposes. ANY AMOUNT EXCEED THE RESTRICTED AMOUNT SHALL BE TAXABLE." That
+ * sentence is addressed to the employer working out the payroll in the first place, which for a TP3 is
+ * the PREVIOUS employer. By the time a figure reaches this form the over-limit part has already been
+ * moved into the taxable side — so capping C2 here a second time would tax the same ringgit twice.
+ * Hence: print the limit beside the box, WARN when the keyed figure exceeds it (which means the form was
+ * filled wrong and the operator should fix the form), and never silently move the money.
+ *
+ * ⚠️ UNKNOWN, AND DELIBERATELY NOT RESOLVED HERE — DOES C1 ALREADY EXCLUDE C2? The Malay caption on C1
+ * is "Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun / perkuisit / pemberian / Manfaat
+ * YANG DIKENAKAN CUKAI" ("…including allowances / perquisites / gifts / benefits THAT ARE SUBJECT TO
+ * TAX"), which reads as though the exempt amounts were never in C1; C2's caption is the mirror image,
+ * "…YANG DIKECUALIKAN CUKAI". On that reading `C1 − ΣC2` double-subtracts. `core/tp3.ts`'s
+ * `deriveAccumulatorSeed` has subtracted ΣC2 since item 1bb09a73 and this round does NOT change it: the
+ * question is a live UNKNOWN that only `Nota Penerangan Borang TP3 (2026)` can settle, and that document
+ * was not reachable (both of the agency's published URLs for it return 404). Moving a statutory figure
+ * on an unresolved reading is the one thing that must not happen quietly, so it is written down instead.
  */
 export const MY_TP3_2026_SECTION_C: readonly Tp3MoneyLine[] = [
   // C1 — total monthly gross remuneration AND additional remuneration, including allowances /
   // perquisites / gifts / benefits. This is LHDN's Y before anything is taken off it.
   { code: 'c1', subItems: [] },
   // C2 — the tax-exempt allowances / perquisites / gifts / benefits, in five separate boxes.
+  //
+  // ⚠️ THE LIMITS BELOW ARE NOT PRINTED ON THIS FORM. See the file-level note on `exemptionLimit` and
+  // the section header above: TP3 Section C has ONE column and no limit column. Each figure is
+  // transcribed from the MTD specification's own table, "List of tax exempt allowances / perquisites /
+  // gifts / benefits which are required to declare" — SPECIFICATION PRINTED PAGE 21 (PDF page 22 of
+  // `spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf`) — whose roman numerals are the
+  // specification's own and do NOT line up with the form's, so each mapping is named individually.
   {
     code: 'c2',
     subItems: [
-      { code: 'i' }, // travel allowance, petrol card or petrol allowance, and toll fees, for official duties
-      { code: 'ii' }, // child-care allowance
-      { code: 'iii' }, // products of the employer's own business given free or at a discount
-      { code: 'iv' }, // past-service / excellent-service / innovation / productivity / long-service awards (>10 years' service)
-      { code: 'v' }, // other tax-exempt allowances — the form points at the Form BE explanatory notes
+      // C2(i) travel allowance, petrol card or petrol allowance, and toll fees, for official duties.
+      // Specification printed page 21, item i: "Petrol card, petrol allowance, travelling allowance or
+      // toll payment or any of its combination for official duties." EXEMPTION LIMIT (PER YEAR)
+      // RM6,000.00. The same entry adds that an amount above RM6,000 may still be deducted for what was
+      // actually spent on official duties, which is a second reason this is a warning and not a cap.
+      { code: 'i', exemptionLimit: 6_000 },
+      // C2(ii) child-care allowance. Specification printed page 21, item ii: "Child care allowance in
+      // respect of children up to 12 years of age." EXEMPTION LIMIT (PER YEAR) RM3,000.00.
+      { code: 'ii', exemptionLimit: 3_000 },
+      // C2(iii) products of the employer's own business given free or at a discount.
+      // ⚠️ NO LIMIT IS SOURCED. This line has NO counterpart in the specification's printed-page-21
+      // table, and the form prints none. ADR-0008: captured, shown without a limit, never blocked. A
+      // plausible figure is not put here to have something to check against.
+      { code: 'iii', exemptionLimit: null },
+      // C2(iv) past-service achievement / excellent-service / innovation / productivity awards and
+      // long-service awards (more than 10 years with the same employer). Specification printed page 21,
+      // item v — the specification's fifth entry, this form's fourth line; the wording is the same three
+      // clauses in the same order. EXEMPTION LIMIT (PER YEAR) RM2,000.00.
+      { code: 'iv', exemptionLimit: 2_000 },
+      // C2(v) other tax-exempt allowances — the form itself points at the Form BE explanatory notes.
+      // ⚠️ NO SINGLE LIMIT EXISTS, BY CONSTRUCTION: this box is a remainder covering the rest of the
+      // specification's table, whose entries carry different limits (one unit per asset category, the
+      // actual amount expended, a loan-interest formula). One number cannot stand for all of them.
+      { code: 'v', exemptionLimit: null },
     ],
   },
   // C3 — total approved EPF or other approved fund contributions on ALL remuneration (monthly salary
