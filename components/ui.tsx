@@ -99,8 +99,8 @@ export function Field({
  * Personnel, and attendance / user admin / the org chart stay on initials until they ask.
  *
  * THE CALLER DECIDES WHETHER THERE IS A PHOTO, NOT THIS COMPONENT. `src` must be passed ONLY for a person
- * the caller has already established has one (core/person-photo.ts `personsWithPhotos` /
- * `employmentPhotoIds`, one bulk RLS-scoped read per page render). An <img> on every row would fire one
+ * the caller has already established has one (core/person-photo.ts `employmentPhotoIds`, one bulk
+ * RLS-scoped read per page render). An <img> on every row would fire one
  * request per person — 89 on production, 87 of them 404s after a session read and an RLS query each —
  * which is why this component deliberately has no "try the photo, fall back on error" path: there is no
  * error to fall back from, and adding one would need state and therefore a client island in a file that

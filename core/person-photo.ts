@@ -116,53 +116,35 @@ export async function hasPersonPhoto(ctx: SessionContext, personId: string): Pro
 }
 
 /**
- * 597c810a — WHICH of these people have a photo, in ONE query. The Personnel listings need this to render
- * a photo in the row avatar without asking the browser to discover the answer by firing a request per row.
+ * 597c810a — WHICH of these employments' people have a photo, in ONE query. This is THE bulk photo read;
+ * there is deliberately no person-keyed twin (see the note at the end).
  *
  * WHY A BULK READ AND NOT `hasPersonPhoto` PER ROW: production holds 89 persons and 2 photos, so the naive
  * version issues 89 HTTP requests per list load, 87 of which are 404s that each cost a session read and an
  * RLS-scoped query. This is one round trip for the whole page.
  *
+ * WHY IT IS KEYED BY EMPLOYMENT. Both Personnel listings render rows from `core/read.ts#listEmployeesPage`,
+ * whose projection carries `employmentId` and no `personId`, and the photo route is keyed by person (a photo
+ * is a PERSON fact — concurrent employments share one). Rather than widen that projection, this resolves the
+ * two together: one query joins employment → person_photo and returns employmentId → personId for the
+ * employments whose person has a photo the caller may see. The Map's VALUE is what the row needs anyway (the
+ * serve URL is `/personnel/photo/<personId>`), so the caller never has to hold a second lookup.
+ *
  * THIS IS NOT A WAY TO PROBE EXISTENCE OUTSIDE `can_see_person`. The predicate is RLS's, not a filter this
- * function applies: person_photo's read policy is app.can_see_person(person_id), so a person the caller may
- * not see contributes NO ROW and is simply absent from the returned set — indistinguishable from "has no
- * photo". Passing an id from another tenant, or one the caller cannot see, therefore tells the caller
- * nothing. Pinned by test/person-photo-bulk.test.ts as a non-admin whose scope excludes a person who HAS
- * a photo.
+ * function applies, and it is the person_photo side of the join that fences it: employment is readable more
+ * widely than a face photo is, so an employment whose person is outside app.can_see_person yields no joined
+ * photo row and is simply absent from the Map — indistinguishable from "has no photo". An employment id from
+ * another tenant, or one the caller cannot see, therefore tells the caller nothing.
  *
- * Returns a Set of the person ids that have a visible photo. An empty input list short-circuits (an
- * `inArray` on an empty array is a SQL syntax error in some dialects and a pointless round trip in all).
- */
-export async function personsWithPhotos(
-  ctx: SessionContext,
-  personIds: readonly string[],
-): Promise<Set<string>> {
-  const ids = [...new Set(personIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
-  if (ids.length === 0) return new Set();
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ personId: personPhoto.personId })
-      .from(personPhoto)
-      .where(inArray(personPhoto.personId, ids));
-    return new Set(rows.map((r) => r.personId));
-  });
-}
-
-/**
- * 597c810a — the same answer keyed by EMPLOYMENT, because that is what the listings hold.
+ * An empty input list short-circuits (an `inArray` on an empty array is a SQL syntax error in some dialects
+ * and a pointless round trip in all).
  *
- * WHY THIS EXISTS ALONGSIDE `personsWithPhotos`. Both Personnel listings render rows from
- * `core/read.ts#listEmployeesPage`, whose projection carries `employmentId` and no `personId`, and the
- * photo route is keyed by person (a photo is a PERSON fact — concurrent employments share one). Rather
- * than widen that projection, this resolves the two together: one query joins employment → person_photo
- * and returns employmentId → personId for the employments whose person has a photo the caller may see.
- * The Map's VALUE is what the row needs anyway (the serve URL is `/personnel/photo/<personId>`), so the
- * caller never has to hold a second lookup.
- *
- * SAME RLS ARGUMENT AS ABOVE, and it is the person_photo side that fences it: employment is readable more
- * widely than a face photo is, so an employment whose person is outside can_see_person yields no joined
- * photo row and is absent from the Map. An employment id from outside the caller's scope yields nothing
- * either way.
+ * WHAT WENT AND WHY (r340 fix pass): `personsWithPhotos`, the person-keyed twin of this function, shipped
+ * in 597c810a with tests and NO caller — nothing in app/, components/ or lib/ ever asked for it, because
+ * both listings hold employment ids and the eleven other avatars on the product are out of this item's
+ * scope. It was the TESTED path while this one was the live path, which is the wrong way round; its
+ * scope cases (cross-tenant, non-admin, duplicate and blank ids) moved onto this function in
+ * test/person-photo-bulk-597c810a.test.ts rather than being deleted with it.
  */
 export async function employmentPhotoIds(
   ctx: SessionContext,

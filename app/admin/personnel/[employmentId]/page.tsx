@@ -140,7 +140,7 @@ import { CurrencySelect } from '@/components/currency-select';
 import { getCompanyCurrency } from '@/core/read';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, eligibleChildReliefCount, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { listDependents, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 // Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
 import { listQualifications, type QualificationRow } from '@/core/qualifications';
@@ -3161,24 +3161,21 @@ export default async function EmployeePage({
           company already filed under this employee's income tax reference number. Shown beside the
           field itself so a duplicate is caught where it is typed rather than on the CP39 at filing
           time. Advisory only: the save is never gated on it. */}
+      {/* 04b88724 (r340 fix pass) — THE WHOLE FIGURE REACHES THE CARD, not a slice of it. The first build
+          passed only the per-category prices and let the card work the relief out from a second
+          eligible-child count of its own; in 'auto' mode that printed a ringgit figure the payroll kernel
+          contradicted, because the kernel multiplies the STORED head count and the card was multiplying the
+          live one. What travels now is the pack's prices (for the grid the admin types into) AND the pack's
+          own answer for the saved record (the figure the payslip deducts), so the card has nothing left to
+          derive. `derivedChildCount` went with it: it was that second count, taken by a second
+          `eligibleChildReliefCount` call at real UTC now while this figure is taken at Kuala Lumpur
+          "today" — two instants, and on a child's 18th birthday two different answers. */}
       <IdentityTaxCard
         embedded
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
-        derivedChildCount={eligibleChildReliefCount(dependents)}
-        childRelief={
-          qualifyingChildRelief
-            ? {
-                perChild: qualifyingChildRelief.perChild,
-                categories: qualifyingChildRelief.categories,
-                statutoryVersion: qualifyingChildRelief.statutoryVersion,
-                familyChildren: qualifyingChildRelief.familyChildren,
-                uncategorisedChildren: qualifyingChildRelief.uncategorisedChildren,
-                familyRows: qualifyingChildRelief.familyRows,
-              }
-            : null
-        }
+        childRelief={qualifyingChildRelief}
         taxNumberSharedWith={taxNumberSharedWith}
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,

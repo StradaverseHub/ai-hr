@@ -6,6 +6,8 @@ import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getSt
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { childReliefAmountFor, eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
+// 04b88724 — the child-relief derivation's own leaf (db-free, so the client slice can serve it too).
+import { childReliefFor, childReliefPrices } from './child-relief';
 import {
   DEFAULT_MY_STATUTORY,
   MY_EPF_THIRD_SCHEDULE_PART_A,
@@ -118,6 +120,13 @@ export const myPack: CountryPack = {
     // worked out category by category from the resolved ruleset (or the pack built-in). The kernel
     // hands the stored grid straight back to the pack rather than naming a Malaysian relief figure.
     childReliefAmountFor,
+    // 04b88724 (r340 fix pass) — the same derivation WITH the qualifying-children count and the working.
+    // `childReliefAmountFor` above is this function's `.amountRM`; the Personnel screen needs the count, so
+    // it calls this rather than dividing the money by a rate it would otherwise have to know. Putting both
+    // on the one function is what the approved plan asked for, and what stops the screen and the payslip
+    // disagreeing about the same child.
+    childReliefFor,
+    childReliefPrices,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
     // Rung 5c (D6) — the built-in HRDF levy rates; the OT/HRDF config + Attendance-policy screens'
     // fallback when a resolved ruleset predates the `hrdf` slice (they never name MY_HRDF directly).

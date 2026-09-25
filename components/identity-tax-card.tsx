@@ -2,6 +2,15 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+// 04b88724 (r340 fix pass) — the CLIENT-SAFE country-pack seam (ADR-0080 rung 5b, D4). This island prices
+// the child-relief grid the admin is typing into, and it now does so by calling the PACK's own
+// `childReliefFor` — the very function `pack.payroll.childReliefAmountFor` is built on — instead of
+// multiplying the prices itself. The previous build's copy of that arithmetic is what made this card print a
+// child-relief figure in ringgit that the payroll kernel contradicted. `registry.client.ts` is the one
+// client-side place allowed to name packs (test/country-pack-drift.test.ts ALWAYS_ALLOWED); it serves only
+// the db-free `CountryPackClient` slice, so nothing server-only reaches the bundle through it.
+import { clientPackFor } from '@/localization/registry.client';
+import type { ChildReliefPrice } from '@/localization/country-pack';
 import { TaxCategoryField } from './tax-category-field';
 import {
   ChildReliefModeField,
@@ -54,11 +63,13 @@ export type IdentityTaxDefaults = {
  * no figure — core/dependents.ts `qualifyingChildReliefFor` reports nothing rather than inventing a rate.
  */
 export type ChildReliefPricing = {
-  /** The flat per-child relief in RM (RM2,000 in 2026): the divisor, and the rate the two non-table modes
-   *  are priced at because the kernel's child leg is `num_children × perChild` in those modes. */
+  /** The flat per-child relief in RM (RM2,000 in 2026): the rate the two non-table modes are priced at,
+   *  because the kernel's child leg is `num_children × perChild` in those modes. */
   perChild: number;
-  /** Per category: the ringgit and the qualifying units the resolved ruleset prices it at. */
-  categories: { key: string; amountRM: number; units: number }[];
+  /** Per category: the ringgit and the qualifying units the resolved ruleset prices it at, straight from
+   *  `pack.payroll.childReliefPrices`. Handed BACK to the pack with the counts on screen — this island
+   *  never works a price out and never divides one by a rate. */
+  categories: ChildReliefPrice[];
   /** The ruleset version that priced the above, so the reader knows which schedule they are reading. */
   statutoryVersion: string | null;
   /** Live 'child' rows on the Family register. Shown when it disagrees with the stored head count — that
@@ -67,8 +78,40 @@ export type ChildReliefPricing = {
   /** Eligible children carrying no relief category: they would contribute nothing to a category-priced
    *  figure, so a reader must know they exist before trusting one. */
   uncategorisedChildren: number;
-  /** One line per ELIGIBLE child on the Family register — the working behind 'auto' mode's figure. */
-  familyRows: { name: string; category: string | null; sharePercent: number }[];
+
+  // ── WHAT THE STORED RECORD ACTUALLY DEDUCTS (r340 fix pass) ───────────────────────────────────────
+  // The six fields below are `qualifyingChildReliefFor`'s own answer for the SAVED employee. The first
+  // build of this item computed them on every render and threw them away, leaving the card to re-derive
+  // the figure from a count taken at a different instant — which under-stated the relief on screen for an
+  // 'auto'-mode employee whose child had aged past 18. The card reads THESE now.
+  /** `employee_statutory_my.child_relief_mode` AS STORED — not the mode showing in the select, which the
+   *  admin may have changed and not saved. What is on file is the only thing that can be stale. */
+  mode: 'manual' | 'auto' | 'auto_table';
+  /** true for the two auto modes: the stored figure was WORKED OUT, not typed. */
+  derived: boolean;
+  /** `num_children` as stored — the head count Form E / CP8D / the EA statement read, AND the count the
+   *  kernel's child leg multiplies in 'manual' and 'auto' mode. */
+  physicalChildren: number;
+  /** Eligible children on the Family register as of the page's own KL "today". In 'auto' mode this is what
+   *  the next save writes into `num_children`; when it differs from `physicalChildren` the stored tax
+   *  figure is behind the family records and the card says so out loud. */
+  eligibleChildren: number;
+  /** QC for the stored record, from the pack. */
+  qualifyingChildren: number;
+  /** The child deduction in ringgit for the stored record — the same value
+   *  `pack.payroll.childReliefAmountFor` returns, because it is one field of the same call. */
+  reliefRM: number;
+  /** The working behind the stored figure: one line per eligible child in 'auto', one per priced grid cell
+   *  in 'auto_table', empty in 'manual'. */
+  breakdown: {
+    kind: 'child' | 'category';
+    name: string | null;
+    category: string | null;
+    sharePercent: number;
+    children: number;
+    units: number;
+    amountRM: number;
+  }[];
 };
 
 /** A whole count reads as a whole number; a 50%-shared child priced by category produces a HALF unit, and
@@ -108,17 +151,26 @@ export function IdentityTaxCard({
   employmentId,
   personId,
   defaults,
-  derivedChildCount,
   childRelief = null,
   taxNumberSharedWith = [],
+  country = 'MY',
   embedded = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   employmentId: string;
   personId: string;
   defaults: IdentityTaxDefaults;
-  derivedChildCount: number;
-  /** 04b88724 — the pack's prices for the qualifying-children figure; null when none can be resolved. */
+  /**
+   * 04b88724 — the pack's prices AND the pack's figure for the saved record; null when no pack / no PCB
+   * reliefs can be resolved, and the card then names no relief figure rather than inventing a rate.
+   *
+   * THE `derivedChildCount` PROP IS GONE ON PURPOSE (r340 fix pass). It was a SECOND count of the same
+   * eligible children, taken by a second call to `eligibleChildReliefCount` at real UTC now while this
+   * figure was computed at Kuala Lumpur "today". Between 16:00Z and midnight those are different calendar
+   * days, so a child whose 18th birthday is KL-today was eligible for one and not the other, and the card's
+   * total could disagree with its own breakdown rows by a line. There is now one count, taken once, at one
+   * instant: `childRelief.eligibleChildren`.
+   */
   childRelief?: ChildReliefPricing | null;
   /**
    * 7ee14bbc — the OTHER people in this company already filed under `defaults.taxNumber`, by name.
@@ -130,6 +182,12 @@ export function IdentityTaxCard({
    * everybody who is not a duplicate, which is almost everybody.
    */
   taxNumberSharedWith?: string[];
+  /**
+   * 04b88724 — which country pack prices the child relief, matching the `packFor('MY')` the Personnel
+   * detail page already resolves server-side for the same employee. A prop rather than a literal in the
+   * body so the day a second pack lands, the screen and the server resolve the same one.
+   */
+  country?: string;
   /**
    * Item df09f22a — when true the island drops its own outer card chrome and renders as an "Income Tax (PCB)"
    * section nested inside the Statutory (Malaysia) card (visual merge). It keeps its OWN <form action={setTaxAction}>
@@ -170,35 +228,64 @@ export function IdentityTaxCard({
     0,
   );
 
-  // ── 04b88724 — TWO FIGURES, NOT ONE ─────────────────────────────────────────────────────────────────
+  // ── 04b88724 — TWO FIGURES, NOT ONE, AND ONE DERIVATION FOR BOTH ────────────────────────────────────
   // PHYSICAL CHILDREN is the head count: `num_children`, which Form E, CP8D and the EA statement all read.
   // It is the value this form POSTS, unchanged, in all three modes.
   // QUALIFYING CHILDREN (PCB) is C — what the projection of P counts in. It equals the head count in
   // 'manual' and 'auto' (the kernel's child leg is `num_children × perChild` there) and DIFFERS in
   // 'auto_table', where each category carries its own unit weight: LHDN's own worked example makes two
-  // children QC 9. Both are computed here from the same inputs the boxes show, so nothing on screen can
-  // disagree with anything else on screen while the admin is typing.
-  const priced = new Map((childRelief?.categories ?? []).map((c) => [c.key, c]));
-  const gridTotals = CHILD_RELIEF_CATEGORY_KEYS.reduce(
-    (acc, k) => {
-      const price = priced.get(k);
-      if (!price) return acc;
-      const full = whole(grid[k].full);
-      const half = whole(grid[k].half);
-      // A 50%-shared child is worth exactly half the category — the same halving
-      // `childReliefAmountFor` performs, applied to the pack's own numbers rather than re-derived from
-      // a rate spelled here.
-      return {
-        units: acc.units + full * price.units + half * (price.units / 2),
-        amountRM: acc.amountRM + full * price.amountRM + half * (price.amountRM / 2),
-      };
-    },
-    { units: 0, amountRM: 0 },
+  // children QC 9.
+  //
+  // WHERE THE ARITHMETIC LIVES, AND WHY IT IS NOT HERE ANY MORE. It is the PACK's — `childReliefFor`, the
+  // same function `pack.payroll.childReliefAmountFor` returns one field of, reached through the client seam.
+  // This card used to walk the grid itself and multiply the prices, and that copy is precisely what went
+  // wrong: in 'auto' mode it worked the figure out from its own eligible-child count instead of the head
+  // count the kernel multiplies, and printed a relief in ringgit that the payslip contradicted. A screen
+  // whose whole purpose is to stop two child numbers being confused must not invent a third.
+  const packChildReliefFor = clientPackFor(country)?.payroll?.childReliefFor ?? null;
+  const prices: readonly ChildReliefPrice[] = childRelief?.categories ?? [];
+  // The grid AS TYPED, in the shape the pack prices: whole counts, not the strings the inputs hold.
+  const typedGrid = Object.fromEntries(
+    CHILD_RELIEF_CATEGORY_KEYS.map((k) => [k, { full: whole(grid[k].full), half: whole(grid[k].half) }]),
   );
+  // WHICH FIGURE THE SCREEN SHOWS, mode by mode:
+  //   auto_table — the grid ON SCREEN, priced live. The admin is typing into it, so a figure the server
+  //                computed for the saved record would contradict the boxes the moment anything is keyed.
+  //   manual     — the head count ON SCREEN, priced live, for the same reason: it is an editable box.
+  //   auto       — the SAVED record's figure, from the server. Nothing on this screen changes it; the
+  //                children's records do, and `num_children` is what the payslip multiplies until the next
+  //                save. Showing anything else here is the r340 blocking defect.
+  const figure =
+    mode === 'auto_table'
+      ? (packChildReliefFor?.({ from: 'table', table: typedGrid, prices }) ?? null)
+      : mode === 'manual'
+        ? (packChildReliefFor?.({
+            from: 'headCount',
+            children: whole(numChildren),
+            perChild: childRelief?.perChild ?? 0,
+          }) ?? null)
+        : childRelief
+          ? { units: childRelief.qualifyingChildren, amountRM: childRelief.reliefRM, rows: [] }
+          : null;
   const headCount =
-    mode === 'auto' ? derivedChildCount : mode === 'auto_table' ? gridHeadCount : whole(numChildren);
-  const qualifying = mode === 'auto_table' ? gridTotals.units : headCount;
-  const reliefRM = mode === 'auto_table' ? gridTotals.amountRM : headCount * (childRelief?.perChild ?? 0);
+    mode === 'auto'
+      ? (childRelief?.eligibleChildren ?? 0)
+      : mode === 'auto_table'
+        ? gridHeadCount
+        : whole(numChildren);
+  const qualifying = figure?.units ?? headCount;
+  const reliefRM = figure?.amountRM ?? 0;
+  // IS THE STORED TAX FIGURE BEHIND THE FAMILY RECORDS? Only a record STORED as 'auto' can be: the
+  // server-side sync fires on a dependent add / edit / archive, so a child simply ageing past 18 moves the
+  // eligible count and leaves `num_children` — the figure the payslip uses — where it was. `childRelief.mode`
+  // and `.derived` are the STORED provenance, deliberately not the select's current value: a mode the admin
+  // has just picked and not saved describes nothing on file and cannot be stale.
+  const storedAutoStale =
+    childRelief != null &&
+    childRelief.derived &&
+    childRelief.mode === 'auto' &&
+    mode === 'auto' &&
+    childRelief.physicalChildren !== childRelief.eligibleChildren;
   // PROVENANCE IS PART OF THE FIELD. 'manual' is a TYPED figure and is labelled as one; the two auto modes
   // are worked out and are labelled by WHAT they were worked out from. A typed number must never be dressed
   // up as a calculated one, and a calculated one must never look editable.
@@ -208,8 +295,10 @@ export function IdentityTaxCard({
       : mode === 'auto'
         ? t('childProvenanceFromFamily')
         : t('childProvenanceFromTable');
-  // The working behind the qualifying count. 'manual' gets NO breakdown: there is nothing to break down,
-  // and a table under a typed number would imply one.
+  // The working behind the qualifying count, as LINES A SCREEN CAN PRINT. The numbers are the pack's (for
+  // the live grid) or the server's (for a saved 'auto' record) — this only labels them.
+  // 'manual' gets NO breakdown: there is nothing to break down, and a table under a typed number would
+  // imply one.
   const breakdown: {
     key: string;
     label: string;
@@ -220,40 +309,31 @@ export function IdentityTaxCard({
     amountRM: number;
   }[] =
     mode === 'auto_table'
-      ? CHILD_RELIEF_CATEGORY_KEYS.flatMap((k) => {
-          const price = priced.get(k);
-          if (!price) return [];
-          return ([100, 50] as const).flatMap((share) => {
-            const count = whole(share === 100 ? grid[k].full : grid[k].half);
-            if (count === 0) return [];
-            const rate = share === 100 ? price.amountRM : price.amountRM / 2;
-            const unit = share === 100 ? price.units : price.units / 2;
-            return [
-              {
-                key: `${k}-${share}`,
-                label: t(`family.childReliefCat_${k}`),
-                category: k,
-                sharePercent: share,
-                children: count,
-                units: count * unit,
-                amountRM: count * rate,
-              },
-            ];
-          });
-        })
+      ? (figure?.rows ?? []).map((r) => ({
+          key: `${r.category}-${r.sharePercent}`,
+          // THE ITEM COLUMN SAYS WHAT THE LINE STANDS FOR, and for a grid cell that is a NUMBER OF
+          // CHILDREN, not the category again — the category has its own column and printing it twice per
+          // row was noise the reporter would have had to read past.
+          label: t('childQualifyingItemChildren', { count: r.children }),
+          category: r.category,
+          sharePercent: r.sharePercent,
+          children: r.children,
+          units: r.units,
+          amountRM: r.amountRM,
+        }))
       : mode === 'auto'
-        ? (childRelief?.familyRows ?? []).map((r, i) => ({
-            key: `${r.name}-${i}`,
-            label: r.name,
-            category: r.category,
-            sharePercent: r.sharePercent,
-            children: 1,
+        ? (childRelief?.breakdown ?? []).map((r, i) => ({
+            key: `${r.name ?? r.category ?? 'row'}-${i}`,
             // ONE UNIT PER ELIGIBLE CHILD, because that is what 'auto' mode's kernel expression gives it:
             // `num_children × perChild`, whatever category is on file. The category column below is shown
             // as information and the note says so — printing "4 units" here would print a figure the
             // payslip contradicts (CLAUDE.md §8).
-            units: 1,
-            amountRM: childRelief?.perChild ?? 0,
+            label: r.name ?? t('childQualifyingItemChildren', { count: r.children }),
+            category: r.category,
+            sharePercent: r.sharePercent,
+            children: r.children,
+            units: r.units,
+            amountRM: r.amountRM,
           }))
         : [];
 
@@ -364,7 +444,7 @@ export function IdentityTaxCard({
                 // the head count is what leaves Form E / CP8D and the EA statement untouched by this item.
                 value={
                   mode === 'auto'
-                    ? String(derivedChildCount)
+                    ? String(childRelief?.eligibleChildren ?? 0)
                     : mode === 'auto_table'
                       ? String(gridHeadCount)
                       : numChildren
@@ -420,6 +500,21 @@ export function IdentityTaxCard({
               {childRelief && (
                 <span className="text-xs text-muted-foreground" data-child-relief-amount>
                   {t('childReliefAmountHint', { amount: fmtRM(reliefRM) })}
+                </span>
+              )}
+              {/* ── THE STORED FIGURE IS BEHIND THE FAMILY RECORDS ────────────────────────────────────
+                  The one case that previously said NOTHING at all. 'auto' mode's sync fires on a dependent
+                  add / edit / archive, so a child ageing past 18 — or a head count typed before the mode was
+                  switched — leaves `num_children` holding a figure the Family register no longer supports,
+                  and `num_children` is what the payslip multiplies. The card now prints the figure the
+                  payslip uses (above) and this line says, in the same breath, that the records disagree with
+                  it and what closes the gap. Amber, never blocking: HR decides when a tax figure moves. */}
+              {storedAutoStale && childRelief && (
+                <span className="text-xs text-amber-700 dark:text-amber-400" data-child-stale-figure>
+                  {t('childQualifyingStaleFamily', {
+                    stored: childRelief.physicalChildren,
+                    eligible: childRelief.eligibleChildren,
+                  })}
                 </span>
               )}
             </Field>
@@ -520,9 +615,11 @@ export function IdentityTaxCard({
                     <tbody>
                       {breakdown.map((row) => (
                         <tr key={row.key} className="border-t border-border" data-child-breakdown-row>
-                          <td className="py-1.5 pr-4 align-middle">
-                            {row.children > 1 ? `${row.label} × ${row.children}` : row.label}
-                          </td>
+                          {/* The line's own identity: the child's NAME for a Family-register line, the
+                              NUMBER OF CHILDREN for a grid cell. It is deliberately not the category name
+                              again — that is the next column, and a row that printed it twice made the
+                              reader check whether the two were saying different things. */}
+                          <td className="py-1.5 pr-4 align-middle">{row.label}</td>
                           <td className="py-1.5 pr-4 align-middle text-muted-foreground">
                             {row.category
                               ? t(`family.childReliefCat_${row.category}`)
@@ -580,7 +677,7 @@ export function IdentityTaxCard({
             // itself — plus the honest warning that this is a tax figure moving without a human in the loop.
             <div className="rounded-md border border-dashed border-border bg-card/60 p-3">
               <p className="text-xs text-muted-foreground">
-                {t('childReliefAutoSyncNote', { count: derivedChildCount })}
+                {t('childReliefAutoSyncNote', { count: childRelief?.eligibleChildren ?? 0 })}
               </p>
             </div>
           )}

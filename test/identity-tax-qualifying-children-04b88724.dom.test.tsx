@@ -12,10 +12,21 @@
  * explicit about it and it is the assertion most likely to be got backwards.
  *
  * THE OTHER THING A RENDER IS THE ONLY WAY TO CHECK: the card is INTERACTIVE, so the qualifying count has
- * to track the grid as it is typed. It is computed here from the prices the pack hands down (the statutory
- * rule stays in the pack) multiplied by the counts on screen, and if that ever became a figure the server
- * computed once for the saved record, the screen would start contradicting its own boxes. Hence the typing
- * case at the end.
+ * to track the grid as it is typed. It is priced by the PACK's own `childReliefFor`, reached through the
+ * client seam, and if that ever became a figure the server computed once for the saved record, the screen
+ * would start contradicting its own boxes. Hence the typing case at the end.
+ *
+ * ── AND THE ASSERTION THIS FILE WAS MISSING, WHICH IS WHY r340's WORST DEFECT WAS GREEN EVERYWHERE ──────
+ * Every figure below is now compared against THE KERNEL'S OWN — `childReliefAmountFor` (the pack call
+ * core/payroll.ts ~5625 and core/payroll-view.ts ~1487 make for an 'auto_table' employee) and `children ×
+ * perChild` (the expression both of those files use for every other mode). The first build of this item
+ * asserted the card against hand-written literals and asserted the kernel only through a function the card
+ * did not read, so the card's arithmetic and the kernel's could diverge with 1814 tests green — and they
+ * did: in 'auto' mode the card worked the relief out from its own count of ELIGIBLE children while the
+ * payslip multiplies the STORED head count, and the screen was RM2,000 short of the payslip with nothing on
+ * it saying so. The auto-mode fixture below is deliberately the shape that reproduces that (a stored head
+ * count of two, one eligible child on file), and the assertion names both figures so it cannot pass by
+ * accident.
  *
  * AND THE POST CONTRACT: there must still be exactly ONE field named `numChildren`. Two boxes showing one
  * stored number is the shape this item creates, and a second `name="numChildren"` would silently make the
@@ -28,32 +39,54 @@ import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
 import { IdentityTaxCard, type ChildReliefPricing } from '../components/identity-tax-card';
+// THE KERNEL'S OWN FIGURES. test/ is not scanned by the country-pack drift guard, so a test may name the
+// pack directly — and it must here: the whole point is to compare what the SCREEN prints against what the
+// payroll engine computes, not against an arithmetic this file works out for itself.
+import { childReliefAmountFor } from '../localization/my/payroll';
+import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
+
+const RELIEFS = DEFAULT_MY_STATUTORY.pcb.reliefs;
+/** The pack call core/payroll.ts makes for an 'auto_table' employee, with the same arguments. */
+const kernelTableRM = (grid: unknown) => childReliefAmountFor(grid, RELIEFS);
+/** The child leg core/payroll.ts and core/payroll-view.ts use for EVERY OTHER mode: `children × perChild`,
+ *  where `children` is the STORED `num_children` — not a count of eligible children taken at render time. */
+const kernelFlatRM = (children: number) => children * RELIEFS.perChild;
+const rm = (n: number) =>
+  new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
 // The catalogue holds nested groups (family, leaveSummary, …) alongside the flat captions, so the cast
 // goes through `unknown`; every key read below is one of the flat string ones.
 const D = en.people.detail as unknown as Record<string, string>;
 
-/** The 2026 ruleset's prices, as core/dependents.ts hands them to the card: RM and RM ÷ perChild. */
+/**
+ * The prices core/dependents.ts hands the card, TAKEN FROM THE RULESET rather than typed out: the ringgit is
+ * `childByCategory` and the count is that ringgit ÷ perChild, which is what `childReliefPrices` returns. A
+ * future correction to a relief figure moves this fixture with it instead of making the file lie.
+ */
+const CATEGORY_PRICES = (['under_18', 'study_preu', 'study_tertiary', 'disabled', 'disabled_study'] as const).map(
+  (key) => ({ key, amountRM: RELIEFS.childByCategory![key], units: RELIEFS.childByCategory![key] / RELIEFS.perChild }),
+);
+
+/** A MANUAL record with nothing keyed: the ordinary case (71 of the reporter's 75 employees). */
 const PRICING: ChildReliefPricing = {
-  perChild: 2000,
-  categories: [
-    { key: 'under_18', amountRM: 2000, units: 1 },
-    { key: 'study_preu', amountRM: 2000, units: 1 },
-    { key: 'study_tertiary', amountRM: 8000, units: 4 },
-    { key: 'disabled', amountRM: 8000, units: 4 },
-    { key: 'disabled_study', amountRM: 16000, units: 8 },
-  ],
+  perChild: RELIEFS.perChild,
+  categories: CATEGORY_PRICES,
   statutoryVersion: '2026.9',
   familyChildren: 2,
   uncategorisedChildren: 0,
-  familyRows: [],
+  mode: 'manual',
+  derived: false,
+  physicalChildren: 0,
+  eligibleChildren: 0,
+  qualifyingChildren: 0,
+  reliefRM: 0,
+  breakdown: [],
 };
 
 function renderCard(over: {
   mode?: string;
   numChildren?: number;
   grid?: Record<string, { full: number; half: number }> | null;
-  derivedChildCount?: number;
   pricing?: ChildReliefPricing | null;
 } = {}) {
   const user = userEvent.setup();
@@ -63,7 +96,6 @@ function renderCard(over: {
         action={() => {}}
         employmentId="emp-1"
         personId="person-1"
-        derivedChildCount={over.derivedChildCount ?? 0}
         childRelief={over.pricing === undefined ? PRICING : over.pricing}
         defaults={{
           taxNumber: 'IG1',
@@ -92,8 +124,10 @@ const text = (sel: string) => (document.querySelector(sel)?.textContent ?? '').t
 describe('the card shows TWO figures under two captions', () => {
   it('both captions are rendered, and the old single "Children (PCB relief)" FIELD caption is gone', () => {
     renderCard({ numChildren: 2 });
-    // The FIELD captions, not any text on the card: the fieldset's own legend happens to carry the same
-    // words ("Children (PCB relief)") and is the heading of the group, which is not what changed.
+    // The FIELD captions, not any text on the card: the fieldset's own LEGEND still reads "Children (PCB
+    // relief)" — `childReliefLegend`, a different key with the same words — and that heading is not what
+    // changed. `childrenPcbRelief` is the caption this item removed; it now renders nowhere, and this
+    // assertion is what would notice it coming back on a field.
     const fieldCaptions = Array.from(document.querySelectorAll('label > span')).map((s) => s.textContent?.trim());
     expect(fieldCaptions).toContain(D.childrenPhysical);
     expect(fieldCaptions).toContain(D.childrenQualifying);
@@ -106,7 +140,12 @@ describe('the card shows TWO figures under two captions', () => {
   it('exactly ONE field posts numChildren, whatever the mode — the save reads one head count', () => {
     for (const mode of ['manual', 'auto', 'auto_table']) {
       document.body.innerHTML = '';
-      renderCard({ mode, numChildren: 2, grid: { under_18: { full: 2, half: 0 } }, derivedChildCount: 2 });
+      renderCard({
+        mode,
+        numChildren: 2,
+        grid: { under_18: { full: 2, half: 0 } },
+        pricing: { ...PRICING, mode: 'auto', derived: true, physicalChildren: 2, eligibleChildren: 2 },
+      });
       expect(document.querySelectorAll('[name="numChildren"]').length, `${mode}`).toBe(1);
     }
   });
@@ -126,7 +165,7 @@ describe('manual — TYPED, and therefore still editable', () => {
   it('there is NO breakdown table, because nothing was worked out — a sentence says what the figure is instead', () => {
     renderCard({ numChildren: 3 });
     expect(document.querySelector('[data-child-breakdown]'), 'a table under a typed number implies one').toBeNull();
-    expect(text('[data-child-manual-note]')).toContain('2,000.00');
+    expect(text('[data-child-manual-note]')).toContain(rm(RELIEFS.perChild));
   });
 
   it('the two boxes are ONE stored number: typing in either moves both, and the relief follows', async () => {
@@ -134,7 +173,8 @@ describe('manual — TYPED, and therefore still editable', () => {
     await user.clear(qualifyingInput()!);
     await user.type(qualifyingInput()!, '4');
     expect(physical().value, 'manual mode has one num_children; the screen must not imply two').toBe('4');
-    expect(text('[data-child-relief-amount]')).toContain('8,000.00');
+    // The kernel's own child leg for a manual employee: four typed children at the ruleset's per-child rate.
+    expect(text('[data-child-relief-amount]')).toContain(rm(kernelFlatRM(4)));
   });
 });
 
@@ -145,7 +185,13 @@ describe('auto_table — DERIVED from the relief table, and read-only', () => {
     renderCard({ mode: 'auto_table', numChildren: 2, grid: WORKED_EXAMPLE });
     expect(physical().value, 'the head count Form E reads is still two people').toBe('2');
     expect(qualifyingText()).toBe('9');
-    expect(text('[data-child-relief-amount]')).toContain('18,000.00');
+    // THE KERNEL'S OWN FIGURE for this employee, from the pack call core/payroll.ts makes over the same
+    // grid — not the literal 18,000 this file used to carry, which could have agreed with nothing.
+    expect(text('[data-child-relief-amount]')).toContain(rm(kernelTableRM(WORKED_EXAMPLE)));
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelTableRM(WORKED_EXAMPLE)));
+    // …and the count on screen is that money at the ruleset's own per-child rate. If the two ever came
+    // apart, one of them would be a figure nobody could stand behind.
+    expect(Number(qualifyingText()) * RELIEFS.perChild).toBeCloseTo(kernelTableRM(WORKED_EXAMPLE), 2);
   });
 
   it('the qualifying figure is NOT editable, and says what it was worked out from', () => {
@@ -163,11 +209,18 @@ describe('auto_table — DERIVED from the relief table, and read-only', () => {
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain(en.people.detail.family.childReliefPct_100);
     expect(rows[1].textContent).toContain(en.people.detail.family.childReliefPct_50);
+    // The Relief category column names the category…
     expect(rows[0].textContent).toContain('Child under 18');
+    // …and the Item column says how many children the line stands for, ONCE. It used to print the category
+    // name a second time in the same row, which left the reader checking whether the two cells disagreed.
+    const cells = Array.from(rows[0].querySelectorAll('td')).map((c) => c.textContent?.trim());
+    expect(cells[0]).toBe('2 child(ren)');
+    expect(cells[1]).toBe('Child under 18');
+    expect(cells[0], 'the two leading columns must not say the same thing').not.toBe(cells[1]);
     // 2 full + half a child = 2.5 qualifying children, RM5,000 — unrounded, because rounding the count
     // would make it disagree with the money beside it.
     expect(text('[data-child-breakdown-total-units]')).toBe('2.5');
-    expect(text('[data-child-breakdown-total-rm]')).toBe('5,000.00');
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelTableRM({ under_18: { full: 2, half: 1 } })));
     expect(qualifyingText()).toBe('2.5');
     expect(text('[data-child-ruleset-version]')).toContain('2026.9');
   });
@@ -187,31 +240,69 @@ describe('auto_table — DERIVED from the relief table, and read-only', () => {
     await user.type(tertiary, '2');
     // Two tertiary-study children: 8 qualifying children, RM16,000 — priced from the pack's own figures.
     expect(qualifyingText()).toBe('8');
-    expect(text('[data-child-breakdown-total-rm]')).toBe('16,000.00');
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelTableRM({ study_tertiary: { full: 2, half: 0 } })));
     expect(physical().value, 'and the head count stays a head count: two children').toBe('2');
   });
 });
 
-describe('auto — DERIVED from the Family records', () => {
+describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s figure that is shown', () => {
+  /**
+   * THE SHAPE THAT BROKE, as a fixture. A child had a birthday: `num_children` still holds 2 (the sync only
+   * fires on a dependent add / edit / archive, so nothing rewrote it), while the Family register now holds
+   * ONE eligible child. The payslip deducts 2 × RM2,000. The card used to print the ONE, in ringgit.
+   *
+   * Everything in here is what core/dependents.ts `qualifyingChildReliefFor` returns for that record, with
+   * the money taken from the kernel's own expression rather than typed out.
+   */
+  const AGED_OUT: ChildReliefPricing = {
+    ...PRICING,
+    mode: 'auto',
+    derived: true,
+    physicalChildren: 2,
+    eligibleChildren: 1,
+    familyChildren: 2,
+    uncategorisedChildren: 0,
+    qualifyingChildren: 2,
+    reliefRM: kernelFlatRM(2),
+    breakdown: [
+      {
+        kind: 'child',
+        name: 'Ain',
+        category: 'under_18',
+        sharePercent: 100,
+        children: 1,
+        units: 1,
+        amountRM: RELIEFS.perChild,
+      },
+    ],
+  };
+
+  /** An in-step 'auto' record: two eligible children, head count two, nothing stale. */
   const FAMILY: ChildReliefPricing = {
     ...PRICING,
+    mode: 'auto',
+    derived: true,
+    physicalChildren: 2,
+    eligibleChildren: 2,
     familyChildren: 2,
     uncategorisedChildren: 1,
-    familyRows: [
-      { name: 'Bala', category: 'study_tertiary', sharePercent: 50 },
-      { name: 'Ain', category: null, sharePercent: 100 },
+    qualifyingChildren: 2,
+    reliefRM: kernelFlatRM(2),
+    breakdown: [
+      { kind: 'child', name: 'Bala', category: 'study_tertiary', sharePercent: 50, children: 1, units: 1, amountRM: RELIEFS.perChild },
+      { kind: 'child', name: 'Ain', category: null, sharePercent: 100, children: 1, units: 1, amountRM: RELIEFS.perChild },
     ],
   };
 
   it('the figure is read-only, marked as worked out from the Family records', () => {
-    renderCard({ mode: 'auto', numChildren: 2, derivedChildCount: 2, pricing: FAMILY });
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
     expect(qualifyingInput()).toBeNull();
     expect(qualifyingText()).toBe('2');
     expect(text('[data-child-qualifying-provenance]')).toBe(D.childProvenanceFromFamily);
   });
 
   it('one line per eligible child, each worth ONE qualifying child — with a note saying the category prices nothing in this mode', () => {
-    renderCard({ mode: 'auto', numChildren: 2, derivedChildCount: 2, pricing: FAMILY });
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
     const rows = breakdownRows();
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain('Bala');
@@ -219,14 +310,69 @@ describe('auto — DERIVED from the Family records', () => {
     // A tertiary-study child is worth 4 in the category table — but NOT in this mode, where the kernel's
     // child leg is num_children × perChild. Printing 4 here would contradict the payslip.
     expect(text('[data-child-breakdown-total-units]')).toBe('2');
-    expect(text('[data-child-breakdown-total-rm]')).toBe('4,000.00');
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelFlatRM(2)));
     expect(text('[data-child-auto-units-note]')).toBe(D.childQualifyingAutoUnitsNote);
   });
 
   it('a child with no relief category is reported, because a category-priced figure would omit them silently', () => {
-    renderCard({ mode: 'auto', numChildren: 2, derivedChildCount: 2, pricing: FAMILY });
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
     expect(text('[data-child-uncategorised]')).toContain('1');
     expect(document.querySelector('[data-child-uncategorised]')).not.toBeNull();
+  });
+
+  // ── THE r340 BLOCKING DEFECT, PINNED ───────────────────────────────────────────────────────────────
+  it("BLOCKING: the relief on screen is the KERNEL's — the STORED head count × perChild, not a count of eligible children", () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
+    const payslip = kernelFlatRM(AGED_OUT.physicalChildren); // what core/payroll.ts deducts: 2 × RM2,000
+    const wrong = kernelFlatRM(AGED_OUT.eligibleChildren); // what the card used to print: 1 × RM2,000
+    expect(payslip, 'the fixture must actually distinguish the two, or this test proves nothing').not.toBe(wrong);
+    expect(
+      text('[data-child-relief-amount]'),
+      'the screen must state the relief the payslip deducts, to the cent',
+    ).toContain(rm(payslip));
+    expect(
+      text('[data-child-relief-amount]'),
+      'and must NOT state the figure a render-time count of eligible children would give',
+    ).not.toContain(rm(wrong));
+    expect(qualifyingText(), 'QC is that money at the ruleset rate').toBe(String(payslip / RELIEFS.perChild));
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(payslip));
+  });
+
+  it("…and SAYS the Family records no longer support it, instead of leaving the disagreement silent", () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
+    const stale = text('[data-child-stale-figure]');
+    expect(stale, 'a screen that prints the stale figure without a word is the worst of the options').not.toBe('');
+    expect(stale).toContain(String(AGED_OUT.physicalChildren));
+    expect(stale).toContain(String(AGED_OUT.eligibleChildren));
+  });
+
+  it('…and says nothing when the stored figure and the records agree, so the warning means something when it appears', () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
+    expect(document.querySelector('[data-child-stale-figure]')).toBeNull();
+  });
+
+  it('a mode the admin has just PICKED and not saved is not called stale — nothing is on file to be stale', () => {
+    // Stored as manual with a typed 5; the select is switched to Auto but nothing is saved yet. The stored
+    // provenance is `manual`, so the staleness line — which is about a figure ON FILE — must stay away.
+    renderCard({
+      mode: 'auto',
+      numChildren: 5,
+      pricing: { ...PRICING, mode: 'manual', derived: false, physicalChildren: 5, eligibleChildren: 1 },
+    });
+    expect(document.querySelector('[data-child-stale-figure]')).toBeNull();
+  });
+
+  it('ONE INSTANT: the head count shown and the breakdown lines come from the same eligible-child list', () => {
+    // The two used to be taken at different instants — the rows at Kuala Lumpur "today" and the count at
+    // real UTC now — so on a child's 18th birthday the table could hold one more line than the box admitted.
+    // There is one count now, and this is what would notice a second one appearing.
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
+    expect(physical().value).toBe(String(FAMILY.eligibleChildren));
+    expect(breakdownRows().length).toBe(FAMILY.eligibleChildren);
+    document.body.innerHTML = '';
+    renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
+    expect(physical().value).toBe(String(AGED_OUT.eligibleChildren));
+    expect(breakdownRows().length).toBe(AGED_OUT.eligibleChildren);
   });
 });
 

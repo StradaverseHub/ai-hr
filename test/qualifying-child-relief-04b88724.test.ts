@@ -8,12 +8,18 @@
  * implied it was also the figure the tax calculation counts in. For 71 of the reporter's 75 employees it is
  * a number somebody typed.
  *
- * `qualifyingChildReliefFor` is what the screen now reads. THE ONE PROPERTY THAT MATTERS HERE is that the
- * count it reports cannot disagree with the money on the payslip, because it is not computed
- * independently — it is the kernel's own ringgit figure divided by the ruleset's per-child rate. So every
- * assertion below compares against the pack function the kernel itself calls
- * (`childReliefAmountFor`, core/payroll.ts ~5625 / core/payroll-view.ts ~1487), never against an
- * expectation this file works out for itself.
+ * `qualifyingChildReliefFor` is what the Personnel screen reads. THE ONE PROPERTY THAT MATTERS HERE is that
+ * the count it reports cannot disagree with the money on the payslip, because the two are not computed
+ * independently — they are two fields of ONE pack call, `pack.payroll.childReliefFor`, whose `.amountRM` is
+ * literally what `pack.payroll.childReliefAmountFor` returns (localization/my/child-relief.ts). So every
+ * assertion below compares against the pack function the kernel itself calls (`childReliefAmountFor`,
+ * core/payroll.ts ~5625 / core/payroll-view.ts ~1487), never against an expectation this file works out for
+ * itself.
+ *
+ * r340 fix pass — what this file could NOT see, and now does not have to: the figures it proves here were
+ * for a while proved for a function THE SCREEN DID NOT READ. The card had its own copy of the arithmetic and
+ * under-stated the relief. The screen's own figures are pinned against the kernel in
+ * test/identity-tax-qualifying-children-04b88724.dom.test.tsx; this file pins the server's.
  *
  * NOTHING HERE WRITES A PCB FIGURE OR CHANGES ONE. The item surfaces what the kernel already computes.
  */
@@ -22,7 +28,12 @@ import { randomUUID } from 'node:crypto';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { childReliefAmountFor } from '../localization/my/payroll';
 import { setStatutoryProfileMY, setTaxProfileMY } from '../localization/my/statutory';
-import { addDependent, qualifyingChildReliefFor } from '../core/dependents';
+import {
+  addDependent,
+  eligibleChildReliefCount,
+  listDependents,
+  qualifyingChildReliefFor,
+} from '../core/dependents';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -256,7 +267,7 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
     });
     const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
     expect(q!.uncategorisedChildren).toBe(1);
-    expect(q!.familyRows.map((r) => [r.name, r.category, r.sharePercent])).toEqual([['Cindy', null, 100]]);
+    expect(q!.breakdown.map((r) => [r.name, r.category, r.sharePercent])).toEqual([['Cindy', null, 100]]);
   });
 
   it('the ruleset that priced the figure is named, and the per-category prices travel with it', async () => {
@@ -295,5 +306,115 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
       hiredOn: '2026-01-01',
     });
     expect(await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF })).toBeNull();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+ * r340 FIX PASS — THE STORED FIGURE, THE FAMILY REGISTER, AND ONE INSTANT
+ *
+ * The blocking defect this pass exists for was not in the arithmetic: it was in WHICH NUMBER the screen
+ * multiplied. In 'auto' mode the kernel's child leg is the STORED `num_children`, and the server-side sync
+ * that maintains it fires only on a dependent add / edit / archive — so a child simply ageing past 18 moves
+ * the eligible count and leaves the tax figure where it was. Both numbers have to come back from here, at
+ * ONE instant, or the screen has to choose between them without knowing they differ.
+ * ═════════════════════════════════════════════════════════════════════════════════════════════════════ */
+describe('04b88724 · the stored head count and the eligible children, from one instant', () => {
+  it("a child who has aged out: the relief stays the KERNEL's flat stored count, and the gap is reported", async () => {
+    const E = await hire('AgedOut');
+    // Eligible on ASOF (2026-06-30).
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Young',
+      relationship: 'child',
+      dateOfBirth: '2016-04-01',
+      childReliefCategory: 'under_18',
+    });
+    // 20 on ASOF, not a student, no explicit child-relief decision — aged out of the eligible count.
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Grown',
+      relationship: 'child',
+      dateOfBirth: '2006-04-01',
+    });
+    // The stored head count still says two, because nothing rewrote it after the birthday.
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 2,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.mode).toBe('auto');
+    expect(q!.familyChildren, 'two children are on the Family register').toBe(2);
+    expect(q!.eligibleChildren, 'but only one of them is eligible on this date').toBe(1);
+    expect(q!.physicalChildren, 'and the stored head count is untouched by the birthday').toBe(2);
+    // THE FIGURE THE PAYSLIP DEDUCTS. core/payroll.ts uses `num_children × perChild` for this mode, so it
+    // is TWO children of relief — not the one eligible child a render-time count would find.
+    expect(q!.reliefRM).toBeCloseTo(2 * RELIEFS.perChild, 2);
+    expect(q!.qualifyingChildren).toBe(2);
+    expect(
+      q!.reliefRM,
+      'the eligible-child figure must be distinguishable from the stored one, or nothing here is proved',
+    ).not.toBeCloseTo(q!.eligibleChildren * RELIEFS.perChild, 2);
+  });
+
+  it('ONE INSTANT: the eligible count and the breakdown lines are the same list, filtered once', async () => {
+    const E = await hire('OneInstant');
+    // An 18th birthday exactly ON the date the figure is taken — the one day the eligibility rule turns on,
+    // and the day two different instants used to give two different answers.
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'BirthdayToday',
+      relationship: 'child',
+      dateOfBirth: '2008-06-30',
+    });
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Small',
+      relationship: 'child',
+      dateOfBirth: '2019-02-02',
+    });
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 2,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(
+      q!.breakdown.length,
+      'the screen shows this count in one box and these lines in the table below it; they must be the same list',
+    ).toBe(q!.eligibleChildren);
+    // …and it agrees with the helper the page used to call separately, AT THE SAME INSTANT. Called with the
+    // real `new Date()` default instead, this is the assertion that would drift for eight hours a day.
+    const rows = await listDependents(adminCtx(base), { personId: E.personId });
+    expect(eligibleChildReliefCount(rows, new Date(`${ASOF}T00:00:00Z`))).toBe(q!.eligibleChildren);
+  });
+
+  it('manual mode still reports the eligible count, because the screen shows it as the disagreement', async () => {
+    // The production shape: 71 of 75 employees on a typed figure. Nothing derives here, but the Family
+    // register still holds children, and the whole point of the split screen is that you can see both.
+    const E = await hire('ManualWithFamily');
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Kid',
+      relationship: 'child',
+      dateOfBirth: '2017-05-05',
+    });
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 5,
+      childReliefMode: 'manual',
+      childReliefTable: null,
+    });
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.physicalChildren).toBe(5);
+    expect(q!.eligibleChildren).toBe(1);
+    expect(q!.reliefRM, 'the kernel multiplies the typed figure in manual mode').toBeCloseTo(
+      5 * RELIEFS.perChild,
+      2,
+    );
+    expect(q!.breakdown, 'a typed number has no working').toEqual([]);
   });
 });

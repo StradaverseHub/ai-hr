@@ -1612,7 +1612,9 @@
       "childQualifyingTotal": "Total",
       "childQualifyingAutoUnitsNote": "In Auto (from Family records) every eligible child counts as one qualifying child. The relief category shown is for information only: it prices the relief in Auto (from table) mode.",
       "childQualifyingUncategorised": "{count} eligible child(ren) carry no relief category, so they would add nothing to a figure priced by category.",
-      "childQualifyingRuleset": "Priced by statutory ruleset {version}."
+      "childQualifyingRuleset": "Priced by statutory ruleset {version}.",
+      "childQualifyingItemChildren": "{count} child(ren)",
+      "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step."
     },
     "import": {
       "title": "นำเข้าพนักงาน",

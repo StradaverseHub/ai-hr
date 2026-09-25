@@ -888,24 +888,26 @@ export async function archiveDependent(
  * in higher education is counted as eight. The screen used to show one number under one caption and the
  * reporter was right to contest it.
  *
- * DERIVED, NEVER STORED. There is no new column and there is no second arithmetic. The qualifying count is
- * read straight back OUT of the ringgit figure the kernel already computes:
+ * DERIVED, NEVER STORED, AND DERIVED IN ONE PLACE. There is no new column and there is no second
+ * arithmetic. Both figures come back from the PACK, as two fields of one value:
  *
- *     qualifyingChildren = reliefRM / perChild
+ *     const figure = pack.payroll.childReliefFor(…)   // { units, amountRM, rows }
  *
- * and `reliefRM` comes from the SAME expression the kernel uses for the same employee — the pack's
- * `childReliefAmountFor` over the stored grid in 'auto_table', `num_children × perChild` in every other
- * mode (core/payroll.ts ~5625, core/payroll-view.ts ~1487). That division is exact by construction, not by
- * coincidence: every figure in `childByCategory` IS the category's QC multiplied by `perChild`, which
- * localization/my/statutory-tables.ts states per value with its printed-page citation and
- * test/child-relief-figures-04b88724.test.ts asserts. So the count on the screen cannot drift from the
- * money on the payslip — there is nothing to drift, it is the money divided by the rate.
+ * `units` is QC, `amountRM` is the ringgit — and `amountRM` is literally what
+ * `pack.payroll.childReliefAmountFor` returns, because that function is now this one's `.amountRM` (see
+ * localization/my/child-relief.ts). The kernel calls it for an 'auto_table' employee (core/payroll.ts
+ * ~5625, core/payroll-view.ts ~1487) and uses `num_children × perChild` for every other mode, which is the
+ * `from: 'headCount'` input here. So the count on the screen cannot drift from the money on the payslip:
+ * they are not two derivations that agree, they are two fields of one return value.
  *
- * WHY NOT ADD A COUNT TO THE PACK FUNCTION ITSELF, which is where the approved plan puts it: that is
- * `localization/my/payroll.ts` + the `CountryPack` surface, neither of which this round's file split gives
- * this agent. Deriving the count from the pack's own amount is the same single-source property by a
- * different route — one place computes it, and it is pinned against the kernel's figure rather than against
- * a re-derivation. Reported up as a deviation from the plan.
+ * THIS IS THE r340 FIX AND IT IS WORTH SAYING WHY. The first build of this item left the amount in the pack
+ * and worked the COUNT out twice more — once here and once in components/identity-tax-card.tsx — arguing
+ * that dividing the pack's ringgit by `perChild` gave the same single-source property. It did not: the card
+ * read its own copy, and in 'auto' mode it printed a child-relief figure in ringgit that this repo's own PCB
+ * kernel contradicted. The approved plan had named that failure in advance ("two call sites that each work
+ * out C is exactly the duplicate-source-of-truth problem CLAUDE.md section 1 forbids. Put it where both
+ * payroll and the screen read it"), so the count now lives beside the amount in the pack and both readers
+ * call it.
  *
  * NO PCB ARITHMETIC CHANGES HERE. Nothing in this section writes, and nothing it returns is fed back into
  * a calculation. It surfaces a figure the kernel already produced.
@@ -953,10 +955,19 @@ export type QualifyingChildRelief = {
    *  a grid the admin is still typing into and cannot wait for a save; handing it the pack's prices keeps
    *  the statutory rule in the pack and leaves the view doing arithmetic on data. */
   categories: { key: string; amountRM: number; units: number }[];
-  /** One line per ELIGIBLE child on the Family register, in reading order, WHATEVER the mode. Separate
-   *  from `breakdown` on purpose: the breakdown answers "how was this mode's figure reached", while this
-   *  answers "who is on file", which a screen needs even when the stored mode does not read it. */
-  familyRows: { name: string; category: string | null; sharePercent: number }[];
+  /** Eligible children on the Family register AS OF `asOf` — the count 'auto' mode's server-side sync
+   *  would write into `num_children` if it ran right now.
+   *
+   *  IT IS NOT NECESSARILY `physicalChildren`, and the gap is the r340 blocking defect's whole cause:
+   *  `syncChildReliefFromFamily` fires only on a dependent add / edit / archive, so a child simply ageing
+   *  past 18 moves this and leaves the stored head count — the figure the payslip uses — where it was. The
+   *  screen shows BOTH and says which one the tax calculation counts in.
+   *
+   *  ONE INSTANT. This is `breakdown.length` in 'auto' mode by construction (both come from the same
+   *  `eligible` list, filtered once at `asOf`), which is why the card's total and its own rows can no
+   *  longer differ by a row on a child's 18th birthday — they used to be taken at two different instants,
+   *  this one at KL midnight and the card's at real UTC now. */
+  eligibleChildren: number;
   /** The ruleset version that priced it, so the reader knows which schedule they are looking at. */
   statutoryVersion: string | null;
   /** How the count was reached. Empty in 'manual' mode: a typed number has no breakdown, and inventing
@@ -1009,19 +1020,22 @@ export async function qualifyingChildReliefFor(
   },
 ): Promise<QualifyingChildRelief | null> {
   const pack = packFor(p.country ?? 'MY');
-  // Captured OUT of the optional property: `childReliefAmountFor` is optional on the pack surface, and a
-  // narrowing on `pack.payroll.childReliefAmountFor` does not survive into the async closure below.
-  const amountFor = pack?.payroll?.childReliefAmountFor;
-  if (!pack || !amountFor) return null;
+  // Captured OUT of the optional properties: both are optional on the pack surface (a jurisdiction with no
+  // per-category child relief omits them), and a narrowing on `pack.payroll.childReliefFor` does not
+  // survive into the async closure below. `childReliefFor` is the ONE derivation — the count, the money and
+  // the working — and `childReliefPrices` the only conversion between ringgit and qualifying children.
+  const childReliefFor = pack?.payroll?.childReliefFor;
+  const childReliefPrices = pack?.payroll?.childReliefPrices;
+  if (!pack || !childReliefFor || !childReliefPrices) return null;
   return withTenant(ctx, async (tx) => {
     const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
     const reliefs = rules.pcb?.reliefs;
     if (!reliefs) return null;
     const perChild = reliefs.perChild;
-    // A zero or missing per-child figure would make the division below meaningless (and Infinity is a
-    // worse answer than "no figure"), so report nothing rather than a number nobody can read.
+    // A zero or missing per-child figure prices no qualifying-children COUNT at all (`childReliefPrices`
+    // returns units 0 rather than Infinity), so report nothing rather than a screen full of zeroes that
+    // look like a figure.
     if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild <= 0) return null;
-    const byCategory = reliefs.childByCategory ?? {};
 
     const [statutory] = await tx
       .select({
@@ -1064,73 +1078,65 @@ export async function qualifyingChildReliefFor(
     const eligible = children.filter((d) => isChildReliefEligible(d, asOfDate));
     const uncategorisedChildren = eligible.filter((d) => !d.childReliefCategory).length;
 
-    const breakdown: QualifyingChildRow[] = [];
-    let reliefRM: number;
-    if (mode === 'auto_table') {
-      // THE KERNEL'S OWN FIGURE, not a re-derivation: the same pack call core/payroll.ts makes for this
-      // employee, over the same stored grid. An empty / unkeyed grid is RM0 — an empty claim — and the
-      // count follows it to zero rather than optimistically reporting the head count.
-      reliefRM = amountFor(statutory.childReliefTable, reliefs);
-      const grid = (statutory.childReliefTable ?? {}) as Record<string, unknown>;
-      for (const key of CHILD_RELIEF_CATEGORIES) {
-        const amount = byCategory[key];
-        if (typeof amount !== 'number' || !Number.isFinite(amount)) continue;
-        const cell = grid[key] as { full?: unknown; half?: unknown } | undefined;
-        const whole = (v: unknown) =>
-          typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
-        // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away.
-        for (const [share, count, rate] of [
-          [100, whole(cell?.full), amount],
-          [50, whole(cell?.half), amount / 2],
-        ] as const) {
-          if (count === 0) continue;
-          breakdown.push({
-            kind: 'category',
+    // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
+    // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
+    // and handing it the prices keeps the statutory rule in the pack while it does.
+    const categories = childReliefPrices(reliefs);
+
+    // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
+    // 'auto_table' prices the stored grid; every other mode is `num_children × perChild`, which is what
+    // core/payroll.ts and core/payroll-view.ts do for the same employee. An empty / unkeyed grid claims
+    // NOTHING — the count follows the money to zero rather than optimistically reporting the head count.
+    const figure =
+      mode === 'auto_table'
+        ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
+        : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
+
+    const breakdown: QualifyingChildRow[] =
+      mode === 'auto_table'
+        ? // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away. The
+          // lines are the PACK's own rows; this only names them for a screen.
+          figure.rows.map((r) => ({
+            kind: 'category' as const,
             name: null,
-            category: key,
-            sharePercent: share,
-            children: count,
-            units: (count * rate) / perChild,
-            amountRM: count * rate,
-          });
-        }
-      }
-    } else {
-      // manual AND auto: the kernel's child leg is `num_children × perChild`, so QC === num_children.
-      reliefRM = physicalChildren * perChild;
-      if (mode === 'auto') {
-        for (const d of eligible) {
-          breakdown.push({
-            kind: 'child',
-            name: d.fullName,
-            category: d.childReliefCategory ?? null,
-            // 100 when nothing is recorded: an unshared claim is the whole relief, which is what the
-            // kernel's flat count already assumes. core/dependents.ts validates the stored 100|50 on
-            // write, so this never has to re-validate it.
-            sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
-            children: 1,
-            units: 1,
-            amountRM: perChild,
-          });
-        }
-      }
-    }
+            category: r.category,
+            sharePercent: r.sharePercent,
+            children: r.children,
+            units: r.units,
+            amountRM: r.amountRM,
+          }))
+        : mode === 'auto'
+          ? // One line per ELIGIBLE child, each worth exactly one qualifying child — which is not a
+            // simplification but this mode's kernel expression applied to a single child (`from:
+            // 'headCount'`, children 1). Printing its category's units instead would print a figure the
+            // payslip denies.
+            eligible.map((d) => {
+              const one = childReliefFor({ from: 'headCount', children: 1, perChild });
+              return {
+                kind: 'child' as const,
+                name: d.fullName,
+                category: d.childReliefCategory ?? null,
+                // 100 when nothing is recorded: an unshared claim is the whole relief, which is what the
+                // kernel's flat count already assumes. `setDependentChildRelief` validates the stored
+                // 100|50 on write, so this never has to re-validate it.
+                sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
+                children: 1,
+                units: one.units,
+                amountRM: one.amountRM,
+              };
+            })
+          : // manual — nothing was worked out, so there is nothing to break down.
+            [];
 
     return {
       mode,
       derived: mode !== 'manual',
       physicalChildren,
       familyChildren: children.length,
-      categories: CHILD_RELIEF_CATEGORIES.filter(
-        (key) => typeof byCategory[key] === 'number' && Number.isFinite(byCategory[key]),
-      ).map((key) => ({ key, amountRM: byCategory[key], units: byCategory[key] / perChild })),
-      familyRows: eligible.map((d) => ({
-        name: d.fullName,
-        category: d.childReliefCategory ?? null,
-        sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
-      })),
-      qualifyingChildren: reliefRM / perChild,
-      reliefRM,
+      eligibleChildren: eligible.length,
+      categories,
+      qualifyingChildren: figure.units,
+      reliefRM: figure.amountRM,
       perChild,
       statutoryVersion: rules.version ?? null,
       breakdown,
