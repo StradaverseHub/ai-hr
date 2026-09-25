@@ -1,3 +1,55 @@
+## r338 + r339 (2026-09-25) — seven items, shipped as one deploy after four failed attempts on box memory. `main@3e094ae8`, migration **0488**.
+
+Closed: `639bf4a5`, `73ddd5a1`, `00e28308`, `bb2b2e86`, `4ca06dea` (r338); `04b88724`, `20837372` (r339).
+Gate: **998 files — equal to the suite file count**, 14 chunks, `tsc` 0, `next build` 0, `gate:shadow` **PASS 401/401**. Render check: 4 screens × 6 locales, 24 × 200, zero poison tokens, and the corrected child reliefs verified **on screen** (RM 8,000 ×2, RM 16,000 ×1, retired RM 14,000 absent).
+
+⚠️ **Gated as ONE receipt across two rounds**, because main moved past r338's receipt while its deploy was blocked. That is the honest shape: the tree that shipped is the tree that was gated.
+
+### THE REPORTER WAS RIGHT AND WE WERE WRONG — TWICE, ON STATUTORY MONEY
+
+`04b88724`: we told them our five `childByCategory` figures "match HASiL line for line". They contested, citing the LHDN 2026 MTD specification. **They were right.** Printed p.27 gives a qualifying-children table — a disabled child counts as **4** children (RM8,000), one in further instruction as **8** (RM16,000). We held RM6,000 and RM14,000: the **annual assessment** figures. Malaysia has two schedules and they disagree for disabled children.
+
+**Our own code had said so.** That object carried `⚠️ RATE-ONLY, NOT YET VERIFIED` and we quoted it as confirmation anyway. Every value now carries its printed-page citation.
+
+Three things the build found that the brief did not name:
+- **Nobody was affected** — stronger than "at most one". The money path reads `child_relief_table` gated on `auto_table`; the one disabled child belongs to an `auto` employee.
+- **A THIRD source carried the old figures.** `localization/statutory-pack/bundled/my-2026.01.01.pack.json` embeds a **signed** copy; `pnpm statutory:sync` would have reinstated 6,000/14,000 **over** the fix and stamped them 2026.7. Caught by an existing guard, fixed by rebuilding the pack.
+- **`disabledSpouse` is wrong too** — p.28 item f gives RM6,000, we hold RM5,000. Raised as `57d48735`, not swept in.
+
+### TP3's SECTION D REACHED NOTHING
+
+`20837372`: LHDN p.22 — *"The information amount from the TP3 Form shall be treated in the formula as variable (Y−K\*), X, Z and ∑LP."* We wired three. Section D was captured, validated, stored and read by **nothing**, and ∑LP is subtracted inside P — so a new joiner who declared previous-employment reliefs was **over-deducted**.
+
+⚠️ **CORRECTING MY OWN BRIEF, MEASURED AFTER THE BUILD:** I told the agent this was live. The one production TP3 form has a Section D with seventeen keys and **every amount zero** (Section C totals 75,579). The 0488 backfill carries `AND d.lp <> 0`, so it correctly skipped it: `tp3_lp` is NULL, read as zero, **no payslip moved**. The structural defect was real; the urgency was mine.
+
+Three of that brief's premises were wrong and the source won: **C2 was already five sub-items** (`c.c2?.amount` is the server's *sum*); **the TP3 form prints no limit column on Section C**, so ADR-0008 decides it — captured, never blocked; and therefore **capping C2 would tax the same ringgit twice**, because p.20's "any amount exceed the restricted amount shall be taxable" addresses the *previous* employer, whose over-limit portion is already inside C1. Two of the five C2 limits are `null` and stay null — the build **stopped rather than invent**, which is the discipline `04b88724` proved we needed.
+
+### THE GATE CAUGHT WHAT NO WORKTREE COULD
+
+One red chunk: `employee-import-field-parity` walks the **merged** schema and found `tp3_lp` neither carried by an import column nor excluded with a reason — invisible from inside the TP3 worktree, the same shape as `maritalStatusSourceRequestId` in r334. Given its **own** exclusion entry rather than appended to the four existing `tp3*` fields, because their stated reason (*also loaded by the payroll history import*) is **not true** of a form-only column; appending would have made the guard assert something false.
+
+### r338's FIVE
+
+`639bf4a5` **reverses r336 one round after it shipped**, on the reporter's contest: Locations returns to Attendance as a company listing with dedicated screens. Route and `screenKey` deliberately did not move; the drift ratchet is byte-untouched (it governs imports, not menus); a company's second location is **shown**, rowSpanned, because production has 8 locations across 6 companies and the ticket's one-per-company example did not match the data.
+
+`73ddd5a1` proved **my plan overstated the cost**: I told the reporter blank marital status would cost Caregiver *and* Natural Disaster Leave; `NDL` has no eligibility row at all. Now an assertion, not prose. It also made concrete that production holds **5,922 days of granted-but-invisible balance** — created before the read and grant paths agreed, never created again, existing days untouched.
+
+`00e28308` caught that there are **TWO** find-or-create sites, not the one I named — r337 made a non-regular run able to open a month, so stamping only `createBatch` would have left every **bonus-led** month unstamped. Stamped at creation so **no `UPDATE` of the column exists anywhere**, making a later stealth backfill structurally impossible.
+
+`4ca06dea` found a **third** omission I had missed (the `groups` array), so a corrected count alone would have disabled Process **without saying why**; and `actions.ts` was reporting the wrong reason entirely.
+
+`bb2b2e86` found the 50-row cap default was **never pinned**, and that its own first locale guard would have shipped a **malformed Thai ICU string green** because next-intl swallows `FORMATTING_ERROR`.
+
+### THE DEPLOY, AND THE BOX IS OUT OF RUNWAY
+
+**Four failed attempts**, ~40 minutes producing nothing, every one memory. `deploy.sh`'s heap cap went `4096 → 2560 → 3584 → 4096` across r336–r339 as the diagnosis converged. The rule now recorded there: **the cap must fit RAM + free swap, not RAM alone**, and a cap above what the box can back converts a clean V8 self-OOM into a kernel kill. Also recorded: a killed `pnpm build` leaves a **~2.5 GB orphan reparented to init for ~10 minutes**, which starves the retry and looks exactly like capacity — check `ps --sort=-rss` before blaming the number.
+
+⚠️ **The next bump does not fit.** 4096 plus overhead is ~80% of this box's entire 5.6 GB. The type pass has needed more memory in four consecutive rounds. **Add RAM or grow `/swap.img` (267 GB of disk free) before touching that number again.**
+
+### NOT DONE
+
+`disabledSpouse` (`57d48735`, raised). TP3 **R1**: C1's Malay caption reads *"yang dikenakan cukai"*, which if correct means `C1 − ΣC2 − C3` double-subtracts and **under**-deducts — not flipped on an unresolved reading; the only document that settles it 404s on both LHDN URLs. **R2**: TP3 Section D and our own TP1 now both feed ∑LP and `checkTp1OverClaim` has never seen a TP3. The child-relief mode migration for the other 74 employees stays the reporter's separate trigger.
+
 ## r337 (2026-09-24) — one item, and it caught a silent under-remittance to LHDN. `main@9cff0a25`, no migration.
 
 Closed: `23e7dac3` (payroll cycles in any order).
