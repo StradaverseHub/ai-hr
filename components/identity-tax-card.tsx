@@ -597,8 +597,20 @@ export function IdentityTaxCard({
             <div className="rounded-md border border-border bg-card/60 p-3" data-child-breakdown>
               <p className="mb-2 text-xs font-medium text-foreground">{t('childQualifyingBreakdown')}</p>
               {breakdown.length === 0 ? (
+                /* ── THE EMPTY BOX MUST NOT CONTRADICT THE FIGURE ABOVE IT ──────────────────────────
+                   An empty breakdown has TWO causes and they say opposite things about the money.
+                   'auto_table' with no grid keyed ⇒ nothing is claimed, and the original sentence is
+                   true. But a record stored 'auto' whose Family register is empty still has a
+                   `num_children` head count, and THAT is what the payslip multiplies — so relief IS
+                   claimed and there is simply nothing here to itemise it with. Printing "no child
+                   relief is claimed" under a stated "Child relief: RM 10,000.00" made one fieldset
+                   assert both, which is the defect this item exists to stop. Production has three
+                   employees stored 'auto', so the state is reachable. Choose on the MONEY, not on the
+                   row count; the amber line above already names the stored and eligible counts. */
                 <p className="text-xs text-muted-foreground" data-child-breakdown-empty>
-                  {t('childQualifyingBreakdownEmpty')}
+                  {reliefRM > 0
+                    ? t('childQualifyingBreakdownUnsupported', { amount: fmtRM(reliefRM) })
+                    : t('childQualifyingBreakdownEmpty')}
                 </p>
               ) : (
                 <div className="overflow-x-auto">

@@ -338,6 +338,49 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     expect(text('[data-child-breakdown-total-rm]')).toBe(rm(payslip));
   });
 
+  // ── THE r340 FIX-PASS REGRESSION, PINNED ─────────────────────────────────────────────────────────
+  // An empty breakdown has TWO causes that say OPPOSITE things about the money, and the first fix pass
+  // chose between them on `breakdown.length` alone. A record stored 'auto' whose Family register is
+  // empty still has a `num_children` head count, and that is what the payslip multiplies — so relief IS
+  // claimed while there is nothing here to itemise it with. The card printed "Child relief: RM 10,000.00"
+  // and, four elements below, "Nothing is keyed yet, so no child relief is claimed". One fieldset, two
+  // incompatible statements about the same money, on a screen whose whole purpose this round is to stop
+  // two child numbers being confused. Production has three employees stored 'auto', so it is reachable.
+  /** Stored 'auto', head count 5, Family register EMPTY — relief is claimed, nothing can itemise it. */
+  const EMPTY_REGISTER: ChildReliefPricing = {
+    ...PRICING,
+    mode: 'auto',
+    derived: true,
+    physicalChildren: 5,
+    eligibleChildren: 0,
+    familyChildren: 0,
+    uncategorisedChildren: 0,
+    qualifyingChildren: 5,
+    reliefRM: kernelFlatRM(5),
+    breakdown: [],
+  };
+
+  it('an empty register under a CLAIMED relief never says "no child relief is claimed"', () => {
+    renderCard({ mode: 'auto', numChildren: 5, pricing: EMPTY_REGISTER });
+    const claimed = kernelFlatRM(EMPTY_REGISTER.physicalChildren);
+    expect(claimed, 'the fixture must actually claim money, or this test proves nothing').toBeGreaterThan(0);
+    expect(text('[data-child-relief-amount]'), 'the payslip deducts it').toContain(rm(claimed));
+    expect(breakdownRows(), 'and there is genuinely nothing to itemise').toHaveLength(0);
+    // THE CONTRADICTION ITSELF: the box may not deny the money the line above it states.
+    expect(
+      text('[data-child-breakdown-empty]'),
+      'one fieldset cannot both claim the relief and deny it',
+    ).not.toBe(D.childQualifyingBreakdownEmpty);
+    expect(text('[data-child-breakdown-empty]'), 'it names the amount that IS claimed').toContain(rm(claimed));
+  });
+
+  it('…while an unkeyed grid, which really does claim nothing, still says so', () => {
+    renderCard({ mode: 'auto_table', numChildren: 0, grid: null, pricing: { ...PRICING, mode: 'auto_table', derived: true, physicalChildren: 0, eligibleChildren: 0, familyChildren: 0, uncategorisedChildren: 0, qualifyingChildren: 0, reliefRM: 0, breakdown: [] } });
+    expect(text('[data-child-breakdown-empty]'), 'the original sentence is correct HERE').toBe(
+      D.childQualifyingBreakdownEmpty,
+    );
+  });
+
   it("…and SAYS the Family records no longer support it, instead of leaving the disagreement silent", () => {
     renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
     const stale = text('[data-child-stale-figure]');
