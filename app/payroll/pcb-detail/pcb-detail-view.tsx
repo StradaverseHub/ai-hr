@@ -52,7 +52,11 @@
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
-import type { PcbExplanation, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
+// ad7bc503 — CYCLE_LABEL and CATEGORY_LABEL moved to core/ so the DOWNLOADED document resolves the same
+// two maps this screen does. They were private to this file and the document therefore printed neither
+// the payroll cycle nor the marital tax status the reporter's section 1 asks for.
+import { CATEGORY_LABEL, CYCLE_LABEL, pcbBasisLabels } from '@/core/pcb-explain';
+import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
 
 export type PcbDetailContext = {
   employeeCode: string | null;
@@ -67,23 +71,25 @@ export type PcbDetailContext = {
   currency: string | null;
   /** Statutory ruleset version stamped on the payslip (`payslipProvenance`), or null when it predates it. */
   rulesetVersion: string | null;
-};
-
-/** The four payroll cycles, mapped to STATIC keys in this screen's own namespace. A computed `t()` key is
- *  invisible to the i18n coverage scan, so the map is exhaustive and every value is pinned by
- *  test/pcb-detail.test.ts in all six catalogs. */
-const CYCLE_LABEL: Record<string, 'cycleRegular' | 'cycleOffCycle' | 'cycleBonus' | 'cycleAdjustment'> = {
-  regular: 'cycleRegular',
-  off_cycle: 'cycleOffCycle',
-  bonus: 'cycleBonus',
-  adjustment: 'cycleAdjustment',
-};
-
-/** The s.48 tax category, likewise static-keyed. */
-const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'category3'> = {
-  1: 'category1',
-  2: 'category2',
-  3: 'category3',
+  /**
+   * ad7bc503 — the reporter's section 1, completed. IC, or the PASSPORT number when the employee has no
+   * IC (`payslipForReview` already resolves which and says so), so the screen can LABEL which document it
+   * is printing rather than calling a passport an identity card.
+   */
+  identityNumber: string | null;
+  identityIsPassport: boolean;
+  /** LHDN's tax reference (TIN), as recorded. Null ⇒ nothing was recorded; never an empty-looking zero. */
+  taxNumber: string | null;
+  /**
+   * The s.48 category as STORED on the employee (1 / 2 / 3), which the screen prints both as the category
+   * and — the reporter asks for both — as the marital tax status it means. ONE stored fact, printed twice
+   * under the two headings the agency's own slip uses, rather than two facts that could disagree.
+   *
+   * ⚠️ NOT the same thing as `trace.category`, which is the category the RUN applied. Both are shown: a
+   * disagreement between them is exactly the kind of after-the-fact edit this screen exists to surface,
+   * and collapsing them into one row is how it would go unnoticed.
+   */
+  taxCategory: number | null;
 };
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
@@ -93,6 +99,16 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
       <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
     </div>
   );
+}
+
+/**
+ * Muted, secondary text — a module-level component on purpose. The `NotRecorded` helper further down
+ * closes over `t` and so has to be created inside the render, which react-hooks/static-components
+ * objects to at every use site; the rows ad7bc503 adds pass the resolved string in instead, so they add
+ * no new instance of that objection to a file that already carries it.
+ */
+function Muted({ children }: { children: React.ReactNode }) {
+  return <span className="font-normal text-muted-foreground">{children}</span>;
 }
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
@@ -144,6 +160,60 @@ function WorksheetRow({
   );
 }
 
+/**
+ * ad7bc503 — ONE LINE OF THE REPORTER'S CALCULATION SLIP: its line marker, its caption, one or two
+ * figures, and the annual limit the agency's own schedule prints beside it.
+ *
+ * IT IS A SECOND LAYOUT AND NOT A SECOND SOURCE. `WorksheetRow` above draws LHDN's symbol block, which
+ * has one figure per symbol; the reporter's sections 2, 4, 7 and 8 are SCHEDULES, with a Current column
+ * and an Accumulated column and a limit — the shape of the paper form, which is why they need their own
+ * row rather than a third optional prop on that one. Both are painted from a list built in core/, both
+ * resolve their captions through the catalogue, and neither reads a figure of its own.
+ */
+function SlipRow({
+  line,
+  label,
+  limit,
+  first,
+  second,
+  third,
+  sub,
+  dual,
+  triple,
+}: {
+  line: string;
+  label: string;
+  limit?: React.ReactNode;
+  first: React.ReactNode;
+  second?: React.ReactNode;
+  third?: React.ReactNode;
+  sub?: boolean;
+  dual?: boolean;
+  triple?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
+      <span
+        aria-hidden={line ? undefined : true}
+        className={`inline-block w-10 shrink-0 font-mono text-xs font-semibold ${sub ? 'text-muted-foreground' : 'text-primary'}`}
+      >
+        {line}
+      </span>
+      <span className={`min-w-0 flex-1 ${sub ? 'ps-3 text-muted-foreground' : ''}`}>{label}</span>
+      {limit !== undefined && (
+        <span className="w-24 shrink-0 text-end text-xs tabular-nums text-muted-foreground">{limit}</span>
+      )}
+      <span className="w-32 shrink-0 text-end tabular-nums font-medium">{first}</span>
+      {dual && <span className="w-32 shrink-0 text-end tabular-nums font-medium">{second}</span>}
+      {/* The children grid's weighting column: a property of the CATEGORY, so it is muted like the limit
+          column rather than presented as one of this employee's own figures. */}
+      {triple && (
+        <span className="w-32 shrink-0 text-end tabular-nums text-muted-foreground">{third}</span>
+      )}
+    </div>
+  );
+}
+
 /** Formula and its substitution, side by side — requirement 14: never the symbols alone. */
 function Formula({
   formulaLabel,
@@ -182,14 +252,26 @@ export async function PcbDetailView({
   ctx,
   explanation,
   worksheet,
+  slip,
 }: {
   ctx: PcbDetailContext;
   explanation: PcbExplanation;
   /** 7f251381 — the same figures in LHDN's worksheet order, assembled in core/. NULL only when the caller
    *  could not build one; the sheet is then simply absent rather than drawn empty. */
   worksheet: PcbWorksheet | null;
+  /** ad7bc503 — the reporter's sections 2, 4, 5, 6, 7 and 8, assembled in core/ from reads the page did.
+   *  An EMPTY list only when the explanation carries no working to itemise. */
+  slip: readonly PcbSlipSection[];
 }) {
   const t = await getTranslations('payroll.pcbDetail');
+  /**
+   * ad7bc503 — THE SEVENTEEN RELIEF LINES ARE ALREADY WRITTEN, IN ALL SIX LOCALES, UNDER `taxRelief`.
+   * The TP1 screen and the printed TP1 both resolve the agency's own wording from there, and a second
+   * transcription of it under `payroll.pcbDetail` would be a second thing to keep in step with the form —
+   * exactly what `localization/my/statutory-tables.ts` refuses for the catalogue itself. So a slip row
+   * names its namespace and this picks the resolver; nothing here invents a caption.
+   */
+  const tr = await getTranslations('taxRelief');
   const cur = ctx.currency;
   const rm = (v: unknown) => formatMoney(v, cur);
   /** Bare 2-decimal number for use INSIDE a formula, where a currency prefix on every term is noise.
@@ -238,22 +320,14 @@ export async function PcbDetailView({
    *  no basis `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
   const basis = explanation.basis;
   const sys = explanation.pcbSystem;
-  /** An additional run's working describes the WHOLE MONTH, so every line that lands on `sys` has to be
-   *  captioned as the month rather than as "what the system calculated" — on an off-cycle run those are
-   *  not the same sentence, and the reader is looking at a figure their payslip does not contain. */
+  // ad7bc503 — THE CAPTION SET NOW LIVES IN core/. It is read by the banner below AND by the downloaded
+  // document (`pcbBasisSection`), which used to omit the banner altogether; one decision, two surfaces,
+  // no second copy of an eight-branch ternary. Nothing about what this screen renders changed.
+  const L = pcbBasisLabels(basis);
+  /** An additional run's working describes the WHOLE MONTH, so a line that lands on `sys` has to be
+   *  captioned as the month rather than as "what the system calculated". `pcbBasisLabels` applies this to
+   *  the caption set; this screen has one further row of its own that turns on it. */
   const wholeMonth = basis != null && basis.prior != null;
-  const L = {
-    banner: basis?.kind === 'manual' ? 'overrideBanner' : basis?.kind === 'additionalRun' ? 'deltaBanner' : 'deltaOverrideBanner',
-    bannerHeading:
-      basis?.kind === 'manual' ? 'overrideHeading' : basis?.kind === 'additionalRun' ? 'deltaHeading' : 'deltaOverrideHeading',
-    bannerSystem: wholeMonth ? 'deltaMonthTotal' : 'overrideSystem',
-    bannerApplied: basis?.kind === 'additionalRun' ? 'deltaApplied' : 'overrideApplied',
-    netSystem: wholeMonth ? 'netMtdMonth' : 'netMtdSystem',
-    netDeducted: basis?.kind === 'additionalRun' ? 'netMtdRun' : 'netMtdDeducted',
-    finalSystem: wholeMonth ? 'finalPcbMonth' : 'finalPcbSystem',
-    finalDeducted: basis?.kind === 'additionalRun' ? 'finalPcbRun' : 'finalPcbDeducted',
-    note: basis?.kind === 'manual' ? 'overrideNote' : basis?.kind === 'additionalRun' ? 'deltaNote' : 'deltaOverrideNote',
-  } as const;
 
   return (
     <div className="space-y-6">
@@ -264,8 +338,34 @@ export async function PcbDetailView({
           label={t('fieldEmployee')}
           value={ctx.employeeCode ? `${ctx.employeeCode} · ${ctx.employeeName}` : ctx.employeeName}
         />
+        {/* ad7bc503 — the reporter's section 1 in full. The identity document is LABELLED for what it is:
+            `payslipForReview` resolves IC first and falls back to the passport a non-Malaysian employee
+            carries, and printing a passport number under "Identification No. (NRIC)" would be a false
+            statement about a named person on a tax document. */}
+        <Row
+          label={ctx.identityIsPassport ? t('fieldPassport') : t('fieldIdentityNo')}
+          value={ctx.identityNumber ?? <Muted>{t('notRecordedShort')}</Muted>}
+        />
+        <Row label={t('fieldTaxNumber')} value={ctx.taxNumber ?? <Muted>{t('notRecordedShort')}</Muted>} />
         <Row label={t('fieldCompany')} value={ctx.company} />
         <Row label={t('fieldPeriod')} value={ctx.periodLabel} />
+        {/* ONE STORED FACT, PRINTED UNDER THE TWO HEADINGS THE AGENCY'S SLIP USES. `tax_category` IS the
+            marital tax status — 1 single, 2 married with a spouse not working, 3 married with a spouse
+            working — so the two rows cannot disagree, which two independently stored fields could. */}
+        <Row
+          label={t('fieldTaxCategory')}
+          value={ctx.taxCategory == null ? <Muted>{t('notRecordedShort')}</Muted> : `${ctx.taxCategory}`}
+        />
+        <Row
+          label={t('fieldMaritalStatus')}
+          value={
+            ctx.taxCategory != null && CATEGORY_LABEL[ctx.taxCategory] ? (
+              t(CATEGORY_LABEL[ctx.taxCategory])
+            ) : (
+              <Muted>{t('notRecordedShort')}</Muted>
+            )
+          }
+        />
         <Row
           label={t('fieldCycle')}
           value={`${cycleKey ? t(cycleKey) : ctx.runType}${ctx.runSeq > 1 ? ` #${ctx.runSeq}` : ''}`}
@@ -322,6 +422,48 @@ export async function PcbDetailView({
           ))}
         </Block>
       )}
+
+      {/* ── ad7bc503: THE DETAIL BEHIND THE TOTALS — the reporter's sections 2, 4, 5, 6, 7 and 8 ──
+          Sections 3, 9 and 10 are the block above; these are the itemisations that sat behind Q, ΣLP,
+          LP1, Y1, Yt and Z1 and had nowhere to be shown. The rows come from `core/pcb-explain.ts`; this
+          loop paints them and resolves each caption in the catalogue the row names.
+
+          ⚠️ NOT ONE OF THESE CELLS IS A ZERO STANDING IN FOR A MISSING BOX. `wsValue` renders the three
+          absences as three different sentences, and the reference's own 0.00 columns are the one place
+          this page deliberately reads differently from it — see core/pcb-explain.ts and the plan. ── */}
+      {slip.map((sec) => (
+        <Block key={sec.heading} title={t(sec.heading)}>
+          <div className="flex items-baseline gap-3 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="inline-block w-10 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1" />
+            {sec.limitColumn && <span className="w-24 shrink-0 text-end">{t(sec.limitColumn)}</span>}
+            <span className="w-32 shrink-0 text-end">{t(sec.firstColumn)}</span>
+            {sec.secondColumn && <span className="w-32 shrink-0 text-end">{t(sec.secondColumn)}</span>}
+            {sec.thirdColumn && <span className="w-32 shrink-0 text-end">{t(sec.thirdColumn)}</span>}
+          </div>
+          {sec.rows.map((r) => (
+            <SlipRow
+              key={`${r.line}-${r.caption}`}
+              line={r.line}
+              label={r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption)}
+              limit={
+                sec.limitColumn === undefined
+                  ? undefined
+                  : r.limit === undefined || r.limit === null
+                    ? t('slipNoLimit')
+                    : rm(r.limit)
+              }
+              first={wsValue(r.first)}
+              second={r.second ? wsValue(r.second) : t('slipNoColumn')}
+              third={r.third ? wsValue(r.third) : t('slipNoColumn')}
+              sub={r.sub}
+              dual={sec.secondColumn !== undefined}
+              triple={sec.thirdColumn !== undefined}
+            />
+          ))}
+          {sec.note && <p className="pt-2 text-xs text-muted-foreground">{t(sec.note)}</p>}
+        </Block>
+      ))}
 
       {/* ── The working was never recorded at all (imported history, or a run predating the stamp). ── */}
       {explanation.kind === 'unavailable' && (

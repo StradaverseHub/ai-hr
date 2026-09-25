@@ -20,10 +20,11 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
-import { explainPcb, pcbWorksheet } from '@/core/pcb-explain';
+import { explainPcb, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { Card, PageHeader } from '@/components/ui';
 import { PcbDetailView } from './pcb-detail-view';
+import { SLIP_ITEMS, SLIP_REBATES, pcbSlipData } from './slip-data';
 
 /** The stored `YYYY-MM` as a month name in the reader's own language — the same `Intl` idiom the
  *  Individual Payslip uses, deliberately, so one payroll month is named identically on both screens. */
@@ -45,7 +46,7 @@ export default async function PcbDetailPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  // SHAPE-CHECK BEFORE THE QUERY, the same guard the run screens carry (app/payroll/[batchId]/*). `payslip.id`
+  // SHAPE-CHECK BEFORE THE QUERY, the same guard the run screens under app/payroll/[batchId] carry. `payslip.id`
   // is a uuid column, so a mangled id out of a shared link — `?payslipId=abc`, a stray space, a truncated
   // copy-paste — reaches Postgres as `invalid input syntax for type uuid` and, with no try/catch here and no
   // app/error.tsx anywhere in the tree, becomes an HTTP 500 rather than the "not found" card this page's own
@@ -86,6 +87,48 @@ export default async function PcbDetailPage({
   // React component can only be tested by rendering it. It derives nothing; see core/pcb-explain.ts.
   const worksheet = explanation ? pcbWorksheet(explanation, previousEmployment) : null;
 
+  // ad7bc503 — THE DETAIL BEHIND THE TOTALS (reporter sections 2, 4, 5, 6, 7 and 8).
+  //
+  // The reads live in `./slip-data.ts` and the SHAPING lives in `core/pcb-explain.ts`, for the reason the
+  // worksheet already splits that way: the mapping from a stored box to a line of the agency's form is the
+  // thing that can be wrong, and a mapping inside a React component can only be tested by rendering it.
+  //
+  // ONLY for the computerised-calculation shape. A flat-rate payee has no reliefs, no children relief and
+  // no LP at all — not "unsaved ones" — so nothing is read for them and `pcbSlipSections` returns nothing.
+  // A payslip whose run recorded no working still gets the schedules: the DECLARATIONS are real and
+  // readable even when the month's trace is not, and the rows fed from the trace say so individually.
+  //
+  // ⚠️ A TRAP REMOVED ON THE WAY PAST, RECORDED SO IT IS NOT RE-INTRODUCED. The shape-check note above
+  // used to end its citation with a trailing wildcard, and those two characters OPEN a block comment.
+  // TypeScript does not care — they are inside a line comment — but test/pcb-detail.test.ts and
+  // test/7f251381-pcb-lhdn-worksheet.test.ts comment-STRIP this file before matching the scope fence in
+  // it, so the first block-comment close appearing anywhere below that line deleted every line in
+  // between and the guard then failed claiming the fence was gone. Adding the ordinary doc comment this
+  // block started life as was enough to trigger it. The citation no longer carries the wildcard, so a
+  // block comment here is safe again; do not put one back into a line comment in this file.
+  const slipData =
+    row && explanation && explanation.kind === 'mtd'
+      ? await pcbSlipData(s, {
+          companyIds: scopeIds,
+          employmentId: row.employmentId,
+          taxYear: Number(/^\d{4}/.exec(row.payPeriod)?.[0] ?? Number.NaN),
+          month: explanation.month,
+        })
+      : null;
+  const slip =
+    explanation && slipData
+      ? pcbSlipSections(explanation, {
+          profile: slipData.profile,
+          catalogue: SLIP_ITEMS,
+          rebateCatalogue: SLIP_REBATES,
+          currentDeduction: slipData.currentDeduction,
+          accumulatedDeduction: slipData.accumulatedDeduction,
+          previousDeduction: slipData.previousDeduction,
+          currentRebate: slipData.currentRebate,
+          accumulatedRebate: slipData.accumulatedRebate,
+        })
+      : [];
+
   const backHref = row
     ? `/payroll/individual-payslip?${new URLSearchParams({
         employmentId: row.employmentId,
@@ -100,6 +143,26 @@ export default async function PcbDetailPage({
         description={t('subtitle')}
         back={{ href: backHref, label: row ? t('backToPayslip') : t('backToTransactionView') }}
       />
+
+      {row && (
+        // ad7bc503 section 11 — the whole page as a PDF. A PLAIN LINK and not a button with an action: the
+        // document is a GET on ./download, which carries the identical gate to this page (see ./shared.ts),
+        // so there is nothing to post and nothing to record. Rendering a statement is a read.
+        // ⚠️ AND IT CARRIES THE READER'S OWN LOCALE. Without `lang` the allowlist in ./shared.ts saw null
+        // every time, so the Malay branch was unreachable from the product: a Malay-UI admin got an English
+        // document, and the two provenance lines — deliberately "the reader's own language AND in English" —
+        // both resolved to English. The locale is HANDED ON, never trusted: shared.ts allowlists it down to
+        // the two languages the agency itself issues and Helvetica can actually print, so a Tamil, Thai,
+        // Vietnamese or Chinese UI still yields the English document rather than pages of '?'.
+        <div className="flex justify-end">
+          <a
+            href={`/payroll/pcb-detail/download?${new URLSearchParams({ payslipId: row.id, lang: locale }).toString()}`}
+            className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            {t('slipDownload')}
+          </a>
+        </div>
+      )}
 
       {!row && (
         <Card className="p-6">
@@ -122,9 +185,16 @@ export default async function PcbDetailPage({
             runSeq: row.runSeq,
             currency: row.currency ?? null,
             rulesetVersion: prov?.rulesetVersion ?? null,
+            // ad7bc503 — the reporter's section 1, completed. All four already come off the SAME
+            // `payslipForReview` row this screen has always read; no second read was needed for them.
+            identityNumber: row.identityNumber,
+            identityIsPassport: row.identityIsPassport,
+            taxNumber: row.taxNumber,
+            taxCategory: slipData?.profile?.taxCategory ?? null,
           }}
           explanation={explanation}
           worksheet={worksheet}
+          slip={slip}
         />
       )}
     </div>
