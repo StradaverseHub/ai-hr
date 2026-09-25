@@ -104,6 +104,16 @@ import {
   typedKey,
   type ClockingFormValues,
 } from './work-locations/clocking/form-fields';
+import {
+  LOCATION_FIELDS,
+  LOCATION_NEW_PAGE,
+  clockingPointBase,
+  locationEditPage,
+  locationSavedHref,
+  typedLocationKey,
+  type LocationFormValues,
+} from './work-locations/location-fields';
+import { withQueryParam, workLocationsReturnTo } from '@/lib/return-to';
 import { countEmployeesInScope, listEmployeePickOptions } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
@@ -244,8 +254,10 @@ const TOIL_POLICY = '/admin/leave-config/leave-credit';
 // rules entirely (not re-gated there); the three banners moved with the form, so `?saved=` / `?warning=` /
 // `?error=` land on the screen the change was made on.
 const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';
-// 639bf4a5 (r336) — the register is Organization › Physical Work Location now; `/admin/locations` is a
-// guarded redirect stub. Read from the shared contract so the actions cannot land on the old address.
+// 639bf4a5 (r336) — `/admin/locations` is a guarded redirect stub; read from the shared contract so the
+// actions cannot land on the old address. rev 2 (r338): the register is Attendance › Locations again and
+// the ADDRESS is deliberately unchanged, so this line is too. It is the FALLBACK every whitelisted
+// `returnTo` collapses to (lib/return-to.ts workLocationsReturnTo).
 const LOCATIONS = LOCATIONS_LIST;
 
 export async function createCompanyAction(formData: FormData) {
@@ -2410,37 +2422,91 @@ export async function setAttendancePolicyAction(fd: FormData) {
 
 // ADR-0054 — Location master data CRUD. requireAdmin gates the route; RLS gates the write per company.
 /**
- * 1fff489c — the duplicate banner. core/location.ts turns a 23505 on either partial unique index into a
- * typed error (the shiftUniqueError pattern); the SENTENCE is composed here, because `fail()` puts
- * `(e as Error).message` verbatim into ?error= and only this layer can reach getTranslations. Without it
- * the admin saw drizzle's "Failed query: update "location" set "code" = $1 … params: TWO,Two,MY,,BUKIT
- * JALIL,…" — SQL and parameter values — which is what the reporter's screen actually showed.
+ * 639bf4a5 rev 2 (r338) — EVERY WAY OUT OF A LOCATION SCREEN, and the two that a refusal takes.
+ *
+ * The four writes below used to be posted from strips on the register itself, so "where does this land"
+ * had one answer: the register. The register is a COMPANY LISTING now and carries no form at all — Add,
+ * View and Edit each open a screen of their own — so each write has to land somewhere the operator can
+ * see the result of it:
+ *   saved   → THE LISTING, as they left it, landed on the row they just saved and highlighted
+ *             (`?saved=1&focus=<id>#row-<id>`, the r265 idiom the clocking screens already use).
+ *   refused → THE SCREEN THE FORM WAS ON, `error=<reason>` beside the fields, plus everything typed
+ *             echoed under the `typed*` keys of ./work-locations/location-fields.ts — so the screen
+ *             re-renders the operator's own values rather than what is on file.
+ *
+ * ⚠️ THE SCREEN IS DERIVED FROM A POSTED ID, NEVER FROM A POSTED URL. A refusal on Add goes to
+ * `LOCATION_NEW_PAGE?companyId=<posted companyId>` and one on Edit to `locationEditPage(<posted
+ * locationId>)`, each shape-checked as a uuid FIRST — junk gets the plain listing with the reason, the
+ * same rule the clocking actions are held to (test/clocking-location-page.test.ts).
+ *
+ * ⚠️ `returnTo` IS POSTED AND IS UNTRUSTED, and it is the ONE thing here that comes from the browser as
+ * a path. It is whitelisted BY SHAPE through lib/return-to.ts `workLocationsReturnTo`: a value that is
+ * not `/admin/work-locations` or a path under it falls back to the listing, so no scheme, host or
+ * protocol-relative form survives. It carries the listing's own `saved` / `focus` so Cancel and Back
+ * land the operator back exactly where they were standing.
  */
-async function failLocationSave(e: unknown): Promise<never> {
-  if (e instanceof LocationBranchTakenError || e instanceof LocationCodeTakenError) {
+function locationReturnTo(fd: FormData): string {
+  return workLocationsReturnTo(fd.get('returnTo'));
+}
+
+/** A refusal onto a screen that may already carry a query — `fail()` concatenates `?error=` and cannot. */
+function failLocationTo(page: string, message: string): never {
+  redirect(withQueryParam(page, 'error', message));
+}
+
+/** The four fields as posted, raw strings — what the service is given AND what a refusal echoes back. */
+function locationFieldsOf(fd: FormData): LocationFormValues {
+  const out = {} as LocationFormValues;
+  for (const field of LOCATION_FIELDS) out[field] = String(fd.get(field) ?? '');
+  return out;
+}
+
+/**
+ * 1fff489c — the duplicate banner. core/location.ts turns a 23505 on either partial unique index into a
+ * typed error (the shiftUniqueError pattern); the SENTENCE is composed here, because only this layer can
+ * reach getTranslations. Without it the admin saw drizzle's "Failed query: update "location" set "code" =
+ * $1 … params: TWO,Two,MY,,BUKIT JALIL,…" — SQL and parameter values — which is what the reporter's
+ * screen actually showed.
+ */
+async function locationRefusalMessage(e: unknown): Promise<string> {
+  if (e instanceof LocationCodeTakenError) {
     const t = await getTranslations('admin.locations');
-    if (e instanceof LocationCodeTakenError) fail(LOCATIONS, new Error(t('codeTaken', { code: e.code })));
-    // conflictCode is null only if the holding row vanished between the failure and the follow-up read.
-    fail(
-      LOCATIONS,
-      new Error(
-        e.conflictCode
-          ? t('branchTaken', { branch: e.branch, code: e.conflictCode })
-          : t('branchTakenNoCode', { branch: e.branch }),
-      ),
-    );
+    return t('codeTaken', { code: e.code });
   }
-  fail(LOCATIONS, e);
+  if (e instanceof LocationBranchTakenError) {
+    const t = await getTranslations('admin.locations');
+    // conflictCode is null only if the holding row vanished between the failure and the follow-up read.
+    return e.conflictCode
+      ? t('branchTaken', { branch: e.branch, code: e.conflictCode })
+      : t('branchTakenNoCode', { branch: e.branch });
+  }
+  return (e as Error).message;
+}
+
+/** Refused: back onto the screen the form was on, the reason beside the fields, everything typed echoed. */
+async function locationRefused(page: string, typed: LocationFormValues, returnTo: string, e: unknown): Promise<never> {
+  const params = new URLSearchParams();
+  params.set('error', await locationRefusalMessage(e));
+  params.set('from', returnTo);
+  for (const field of LOCATION_FIELDS) params.set(typedLocationKey(field), typed[field]);
+  redirect(`${page.includes('?') ? page + '&' : page + '?'}${params.toString()}`);
 }
 
 export async function createLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const typed = locationFieldsOf(fd);
+  const returnTo = locationReturnTo(fd);
+  const companyId = String(fd.get('companyId') ?? '').trim();
+  // The Add screen for a company that is not one — there is no such screen, so the reason lands on the
+  // listing instead of a path built out of whatever was posted.
+  const refusalPage = UUID_RE.test(companyId) ? `${LOCATION_NEW_PAGE}?companyId=${companyId}` : returnTo;
+  let created: { id: string } | null = null;
   try {
-    await createLocation(user, {
-      companyId: String(fd.get('companyId') ?? ''),
-      code: String(fd.get('code') ?? ''),
-      name: String(fd.get('name') ?? ''),
-      country: String(fd.get('country') ?? '') || undefined,
+    created = await createLocation(user, {
+      companyId,
+      code: typed.code,
+      name: typed.name,
+      country: typed.country || undefined,
       // ADR-0086 (0fe1ca2e, r331) — a `state` field was posted here too. `location.state` is no longer read
       // by anything, so the register stopped offering the control; a new site simply has no state. The
       // service still accepts and validates one (core/location.ts `cleanState`) for its own callers.
@@ -2448,52 +2514,62 @@ export async function createLocationAction(fd: FormData) {
       // `location.holiday_group_id` (migration 0484). A site is no longer one of the ways a holiday
       // calendar is chosen; `employment.holiday_group_id` is.
       // 1fff489c — the Branch this location serves. Blank = not mapped (the field is optional).
-      branch: (fd.get('branch') as string) || null,
+      branch: typed.branch || null,
     });
   } catch (e) {
-    await failLocationSave(e);
+    await locationRefused(refusalPage, typed, returnTo, e);
   }
-  ok(LOCATIONS);
+  revalidatePath(LOCATIONS);
+  redirect(locationSavedHref(returnTo, created!.id));
 }
 
 export async function updateLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const typed = locationFieldsOf(fd);
+  const returnTo = locationReturnTo(fd);
+  const locationId = String(fd.get('locationId') ?? '').trim();
+  if (!UUID_RE.test(locationId)) failLocationTo(returnTo, 'Location not found');
   try {
     await updateLocation(user, {
-      locationId: String(fd.get('locationId') ?? ''),
-      code: String(fd.get('code') ?? ''),
-      name: String(fd.get('name') ?? ''),
-      country: String(fd.get('country') ?? '') || undefined,
+      locationId,
+      code: typed.code,
+      name: typed.name,
+      country: typed.country || undefined,
       // ⚠️ ADR-0086 — `state` is DELIBERATELY NOT PASSED, not passed as null. The form no longer has the
       // field, so `fd.get('state')` is null, and `|| null` turned "the operator did not touch it" into
       // "clear it" — wiping the stored state on the first unrelated rename. `updateLocation` reads an
       // absent `state` as "keep"; see the note on that line for why the column is worth keeping.
-      branch: (fd.get('branch') as string) || null,
+      branch: typed.branch || null,
     });
   } catch (e) {
-    await failLocationSave(e);
+    await locationRefused(locationEditPage(locationId), typed, returnTo, e);
   }
-  ok(LOCATIONS);
+  revalidatePath(LOCATIONS);
+  redirect(locationSavedHref(returnTo, locationId));
 }
 
 export async function archiveLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const returnTo = locationReturnTo(fd);
   try {
     await archiveLocation(user, { locationId: String(fd.get('locationId') ?? '') });
   } catch (e) {
-    fail(LOCATIONS, e);
+    failLocationTo(returnTo, (e as Error).message);
   }
-  ok(LOCATIONS);
+  revalidatePath(LOCATIONS);
+  redirect(returnTo);
 }
 
 export async function restoreLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const returnTo = locationReturnTo(fd);
   try {
     await restoreLocation(user, { locationId: String(fd.get('locationId') ?? '') });
   } catch (e) {
-    fail(LOCATIONS, e);
+    failLocationTo(returnTo, (e as Error).message);
   }
-  ok(LOCATIONS);
+  revalidatePath(LOCATIONS);
+  redirect(returnTo);
 }
 
 // ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route. f9afd1ce (0459): a clocking
@@ -2549,9 +2625,23 @@ async function clockingRefused(page: string, typed: ClockingFormValues, e: unkno
   redirect(`${page}?${params.toString()}`);
 }
 
-/** Saved: the list, landed on the row, highlighted; a radius advisory rides along as the toast it always was. */
-async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promise<never> {
-  revalidatePath(LOCATIONS);
+/**
+ * Saved: the point's HOME, landed on its row, highlighted; a radius advisory rides along as the toast it
+ * always was.
+ *
+ * 639bf4a5 rev 2 (r338) — HOME USED TO BE THE REGISTER and is now the LOCATION the point hangs off (or,
+ * for a point that hangs off none, the screen that holds exactly those). The register is a company
+ * listing and renders no point rows, so `#row-<pointId>` there would have been a dead anchor over a
+ * table of companies — the operator would have been told "saved" and shown nothing they just saved.
+ *
+ * ⚠️ DERIVED FROM THE POSTED `locationId`, NEVER FROM A POSTED URL. That field is one of the eight the
+ * clocking form already posts and the service already validates; `clockingPointBase` shape-checks it and
+ * falls back to the unlinked screen. So this stays a destination the RECORD implies, which is what
+ * test/clocking-location-page.test.ts requires of these two actions.
+ */
+async function clockingSaved(id: string, locationId: string, warning: RadiusAdvisory | null): Promise<never> {
+  const home = clockingPointBase(locationId);
+  revalidatePath(home);
   const params = new URLSearchParams({ saved: '1', focus: id });
   if (warning) {
     const t = await getTranslations('admin.locations');
@@ -2562,7 +2652,7 @@ async function clockingSaved(id: string, warning: RadiusAdvisory | null): Promis
         : t('radiusWarningWide', { radius: warning.radiusM }),
     );
   }
-  redirect(`${LOCATIONS}?${params.toString()}#row-${id}`);
+  redirect(`${home}?${params.toString()}#row-${id}`);
 }
 
 export async function createClockingLocationAction(fd: FormData) {
@@ -2587,7 +2677,7 @@ export async function createClockingLocationAction(fd: FormData) {
     await clockingRefused(CLOCKING_NEW_PAGE, typed, e);
   }
   // clockingRefused never returns; a refusal has already redirected.
-  await clockingSaved(saved!.id, saved!.warning);
+  await clockingSaved(saved!.id, typed.locationId, saved!.warning);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
@@ -2611,41 +2701,50 @@ export async function updateClockingLocationAction(fd: FormData) {
   } catch (e) {
     await clockingRefused(clockingEditPage(clockingLocationId), typed, e);
   }
-  await clockingSaved(clockingLocationId, saved!.warning);
+  await clockingSaved(clockingLocationId, typed.locationId, saved!.warning);
 }
 
+/**
+ * 639bf4a5 rev 2 (r338) — the three row controls land back on the SCREEN THE ROW WAS ON, which is the
+ * location's Edit screen (or the unlinked-points screen). Same derivation as `clockingSaved`: the row
+ * posts the `locationId` it was rendered under, `clockingPointBase` shape-checks it, and a junk or
+ * absent value collapses to the unlinked screen. No posted URL decides anything.
+ */
 export async function archiveClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await archiveClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(LOCATIONS, e);
+    fail(home, e);
   }
-  ok(LOCATIONS);
+  ok(home);
 }
 
 export async function restoreClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await restoreClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
-    fail(LOCATIONS, e);
+    fail(home, e);
   }
-  ok(LOCATIONS);
+  ok(home);
 }
 
 export async function deleteClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
   const t = await getTranslations('admin.locations');
+  const home = clockingPointBase(String(fd.get('locationId') ?? ''));
   try {
     await deleteClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
   } catch (e) {
     if (e instanceof ClockingLocationInUseError) {
-      fail(LOCATIONS, new Error(t('clockingInUse', { count: e.refs })));
+      fail(home, new Error(t('clockingInUse', { count: e.refs })));
     }
-    fail(LOCATIONS, e);
+    fail(home, e);
   }
-  ok(LOCATIONS);
+  ok(home);
 }
 
 // ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ──────────────────────────────

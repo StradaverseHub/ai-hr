@@ -797,13 +797,21 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/attendance-allowance'],
   },
   {
-    // 639bf4a5 (r336) — Organization › Physical Work Location. The SCREEN moved (Attendance › Clocking
-    // Location, /admin/locations) and its address moved with it; the screenKey did NOT, because a
-    // screenKey is a permission identity that stored role configs may name, and renaming it would
-    // silently revoke every grant that does. Only `href` and `labelKey` follow the menu.
+    // 639bf4a5 (r336) — the SCREEN moved (Attendance › Clocking Location, /admin/locations) and its
+    // address moved with it; the screenKey did NOT, because a screenKey is a permission identity that
+    // stored role configs may name, and renaming it would silently revoke every grant that does.
+    //
+    // 639bf4a5 rev 2 (r338) — AND NOW THE MENU HAS MOVED BACK, to Attendance › Locations, on the
+    // reporter's instruction. THREE things deliberately did not move with it: the `screenKey` (same
+    // argument as above, and it is why this column is the one thing in the whole item that has never
+    // changed), the `href` (they asked to rename the function, not the URL — a second move in two days
+    // would churn every bookmark and re-point three redirect stubs for nothing), and the guard. Only the
+    // `labelKey` follows, to `nav.locations` — the key that has read "Locations" in all six catalogues
+    // since ADR-0054, which r336 orphaned when it minted `nav.physicalWorkLocation`. That newer key is
+    // deleted in the same commit: a live-looking nav key nothing renders is how a retired row comes back.
     screenKey: 'locations',
     href: '/admin/work-locations',
-    labelKey: 'nav.physicalWorkLocation',
+    labelKey: 'nav.locations',
     guard: 'requireAdmin',
     // f9afd1ce rev 2 (r267): a clocking location is added and edited on a page of its own (the loans
     // list + new + [id] shape below) — same requireAdmin guard as the list, same screen column, no new
@@ -816,8 +824,18 @@ export const SCREENS: readonly ScreenEntry[] = [
     // following an old bookmark is refused rather than told where the screen went, and a stale link
     // lands on the register instead of a 404. Both halves are pinned — a route registered here with no
     // guarded page on disk, or a guarded page with no route here, fails that test in either direction.
+    //
+    // 639bf4a5 rev 2 (r338) — FOUR NEW ROUTES, ALL ON THIS SAME COLUMN. The register is a COMPANY
+    // LISTING now and Add / View / Edit each open a screen of their own (/new, /[id], /[id]/edit), plus
+    // /clocking for the points that hang off no location — which used to render on the register and
+    // would otherwise have become unreachable. Every one is requireAdmin, every one is the same screen
+    // in permission terms, so they ride this column rather than minting screenKeys nobody has granted.
     routes: [
       '/admin/work-locations',
+      '/admin/work-locations/new',
+      '/admin/work-locations/[id]',
+      '/admin/work-locations/[id]/edit',
+      '/admin/work-locations/clocking',
       '/admin/work-locations/clocking/new',
       '/admin/work-locations/clocking/[id]',
       '/admin/locations',

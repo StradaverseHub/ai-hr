@@ -5,7 +5,8 @@ import { listLocations } from '@/core/location';
 import { listClockingLocations } from '@/packs/attendance/service';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { ClockingLocationForm } from '../clocking-form';
-import { UUID_RE, clockingRowHref, readTypedClockingValues, type ClockingFormValues } from '../form-fields';
+import { UUID_RE, readTypedClockingValues, type ClockingFormValues } from '../form-fields';
+import { clockingPointHome } from '../../location-fields';
 
 /**
  * f9afd1ce rev 2 (r267) — EDIT one clocking location, on a page of its own. Opened by a row's "Edit" on
@@ -43,7 +44,10 @@ export default async function EditClockingLocationPage({
   if (!site) notFound();
 
   const groupAdmin = isGroupAdmin(s);
-  const listHref = clockingRowHref(site.id);
+  // 639bf4a5 rev 2 (r338) — home is the LOCATION this point hangs off (its Edit screen lists the points
+  // it carries), or the screen for points that hang off none. It was the register, which no longer
+  // renders a point row at all, so `#row-<id>` there would have been a dead anchor.
+  const listHref = clockingPointHome(site.id, site.locationId);
   const error = typeof sp.error === 'string' ? sp.error : undefined;
 
   if (!groupAdmin) {

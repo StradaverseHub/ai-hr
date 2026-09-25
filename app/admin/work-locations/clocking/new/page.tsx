@@ -3,7 +3,8 @@ import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listLocations } from '@/core/location';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { ClockingLocationForm } from '../clocking-form';
-import { LOCATIONS_LIST, readTypedClockingValues, type ClockingFormValues } from '../form-fields';
+import { readTypedClockingValues, type ClockingFormValues } from '../form-fields';
+import { clockingPointBase } from '../../location-fields';
 
 /**
  * f9afd1ce rev 2 (r267) — NEW clocking location, on a page of its own. Opened by the list's "Add clocking
@@ -11,6 +12,12 @@ import { LOCATIONS_LIST, readTypedClockingValues, type ClockingFormValues } from
  * only PRE-PICKS the holiday-calendar link — a GET; nothing is written). Two sections in the reporter's
  * order (../clocking-form.tsx); Save returns to the list landed on the new row, Cancel returns to the
  * list with nothing saved, and a refusal lands back here with the reason and everything typed.
+ *
+ * 639bf4a5 rev 2 (r338) — WHERE "BACK" GOES CHANGED, AND NOTHING ELSE ON THIS PAGE DID. It was the
+ * register, which rendered every point; the register is a COMPANY LISTING now and renders none, so a
+ * point goes home to the LOCATION it is being created under (`?addPoint=`) — whose Edit screen lists the
+ * points it carries — or, when it is being created under no location at all, to the screen that holds
+ * exactly those (../../location-fields.ts `clockingPointBase`).
  *
  * requireAdmin(), like the list: the route is registered on the SAME `locations` screen column in
  * lib/permissions.ts (no new grant). WRITE authority is the group administrator's (core assertGroupAdmin
@@ -31,7 +38,7 @@ export default async function NewClockingLocationPage({
   if (!groupAdmin) {
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('newClockingTitle')} back={{ href: LOCATIONS_LIST, label: t('backToLocations') }} />
+        <PageHeader title={t('newClockingTitle')} back={{ href: clockingPointBase(null), label: t('backToLocations') }} />
         <Card>
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('sharedManagedByGroupAdmin')}</p>
         </Card>
@@ -44,6 +51,8 @@ export default async function NewClockingLocationPage({
   // it names one of these options — a comparison, never a query.
   const linkableLocations = await listLocations(s, [], {});
   const addPoint = typeof sp.addPoint === 'string' && linkableLocations.some((l) => l.id === sp.addPoint) ? sp.addPoint : '';
+  // Every way out of this page: the site it is being added under, or the screen for points with none.
+  const backHref = clockingPointBase(addPoint || null);
 
   // WHAT WAS TYPED, echoed by a refused save (app/admin/actions.ts), wins over the blank page — the link
   // included, even when the operator cleared it: a cleared link must not come back pre-picked.
@@ -64,7 +73,7 @@ export default async function NewClockingLocationPage({
       <PageHeader
         title={t('newClockingTitle')}
         description={t('clockingDescription')}
-        back={{ href: LOCATIONS_LIST, label: t('backToLocations') }}
+        back={{ href: backHref, label: t('backToLocations') }}
       />
       <ClockingLocationForm
         t={t}
@@ -72,7 +81,7 @@ export default async function NewClockingLocationPage({
         values={values}
         linkableLocations={linkableLocations.map((l) => ({ id: l.id, code: l.code, name: l.name, companyName: l.companyName }))}
         error={error}
-        cancelHref={LOCATIONS_LIST}
+        cancelHref={backHref}
       />
     </div>
   );
