@@ -370,6 +370,19 @@ const REGISTRY: Record<string, RegistryTable> = {
         fields: ['tp3Year', 'tp3NetRemuneration', 'tp3EpfClaimed', 'tp3PcbPaid', 'tp3ZakatPaid'],
       },
       {
+        // 20837372 — DELIBERATELY ITS OWN ENTRY, NOT APPENDED TO THE FOUR ABOVE, because their reason is
+        // not true of this one. Those four are also loaded by the payroll history import; `tp3_lp` is
+        // FORM-ONLY. It is derived by `deriveAccumulatorSeed` from Form TP3's Section D and written by
+        // `projectSeedOntoStatutory` in the same transaction as the form — there is no hand-entry path at
+        // all. An import column would make a second writer for a figure that feeds ∑LP straight into the
+        // PCB formula (LHDN 2026 MTD spec, printed p.22), and two writers for one statutory figure is how
+        // the two disagree. The consequence is recorded as a known gap: an employer adopting mid-year
+        // cannot key a previous ∑LP without a TP3 form, which is the intended shape.
+        reason:
+          'TP3 accumulated allowable deductions (∑LP) — derived from the submitted Form TP3 Section D and written only by that save; form-only by design, so an import column would be a second writer for one statutory figure',
+        fields: ['tp3Lp'],
+      },
+      {
         reason:
           'zakat election (ADR-0058) — an employee opt-in with its own card, method and effective dates; not day-one identity data',
         fields: [
