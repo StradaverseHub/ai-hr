@@ -3463,6 +3463,8 @@
       "ofLimit": "จาก {limit} วันที่ใช้ร่วมกัน",
       "sharedAcross": "ใช้ร่วมกับ: {types}",
       "maxPerApplication": "สูงสุด {days} วันต่อการยื่นหนึ่งครั้ง",
+      "pooledLimitLine": "{available} of {limit} shared days",
+      "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "สิทธิ์ที่ใช้ร่วมกันหนึ่งรายการ และเหตุผลที่คุณสามารถยื่นขอได้",
       "remaining": "คงเหลือ",
       "usedThisYear": "ใช้ไปปีนี้: {days}",

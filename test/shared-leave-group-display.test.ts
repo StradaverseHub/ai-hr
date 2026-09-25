@@ -432,8 +432,18 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     // rather than location. Both placements now render as tiles inside the ONE dashboard grid — Primary groups
     // before Secondary ones — so the separate Secondary card is gone too. What this case defends is unchanged:
     // a group placed Secondary still draws (it is not silently dropped), and so does a Primary one.
+    //
+    // UPDATED BY r341 (8d3a7bff): a group whose pool a leave-type card already holds MERGES onto that card —
+    // the reporter was reading two cards headed "Special Leave" as a duplicate. What this case defends is
+    // still unchanged: a placed group is never silently dropped. When there is a card to merge onto, the
+    // ceiling is on it (`pooledCeiling`, pinned in test/8d3a7bff-special-leave-one-card.dom.test.tsx); when
+    // there is not — the seeded shape, no pooled type anywhere — the group keeps drawing its own tile, and
+    // that tile is still built from BOTH placements in Primary-then-Secondary order.
     expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(0);
-    expect(leavePage).toMatch(/<MyLeaveDashboard[^>]*sharedGroups=\{\[\.\.\.sharedGroupsPrimary, \.\.\.sharedGroupsSecondary\]\}/);
+    expect(leavePage).toMatch(/<MyLeaveDashboard[^>]*sharedGroups=\{standaloneSharedGroups\}/s);
+    expect(leavePage).toMatch(
+      /standaloneSharedGroups = \[\.\.\.sharedGroupsPrimary, \.\.\.sharedGroupsSecondary\]\.filter/,
+    );
     expect(read('../components/leave/my-leave-dashboard.tsx')).toContain('sharedGroups.map((g) =>');
   });
 

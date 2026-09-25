@@ -93,7 +93,7 @@ import {
 } from '../lib/entitlement-status';
 // r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
 // name the shape without importing a module that drags in db/client.
-import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
+import { isPoolBorrower, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import type { EmployeePickOption } from '../lib/employment-selection';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
 // predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
@@ -3142,9 +3142,13 @@ export function leaveBalances(
      * members the morning after this release.
      *
      * ACTIVITY DOES NOT SAVE A CARD, AND THAT IS A DECISION RATHER THAN AN ORDERING ACCIDENT. r315
-     * established that activity on a type keeps its card (508d3acd, edge case 1). Membership wins here:
-     * the pooled card already reflects that activity, because the pool is summed from the member ledgers.
-     * Pinned in both directions in test/a0b90c81-shared-group-cards.test.ts.
+     * established that activity on a type keeps its card (508d3acd, edge case 1). POOLING wins here:
+     * the pooled card already reflects that activity, because every debit for a borrower landed on the
+     * pool's own ledger. Pinned in both directions in test/a0b90c81-shared-group-cards.test.ts.
+     *
+     * ⚠️ AND MEMBERSHIP ALONE DOES NOT COST A CARD — see the gate at the bottom of this block (r341,
+     * 8d3a7bff). A member that holds its own days keeps its own card; only a member whose balance IS the
+     * pool's is folded.
      */
     const pooledAway = await (async () => {
       if (opts.includeHidden) return visible;
@@ -3160,7 +3164,33 @@ export function leaveBalances(
           .filter((m) => resolveSharedGroupPlacement(m.placement) !== 'hidden')
           .map((m) => m.leaveTypeId),
       );
-      return folded.size === 0 ? visible : visible.filter((r) => !folded.has(r.leaveTypeId));
+      /**
+       * ⚠️ r341 (8d3a7bff) — THE GATE IS THE POOLING POINTER, AND MEMBERSHIP ALONE IS NOT ENOUGH.
+       *
+       * The header above says the rule is "if a type's balance IS the pool's" — structural, keyed on where
+       * the days live. The first cut did not implement that: it folded EVERY member of a placed group, so
+       * membership alone took a card away. Re-measured on production 2026-09-26: the "Special Leave" group
+       * holds CGL CPL EXM GD MRL NDL STD and is placed 'primary', while only CPL and NDL carry
+       * `balance_source_type_id` → SP. Marriage Leave holds 177.00 days of its OWN across 59 employments and
+       * was being folded into a pooled card that does not contain them — 59 people could not see a balance
+       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which is not a reason to fold them
+       * either: the day an entitlement table is written for one of them the same defect returns.
+       *
+       * `isPoolBorrower` is the ONE named answer to "is this row's balance somebody else's" (r340,
+       * lib/shared-leave-balance.ts) and the pooling pass eight lines above has already set it from
+       * `balance_source_type_id`. So a folded card is only ever one whose figures the pool's card repeats
+       * verbatim — which is the whole justification the header gives for folding at all.
+       *
+       * ⚠️ DO NOT WIDEN THIS BACK TO `folded.has(r.leaveTypeId)` ALONE. The two member sets differ BY
+       * DESIGN: a shared GROUP is a combined CEILING on what may be taken (`enforceSharedLeaveGroupLimit`),
+       * `balance_source_type_id` is a LEDGER ROUTE. Reconciling them would either put five types on a
+       * balance they do not draw or drop five from a ceiling that caps them. A member that keeps its card
+       * says so on the card instead (the group's ceiling line, app/leave/page.tsx).
+       * Pinned in test/8d3a7bff-special-leave-one-card.test.ts.
+       */
+      return folded.size === 0
+        ? visible
+        : visible.filter((r) => !(folded.has(r.leaveTypeId) && isPoolBorrower(r)));
     })();
 
     // ec991c2a — ARCHIVED gate. An administrator archiving a leave type means it is retired; until this

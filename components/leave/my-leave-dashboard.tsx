@@ -25,6 +25,7 @@
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { Layers } from 'lucide-react';
@@ -44,6 +45,40 @@ export type MyLeaveDashboardCard = MyLeaveCard & {
   replacement?: ReplacementPanelData | null;
   /** Replacement Leave only: days claimed and still waiting on a line manager (never part of the balance). */
   pendingInLieu?: number | null;
+  /**
+   * r341 (8d3a7bff) — THE SHARED-GROUP CEILING THIS CARD HOLDS THE POOL FOR, so the pool draws ONE card.
+   *
+   * The reporter saw two cards headed "Special Leave": this leave type, and the shared GROUP of the same
+   * name as its own stacked-layers tile. They are two different settings (a ledger route and a combined
+   * ceiling — lib/shared-leave-pool.ts says why they must not be reconciled) but they are one pot on screen,
+   * so the group's lines move onto the card whose ledger the ceiling caps and the tile goes.
+   *
+   * ⚠️ NO FIGURE ON THIS CARD CHANGES. `available` here is the group's own drawable figure
+   * (`sharedGroupAvailableDays`), which is a ceiling figure and NOT this card's balance — it is printed in
+   * the group's own pre-translated sentence, never as the card's headline. Every string arrives translated
+   * (this is a client island; the RSC owns t()).
+   */
+  pooledCeiling?: PooledCeilingLines | null;
+  /**
+   * r341 (8d3a7bff) — pre-translated lines for the ceilings this card COUNTS TOWARDS while keeping its own
+   * balance. On production: Marriage Leave (177.00 days across 59 employments), Caregiver, Examination,
+   * Graduation and Study. Hiding these cards was the literal request and would have hidden those 177 days;
+   * naming the ceiling is what was approved instead.
+   */
+  ceilingLines?: string[];
+};
+
+/** Every line the merged group contributes, pre-translated by the RSC. `null` cap ⇒ the group has none. */
+export type PooledCeilingLines = {
+  /** e.g. "9.00 of 10.00 shared days" — the drawable pooled figure with the ceiling as context beside it. */
+  limitLine: string;
+  /** e.g. "Shared across: Caregiver, Compassionate, …" */
+  membersLine: string;
+  /** e.g. "Up to 3.00 days in one application", or null when the group sets no per-application cap. */
+  capLine: string | null;
+  /** The way in to the reasons and their Apply actions (76dbcaa1) — the link the vanished tile carried. */
+  detailsHref: string;
+  detailsLabel: string;
 };
 
 export function MyLeaveDashboard({
@@ -123,6 +158,35 @@ export function MyLeaveDashboard({
             : t('sharedPoolHolder', { types: otherContributors(c.sharedBalance, c.leaveType).join(', ') })}
         </p>
       )}
+      {/* r341 (8d3a7bff) — THE MERGED SHARED-GROUP CEILING. The stacked-layers tile that used to sit beside
+          this card is gone and its lines are here: the drawable pooled figure with the ceiling beside it, who
+          shares it, the per-application cap, and the link into the reasons. Below the pool caption, because
+          that sentence says whose ledger this is and these lines qualify what may be taken from it. */}
+      {c.pooledCeiling && (
+        <div className="mt-2 border-t border-border pt-2" data-testid="pooled-ceiling">
+          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Layers className="size-3 shrink-0" aria-hidden />
+            <span>{c.pooledCeiling.limitLine}</span>
+          </p>
+          <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.membersLine}</p>
+          {c.pooledCeiling.capLine && <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.capLine}</p>}
+          <Link
+            href={c.pooledCeiling.detailsHref}
+            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {c.pooledCeiling.detailsLabel}
+          </Link>
+        </div>
+      )}
+      {/* r341 (8d3a7bff) — a member that keeps its OWN balance and also counts towards a ceiling. This is the
+          plan's challenge made visible: the reporter asked for these cards to go, and Marriage Leave's 177.00
+          days across 59 employments are the reason they stay. One line, no figure — the ceiling's figures
+          belong to the card that holds the pool. */}
+      {(c.ceilingLines ?? []).map((line) => (
+        <p key={line} className="mt-2 text-[11px] text-muted-foreground" data-testid="ceiling-membership">
+          {line}
+        </p>
+      ))}
       {entitlementStatusNeedsNotice(c.entitlementStatus) && (
         <p
           className="mt-2 text-[11px] text-amber-700 dark:text-amber-500"

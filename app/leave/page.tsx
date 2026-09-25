@@ -76,6 +76,8 @@ import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/le
 // Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
 // as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid.
 import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
+// r341 (8d3a7bff) — which leave-type card a shared group's ceiling belongs on, decided in one pure place.
+import { planSharedGroupCeilings } from '@/lib/shared-leave-pool';
 import { durationLabel } from '@/lib/leave-duration';
 // 46afcc48 — the shared-group context lines interpolate day figures, and a day figure is printed one way
 // in this repo (4a1abc4a). Interpolating a raw Number would print "10" beside the card's "9.00".
@@ -475,6 +477,59 @@ export default async function LeavePage({
       }));
   const sharedGroupsPrimary = sharedGroupEntriesAt('primary');
   const sharedGroupsSecondary = sharedGroupEntriesAt('secondary');
+
+  /**
+   * r341 (8d3a7bff) — ONE CARD FOR THE POOL: THE GROUP'S TILE MOVES ONTO THE CARD THAT HOLDS ITS LEDGER.
+   *
+   * The reporter saw two cards headed "Special Leave" and asked for the second to go. Both were accurate and
+   * both were about the same pot: the leave TYPE whose ledger holds the days, and the shared GROUP that caps
+   * what may be taken across its seven members. Two different settings (lib/shared-leave-pool.ts records why
+   * they must not be reconciled into one member list), one pot on screen — so the tile's lines move onto the
+   * type's card and the tile is not drawn.
+   *
+   * ⚠️ AND THE FIVE MEMBERS THAT HOLD THEIR OWN DAYS KEEP THEIR CARDS, which is the half of the ticket we
+   * argued back and they approved. Marriage Leave holds 177.00 days across 59 employments (re-measured
+   * 2026-09-26); folding its card would hide a balance 59 people can actually spend. It gains one line naming
+   * the ceiling instead. Only CPL and NDL — whose `balance_source_type_id` IS the pool — lose their cards, and
+   * that happens in core/read.ts, not here.
+   *
+   * ⚠️ A GROUP WITH NO POOLED MEMBER STILL DRAWS ITS OWN TILE, byte-identical to before. `pnpm db:seed`
+   * configures no pooled type and no shared group, so that branch is the one most tenants are on.
+   */
+  const ceilingPlan = planSharedGroupCeilings(dashboardCards, sharedGroupBalances);
+  const sharedGroupEntryById = new Map(
+    [...sharedGroupsPrimary, ...sharedGroupsSecondary].map((g) => [g.id, g] as const),
+  );
+  const dashboardCardsWithCeilings: MyLeaveDashboardCard[] = dashboardCards.map((c) => {
+    const merged = ceilingPlan.mergedOnto.get(c.leaveTypeId);
+    const also = ceilingPlan.alsoCounts.get(c.leaveTypeId) ?? [];
+    if (merged == null && also.length === 0) return c;
+    const entry = merged == null ? undefined : sharedGroupEntryById.get(merged.id);
+    return {
+      ...c,
+      pooledCeiling:
+        entry == null || merged == null
+          ? null
+          : {
+              // The ceiling is CONTEXT beside the drawable figure, never in place of it (46afcc48): a card
+              // promising ten days the group guard would refuse is worse than no card.
+              limitLine: tMe('sharedLeaveGroups.pooledLimitLine', {
+                available: formatDays(entry.available),
+                limit: formatDays(merged.totalLimitDays),
+              }),
+              membersLine: entry.membersLabel,
+              capLine: entry.capLabel,
+              detailsHref: entry.detailsHref,
+              detailsLabel: entry.detailsLabel,
+            },
+      ceilingLines: also.map((g) => tMe('sharedLeaveGroups.alsoCountsToward', { group: g.name })),
+    };
+  });
+  // Placement is ORDER (r302), so the tiles that survive keep it: Primary groups before Secondary ones.
+  const standaloneGroupIds = new Set(ceilingPlan.standalone.map((g) => g.id));
+  const standaloneSharedGroups = [...sharedGroupsPrimary, ...sharedGroupsSecondary].filter((g) =>
+    standaloneGroupIds.has(g.id),
+  );
 
   /**
    * 76dbcaa1 — WHICH POOL EACH TYPE DRAWS ON, for the Request Leave picker. The reporter's requirement is
@@ -1137,9 +1192,11 @@ export default async function LeavePage({
         <Card className="p-5" data-tour="me-leave">
           <h2 className="text-sm font-semibold">{t('myLeave.dashboardTitle')}</h2>
           <div className="mt-3" data-tour="leave-balance">
+            {/* r341 (8d3a7bff) — the cards carry any merged shared-group ceiling, and `sharedGroups` is now
+                only the groups with no pooled member to merge onto (they keep their own tile). */}
             <MyLeaveDashboard
-              cards={dashboardCards}
-              sharedGroups={[...sharedGroupsPrimary, ...sharedGroupsSecondary]}
+              cards={dashboardCardsWithCeilings}
+              sharedGroups={standaloneSharedGroups}
               locale={locale}
             />
           </div>
