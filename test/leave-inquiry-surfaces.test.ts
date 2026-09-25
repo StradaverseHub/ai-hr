@@ -186,7 +186,10 @@ describe('20c699f8: Employee Balances', () => {
       "tInq('colEntitlementYear')",
       // r279 — the full-year allowance, immediately before the earned-to-date figure it explains.
       "tMe('leaveBalanceTable.colFullEntitlement')",
-      "tMe('leaveBalanceTable.colYtdEntitled')",
+      // 7da0a4e7 (r340) — UPDATED, not deleted: the column is still asserted, it just takes its NAME from
+      // lib/leave-figure-labels.ts now, so the screen and the CSV/Excel export cannot call one figure two
+      // things. The eleven-column promise below is untouched.
+      'tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled)',
       "tInq('colBroughtForward')",
       "tMe('leaveBalanceTable.colTaken')",
       "tInq('colPendingApproval')",
