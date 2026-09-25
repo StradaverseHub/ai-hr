@@ -9,7 +9,30 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.7';
+export const MY_STATUTORY_VERSION = '2026.8';
+// 2026.8 (2026-09-25): TWO `childByCategory` figures CORRECTED against the primary source, and all five
+//   given a page citation — item 04b88724. The reporter contested our claim that the five figures "match
+//   HASiL line for line"; they were right and we were wrong.
+//     · `disabled`        RM6,000  → RM8,000
+//     · `disabled_study`  RM14,000 → RM16,000
+//   WHY OURS WERE WRONG: 6,000 and 14,000 are the ANNUAL ASSESSMENT relief figures (RM6,000 disabled
+//   child under s.48(3), +RM8,000 for higher education) — what a person claims on a yearly return. The
+//   MTD computation uses a DIFFERENT expression: a qualifying-children count QC, each child worth
+//   RM2,000, with the entitled child "considered with" 4 or 8 children. Malaysia has two schedules and
+//   they disagree for disabled children. We compared against the wrong one.
+//   THIS IS NOT A 2026 RATE CHANGE. Printed page 7 of the same specification states: "In line with the
+//   Budget 2026 as above, there is no amendment to the MTD formula." The 2026 amendments (printed pages
+//   4–8) are TP1/TP3 deduction items — vaccination, parents' medical, childcare fees, insurance, early
+//   intervention, tourism, environmental — and none touches child relief. These two figures have been
+//   wrong since they were transcribed (ruleset 2026.7), not changed this year.
+//   THE VERSION BUMP IS LOAD-BEARING, not cosmetic: `pay_period.statutory_version` records the resolved
+//   ruleset version (r338, item 00e28308), so a payslip computed on 6,000/14,000 and one computed on
+//   8,000/16,000 must never both stamp "2026.7". 2026.7 payslips remain a truthful record of what was
+//   applied at the time.
+//   NO EMPLOYEE'S PCB MOVES ON DEPLOY. Measured on production 2026-09-25: the only `auto_table` employee
+//   (the sole mode that reads this map) has `child_relief_table = {"under_18":{"full":1,"half":0}}`, and
+//   `under_18` is unchanged. `statutory_ruleset`, `statutory_component_override` and `statutory_pack` are
+//   all EMPTY, so nothing pins the old figures and the correction reaches every tenant.
 // 2026.7 (2026-08-03): PCB reliefs gain TWO more optional bodies, both item d64d0df4:
 //   · `disabledSpouse` — the FURTHER deduction for a disabled spouse under s.47(1)(b) ITA 1967, on top of
 //     the RM4,000 `spouse` deduction and, like it, claimable ONLY by a category-2 employee (married,
@@ -112,6 +135,26 @@ export const MY_RELIEFS = {
   /**
    * FURTHER deduction for a DISABLED SPOUSE, on top of `spouse` — s.47(1)(b) ITA 1967 (RM5,000).
    *
+   * ⚠️⚠️ THIS FIGURE DISAGREES WITH THE PRIMARY SOURCE AND IS LEFT UNCHANGED ON PURPOSE (item 04b88724).
+   * While reading the MTD spec to correct the two child figures below, the SAME Reliefs table was found to
+   * carry this deduction on printed page 28 (PDF page 29), item f:
+   *     "f.  Disabled Husband / Wife                                          6,000.00
+   *          An further deduction of RM6,000 is given in respect of a disabled husband / wife."  [sic]
+   * We hold RM5,000. RM5,000 is the ANNUAL ASSESSMENT figure under s.47(1)(b) ITA 1967 — the identical
+   * class of error as the child figures: the annual-return schedule quoted where the MTD schedule governs.
+   * So this is very probably wrong by RM1,000, in the same direction (under-relief ⇒ over-deduction).
+   *
+   * IT IS NOT CORRECTED HERE because item 04b88724 is scoped to `childByCategory`, and a second relief on
+   * the money path is the reporter's to own with its own exposure measurement — not something to slip into
+   * a round about child relief. Exposure measured on production 2026-09-25: ZERO employees have
+   * `employee_statutory_my.disabled_spouse` set, and zero have `disabled_individual` set, so nothing is
+   * mis-deducted today and there is no urgency that would justify widening the scope.
+   * → RAISE THIS AS ITS OWN BOARD ITEM. Do not "fix it while you are in here".
+   *
+   * `disabledIndividual` above (RM7,000) was checked on the same page at the same time and MATCHES the
+   * spec: printed page 28 item e, "A further deduction of RM7,000 is allowed if the individual is a
+   * disabled person." Its own note is left as-is because upgrading it is likewise out of scope.
+   *
    * ⚠️ RATE-ONLY, NOT YET VERIFIED — same footing as `disabledIndividual` above: transcribed from PwC
    * Worldwide Tax Summaries (Malaysia — Individual — Deductions, YA2026) because the LHDN MTD spec URL
    * recorded above now 404s. Listed as RATE-ONLY in docs/architecture/STATUTORY-SOURCES.md §1 and
@@ -128,22 +171,72 @@ export const MY_RELIEFS = {
    * uses INSTEAD when an employee's child-relief mode is 'auto_table' and a category grid has been keyed
    * against them. A 50%-shared child counts HALF the amount below (LHDN: 100% one parent, or 50% each).
    *
-   *   under_18        RM2,000   child under 18
-   *   study_preu      RM2,000   18+, unmarried, full-time pre-university study
-   *   study_tertiary  RM8,000   18+, unmarried, full-time diploma/degree study and above
-   *   disabled        RM6,000   disabled child (OKU)
-   *   disabled_study  RM14,000  disabled child in full-time higher education (RM6,000 + RM8,000)
+   * ═══ PROVENANCE — READ THIS BEFORE CHANGING A FIGURE (item 04b88724) ═══
    *
-   * ⚠️ RATE-ONLY, NOT YET VERIFIED — all five, same footing as the two disability figures above.
+   * These five figures previously carried the note "⚠️ RATE-ONLY, NOT YET VERIFIED — all five". That note
+   * was TRUE, and we quoted the figures to the reporter as if verified anyway; two of them were wrong.
+   * The note is replaced PER VALUE with the page it was read on, so the next reader can check us instead
+   * of trusting us.
+   *
+   * SOURCE, read directly 2026-09-25 (not a secondary summary): LHDN, "Specification for MTD Calculations
+   * Using Computerized Calculation for 2026", cover "Updated: 01 January 2026". Retrieved from
+   * https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf
+   * (the /media/arvlrzh5/ URL in this file's PCB header now fails to resolve; this one served the PDF).
+   * The Reliefs table, item c. "Child", runs across PRINTED pages 26–27 (PDF pages 27–28). Printed page 26
+   * gives the RM2,000 per-child amounts in prose; printed page 27 gives the qualifying-children table and
+   * the footnote that prices each category. Page numbers below are the specification's own PRINTED ones.
+   *
+   * The spec expresses this as QC — a count of qualifying children, each worth RM2,000 — and multiplies
+   * inside the P formula's deduction block `[D + S + DU + SU + QC + (∑LP + LP1)]` (printed page 24).
+   * `childReliefAmountFor` returns the RINGGIT directly. The two are arithmetically identical for every
+   * category below, which is why no QC integer is carried: the equivalence is asserted by test instead
+   * (test/child-relief-figures-04b88724.test.ts) so a future edit that breaks it fails loudly.
+   *
+   *   KEY             RM      QC  CITATION (printed page · exact words)
+   *   under_18        2,000    1  p.26 "A relief of RM2,000 per child is allowed if the child is
+   *                               unmarried and below the age 18 years in the current year."
+   *                               p.27 footnote "*1 child below the age of 18 or a child who is
+   *                               studying = RM2,000".
+   *   study_preu      2,000    1  p.26 "A relief of RM2,000 per child is allowed if the child is
+   *                               unmarried, 18 years of age and above, and is receiving full-time
+   *                               education". Same p.27 footnote line as under_18 ("or a child who is
+   *                               studying"). NB: this category is PRE-university study — the spec
+   *                               reserves the 4-children uplift for diploma level onwards, so 18+
+   *                               full-time study BELOW that threshold stays at one child / RM2,000.
+   *   study_tertiary  8,000    4  p.27 table "Child over the age of 18 years and receiving full-time
+   *                               instruction at diploma level onwards in an institution of higher
+   *                               education in Malaysia." → 4; and the degree-level-onwards-OUTSIDE-
+   *                               Malaysia row → 4. p.27 footnote "*Child - 18 years and above and
+   *                               studying (diploma or higher) = RM8,000 (considered with 4 children)".
+   *   disabled        8,000    4  p.27 table "Disabled child as certified by the Department of Social
+   *                               Welfare." → 4. p.27 footnote "*Disabled child = RM8,000 (considered
+   *                               with 4 children)".  ⚠️ CORRECTED from RM6,000 by item 04b88724.
+   *   disabled_study 16,000    8  p.27 table "Disabled child receiving further instruction at diploma
+   *                               level onwards in an institution of higher education in Malaysia or at
+   *                               degree level onwards in an institution of higher education outside
+   *                               Malaysia." → 8. p.27 footnote "*Disabled child - 18 years and above and
+   *                               studying (diploma or higher) = RM16,000 (considered with 8 children)".
+   *                               ⚠️ CORRECTED from RM14,000 by item 04b88724.
+   *
+   * WHAT "VERIFIED" DOES AND DOES NOT MEAN HERE. All five amounts are now transcribed from the PRIMARY
+   * publication, on the page named above — that is a checkable claim and it replaces the secondary-source
+   * footing these had. It is NOT the human sign-off the file header and STATUTORY-SOURCES.md require
+   * before a real filing: that is an accountant's act, not an agent's, so the PCB configuration screen
+   * still shows these rows as awaiting sign-off. The two things are deliberately separate.
+   *
+   * ⚠️ `disabledIndividual` and `disabledSpouse` ABOVE ARE STILL SECONDARY-SOURCED AND ONE IS WRONG — see
+   * the note on `disabledSpouse`. Out of scope for item 04b88724; do not read this block as covering them.
    */
   childByCategory: {
     // NB: keyed by CHILD_RELIEF_CATEGORY_KEYS below — the SAME five keys the Family register stores per
     // child (core/dependents.ts CHILD_RELIEF_CATEGORIES). A test pins the two lists equal.
-    under_18: 2000,
-    study_preu: 2000,
-    study_tertiary: 8000,
-    disabled: 6000,
-    disabled_study: 14000,
+    // Every value below is the spec's qualifying-children count × the RM2,000 per-child relief. The
+    // equivalence is asserted, not just the totals — see test/child-relief-figures-04b88724.test.ts.
+    under_18: 2000, // QC 1 — printed p.26 + p.27 footnote
+    study_preu: 2000, // QC 1 — printed p.26 + p.27 footnote
+    study_tertiary: 8000, // QC 4 — printed p.27 table rows 1-2 + footnote
+    disabled: 8000, // QC 4 — printed p.27 table row 3 + footnote (was 6000: the annual-assessment figure)
+    disabled_study: 16000, // QC 8 — printed p.27 table row 4 + footnote (was 14000: annual-assessment)
   } as Record<string, number>,
 };
 
