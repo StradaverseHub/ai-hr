@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "Nhân viên",
       "uncoveredColGrade": "Bậc công việc",
       "uncoveredColTypes": "Loại nghỉ phép không đến được",
-      "uncoveredMore": "Hiển thị {shown} trong {total}."
+      "uncoveredMore": "Hiển thị {shown} trong {total}.",
+      "uncoveredShow": "Xem danh sách đầy đủ ({total})",
+      "uncoveredHide": "Ẩn danh sách"
     },
     "personnel": {
       "benefitScheme": {

@@ -27,6 +27,28 @@ import { listEmploymentsWithoutEntitlementTable } from '@/packs/leave/service';
  * change fixes that, which is why the card says it in its own line rather than leaving an administrator to
  * infer it from a column of blanks.
  *
+ * ── bb2b2e86 (r338) — THE LIST IS SHUT WHEN THE PAGE LOADS ───────────────────────────────────────────
+ * Fifty rows opening with the screen pushed everything below them off the fold, on a screen whose job is
+ * configuring tables. So the table now lives inside a native `<details>`, shut, behind one control that
+ * says how many it is hiding.
+ *
+ * ⚠️ IT IS A `<details>`, NOT A `useState` ISLAND, and that is the whole point. A toggle built in React
+ * would make this a client component and cost the property the header below states; a `<details>` costs
+ * nothing, needs no JavaScript, and — because it HIDES its children rather than unmounting them — leaves
+ * every row in the initial response, so the browser's own Find still reaches an employee while the section
+ * is closed. Precedent: app/admin/organization/page.tsx, app/admin/attendance/shift-form.tsx.
+ *
+ * ⚠️ THE COUNT AND THE JOB-GRADE LINE STAY OUTSIDE THE `<summary>`. They are what the card is FOR: the
+ * ungraded count is the larger half of the reporter's problem and no configuration change fixes it, so
+ * burying it behind a toggle would hide the part nobody can act on from a screen. Only the table moves.
+ *
+ * ⚠️ AND THE EMPTY CASE GROWS NO TOGGLE. "View full list (0)" on "every employee is reached" is a control
+ * that opens nothing; `total === 0` renders the sentence and stops.
+ *
+ * The 50-row cap and its "Showing 50 of 70." line are UNCHANGED (core/entitlement-template.ts). The plan
+ * declined pagination in writing: the cap already bounds the page, and a pager would be a second control
+ * to learn on a list meant to be scanned once and fixed at source.
+ *
  * SERVER COMPONENT. One read, no client island, no action — it is a list and two links.
  */
 export async function UncoveredEmployeesCard({ s, asOf }: { s: SessionContext; asOf: string }) {
@@ -39,7 +61,8 @@ export async function UncoveredEmployeesCard({ s, asOf }: { s: SessionContext; a
       <div className="space-y-2 px-4 pb-3 pt-3 text-xs text-muted-foreground">
         <p>{t('uncoveredHelp')}</p>
         {/* Said whether or not anybody is listed: "nobody is unreached" and "nobody has a job grade to
-            match on" are both worth knowing, and the second is the larger half of the reporter's problem. */}
+            match on" are both worth knowing, and the second is the larger half of the reporter's problem.
+            OUTSIDE the <details> below — see the header. */}
         {withoutJobGrade > 0 ? (
           <p className="font-medium text-amber-700 dark:text-amber-500">
             {t('uncoveredNoGrade', { count: withoutJobGrade, total: activeTotal })}
@@ -49,44 +72,58 @@ export async function UncoveredEmployeesCard({ s, asOf }: { s: SessionContext; a
       {total === 0 ? (
         <div className="px-4 pb-4 text-sm text-muted-foreground">{t('uncoveredNone')}</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">{t('uncoveredColEmployee')}</th>
-                <th className="px-3 py-2">{t('uncoveredColGrade')}</th>
-                <th className="px-3 py-2">{t('uncoveredColTypes')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.employmentId} className="border-t align-top">
-                  <td className="px-3 py-2">
-                    <Link href={`/admin/personnel/${r.employmentId}?tab=leave`} className="underline">
-                      {r.employeeName}
-                    </Link>
-                    {r.employeeCode ? (
-                      <span className="ml-2 text-xs text-muted-foreground">{r.employeeCode}</span>
-                    ) : null}
-                  </td>
-                  {/* An em dash is the honest rendering of "no job grade recorded": it asserts nothing,
-                      where a blank cell reads as a loading failure. */}
-                  <td className="px-3 py-2 text-xs">
-                    {r.gradeName ?? <span className="text-amber-700 dark:text-amber-500">{t('uncoveredNoGradeCell')}</span>}
-                  </td>
-                  <td className="px-3 py-2 text-xs">{r.leaveTypeNames.join(' · ')}</td>
+        <details className="group">
+          <summary className="mx-4 mb-3 inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+            {/* The SHUT label carries the total, because shut is the state a reader decides from. The open
+                label does not repeat it: SectionHeader's count is visible in both states. */}
+            <span className="group-open:hidden">{t('uncoveredShow', { total })}</span>
+            <span className="hidden group-open:inline">{t('uncoveredHide')}</span>
+            <span
+              aria-hidden="true"
+              className="text-xs text-muted-foreground transition-transform group-open:rotate-180"
+            >
+              ▾
+            </span>
+          </summary>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">{t('uncoveredColEmployee')}</th>
+                  <th className="px-3 py-2">{t('uncoveredColGrade')}</th>
+                  <th className="px-3 py-2">{t('uncoveredColTypes')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {/* The cap is applied after counting, so this line states a fact rather than implying the list
-              is complete. */}
-          {total > rows.length ? (
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {t('uncoveredMore', { shown: rows.length, total })}
-            </p>
-          ) : null}
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.employmentId} className="border-t align-top">
+                    <td className="px-3 py-2">
+                      <Link href={`/admin/personnel/${r.employmentId}?tab=leave`} className="underline">
+                        {r.employeeName}
+                      </Link>
+                      {r.employeeCode ? (
+                        <span className="ml-2 text-xs text-muted-foreground">{r.employeeCode}</span>
+                      ) : null}
+                    </td>
+                    {/* An em dash is the honest rendering of "no job grade recorded": it asserts nothing,
+                        where a blank cell reads as a loading failure. */}
+                    <td className="px-3 py-2 text-xs">
+                      {r.gradeName ?? <span className="text-amber-700 dark:text-amber-500">{t('uncoveredNoGradeCell')}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs">{r.leaveTypeNames.join(' · ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* The cap is applied after counting, so this line states a fact rather than implying the list
+                is complete. */}
+            {total > rows.length ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">
+                {t('uncoveredMore', { shown: rows.length, total })}
+              </p>
+            ) : null}
+          </div>
+        </details>
       )}
     </Card>
   );

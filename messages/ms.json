@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "Pekerja",
       "uncoveredColGrade": "Gred pekerjaan",
       "uncoveredColTypes": "Jenis cuti yang tidak dicapai",
-      "uncoveredMore": "Memaparkan {shown} daripada {total}."
+      "uncoveredMore": "Memaparkan {shown} daripada {total}.",
+      "uncoveredShow": "Lihat senarai penuh ({total})",
+      "uncoveredHide": "Sembunyikan senarai"
     },
     "personnel": {
       "benefitScheme": {

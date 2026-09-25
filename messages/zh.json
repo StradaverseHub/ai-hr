@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "员工",
       "uncoveredColGrade": "职级",
       "uncoveredColTypes": "未触及的假期类型",
-      "uncoveredMore": "显示 {total} 项中的 {shown} 项。"
+      "uncoveredMore": "显示 {total} 项中的 {shown} 项。",
+      "uncoveredShow": "查看完整名单（{total}）",
+      "uncoveredHide": "隐藏名单"
     },
     "personnel": {
       "benefitScheme": {
