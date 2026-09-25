@@ -3,8 +3,14 @@
  *
  * An employee declares their optional reliefs (TP1) per assessment year on /me, and HR maintains the same
  * record on /payroll/transactions/tp1 — since 7ad37961 one record per DEDUCTION MONTH. The SUM of the
- * winning APPROVED declaration per month, over the months already effective, feeds monthly PCB/MTD
- * through `prefillTp1FromSelfRelief` (core/payroll).
+ * winning APPROVED declaration per month, over the months already effective, feeds monthly PCB/MTD as LP₁.
+ *
+ * ⚠️ WHO CONSUMES IT CHANGED IN item 3fa088fb, and this line used to name the wrong thing. The consumer
+ * was `prefillTp1FromSelfRelief` — a MANUAL form action behind a button on the draft batch screen — and
+ * nothing called it when payroll was processed, so the SUM below reached a payslip only if an operator
+ * remembered to press the button. Measured on production: 8 approved 2026 declarations, 88 payslips
+ * issued, ZERO carrying a relief. `generatePayslips` now DERIVES LP₁ itself (see `resolveTp1Feed` in
+ * core/payroll), and the prefill is a preview of that derivation rather than the only bridge to it.
  *
  * ══ THE ONE RULE, AND WHY IT IS ONE (r209) ══════════════════════════════════════════════════════════
  * Which row wins a month, which months count, and what each contributes are ALL answered by

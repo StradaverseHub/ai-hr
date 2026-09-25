@@ -102,7 +102,12 @@ import { cp38ForPeriod } from './cp38';
 // The month-collapse rule for approved TP1 declarations. Imported rather than re-implemented: the
 // limit check, the screen's remaining strip, the printed ACCUMULATED column and this feed must all
 // agree on which row is the record for a month, and one function is the only way that stays true.
-import { TP1_COUNTABLE_COLUMNS, tp1CountForYear } from './tax-relief';
+import {
+  TP1_COUNTABLE_COLUMNS,
+  tp1CountForYear,
+  type Tp1Counted,
+  type Tp1CountableRow,
+} from './tax-relief';
 // Item 1bb09a73 — the ONE place the TP3 Section-C → accumulator-seed mapping lives. Imported, never
 // re-derived: the pre-processing gate below has to decide whether a run is about to drop a figure the
 // employee's own Form TP3 declares, and it must read that figure exactly as the form's screen and
@@ -2476,18 +2481,208 @@ export async function setPayrollDeductionInput(
 }
 
 /**
+ * ══ HOW MUCH OF THE DECLARED ANNUAL DOES *THIS* MONTH FEED — LP₁, IN ONE PLACE ══════════════════════
+ *
+ * core/tax-relief's `tp1CountForYear` is THE rule for "which declarations count and what each
+ * contributes" (its header carries r209's account of what a second spelling cost). It is deliberately
+ * NOT extended here and nothing below re-decides any part of it. It does not answer "what should
+ * LP₁ be on this run", and that second question is where item 3fa088fb's money went missing: the answer
+ * lived inside `prefillTp1FromSelfRelief` — a MANUAL form action behind a button — so a payroll run that
+ * nobody pressed the button for calculated PCB as though nothing had been declared. Of the 88 payslips
+ * ever issued on the reporter's system, not one carried a TP1 relief while eight approved declarations
+ * sat there for 2026.
+ *
+ * So the delta lives here, once, in the file that owns the ∑LP replay it is struck against, and BOTH
+ * callers in this file reach it:
+ *   · `prefillTp1FromSelfRelief` — writes it onto the draft batch so an operator can see and override it;
+ *   · `generatePayslips` — DERIVES it at generate time, with no button, exactly as it already auto-applies
+ *     the fixed zakat election. That is the fix; the prefill is now a convenience, not the only bridge.
+ *
+ * ── WHY IT IS A DELTA AND NOT THE ANNUAL (ADR-0050 §0.1) ────────────────────────────────────────────
+ * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated`, and PCB consumes `∑LP + LP₁`. Feeding
+ * the full declared annual every month would therefore relieve it twelve times over. Feeding
+ *   feed = max(0, annual − ∑LP already fed by us this assessment year)
+ * makes `∑LP + LP₁` converge on the declared annual, claimed exactly ONCE — and it is self-correcting
+ * under mid-year adoption, a re-run, and a mid-year correction, because every one of those only changes
+ * what the two inputs are.
+ *
+ * ── `lpAlreadyFed` IS THE REPLAY OF *OUR* PAYSLIPS, NOT THE KERNEL'S WHOLE ∑LP (item 20837372) ──────
+ * Since migration 0488 the kernel OPENS `acc.lpAccumulated` with the Form TP3 Section D balance (a
+ * previous employer's accumulated deductions) and replays our own prior payslips on top. Only the REPLAY
+ * belongs here. The two are asking different questions: the kernel asks "what deductions has this person
+ * had this year, from anywhere"; this asks "how much of the annual they declared TO US is still unfed" —
+ * and a relief claimed through a DIFFERENT employer has never been fed by us, so netting it off here
+ * would silently shrink a declaration the employee made to this employer. Both callers therefore pass
+ * the replay-only figure, and a test pins that they do.
+ */
+type Tp1FeedInput = {
+  /** Every APPROVED declaration of ONE person for the assessment year — unfiltered by month; see below. */
+  approvedRows: readonly Tp1CountableRow[];
+  /** The payroll month being computed. `tp1EffectiveFromMonth` decides what is in force by then. */
+  throughMonth: number;
+  /** ∑LP THIS employer has already fed this assessment year (prior payslips' `st.lp`), TP3 excluded. */
+  lpAlreadyFed: number;
+};
+
+type Tp1Feed = {
+  /** The declared annual in force through `throughMonth` — `tp1CountForYear(...).total`. */
+  annual: number;
+  /** Echoed back so a caller stamping provenance does not have to recompute or re-round it. */
+  lpAlreadyFed: number;
+  /** LP₁ for this run: `max(0, annual − lpAlreadyFed)`. */
+  feed: number;
+  /** The full reduction, for provenance: which declarations were counted and what each contributed. */
+  counted: Tp1Counted;
+};
+
+function resolveTp1Feed(p: Tp1FeedInput): Tp1Feed {
+  // ⚠️ NO MONTH PREDICATE HERE AND NONE IN EITHER CALLER'S SQL. `tp1CountForYear` owns "which rows
+  // count", and r201 is the record of what a second spelling costs: the payroll feed filtered on
+  // `approved_month` in SQL while the limit check filtered on nothing, so a carried-forward declaration
+  // counted in FULL on one side and ZERO on the other, and HR keyed each month's increment against a
+  // baseline missing it.
+  const counted = tp1CountForYear(p.approvedRows, { throughMonth: p.throughMonth });
+  const annual = round2(counted.total);
+  const lpAlreadyFed = round2(p.lpAlreadyFed);
+  // Clamped at 0, not allowed to go negative: a month whose ∑LP already exceeds the annual (a correction
+  // that REDUCED a declaration after earlier months had fed the larger figure) must feed nothing further,
+  // never claw money back through a negative LP₁ that would INCREASE P and over-deduct.
+  return { annual, lpAlreadyFed, feed: Math.max(0, round2(annual - lpAlreadyFed)), counted };
+}
+
+/**
+ * ══ §0.5 ROUTING — THE RELIEF IS PERSON-KEYED, `payroll_input.tp1_deduction` IS PER-EMPLOYMENT ═══════
+ *
+ * `tp1_relief` belongs to a PERSON; LP₁ is charged on an EMPLOYMENT. For everyone with one job that is a
+ * distinction without a difference, and for a person holding two concurrent employments in one batch it
+ * is the difference between claiming a relief once and claiming it twice. So exactly one employment per
+ * person carries it:
+ *
+ *   `person.designated_paymaster_employment_id`  when set AND present in this batch — the person's own
+ *                                                nominated paying employment. Always wins.
+ *   the single employment in the batch           when no paymaster is nominated and there is only one,
+ *                                                which is every ordinary employee.
+ *   nobody                                       >1 employment in the batch and no paymaster among them.
+ *                                                Genuinely ambiguous — nothing here can know which job
+ *                                                should relieve, and guessing spreads or doubles money.
+ *
+ * ⚠️ IT READS THE BATCH'S WHOLE ACTIVE SET, NOT A NARROWED ONE, and that is a correctness requirement
+ * rather than tidiness. `generatePayslips` narrows its employee list for a SELECTIVE REPROCESS (9bc442bc)
+ * and for an additional run (r226). Resolve routing off a narrowed list and a reprocess of a single
+ * non-paymaster employment sees "one employment for this person" and relieves the WRONG job — the relief
+ * would follow whichever employment the operator happened to tick. Resolving it off the full set makes
+ * the answer a property of the person and the period, identical on every run of that period.
+ *
+ * Shared by `prefillTp1FromSelfRelief` (which writes the figure onto the draft) and `generatePayslips`
+ * (which derives it), so the two cannot route the same ringgit to two different employments.
+ */
+async function tp1TargetEmploymentByPerson(
+  tx: Tx,
+  p: { companyId: string; periodStart: string; periodEnd: string },
+): Promise<Map<string, string>> {
+  const emps = await tx
+    .select({
+      employmentId: employment.id,
+      personId: employment.personId,
+      designatedPaymaster: person.designatedPaymasterEmploymentId,
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(
+      and(
+        // 3c88d593 — the DATED entity question, the same one generatePayslips asks. Reading only the
+        // column here and the history there is exactly the drift this helper exists to prevent: an
+        // employee the kernel pays on the outgoing entity's run, routed by a screen that cannot see them.
+        employedByCompanyDuring(p.companyId, p.periodStart, p.periodEnd),
+        lte(employment.hiredOn, p.periodEnd),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.periodStart)),
+      ),
+    );
+  const batchEmpIds = new Set(emps.map((e) => e.employmentId));
+  const byPerson = new Map<string, typeof emps>();
+  for (const e of emps) {
+    const list = byPerson.get(e.personId) ?? [];
+    list.push(e);
+    byPerson.set(e.personId, list);
+  }
+  const target = new Map<string, string>();
+  for (const [personId, list] of byPerson) {
+    const paymaster = list[0].designatedPaymaster;
+    if (paymaster && batchEmpIds.has(paymaster)) target.set(personId, paymaster);
+    else if (list.length === 1) target.set(personId, list[0].employmentId);
+    // else: >1 employment in this batch and no paymaster among them → ambiguous, relieve nothing.
+  }
+  return target;
+}
+
+/**
+ * The APPROVED declarations of these people for one assessment year, grouped by person, in the shape
+ * `resolveTp1Feed` reduces. Shared by the prefill and the kernel for the same reason the routing is.
+ *
+ * ⚠️ THE GATE IS 'approved', AND THERE IS NO MONTH PREDICATE. Both halves matter:
+ *
+ *   · APPROVED, not submitted (7ad37961 / ADR-0081). Section F of the official TP1 is the EMPLOYER'S
+ *     consent, and consent is what turns an employee's claim into an instruction to payroll. Migration
+ *     0449 stamps every declaration that predates that round approved — WITHOUT THAT BACKFILL THIS QUERY
+ *     RETURNS NOTHING and every existing employee's relief stops silently, because "no approved
+ *     declaration" and "nobody declared anything" are the same empty set. If relief has gone missing on a
+ *     run, check the backfill first.
+ *
+ *   · NO `approved_month <= month` IN SQL (r209). There used to be one here and core/tax-relief's limit
+ *     check had no equivalent, so a declaration carried forward from before this form counted in FULL on
+ *     one side and ZERO on the other and HR keyed each month's increment against a baseline missing it.
+ *     Neither half was wrong alone; the CONTRACT between them was, and two fix passes that patched one
+ *     half each moved money the wrong way. `tp1EffectiveFromMonth` is now the only spelling of "when does
+ *     this start counting", both halves reach it through `tp1CountForYear`, and a month predicate here
+ *     would restore the second spelling that caused the defect.
+ */
+async function tp1ApprovedRowsByPerson(
+  tx: Tx,
+  p: { personIds: string[]; assessmentYear: number },
+): Promise<Map<string, Tp1CountableRow[]>> {
+  const out = new Map<string, Tp1CountableRow[]>();
+  if (p.personIds.length === 0) return out;
+  const rows = await tx
+    .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
+    .from(tp1Relief)
+    .where(
+      and(
+        inArray(tp1Relief.personId, p.personIds),
+        eq(tp1Relief.assessmentYear, p.assessmentYear),
+        eq(tp1Relief.status, 'approved'),
+      ),
+    );
+  for (const r of rows) {
+    const list = out.get(r.personId) ?? [];
+    list.push(r);
+    out.set(r.personId, list);
+  }
+  return out;
+}
+
+/**
  * Prefill a draft batch's TP1 personal-relief deduction from the employee's TP1 declarations
  * (ADR-0050, #1.1.3; ADR-0081). On /me an employee declares for the assessment YEAR; on the HR screen a
  * year holds one declaration per DEDUCTION MONTH, each carrying that month's INCREMENT.
  *
- * `annual` HERE IS `tp1CountForYear(rows, { throughMonth: this batch's month }).total` — core/tax-relief's
- * OWN reduction, not a copy of it: the winning APPROVED declaration per deduction month, over the months
- * already effective for this batch. Not the newest row: with additive per-month declarations, taking the
- * newest would make a second declaration REDUCE the relief. The screen's Accumulated/Remaining strip and
- * the limit check call that SAME function, which is the whole point of r209 — before it, this side and
- * that side each decided for themselves what a carried-forward declaration was worth and disagreed by
- * its full amount, with nothing between them to say so. See the query below, and migration 0449's
- * backfill for why the gate moved from 'submitted' to 'approved'.
+ * ⚠️ THIS IS NO LONGER THE BRIDGE — IT IS A PREVIEW OF IT (item 3fa088fb). Until that item this function
+ * was the ONLY writer of `payroll_input.tp1_deduction`, reachable only through a button on the draft batch
+ * screen, and nothing called it at batch creation or at generate time. Measured on production: 8 approved
+ * 2026 declarations, 88 payslips issued, ZERO carrying a relief — every employee who declared one was
+ * over-deducted, every month, silently. `generatePayslips` now DERIVES LP₁ itself from the declaration,
+ * with no button, exactly as it already auto-applies the fixed zakat election. This function survives
+ * because it still earns its place: it lets an operator see the figure land on a draft, and edit it, before
+ * generating. It is not load-bearing any more, and pressing it must never change the outcome — which is
+ * why the delta lives in `resolveTp1Feed` and BOTH sides call that one function.
+ *
+ * `annual` IS `tp1CountForYear(rows, { throughMonth: this batch's month }).total`, reached through
+ * `resolveTp1Feed` — core/tax-relief's OWN reduction, not a copy of it: the winning APPROVED declaration
+ * per deduction month, over the months already effective for this batch. Not the newest row: with additive
+ * per-month declarations, taking the newest would make a second declaration REDUCE the relief. The
+ * screen's Accumulated/Remaining strip and the limit check call that SAME function, which is the whole
+ * point of r209 — before it, this side and that side each decided for themselves what a carried-forward
+ * declaration was worth and disagreed by its full amount, with nothing between them to say so. See
+ * `tp1ApprovedRowsByPerson`, and migration 0449's backfill for why the gate is 'approved'.
  *
  * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated` and PCB consumes `∑LP + LP₁`, so feeding
  * the full annual every month over-relieves. Per ADR-0050 §0.1 (delta method) the feed is
@@ -2520,7 +2715,9 @@ export async function setPayrollDeductionInput(
  *
  * Routing (§0.5): the relief is keyed by person but tp1_deduction is per-employment, so for a person with
  * concurrent employments in the batch it is written ONLY to `designated_paymaster_employment_id` (when set;
- * else the single employment of that person in the batch). Other employments are left untouched.
+ * else the single employment of that person in the batch). Other employments are left untouched. The rule
+ * itself lives in `tp1TargetEmploymentByPerson`, shared with the kernel so the two cannot disagree about
+ * which employment relieves.
  *
  * Provenance (§0.4): writes/refreshes only a tp1_deduction whose `tp1_source = 'tp1_self'` (or a row that
  * has none yet), and stamps `tp1_source = 'tp1_self'`. A row last set by the admin form (`tp1_source` null)
@@ -2550,96 +2747,21 @@ export async function prefillTp1FromSelfRelief(
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
 
-    // Active employees of this batch's company in the period (same active-set rule as generatePayslips).
-    const emps = await tx
-      .select({
-        employmentId: employment.id,
-        personId: employment.personId,
-        designatedPaymaster: person.designatedPaymasterEmploymentId,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
-          // and the history there is exactly the drift this helper exists to prevent: an employee the
-          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
-          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-        ),
-      );
-    if (emps.length === 0) return { applied: 0, skipped: 0 };
-
-    // §0.5 routing: per person, the employment that should carry the relief in THIS batch — the
-    // designated paymaster if it is among the batch's employments, else (no paymaster set) the person's
-    // single employment here. A person with >1 employment in the batch and no paymaster is ambiguous: skip
-    // to avoid double-counting (the kernel can't know which one is the paymaster).
-    const batchEmpIds = new Set(emps.map((e) => e.employmentId));
-    const byPerson = new Map<string, typeof emps>();
-    for (const e of emps) {
-      const list = byPerson.get(e.personId) ?? [];
-      list.push(e);
-      byPerson.set(e.personId, list);
-    }
-    const targetByPerson = new Map<string, string>(); // personId → employmentId to feed
-    for (const [personId, list] of byPerson) {
-      const paymaster = list[0].designatedPaymaster;
-      if (paymaster && batchEmpIds.has(paymaster)) targetByPerson.set(personId, paymaster);
-      else if (list.length === 1) targetByPerson.set(personId, list[0].employmentId);
-      // else: >1 employment in this batch and no paymaster among them → ambiguous, skip.
-    }
+    // §0.5 routing, in the ONE shared spelling `generatePayslips` also uses — personId → the single
+    // employment that carries this person's relief on this batch. See `tp1TargetEmploymentByPerson`.
+    const targetByPerson = await tp1TargetEmploymentByPerson(tx, {
+      companyId: batch.companyId,
+      periodStart,
+      periodEnd,
+    });
     if (targetByPerson.size === 0) return { applied: 0, skipped: 0 };
 
-    // The APPROVED declarations for this assessment year (§0.6: payPeriod's year), reduced to the money
-    // in force for THIS month by core/tax-relief's `tp1CountForYear` — THE rule, not a copy of it.
-    //
-    // ⚠️ THE GATE MOVED FROM 'submitted' TO 'approved' IN 7ad37961 (ADR-0081). The official LHDN TP1 has
-    // a Section F employer consent block, and consent is what turns an employee's claim into an
-    // instruction to payroll. Migration 0449 stamps every declaration that existed before that round
-    // approved — WITHOUT THAT BACKFILL THIS QUERY RETURNS NOTHING and every existing employee's relief
-    // stops silently, because "no approved declaration" and "nobody declared anything" are the same
-    // empty set. If relief has gone missing on a run, check the backfill first.
-    //
-    // ⚠️ WHY THERE IS NO `approved_month <= pMonth` IN THIS WHERE CLAUSE ANY MORE (r209, item 7ad37961).
-    // There used to be one, and core/tax-relief's limit check had no equivalent — so a declaration
-    // carried forward from before this form counted in FULL here and ZERO there, and HR keyed each
-    // month's increment against a baseline missing it. Neither half was wrong alone; the contract
-    // between them was, and two fix passes that patched one half each moved money the wrong way. The
-    // effective-from rule now lives in exactly one place (`tp1EffectiveFromMonth`) and BOTH halves reach
-    // it through `tp1CountForYear`. Filtering here in SQL would restore the second spelling that caused
-    // the defect, so this reads every approved row of the year and lets the rule decide.
-    //
-    // ONE ROW PER MONTH, SUMMED — NOT "LATEST WINS", and that is inside `tp1CountForYear` too.
-    // 7ad37961 made a year hold up to twelve declarations (deduction_month) and made the limit check
-    // ADDITIVE across them, so HR is taught to enter each month's INCREMENT. Taking only the newest row
-    // would make a second declaration REDUCE the relief fed here (January 3,000 then June 2,000 would
-    // feed 2,000, not 5,000) — silently, with no error anywhere.
+    // The APPROVED declarations for this assessment year (§0.6: payPeriod's year), in the ONE shared
+    // query `generatePayslips` also uses. Why the gate is 'approved' and why there is no month predicate
+    // in the SQL: see `tp1ApprovedRowsByPerson`.
     const personIds = [...targetByPerson.keys()];
-    const declarations = await tx
-      .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
-      .from(tp1Relief)
-      .where(
-        and(
-          inArray(tp1Relief.personId, personIds),
-          eq(tp1Relief.assessmentYear, pYear),
-          eq(tp1Relief.status, 'approved'),
-        ),
-      );
-    const rowsByPerson = new Map<string, typeof declarations>();
-    for (const d of declarations) {
-      const list = rowsByPerson.get(d.personId) ?? [];
-      list.push(d);
-      rowsByPerson.set(d.personId, list);
-    }
-    const annualByPerson = new Map<string, number>();
-    for (const [pid, rows] of rowsByPerson) {
-      // THE shared reduction. `throughMonth` is this batch's month: what is in force NOW. The screen's
-      // Accumulated/Remaining strip asks the same function for the same year with `throughMonth: null`,
-      // because an annual limit is annual — same rule, two questions, one implementation.
-      annualByPerson.set(pid, tp1CountForYear(rows, { throughMonth: pMonth }).total);
-    }
-    if (annualByPerson.size === 0) return { applied: 0, skipped: 0 };
+    const rowsByPerson = await tp1ApprovedRowsByPerson(tx, { personIds, assessmentYear: pYear });
+    if (rowsByPerson.size === 0) return { applied: 0, skipped: 0 };
 
     // ∑LP already accumulated this assessment year per target employment — replay prior payslips' st.lp.
     // Prior = earlier pay periods this year. ⚠️ THE TP3 SECTION D OPENING BALANCE IS DELIBERATELY NOT
@@ -2660,8 +2782,22 @@ export async function prefillTp1FromSelfRelief(
       : [];
     const lpAccByEmp = new Map<string, number>();
     for (const s of priorSlips) {
-      const st = (s.statutory ?? {}) as { lp?: number };
-      lpAccByEmp.set(s.employmentId, round2((lpAccByEmp.get(s.employmentId) ?? 0) + Number(st.lp ?? 0)));
+      const st = (s.statutory ?? {}) as { lpDetail?: { tp1?: number } };
+      // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
+      // `tp1 + en.lpDeclared`: the TP1 relief AND the month's declared optional-deduction pay codes.
+      // Netting the WHOLE of it off the declared annual lets an unrelated relief pool swallow the
+      // employee's TP1 — an employee with optional-deduction components would watch their approved
+      // declaration shrink to LP₁ = 0.00 as the year ran on, which is the EXACT symptom this item was
+      // raised to fix, reintroduced through the new path. `lpDetail.tp1` is stamped on precisely the
+      // condition `tp1 > 0`, so its ABSENCE means "no TP1 was fed that month" with no ambiguity.
+      //
+      // BOUNDARY, STATED RATHER THAN GLOSSED: a payslip issued BEFORE this item carries no `lpDetail`
+      // at all, so a TP1 an operator keyed through the old Prefill button replays here as 0. Measured on
+      // production 2026-09-25: ZERO of 88 issued payslips carry any TP1 deduction, so that case is not
+      // reachable on this deployment; and a keyed figure is an operator override, which under the
+      // precedence rule below wins on its own run and is struck from no delta anyway.
+      const fed = Number(st.lpDetail?.tp1 ?? 0);
+      lpAccByEmp.set(s.employmentId, round2((lpAccByEmp.get(s.employmentId) ?? 0) + fed));
     }
 
     // Existing draft inputs for these target employments — preserve siblings; honour provenance.
@@ -2680,10 +2816,15 @@ export async function prefillTp1FromSelfRelief(
     let skipped = 0;
     for (const personId of personIds) {
       const employmentId = targetByPerson.get(personId)!;
-      const annual = annualByPerson.get(personId);
-      if (annual == null) continue; // no approved declaration effective for this month
-      const lpAcc = lpAccByEmp.get(employmentId) ?? 0;
-      const feed = Math.max(0, round2(annual - lpAcc)); // §0.1/0.2 delta — never grows ∑LP past the annual
+      const approvedRows = rowsByPerson.get(personId);
+      if (!approvedRows) continue; // no approved declaration at all for this year
+      // §0.1/0.2 delta, in core/tax-relief's ONE spelling — `generatePayslips` derives the identical
+      // figure from the identical function, which is what makes the automatic path and this button agree.
+      const { feed } = resolveTp1Feed({
+        approvedRows,
+        throughMonth: pMonth,
+        lpAlreadyFed: lpAccByEmp.get(employmentId) ?? 0,
+      });
       const prior = existingByEmp.get(employmentId);
       // §0.4: refresh only a prefill-set row (or one with no row yet). A manual admin override
       // (tp1_source null but a tp1_deduction already keyed) is sticky — skip it.
@@ -3703,6 +3844,11 @@ export async function generatePayslips(
         overtime: payrollInput.overtimeAmount,
         bonus: payrollInput.bonusAmount,
         tp1: payrollInput.tp1Deduction,
+        // Item 3fa088fb — the PROVENANCE of that figure, read so the kernel can tell an operator's keyed
+        // override from a figure the Prefill button derived. 'tp1_self' ⇒ derived (the kernel re-derives it
+        // itself now, so the stored copy is only a draft-screen convenience); anything else with a non-zero
+        // amount is a hand-keyed instruction about THIS run and wins. §0.4, the same test the prefill uses.
+        tp1Source: payrollInput.tp1Source,
         zakat: payrollInput.zakat,
         claimAllowance: payrollInput.claimAllowance,
         loanDeduction: payrollInput.loanDeduction,
@@ -3728,6 +3874,7 @@ export async function generatePayslips(
     const otDerivationByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otDerivation ?? null]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
+    const tp1SourceByEmp = new Map<string, string | null>(inputRows.map((r) => [r.employmentId, r.tp1Source ?? null]));
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
     // Approved taxable claims prefilled into this batch (ADR-0021): ride the taxable allowance base.
     const claimAllowanceByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.claimAllowance)]));
@@ -4217,16 +4364,39 @@ export async function generatePayslips(
     // each slip stamps the month's per-code exempt/claimed amounts as statutory.exemptionUsed, and the
     // replay sums them so the annual caps carry across months (no mutable balance table).
     const exemptUsedByEmp = new Map<string, Record<string, number>>();
+    /** Item 3fa088fb — ∑LP THIS employer has already fed this assessment year. TP3 opening EXCLUDED. */
+    const lpFedByEmp = new Map<string, number>();
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number> };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
       acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
       acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
       acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0)); // §E.5: full zakat accrues to Z
       acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
+      // Item 3fa088fb — THE SAME MONEY, COUNTED SEPARATELY, AND THE SEPARATION IS THE POINT. `acc
+      // .lpAccumulated` above opens with the TP3 Section D balance (a PREVIOUS employer's accumulated
+      // deductions) and is what the PCB formula's ∑LP must be. The TP1 delta below must NOT see that
+      // opening balance: it asks "how much of the annual this employee declared TO US is still unfed",
+      // and a relief already claimed through a different employer has never been fed by us, so netting it
+      // off would silently shrink the declaration they made to this employer. So this map replays OUR
+      // payslips only. `resolveTp1Feed`'s header carries the full argument; a test pins the difference.
+      // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
+      // `tp1 + en.lpDeclared`: the TP1 relief AND the month's declared optional-deduction pay codes.
+      // Netting the WHOLE of it off the declared annual lets an unrelated relief pool swallow the
+      // employee's TP1 — an employee with optional-deduction components would watch their approved
+      // declaration shrink to LP₁ = 0.00 as the year ran on, which is the EXACT symptom this item was
+      // raised to fix, reintroduced through the new path. `lpDetail.tp1` is stamped on precisely the
+      // condition `tp1 > 0`, so its ABSENCE means "no TP1 was fed that month" with no ambiguity.
+      //
+      // BOUNDARY, STATED RATHER THAN GLOSSED: a payslip issued BEFORE this item carries no `lpDetail`
+      // at all, so a TP1 an operator keyed through the old Prefill button replays here as 0. Measured on
+      // production 2026-09-25: ZERO of 88 issued payslips carry any TP1 deduction, so that case is not
+      // reachable on this deployment; and a keyed figure is an operator override, which under the
+      // precedence rule below wins on its own run and is struck from no delta anyway.
+      lpFedByEmp.set(s.employmentId, round2((lpFedByEmp.get(s.employmentId) ?? 0) + Number(st.lpDetail?.tp1 ?? 0)));
       if (st.exemptionUsed) {
         const used = exemptUsedByEmp.get(s.employmentId) ?? {};
         for (const [code, amt] of Object.entries(st.exemptionUsed)) {
@@ -4273,6 +4443,77 @@ export async function generatePayslips(
         cur.additional = round2(cur.additional + Number(r.bonus));
         if (r.runType === 'regular') cur.overtime = round2(cur.overtime + Number(r.ot));
         earlierRunByEmp.set(r.employmentId, cur);
+      }
+    }
+
+    // ══ ITEM 3fa088fb — LP₁ FROM THE EMPLOYEE'S OWN APPROVED TP1, DERIVED HERE AND NOT WAITED FOR ═════
+    //
+    // THE DEFECT THIS REPLACES. `payroll_input.tp1_deduction` was written by exactly one thing —
+    // `prefillTp1FromSelfRelief`, reachable only through a BUTTON on the draft batch screen — and nothing
+    // called it at batch creation or at generate time. So an approved TP1 relief reached PCB only if an
+    // operator remembered to press Prefill first, and measured on the reporter's production system on
+    // 2026-09-25 nobody ever had: 8 approved declarations for 2026 (two for July at RM500.00), 88 payslips
+    // issued, ZERO carrying a TP1 deduction. ∑LP and LP₁ are SUBTRACTED inside P, so every employee who
+    // declared a relief had P too high, tax too high, and was over-deducted every single month.
+    //
+    // THE FIX IS THE SHAPE ZAKAT ALREADY HAD, and the contrast was sitting three lines from the bug: the
+    // kernel auto-applies the fixed zakat election at generate time and only lets `payroll_input` OVERRIDE
+    // it. TP1 now works identically — derived from the declaration, overridable by a keyed figure — so the
+    // relief travels on its own and the Prefill button becomes what it should always have been: a way to
+    // see the figure land on a draft before generating, not the only bridge that exists.
+    //
+    // ── WHY THE DERIVED LEG IS REGULAR-RUN ONLY, WHICH THE BUILD NOTE ASKED TO BE DECIDED ────────────
+    // The expression this feeds (`lp`, below) zeroed `en.lpDeclared` on an additional run and did NOT zero
+    // the TP1 component. Before this item that asymmetry was unreachable — an additional batch only ever
+    // carried a TP1 figure if someone pressed Prefill on it, and the panel does not offer the button on a
+    // non-regular run — but deriving automatically would have made it live and DOUBLE-CLAIMED the month:
+    // a regular run and a bonus run for the same month would each have fed the same relief, and the
+    // month's ∑LP replayed into every later month at twice the declared figure. Money in the wrong
+    // direction. So the month's declared relief is charged on the REGULAR run only, exactly like
+    // `en.lpDeclared`, cp38, hrdf and the zakat election — both legs of the automatic money now agree, and
+    // a regular + bonus pair in one month applies the relief ONCE, in whichever ORDER they land (a late
+    // regular run is `restatesMonth`, still `!isAdditionalRun`, and still carries it).
+    //
+    // A month that has ONLY an additional run therefore feeds nothing — and loses nothing: the delta is
+    // `annual − ∑LP already fed`, so the next regular run's feed simply grows by what that month skipped.
+    //
+    // A KEYED figure still applies on any run, like a keyed zakat: an operator override is an instruction
+    // about THAT payslip, and silently discarding a number somebody typed is worse than honouring it.
+    const tp1TargetByEmp = new Map<string, string>(); // employmentId → personId, for targets only
+    const tp1FeedByEmp = new Map<string, Tp1Feed>();
+    if (!isAdditionalRun && empIds.length) {
+      // §0.5 routing, off the batch's WHOLE active set rather than `emps` — which this run may already
+      // have narrowed for a selective reprocess. See `tp1TargetEmploymentByPerson` for why that matters:
+      // routed off a narrowed list, a reprocess of one non-paymaster employment would relieve the wrong
+      // job. One shared function with the prefill, so the two cannot send the same ringgit to two places.
+      const targetByPerson = await tp1TargetEmploymentByPerson(tx, {
+        companyId: batch.companyId,
+        periodStart,
+        periodEnd,
+      });
+      const inRun = new Set(empIds);
+      for (const [personId, employmentId] of targetByPerson) {
+        if (inRun.has(employmentId)) tp1TargetByEmp.set(employmentId, personId);
+      }
+      // §0.6: the assessment year is the PAY PERIOD's year.
+      const rowsByPerson = await tp1ApprovedRowsByPerson(tx, {
+        personIds: [...new Set(tp1TargetByEmp.values())],
+        assessmentYear: pYear,
+      });
+      for (const [employmentId, personId] of tp1TargetByEmp) {
+        const approvedRows = rowsByPerson.get(personId);
+        if (!approvedRows) continue; // nothing approved for this year ⇒ LP₁ derives nothing
+        tp1FeedByEmp.set(
+          employmentId,
+          // THE one spelling of the delta, shared with `prefillTp1FromSelfRelief` — so pressing the button
+          // and not pressing it produce the identical figure, which is the property that makes the button
+          // safe to leave in place.
+          resolveTp1Feed({
+            approvedRows,
+            throughMonth: pMonth,
+            lpAlreadyFed: lpFedByEmp.get(employmentId) ?? 0,
+          }),
+        );
       }
     }
 
@@ -5303,10 +5544,12 @@ export async function generatePayslips(
         if (hasRunRow.has(employmentId)) return true;
         // (b) Any of the six payroll_input doors carrying a figure on this run. Four of them (overtime,
         //     claim, loan, and — with typed components on — bonus) are not paid by an additional run and
-        //     are counted anyway, under the "the reason has to be true" rule above. TP1 and zakat ARE
-        //     charged on an additional run (they ride `lp` and `effectiveZakat` into the statutory delta),
-        //     so they would have to be here in any case. payroll_input holds one row per employment on the
-        //     batch, so these six maps are that whole table.
+        //     are counted anyway, under the "the reason has to be true" rule above. A KEYED tp1/zakat IS
+        //     charged on an additional run (an operator override rides `lp` / `effectiveZakat` into the
+        //     statutory delta), so those two would have to be here in any case — and since item 3fa088fb
+        //     the DERIVED legs are regular-run only, which only ever makes this door count MORE people
+        //     than the run pays, never fewer. payroll_input holds one row per employment on the batch, so
+        //     these six maps are that whole table.
         if (
           Math.abs(round2(overtimeByEmp.get(employmentId) ?? 0)) > 0 ||
           Math.abs(round2(bonusByEmp.get(employmentId) ?? 0)) > 0 ||
@@ -5579,7 +5822,20 @@ export async function generatePayslips(
       // optional-deduction pay codes (feedback 09b554e9; capped per LP code in earningsOf). Charged on the
       // REGULAR run only, like cp38/hrdf — an additional run re-folds the same recurring components and
       // would otherwise double-claim the month's LP.
-      const lp = round2((tp1ByEmp.get(e.employmentId) ?? 0) + (isAdditionalRun ? 0 : en.lpDeclared));
+      // ── Item 3fa088fb — LP₁, in the two tiers zakat already has (precedence §0.4) ──────────────────
+      //  1) a KEYED `payroll_input.tp1_deduction` whose provenance is not 'tp1_self' is an operator
+      //     override of THIS run and wins outright — on a regular run and on an additional one alike,
+      //     because a figure somebody typed against a payslip is an instruction about that payslip.
+      //  2) otherwise the employee's OWN approved TP1, derived above from the declaration itself. No
+      //     button, nothing to remember. Regular run only; the block above says why, at length.
+      // A 'tp1_self' row is NOT tier 1: it is a copy the Prefill button left on the draft, and the
+      // derivation reproduces it from the same function — so an operator who prefilled and then had the
+      // declaration corrected gets the CORRECTED figure rather than the stale copy.
+      const tp1Keyed = round2(tp1ByEmp.get(e.employmentId) ?? 0);
+      const tp1IsOverride = tp1SourceByEmp.get(e.employmentId) !== 'tp1_self' && tp1Keyed > 0;
+      const tp1Feed = tp1FeedByEmp.get(e.employmentId);
+      const tp1 = tp1IsOverride ? tp1Keyed : isAdditionalRun ? 0 : round2(tp1Feed?.feed ?? 0);
+      const lp = round2(tp1 + (isAdditionalRun ? 0 : en.lpDeclared));
       const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
       const age = ageAt(e.dateOfBirth);
       // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED (HRDF-flagged) allowance net of
@@ -5821,6 +6077,34 @@ export async function generatePayslips(
         bases: statBases,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
+        // ── Item 3fa088fb — WHERE LP₁ CAME FROM ────────────────────────────────────────────────────
+        // The reporter asked for the calculation detail to show ∑LP, LP₁, the amount used for each AND
+        // "the source of the deduction where appropriate". ∑LP and LP₁ were already on the payslip's PCB
+        // trace (core/pcb-explain renders them as ΣLP / LP1) — they were simply both showing 0.00 because
+        // nothing fed them. This is the missing third part: whether this month's figure is the employee's
+        // OWN approved TP1 or a number an operator keyed, plus the two inputs the delta was struck from,
+        // so an employee's query can be answered off the screen without reopening the declaration.
+        //
+        // KEY PRESENT ONLY WHEN THERE IS A TP1 FIGURE TO EXPLAIN. `statutory` is plain jsonb with no
+        // allow-list validator, and it is NOT a DELTA_KEY (adding one would corrupt additional-run delta
+        // arithmetic — see DELTA_KEYS). Absent ⇒ a payslip byte-identical to the pre-3fa088fb kernel,
+        // which is every payslip ever issued on production, since none of them carried a TP1 at all.
+        ...(tp1 > 0
+          ? {
+              lpDetail: {
+                tp1,
+                tp1Source: tp1IsOverride ? ('manual' as const) : ('tp1_self' as const),
+                // The delta's two inputs, on the derived path only: a keyed override was struck from
+                // neither, and printing an annual beside a figure that ignored it would mislead.
+                ...(tp1IsOverride || !tp1Feed
+                  ? {}
+                  : { tp1Annual: tp1Feed.annual, tp1AlreadyFed: tp1Feed.lpAlreadyFed }),
+                // The other half of LP₁ — the month's declared optional-deduction pay codes — named
+                // separately so the two sources of one figure are never confused for each other.
+                ...(!isAdditionalRun && en.lpDeclared > 0 ? { declaredComponents: round2(en.lpDeclared) } : {}),
+              },
+            }
+          : {}),
         zakat: effectiveZakat,
         // HRD Corp levy rides the normal wage (regular run only); a bonus/off-cycle run adds none.
         hrdf: isAdditionalRun ? 0 : hrdf,
