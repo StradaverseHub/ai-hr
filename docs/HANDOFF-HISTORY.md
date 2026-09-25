@@ -1,3 +1,41 @@
+## r341 (2026-09-26) — one item, and the build corrected the premise it was briefed with. `main@c510d515`, **no migration**.
+
+Closed: `8d3a7bff`. Re-planned and returned to the reporter: `20837372`, `cbfa8b0b`. Raised: `1478c281`.
+Gate: **1019 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: the approved plan states "no migration, no schema change, no data change", the agent was forbidden from creating one, and `db/` is untouched.
+
+### THE BRIEF WAS WRONG ABOUT THE CODE, AND SO WAS THE CODE'S OWN COMMENT
+
+The approved plan, the agent's brief, `core/read.ts`'s own comment and `test/a0b90c81-shared-group-cards.test.ts` all said the card-hiding rule was *"keyed on the POOLING POINTER, deliberately NOT on group membership"*. It was not. On main the block joined `leave_shared_group_member` to `leave_shared_group`, built `folded` from every member of a placed group, and returned `visible.filter((r) => !folded.has(r.leaveTypeId))` — `balance_source_type_id` appears nowhere in it. The old test pinned the wide behaviour: its fixture types held 4 and 5 days of their own, no pointer, and it asserted they lost their cards.
+
+So on production **Marriage Leave's card was already folded and 59 employments already could not see 177.00 days**. Honouring the approved outcome required *narrowing* the rule to `folded.has(…) && isPoolBorrower(…)`, not preserving a status quo that did not exist. The builder caught it, the verifier confirmed it on main independently, and the parent confirmed it again before accepting.
+
+### A CORRECTION OWED, RAISED BEFORE SHIPPING RATHER THAN AFTER
+
+`1478c281`. The plan described five member cards as **keeping** cards they do not currently draw, so the reporter approved that bullet believing it protected the status quo. It is a change: shipping makes five cards **appear** — Marriage with its 177 days (the fix), plus Caregiver, Examination, Graduation and Study at 0.00. A ticket whose whole point was *fewer* cards ends with more of them. The raise says so plainly and offers the rule they probably pictured: hide a member card that holds nothing, keeping Marriage visible.
+
+### DECISIONS
+
+- **The two settings stay unreconciled.** A shared group is a combined CEILING (`enforceSharedLeaveGroupLimit`); `balance_source_type_id` is a LEDGER ROUTE. Different member sets by design — merging them would put five types on a balance they do not draw, or drop five from a ceiling that caps them.
+- **`mayAppearInApplyMenu` is untouched.** A hidden card never removes the right to apply; that distinction is the whole of item `a0b90c81` and it survived.
+- **Compose, don't translate.** The merged card's ceiling line reuses the already-translated `ofLimit` rather than a new English string. `alsoCountsToward` is genuinely new, ships English in all six, and the test says so.
+
+### THREE REVIEW FINDINGS, HAND-FIXED
+
+1. **A localisation regression that would have shipped.** `pooledLimitLine` was English in all six and *replaced* a line the vanished tile rendered through the fully-translated `ofLimit` — a `zh` employee would have read English where they used to read Chinese. Now composed from the existing key; a guard pins that `ofLimit` stays distinct across locales (collapsing the five fails `expected 1 to be greater than 1`).
+2. **A test comment claimed a guard the file does not provide** — the same defect class as this round's actual bug. The DOM file cannot see the server gate; the widening leaves it green 28/28. The comment now says so and names the server test that does fail.
+3. An unreferenced fixture script was removed.
+
+### WHAT WAS NOT DONE
+
+- The four zero-balance member cards stay visible, pending the reporter's answer on `1478c281`.
+- The merged card's Taken agrees with the Apply form but **not** with the Employee Balances grid — pre-existing and unchanged (the grid shows the pool's own applications with borrowers under Share). The claim that the two "cannot drift" is wrong and should not be repeated to the reporter.
+- The merged-branch render check rests on the builder's pass; its fixture script was removed as unreferenced debt, so that pass is not re-runnable as committed. The parent's own pass covers the standalone branch only, because the seed configures no pooled type.
+
+### THE TWO CONTESTED ITEMS, RE-PLANNED FROM THE REPORTER'S LATEST WORDS
+
+- **`20837372`** — they are right, and half of it is live. The same C3 box is capped for `K` (`core/payroll.ts:4349`) and **uncapped** for `∑(Y−K)` (`core/tp3.ts:350`). Their one TP3 form holds C3 = 8,979 against a RM4,000 cap, so the stored accumulated net is **47,421 where it should be 52,400** — RM4,979 too low, under-deducting PCB. The C2 half reverses a documented decision: the comment argues capping "would tax the same ringgit twice", but C1 is gross by the file's own definition, so `C1 − cappedC2` taxes the excess exactly once — which is what the spec's printed p.20 item 9 requires. ADR-0008 is preserved: it governs refusing *input*, and nothing refuses anything; only what the arithmetic may use is limited.
+- **`cbfa8b0b`** — the contest **reverses** the two-section design we had agreed ("do not create separate sections/screens"). Re-planned as the single table they now ask for, with the per-row conditional drawn as disabled cells. The TOIL engine and HR ledger exist and `toil` is active for this tenant; no employee-initiated request path exists at all. The OT double-compensation rule their new words omit was kept, because it is money rather than layout, and they were told so.
+
 ## r340 (2026-09-26) — nine items, two workflows, and a money defect the first cut reintroduced. `main@ffe92a8c`, **no migration**.
 
 Closed: `3fa088fb`, `57d48735`, `ad7bc503`, `597c810a`, `04b88724`, `2a57a007`, `e78fd03d`, `0d02d4a1`, `7da0a4e7`.
