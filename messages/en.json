@@ -6926,7 +6926,8 @@
       "periodFooter": "Showing {period}.",
       "selectionIntro": "Choose the company and payroll month this file covers, then download it.",
       "payCycle": "Pay cycle",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "payCycleMissing": "No pay cycle is available for this file, so it cannot be downloaded yet — a file that pays people must say which run of the month it pays."
     }
   },
   "admin": {

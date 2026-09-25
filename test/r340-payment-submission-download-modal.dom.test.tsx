@@ -44,6 +44,15 @@ import type { SubmissionFormat } from '../app/payroll/payment-submission/registr
 
 const COMPANY = '11111111-2222-3333-4444-555555555555';
 const DOWNLOAD_ROUTE = '/payroll/payment-submission/download';
+/**
+ * A payroll month's runs, as the caller of a `'month-cycle'` format would supply them: one regular run and
+ * one bonus run, which is the ADR-0024 case the cycle field exists for — the two have different payment
+ * dates, so a file that pays people has to say which of them it pays.
+ */
+const CYCLES = [
+  { value: '1', label: 'Regular' },
+  { value: '2', label: 'Bonus' },
+];
 
 const LOCALES = [
   ['en', en],
@@ -57,8 +66,21 @@ const LOCALES = [
 const words = (m: (typeof LOCALES)[number][1]) =>
   (m as unknown as { payroll: { paymentSubmission: Record<string, string> } }).payroll.paymentSubmission;
 
-/** The dialog as the page mounts it, with only the format's declaration varying. */
-function mount(p: { periodKind: SubmissionFormat['periodKind']; locale?: string; messages?: unknown }) {
+/**
+ * The dialog as the page mounts it, with only the format's declaration varying.
+ *
+ * ⚠️ `cycles` IS SUPPLIED FOR A `'month-cycle'` MOUNT, and that is the realistic fixture rather than a
+ * convenience. A `'month-cycle'` format whose runs were NOT supplied is a different case with a different
+ * correct behaviour — it must refuse, because a select with no options submits no cycle and the download
+ * would quietly become a whole-month file — and it has its own test below. Leaving `cycles` empty here
+ * would have asserted the cycle control against a state the control is not allowed to be in.
+ */
+function mount(p: {
+  periodKind: SubmissionFormat['periodKind'];
+  locale?: string;
+  messages?: unknown;
+  cycles?: { value: string; label: string }[];
+}) {
   const messages = p.messages ?? en;
   return render(
     <NextIntlClientProvider locale={p.locale ?? 'en'} messages={messages as Record<string, unknown>}>
@@ -76,6 +98,7 @@ function mount(p: { periodKind: SubmissionFormat['periodKind']; locale?: string;
           { value: '08', label: 'August' },
         ]}
         defaultMonth="08"
+        cycles={p.cycles ?? (p.periodKind === 'month-cycle' ? CYCLES : undefined)}
       />
     </NextIntlClientProvider>,
   );
@@ -135,13 +158,33 @@ describe('e78fd03d (B) — clicking Download opens the selection pop-up', () => 
     mount({ periodKind: 'month' });
     openDialog();
     const form = document.querySelector('form')!;
-    // Company, year, month — the pop-up's three selects, in the order it asks for them.
-    const selects = form.querySelectorAll('select');
-    expect(selects).toHaveLength(3);
-    fireEvent.change(selects[1], { target: { value: '2025' } });
-    fireEvent.change(selects[2], { target: { value: '01' } });
+    // ⚠️ ADDRESSED BY `data-field`, NEVER BY POSITION. `selects[1]` / `selects[2]` would pin the ORDER the
+    // pop-up happens to ask its questions in: insert a field above them and the assertion silently re-aims
+    // itself at the wrong control instead of failing. The invariant is "the year control" and "the month
+    // control", so that is what is named (CLAUDE.md §8: pin invariants, not positions).
+    const field = (name: string) => {
+      const el = form.querySelector(`select[data-field="${name}"]`) as HTMLSelectElement | null;
+      expect(el, `the pop-up must carry a ${name} control`).not.toBeNull();
+      return el!;
+    };
+    fireEvent.change(field('year'), { target: { value: '2025' } });
+    fireEvent.change(field('month'), { target: { value: '01' } });
     const periodKey = form.querySelector('input[name="periodKey"]') as HTMLInputElement;
     expect(periodKey.value).toBe('2025-01');
+  });
+
+  it('year and month are the JOIN into periodKey, so neither is a named field of its own', () => {
+    mount({ periodKind: 'month' });
+    openDialog();
+    const form = document.querySelector('form')!;
+    for (const name of ['year', 'month']) {
+      const el = form.querySelector(`select[data-field="${name}"]`) as HTMLSelectElement;
+      // A `name` here would put a stray `year=`/`month=` on the download URL beside the periodKey the
+      // route actually reads — two spellings of one period, which is what the hidden input removed.
+      expect(el.getAttribute('name'), `the ${name} select must not submit a field of its own`).toBeNull();
+    }
+    // The company select DOES submit, under the name the route reads.
+    expect(form.querySelector('select[data-field="company"]')!.getAttribute('name')).toBe('companyId');
   });
 });
 
@@ -153,15 +196,52 @@ describe('e78fd03d (B) — the Pay cycle control is driven by the format, and no
     expect(document.querySelector('[data-cycle-field]')).toBeNull();
   });
 
-  it('a format that declares the CYCLE kind does get the control', () => {
-    mount({ periodKind: 'month-cycle' });
+  it('a format that declares the CYCLE kind does get the control, with the month’s runs on it', () => {
+    mount({ periodKind: 'month-cycle', cycles: CYCLES });
     openDialog();
     expect(screen.getByText(words(en).payCycle)).toBeInTheDocument();
-    expect(document.querySelector('[data-cycle-field]')).not.toBeNull();
+    const cycle = document.querySelector('select[data-cycle-field]') as HTMLSelectElement | null;
+    expect(cycle, 'the control must be a real select, not a notice').not.toBeNull();
+    // It must SUBMIT, and it must have something to submit: a select with no options sends no `cycle` at
+    // all, which is the silent whole-month download the next test refuses.
+    expect(cycle!.getAttribute('name')).toBe('cycle');
+    expect([...cycle!.options].map((o) => o.value)).toEqual(['1', '2']);
+    expect(cycle!.value, 'a cycle is chosen, so the download carries one').toBe('1');
+  });
+
+  it('and with NO runs supplied it REFUSES rather than silently downloading the whole month', () => {
+    // The trap this replaces: `cycles` defaults to `[]`, a select with no options submits no `cycle`
+    // parameter, and the file an operator believed was one run would have been every run of the month
+    // added together. Unreachable today — nothing declares the kind — which is exactly why it is settled
+    // before the first salary format inherits it.
+    mount({ periodKind: 'month-cycle', cycles: [] });
+    openDialog();
+    // The label still asks for a cycle; what is missing is said in words where the control would be.
+    expect(screen.getByText(words(en).payCycle)).toBeInTheDocument();
+    expect(screen.getByText(words(en).payCycleMissing)).toBeInTheDocument();
+    expect(document.querySelector('select[data-cycle-field]'), 'no empty select is offered').toBeNull();
+    expect(document.querySelector('[data-cycle-missing]')).not.toBeNull();
+    // And the download cannot be pressed: the submit is the last Download button on the page.
+    const buttons = screen.getAllByRole('button', { name: words(en).download });
+    const submit = buttons[buttons.length - 1] as HTMLButtonElement;
+    expect(submit.getAttribute('type')).toBe('submit');
+    expect(submit.disabled, 'a file that cannot say which run it pays must not be downloadable').toBe(true);
+  });
+
+  it('a MONTHLY format is never refused for a cycle it was not asked to supply', () => {
+    // The refusal above must be specific to a format that DECLARED it needs a cycle. Every shipped format
+    // is monthly and supplies no cycles, so a refusal keyed on `cycles.length` alone would have taken the
+    // download away from all three.
+    mount({ periodKind: 'month' });
+    openDialog();
+    expect(screen.queryByText(words(en).payCycleMissing)).toBeNull();
+    const buttons = screen.getAllByRole('button', { name: words(en).download });
+    const submit = buttons[buttons.length - 1] as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
   });
 
   it('and it disappears again when the declaration goes back to monthly', () => {
-    const first = mount({ periodKind: 'month-cycle' });
+    const first = mount({ periodKind: 'month-cycle', cycles: CYCLES });
     openDialog();
     expect(document.querySelector('[data-cycle-field]')).not.toBeNull();
     first.unmount();
@@ -173,7 +253,7 @@ describe('e78fd03d (B) — the Pay cycle control is driven by the format, and no
 });
 
 describe('e78fd03d — the new strings exist in all six catalogues, and are really six strings', () => {
-  const NEW_KEYS = ['selectionIntro', 'payCycle', 'cancel'] as const;
+  const NEW_KEYS = ['selectionIntro', 'payCycle', 'cancel', 'payCycleMissing'] as const;
 
   it('every new key is present in every locale', () => {
     for (const [loc, messages] of LOCALES) {
@@ -195,7 +275,7 @@ describe('e78fd03d — the new strings exist in all six catalogues, and are real
   it('the pop-up really renders each locale’s own words', () => {
     const seen: string[] = [];
     for (const [loc, messages] of LOCALES) {
-      const view = mount({ periodKind: 'month-cycle', locale: loc, messages });
+      const view = mount({ periodKind: 'month-cycle', locale: loc, messages, cycles: CYCLES });
       openDialog(words(messages).download);
       expect(screen.getByText(words(messages).selectionIntro)).toBeInTheDocument();
       expect(screen.getByText(words(messages).payCycle)).toBeInTheDocument();

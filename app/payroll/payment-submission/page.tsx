@@ -56,6 +56,27 @@ import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './regi
  * is still READ, so an old bookmark still opens with the same defaults selected in every pop-up — but
  * there is nothing on the screen for a period to change any more, so nothing is shown for it either.
  *
+ * ── THREE KEYS IN `payroll.paymentSubmission` NOW HAVE NO CONSUMER, AND ARE KEPT ON PURPOSE ──────
+ * `show` and `periodFooter` were the removed on-page filter's words; `lhdnCp39Pending` was the unavailable
+ * row's explanation, and that row became downloadable in the same round. All three are still in all six
+ * catalogues with ZERO readers, which is deliberate: r340 forbade deleting an existing catalogue key
+ * (concurrent branches conflict on value changes and deletions far more readily than on appends), and the
+ * namespace rename pass owns the cleanup. Nothing goes red while they sit there —
+ * `test/i18n-coverage.test.ts` detects an orphaned NAMESPACE, never an orphaned KEY.
+ *
+ * ⚠️ AND THE EARLIER REASON GIVEN FOR KEEPING `show` WAS WRONG, WHICH IS WHY IT IS WRITTEN DOWN HERE.
+ * r340's first pass reported that `show` was "still used by app/payroll/reset-records, asserted by
+ * test/reset-records-screen.test.ts". THAT PATH DOES NOT EXIST, and that test covers a leave-configuration
+ * records screen reading a different namespace entirely. The key really has no consumer. Keeping it is
+ * still correct; believing something reads it is not, and a future round deciding what to delete must not
+ * inherit that as a reason to stop.
+ *
+ * ── e78fd03d ALSO REWORDED `pageDescription`, THE ONE EXISTING STRING THIS ROUND CHANGED ─────────
+ * It used to read "Pick the month, then download what each authority needs", which described the control
+ * that is gone. A page telling an operator to pick a month it no longer asks for is worse than a stale
+ * comment, so the value moved with the behaviour in all six locales — deliberately, and it is the only
+ * existing value touched.
+ *
  * GATED LIKE ITS SIBLING SCREENS: `scopedAdmin`, not `isAdmin` — an `hr_admin` grant on ANY company makes
  * `isAdmin` true, and these downloads carry every employee's name, identity card number and contributions.
  * Registered in the function-access matrix under `statutoryForms` (lib/permissions.ts): a guarded page.tsx

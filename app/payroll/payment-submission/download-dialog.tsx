@@ -35,8 +35,16 @@ import type { SubmissionFormat } from './registry';
  *
  * `cycles` therefore has no generic source: enumerating a month's runs is a database read, and this screen
  * deliberately reads nothing but the company list (`test/payment-submission-screen-seam.test.ts` renders it
- * with no database at all). Whoever adds the salary file supplies them; until then the field renders with
- * nothing to choose, which is visible rather than silent.
+ * with no database at all). Whoever adds the salary file supplies them.
+ *
+ * ⚠️ AND IF THEY FORGET, THIS DIALOG REFUSES RATHER THAN DEFAULTS. A `<select>` with no options submits NO
+ * value at all, so a `'month-cycle'` format mounted without `cycles` would have produced a WHOLE-MONTH file
+ * — every run of the month added together — from a button the operator pressed believing they had picked one
+ * run. For a file that moves money that is the worst available failure: plausible, silent, and wrong by a
+ * bonus run. So an empty cycle list renders the reason instead of an empty control and the Download button
+ * is disabled: the file is not produced at all until the caller supplies the month's runs. Unreachable today
+ * (nothing declares the kind), which is exactly why it had to be settled before the first salary format
+ * inherits it rather than after.
  *
  * NO FORMAT ID AND NO AGENCY NAME IS WRITTEN HERE EITHER. Everything this component knows about the file
  * arrives as a prop.
@@ -77,6 +85,10 @@ export function DownloadDialog({
 }) {
   const t = useTranslations('payroll.paymentSubmission');
   const [open, setOpen] = useState(false);
+  // A format that needs a cycle and was given none cannot be downloaded — see the header. Not a validation
+  // message on submit: there is nothing the operator can do here, so the control that would silently
+  // produce the wrong file is not rendered and the submit is not offered.
+  const cycleMissing = periodKind === 'month-cycle' && cycles.length === 0;
   // Year and month are held in state rather than submitted as two fields, because the route takes ONE
   // `periodKey` and a plain GET form cannot join them. The hidden input below is the join, so the screen
   // and the route keep the single spelling of a period they already had.
@@ -101,7 +113,7 @@ export function DownloadDialog({
             <input type="hidden" name="format" value={formatId} />
             <input type="hidden" name="periodKey" value={`${year}-${month}`} />
             <Field label={t('company')}>
-              <select name="companyId" defaultValue={defaultCompanyId} className={inputCls}>
+              <select name="companyId" defaultValue={defaultCompanyId} className={inputCls} data-field="company">
                 {companies.map((c) => (
                   <option key={c.value} value={c.value}>
                     {c.label}
@@ -110,7 +122,18 @@ export function DownloadDialog({
               </select>
             </Field>
             <Field label={t('year')}>
-              <select value={year} onChange={(e) => setYear(e.target.value)} className={inputCls}>
+              {/*
+                NO `name`, BY DESIGN — year and month are joined into the one `periodKey` above, and a named
+                select here would put a stray `year=`/`month=` on the download URL. `data-field` is the
+                stable handle a test addresses them by: pinning `selects[1]` pins a POSITION, and inserting
+                a field above them would then re-aim the assertion instead of failing it (CLAUDE.md §8).
+              */}
+              <select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className={inputCls}
+                data-field="year"
+              >
                 {years.map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -119,7 +142,12 @@ export function DownloadDialog({
               </select>
             </Field>
             <Field label={t('month')}>
-              <select value={month} onChange={(e) => setMonth(e.target.value)} className={inputCls}>
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className={inputCls}
+                data-field="month"
+              >
                 {months.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
@@ -131,13 +159,21 @@ export function DownloadDialog({
               // Present ONLY because the format said it needs one. A `'month'` format renders no such
               // control at all, which is the assertion that keeps this driven by the registry.
               <Field label={t('payCycle')}>
-                <select name="cycle" className={inputCls} data-cycle-field={formatId}>
-                  {cycles.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+                {cycleMissing ? (
+                  // The refusal, in words, where the control would have been. An empty select would have
+                  // submitted no cycle and produced the whole month's file instead — see the header.
+                  <p className="text-sm text-muted-foreground" data-cycle-missing={formatId}>
+                    {t('payCycleMissing')}
+                  </p>
+                ) : (
+                  <select name="cycle" required className={inputCls} data-cycle-field={formatId} data-field="cycle">
+                    {cycles.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </Field>
             )}
             <div className="flex justify-end gap-2 pt-1">
@@ -146,7 +182,9 @@ export function DownloadDialog({
                   {t('cancel')}
                 </button>
               </Dialog.Close>
-              <button type="submit" className={btnPrimary}>
+              {/* Disabled rather than absent: the button an operator is looking for stays where it is, and
+                  the reason it cannot be pressed is the sentence beside the missing field above. */}
+              <button type="submit" className={btnPrimary} disabled={cycleMissing}>
                 {t('download')}
               </button>
             </div>

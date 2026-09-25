@@ -6926,7 +6926,8 @@
       "periodFooter": "显示 {period}。",
       "selectionIntro": "选择此文件所涵盖的公司和薪资月份，然后下载。",
       "payCycle": "薪资周期",
-      "cancel": "取消"
+      "cancel": "取消",
+      "payCycleMissing": "此文件没有可用的薪资周期，因此暂时无法下载——支付员工薪酬的文件必须说明它支付的是该月的哪一次发薪。"
     }
   },
   "admin": {

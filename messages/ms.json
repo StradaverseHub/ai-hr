@@ -6926,7 +6926,8 @@
       "periodFooter": "Memaparkan {period}.",
       "selectionIntro": "Pilih syarikat dan bulan gaji yang diliputi oleh fail ini, kemudian muat turunnya.",
       "payCycle": "Kitaran gaji",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "payCycleMissing": "Tiada kitaran gaji tersedia untuk fail ini, jadi ia belum boleh dimuat turun — fail yang membayar pekerja perlu menyatakan pusingan gaji yang mana bagi bulan itu."
     }
   },
   "admin": {

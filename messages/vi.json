@@ -6926,7 +6926,8 @@
       "periodFooter": "Đang hiển thị {period}.",
       "selectionIntro": "Chọn công ty và tháng lương mà tệp này bao gồm, rồi tải tệp về.",
       "payCycle": "Kỳ trả lương",
-      "cancel": "Hủy"
+      "cancel": "Hủy",
+      "payCycleMissing": "Không có kỳ trả lương nào cho tệp này, nên chưa thể tải về — một tệp chi trả cho người lao động phải nêu rõ nó chi trả cho lần chạy nào trong tháng."
     }
   },
   "admin": {
