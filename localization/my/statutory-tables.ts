@@ -3,8 +3,19 @@
  *
  * Every figure here is transcribed from an official publication and carries its effective
  * date, source, and a `verified` flag. Full provenance + the human verification checklist
- * live in docs/architecture/STATUTORY-SOURCES.md. DO NOT change a number without updating
- * that doc and bumping MY_STATUTORY_VERSION.
+ * live in docs/architecture/STATUTORY-SOURCES.md.
+ *
+ * ⚠️ CHANGING A NUMBER HERE IS A THREE-STEP JOB, NOT ONE. Item 04b88724 (r339) found the third step
+ * missing and the fix silently defeatable:
+ *   1. bump MY_STATUTORY_VERSION (payslips and `pay_period.statutory_version` stamp it — two different
+ *      tables must never share a version string), and update docs/architecture/STATUTORY-SOURCES.md;
+ *   2. state the new figure INDEPENDENTLY in a test, with the page it was read on. A test that derives
+ *      its expected amount from this file can never disagree with this file: `disabled` was wrong by
+ *      RM2,000 for two ruleset versions with a green suite. See test/child-relief-figures-04b88724.test.ts;
+ *   3. REBUILD THE BUNDLED SIGNED PACK — `node --import tsx scripts/statutory-pack-build-my.ts`.
+ *      localization/statutory-pack/bundled/my-2026.01.01.pack.json embeds a COPY of DEFAULT_MY_STATUTORY,
+ *      and an ingested pack OVERRIDES this file. Skip this and `pnpm statutory:sync` reinstates the old
+ *      figure under the old version string. test/pcb-classification.test.ts fails if you forget.
  *
  * Retrieved: 2026-06-06.
  */
