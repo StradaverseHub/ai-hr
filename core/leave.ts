@@ -1622,7 +1622,7 @@ export function maternityAllowanceEligibility(
  * "If the required information is blank or missing, no leave entitlement should be granted. The
  * entitlement should only be applied once the relevant employee information has been updated in the
  * system." See the call site in `openLeaveYear` for the measured blast radius, and
- * `test/73ddd5a1-blank-profile-grant-gate.ts` for the regression guard. The REVERSAL sweep
+ * `test/73ddd5a1-blank-profile-grant-gate.test.ts` for the regression guard. The REVERSAL sweep
  * (`scripts/reverse-ineligible-leave-grants.ts`) stays on `'allow'`: granting a day we may owe is
  * recoverable, taking one away on a blank field is not.
  *
@@ -8205,7 +8205,7 @@ export async function openLeaveYear(
          * list, so `fails` takes its "no restriction on this field" exit and the `unknown` policy is NEVER
          * consulted for it. A blank-gender employee therefore keeps every universal-list type and every
          * no-rule type under EITHER policy. That is asserted, as the regression guard for the recorded
-         * incident, in test/73ddd5a1-blank-profile-grant-gate.ts — do not weaken the universal-list rule.
+         * incident, in test/73ddd5a1-blank-profile-grant-gate.test.ts — do not weaken the universal-list rule.
          *
          * MEASURED BLAST RADIUS (production, 2026-09-25, `select code, eligibility from leave_type where
          * archived_at is null`). Only FOUR live types carry a rule that survives normalisation:
