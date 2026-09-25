@@ -48,6 +48,10 @@ const LOCALES = Object.keys(CATALOGUES) as Locale[];
 type MyLeaveMsgs = (typeof en)['leave']['myLeave'];
 const ml = (loc: Locale) => (CATALOGUES[loc] as unknown as { leave: { myLeave: MyLeaveMsgs } }).leave.myLeave;
 
+/** 7da0a4e7 — the shared figure names. This guard pins labels the round deliberately standardised, so it
+ *  is updated rather than loosened, and still reads its expected words out of the catalogue. */
+const lf = (loc: Locale) =>
+  (CATALOGUES[loc] as unknown as { leaveFigure: Record<string, string> }).leaveFigure;
 afterEach(() => cleanup());
 
 function mount(loc: Locale, node: React.ReactNode) {
@@ -248,14 +252,14 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
         // DOES NOT REPEAT THE POOL'S ENTITLEMENT AS ITS OWN. The pool's Entitlement / Earned so far / Taken /
         // Pending / Balance are gone from this card; it prints one figure, and it is the applyable one.
         expect(dlRows(el), `${loc}: ${name} still prints the pool's breakdown rows`).toEqual([]);
-        for (const label of [L.entitlement, L.earnedSoFar, L.balance] as string[]) {
+        for (const label of [L.entitlement, lf(loc).earnedToDate, L.balance] as string[]) {
           expect(within(el).queryByText(label), `${loc}: ${name} repeats "${label}"`).toBeNull();
         }
 
         // SHOWS WHAT CAN BE APPLIED FOR, and only that.
         const headline = within(el).getByTestId('can-apply-for');
         expect(headline.textContent, `${loc}: ${name} headline figure`).toBe(formatDays(applyFor));
-        expect(headline.nextElementSibling!.textContent, `${loc}: ${name} headline caption`).toBe(L.canApplyFor);
+        expect(headline.nextElementSibling!.textContent, `${loc}: ${name} headline caption`).toBe(lf(loc).availableBalance);
       }
     },
   );
@@ -287,17 +291,17 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
     expect(sp.querySelector('p')!.nextElementSibling!.textContent, `${loc}: SP headline caption`).toBe(L.balance);
     expect(dlRows(sp), `${loc}: SP breakdown rows`).toEqual([
       [L.entitlement, formatDays(12)],
-      [L.earnedSoFar, formatDays(12)],
+      [lf(loc).earnedToDate, formatDays(12)],
       [L.taken, formatDays(4)],
       [L.pending, formatDays(1)],
     ]);
-    expect(within(sp).getByTestId('can-apply-for').textContent, `${loc}: SP can apply for`).toBe(`${L.canApplyFor}${formatDays(7)}`);
+    expect(within(sp).getByTestId('can-apply-for').textContent, `${loc}: SP can apply for`).toBe(`${lf(loc).availableBalance}${formatDays(7)}`);
 
     // The pool ring card's own two lines above its legend.
     const ring = screen.getAllByTestId('leave-ring-card')[0];
     for (const [label, value] of [
       [L.entitlement, 14],
-      [L.earnedSoFar, 10.5],
+      [lf(loc).earnedToDate, 10.5],
     ] as const) {
       const dt = within(ring).getByText(label, { selector: 'dt' });
       expect(dt.parentElement!.querySelector('dd')!.textContent, `${loc}: AL ${label}`).toBe(formatDays(value));
@@ -316,12 +320,12 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
     expect(med.querySelector('p')!.nextElementSibling!.textContent, `${loc}: Medical headline caption`).toBe(L.balance);
     expect(dlRows(med), `${loc}: Medical breakdown rows`).toEqual([
       [L.entitlement, formatDays(14)],
-      [L.earnedSoFar, formatDays(14)],
+      [lf(loc).earnedToDate, formatDays(14)],
       [L.taken, formatDays(1)],
       [L.pending, formatDays(0)],
     ]);
     expect(within(med).getByTestId('can-apply-for').textContent, `${loc}: Medical can apply for`).toBe(
-      `${L.canApplyFor}${formatDays(13)}`,
+      `${lf(loc).availableBalance}${formatDays(13)}`,
     );
   });
 

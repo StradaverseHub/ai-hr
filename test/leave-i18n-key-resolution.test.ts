@@ -98,7 +98,10 @@ describe('b1f984fe — leave translation keys resolve in every catalog', () => {
     expect(getPath(catalogs.en, 'leave.breakdown.field.available')).toBe('Available Balance');
     // It must NOT be collapsed into availableBalance: that is the entitlement panel's own row label for a
     // different surface, and sharing it couples two screens the reporter may word differently.
-    expect(getPath(catalogs.en, 'leave.breakdown.field.availableBalance')).toBe('Available balance');
+    // 7da0a4e7 — the CASING was drift: this said "Available balance" while every other surface said
+    // "Available Balance" for the same figure. The key itself still must NOT be collapsed into
+    // `available` (see above): it is the entitlement panel's own row label and it survives the rename.
+    expect(getPath(catalogs.en, 'leave.breakdown.field.availableBalance')).toBe('Available Balance');
   });
 
   it('every statically-resolvable leave key resolves in all six catalogs', () => {

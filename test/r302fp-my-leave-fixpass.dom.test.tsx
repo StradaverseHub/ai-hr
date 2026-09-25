@@ -28,6 +28,10 @@ const LOCALES = Object.keys(CATALOGUES) as Locale[];
 type MyLeaveMsgs = Record<string, string>;
 const ml = (loc: Locale) => (CATALOGUES[loc] as unknown as { leave: { myLeave: MyLeaveMsgs } }).leave.myLeave;
 
+/** 7da0a4e7 — the shared figure names. This guard pins labels the round deliberately standardised, so it
+ *  is updated rather than loosened, and still reads its expected words out of the catalogue. */
+const lf = (loc: Locale) =>
+  (CATALOGUES[loc] as unknown as { leaveFigure: Record<string, string> }).leaveFigure;
 afterEach(() => cleanup());
 
 function mount(loc: Locale, node: React.ReactNode) {
@@ -163,7 +167,7 @@ function auditRing(ring: HTMLElement) {
 }
 
 describe('D5 · the ring legend is the ring', () => {
-  it('Balance 7, Pending 7: no green "Balance 7.00" over an arc that draws nothing — You can apply for 0.00, Pending 7.00', () => {
+  it('Balance 7, Pending 7: no green "Balance 7.00" over an arc that draws nothing — Available Balance 0.00, Pending 7.00', () => {
     const L = ml('en');
     const { errors } = mount('en', <MyLeaveDashboard cards={[card({ pending: 7, balance: 7, canApplyFor: 0, remaining: 0 })]} locale="en" />);
     const ring = screen.getByTestId('leave-ring-card');
@@ -171,7 +175,7 @@ describe('D5 · the ring legend is the ring', () => {
     expect(legend.map((l) => [l.label, l.valueText])).toEqual([
       [L.taken, formatDays(0)],
       [L.pendingApproval, formatDays(7)],
-      [L.canApplyFor, formatDays(0)],
+      [lf('en').availableBalance, formatDays(0)],
     ]);
     // The big centre number stays Balance, labelled Balance.
     const centre = within(screen.getByTestId('leave-balance-ring')).getByText(formatDays(7));
@@ -186,7 +190,7 @@ describe('D5 · the ring legend is the ring', () => {
       <MyLeaveDashboard cards={[card({ earnedSoFar: 10.5, taken: 3, pending: 2, balance: 7.5, canApplyFor: 5.5, remaining: 5.5 })]} locale={loc} />,
     );
     const { legend, legendTotal } = auditRing(screen.getByTestId('leave-ring-card'));
-    expect(legend.map((l) => l.label)).toEqual([L.taken, L.pendingApproval, L.canApplyFor, L.notEarnedYet]);
+    expect(legend.map((l) => l.label)).toEqual([L.taken, L.pendingApproval, lf(loc).availableBalance, L.notEarnedYet]);
     expect(legend.map((l) => l.valueText)).toEqual([3, 2, 5.5, 3.5].map((v) => formatDays(v)));
     expect(legendTotal).toBe(14);
     expect(errors, errors.join('\n')).toEqual([]);
