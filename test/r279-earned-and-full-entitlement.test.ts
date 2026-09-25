@@ -246,7 +246,9 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
 
   it('renders the two headers, with Full Entitlement before the earned figure it explains', () => {
     const full = page.indexOf("tMe('leaveBalanceTable.colFullEntitlement')");
-    const earned = page.indexOf("tMe('leaveBalanceTable.colYtdEntitled')");
+    // 7da0a4e7 (r340) — the header is still asserted and still ordered; it simply takes its NAME from
+    // lib/leave-figure-labels.ts now, so the screen and the export cannot call one figure two things.
+    const earned = page.indexOf('tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled)');
     expect(full, 'Full Entitlement header missing').toBeGreaterThan(-1);
     expect(earned, 'Earned to Date header missing').toBeGreaterThan(-1);
     expect(full).toBeLessThan(earned);
@@ -306,7 +308,9 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
     expect(columns).toContain("tMe('colFullEntitlement')");
     expect(cells).toContain('cell(r.fullEntitlement)');
     // Same relative order in both lists, so a downloaded column cannot be read against the wrong heading.
-    expect(columns.indexOf("tMe('colFullEntitlement')")).toBeLessThan(columns.indexOf("tMe('colYtdEntitled')"));
+    expect(columns.indexOf("tMe('colFullEntitlement')")).toBeLessThan(
+      columns.indexOf('tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled)'),
+    );
     expect(cells.indexOf('cell(r.fullEntitlement)')).toBeLessThan(cells.indexOf('cell(r.ytdEntitled)'));
   });
 });
