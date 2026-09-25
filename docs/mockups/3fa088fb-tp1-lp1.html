@@ -1,0 +1,94 @@
+<meta charset="utf-8">
+<title>Approved TP1 relief reaching LP1</title>
+<!--
+  3fa088fb. Verified on PRODUCTION 2026-09-25.
+    tp1_relief: 8 rows for assessment_year 2026, submitted AND approved, including TWO with
+                deduction_month = 7 at RM500.00 (matches the reporter's Employee A July case and the
+                LP1 = 500.00 on their LHDN reference slip for ad7bc503).
+    payroll_input: 4 rows total, ZERO with tp1_deduction > 0.
+    payslip: 88.
+  So no payslip ever generated has carried a TP1 deduction. Wider than reported: every employee with
+  an approved TP1, every month -- not just Employee A in July.
+
+  CAUSE: core/payroll.ts line 5582 builds LP1 as
+    lp = tp1ByEmp.get(employmentId) + (isAdditionalRun ? 0 : en.lpDeclared)
+  and tp1ByEmp reads payroll_input.tp1_deduction (line 3730). That column is only ever populated by
+  prefillTp1FromSelfRelief (core/payroll.ts 2531), whose ONLY caller is prefillTp1Action
+  (app/payroll/actions.ts 276) -- a manual form action behind a button on the draft batch screen.
+  Nothing calls it at batch creation or at generate time. Compare the zakat note three lines below
+  it: "the kernel already auto-applies it at generate time". Zakat has an automatic path; TP1 does not.
+
+  NO PCB FIGURE IS DRAWN BELOW. CLAUDE.md section 8: never print a figure you cannot stand behind.
+  The recomputed MTD depends on the full accumulator and is not asserted here.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;--ok:#1f7a52;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:960px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ table{border-collapse:collapse;width:100%;font-size:11px}
+ th,td{border:1px solid var(--rule);padding:5px 9px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ td.sym{font-weight:600;width:52px}
+ tr.hot td{background:#fdf4f3}
+ tr.good td{background:#f2f8f5}
+ .miss{color:var(--bad);font-style:italic}
+ .src{font-size:10px;color:var(--mf)}
+ .flow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:11.5px}
+ .box{border:1px solid var(--rule);border-radius:7px;padding:7px 11px;background:#fbfbfe}
+ .box b{display:block;font-size:11px}
+ .box span{font-size:10px;color:var(--mf)}
+ .arr{color:var(--mf)}
+ .brk{color:var(--bad);font-weight:700}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+</style>
+<div class="wrap">
+<h1>Approved TP1 relief reaching the PCB calculation</h1>
+<p class="sub">Payroll &gt; Transaction View &gt; Statutory Explanation &gt; View the full PCB calculation</p>
+<p class="sketch">Sketch — wording and spacing will differ. No PCB figure is shown, because the recomputed amount depends on the whole year to date.</p>
+
+<div class="sec"><h2>Where it breaks today</h2><div class="bd">
+<div class="flow">
+ <span class="box"><b>TP1 relief</b><span>approved, July 2026</span></span>
+ <span class="arr">&rarr;</span>
+ <span class="box"><b>Approved</b><span>RM 500.00</span></span>
+ <span class="arr brk">&#10007;</span>
+ <span class="box" style="border-color:#e0a89f;background:#fdf4f3"><b>The payroll run</b><span>never told about it</span></span>
+ <span class="arr">&rarr;</span>
+ <span class="box"><b>PCB</b><span>worked out as if nothing was claimed</span></span>
+</div>
+<p class="note">The relief only reaches payroll if somebody opens the draft run and presses a Prefill button first. Nothing does it automatically. <b>On your system, of 88 payslips issued, none has ever carried a TP1 relief</b> — while 8 approved declarations sit waiting for 2026.</p>
+</div></div>
+
+<div class="sec"><h2>The calculation detail</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <table>
+   <tr><th>Item</th><th>Meaning</th><th style="text-align:right">RM</th></tr>
+   <tr><td class="sym">&Sigma;LP</td><td>Earlier months</td><td class="n">0.00</td></tr>
+   <tr class="hot"><td class="sym">LP1</td><td>This month</td><td class="n miss">0.00</td></tr>
+  </table>
+ </div>
+ <div><p class="lbl">Proposed</p>
+  <table>
+   <tr><th>Item</th><th>Meaning</th><th style="text-align:right">RM</th></tr>
+   <tr><td class="sym">&Sigma;LP</td><td>Earlier months<br><span class="src">from earlier approved claims and any previous employer</span></td><td class="n">0.00</td></tr>
+   <tr class="good"><td class="sym">LP1</td><td>This month<br><span class="src">from the employee's approved TP1, July 2026</span></td><td class="n">500.00</td></tr>
+  </table>
+ </div>
+</div>
+<p class="note">The PCB is then worked out again with that relief applied, so the amount deducted on the payslip reflects it. <b>We have not printed the new PCB figure here</b> — it depends on the employee's full year to date, and we will not put a number in a picture that we have not calculated.</p>
+</div></div>
+
+</div>

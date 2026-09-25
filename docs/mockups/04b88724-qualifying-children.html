@@ -1,0 +1,102 @@
+<meta charset="utf-8">
+<title>Physical children and qualifying children</title>
+<!--
+  04b88724 (contested, re-planned from the reporter's latest words 2026-09-25).
+
+  PRODUCTION 2026-09-25, employee_statutory_my by child_relief_mode:
+      manual      71 employees, 66 head children, 1 with a grid
+      auto         3
+      auto_table   1
+  employee_dependent (not archived): 38, of which 24 categorised, 23 flagged for relief.
+
+  So the qualifying count is DERIVED for only 4 of 75 employees. For the other 71 the PCB child
+  figure is a flat typed number. The split display the reporter asks for is exactly the instrument
+  that makes that visible -- and it is the same list r339 promised to put in front of them before
+  moving anyone across (which is why the Child Relief Review route was kept when its button went).
+
+  The r339 correction is live: childByCategory disabled = RM8,000 (4 units), disabled_study =
+  RM16,000 (8 units), per printed p.27 of the LHDN 2026 MTD specification. LHDN's own calculation
+  slip prints Q = 2,000.00 and C = 9.00 separately -- C is the WEIGHTED count, not the head count,
+  which is precisely the reporter's point.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:980px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .card{border:1px solid var(--rule);border-radius:9px;padding:12px}
+ .fld{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #f2f3f9}
+ .fld:last-child{border-bottom:none}
+ .fld .k{font-size:11.5px}
+ .fld .k span{display:block;font-size:10px;color:var(--mf)}
+ .fld .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+ .pill{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:5px;padding:2px 6px;vertical-align:middle;margin-left:6px}
+ .p-d{background:#f2f8f5;color:var(--ok);border:1px solid #bcdcca}
+ .p-t{background:#fdf8f2;color:var(--warn);border:1px solid #e6c79f}
+ table{border-collapse:collapse;width:100%;font-size:10.5px;margin-top:9px}
+ th,td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ tr.tot td{font-weight:700;background:#f9fafd}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+ .n{border:1px solid var(--rule);border-radius:8px;padding:10px;text-align:center}
+ .n.hot{border-color:#e0b483;background:#fdfaf4}
+ .n b{display:block;font-size:20px}
+ .n span{font-size:10.5px;color:var(--mf)}
+</style>
+<div class="wrap">
+<h1>Physical children and qualifying children</h1>
+<p class="sub">Personnel Management &gt; Employee &gt; Bank &amp; Statutory &gt; Income Tax (PCB)</p>
+<p class="sketch">Sketch — wording, spacing and colours will differ in the built screen</p>
+
+<div class="sec"><h2>The field, today and proposed</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <div class="card">
+   <div class="fld"><span class="k">Children (PCB Relief)</span><span class="v">3</span></div>
+  </div>
+  <p class="note">One number, and it is not clear whether it means the family or the tax calculation.</p>
+ </div>
+ <div><p class="lbl">Proposed</p>
+  <div class="card">
+   <div class="fld"><span class="k">Physical children<span>from the family record</span></span><span class="v">3</span></div>
+   <div class="fld"><span class="k">Qualifying children (PCB)<span>the figure the tax calculation uses</span></span><span class="v">9<span class="pill p-d">Worked out</span></span></div>
+  </div>
+  <p class="note">Two numbers, each saying what it is for.</p>
+ </div>
+</div>
+</div></div>
+
+<div class="sec"><h2>How the second number is reached</h2><div class="bd">
+<table>
+ <tr><th>Child</th><th>Category</th><th class="n">Share</th><th class="n">Units</th><th class="n">Relief</th></tr>
+ <tr><td>Child 1</td><td>Under 18</td><td class="n">100%</td><td class="n">1</td><td class="n">2,000.00</td></tr>
+ <tr><td>Child 2</td><td>Disabled, in higher education</td><td class="n">100%</td><td class="n">8</td><td class="n">16,000.00</td></tr>
+ <tr><td>Child 3</td><td>Not claimed</td><td class="n">—</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr class="tot"><td colspan="3">Qualifying children (PCB)</td><td class="n">9</td><td class="n">18,000.00</td></tr>
+</table>
+<p class="note">Each child is judged on its own: a child under 18 counts as one, a disabled child as four, a disabled child in higher education as eight. <b>These are the corrected figures already shipped for this item</b> — RM8,000 and RM16,000, from page 27 of the 2026 specification you cited.</p>
+</div></div>
+
+<div class="sec"><h2>What this will reveal — and it is the reason to do it</h2><div class="bd">
+<div class="nums">
+ <div class="n"><b>4</b><span>employees whose figure is worked out from their children</span></div>
+ <div class="n hot"><b>71</b><span>whose figure is a flat number someone typed</span></div>
+ <div class="n"><b>24</b><span>children already recorded with a category</span></div>
+</div>
+<p class="note">For 71 of your 75 employees the tax figure is not worked out from their children at all — it is a flat count entered by hand. Those will show <span class="pill p-t">Entered</span> instead of <span class="pill p-d">Worked out</span>, so you can see at a glance which is which. <b>We will not dress a typed number up as a calculated one.</b></p>
+<p class="note">Moving those 71 across changes real PCB, so it stays a deliberate step. The Child Relief Review report — the one we kept when its button was removed — is the list you do it from.</p>
+</div></div>
+
+</div>
