@@ -31,6 +31,16 @@ type Locale = keyof typeof CATALOGUES;
 const LOCALES = Object.keys(CATALOGUES) as Locale[];
 type MyLeaveMsgs = (typeof en)['leave']['myLeave'];
 const ml = (loc: Locale) => (CATALOGUES[loc] as unknown as { leave: { myLeave: MyLeaveMsgs } }).leave.myLeave;
+/**
+ * 7da0a4e7 (r340) — THIS GUARD PINNED LABELS THIS ROUND DELIBERATELY CHANGED, SO IT IS UPDATED, NOT
+ * LOOSENED. The reporter found the same figure named three different things across screens; the names
+ * now live once, in lib/leave-figure-labels.ts, under the shared `leaveFigure` namespace. My Leave's own
+ * `canApplyFor` ("You can apply for") and `earnedSoFar` ("Earned so far") were two of those private
+ * names. The assertions below still read the expected words out of the CATALOGUE rather than hardcoding
+ * them — they just read them from the namespace that now owns them, so all six locales stay pinned.
+ */
+const lf = (loc: Locale) =>
+  (CATALOGUES[loc] as unknown as { leaveFigure: Record<string, string> }).leaveFigure;
 
 afterEach(() => cleanup());
 
@@ -175,10 +185,10 @@ describe('THE DASHBOARD, in every locale', () => {
     // an arc that drew Balance − Pending). test/r302fp-my-leave-fixpass.dom.test.tsx measures arcs against it.
     for (const [label, value] of [
       [L.entitlement, 14],
-      [L.earnedSoFar, 10.5],
+      [lf(loc).earnedToDate, 10.5],
       [L.taken, 3],
       [L.pendingApproval, 2],
-      [L.canApplyFor, 5.5],
+      [lf(loc).availableBalance, 5.5],
       [L.notEarnedYet, 3.5],
     ] as const) {
       const dt = within(ring).getByText(label, { selector: 'dt' });
@@ -187,7 +197,7 @@ describe('THE DASHBOARD, in every locale', () => {
     const centre = within(within(ring).getByTestId('leave-balance-ring')).getByText(formatDays(7.5));
     expect(centre.parentElement!.textContent).toContain(L.balance);
     // "You can apply for" prints the card's figure verbatim (the Apply popup's, on the server).
-    expect(within(ring).getByTestId('can-apply-for').textContent).toContain(L.canApplyFor);
+    expect(within(ring).getByTestId('can-apply-for').textContent).toContain(lf(loc).availableBalance);
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(formatDays(5.5));
     // The SVG carries a one-sentence label for screen readers.
     expect(within(ring).getByRole('img').getAttribute('aria-label')).toContain('Annual Leave');
