@@ -71,7 +71,8 @@ export type MyLeaveDashboardCard = MyLeaveCard & {
 /** Every line the merged group contributes, pre-translated by the RSC. `null` cap ⇒ the group has none. */
 export type PooledCeilingLines = {
   /** e.g. "9.00 of 10.00 shared days" — the drawable pooled figure with the ceiling as context beside it. */
-  limitLine: string;
+  availableLabel: string;
+  limitLabel: string;
   /** e.g. "Shared across: Caregiver, Compassionate, …" */
   membersLine: string;
   /** e.g. "Up to 3.00 days in one application", or null when the group sets no per-application cap. */
@@ -166,7 +167,9 @@ export function MyLeaveDashboard({
         <div className="mt-2 border-t border-border pt-2" data-testid="pooled-ceiling">
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Layers className="size-3 shrink-0" aria-hidden />
-            <span>{c.pooledCeiling.limitLine}</span>
+            <span>{c.pooledCeiling.availableLabel}</span>
+            <span aria-hidden>·</span>
+            <span>{c.pooledCeiling.limitLabel}</span>
           </p>
           <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.membersLine}</p>
           {c.pooledCeiling.capLine && <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.capLine}</p>}

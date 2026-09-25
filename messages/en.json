@@ -3463,7 +3463,6 @@
       "ofLimit": "of {limit} shared days",
       "sharedAcross": "Shared across: {types}",
       "maxPerApplication": "Up to {days} days in one application",
-      "pooledLimitLine": "{available} of {limit} shared days",
       "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "One shared entitlement, and the reasons you can apply under.",
       "remaining": "Remaining",

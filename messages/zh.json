@@ -3463,7 +3463,6 @@
       "ofLimit": "共享额度 {limit} 天",
       "sharedAcross": "共享类型：{types}",
       "maxPerApplication": "单次申请最多 {days} 天",
-      "pooledLimitLine": "{available} of {limit} shared days",
       "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "一项共享额度，以及你可以申请的事由。",
       "remaining": "剩余",

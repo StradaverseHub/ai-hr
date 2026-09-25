@@ -3463,7 +3463,6 @@
       "ofLimit": "பகிர்ந்த {limit} நாட்களில்",
       "sharedAcross": "பகிரப்படுவது: {types}",
       "maxPerApplication": "ஒரு விண்ணப்பத்தில் அதிகபட்சம் {days} நாட்கள்",
-      "pooledLimitLine": "{available} of {limit} shared days",
       "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "ஒரு பகிரப்பட்ட உரிமை, மற்றும் நீங்கள் விண்ணப்பிக்கக்கூடிய காரணங்கள்.",
       "remaining": "மீதம்",

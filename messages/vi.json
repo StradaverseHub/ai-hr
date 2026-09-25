@@ -3463,7 +3463,6 @@
       "ofLimit": "trên {limit} ngày dùng chung",
       "sharedAcross": "Dùng chung giữa: {types}",
       "maxPerApplication": "Tối đa {days} ngày trong một đơn",
-      "pooledLimitLine": "{available} of {limit} shared days",
       "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "Một quyền lợi dùng chung, và các lý do bạn có thể nộp đơn.",
       "remaining": "Còn lại",

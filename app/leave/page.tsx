@@ -513,10 +513,14 @@ export default async function LeavePage({
           : {
               // The ceiling is CONTEXT beside the drawable figure, never in place of it (46afcc48): a card
               // promising ten days the group guard would refuse is worse than no card.
-              limitLine: tMe('sharedLeaveGroups.pooledLimitLine', {
-                available: formatDays(entry.available),
-                limit: formatDays(merged.totalLimitDays),
-              }),
+              // ⚠️ COMPOSED FROM THE KEYS THE VANISHED TILE ALREADY USED, NOT A NEW SENTENCE.
+              // The tile printed `formatDays(available)` as its headline with `ofLimit` beneath it, and
+              // `ofLimit` is TRANSLATED in all six catalogues ("共享额度 {limit} 天", "Baki dikongsi
+              // {limit} hari", …). A new combined string would have been English-until-translated and
+              // would have REPLACED a localised line — a zh employee reading English where they used to
+              // read Chinese. Nothing here is new information, so nothing here needs a new word.
+              availableLabel: formatDays(entry.available),
+              limitLabel: tMe('sharedLeaveGroups.ofLimit', { limit: formatDays(merged.totalLimitDays) }),
               membersLine: entry.membersLabel,
               capLine: entry.capLabel,
               detailsHref: entry.detailsHref,

@@ -3463,7 +3463,6 @@
       "ofLimit": "daripada {limit} hari dikongsi",
       "sharedAcross": "Dikongsi antara: {types}",
       "maxPerApplication": "Sehingga {days} hari dalam satu permohonan",
-      "pooledLimitLine": "{available} of {limit} shared days",
       "alsoCountsToward": "Also counts towards the {group} shared limit.",
       "detailDescription": "Satu kelayakan dikongsi, dan sebab-sebab anda boleh memohon.",
       "remaining": "Baki",

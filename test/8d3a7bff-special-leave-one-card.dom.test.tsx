@@ -109,10 +109,8 @@ const SP_POOL: SharedLeaveBalanceInfo = {
 const CEILING = { available: 8, limit: 10, cap: 3 } as const;
 
 const ceilingLines = (loc: Locale): PooledCeilingLines => ({
-  limitLine: fill(slg(loc).pooledLimitLine, {
-    available: formatDays(CEILING.available),
-    limit: formatDays(CEILING.limit),
-  }),
+  availableLabel: formatDays(CEILING.available),
+  limitLabel: fill(slg(loc).ofLimit, { limit: formatDays(CEILING.limit) }),
   membersLine: fill(slg(loc).sharedAcross, {
     types: 'Caregiver, Compassionate, Examination, Graduation, Marriage, Natural Disaster, Study',
   }),
@@ -164,20 +162,26 @@ const cardNamed = (name: string) =>
   screen.getAllByTestId('leave-type-card').find((c) => c.getAttribute('aria-label') === name)!;
 
 describe('8d3a7bff · the two new strings exist in all six catalogues', () => {
-  it('both keys are present, carry their placeholders, and are the same English everywhere', () => {
+  it('the ONE new key carries its placeholder, and the ceiling line reuses the TRANSLATED ofLimit', () => {
     for (const loc of LOCALES) {
       const L = slg(loc);
-      expect(typeof L.pooledLimitLine, `${loc}.me.sharedLeaveGroups.pooledLimitLine`).toBe('string');
       expect(typeof L.alsoCountsToward, `${loc}.me.sharedLeaveGroups.alsoCountsToward`).toBe('string');
-      expect(L.pooledLimitLine, `${loc}: the drawable figure`).toContain('{available}');
-      expect(L.pooledLimitLine, `${loc}: the ceiling beside it`).toContain('{limit}');
       expect(L.alsoCountsToward, `${loc}: names the group`).toContain('{group}');
+      // The merged card's ceiling line is composed from `ofLimit`, which every catalogue already
+      // translates. A NEW combined string would have been English-until-translated AND would have
+      // replaced a localised line — a zh employee reading English where they used to read Chinese.
+      expect(typeof L.ofLimit, `${loc}.me.sharedLeaveGroups.ofLimit`).toBe('string');
+      expect(L.ofLimit, `${loc}: the ceiling`).toContain('{limit}');
     }
-    // NOT a distinctness assertion, deliberately — see this file's header. Awaiting translation, and asserting
-    // that plainly is what stops a later reader mistaking English for a finished catalogue.
-    for (const key of ['pooledLimitLine', 'alsoCountsToward'] as const) {
-      expect(new Set(LOCALES.map((loc) => slg(loc)[key])).size, `${key}: not yet translated`).toBe(1);
-    }
+    // `alsoCountsToward` IS new information with no existing key to compose from, so it ships English in
+    // all six and says so. Asserting that plainly is what stops a later reader mistaking it for finished.
+    expect(new Set(LOCALES.map((loc) => slg(loc).alsoCountsToward)).size, 'alsoCountsToward: not yet translated').toBe(1);
+    // `ofLimit` is the opposite case and MUST stay distinct — this is the regression guard for the
+    // localisation defect this file's first cut shipped.
+    expect(
+      new Set(LOCALES.map((loc) => slg(loc).ofLimit)).size,
+      'ofLimit must remain translated per locale, not collapsed to English',
+    ).toBeGreaterThan(1);
   });
 });
 
@@ -213,8 +217,9 @@ describe('8d3a7bff · (e) the per-application cap is on the merged card', () => 
     const L = slg(loc);
 
     // The drawable pooled figure WITH the ceiling beside it — never the ceiling in place of it (46afcc48).
-    expect(block.textContent, `${loc}: the pooled limit line`).toContain(
-      fill(L.pooledLimitLine, { available: formatDays(8), limit: formatDays(10) }),
+    expect(block.textContent, `${loc}: the drawable pooled figure`).toContain(formatDays(8));
+    expect(block.textContent, `${loc}: the ceiling beside it, in this locale's own words`).toContain(
+      fill(L.ofLimit, { limit: formatDays(10) }),
     );
     // (e) THE CAP, and it is the group's configured figure rather than a constant.
     expect(block.textContent, `${loc}: the per-application cap`).toContain(
@@ -247,8 +252,14 @@ describe('8d3a7bff · (d) Marriage Leave keeps its card, its balance and the con
     expect(errors, `${loc}: next-intl errors`).toEqual([]);
 
     const mrl = cardNamed('Marriage Leave');
-    // ITS OWN DAYS, on its own card. This is the assertion that fails if the hiding rule is widened back to
-    // group membership: the card would not be in the DOM for `cardNamed` to find.
+    // ITS OWN DAYS, on its own card.
+    // ⚠️ THIS FILE CANNOT CATCH A WIDENED HIDING RULE, AND SAYING OTHERWISE WOULD BE THE SAME MISTAKE THE
+    // ROUND WAS FIXING. The component is handed `cards` directly and never sees the server gate, so
+    // widening core/read.ts back to group membership leaves every assertion here green. The guard that
+    // DOES fail is the server test — test/8d3a7bff-special-leave-one-card.ts, "a member that holds its
+    // own days must keep its card" — verified by applying the widening and watching exactly that
+    // assertion fail. What this file pins is the RENDER: given a kept card, it draws the balance and the
+    // ceiling line rather than swallowing them.
     expect(mrl.querySelector('p')!.textContent, `${loc}: MRL headline balance`).toBe(formatDays(3));
     // THE CONNECTION, without the balance disappearing.
     expect(within(mrl).getByTestId('ceiling-membership').textContent, `${loc}: MRL ceiling line`).toBe(
