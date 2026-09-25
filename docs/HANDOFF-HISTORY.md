@@ -1,3 +1,42 @@
+## r340 (2026-09-26) — nine items, two workflows, and a money defect the first cut reintroduced. `main@ffe92a8c`, **no migration**.
+
+Closed: `3fa088fb`, `57d48735`, `ad7bc503`, `597c810a`, `04b88724`, `2a57a007`, `e78fd03d`, `0d02d4a1`, `7da0a4e7`.
+Gate: **1016 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: every approved plan was checked for a migration before any agent started and none needed one, so agents were forbidden from creating one. Journal watermark unchanged at `max(idx)=488`.
+
+Built by two workflows in five file-disjoint worktrees — 10 agents (build + adversarial verify), then 8 (fix + independent recheck) — with the money item and every remaining defect hand-finished by the parent.
+
+### `3fa088fb` IS THE ROUND, AND THE FIRST CUT REINTRODUCED THE DEFECT IT FIXED
+
+Approved TP1 reliefs never reached PCB. `payroll_input.tp1_deduction` had exactly one writer — `prefillTp1FromSelfRelief`, behind a **manual button** — and nothing called it at batch creation or generate time. Zakat had an automatic path; TP1 did not. Measured on production: **88 payslips issued, ZERO carrying a TP1**, against 8 approved 2026 declarations. Every employee who declared a relief was over-deducted, every month, silently.
+
+The build derived LP₁ at generate time and correctly decided the open question the plan named — the derived leg is **regular-run only**, because deriving on an additional run would double-claim a regular + bonus month.
+
+**Then it struck the delta against the wrong figure.** `lpAlreadyFed` replayed prior payslips' `st.lp`, which is `tp1 + en.lpDeclared` — the relief AND the month's optional-deduction pay codes. An unrelated pool was netted off the declaration, so an employee with those codes would watch their approved TP1 shrink toward **LP₁ = 0.00** as the year ran on: the reporter's exact symptom, through the new path. **69 tests passed over it.** Adversarial verification found it; it was hand-fixed per §8 (money is never sent back to an agent) to replay `st.lpDetail.tp1`, and pinned by an arm that fails `expected 100 to be 800` on the old code.
+
+### DECISIONS THE TICKETS DID NOT SETTLE
+
+- **A statutory transcription is not a sign-off.** `57d48735` corrected `disabledSpouse` RM5,000 → RM6,000 off printed p.28 item f and took the ruleset to 2026.9, retiring the red flag r339 left in three places. `disabledIndividual` keeps RM7,000 but loses its stale RATE-ONLY flag — same table, item e. The rows still read "pending sign-off", and that is correct: a checkable transcription and an accountant's signature are different things.
+- **`available` and `balance` keep different names.** `7da0a4e7` asked for a rename that would have pointed one label at both figures. `core/read.ts:3012` records that they answer different questions. The plan declined that half and the reporter approved the decline; a guard now pins that they read differently in all six locales.
+- **An absent box and a zero are different statements.** `ad7bc503` renders "nothing was recorded" where no declaration exists, rather than RM 0.00 across seventeen lines — the one place the page deliberately differs from the reporter's LHDN reference.
+- **A typed number is never dressed as a calculated one.** `04b88724` marks the qualifying-child figure derived or entered, and leaves it editable in manual mode, where 71 of 75 employees sit.
+
+### CORRECTIONS OWED TO THE REPORTER, AND ONE TO OURSELVES
+
+- `ad7bc503`'s premise was wrong: the page was never "only a summary PCB amount" — sections 3, 9 and 10 were already built. Said at the top of the plan.
+- My own earlier note that `pcbWorksheet` was missing `QC` was wrong. LHDN prints `Q` and `C` separately too, exactly as we do.
+- `3fa088fb` is **wider than reported**: not one employee in one month, but every employee with an approved relief, every month.
+
+### WHAT WAS NOT DONE
+
+- **No backfill of the 88 issued payslips.** Re-cutting an issued payslip moves money already paid and reported. The reporter's decision, deliberately out of scope; raise it as its own item.
+- The **cross-form per-code cap** — a relief declared on both a previous employer's TP3 Section D and our TP1 can push combined ∑LP past the statutory annual — remains unbuilt. Deciding which declaration yields is policy this repo has no source for.
+- The leave **Explain panel** is only partially reconciled, and `app/admin/personnel/[employmentId]` still shows a borrower the pool's Full Entitlement. Both belong to a follow-up item.
+- The **additional run's** PCB increment still computes with `lpCurrent = 0`. Byte-identical to today and flagged rather than changed.
+
+### THE GUARDS EARNED THEIR KEEP, AND ONE WAS NEARLY DEFEATED
+
+`7da0a4e7` forced **seven guards across six files** to be updated rather than loosened — five found only by the full gate. `r303`'s byte-for-byte fixture was **diffed before regenerating**, per its own header: 3 of 18 sections differ, all English, all the single word `balance` → `Balance`, no markup change. Separately, the leave build had kept a foreign guard green with a **decoy literal** left inside an unused local; the fix pass updated it properly. And two locale typos the fix pass introduced (Vietnamese `bên dưối`, Tamil `டனி`) were caught by the recheck — **no guard can see a misspelling**, which is why the English-only convention was kept for new keys and the shared leave labels were populated from existing human translations rather than written fresh.
+
 ## r338 + r339 (2026-09-25) — seven items, shipped as one deploy after four failed attempts on box memory. `main@3e094ae8`, migration **0488**.
 
 Closed: `639bf4a5`, `73ddd5a1`, `00e28308`, `bb2b2e86`, `4ca06dea` (r338); `04b88724`, `20837372` (r339).
