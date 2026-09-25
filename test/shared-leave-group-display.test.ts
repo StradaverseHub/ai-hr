@@ -440,7 +440,9 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     // there is not — the seeded shape, no pooled type anywhere — the group keeps drawing its own tile, and
     // that tile is still built from BOTH placements in Primary-then-Secondary order.
     expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(0);
-    expect(leavePage).toMatch(/<MyLeaveDashboard[^>]*sharedGroups=\{standaloneSharedGroups\}/s);
+    // `[^>]` matches newlines, so this spans the multi-line element without a dotAll flag (which this
+    // tsconfig target does not allow).
+    expect(leavePage).toMatch(/<MyLeaveDashboard[^>]*sharedGroups=\{standaloneSharedGroups\}/);
     expect(leavePage).toMatch(
       /standaloneSharedGroups = \[\.\.\.sharedGroupsPrimary, \.\.\.sharedGroupsSecondary\]\.filter/,
     );
