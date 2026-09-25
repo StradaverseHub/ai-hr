@@ -1,6 +1,6 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.6` (see `MY_STATUTORY_VERSION`)
+**Statutory-table version:** `2026.8` (see `MY_STATUTORY_VERSION`)
 **Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
@@ -88,39 +88,77 @@ to these tables is traceable to the exact runs it affects.
     <https://taxsummaries.pwc.com/malaysia/individual/deductions>
   - **Why it is not ✅ Verified:** identical reason to the OKU figure above — the LHDN MTD spec PDF URL
     returns HTTP 404, so only a high-trust secondary reference was available.
+  - 🚨 **2026-09-25 (item `04b88724`) — THIS FIGURE IS VERY PROBABLY WRONG BY RM1,000, AND WAS LEFT
+    UNCHANGED ON PURPOSE.** While reading the MTD specification to correct the child figures below, the
+    SAME Reliefs table was found to give this deduction on **printed page 28 (PDF 29), item f**:
+    _"f. Disabled Husband / Wife … 6,000.00 — An further deduction of RM6,000 is given in respect of a
+    disabled husband / wife."_ [sic] We hold **RM5,000**, which is the **annual assessment** figure under
+    s.47(1)(b) — the identical class of error as the two child figures below (annual-return schedule quoted
+    where the MTD schedule governs), in the same direction (under-relief ⇒ over-deduction).
+    It was NOT corrected because item `04b88724` is scoped to `childByCategory`, and a second relief on the
+    money path needs its own item and its own exposure measurement rather than being slipped into a round
+    about child relief. **Exposure measured on production 2026-09-25: ZERO employees have
+    `employee_statutory_my.disabled_spouse` set** (and zero have `disabled_individual` set), so nothing is
+    mis-deducted today. **→ To be raised as its own board item.**
+    For the same reason, `disabledIndividual` = RM7,000 above was incidentally **confirmed** against
+    printed page 28 item e of the same specification (_"A further deduction of RM7,000 is allowed if the
+    individual is a disabled person."_) but its entry is deliberately left on its secondary footing here,
+    because upgrading it was likewise out of that item's scope.
   - **Blast radius if wrong:** bounded and opt-in, and narrower still than the OKU figure. It is applied
     only to an employee an admin has flagged as having a disabled spouse **AND** whose tax category is
     **2** (married, spouse not working) — the same gate the RM4,000 spouse deduction sits behind.
     Categories 1 and 3 store and display the flag but their PCB is untouched.
   - **Action before a real filing:** confirm RM5,000 against the current LHDN publication, then record
     the sign-off below or correct the figure and rebuild the bundled pack.
-- **Per-category child deductions (LHDN s.48) — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF (5 figures).**
-  `MY_RELIEFS.childByCategory` (item `d64d0df4`, statutory-table version **2026.7**):
+- **Per-category child deductions (LHDN s.48) — ✅ SOURCED FROM THE PRIMARY SPEC (2026.8). STILL NEEDS A
+  HUMAN SIGN-OFF.** `MY_RELIEFS.childByCategory` — introduced by item `d64d0df4` (2026.7), **two figures
+  CORRECTED and all five given a page citation by item `04b88724` (2026.8, 2026-09-25)**:
 
-  | Category | Amount | s.48 case |
-  | --- | --- | --- |
-  | `under_18` | RM2,000 | child under 18 |
-  | `study_preu` | RM2,000 | 18+, unmarried, full-time pre-university study |
-  | `study_tertiary` | RM8,000 | 18+, unmarried, full-time diploma/degree study and above |
-  | `disabled` | RM6,000 | disabled child (OKU) |
-  | `disabled_study` | RM14,000 | disabled child in full-time higher education (RM6,000 + RM8,000) |
+  | Category | Amount | Spec QC | Citation (specification's own PRINTED page) |
+  | --- | --- | --- | --- |
+  | `under_18` | RM2,000 | 1 | p.26 prose + p.27 footnote "*1 child below the age of 18 or a child who is studying = RM2,000" |
+  | `study_preu` | RM2,000 | 1 | p.26 "…unmarried, 18 years of age and above, and is receiving full-time education" + same p.27 footnote line |
+  | `study_tertiary` | RM8,000 | 4 | p.27 table rows 1–2 (diploma onwards in Malaysia / degree onwards outside) + footnote "RM8,000 (considered with 4 children)" |
+  | `disabled` | RM8,000 | 4 | p.27 table row 3 + footnote "*Disabled child = RM8,000 (considered with 4 children)" — **was RM6,000** |
+  | `disabled_study` | RM16,000 | 8 | p.27 table row 4 + footnote "*Disabled child - 18 years and above and studying (diploma or higher) = RM16,000 (considered with 8 children)" — **was RM14,000** |
 
-  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions (YA2026
-    child reliefs). <https://taxsummaries.pwc.com/malaysia/individual/deductions>
-  - **Why it is not ✅ Verified:** same 404 as above. Note the flat `MY_RELIEFS.perChild` = RM2,000 that
-    the projection has always used is itself the `under_18` figure, so this table does not contradict any
-    previously verified number — it breaks one number out into five.
-  - **Blast radius if wrong:** bounded and opt-in. These amounts are read **only** for an employee whose
-    child-relief mode is `auto_table` and against whom a category grid has been keyed. Every employee on
-    `manual` or `auto` keeps `children × perChild` to the cent, which is exactly today's arithmetic.
+  - **Source (PRIMARY, read directly 2026-09-25):** LHDN — _Specification for MTD Calculations Using
+    Computerized Calculation for 2026_, cover "Updated: 01 January 2026", Reliefs table item c. "Child",
+    printed pages 26–27 (PDF pages 27–28).
+    <https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf>
+    ⚠️ The `/media/arvlrzh5/…` URL recorded at the top of this section no longer resolves; the
+    `/wp-content/uploads/…` URL above served the PDF and is the one to use.
+  - **Why the two old figures were wrong:** RM6,000 and RM14,000 are the **annual assessment** reliefs
+    (RM6,000 disabled child under s.48(3), +RM8,000 for higher education) — what a person claims on a
+    yearly return. The **MTD** computation uses a different expression: a qualifying-children count `QC`,
+    each child worth RM2,000, with an entitled child "considered with" 4 or 8 children. Malaysia has two
+    schedules and they disagree for disabled children; 2026.7 compared against the wrong one. Every amount
+    above is now exactly `QC × RM2,000`, and that equivalence is asserted (not merely the totals) in
+    `test/child-relief-figures-04b88724.test.ts`.
+  - **Not a 2026 rate change:** printed page 7 of the same specification states _"In line with the Budget
+    2026 as above, there is no amendment to the MTD formula."_ The 2026 amendments (printed pages 4–8) are
+    TP1/TP3 deduction items and none touches child relief. The two figures were wrong from transcription.
+  - **Why it is still not human-signed-off:** the figures are now transcribed from the primary publication,
+    which is a checkable claim; the sign-off this document requires is an **accountant's or payroll
+    officer's** act before a real filing, and an agent reading the PDF is not that person. The rows keep
+    their *Awaiting sign-off* badge for that reason, and only that reason.
+  - **Blast radius, measured on production 2026-09-25:** **nobody's PCB moved.** These amounts are read
+    **only** for an employee whose child-relief mode is `auto_table` and against whom a category grid has
+    been keyed. There is exactly one such employee and their grid is
+    `{"under_18":{"full":1,"half":0}}` — an unchanged category. `statutory_ruleset`,
+    `statutory_component_override` and `statutory_pack` are all **empty**, so no tenant override pinned
+    the old figures. Every employee on `manual` or `auto` keeps `children × perChild` to the cent.
     A child recorded at the **50%** share contributes exactly half the amount above.
-  - **Action before a real filing:** confirm all five against the current LHDN publication, then record
-    the sign-off below or correct the figures and rebuild the bundled pack.
+  - **Action before a real filing:** have an accountant confirm the five above against the specification
+    page cited, then record the sign-off below.
 - **Where the seven pending figures are visible in the running system:** Payroll → Configuration → PCB
   renders all of them (`disabledIndividual`, `disabledSpouse`, and the five `childByCategory` amounts)
   under **"Reliefs awaiting sign-off"**, each carrying an *Awaiting sign-off* badge, resolved through the
   same optional-with-fallback path `pcbMonth` uses — so the screen shows the number the kernel actually
   applies rather than a second copy that can drift.
+  ⚠️ The heading is about **sign-off**, not provenance: since 2026.8 the five `childByCategory` rows
+  under it are primary-sourced (page-cited above) while the two spouse/individual rows are not, and one of
+  those two disagrees with the spec. Do not read the shared badge as a shared footing.
 - **Known limitations (documented, not bugs):**
   - **Disabled spouse** is now implemented (item `d64d0df4`, above) — gated to tax category 2.
   - **Category-weighted child relief** is implemented for the `auto_table` child-relief mode ONLY.

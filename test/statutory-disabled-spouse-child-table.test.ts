@@ -28,9 +28,16 @@
  * drives the amount from a SUPPLIED ruleset and watches P move by exactly that number, so no future change
  * can turn a legislated figure into a tenant setting and no inline constant can creep into the maths.
  *
- * ⚠️ Seven built-in figures are now RATE-ONLY (see docs/architecture/STATUTORY-SOURCES.md §1). These
- * tests assert MECHANISM against ruleset-supplied numbers, so correcting a figure changes one constant
- * and no test.
+ * ⚠️ THESE TESTS ASSERT MECHANISM AGAINST RULESET-SUPPLIED NUMBERS, SO CORRECTING A FIGURE CHANGES ONE
+ * CONSTANT AND NO TEST — AND THAT CUTS BOTH WAYS. Item 04b88724 (r339) proved the cost: `disabled` was
+ * RM6,000 and `disabled_study` RM14,000 (the ANNUAL ASSESSMENT figures, where the MTD schedule governs)
+ * for two ruleset versions, and this file stayed green the whole time, because a test that reads its
+ * expected value out of the same map as the code can never disagree with it. The reporter caught it.
+ * Keep the design — but the FIGURES themselves are now stated independently, with the specification page
+ * they were read on, in test/child-relief-figures-04b88724.test.ts. Do not hardcode an amount here.
+ * Of the seven originally RATE-ONLY built-ins (docs/architecture/STATUTORY-SOURCES.md §1), the five
+ * `childByCategory` amounts are now primary-sourced; `disabledIndividual` and `disabledSpouse` are not,
+ * and `disabledSpouse` (RM5,000) disagrees with the spec's RM6,000 — recorded there, not fixed here.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

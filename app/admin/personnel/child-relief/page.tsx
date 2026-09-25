@@ -32,12 +32,27 @@ import { ChildReliefAmountsCard, ChildReliefReviewTable } from '@/components/chi
  * chargeable income rises and their tax goes UP. The `colSwitch` figure is computed from the grid
  * actually stored, so that row reports the drop to zero in ringgit, with a warning on the row itself.
  *
- * ═══ ⚠️ THE FIVE CATEGORY AMOUNTS ARE NOT SIGNED OFF ═══
+ * ═══ ⚠️ THE FIVE CATEGORY AMOUNTS ARE SOURCED FROM THE SPEC, AND STILL NOT SIGNED OFF ═══
  *
- * `childByCategory` is marked RATE-ONLY, NOT YET VERIFIED in localization/my/statutory-tables.ts — the
- * same footing as the two OKU reliefs, and listed as such in docs/architecture/STATUTORY-SOURCES.md §1.
- * The amounts card below says so in the reader's own words, because a report that prints ringgit without
- * that caveat invites somebody to act on a figure this repo cannot yet stand behind.
+ * UPDATED BY 04b88724 (r339). This block used to say the amounts were RATE-ONLY, NOT YET VERIFIED —
+ * transcribed from a secondary summary. That is no longer true: all five now carry a per-value citation to
+ * the LHDN 2026 MTD computerised-calculation specification, printed pages 26–27, Reliefs table item c, read
+ * directly. Two of them were WRONG and were corrected in that round (`disabled` RM6,000 → RM8,000,
+ * `disabled_study` RM14,000 → RM16,000 — we had been quoting the annual-assessment schedule).
+ *
+ * The amounts card below still says "awaiting sign-off", and that is correct, not a leftover: a figure
+ * being transcribed from the primary publication is not the same as an accountant having signed it off for
+ * a real filing, which is what the file header and docs/architecture/STATUTORY-SOURCES.md require. A
+ * report that prints ringgit without that caveat invites somebody to act on a number no human has checked.
+ *
+ * ═══ ⚠️ THIS SCREEN IS NO LONGER LINKED FROM ANYWHERE ═══
+ *
+ * 04b88724 removed the entry point on the Personnel Management main page at the reporter's request ("the
+ * function is not required"). The ROUTE was kept deliberately — the approved plan promised them this list
+ * before any migration of the other 74 employees off flat child counting, and deleting the instrument in
+ * the same round would break that promise. The full reasoning is at the link's old site in
+ * app/admin/personnel/page.tsx. It keeps its `SCREENS` column in lib/permissions.ts, so it remains a
+ * grantable function that a role can be given; it is reachable by URL and by nothing else.
  *
  * SERVER COMPONENT. The table is a client island receiving plain numbers only — no function crosses the
  * boundary (test/server-client-boundary.test.ts exists because that failure is invisible to tsc,

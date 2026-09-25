@@ -25,10 +25,15 @@
  *
  * Not one assertion below names a RINGGIT FIGURE of its own. Every expected amount is derived from the
  * ruleset handed to the code under test, so correcting a statutory figure changes one constant in
- * localization/my/statutory-tables.ts and no test. That matters more than usual for this item: the five
- * `childByCategory` amounts are marked RATE-ONLY, NOT YET VERIFIED in that file — sourced from a
- * published summary, not from the LHDN spec — and the two OKU relief amounts are on the same footing.
- * This round changed none of them and this file pins none of them.
+ * localization/my/statutory-tables.ts and no test.
+ *
+ * ⚠️ THAT DESIGN WAS VINDICATED BY 04b88724 (r339). Two of the five `childByCategory` amounts turned out
+ * to be wrong (`disabled` RM6,000 → RM8,000, `disabled_study` RM14,000 → RM16,000: we had quoted the
+ * ANNUAL ASSESSMENT schedule where the MTD schedule governs). Because nothing here names a ringgit figure,
+ * that correction landed WITHOUT EDITING A SINGLE ASSERTION IN THIS FILE — which is also why this file
+ * cannot catch such an error. The figures themselves are pinned, with their page citations and the
+ * spec's QC × RM2,000 equivalence, in test/child-relief-figures-04b88724.test.ts. Keep it that way: an
+ * expected amount hardcoded here would make a wrong figure look verified by a green test.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -582,6 +587,13 @@ describe('99b2d6c0 · i18n across all six locales', () => {
   it.each(LOCALES)('%s carries every key this screen renders', (loc) => {
     const m = catalog(loc);
     for (const k of KEYS) expect(m.people.childRelief[k], `people.childRelief.${k}`).toBeTruthy();
+    // 04b88724 (r339) — `people.list.childReliefReview` IS DELIBERATELY ORPHANED, and this assertion is
+    // deliberately kept. It labelled the link on the Personnel Management main page, which that item
+    // removed at the reporter's request; the ROUTE was kept (see the comment at its old site in
+    // app/admin/personnel/page.tsx). Nothing renders this key today. It stays, with its six translations,
+    // because the screen it named still exists and restoring the entry point must not mean re-translating
+    // a string in six locales. test/i18n-coverage.test.ts checks code→messages only, so an unrendered key
+    // is not a guard failure — which is exactly why it needs this note instead of silently rotting.
     expect(m.people.list.childReliefReview, 'people.list.childReliefReview').toBeTruthy();
     expect(m.people.detail.childReliefModeAutoTableHint, 'people.detail.childReliefModeAutoTableHint').toBeTruthy();
     expect(m.admin.users.screen.childReliefReview, 'admin.users.screen.childReliefReview').toBeTruthy();
