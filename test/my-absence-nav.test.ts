@@ -130,7 +130,13 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
     // UPDATED BY r302 (6c9802c9): the primary tiles became the leave balance dashboard (every type that
     // applies, Primary first, with shared groups as tiles). The me-leave tour anchor stays on its Card, which
     // is what this case defends: the My Profile walkthrough still lands on the employee's balances.
-    expect(leavePage).toMatch(/<MyLeaveDashboard\s+cards=\{dashboardCards\}/);
+    // UPDATED AGAIN BY r341 (8d3a7bff), not loosened: the Special Leave pool's ceiling moved onto the
+    // leave-type card it belongs to, so the prop is now `dashboardCardsWithCeilings` and the groups that
+    // kept a tile of their own arrive beside it. The CLAIM this case defends is unchanged — /leave hosts
+    // the dashboard and the me-leave tour anchor rides with it — so both props are pinned by name rather
+    // than the assertion being widened to a bare `<MyLeaveDashboard`.
+    expect(leavePage).toMatch(/<MyLeaveDashboard\s+cards=\{dashboardCardsWithCeilings\}/);
+    expect(leavePage).toMatch(/sharedGroups=\{standaloneSharedGroups\}/);
     expect(leavePage.includes('data-tour="me-leave"')).toBe(true);
     expect(leavePage.split('data-tour="me-leave"').length - 1).toBe(1);
     // The me-tour step follows the cards to /leave.
