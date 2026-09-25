@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "Employee",
       "uncoveredColGrade": "Job grade",
       "uncoveredColTypes": "Leave types not reached",
-      "uncoveredMore": "Showing {shown} of {total}."
+      "uncoveredMore": "Showing {shown} of {total}.",
+      "uncoveredShow": "View full list ({total})",
+      "uncoveredHide": "Hide list"
     },
     "personnel": {
       "benefitScheme": {

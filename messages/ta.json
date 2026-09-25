@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "ஊழியர்",
       "uncoveredColGrade": "வேலை நிலை",
       "uncoveredColTypes": "அடையப்படாத விடுப்பு வகைகள்",
-      "uncoveredMore": "{total}-இல் {shown} காட்டப்படுகிறது."
+      "uncoveredMore": "{total}-இல் {shown} காட்டப்படுகிறது.",
+      "uncoveredShow": "முழுப் பட்டியலைக் காண்க ({total})",
+      "uncoveredHide": "பட்டியலை மறை"
     },
     "personnel": {
       "benefitScheme": {

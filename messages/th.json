@@ -9459,7 +9459,9 @@
       "uncoveredColEmployee": "พนักงาน",
       "uncoveredColGrade": "ระดับตำแหน่งงาน",
       "uncoveredColTypes": "การลาประเภทที่ไม่ถึง",
-      "uncoveredMore": "แสดง {shown} จาก {total} รายการ"
+      "uncoveredMore": "แสดง {shown} จาก {total} รายการ",
+      "uncoveredShow": "ดูรายการทั้งหมด ({total})",
+      "uncoveredHide": "ซ่อนรายการ"
     },
     "personnel": {
       "benefitScheme": {
