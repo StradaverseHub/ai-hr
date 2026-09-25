@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>PCB / MTD Calculation Detail — the ten sections</title>
+<!--
+  ad7bc503. Verified 2026-09-25 against the reporter's attachment (LHDN PCB Calculation Slip,
+  8 pages, EmployeeA July 2026) and against the shipped code.
+
+  The ticket says the page shows "only a summary PCB amount". It does not.
+  app/payroll/pcb-detail/pcb-detail-view.tsx is 674 lines and core/pcb-explain.ts pcbWorksheet
+  already emits the whole MTD symbol block of the reference's page 6:
+    Y  S(Y-K)  K  Y1  K1  Y2  K2  n  Yt  Kt  K2t  D  S  Du  Su  Q  C  SLP  LP1  P  P2  M  R  B
+    Z  X  Z1  A  E
+  grouped as worksheetPreviousHeading / IncomeHeading / AdditionalHeading / ReliefHeading /
+  BracketHeading / ResultHeading, with formula, substitution, result and a rounding note.
+
+  So sections 3, 9, 10 are BUILT; 1 is partly built; 2, 4, 5, 6, 7, 8, 11 are the real work.
+
+  Both new tables are sourced from taxonomy already in the repo -- this is rendering, not modelling:
+    section 2  -> employee_statutory_my.child_relief_table, shape
+                  { "<s.48 category>": { full: <n at 100%>, half: <n at 50%> } } over the five
+                  categories under_18 / study_preu / study_tertiary / disabled / disabled_study
+                  (migration 0356), plus disabled_individual / disabled_spouse booleans.
+    sections 4/7/8 -> TP1_CATALOGUE in localization/my/statutory-tables.ts: c1..c17 with sub-item
+                  letters and limits, and d1 a/b (zakat other than through salary; Umrah levy).
+                  TP3 Section D (shipped r338/r339, migration 0488) is stored in EXACTLY the shape
+                  tp1_relief.categories.items uses, so the accumulated side reads the same keys.
+
+  CLAUDE.md section 8: an absent box asserts nothing, 0.00 asserts the money does not exist.
+  Where no declaration was captured we must NOT print 0.00 across 17 lines. The page already owns
+  the vocabulary for this (notRecordedShort / worksheetNotSeparate) and the mockup uses it.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;
+       --ok:#1f7a52;--new:#b54708;--okbg:#f2f8f5;--newbg:#fdf8f2}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1080px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .map{display:grid;grid-template-columns:26px 1fr 96px;gap:0}
+ .map .r{display:contents}
+ .map .r>*{padding:7px 10px;border-bottom:1px solid #f0f1f7;font-size:11.5px}
+ .map .r:last-child>*{border-bottom:none}
+ .map .n{color:var(--mf);font-size:10.5px;text-align:right;padding-right:6px}
+ .tag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:center;border-radius:5px;padding:3px 0;align-self:center}
+ .t-ok{background:var(--okbg);color:var(--ok);border:1px solid #bcdcca}
+ .t-part{background:var(--newbg);color:var(--new);border:1px solid #e6c79f}
+ .t-new{background:#eef0fd;color:var(--primary);border:1px solid #c3c6f2}
+ .map .r.ok>*{background:#fcfdfc}
+ table{border-collapse:collapse;width:100%;font-size:10.5px;margin-top:2px}
+ th,td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+ td.sub{padding-left:22px;color:var(--mf)}
+ tr.tot td{font-weight:700;background:#f9fafd}
+ .miss{color:var(--mf);font-style:italic}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:7px;padding:6px 14px;font-size:11.5px;font-weight:600}
+ .cap{font-size:10px;color:var(--mf);margin:6px 0 0}
+</style>
+<div class="wrap">
+<h1>PCB / MTD Calculation Detail — the ten sections</h1>
+<p class="sub">Payroll &gt; Transaction View &gt; Statutory Explanation &gt; View the full PCB calculation</p>
+<p class="sketch">Sketch — wording, spacing and colours will differ in the built screen</p>
+
+<div class="sec"><h2>Where the ten sections stand today</h2><div class="bd">
+<div class="map">
+  <div class="r ok"><div class="n">1</div><div>Employee information — name, month, year, tax category, marital status, disabled individual, disabled spouse</div><div class="tag t-part">Add fields</div></div>
+  <div class="r"><div class="n">2</div><div>Category of number of children / qualification rate</div><div class="tag t-new">New</div></div>
+  <div class="r ok"><div class="n">3</div><div>Accumulated remuneration, MTD, rebate and deductions for earlier months — including a previous employer</div><div class="tag t-ok">Works today</div></div>
+  <div class="r"><div class="n">4</div><div>Other accumulated deductions — the itemised list behind the total</div><div class="tag t-part">Total only</div></div>
+  <div class="r"><div class="n">5</div><div>This month's pay — salary, fees, tips, benefits-in-kind, living accommodation</div><div class="tag t-part">Split needed</div></div>
+  <div class="r"><div class="n">6</div><div>Additional pay this month — bonus, arrears, commission, gratuity and the rest</div><div class="tag t-part">Split needed</div></div>
+  <div class="r"><div class="n">7</div><div>This month's deductions — the itemised list behind the total</div><div class="tag t-part">Total only</div></div>
+  <div class="r"><div class="n">8</div><div>Rebates this month — zakat paid outside payroll, departure levy</div><div class="tag t-part">Add levy</div></div>
+  <div class="r ok"><div class="n">9</div><div>The MTD calculation itself — every component, the formula, the figures put into it, the result</div><div class="tag t-ok">Works today</div></div>
+  <div class="r ok"><div class="n">10</div><div>Calculation results — net MTD, additional-pay MTD, rounding</div><div class="tag t-ok">Works today</div></div>
+  <div class="r"><div class="n">11</div><div>Download the whole thing as a document</div><div class="tag t-new">New</div></div>
+</div>
+<p class="note">Three sections already work in full and a fourth needs only extra fields. The two drawn below are the genuinely new ones.</p>
+</div></div>
+
+<div class="sec"><h2>Section 2 — Category of number of children / qualification rate</h2><div class="bd">
+<table>
+ <tr><th>Category</th><th class="n">At 100%</th><th class="n">At 50%</th><th class="n">Relief</th></tr>
+ <tr><td>(a) Under 18</td><td class="n">1</td><td class="n">0</td><td class="n">2,000.00</td></tr>
+ <tr><td>(b) 18 and over, still in school</td><td class="n">0</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr><td>(c) 18 and over, diploma or degree</td><td class="n">0</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr><td>(d) Disabled</td><td class="n">0</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr><td>(e) Disabled and still studying</td><td class="n">1</td><td class="n">0</td><td class="n">16,000.00</td></tr>
+ <tr><td>Children claimed</td><td class="n">2</td><td class="n">0</td><td class="n"></td></tr>
+ <tr class="tot"><td>Weighted count used in the calculation (C)</td><td class="n" colspan="2">9.00</td><td class="n">18,000.00</td></tr>
+</table>
+<p class="cap">The calculation does not count heads. Each child carries a weighting against a rate of 2,000.00 — a child under 18 counts 1, a disabled child still studying counts 8 — so the two children here come to 9. The screen shows the claim, the weighting and the money it produces, so the figure can be traced.</p>
+</div></div>
+
+<div class="sec"><h2>Sections 4 and 7 — the itemised deductions behind the totals</h2><div class="bd">
+<div class="two">
+ <div>
+  <table>
+   <tr><th>Earlier months (accumulated)</th><th class="n">RM</th></tr>
+   <tr><td>1 Parents and grandparents</td><td class="n">0.00</td></tr>
+   <tr><td class="sub">a Medical, special needs, caregivers</td><td class="n">0.00</td></tr>
+   <tr><td class="sub">b Dental treatment</td><td class="n">0.00</td></tr>
+   <tr><td class="sub">c Full check-up including vaccinations</td><td class="n">0.00</td></tr>
+   <tr><td>2 Basic support equipment</td><td class="n">0.00</td></tr>
+   <tr><td>3 Study fees (oneself)</td><td class="n">0.00</td></tr>
+   <tr><td colspan="2" class="miss">4 to 17 — continues</td></tr>
+   <tr class="tot"><td>Total accumulated deductions</td><td class="n">0.00</td></tr>
+  </table>
+ </div>
+ <div>
+  <table>
+   <tr><th>This month</th><th class="n">RM</th></tr>
+   <tr><td>8 Childcare centre or kindergarten, child 12 or under</td><td class="n">450.00</td></tr>
+   <tr><td>14 PERKESO and Employment Insurance</td><td class="n">50.00</td></tr>
+   <tr><td>11 Voluntary EPF and life insurance</td><td class="n">0.00</td></tr>
+   <tr><td class="sub">a Voluntary EPF</td><td class="n">0.00</td></tr>
+   <tr><td class="sub">b Life insurance</td><td class="n">0.00</td></tr>
+   <tr><td colspan="2" class="miss">the rest of 1 to 17 — continues</td></tr>
+   <tr class="tot"><td>Total deductions</td><td class="n">500.00</td></tr>
+  </table>
+ </div>
+</div>
+<p class="note"><b>Where nothing was declared, the line says so rather than showing 0.00.</b> A zero means the employee declared that category and it came to nothing. Nothing on file is a different statement, and the page will not print one as the other.</p>
+</div></div>
+
+<div class="sec"><h2>Section 11 — Download</h2><div class="bd">
+<span class="btn">Download PCB / MTD calculation detail</span>
+<p class="note">One document per employee per month, carrying the same ten sections shown on screen.</p>
+</div></div>
+
+</div>

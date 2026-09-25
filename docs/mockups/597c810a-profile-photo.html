@@ -1,0 +1,103 @@
+<meta charset="utf-8">
+<title>Profile photo in the Personnel avatar</title>
+<!--
+  597c810a. Verified 2026-09-25 against the shipped code and PRODUCTION.
+
+  ALREADY BUILT: person_photo (1:1 bytea side table, PNG/JPEG only, RLS app.can_see_person),
+  core/person-photo.ts (set/remove/get/hasPersonPhoto), and the serve route
+  app/personnel/photo/[personId]/route.ts. The employee DETAIL header already renders the photo at
+  size-24 (96px, object-cover, initials fallback) with admin upload/replace/remove behind PhotoEditMenu
+  -- items b4682879 and dc23d3b6. So the ticket's point 2 is already built.
+
+  MISSING: the LIST avatar (components/ui.tsx Avatar takes only `name`, renders initials -- 13 call
+  sites) and the View / lightbox.
+
+  PRODUCTION, 2026-09-25: 89 persons, 2 photos. The naive build would fire 89 image requests per list
+  load, 87 of them 404s after a session read + RLS query. Hence the bulk existence check: render an
+  <img> only for people who actually have a photo. It also means the reporter will see almost no
+  change until photos are uploaded -- said plainly in the plan so the item does not bounce back.
+
+  The faces below are generic drawn silhouettes, not employee photographs.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--primary:#4f46e5;--border:#c9cad6;--ok:#1f7a52}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1040px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-bottom:1px solid #f1f2f8}
+ .row:last-child{border-bottom:none}
+ .ini{width:32px;height:32px;border-radius:99px;background:rgba(79,70,229,.10);color:var(--primary);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 32px}
+ .pic{width:32px;height:32px;border-radius:99px;object-fit:cover;flex:0 0 32px;box-shadow:0 0 0 1px var(--rule)}
+ .nm{font-size:12px}
+ .nm b{display:block;font-weight:600}
+ .nm span{font-size:10.5px;color:var(--mf)}
+ .panel{border:1px solid var(--rule);border-radius:9px;overflow:hidden}
+ .lightbox{position:relative;background:#22222c;border-radius:9px;padding:24px;display:flex;align-items:center;justify-content:center}
+ .lightbox img{width:210px;height:210px;border-radius:10px;object-fit:cover}
+ .x{position:absolute;top:9px;right:11px;color:#fff;background:rgba(255,255,255,.14);border-radius:99px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px}
+ .hdr{display:flex;align-items:center;gap:15px}
+ .hdr .big{width:88px;height:88px;border-radius:99px;object-fit:cover;box-shadow:0 0 0 1px var(--rule)}
+ .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:600}
+ .btn.g{background:#fff;color:var(--fg);border:1px solid var(--border)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+</style>
+<div class="wrap">
+<h1>Profile photo in the Personnel avatar</h1>
+<p class="sub">Personnel Management &gt; employee list, and the employee detail header</p>
+<p class="sketch">Sketch — wording, spacing and colours will differ. The faces are drawn placeholders, not real employees.</p>
+
+<div class="sec"><h2>The employee list</h2><div class="bd">
+<div class="two">
+ <div>
+  <p class="lbl">Today</p>
+  <div class="panel">
+   <div class="row"><span class="ini">EA</span><span class="nm"><b>Employee A</b><span>Senior Consultant</span></span></div>
+   <div class="row"><span class="ini">SL</span><span class="nm"><b>Siti Lim</b><span>Payroll Executive</span></span></div>
+   <div class="row"><span class="ini">RK</span><span class="nm"><b>Raj Kumar</b><span>Site Supervisor</span></span></div>
+   <div class="row"><span class="ini">MT</span><span class="nm"><b>Mei Tan</b><span>HR Manager</span></span></div>
+  </div>
+ </div>
+ <div>
+  <p class="lbl">Proposed</p>
+  <div class="panel">
+   <div class="row"><img class="pic" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='%23cfd6ea'/><circle cx='32' cy='25' r='11' fill='%238e9ab8'/><path d='M8 64c0-13 11-21 24-21s24 8 24 21z' fill='%238e9ab8'/></svg>"><span class="nm"><b>Employee A</b><span>Senior Consultant</span></span></div>
+   <div class="row"><span class="ini">SL</span><span class="nm"><b>Siti Lim</b><span>Payroll Executive</span></span></div>
+   <div class="row"><img class="pic" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='%23e3d4c6'/><circle cx='32' cy='25' r='11' fill='%23a98d74'/><path d='M8 64c0-13 11-21 24-21s24 8 24 21z' fill='%23a98d74'/></svg>"><span class="nm"><b>Raj Kumar</b><span>Site Supervisor</span></span></div>
+   <div class="row"><span class="ini">MT</span><span class="nm"><b>Mei Tan</b><span>HR Manager</span></span></div>
+  </div>
+ </div>
+</div>
+<p class="note"><b>Anyone without a photo keeps their initials.</b> Right now only 2 of 89 people on your system have uploaded one, so the list will look much as it does today until photos are added.</p>
+</div></div>
+
+<div class="sec"><h2>The employee detail header — this already works today</h2><div class="bd">
+<div class="hdr">
+ <img class="big" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><rect width='180' height='180' fill='%23cfd6ea'/><circle cx='90' cy='70' r='31' fill='%238e9ab8'/><path d='M22 180c0-37 31-59 68-59s68 22 68 59z' fill='%238e9ab8'/></svg>">
+ <div>
+  <div style="font-size:15px;font-weight:600">Employee A</div>
+  <div style="font-size:11.5px;color:var(--mf);margin-bottom:9px">Senior Consultant · Kuala Lumpur</div>
+  <span class="btn">View photo</span> <span class="btn g">Edit</span>
+ </div>
+</div>
+<p class="note">The photo, the initials fallback and the upload, replace and remove controls are all already built. <b>The View button is the new part.</b></p>
+</div></div>
+
+<div class="sec"><h2>View — opens over the page, closes back to it</h2><div class="bd">
+<div class="lightbox">
+ <span class="x">&times;</span>
+ <img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420'><rect width='420' height='420' fill='%23cfd6ea'/><circle cx='210' cy='163' r='72' fill='%238e9ab8'/><path d='M52 420c0-87 71-138 158-138s158 51 158 138z' fill='%238e9ab8'/></svg>">
+</div>
+<p class="note">Opens at a readable size, keeps the photo's own shape rather than cropping it to a circle, and closes with the X or the Escape key. You stay on the employee page throughout.</p>
+</div></div>
+
+</div>
