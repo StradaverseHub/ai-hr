@@ -37,11 +37,20 @@ const signedMoney = (n: number) => (n > 0 ? `+${money(n)}` : money(n));
  * in a browser while passing tsc, the suite and `next build`. It is proved against all six catalogues in
  * test/child-relief-review-locales.dom.test.tsx instead.
  *
- * ⚠️ THE PENDING-SIGN-OFF LINE IS NOT DECORATION. The five `childByCategory` figures are marked
- * RATE-ONLY, NOT YET VERIFIED in localization/my/statutory-tables.ts — transcribed from a published
- * summary because the LHDN spec URL 404s — and this is the screen where somebody reads a ringgit number
- * and decides to act on it. The same sentence is on the PCB configuration screen; it is repeated here
- * rather than linked, because a caveat one click away is a caveat nobody reads.
+ * ⚠️ THE PENDING-SIGN-OFF LINE IS NOT DECORATION, AND IT STILL BELONGS HERE AFTER 04b88724 (r339).
+ * That item read the LHDN MTD specification directly and re-footed all five `childByCategory` figures on
+ * the PRIMARY publication (printed pages 26–27, Reliefs table item c), correcting two of them along the
+ * way — so the old wording, "transcribed from a published summary because the LHDN spec URL 404s", is no
+ * longer what localization/my/statutory-tables.ts says. Read the citation block there for the current
+ * provenance.
+ * The line stays because SOURCED IS NOT SIGNED OFF. The file header and STATUTORY-SOURCES.md require a
+ * human — an accountant or payroll officer — to check a statutory figure before a real filing relies on
+ * it, and an agent reading a PDF is not that person. This is the screen where somebody reads a ringgit
+ * number and decides to act on it, so the sentence that says "a human has not yet signed this" must
+ * survive the figures becoming right. Removing it on the strength of a correction would be the same
+ * mistake this item exists to fix, in the opposite direction.
+ * The same sentence is on the PCB configuration screen; it is repeated here rather than linked, because a
+ * caveat one click away is a caveat nobody reads.
  */
 export function ChildReliefAmountsCard({
   version,

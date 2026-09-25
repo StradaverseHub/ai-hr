@@ -420,21 +420,31 @@ export default async function PeoplePage({
                 {t('duplicateRecords')}
               </Link>
             )}
-            {/* 99b2d6c0 (r336) — the way in to "Child relief review (PCB)". A LINK from this list for
-                exactly the reason the duplicates link above is one: `/admin/personnel/child-relief` sits
-                below this screen's own href, and the rail matches a segment PREFIX, so a row of its own
-                would light Personnel Management AND itself on the same page (defect 388e53c2). It belongs
-                here because "how are my people's children being counted for tax?" is a question asked
-                while looking at the employee list, and until this round it had no answer anywhere: the
-                category grid was reachable only one employee at a time, behind a dropdown. */}
-            {isAdmin && (
-              <Link
-                href="/admin/personnel/child-relief"
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {t('childReliefReview')}
-              </Link>
-            )}
+            {/* 04b88724 (r339) — THE "CHILD RELIEF REVIEW (PCB)" LINK WAS REMOVED FROM HERE, DELIBERATELY,
+                AND THE ROUTE WAS DELIBERATELY KEPT. Do not restore the link; do not delete the route
+                without reading this.
+                  · r336 (99b2d6c0) added a link at this spot, for the same reason the duplicates link
+                    above is one: `/admin/personnel/child-relief` sits below this screen's own href and the
+                    rail matches a segment PREFIX, so a nav row of its own would light Personnel Management
+                    AND itself on one page (defect 388e53c2).
+                  · The reporter asked for it gone: "Remove the Child Relief Review button from the
+                    Personnel Management main page because the function is not required." Their own
+                    expected-behaviour list is about the BUTTON and adds "No replacement button is
+                    required" — it does not ask for the report to be destroyed.
+                WHY THE ROUTE STAYS. The approved plan told the reporter that moving their other 74
+                employees off flat child counting onto the category grid moves real PCB, and that we would
+                do it "as its own change, with the list in front of you first". THIS SCREEN IS THAT LIST —
+                deleting it in the same round would destroy the instrument we just promised to use. It is
+                `requireAdmin()`-gated on the page and again inside core/child-relief-review.ts, it keeps
+                its `SCREENS` column in lib/permissions.ts (so it stays a grantable function and
+                test/function-access.test.ts stays satisfied), and it changes nothing when opened — there
+                is no bulk action on it. An unlinked, permission-gated, read-only report is not an
+                exposure; it is a report nobody is pushed towards.
+                Removing the link is also the reversible half. If the reporter later says the route must go
+                too, that is a deletion of app/admin/personnel/child-relief/, core/child-relief-review.ts,
+                components/child-relief-review-table.tsx, their tests, the SCREENS column and the message
+                keys in all six locales — and r336's two kernel pins (core/payroll.ts and
+                core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
             {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me

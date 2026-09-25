@@ -184,8 +184,10 @@ describe.each(LOCALES)('99b2d6c0 · %s — the populated report resolves against
     for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
       expect(text, `category ${key} must be named in this locale's words`).toContain(c[`cat_${key}`]);
     }
-    // ⚠️ The caveat travels with the figures. A ringgit report without it invites acting on a number
-    // localization/my/statutory-tables.ts marks RATE-ONLY, NOT YET VERIFIED.
+    // ⚠️ The caveat travels with the figures. After 04b88724 (r339) the five amounts ARE transcribed from
+    // the primary LHDN MTD specification (printed pages 26–27) rather than a secondary summary — but
+    // sourced is not SIGNED OFF, which is a human's act, so this line must survive the figures becoming
+    // right. A ringgit report that drops it invites acting on a number no accountant has checked.
     expect(text).toContain(c.amountsPendingSignOff);
     expect(text).toMatch(/1,000\.00/);
     expect(text).toMatch(/2,000\.00/);

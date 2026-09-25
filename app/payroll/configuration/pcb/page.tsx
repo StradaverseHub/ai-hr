@@ -104,11 +104,26 @@ export default async function PcbConfigPage({
         </div>
         {/* Item d64d0df4 — the SIGN-OFF surface. Until this item, this card rendered exactly the four
             reliefs above and silently omitted disabledIndividual, so the sign-off the plan asks the
-            owner to perform could not be performed against the running system at all. These seven
-            figures are RATE-ONLY: sourced from a reputable published summary because the LHDN MTD spec
-            URL now 404s, and NOT transcribed from the official publication. They resolve through the
-            SAME optional-with-fallback path pcbMonth uses (ruleset value ?? pack built-in), so what is
-            shown here is the number the kernel actually applies — never a second copy that can drift. */}
+            owner to perform could not be performed against the running system at all. They resolve through
+            the SAME optional-with-fallback path pcbMonth uses (ruleset value ?? pack built-in), so what is
+            shown here is the number the kernel actually applies — never a second copy that can drift.
+
+            ⚠️ 04b88724 (r339) — THE SEVEN ROWS BELOW NO LONGER SHARE ONE FOOTING. This comment used to say
+            all seven were "sourced from a reputable published summary … and NOT transcribed from the
+            official publication". That is now true of only two of them:
+              · the FIVE child-category rows were re-read off the primary LHDN MTD specification (printed
+                pages 26–27, Reliefs table item c) and two were CORRECTED there (disabled 6,000 → 8,000,
+                disabled_study 14,000 → 16,000). They are still shown as awaiting sign-off, because that
+                badge means "no human has signed this", not "we do not know where it came from".
+              · `disabledIndividual` (RM7,000) was incidentally confirmed against printed page 28 item e of
+                the same specification, but its own provenance note was left secondary-sourced: upgrading
+                it was out of that item's scope.
+              · `disabledSpouse` (RM5,000) is, on the evidence of printed page 28 item f, WRONG — the spec
+                gives RM6,000 for a disabled husband / wife. It was deliberately NOT changed (out of scope,
+                and zero employees are flagged today). See the note on the constant in
+                localization/my/statutory-tables.ts; it is to be raised as its own board item.
+            So: do not read this heading as a statement about provenance. It is a statement about SIGN-OFF,
+            which is still outstanding for every row under it. */}
         <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('reliefsPendingSignOff')}
         </h3>
