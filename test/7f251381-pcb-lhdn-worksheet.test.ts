@@ -124,6 +124,8 @@ const SEED: PcbPreviousEmployment = {
   epfClaimed: 3600,
   pcbPaid: 8979,
   zakatPaid: 120,
+  // ∑LP from the previous employment — Form TP3 Section D (item 20837372, migration 0488).
+  lp: 2500,
 };
 
 // ─────────────────────────── (a) every symbol is the stored member it claims ───────────────────────────
@@ -457,19 +459,22 @@ describe('7f251381 — the previous-employment lines are their own rows, never a
     expect(amountOf(byCaption(w, 'worksheetPrevEpf'))).toBe(3600);
     expect(amountOf(byCaption(w, 'worksheetPrevPcb'))).toBe(8979);
     expect(amountOf(byCaption(w, 'worksheetPrevZakat'))).toBe(120);
+    // Item 20837372 — ∑LP is the FIFTH declared figure, and the exact-set count below is UPDATED rather
+    // than loosened: a fifth row that the count does not know about is a row nothing is pinning.
+    expect(amountOf(byCaption(w, 'worksheetPrevLp'))).toBe(2500);
     expect(byCaption(w, 'worksheetPrevYear')!.value).toEqual({ kind: 'text', text: '2026' });
     expect(byCaption(w, 'worksheetPrevApplies')!.value).toEqual({ kind: 'caption', caption: 'worksheetPrevAppliesYes' });
-    expect(flat(w).filter((r) => r.previousEmployment).length, 'four money rows, flagged').toBe(4);
+    expect(flat(w).filter((r) => r.previousEmployment).length, 'five money rows, flagged').toBe(5);
   });
 
-  it('NOTHING declared is RM 0.00 on all four rows — a visible zero, not an absent box', () => {
+  it('NOTHING declared is RM 0.00 on all five rows — a visible zero, not an absent box', () => {
     // §8: an absent box asserts nothing; 0.00 asserts the money does not exist. "Did this employee bring
     // previous-employment income into this tax year" is the question the reporter's case turned on, and a
     // blank is how the answer went unread for a year.
     const { x } = richRun();
-    for (const p of [null, { declaredYear: null, applies: false, netRemuneration: 0, epfClaimed: 0, pcbPaid: 0, zakatPaid: 0 }]) {
+    for (const p of [null, { declaredYear: null, applies: false, netRemuneration: 0, epfClaimed: 0, pcbPaid: 0, zakatPaid: 0, lp: 0 }]) {
       const w = pcbWorksheet(x, p);
-      for (const cap of ['worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat']) {
+      for (const cap of ['worksheetPrevNet', 'worksheetPrevEpf', 'worksheetPrevPcb', 'worksheetPrevZakat', 'worksheetPrevLp']) {
         const row = byCaption(w, cap);
         // PRESENCE FIRST, AND BY NAME. Dropping the row entirely is the exact regression this case is
         // about, and asserting straight into `.value` would report it as a TypeError about undefined

@@ -492,6 +492,11 @@ export type PcbPreviousEmployment = {
   /** C4(i) — zakat paid through the previous employment. Part of LHDN's Z. C4(ii) is the religious-travel
    *  levy, which is a RELIEF and is deliberately not summed in (item 1bb09a73). */
   zakatPaid: number;
+  /** ∑D1…D17 — the reliefs already claimed through the previous employment. Part of LHDN's ∑LP (item
+   *  20837372). Until migration 0488 there was no column and this figure did not exist anywhere the run
+   *  could read; a worksheet that showed the other four and not this one would be describing a
+   *  calculation the reader cannot reconcile, which is the whole purpose of this section. */
+  lp: number;
 };
 
 /** What a worksheet row prints. A missing figure is a KIND, never a zero and never a blank. */
@@ -623,6 +628,11 @@ function previousSection(p: PcbPreviousEmployment | null): PcbWorksheetSection {
     { symbol: '', caption: 'worksheetPrevEpf', value: money(p?.epfClaimed ?? 0), previousEmployment: true },
     { symbol: '', caption: 'worksheetPrevPcb', value: money(p?.pcbPaid ?? 0), previousEmployment: true },
     { symbol: '', caption: 'worksheetPrevZakat', value: money(p?.zakatPaid ?? 0), previousEmployment: true },
+    // ∑LP from the previous employment (item 20837372). It sits under the ΣLP row further down, which
+    // is the COMBINED figure the formula consumed; this row is the part of it that came in on the TP3,
+    // which is what "System must show cumulative ... for the purpose of audit" (specification printed
+    // page 28) needs a reader to be able to separate out.
+    { symbol: '', caption: 'worksheetPrevLp', value: money(p?.lp ?? 0), previousEmployment: true },
   ];
   return { heading: 'worksheetPreviousHeading', rows, note: 'worksheetPreviousNote' };
 }

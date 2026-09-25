@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import {
   deriveAccumulatorSeed,
   getTp3ForPersonYear,
+  tp3ExemptionOverLimits,
   getTp3Identity,
   listTp3YearsForPerson,
   tp3LineNumber,
@@ -140,6 +141,16 @@ export default async function Tp3Page({
   const derived: Tp3AccumulatorSeed | null = deriveAccumulatorSeed(record?.payload);
   const c = record?.payload?.sectionC ?? {};
   const d = record?.payload?.sectionD ?? {};
+  /** Item 20837372 — the C2 boxes keyed ABOVE their statutory exemption limit. Shown, never enforced. */
+  const overLimits = tp3ExemptionOverLimits(record?.payload);
+
+  // Twelve month NAMES for the deduction-month dropdown, in the request's own locale, paired with the
+  // INTEGER that is stored. See the note beside the field for why the value may not become the name.
+  const monthFmt = new Intl.DateTimeFormat(await getLocale(), { month: 'long' });
+  const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
+    value: i + 1,
+    label: monthFmt.format(new Date(Date.UTC(2000, i, 1))),
+  }));
 
   const money = (n: number | null) =>
     n == null ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,8 +177,11 @@ export default async function Tp3Page({
 
       <ErrorBanner message={sp.error} />
 
-      {/* ⚠️ THE STAGE BANNER. See the header: Section C now reaches the PCB calculation (item 1bb09a73)
-          and Section D still does not, and an operator keying either has to be told which. */}
+      {/* ⚠️ THE STAGE BANNER. BOTH SECTIONS NOW REACH THE PCB CALCULATION (item 20837372 finished what
+          item 1bb09a73 started), and the banner had to change with them: it said in so many words that
+          Section D was "not yet part of the PCB calculation", which from this round is false. An
+          operator who keys seventeen relief lines under a banner telling them the lines change nothing
+          is being actively misled about a figure that moves money. */}
       <Card className="border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
         {t('tp3.stageNote')}
       </Card>
@@ -269,16 +283,35 @@ export default async function Tp3Page({
               {/* ── The form's own DEDUCTION MONTH / DEDUCTION YEAR boxes ── */}
               <Card className="p-4">
                 <div className="flex flex-wrap gap-6">
+                  {/* ── DEDUCTION MONTH — A NAMED MONTH, STORING THE SAME INTEGER (item 20837372) ──
+                      The reporter asked for a dropdown of month names instead of a number, and they are
+                      right that "3" is a poor thing to ask somebody holding a paper form for. What the
+                      value MUST stay is an integer: `core/tp3.ts` `validateMonth` parses 1–12 and
+                      `app/payroll/transactions/tp1/[year]/[month]/page.tsx` matches on
+                      `r.deductionMonth === month`. A named value here would match nothing there and the
+                      declaration would silently stop opening on its own month, so the option VALUE is
+                      the number and only the LABEL is the name.
+
+                      Names come from Intl in the request's own locale, resolved on the SERVER — the
+                      same decision `app/payroll/transactions/tp1/page.tsx` records: twelve names in six
+                      locales would be six copies of the calendar in the message catalogue, and the
+                      catalogue check cannot tell a wrong month name from a right one. */}
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium">{t('deductionMonthLabel')}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
+                    <select
                       name="deductionMonth"
-                      defaultValue={record?.deductionMonth ?? ''}
-                      className={`${inputCls} w-28`}
-                    />
+                      defaultValue={record?.deductionMonth == null ? '' : String(record.deductionMonth)}
+                      className={`${inputCls} w-44`}
+                    >
+                      {/* Blank stays reachable: `validateMonth` stores null for "left blank", which is
+                          not the same fact as January and must not become it. */}
+                      <option value="">{t('tp3.deductionMonthBlank')}</option>
+                      {MONTH_OPTIONS.map((m) => (
+                        <option key={m.value} value={String(m.value)}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <div className="block text-sm">
                     <span className="mb-1 block font-medium">{t('deductionYearLabel')}</span>
@@ -344,6 +377,23 @@ export default async function Tp3Page({
               <Card>
                 <SectionHeader title={t('tp3.sectionC')} subtitle={t('tp3.sectionCHelp')} />
                 <div className="space-y-4 p-4">
+                  {/* ── THE EXEMPTION-LIMIT COLUMN (item 20837372) ──────────────────────────────────
+                      The reporter asked to see each C2 allowance's own exemption limit beside it, and
+                      they were right that a screen showing five bare boxes says nothing about how much
+                      of each one may be exempt at all.
+
+                      ⚠️ IT IS HEADED DIFFERENTLY FROM SECTION D'S, ON PURPOSE. Section D's "Annual
+                      limit" column is printed on the form itself (`HAD TAHUNAN (RM)`) and the service
+                      REFUSES a figure above it. Section C has no limit column on the form at all — one
+                      money column, `AMAUN TERKUMPUL (RM)` — so these figures come from the MTD
+                      specification's own table (printed page 21) and are guidance for the person
+                      keying, never a rule the save enforces. The note below says so in the operator's
+                      own words rather than leaving them to infer it from a column heading. */}
+                  <p className="text-xs text-muted-foreground">{t('tp3.exemptLimitNote')}</p>
+                  <div className="flex justify-end gap-6 text-xs uppercase tracking-wide text-muted-foreground">
+                    <span className="w-40 text-right">{t('tp3.colExemptionLimit')}</span>
+                    <span className="w-40 text-right">{t('colAccumulated')}</span>
+                  </div>
                   {TP3_SECTION_C.map((line, i) => {
                     const stored = c[line.code];
                     const n = i + 1;
@@ -353,26 +403,52 @@ export default async function Tp3Page({
                           <span className="w-8 shrink-0 pt-2 text-sm font-semibold">C{n}</span>
                           <p className="min-w-0 flex-1 pt-2 text-sm">{t(`tp3.money.${line.code}.label`)}</p>
                           {line.subItems.length === 0 ? (
-                            <MoneyInput name={amountField('c', line.code)} value={stored?.amount} />
+                            <>
+                              {/* A whole-line box has no exemption limit of its own — C1, C3 and C5 are
+                                  not exemptions at all. The cell is EMPTY rather than a dash: an absent
+                                  box asserts nothing, and a dash would read as "no limit applies". */}
+                              <span className="w-40 pt-2" />
+                              <MoneyInput name={amountField('c', line.code)} value={stored?.amount} />
+                            </>
                           ) : null}
                         </div>
-                        {line.subItems.map((sub) => (
-                          <div key={sub.code} className="mt-2 flex flex-wrap items-start gap-3 pl-11">
-                            <span className="w-8 shrink-0 pt-2 text-xs text-muted-foreground">{sub.code})</span>
-                            <div className="min-w-0 flex-1 pt-2">
-                              <p className="text-sm">{t(`tp3.money.${line.code}.sub.${sub.code}`)}</p>
-                              {/* The restriction the form states in words. Captured and printed, never
-                                  enforced — enforcing it needs a claim history LHDN holds and we do not. */}
-                              {sub.frequency ? (
-                                <p className="text-xs text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
-                              ) : null}
+                        {line.subItems.map((sub) => {
+                          const over = overLimits.find((o) => o.code === line.code && o.subCode === sub.code);
+                          return (
+                            <div key={sub.code} className="mt-2 flex flex-wrap items-start gap-3 pl-11">
+                              <span className="w-8 shrink-0 pt-2 text-xs text-muted-foreground">{sub.code})</span>
+                              <div className="min-w-0 flex-1 pt-2">
+                                <p className="text-sm">{t(`tp3.money.${line.code}.sub.${sub.code}`)}</p>
+                                {/* The restriction the form states in words. Captured and printed, never
+                                    enforced — enforcing it needs a claim history LHDN holds and we do not. */}
+                                {sub.frequency ? (
+                                  <p className="text-xs text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
+                                ) : null}
+                                {/* ⚠️ A WARNING, NOT A CORRECTION. The keyed figure is left exactly as it
+                                    is and the tax calculation still uses all of it; what is over the
+                                    limit was already moved into C1 as taxable pay by the previous
+                                    employer (specification printed page 20, item 9), so trimming it here
+                                    would tax the same ringgit twice. What an over-limit box means is
+                                    that the FORM was filled wrong, and this says so with the figure. */}
+                                {over ? (
+                                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                                    {t('tp3.exemptOverLimit', {
+                                      limit: money(over.limit),
+                                      excess: money(over.excess),
+                                    })}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <span className="w-40 pt-2 text-right text-sm tabular-nums text-muted-foreground">
+                                {sub.exemptionLimit == null ? t('noLimit') : money(sub.exemptionLimit)}
+                              </span>
+                              <MoneyInput
+                                name={subField('c', line.code, sub.code)}
+                                value={stored?.subItems?.[sub.code]}
+                              />
                             </div>
-                            <MoneyInput
-                              name={subField('c', line.code, sub.code)}
-                              value={stored?.subItems?.[sub.code]}
-                            />
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })}
@@ -518,6 +594,13 @@ export default async function Tp3Page({
                         ['reconcileEpf', derived?.epfClaimed ?? null, identity.stored.epfClaimed],
                         ['reconcilePcb', derived?.pcbPaid ?? null, identity.stored.pcbPaid],
                         ['reconcileZakat', derived?.zakatPaid ?? null, identity.stored.zakatPaid],
+                        // ∑LP — Section D (item 20837372). FIFTH ROW, because there are now five
+                        // opening-balance figures, and this is the one an operator has never been able
+                        // to see. The specification asks for it in as many words on printed page 28:
+                        // "System must show cumulative and current month deduction amount for the
+                        // purpose of audit" — the current month's LP₁ is on the PCB detail screen
+                        // beside ΣLP; this is the previous employment's half of the cumulative one.
+                        ['reconcileLp', derived?.lpDeclared ?? null, identity.stored.lp],
                       ] as const
                     ).map(([key, from, stored]) => (
                       <tr key={key}>

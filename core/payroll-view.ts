@@ -1507,16 +1507,16 @@ export function currentPcbReliefs(
 /**
  * Feedback 7f251381 — THE PREVIOUS-EMPLOYMENT FIGURES, READ FOR DISPLAY ONLY.
  *
- * The reporter's case turns on four numbers a Form TP3 declares for a mid-year joiner: the remuneration
- * they earned before joining, the EPF claimed on it, the MTD their previous employer already paid, and
- * the zakat. LHDN's worksheet folds all four into Y, K, X and Z, so on a sheet they are invisible — which
+ * The reporter's case turns on the numbers a Form TP3 declares for a mid-year joiner: the remuneration
+ * they earned before joining, the EPF claimed on it, the MTD their previous employer already paid, the
+ * zakat, and — since item 20837372 — the reliefs already claimed through that employer (∑LP). LHDN's worksheet folds all four into Y, K, X and Z, so on a sheet they are invisible — which
  * is how a run that seeded them with ZERO went unnoticed until a figure came out wrong (item 1bb09a73).
  * The PCB detail screen therefore gives them their own labelled rows, and this is the read behind them.
  *
  * THE SAME COLUMNS THE RUN SEEDS FROM, AND DELIBERATELY NOT A SECOND SOURCE. `core/payroll.ts` builds the
  * PCB accumulators from `employee_statutory_my.tp3_year / tp3_net_remuneration / tp3_epf_claimed /
- * tp3_pcb_paid / tp3_zakat_paid`, gated on `tp3Applies = e.tp3Year === pYear`. This read selects those
- * five columns and applies that one comparison, so the screen shows what the kernel seeds from rather
+ * tp3_pcb_paid / tp3_zakat_paid / tp3_lp`, gated on `tp3Applies = e.tp3Year === pYear`. This read
+ * selects those six columns and applies that one comparison, so the screen shows what the kernel seeds from rather
  * than a parallel reading of `employee_tp3`'s payload — two readings of one fact is how a screen ends up
  * disagreeing with the run it is describing.
  *
@@ -1546,6 +1546,7 @@ export function previousEmploymentForPayslip(
         tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
         tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
         tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
+        tp3Lp: employeeStatutoryMy.tp3Lp,
       })
       .from(employment)
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
@@ -1562,6 +1563,9 @@ export function previousEmploymentForPayslip(
       epfClaimed: Number(row.tp3Epf ?? 0),
       pcbPaid: Number(row.tp3Pcb ?? 0),
       zakatPaid: Number(row.tp3Zakat ?? 0),
+      // ∑LP — Section D (item 20837372, migration 0488). The FIFTH column the kernel seeds from, read
+      // here from the same row and behind the same `applies` gate as the other four.
+      lp: Number(row.tp3Lp ?? 0),
     };
   });
 }
