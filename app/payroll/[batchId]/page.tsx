@@ -127,7 +127,13 @@ export default async function BatchPage({
   // count would print that sentence about people whose salary record is fine. The group gets its own
   // red banner below, which says what is actually wrong.
   const preTp3Blockers = preChecks.tp3YearMismatch?.length ?? 0;
-  const preBlockers = preSalaryBlockers + preTp3Blockers;
+  // Item 4ca06dea — the THIRD blocker count on this card, for the same reason the TP3 one is separate:
+  // `preChecksBlockerHint` says the named employees "have no current salary record", which is FALSE of a
+  // custom_period employee whose salary record is complete and simply has no calculation behind it
+  // (ADR-0078). Counted into `preBlockers` — the card's colour and the parity with the server's exact set
+  // — with its own red banner below. The server already refused these runs; this card just never said so.
+  const prePayModeBlockers = preChecks.unpayablePayMode?.length ?? 0;
+  const preBlockers = preSalaryBlockers + prePayModeBlockers + preTp3Blockers;
   // 297ae65a — the non-MYR/mixed-currency salary notice counts among the confirm-to-proceed warnings.
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company joins the confirm-to-proceed
   // warnings: the run records the employee as subject and charges nothing, and until now said so nowhere.
@@ -731,6 +737,11 @@ export default async function BatchPage({
                   {t('preChecksBlockerHint', { n: preSalaryBlockers })}
                 </div>
               )}
+              {prePayModeBlockers > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+                  {t('preChecksPayModeBlockerHint', { n: prePayModeBlockers })}
+                </div>
+              )}
               {preTp3Blockers > 0 && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
                   {t('preChecksTp3BlockerHint', { n: preTp3Blockers })}
@@ -745,6 +756,7 @@ export default async function BatchPage({
                 [
                   ['missingCompensation', preChecks.missingCompensation, true],
                   ['zeroBasic', preChecks.zeroBasic ?? [], true],
+                  ['unpayablePayMode', preChecks.unpayablePayMode ?? [], true],
                   ['tp3YearMismatch', preChecks.tp3YearMismatch ?? [], true],
                   ['missingStatutory', preChecks.missingStatutory, false],
                   ['missingBank', preChecks.missingBank, false],

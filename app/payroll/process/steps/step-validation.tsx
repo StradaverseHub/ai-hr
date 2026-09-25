@@ -14,7 +14,8 @@ import type { IntendedRunType } from '@/core/payroll-run-group';
  * batch-page card — so what you see here is what the run will enforce.
  *
  * Blocker rows (no salary record covering the period / zero basic-or-rate — feedback 64fb5e48: the
- * Personnel Basic Salary record is authoritative, a BASIC pay item is never required) turn the panel RED
+ * Personnel Basic Salary record is authoritative, a BASIC pay item is never required / an uncalculable
+ * custom_period pay structure — ADR-0078, item 4ca06dea / a Form TP3 this run would seed as zero) turn the panel RED
  * and the parent disables Process. Warning rows (missing statutory profile / incomplete bank / stale BASIC
  * pay item) turn it AMBER — Process is still allowed. All-clear is GREEN. Status is reported up via
  * `onStatusChange` so the wizard footer can gate the Process button (and keep it disabled while the check
@@ -90,12 +91,19 @@ export function StepValidation({
         // generatePayslips will refuse. It must agree with the `blockers` count further down this file;
         // one file counting blockers two ways is how a card and a button disagree.
         //
-        // ⚠️ MEASURED, PRE-EXISTING AND DELIBERATELY NOT CHANGED HERE: `unpayablePayMode` (ADR-0078) is
-        // enforced server-side in generatePayslips but is counted by NEITHER of this file's two counts,
-        // nor by the batch card's, nor by app/payroll/actions.ts. A custom_period employee therefore
-        // leaves Process enabled and the run throws. That belongs to ADR-0078's own item, not this one.
+        // Item 4ca06dea CLOSES THE LAST GAP: `unpayablePayMode` (ADR-0078) is the FOURTH term of the
+        // server's exact set (core/payroll.ts, `const blocked =`), and until this item it was counted by
+        // neither of this file's two counts, so a custom_period employee left Process ENABLED and the run
+        // threw PreProcessBlockedError after the press. The four terms here, the four terms in `blockers`
+        // below and the four terms the server adds up are now ONE set, in the same order, pinned by
+        // test/4ca06dea-process-blocker-parity.test.ts. Adding a FIFTH term to only one of the three is
+        // what that test exists to fail on.
         const hasBlockers =
-          a.missingCompensation.length + (a.zeroBasic?.length ?? 0) + (a.tp3YearMismatch?.length ?? 0) > 0;
+          a.missingCompensation.length +
+            (a.zeroBasic?.length ?? 0) +
+            (a.unpayablePayMode?.length ?? 0) +
+            (a.tp3YearMismatch?.length ?? 0) >
+          0;
         onStatusChange({ loading: false, hasBlockers });
       })
       .catch(() => {
@@ -130,8 +138,12 @@ export function StepValidation({
   // `validationBlockerHint` is generic ("Payroll cannot proceed until these are corrected"), so unlike
   // the batch card this count folds in without any sentence becoming untrue; the group row below names
   // what is wrong.
+  // Item 4ca06dea — the fourth term, matching `hasBlockers` above term for term (see its note).
   const blockers =
-    advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0) + (advisory.tp3YearMismatch?.length ?? 0);
+    advisory.missingCompensation.length +
+    (advisory.zeroBasic?.length ?? 0) +
+    (advisory.unpayablePayMode?.length ?? 0) +
+    (advisory.tp3YearMismatch?.length ?? 0);
   // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company is AMBER for the same reason:
   // the run is honest work that must not be blocked, but the contradiction has to be seen before Process.
@@ -193,6 +205,9 @@ export function StepValidation({
   const groups: [keyof PreProcessAdvisory, typeof advisory.missingCompensation, boolean][] = [
     ['missingCompensation', advisory.missingCompensation, true],
     ['zeroBasic', advisory.zeroBasic ?? [], true],
+    // Item 4ca06dea — counted above AND named here. A count with no row disables Process without saying
+    // why, which is the same silence the item was raised about, moved one press earlier.
+    ['unpayablePayMode', advisory.unpayablePayMode ?? [], true],
     ['tp3YearMismatch', advisory.tp3YearMismatch ?? [], true],
     ['missingStatutory', advisory.missingStatutory, false],
     ['missingBank', advisory.missingBank, false],

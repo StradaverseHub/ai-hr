@@ -4625,6 +4625,7 @@
       "preChecksTitle": "Kiểm tra trước khi xử lý",
       "preChecksAllClear": "Tất cả kiểm tra đã đạt — thông tin nhân viên đầy đủ cho kỳ chạy này.",
       "preChecksBlockerHint": "{n} nhân viên không có hồ sơ lương hiện tại. Trước đây họ sẽ bị âm thầm loại khỏi kỳ chạy — không thể xử lý lương cho đến khi khắc phục (hoặc phạm vi kỳ chạy loại trừ họ).",
+      "preChecksPayModeBlockerHint": "{n} nhân viên có cơ cấu lương Kỳ tùy chỉnh, mà bảng lương không có cách tính. Nếu không, kỳ chạy này sẽ trả cho họ lương cơ bản tương đương tháng cho một cơ cấu đã được cố ý đánh dấu là không theo tháng. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này, rồi chạy lương lần nữa.",
       "preChecksTp3BlockerHint": "{n} nhân viên có Mẫu TP3 của năm nay không khớp với các con số trên thẻ Bảng lương của họ, nên kỳ chạy này sẽ coi công việc trước đó của họ bằng không và khấu trừ PCB quá ít. Hãy mở Mẫu TP3 của từng người và lưu lại, rồi chạy lương lần nữa.",
       "preChecksWarningHint": "{n} mục kiểm tra cần bạn chú ý. Bạn vẫn có thể xử lý lương nhưng sẽ được yêu cầu xác nhận.",
       "preChecksBlockerBadge": "Chặn xử lý",
@@ -4637,10 +4638,12 @@
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
+        "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
         "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "preChecksBlockedPayModeError": "Không thể xử lý lương: {n} nhân viên có cơ cấu lương Kỳ tùy chỉnh mà bảng lương không tính được. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này.",
       "preChecksBlockedTp3Error": "Không thể xử lý lương: {n} nhân viên có Mẫu TP3 của năm nay chưa vào các con số bảng lương. Hãy mở Mẫu TP3 của từng người và lưu lại trước.",
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
       "skipped": {
@@ -5763,6 +5766,7 @@
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
+        "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
         "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "unattachedScopeTitle": "{n} nhân viên có giao dịch mà kỳ lương này sẽ không thu thập",

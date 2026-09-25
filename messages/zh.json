@@ -4625,6 +4625,7 @@
       "preChecksTitle": "处理前检查",
       "preChecksAllClear": "所有检查已通过——本次运行的员工信息完整。",
       "preChecksBlockerHint": "{n} 名员工没有当前薪资记录。此前他们会被悄悄排除在运行之外——必须先解决此问题（或将其排除在运行范围之外）才能处理薪资。",
+      "preChecksPayModeBlockerHint": "{n} 名员工采用自定义周期薪酬结构，薪资没有对应的计算方式。否则本次运行会按月薪等值基本薪资发放给一个被明确标记为非按月的结构。请更改其基本薪资记录上的薪资模式，或将他们排除在本次运行之外，然后重新运行薪资。",
       "preChecksTp3BlockerHint": "{n} 名员工本年度的 TP3 表格与其薪酬页签上的数字不一致，本次运行会把他们的前雇主收入当作零，导致 PCB 少扣。请逐一打开并保存其 TP3 表格，然后重新运行薪资。",
       "preChecksWarningHint": "{n} 项检查需要您注意。您仍可处理薪资，但需要确认。",
       "preChecksBlockerBadge": "阻止处理",
@@ -4637,10 +4638,12 @@
         "missingBank": "银行资料不完整",
         "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
         "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费",
+        "unpayablePayMode": "无法计算的薪酬结构 — 自定义周期薪资模式没有对应的薪资计算方式",
         "tp3YearMismatch": "本年度的 TP3 表格尚未进入薪资数字 — 前雇主收入将被当作零"
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "preChecksBlockedPayModeError": "无法处理薪资：{n} 名员工采用薪资无法计算的自定义周期薪酬结构。请更改其基本薪资记录上的薪资模式，或将他们排除在本次运行之外。",
       "preChecksBlockedTp3Error": "无法处理薪资：{n} 名员工本年度的 TP3 表格尚未进入其薪资数字。请先逐一打开并保存其 TP3 表格。",
       "generatedWithSkipped": "已生成工资单 — 跳过 {n} 名员工。下方列表列出姓名与原因。",
       "skipped": {
@@ -5763,6 +5766,7 @@
         "missingBank": "银行资料不完整",
         "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
         "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费",
+        "unpayablePayMode": "无法计算的薪酬结构 — 自定义周期薪资模式没有对应的薪资计算方式",
         "tp3YearMismatch": "本年度的 TP3 表格尚未进入薪资数字 — 前雇主收入将被当作零"
       },
       "unattachedScopeTitle": "有 {n} 位员工的交易不会被本次批次收集",
