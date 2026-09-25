@@ -52,6 +52,10 @@
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
+// ad7bc503 — CYCLE_LABEL and CATEGORY_LABEL moved to core/ so the DOWNLOADED document resolves the same
+// two maps this screen does. They were private to this file and the document therefore printed neither
+// the payroll cycle nor the marital tax status the reporter's section 1 asks for.
+import { CATEGORY_LABEL, CYCLE_LABEL, pcbBasisLabels } from '@/core/pcb-explain';
 import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
 
 export type PcbDetailContext = {
@@ -86,23 +90,6 @@ export type PcbDetailContext = {
    * and collapsing them into one row is how it would go unnoticed.
    */
   taxCategory: number | null;
-};
-
-/** The four payroll cycles, mapped to STATIC keys in this screen's own namespace. A computed `t()` key is
- *  invisible to the i18n coverage scan, so the map is exhaustive and every value is pinned by
- *  test/pcb-detail.test.ts in all six catalogs. */
-const CYCLE_LABEL: Record<string, 'cycleRegular' | 'cycleOffCycle' | 'cycleBonus' | 'cycleAdjustment'> = {
-  regular: 'cycleRegular',
-  off_cycle: 'cycleOffCycle',
-  bonus: 'cycleBonus',
-  adjustment: 'cycleAdjustment',
-};
-
-/** The s.48 tax category, likewise static-keyed. */
-const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'category3'> = {
-  1: 'category1',
-  2: 'category2',
-  3: 'category3',
 };
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
@@ -189,16 +176,20 @@ function SlipRow({
   limit,
   first,
   second,
+  third,
   sub,
   dual,
+  triple,
 }: {
   line: string;
   label: string;
   limit?: React.ReactNode;
   first: React.ReactNode;
   second?: React.ReactNode;
+  third?: React.ReactNode;
   sub?: boolean;
   dual?: boolean;
+  triple?: boolean;
 }) {
   return (
     <div className="flex items-baseline gap-3 border-b border-border/60 py-1.5 text-sm last:border-0">
@@ -214,6 +205,11 @@ function SlipRow({
       )}
       <span className="w-32 shrink-0 text-end tabular-nums font-medium">{first}</span>
       {dual && <span className="w-32 shrink-0 text-end tabular-nums font-medium">{second}</span>}
+      {/* The children grid's weighting column: a property of the CATEGORY, so it is muted like the limit
+          column rather than presented as one of this employee's own figures. */}
+      {triple && (
+        <span className="w-32 shrink-0 text-end tabular-nums text-muted-foreground">{third}</span>
+      )}
     </div>
   );
 }
@@ -324,22 +320,14 @@ export async function PcbDetailView({
    *  no basis `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
   const basis = explanation.basis;
   const sys = explanation.pcbSystem;
-  /** An additional run's working describes the WHOLE MONTH, so every line that lands on `sys` has to be
-   *  captioned as the month rather than as "what the system calculated" — on an off-cycle run those are
-   *  not the same sentence, and the reader is looking at a figure their payslip does not contain. */
+  // ad7bc503 — THE CAPTION SET NOW LIVES IN core/. It is read by the banner below AND by the downloaded
+  // document (`pcbBasisSection`), which used to omit the banner altogether; one decision, two surfaces,
+  // no second copy of an eight-branch ternary. Nothing about what this screen renders changed.
+  const L = pcbBasisLabels(basis);
+  /** An additional run's working describes the WHOLE MONTH, so a line that lands on `sys` has to be
+   *  captioned as the month rather than as "what the system calculated". `pcbBasisLabels` applies this to
+   *  the caption set; this screen has one further row of its own that turns on it. */
   const wholeMonth = basis != null && basis.prior != null;
-  const L = {
-    banner: basis?.kind === 'manual' ? 'overrideBanner' : basis?.kind === 'additionalRun' ? 'deltaBanner' : 'deltaOverrideBanner',
-    bannerHeading:
-      basis?.kind === 'manual' ? 'overrideHeading' : basis?.kind === 'additionalRun' ? 'deltaHeading' : 'deltaOverrideHeading',
-    bannerSystem: wholeMonth ? 'deltaMonthTotal' : 'overrideSystem',
-    bannerApplied: basis?.kind === 'additionalRun' ? 'deltaApplied' : 'overrideApplied',
-    netSystem: wholeMonth ? 'netMtdMonth' : 'netMtdSystem',
-    netDeducted: basis?.kind === 'additionalRun' ? 'netMtdRun' : 'netMtdDeducted',
-    finalSystem: wholeMonth ? 'finalPcbMonth' : 'finalPcbSystem',
-    finalDeducted: basis?.kind === 'additionalRun' ? 'finalPcbRun' : 'finalPcbDeducted',
-    note: basis?.kind === 'manual' ? 'overrideNote' : basis?.kind === 'additionalRun' ? 'deltaNote' : 'deltaOverrideNote',
-  } as const;
 
   return (
     <div className="space-y-6">
@@ -451,6 +439,7 @@ export async function PcbDetailView({
             {sec.limitColumn && <span className="w-24 shrink-0 text-end">{t(sec.limitColumn)}</span>}
             <span className="w-32 shrink-0 text-end">{t(sec.firstColumn)}</span>
             {sec.secondColumn && <span className="w-32 shrink-0 text-end">{t(sec.secondColumn)}</span>}
+            {sec.thirdColumn && <span className="w-32 shrink-0 text-end">{t(sec.thirdColumn)}</span>}
           </div>
           {sec.rows.map((r) => (
             <SlipRow
@@ -466,8 +455,10 @@ export async function PcbDetailView({
               }
               first={wsValue(r.first)}
               second={r.second ? wsValue(r.second) : t('slipNoColumn')}
+              third={r.third ? wsValue(r.third) : t('slipNoColumn')}
               sub={r.sub}
               dual={sec.secondColumn !== undefined}
+              triple={sec.thirdColumn !== undefined}
             />
           ))}
           {sec.note && <p className="pt-2 text-xs text-muted-foreground">{t(sec.note)}</p>}

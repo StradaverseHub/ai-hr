@@ -9,21 +9,36 @@
  * them into rows stays in core/ where a test can reach it without rendering anything.
  *
  * ⚠️ IT ADDS NO NEW DOOR. Every figure comes through an EXISTING admin-gated, RLS-fenced read
- * (`listEmployees`, `getTp1AccumulatedForPerson`, `listTp1DeclarationsForPersonYear`,
- * `getTp1ByIdForPerson`, `getTp3ForPersonYear`), and the one query written here is fenced on the
- * caller's own `companyIds` and fails CLOSED on an empty scope — the same posture, and the same
- * two-line shape, as every read in core/payroll-view.ts. An out-of-scope employment returns null, so a
- * tampered `payslipId` is indistinguishable from a payslip that does not exist.
+ * (`listEmployees`, `listTp1DeclarationsForPersonYear`, `getTp3ForPersonYear`), and the two queries
+ * written here are fenced on the caller's own `companyIds` / on a `personId` that came out of the
+ * scope-fenced roster, and fail CLOSED on an empty scope — the same posture, and the same two-line shape,
+ * as every read in core/payroll-view.ts. An out-of-scope employment returns null, so a tampered
+ * `payslipId` is indistinguishable from a payslip that does not exist.
  *
  * ⚠️ AND IT WRITES NOTHING AND RECORDS NOTHING. Explaining a deduction is a read.
  *
- * ── WHICH DECLARATION IS "THE CURRENT MONTH'S", AND WHY IT IS NOT A `WHERE` CLAUSE ──────────────────
- * `tp1EffectiveFromMonth` is the rule — Section F's approved-for month, then the deduction month, then
- * January — and it lives in TypeScript because r201/r209 proved what happens when two halves of the
- * system each answer it for themselves: the payroll feed summed legacy rows the limit check skipped, and
- * money moved. So this file NEVER compares `deduction_month` in SQL. It takes the year's rows from the
- * shared read, narrows them with the exported rule, and collapses newest-wins with the exported
- * collapse — the same two functions, in the same order, as the feed that actually fed the kernel.
+ * ── WHICH DECLARATIONS ARE "THIS MONTH'S", AND WHY IT IS `tp1CountForYear` AND NOTHING ELSE ──────────
+ * ⚠️ ONE ROW PER MONTH, **SUMMED** — NOT "LATEST WINS". A year holds up to twelve declarations, one per
+ * deduction month, and HR is taught to key each month's INCREMENT: `core/tax-relief.ts` makes the limit
+ * check additive across them and `core/payroll.ts` feeds
+ * `tp1CountForYear(rows, { throughMonth: pMonth }).total`. Taking only the newest row would make a second
+ * declaration REDUCE the relief — January 3,000 then June 2,000 would show 2,000, not 5,000 — silently,
+ * with no error anywhere. An EARLIER BUILD OF THIS FILE DID EXACTLY THAT: it narrowed, collapsed and then
+ * sorted `[0]`, so the screen whose whole purpose is to reconcile with the payroll figure itemised one
+ * declaration out of the several the kernel had summed, and RM 3,000 of relief that was genuinely used
+ * appeared nowhere. Both columns now come from `tp1CountForYear` itself, which is not a re-implementation
+ * of the rule but the rule — the same function, over the same column list (`TP1_COUNTABLE_COLUMNS`) and
+ * the same `WHERE` (`tp1CountableWhere`), as the feed that actually fed the kernel.
+ *
+ * The two columns are the SAME function asked the agency's two questions, exactly as core/tax-relief.ts
+ * describes them: `throughMonth: <this payroll month>` is "the money in force NOW", which is what payroll
+ * took, and `throughMonth: null` is the whole assessment year, which is what the printed schedule's
+ * Accumulated column and the annual limit check ask. One rule, two questions, one implementation.
+ *
+ * ⚠️ AND NOT `getTp1AccumulatedForPerson` FOR THE ACCUMULATED COLUMN, WHICH IS WHAT IT LOOKS LIKE IT IS
+ * FOR. That function's `deductionMonth` is the month to LEAVE OUT (its own doc: "already claimed means the
+ * OTHER months"), so passing `null` to mean "the whole year" excludes the month-LESS bucket — every
+ * pre-r209 whole-year declaration — and the Accumulated column silently lost their money.
  *
  * ── TODAY'S DECLARATION, NOT A STAMP FROM THE RUN, AND THE SCREEN SAYS SO ───────────────────────────
  * The payslip's `pcbMeta` carries ΣLP and LP1 as COMBINED totals; there is no per-category stamp, and
@@ -34,16 +49,17 @@
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '@/db/client';
-import { employment, employeeStatutoryMy, isTp1Categories2026 } from '@/db/schema';
+import { employment, employeeStatutoryMy, tp1Relief } from '@/db/schema';
 import { listEmployees } from '@/core/read';
 import {
+  TP1_COUNTABLE_COLUMNS,
   TP1_ITEMS,
   TP1_REBATES,
-  collapseTp1ApprovedByMonth,
-  getTp1AccumulatedForPerson,
-  getTp1ByIdForPerson,
   listTp1DeclarationsForPersonYear,
-  tp1EffectiveFromMonth,
+  tp1CountForYear,
+  tp1CountableWhere,
+  type Tp1CountableRow,
+  type Tp1Counted,
 } from '@/core/tax-relief';
 import { getTp3ForPersonYear } from '@/core/tp3';
 import type { PcbChildProfile, PcbSlipCatalogueItem, PcbSlipSide } from '@/core/pcb-explain';
@@ -115,12 +131,66 @@ function taxProfile(
   });
 }
 
+/**
+ * The year's APPROVED declarations in the shape `tp1CountForYear` reduces — the SAME column list and the
+ * SAME `WHERE` the payroll feed and the limit check use, both exported from core/tax-relief.ts precisely
+ * so that "a column the rule needs can never reach one side and not the other".
+ *
+ * ⚠️ WHY IT IS NOT `listTp1DeclarationsForPersonYear`: that read does not select `categories`, so every
+ * row would come back unattributed and the whole schedule would read "recorded only in combination". It is
+ * still called, first, in `pcbSlipData` — it is the ADMIN GATE on this person (`requireAdminTarget`), and
+ * it throws before this query is reached for a caller who is not one.
+ *
+ * `personId` has already come out of the scope-fenced roster, and the read runs under `withTenant`, so RLS
+ * confines it exactly as it confines `core/tax-relief.ts`'s own accumulated read.
+ */
+function countableDeclarations(
+  s: SessionContext,
+  p: { personId: string; assessmentYear: number },
+): Promise<Tp1CountableRow[]> {
+  return withTenant(s, (tx) =>
+    tx.select(TP1_COUNTABLE_COLUMNS).from(tp1Relief).where(tp1CountableWhere(p.personId, p.assessmentYear)),
+  );
+}
+
 /** A declaration's per-line figures, or the "counts but carries no attribution" signal. */
 const side = (attributed: boolean, amounts: PcbSlipSide['amounts'], total: unknown): PcbSlipSide => ({
   attributed,
   amounts,
   total,
 });
+
+/**
+ * ONE COUNTED COLUMN, AS THE SCHEDULE PRINTS IT. Nothing is summed here: `tp1CountForYear` has already
+ * done every addition, and this only names which of its outputs each column of the form is.
+ *
+ * `null` when the year holds no counted declaration at all — the honest absence the plan promises, and
+ * the one the whole §8 decision on this screen is about.
+ *
+ * ⚠️ A MIXED YEAR IS REPORTED AS UNATTRIBUTED, DELIBERATELY. `unattributedTotal` is money that reached
+ * payroll through a pre-catalogue declaration, which core/tax-relief.ts says in as many words there is "no
+ * honest way to split" across C1–C17. When some of the year's money is attributed and some is not, an
+ * itemisation drawn from the attributed part alone is INCOMPLETE and does not add up to the total beneath
+ * it — and a reader looking at seventeen lines that fall short of the roll-up has no way to tell an
+ * unattributed declaration from a missing line. So the side reports `attributed: false`, every line reads
+ * "recorded only in combination", and the roll-up carries every ringgit. That understates the detail we
+ * hold; it asserts nothing untrue, which is the trade CLAUDE.md §8 asks for on this surface.
+ */
+const countedSide = (c: Tp1Counted): PcbSlipSide | null => {
+  if (c.sources.length === 0) return null;
+  const attributed = c.sources.every((r) => r.attributed);
+  return side(
+    attributed,
+    attributed
+      ? {
+          items: Object.fromEntries(
+            Object.entries(c.items).map(([code, amount]) => [code, { amount, subItems: c.subItems[code] ?? {} }]),
+          ),
+        }
+      : null,
+    c.total,
+  );
+};
 
 export async function pcbSlipData(
   s: SessionContext,
@@ -135,45 +205,33 @@ export async function pcbSlipData(
   if (!emp) return { ...EMPTY, profile };
   const personId = emp.personId;
 
-  const [months, counted, tp3] = await Promise.all([
+  const [, rows, tp3] = await Promise.all([
+    // THE ADMIN GATE on this person, kept as the existing door it has always been. Its rows are not used:
+    // it does not carry `categories`, which is why the countable read below exists.
     listTp1DeclarationsForPersonYear(s, { personId, assessmentYear: p.taxYear }),
-    // The whole year, nothing excluded: this is the ACCUMULATED column, which is the agency's own
-    // question and the same figure the printed TP1 prints.
-    getTp1AccumulatedForPerson(s, { personId, assessmentYear: p.taxYear, deductionMonth: null }),
+    countableDeclarations(s, { personId, assessmentYear: p.taxYear }),
     getTp3ForPersonYear(s, { personId, assessmentYear: p.taxYear }),
   ]);
 
-  // THE RULE, NOT A QUERY. Narrow to what was in force by this payroll month, THEN collapse newest-wins
-  // per month — in that order, because collapsing first hands back an August correction for March and
-  // then drops it, deleting the original's money from every month between (core/tax-relief.ts, r209).
-  const inForce = months.filter((r) => r.status === 'approved' && tp1EffectiveFromMonth(r) <= p.month);
-  const winner = collapseTp1ApprovedByMonth(inForce).sort(
-    (a, b) => tp1EffectiveFromMonth(b) - tp1EffectiveFromMonth(a) || (b.deductionMonth ?? 0) - (a.deductionMonth ?? 0),
-  )[0];
-  const row = winner ? await getTp1ByIdForPerson(s, { personId, id: winner.id }) : null;
-  const payload = row && isTp1Categories2026(row.categories) ? row.categories : null;
+  // ⚠️ THE FEED'S OWN REDUCTION, ASKED THE AGENCY'S TWO QUESTIONS. `throughMonth: p.month` is character
+  // for character what core/payroll.ts feeds the kernel for this batch month; `throughMonth: null` is the
+  // whole assessment year, which is what the limit check asks and what the printed schedule's Accumulated
+  // column means. Neither is a re-spelling of the effective-from rule: the rule is INSIDE this function,
+  // which is the entire point of r201/r209. See the header for what happened when this file narrowed,
+  // collapsed and then took one row.
+  const thisMonth = tp1CountForYear(rows, { throughMonth: p.month });
+  const wholeYear = tp1CountForYear(rows, { throughMonth: null });
 
-  // A declaration exists but predates the catalogue: its money is real and counted, and there is no
-  // honest way to split it across C1–C17 (core/tax-relief.ts says so in as many words). `attributed:
-  // false` is what makes every line read "recorded only in combination" rather than "not recorded".
-  const currentDeduction = row ? side(payload != null, payload ? { items: payload.items } : null, row.tp1Amount) : null;
-  const currentRebate = row
-    ? side(payload != null, payload?.rebates ? { items: payload.rebates } : null, null)
+  const currentDeduction = countedSide(thisMonth);
+  const accumulatedDeduction = countedSide(wholeYear);
+  // The rebate lines (D1) are keyed in the SAME map: `tp1CountForYear` folds `categories.rebates` into
+  // `items` alongside `categories.items`, so one counted column serves the deduction schedule and the
+  // rebate schedule both. The rebate section prints no roll-up — TP1_REBATES's own total is discarded by
+  // core/tax-relief.ts on purpose — so it carries no total figure here either.
+  const currentRebate = currentDeduction ? side(currentDeduction.attributed, currentDeduction.amounts, null) : null;
+  const accumulatedRebate = accumulatedDeduction
+    ? side(accumulatedDeduction.attributed, accumulatedDeduction.amounts, null)
     : null;
-
-  // The year's counted attribution. `unattributedTotal` above zero means some counted money carries no
-  // C1–C17 attribution, so the per-line figures are incomplete — the section's note says so rather than
-  // letting a reader add up seventeen lines and wonder why they miss the total.
-  const accumulatedItems: PcbSlipSide['amounts'] = {
-    items: Object.fromEntries(
-      Object.entries(counted.items).map(([code, amount]) => [
-        code,
-        { amount, subItems: counted.subItems[code] ?? {} },
-      ]),
-    ),
-  };
-  const accumulatedDeduction = side(true, accumulatedItems, counted.total);
-  const accumulatedRebate = side(true, accumulatedItems, null);
 
   // Section D of the TP3 — the previous employer's reliefs, keyed c1…c17 exactly as `tp1_relief` keys
   // them, which is why the SAME row builder reads both sides. Only when the form's own deduction year is

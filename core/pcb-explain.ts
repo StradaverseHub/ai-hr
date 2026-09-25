@@ -766,6 +766,9 @@ export type PcbSlipRow = {
   ns: 'pcbDetail' | 'taxRelief';
   first: PcbWorksheetValue;
   second?: PcbWorksheetValue;
+  /** A THIRD figure column, for the one section that has one: the children grid's per-category weighting
+   *  (`thirdColumn`). Absent ⇒ this section has no such column. */
+  third?: PcbWorksheetValue;
   /** The ANNUAL LIMIT (RM) column the agency's schedule prints. `null` ⇒ the form prints no figure
    *  (ADR-0008); absent ⇒ this section has no such column. */
   limit?: number | null;
@@ -779,20 +782,43 @@ export type PcbSlipSection = {
   /** Column headings, as keys. `secondColumn` absent ⇒ a one-column section. */
   firstColumn: string;
   secondColumn?: string;
+  thirdColumn?: string;
   limitColumn?: string;
   rows: PcbSlipRow[];
   note?: string;
 };
 
-/** The five LHDN s.48 child categories, in the order `employee_statutory_my.child_relief_table` keys
- *  them and the order the personnel grid shows them. Exported so a test can assert the row count the
- *  form is ruled for without restating the taxonomy. */
-export const PCB_CHILD_CATEGORIES: readonly { readonly key: string; readonly caption: string }[] = [
-  { key: 'under_18', caption: 'slipChildUnder18' },
-  { key: 'study_preu', caption: 'slipChildStudyPreu' },
-  { key: 'study_tertiary', caption: 'slipChildStudyTertiary' },
-  { key: 'disabled', caption: 'slipChildDisabled' },
-  { key: 'disabled_study', caption: 'slipChildDisabledStudy' },
+/**
+ * The five LHDN s.48 child categories, in the order `employee_statutory_my.child_relief_table` keys them
+ * and the order the personnel grid shows them. Exported so a test can assert the row count the form is
+ * ruled for without restating the taxonomy.
+ *
+ * ⚠️ `qc` IS THE SPEC'S QUALIFYING-CHILDREN WEIGHTING, AND IT IS THE ONE STATUTORY INTEGER THIS FILE
+ * CARRIES. The approved plan promises the reader "the weighting each category carries", and LHDN's own
+ * specification (printed p.27 table plus its footnote) states it as a number of children rather than as
+ * ringgit: a child studying at diploma level onwards is "considered with 4 children", a disabled child
+ * likewise 4, a disabled child studying 8, and an under-18 or pre-university child 1.
+ *
+ * `localization/my/statutory-tables.ts` `childByCategory` carries the SAME fact as money — it says so in
+ * its own header: "Every value below is the spec's qualifying-children count × the RM2,000 per-child
+ * relief", and deliberately "no QC integer is carried". A country pack must not be imported from core/,
+ * so the integer is declared here and the equivalence `qc × 2,000 === childByCategory[key]` is asserted by
+ * test/ad7bc503-pcb-slip.test.ts — the same device test/child-relief-figures-04b88724.test.ts uses for the
+ * pack's own figures, so an edit to either side fails loudly instead of drifting.
+ *
+ * NOTHING IS COMPUTED FROM IT. It is printed as the weighting column and never multiplied by a count:
+ * Q and C on this section are the figures the payroll run itself applied.
+ */
+export const PCB_CHILD_CATEGORIES: readonly {
+  readonly key: string;
+  readonly caption: string;
+  readonly qc: number;
+}[] = [
+  { key: 'under_18', caption: 'slipChildUnder18', qc: 1 },
+  { key: 'study_preu', caption: 'slipChildStudyPreu', qc: 1 },
+  { key: 'study_tertiary', caption: 'slipChildStudyTertiary', qc: 4 },
+  { key: 'disabled', caption: 'slipChildDisabled', qc: 4 },
+  { key: 'disabled_study', caption: 'slipChildDisabledStudy', qc: 8 },
 ];
 
 /** The employee's stored child / disability tax position, exactly as the column set holds it. */
@@ -846,6 +872,9 @@ export function pcbChildSection(
     ns: 'pcbDetail' as const,
     first: grid ? slipCount(grid[c.key]?.full) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
     second: grid ? slipCount(grid[c.key]?.half) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
+    // The weighting the agency's own table gives this category, whether or not a child sits in it: it is a
+    // property of the CATEGORY, not of this employee, so it is stated even where the counts are not.
+    third: { kind: 'count', count: c.qc },
   }));
   rows.push({ line: 'C', caption: 'slipChildCount', ns: 'pcbDetail', first: childCount });
   rows.push({ line: 'Q', caption: 'slipChildRelief', ns: 'pcbDetail', first: reliefChildren });
@@ -855,8 +884,28 @@ export function pcbChildSection(
     heading: 'slipChildHeading',
     firstColumn: 'slipColFullRate',
     secondColumn: 'slipColHalfRate',
+    thirdColumn: 'slipColWeighting',
     rows,
-    note: grid ? 'slipChildNoteTable' : 'slipChildNoteManual',
+    // ⚠️ THE NOTE IS CHOSEN FROM THE STORED MODE, NOT FROM WHETHER THE GRID RESOLVED. Those are different
+    // questions and there are FOUR answers, not two. `slipChildNoteManual` says "this employee's children
+    // are recorded as a single total rather than split across the five categories" — a specific factual
+    // claim about what HR keyed. Reaching it from `grid == null` put that sentence on two states it is
+    // false for, on a document that may be handed to an auditor:
+    //   · mode IS 'auto_table' but `child_relief_table` is null — nobody has ever keyed the grid, which
+    //     core/child-relief-review.ts:18 documents as a real and reviewable state, and which
+    //     `normaliseChildReliefTable` also produces from an all-zero grid;
+    //   · there is no `employee_statutory_my` row at all — a non-Malaysian hire, an incomplete onboarding.
+    // Each now says what is actually true of it, and only 'manual' claims a manual total.
+    // A stored mode this build does not know is treated as the absent row it is indistinguishable from:
+    // the sentence must not claim a manual total for a mode nobody here can read.
+    note:
+      p != null && p.mode === 'auto_table'
+        ? grid
+          ? 'slipChildNoteTable'
+          : 'slipChildNoteTableEmpty'
+        : p != null && p.mode === 'manual'
+          ? 'slipChildNoteManual'
+          : 'slipChildNoteNoProfile',
   };
 }
 
@@ -977,13 +1026,51 @@ export type PcbSlipSide = {
 
 const SLIP_ABSENT: PcbWorksheetValue = { kind: 'notRecorded' };
 const SLIP_COMBINED: PcbWorksheetValue = { kind: 'notSeparatelyRecorded' };
+/** A box the declaration COVERED and left empty. See `slipSubValue` for why that is a figure and not an
+ *  absence, and why it is the only zero this file will print. */
+const SLIP_NIL: PcbWorksheetValue = { kind: 'money', amount: 0 };
 
-/** One line's figure on one side of the schedule. `pick` names the box; nothing is added up. */
-function slipSideValue(side: PcbSlipSide | null, pick: (a: PcbSlipAmounts) => unknown): PcbWorksheetValue {
-  if (side == null) return SLIP_ABSENT;
-  if (!side.attributed) return SLIP_COMBINED;
-  if (side.amounts == null) return SLIP_ABSENT;
-  return slipMoney(pick(side.amounts));
+/** One numbered line's own stored entry, as the two writers persist it. */
+type SlipEntry = NonNullable<PcbSlipAmounts['items'][string]>;
+
+/**
+ * ⚠️ THE NUMBERED LINE DECIDES FOR ITS WHOLE FAMILY, AND THIS IS THE CONTRACT THE ITEM TURNS ON.
+ *
+ * A stored declaration is DENSE over the numbered lines and SPARSE over the lettered ones. Both writers —
+ * `core/tp3.ts` `readGroup` and `core/tax-relief.ts` `validateCatalogueCategories.readGroup` — walk the
+ * whole catalogue and write `out[def.code] = subItems ? { amount, subItems } : { amount }` for EVERY def,
+ * with `validateAmount(undefined) === 0`, while a sub-line is written only `if (v > 0)`. So for any
+ * actually-filed form, C9 is present carrying 0 and C9(a) is simply not there.
+ *
+ * Reading those two absences differently is how this screen came to make two incompatible statements about
+ * the same money: C4 printing RM 1,200 while C4(b) read "nothing was recorded", when C4's amount IS the
+ * server's own sum of C4(a)…(d) and therefore says C4(b) was read and was empty. `slipPdfProvenance` tells
+ * the reader in as many words that a line stating nothing was recorded is one NO DECLARATION WAS CAPTURED
+ * FOR — so printing it inside a captured declaration is a false sentence on a tax document.
+ *
+ * Hence: the presence of the NUMBERED entry decides for the numbered line and every lettered line under
+ * it. Present ⇒ this form covered the line, so an empty box is the declared nil the reporter's own
+ * reference prints as 0.00. Absent ⇒ this side says nothing about the line at all, and neither do we.
+ */
+const slipLineEntry = (side: PcbSlipSide | null, code: string): SlipEntry | undefined =>
+  side != null && side.attributed && side.amounts != null ? side.amounts.items[code] : undefined;
+
+/** WHY a side shows no figure for a line: it holds nothing about it, or holds the money only combined. */
+const slipLineAbsence = (side: PcbSlipSide | null): PcbWorksheetValue =>
+  side != null && !side.attributed ? SLIP_COMBINED : SLIP_ABSENT;
+
+/** A NUMBERED line's figure. The stored amount is the server's own roll-up of the line's boxes. */
+function slipItemValue(side: PcbSlipSide | null, code: string): PcbWorksheetValue {
+  const entry = slipLineEntry(side, code);
+  return entry == null ? slipLineAbsence(side) : slipMoney(entry.amount);
+}
+
+/** A LETTERED sub-line's figure. Its numbered parent decides whether the line was declared at all. */
+function slipSubValue(side: PcbSlipSide | null, code: string, sub: string): PcbWorksheetValue {
+  const entry = slipLineEntry(side, code);
+  if (entry == null) return slipLineAbsence(side);
+  const stored = (entry.subItems ?? {})[sub];
+  return stored == null ? SLIP_NIL : slipMoney(stored);
 }
 
 /**
@@ -1015,8 +1102,8 @@ export function pcbReliefScheduleSection(p: {
       caption: `${p.captionGroup}.${def.code}.label`,
       ns: 'taxRelief',
       limit: def.perSubLimit ? null : def.limit,
-      first: slipSideValue(p.first, (a) => a.items[def.code]?.amount),
-      second: p.secondColumn ? slipSideValue(p.second ?? null, (a) => a.items[def.code]?.amount) : undefined,
+      first: slipItemValue(p.first, def.code),
+      second: p.secondColumn ? slipItemValue(p.second ?? null, def.code) : undefined,
     });
     for (const sub of def.subItems) {
       rows.push({
@@ -1025,10 +1112,8 @@ export function pcbReliefScheduleSection(p: {
         ns: 'taxRelief',
         sub: true,
         limit: sub.limit,
-        first: slipSideValue(p.first, (a) => a.items[def.code]?.subItems?.[sub.code]),
-        second: p.secondColumn
-          ? slipSideValue(p.second ?? null, (a) => a.items[def.code]?.subItems?.[sub.code])
-          : undefined,
+        first: slipSubValue(p.first, def.code, sub.code),
+        second: p.secondColumn ? slipSubValue(p.second ?? null, def.code, sub.code) : undefined,
       });
     }
   }
@@ -1152,3 +1237,121 @@ function pcbRebateSection(
   base.rows.push({ line: 'Z1', caption: 'slipRebateZakatSalary', ns: 'pcbDetail', limit: null, first: zakatViaSalary });
   return base;
 }
+
+/**
+ * ad7bc503 — THE CAPTIONS THAT TURN ON `basis`, DECIDED ONCE FOR THE SCREEN AND THE DOCUMENT.
+ *
+ * WHY THIS IS IN core/ AND NOT IN THE COMPONENT ANY MORE. `explanation.basis` is the sentence a reader
+ * needs before reading a single figure: the working below lands on a number their payslip may not contain,
+ * because it was replaced by hand or because the run deducted only the month's increase. The view has said
+ * so in a banner since 45df860a; the DOWNLOADED document did not, and a document that omits it is exactly
+ * what the view's own comment warns about — "a competent-looking derivation of an amount nobody deducted".
+ *
+ * Adding it to the document by re-deriving the captions there would have been a second copy of a decision
+ * with eight branches, so the decision moved here and both surfaces read it. Nothing is computed: every
+ * value below is a message key or a figure already on `basis`.
+ */
+export function pcbBasisLabels(basis: PcbBasis | null): {
+  banner: string;
+  bannerHeading: string;
+  bannerSystem: string;
+  bannerApplied: string;
+  netSystem: string;
+  netDeducted: string;
+  finalSystem: string;
+  finalDeducted: string;
+  note: string;
+} {
+  /** An additional run's working describes the WHOLE MONTH, so every line that lands on `pcbSystem` has
+   *  to be captioned as the month rather than as "what the system calculated" — on an off-cycle run those
+   *  are not the same sentence, and the reader is looking at a figure their payslip does not contain. */
+  const wholeMonth = basis != null && basis.prior != null;
+  return {
+    banner:
+      basis?.kind === 'manual'
+        ? 'overrideBanner'
+        : basis?.kind === 'additionalRun'
+          ? 'deltaBanner'
+          : 'deltaOverrideBanner',
+    bannerHeading:
+      basis?.kind === 'manual'
+        ? 'overrideHeading'
+        : basis?.kind === 'additionalRun'
+          ? 'deltaHeading'
+          : 'deltaOverrideHeading',
+    bannerSystem: wholeMonth ? 'deltaMonthTotal' : 'overrideSystem',
+    bannerApplied: basis?.kind === 'additionalRun' ? 'deltaApplied' : 'overrideApplied',
+    netSystem: wholeMonth ? 'netMtdMonth' : 'netMtdSystem',
+    netDeducted: basis?.kind === 'additionalRun' ? 'netMtdRun' : 'netMtdDeducted',
+    finalSystem: wholeMonth ? 'finalPcbMonth' : 'finalPcbSystem',
+    finalDeducted: basis?.kind === 'additionalRun' ? 'finalPcbRun' : 'finalPcbDeducted',
+    note:
+      basis?.kind === 'manual'
+        ? 'overrideNote'
+        : basis?.kind === 'additionalRun'
+          ? 'deltaNote'
+          : 'deltaOverrideNote',
+  };
+}
+
+/**
+ * THE SAME BANNER AS A SECTION, so the downloaded document can carry it beside the identification block.
+ *
+ * `null` when the working explains exactly what was deducted — which is the ordinary case, and a block
+ * saying "these agree" would be noise on every normal payslip. The reason line is printed only where a
+ * human was asked for one: an additional run has no operator and no reason, and `notRecorded` there would
+ * report a missing answer to a question nobody was asked.
+ */
+export function pcbBasisSection(x: PcbExplanation): PcbSlipSection | null {
+  const basis = x.basis;
+  if (basis == null) return null;
+  const L = pcbBasisLabels(basis);
+  const rows: PcbSlipRow[] = [
+    { line: '', caption: L.bannerSystem, ns: 'pcbDetail', first: money(basis.system) },
+  ];
+  if (basis.prior != null) {
+    rows.push({ line: '', caption: 'deltaPrior', ns: 'pcbDetail', first: money(basis.prior) });
+  }
+  // The engine's own increment is worth a line only when it is NOT what was deducted — i.e. when an
+  // increment run was then also set by hand, and there are three figures to keep apart.
+  if (basis.kind === 'additionalRunManual' && basis.engineRun != null) {
+    rows.push({ line: '', caption: 'deltaEngineRun', ns: 'pcbDetail', first: money(basis.engineRun) });
+  }
+  rows.push({ line: '', caption: L.bannerApplied, ns: 'pcbDetail', first: money(basis.applied) });
+  if (basis.kind !== 'additionalRun') {
+    rows.push({
+      line: '',
+      caption: 'overrideReason',
+      ns: 'pcbDetail',
+      first: basis.reason ? { kind: 'text', text: basis.reason } : SLIP_ABSENT,
+    });
+  }
+  return { heading: L.bannerHeading, firstColumn: 'slipColAmount', rows, note: L.banner };
+}
+
+/**
+ * ad7bc503 — THE TWO STATIC CAPTION MAPS THIS SURFACE RESOLVES, IN ONE PLACE.
+ *
+ * They were private to `app/payroll/pcb-detail/pcb-detail-view.tsx`, and that is why the DOWNLOADED
+ * document carried neither the payroll cycle nor the marital tax status the reporter's section 1 asks for:
+ * the only copy of each map was inside a React component. They are mappings from a stored value to a
+ * message key — the same kind of thing as every caption on the worksheet above — so they live here and both
+ * surfaces read one copy.
+ *
+ * ⚠️ EXHAUSTIVE AND STATIC-KEYED, on purpose. A computed `t()` key is invisible to the i18n coverage scan,
+ * so every value is a literal and every literal is pinned in all six catalogues by test/pcb-detail.test.ts.
+ */
+export const CYCLE_LABEL: Record<string, 'cycleRegular' | 'cycleOffCycle' | 'cycleBonus' | 'cycleAdjustment'> = {
+  regular: 'cycleRegular',
+  off_cycle: 'cycleOffCycle',
+  bonus: 'cycleBonus',
+  adjustment: 'cycleAdjustment',
+};
+
+/** The s.48 tax category, which IS the marital tax status: 1 single, 2 married with a spouse not working,
+ *  3 married with a spouse working. One stored fact, printed under both of the agency's headings. */
+export const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'category3'> = {
+  1: 'category1',
+  2: 'category2',
+  3: 'category3',
+};

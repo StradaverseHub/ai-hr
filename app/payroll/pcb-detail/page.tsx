@@ -148,9 +148,15 @@ export default async function PcbDetailPage({
         // ad7bc503 section 11 — the whole page as a PDF. A PLAIN LINK and not a button with an action: the
         // document is a GET on ./download, which carries the identical gate to this page (see ./shared.ts),
         // so there is nothing to post and nothing to record. Rendering a statement is a read.
+        // ⚠️ AND IT CARRIES THE READER'S OWN LOCALE. Without `lang` the allowlist in ./shared.ts saw null
+        // every time, so the Malay branch was unreachable from the product: a Malay-UI admin got an English
+        // document, and the two provenance lines — deliberately "the reader's own language AND in English" —
+        // both resolved to English. The locale is HANDED ON, never trusted: shared.ts allowlists it down to
+        // the two languages the agency itself issues and Helvetica can actually print, so a Tamil, Thai,
+        // Vietnamese or Chinese UI still yields the English document rather than pages of '?'.
         <div className="flex justify-end">
           <a
-            href={`/payroll/pcb-detail/download?${new URLSearchParams({ payslipId: row.id }).toString()}`}
+            href={`/payroll/pcb-detail/download?${new URLSearchParams({ payslipId: row.id, lang: locale }).toString()}`}
             className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
             {t('slipDownload')}

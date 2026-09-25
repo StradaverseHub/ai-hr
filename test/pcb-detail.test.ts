@@ -36,7 +36,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pcbMonth, statutory, coordinatedPcbForPerson } from '../localization/my/payroll';
-import { explainPcb, type PcbReliefBreakdown } from '../core/pcb-explain';
+import { explainPcb, pcbBasisLabels, type PcbBasis, type PcbReliefBreakdown } from '../core/pcb-explain';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -855,9 +855,23 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     const view = code(VIEW);
     expect(view).toContain('explanation.basis');
     expect(view).toContain('explanation.pcbSystem');
-    for (const k of ['overrideHeading', 'overrideBanner', 'overrideSystem', 'overrideApplied', 'overrideReason', 'finalPcbDeducted']) {
-      expect(view, `the screen must render ${k}`).toContain(k);
+    // ⚠️ THE CAPTION DECISION MOVED TO core/ IN ad7bc503, so this guard moved WITH it rather than being
+    // satisfied by a leftover literal. It used to grep this component for each key; the eight-branch
+    // ternary that chose them is now `pcbBasisLabels`, read by BOTH the screen and the downloaded document
+    // (which carried no banner at all before). So the keys are pinned to the STATE that must produce them,
+    // which is strictly more than the substring search asserted, and the component is still required to
+    // render the banner through that label set.
+    expect(view, 'the screen reads the caption set rather than choosing its own').toContain('pcbBasisLabels(basis)');
+    for (const k of ['L.bannerHeading', 'L.banner', 'L.bannerSystem', 'L.bannerApplied', 'deltaPrior', 'overrideReason']) {
+      expect(view, `the banner must render ${k}`).toContain(k);
     }
+    const manual = pcbBasisLabels({ kind: 'manual', system: 900, applied: 500, prior: null, engineRun: null, reason: 'x' });
+    expect(manual.bannerHeading, 'a hand-set PCB is announced as one').toBe('overrideHeading');
+    expect(manual.banner).toBe('overrideBanner');
+    expect(manual.bannerSystem, "the working explains the engine's own figure").toBe('overrideSystem');
+    expect(manual.bannerApplied).toBe('overrideApplied');
+    expect(manual.finalDeducted).toBe('finalPcbDeducted');
+    expect(manual.note).toBe('overrideNote');
     const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
       .payroll.pcbDetail;
     expect(en.overrideBanner.toLowerCase(), 'and it must say the working does not explain the deduction')
@@ -870,11 +884,31 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     // "set by hand" is a false statement about a bonus run, and a reader who is told the wrong reason
     // stops trusting the banner on the payslips where the reason matters.
     const view = code(VIEW);
-    for (const k of ['deltaHeading', 'deltaBanner', 'deltaMonthTotal', 'deltaPrior', 'deltaApplied', 'deltaNote',
-                     'deltaEngineRun', 'deltaOverrideHeading', 'deltaOverrideBanner', 'deltaOverrideNote',
-                     'netMtdMonth', 'netMtdRun', 'finalPcbMonth', 'finalPcbRun', 'additionalMtdMonth']) {
+    // Same update as above: the wording decision lives in `pcbBasisLabels` now, so each key is pinned to
+    // the basis kind that must produce it instead of to its presence somewhere in this component.
+    for (const k of ['deltaPrior', 'deltaEngineRun', 'additionalMtdMonth']) {
       expect(view, `the screen must render ${k}`).toContain(k);
     }
+    const b = (over: Partial<PcbBasis>): PcbBasis => ({
+      kind: 'additionalRun', system: 900, applied: 300, prior: 600, engineRun: null, reason: '', ...over,
+    });
+    const delta = pcbBasisLabels(b({}));
+    expect(delta.bannerHeading, 'an increment run must NOT borrow the hand-set heading').toBe('deltaHeading');
+    expect(delta.banner).toBe('deltaBanner');
+    expect(delta.bannerSystem, 'the working is the WHOLE month').toBe('deltaMonthTotal');
+    expect(delta.bannerApplied).toBe('deltaApplied');
+    expect(delta.netSystem).toBe('netMtdMonth');
+    expect(delta.netDeducted).toBe('netMtdRun');
+    expect(delta.finalSystem).toBe('finalPcbMonth');
+    expect(delta.finalDeducted).toBe('finalPcbRun');
+    expect(delta.note).toBe('deltaNote');
+    const both = pcbBasisLabels(b({ kind: 'additionalRunManual', engineRun: 320 }));
+    expect(both.bannerHeading, 'and a hand-set increment run gets its own third wording').toBe('deltaOverrideHeading');
+    expect(both.banner).toBe('deltaOverrideBanner');
+    expect(both.note).toBe('deltaOverrideNote');
+    // A hand-set run that is NOT an increment keeps the month-less captions, which is the distinction the
+    // two figures turn on: `prior == null` means the working explains the engine's figure, not the month.
+    expect(pcbBasisLabels(b({ kind: 'additionalRunManual', prior: null })).bannerSystem).toBe('overrideSystem');
     const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
       .payroll.pcbDetail;
     expect(en.deltaBanner.toLowerCase(), 'it must say what was deducted was the increase').toContain('increase');

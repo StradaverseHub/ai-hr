@@ -37,7 +37,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
-import { explainPcb, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
+import { CATEGORY_LABEL, CYCLE_LABEL, explainPcb, pcbBasisSection, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
@@ -190,6 +190,11 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
     cells: [value && value.trim() !== '' ? value : t('notRecordedShort')],
   });
   const category = model.explanation.kind === 'mtd' ? (slipData?.profile?.taxCategory ?? null) : null;
+  // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS. Requirement 11 is "the same calculation details displayed
+  // on screen", and this block used to carry seven of them: the MARITAL TAX STATUS, which the reporter's
+  // section 1 lists by name, and the payroll CYCLE were on the screen and not in the document. Both are
+  // resolved through the same two maps the view uses (`core/pcb-explain.ts`), not through a second copy.
+  const cycleKey = CYCLE_LABEL[row.runType];
   sections.push({
     heading: t('identificationHeading'),
     columns: [],
@@ -200,9 +205,30 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       kv(t('fieldCompany'), row.company),
       kv(t('fieldPeriod'), row.payPeriod),
       kv(t('fieldTaxCategory'), category == null ? null : String(category)),
+      kv(
+        t('fieldMaritalStatus'),
+        category != null && CATEGORY_LABEL[category] ? t(CATEGORY_LABEL[category]) : null,
+      ),
+      kv(t('fieldCycle'), `${cycleKey ? t(cycleKey) : row.runType}${row.runSeq > 1 ? ` #${row.runSeq}` : ''}`),
       kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
     ],
   });
+
+  // ── WHICH FIGURE THIS DOCUMENT IS ABOUT, SAID BEFORE ANY WORKING ──────────────────────────────────
+  // The screen has carried this banner since 45df860a and the document did not, which is the one omission
+  // on it that changes what a reader concludes: `pcb-detail-view.tsx` says in its own comment that
+  // "rendering the working without this makes the screen a competent-looking derivation of an amount nobody
+  // deducted", and that is exactly what a PDF handed to an auditor would have been. `pcbBasisSection`
+  // returns null when the working explains precisely what was deducted, which is the ordinary case.
+  const basisSection = pcbBasisSection(model.explanation);
+  if (basisSection) {
+    sections.push({
+      heading: t(basisSection.heading),
+      columns: [t(basisSection.firstColumn)],
+      rows: basisSection.rows.map((r) => ({ line: r.line, label: t(r.caption), cells: [cell(r.first)] })),
+      note: basisSection.note ? t(basisSection.note) : undefined,
+    });
+  }
 
   // ── Reporter sections 3, 9 and 10 — LHDN's own worksheet, exactly as the screen shows it ──────────
   if (model.worksheet.shape !== 'unavailable') {
@@ -222,6 +248,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       ...(sec.limitColumn ? [t(sec.limitColumn)] : []),
       t(sec.firstColumn),
       ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
+      ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
     ];
     sections.push({
       heading: t(sec.heading),
@@ -234,6 +261,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           ...(sec.limitColumn ? [r.limit == null ? t('slipNoLimit') : formatMoney(r.limit, cur)] : []),
           cell(r.first),
           ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
+          ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
         ],
       })),
       note: sec.note ? t(sec.note) : undefined,
