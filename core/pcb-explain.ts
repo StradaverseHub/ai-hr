@@ -832,6 +832,10 @@ export type PcbChildProfile = {
 };
 
 /** A stored whole number, or the honest absence. NEVER a zero standing in for a missing box. */
+/** A category the admin was shown and left empty. See `pcbChildSection` for why that is a count, not an
+ *  absence, and `SLIP_NIL` for the same decision on the relief schedule. */
+const SLIP_NIL_COUNT: PcbWorksheetValue = { kind: 'count', count: 0 };
+
 const slipCount = (v: unknown): PcbWorksheetValue =>
   typeof v === 'number' && Number.isFinite(v) ? { kind: 'count', count: v } : { kind: 'notRecorded' };
 
@@ -866,16 +870,27 @@ export function pcbChildSection(
   childCount: PcbWorksheetValue,
 ): PcbSlipSection {
   const grid = p != null && p.mode === 'auto_table' ? p.table : null;
-  const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => ({
+  const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => {
+    // ⚠️ A KEYED GRID IS SPARSE, EXACTLY AS A STORED DECLARATION IS, AND FOR THE SAME REASON.
+    // `normaliseChildReliefTable` ends with `if (full === 0 && half === 0) continue`, so a category the
+    // admin was shown and left at zero is simply ABSENT from the stored map. Reading that as "not
+    // recorded" printed the same contradiction the relief schedule had: a grid with two categories filled
+    // showed the other three as unknown, beside a C and a Q that had counted all five. Found by the §8
+    // render check, on the page as rendered. So: the GRID's presence decides for every category in it —
+    // present ⇒ the admin answered all five and an absent cell is the zero they left; absent ⇒ nothing is
+    // asserted about any of them, which is the `table == null` case and a different sentence.
+    const cell = grid ? grid[c.key] : undefined;
+    return {
     line: '',
     caption: c.caption,
     ns: 'pcbDetail' as const,
-    first: grid ? slipCount(grid[c.key]?.full) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
-    second: grid ? slipCount(grid[c.key]?.half) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
+    first: grid ? (cell == null ? SLIP_NIL_COUNT : slipCount(cell.full)) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
+    second: grid ? (cell == null ? SLIP_NIL_COUNT : slipCount(cell.half)) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
     // The weighting the agency's own table gives this category, whether or not a child sits in it: it is a
     // property of the CATEGORY, not of this employee, so it is stated even where the counts are not.
     third: { kind: 'count', count: c.qc },
-  }));
+    };
+  });
   rows.push({ line: 'C', caption: 'slipChildCount', ns: 'pcbDetail', first: childCount });
   rows.push({ line: 'Q', caption: 'slipChildRelief', ns: 'pcbDetail', first: reliefChildren });
   rows.push({ line: '', caption: 'slipDisabledIndividual', ns: 'pcbDetail', first: slipYesNo(p?.disabledIndividual) });

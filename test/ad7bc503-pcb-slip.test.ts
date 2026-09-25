@@ -984,6 +984,39 @@ describe('ad7bc503 — the children note says what is actually recorded', () => 
     expect(en.slipChildNoteNoProfile.toLowerCase(), 'nor may the no-row sentence').not.toContain('single total');
   });
 
+  it('a KEYED grid reads its own zeroes as zeroes, and only an unkeyed grid as an absence', () => {
+    // ⚠️ THE SAME DEFECT AS THE RELIEF SCHEDULE, IN THE OTHER WRITER, FOUND BY THE §8 RENDER CHECK.
+    // `normaliseChildReliefTable` ends `if (full === 0 && half === 0) continue`, so a category the admin
+    // was shown and left at zero is ABSENT from the stored map — exactly as an untouched TP1 sub-line is.
+    // The screen showed three of five categories as "not recorded" beside a C of 4 and a real Q, which is
+    // one page making two statements about the same children.
+    const partial: PcbChildProfile = {
+      mode: 'auto_table',
+      table: { under_18: { full: 2, half: 1 }, study_tertiary: { full: 1, half: 0 } },
+      disabledIndividual: false,
+      disabledSpouse: false,
+    };
+    const sec = byHeading(sections(richRun(), { profile: partial }), 'slipChildHeading');
+    expect(byCaption(sec, 'slipChildUnder18')!.first).toEqual({ kind: 'count', count: 2 });
+    expect(byCaption(sec, 'slipChildStudyTertiary')!.first).toEqual({ kind: 'count', count: 1 });
+    for (const caption of ['slipChildStudyPreu', 'slipChildDisabled', 'slipChildDisabledStudy']) {
+      const row = byCaption(sec, caption)!;
+      expect(row.first, `${caption} at the full rate`).toEqual({ kind: 'count', count: 0 });
+      expect(row.second, `${caption} at the half rate`).toEqual({ kind: 'count', count: 0 });
+    }
+    // Nothing in a keyed grid reads as an absence…
+    for (const c of PCB_CHILD_CATEGORIES) {
+      for (const v of [byCaption(sec, c.caption)!.first, byCaption(sec, c.caption)!.second]) {
+        expect(v?.kind, `${c.key} in a keyed grid`).not.toBe('notRecorded');
+      }
+    }
+    // …while NO grid at all still reads as one, on every category, which is the state the plan promises.
+    const none = byHeading(sections(richRun(), { profile: { ...partial, table: null } }), 'slipChildHeading');
+    for (const c of PCB_CHILD_CATEGORIES) {
+      expect(byCaption(none, c.caption)!.first, `${c.key} with no grid`).toEqual({ kind: 'notRecorded' });
+    }
+  });
+
   it('an auto_table employee with no grid still gets no figure invented for them', () => {
     const sec = byHeading(sections(richRun(), { profile: { ...GRID, table: null } }), 'slipChildHeading');
     for (const c of PCB_CHILD_CATEGORIES) mustNotBeAZero(byCaption(sec, c.caption)!, 'auto_table, no grid');
