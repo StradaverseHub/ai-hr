@@ -1480,6 +1480,56 @@ function validPaymentDate(paymentDate?: string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : paymentDate;
 }
 
+/**
+ * 00e28308 — THE RULESET VERSION A STATUTORY MONTH IS OPENED UNDER.
+ *
+ * `pay_period.statutory_version` has existed since migration 0066 and, outside the payroll-history
+ * importer, nothing ever wrote it. 0066 stamped the periods it created from a child payslip's own
+ * `statutory.version`; every month opened SINCE — by `createBatch` or `createAdditionalRun` — was
+ * inserted with the column null, and no code path UPDATEs it, so it stayed null forever. A month
+ * therefore carried no record of which statutory rules it was run under, which is the audit question
+ * item 00e28308 asks. The comment that used to sit at the find-or-create below asserted that the
+ * snapshot happened "when payslips are first generated (2C-4)"; no code did that, and the sentence is
+ * why nobody noticed.
+ *
+ * STAMPED BY THE INSERT, AND BY NOTHING ELSE. That is what makes the two properties that matter
+ * structural rather than merely tested:
+ *   - a SECOND run in the same month find-or-creates, finds, and writes nothing — a recorded version
+ *     can never move, and a month whose recorded version moved would be worse than one with none;
+ *   - a period row that ALREADY EXISTS is reused untouched, so the deliberate absence on every month
+ *     created before this change survives. There is no UPDATE here for a backfill to be added to.
+ * `pay_period_company_period_uq` makes "the insert" happen exactly once per (company, month), so this
+ * needs no definition of "first" that a deleted draft or a re-run could disagree with — which a
+ * generation-time stamp would have needed, and which it could only have answered by writing to the
+ * months the reporter asked us to leave alone.
+ *
+ * THE VERSION IS THE PACK'S, NEVER A LITERAL IN THE KERNEL. `loadRuleset(asOf: period end)` is the same
+ * resolution `generatePayslips` performs — tenant override, then signed vendor pack, then the verified
+ * built-in default, with the per-body overlay on top — and `.version` off it is the same string the
+ * payslips stamp into `statutory.version` and the Borang A / CP39 filings report.
+ *
+ * NULL FOR A NON-STATUTORY COMPANY, and the pack lookup IS that test rather than a proxy for it:
+ * `resolveCompanyTier` (core/company-tier.ts) makes "the country has a registered pack" and "the
+ * company is statutory" the SAME fact — a packed country cannot be declared non-statutory, a packless
+ * one cannot be statutory. A company whose statutory computation is refused by design records no
+ * ruleset version, because none applied to it.
+ *
+ * WHAT IT DOES NOT CLAIM. It says which ruleset resolved for this month AT THE MOMENT THE MONTH WAS
+ * OPENED. It is not a claim that every figure in the month was computed under it: `generatePayslips`
+ * re-resolves at generation time and stamps each payslip with what it actually used, and the payslip's
+ * own stamp remains the authority for a figure. If an administrator activates a ruleset effective
+ * inside this month after it was opened, the two disagree — and the disagreement is then the evidence,
+ * which is the mid-month change ADR-0024 D7 wanted visible rather than silent.
+ */
+async function openingStatutoryVersion(tx: Tx, companyId: string, period: string): Promise<string | null> {
+  const [co] = await tx.select({ country: company.country }).from(company).where(eq(company.id, companyId)).limit(1);
+  const pack = packFor(co?.country);
+  if (!pack) return null;
+  const [pYear, pMonth] = period.split('-').map(Number);
+  const periodEnd = `${period}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+  return (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).version;
+}
+
 export async function createBatch(
   ctx: SessionContext,
   p: {
@@ -1520,9 +1570,11 @@ export async function createBatch(
     }
 
     // Every batch belongs to a pay_period parent (the statutory month). Find-or-create it; a period
-    // row may already exist (e.g. an earlier draft run was deleted) — reuse it. The month-level
-    // ruleset version is snapshotted onto the period when payslips are first generated (2C-4), so it
-    // is left null here.
+    // row may already exist (e.g. an earlier draft run was deleted) — reuse it. A month CREATED here
+    // records the ruleset version it is opened under; a month that already exists is reused exactly as
+    // it stands, recorded version or absence of one included. See `openingStatutoryVersion` (00e28308)
+    // — which replaces the claim this comment used to make, that the snapshot happened at first
+    // payslip generation. Nothing did that.
     const [existingPeriod] = await tx
       .select({ id: payPeriod.id })
       .from(payPeriod)
@@ -1532,7 +1584,14 @@ export async function createBatch(
     if (!periodId) {
       const [createdPeriod] = await tx
         .insert(payPeriod)
-        .values({ tenantId: ctx.tenantId, companyId: p.companyId, period: p.payPeriod, status: 'open' })
+        .values({
+          tenantId: ctx.tenantId,
+          companyId: p.companyId,
+          period: p.payPeriod,
+          status: 'open',
+          // 00e28308 — recorded HERE, on the one statement that creates the month, and nowhere else.
+          statutoryVersion: await openingStatutoryVersion(tx, p.companyId, p.payPeriod),
+        })
         .returning({ id: payPeriod.id });
       periodId = createdPeriod.id;
       await appendEvent(tx, {
@@ -1755,7 +1814,14 @@ export async function createAdditionalRun(
     if (!periodId) {
       const [createdPeriod] = await tx
         .insert(payPeriod)
-        .values({ tenantId: ctx.tenantId, companyId: p.companyId, period: p.payPeriod, status: 'open' })
+        .values({
+          tenantId: ctx.tenantId,
+          companyId: p.companyId,
+          period: p.payPeriod,
+          status: 'open',
+          // 00e28308 — recorded HERE, on the one statement that creates the month, and nowhere else.
+          statutoryVersion: await openingStatutoryVersion(tx, p.companyId, p.payPeriod),
+        })
         .returning({ id: payPeriod.id });
       periodId = createdPeriod.id;
       await appendEvent(tx, {
