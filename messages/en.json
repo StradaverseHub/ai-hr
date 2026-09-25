@@ -3028,6 +3028,8 @@
       "statusNoEligibilityMatch": "No entitlement table applies",
       "statusCappedByMaxBalance": "Capped at 0 by Maximum Balance",
       "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on the Leave types screen.",
+      "statusPooledEntitlement": "No entitlement of its own — draws on the {pool} pool",
+      "statusPooledEntitlementTip": "This leave type has no entitlement table because it does not need one: every day taken on it is deducted from the {pool} pool. Giving it a table of its own is what would stop it drawing on {pool}.",
       "statusNoEligibilityMatchTip": "No benefit scheme describes this employee for this leave type, and the leave type has no default entitlement table, so no table decides their days. A scheme is optional and holds no list of names: it describes a population by job grade, department or length of service, it chooses between a leave type’s tables, and it is not what decides whether somebody is entitled.",
       "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
       "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})",

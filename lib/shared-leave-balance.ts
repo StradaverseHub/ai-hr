@@ -136,3 +136,55 @@ export function balanceStoryTypeId(row: {
 }): string {
   return row.sharedBalance ? row.sharedBalance.sourceLeaveTypeId : row.leaveTypeId;
 }
+
+/**
+ * 2a57a007 (r340) — THE BORROWER'S OWN ENTITLEMENT, WHICH IS NOTHING, SAID AS A NORMAL FACT.
+ *
+ * `balanceStoryTypeId` above points a borrower's BALANCE STORY at the pool, and that is right: the pool's
+ * ledger is where those days live. It also, and not by design, pointed the borrower's own ENTITLEMENT
+ * columns at the pool — so Emergency Leave printed Annual Leave's Entitlement (7.00), Annual Leave's Earned
+ * to Date (2.50) and Annual Leave's entitlement TABLE NAME, beside a Balance of 0.00. A row cannot hold
+ * seven days of entitlement and no balance at once; the reporter said so and was right.
+ *
+ * ⚠️ WHY THIS IS NOT "POINT THE BREAKDOWN AT THE BORROWER" — READ `balanceStoryTypeId` ABOVE FIRST. r209
+ * shipped exactly that and produced the worst possible screen: a borrower reading its own (permanently
+ * empty) breakdown printed a RED "create an entitlement table for it" notice, which is the one instruction
+ * that would END the borrowing this arrangement exists for. The pool's breakdown stays the source of the
+ * balance story. What changes is narrower: the two columns that are statements about THIS leave type read
+ * this type's own facts, and the diagnostic that fires on a missing table is told which kind of missing it
+ * is looking at.
+ *
+ * TWO SITUATIONS, TOLD APART. `balance_source_type_id` non-null already IS "this type has no table BECAUSE
+ * it borrows" — normal, and it should read as normal. Everything else with no table has one BY MISTAKE, and
+ * that is the state r209's notice exists to raise. The distinction is in the data; only the presentation
+ * conflated them. `pooledEntitlementCaption` below is that distinction, named once, so the screen's caption
+ * and the export's status column cannot decide it two different ways.
+ */
+
+export type PooledEntitlementCaption = {
+  /** The i18n leaf under `me.leaveBalanceTable` naming the arrangement. */
+  labelKey: 'statusPooledEntitlement';
+  /** The leaf carrying the hover explanation of why the absence of a table is CORRECT here. */
+  tipKey: 'statusPooledEntitlementTip';
+  /** The pool's leave-type name, interpolated as `{pool}`. */
+  pool: string;
+};
+
+/**
+ * THE POOLED CAPTION, OR NULL — and null means "say whatever you said before, exactly as before".
+ *
+ * `entitlementFromPool` is the pool's leave-type NAME on a BORROWER's row (set by
+ * app/leave/employee-balances/rows.ts off `isPoolBorrower`), null on the pool's own row and on every type in
+ * no pool. When it is set it OUTRANKS `entitlementStatus`, because that status was resolved for the POOL,
+ * and because r209's amber diagnostic must not fire here at all.
+ *
+ * ⚠️ DELIBERATELY NARROW: this decides the POOLED branch only and leaves `ENTITLEMENT_STATUS_LABEL_KEY` /
+ * `ENTITLEMENT_STATUS_TIP_KEY` / `entitlementStatusNeedsNotice` reading exactly as they read before on every
+ * other row — which is what keeps 31e39d74's and r266's cross-surface guards pinning the thing they were
+ * written to pin. A `null` return is the statement that this row is not the case this item is about.
+ */
+export function pooledEntitlementCaption(row: { entitlementFromPool: string | null }): PooledEntitlementCaption | null {
+  return row.entitlementFromPool == null
+    ? null
+    : { labelKey: 'statusPooledEntitlement', tipKey: 'statusPooledEntitlementTip', pool: row.entitlementFromPool };
+}

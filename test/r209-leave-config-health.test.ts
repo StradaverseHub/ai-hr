@@ -804,6 +804,18 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
    * says "This leave type has no entitlement table set up… Create an entitlement table for it" — over days
    * the employee can in fact spend, and instructing HR to do the one thing that would BREAK the pool.
    * Before r209 that row was a silent 0.00; a wrong instruction is worse than the silence it replaced.
+   *
+   * ⚠️ 2a57a007 (r340) CORRECTED THE OTHER HALF OF THIS FIX, AND THREE ASSERTIONS BELOW MOVED WITH IT.
+   * r209 stopped the wrong instruction by giving the borrower the POOL's WHOLE story, entitlement figures
+   * and table name included. The reporter has now raised that overshoot in as many words: Emergency Leave
+   * printed Annual Leave's Entitlement 7.00 and Earned to Date 2.50 beside a Balance of 0.00, and named
+   * Annual's entitlement table as if it were its own. A row cannot hold seven days of entitlement and no
+   * balance at once. So the borrower's OWN two columns now read 0.00 and it names no table — while the
+   * balance story stays the pool's (`balanceStoryTypeId`, asserted in the next case) and the red notice
+   * stays suppressed, which is this case's actual claim and is unchanged.
+   * The arrangement being replaced gets UPDATED here, never deleted: the new truth is asserted in the same
+   * place, so a regression to either the pre-r209 notice or the r209 overshoot fails in this file.
+   * test/2a57a007-borrower-entitlement-columns.test.ts pins the correction and its non-vacuity.
    */
   it('a BORROWER tells the POOL’s entitlement story — never “create a table” over days it can spend', async () => {
     const pool = await leaveTypeRow({ name: 'Annual Leave' });
@@ -830,11 +842,16 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     // The pool's story, whole, so the row cannot contradict itself in any column.
     expect(src.entitlementStatus).toBe('granted');
     expect(bor.entitlementStatus).toBe(src.entitlementStatus);
-    expect(bor.ytdEntitled, 'YTD Entitled beside a balance of 10.00').toBe(10);
-    expect(bor.ytdEntitled).toBe(src.ytdEntitled);
-    expect(bor.entitlementTemplateName).toBe('Annual — all staff');
+    expect(src.ytdEntitled, 'the pool keeps its Earned to Date').toBe(10);
+    expect(src.entitlementTemplateName, 'and its table name').toBe('Annual — all staff');
+    // 2a57a007 (r340) — AND THE BORROWER STATES ITS OWN, WHICH IS NOTHING. These three read 10.00 / 10.00 /
+    // 'Annual — all staff' under r209 and that is the overshoot the reporter raised; see this case's header.
+    expect(bor.ytdEntitled, 'Emergency Leave earns nothing of its own').toBe(0);
+    expect(bor.fullEntitlement, 'and is entitled to nothing of its own').toBe(0);
+    expect(bor.entitlementTemplateName, 'and must not name a table it has not got').toBeNull();
     // …and the caption that says WHOSE figure it is is still there, so one pool never reads as two.
     expect(bor.sharedBalance!.sourceLeaveTypeName).toBe('Annual Leave');
+    expect(bor.entitlementFromPool, 'which is what it says INSTEAD of a table name').toBe('Annual Leave');
   });
 
   it('every grid that captions a pooled balance looks its story up through the pool, not the row', () => {

@@ -53,6 +53,12 @@ export type EmployeeBalanceRow = {
    *  template's name); it simply had no reader on this screen. null ⇒ nothing resolved, which the status
    *  beside it now explains in words. */
   entitlementTemplateName: string | null;
+  /** 2a57a007 (r340) — THE POOL THIS ROW'S DAYS COME FROM, on a BORROWER's row only (null on the pool's own
+   *  row and on every unpooled type). It is what the Entitlement caption names INSTEAD of an entitlement
+   *  table, and it is also the fact that suppresses r209's red "no entitlement table" diagnostic for this one
+   *  row — see `entitlementStatusCaption` (lib/shared-leave-balance.ts), which both the screen and the export
+   *  read so the two cannot tell the same row apart differently. */
+  entitlementFromPool: string | null;
   /** r209 — set when this row's figures are another leave type's pool (`balance_source_type_id`). HR's grid
    *  needs it for the same reason the employee's does: two rows carrying one balance read as two. */
   sharedBalance: SharedLeaveBalanceInfo | null;
@@ -150,17 +156,48 @@ export async function employeeBalanceRows(
        * The POOL's row is untouched — its Taken is its own applications, and its Share is what it lent out.
        */
       const borrower = isPoolBorrower({ leaveTypeId: b.leaveTypeId, sharedBalance: row.sharedBalance });
+      /**
+       * r279 — THE TWO ENTITLEMENT FIGURES AS `deriveBalanceRow` DERIVED THEM OFF `bd`, and off nothing else:
+       * one breakdown, one derivation, never a second resolver (test/r279-earned-and-full-entitlement.test.ts
+       * pins that property on this very expression). They are NAMED here only because 2a57a007 (r340) gives a
+       * pooled borrower its own pair instead — see the branch below. Moving the read itself anywhere but `row`
+       * is what this and r279's guard forbid.
+       */
+      const derivedEntitlement = { ytdEntitled: row.ytdEntitled, fullEntitlement: row.fullEntitlement };
       return {
         leaveTypeId: b.leaveTypeId,
         leaveType: row.leaveType,
         code: b.code ?? '',
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
-        ytdEntitled: row.ytdEntitled,
-        fullEntitlement: row.fullEntitlement,
+        /**
+         * 2a57a007 (r340) — A BORROWER'S ENTITLEMENT IS ITS OWN, AND IT IS NOTHING.
+         *
+         * `bd` above is the POOL's breakdown, deliberately (see `balanceStoryTypeId`, and read the r209 note
+         * it carries before touching that). But Entitlement and Earned to Date are statements about THIS
+         * leave type, and taking them off the pool's breakdown printed the reporter's screen: Emergency
+         * Leave 7.00 / 2.50, beside a Balance of 0.00, naming Annual Leave's entitlement table as if it were
+         * its own. Both of those cannot be true and the false one is the entitlement — `core/read.ts` already
+         * sets a borrower's `accrued` and `balance` to 0.00 for exactly this reason ("it has no entitlement
+         * and no balance of its own, which is the honest statement").
+         *
+         * UNCONDITIONAL, not `row.x == null ? null : 0` like `taken` below, and the difference is deliberate:
+         * `taken`'s null is an ESS-HIDDEN figure, which must never become a 0.00 claim, whereas these two
+         * read null only when NO breakdown resolved — and a borrower's own entitlement is 0.00 whether or
+         * not the POOL resolved one. This builder empties `essView` (see the file header), so no ESS gate
+         * reaches here; if it ever gains an ESS-gated caller, gate these the way `taken` is gated.
+         */
+        ytdEntitled: borrower ? 0 : derivedEntitlement.ytdEntitled,
+        fullEntitlement: borrower ? 0 : derivedEntitlement.fullEntitlement,
         share: row.share,
         pendingShare: row.pendingShare,
         entitlementStatus: row.entitlementStatus,
-        entitlementTemplateName: bd?.entitlementTemplateName ?? null,
+        // 2a57a007 (r340) — and it does NOT name the pool's table. "Entitlement table: Executive Annual
+        // Leave" on the Emergency row claimed a table this type does not have and must never have; the
+        // caption `entitlementFromPool` drives says where the days actually come from instead.
+        entitlementTemplateName: borrower ? null : (bd?.entitlementTemplateName ?? null),
+        // 2a57a007 (r340) — the pool's NAME, which is the whole of what a borrower has to say about its own
+        // entitlement. Off `row.sharedBalance` (the descriptor `leaveBalances` attached), never re-derived.
+        entitlementFromPool: borrower ? (row.sharedBalance?.sourceLeaveTypeName ?? null) : null,
         sharedBalance: row.sharedBalance,
         broughtForward: row.broughtForward,
         // 2a57a007 — see `borrower` above: a borrower's days print under Share / Pending Share only.

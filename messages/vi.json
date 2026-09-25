@@ -3028,6 +3028,8 @@
       "statusNoEligibilityMatch": "Không có bảng định mức nào áp dụng",
       "statusCappedByMaxBalance": "Bị giới hạn về 0 bởi Số dư tối đa",
       "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này trên màn hình Loại nghỉ phép.",
+      "statusPooledEntitlement": "Không có định mức riêng — dùng chung quỹ {pool}",
+      "statusPooledEntitlementTip": "Loại nghỉ này không có bảng định mức vì không cần: mỗi ngày nghỉ đều được trừ vào quỹ {pool}. Tạo bảng định mức riêng cho nó chính là điều sẽ khiến nó không còn dùng quỹ {pool} nữa.",
       "statusNoEligibilityMatchTip": "Không có chế độ phúc lợi nào mô tả nhân viên này cho loại nghỉ này, và loại nghỉ này cũng không có bảng định mức mặc định, nên không bảng nào quyết định số ngày của họ. Chế độ là tùy chọn và không giữ danh sách tên nào: nó mô tả một nhóm theo ngạch bậc, phòng ban hoặc thâm niên, nó chọn giữa các bảng của một loại nghỉ, và nó không phải là thứ quyết định ai có định mức hay không.",
       "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
       "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})",
