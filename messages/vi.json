@@ -4643,7 +4643,7 @@
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
-      "preChecksBlockedPayModeError": "Không thể xủ lý lương: {n} nhân viên có cơ cấu lương Kỳ tùy chỉnh mà bảng lương không tính được. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này.",
+      "preChecksBlockedPayModeError": "Không thể xử lý lương: {n} nhân viên có cơ cấu lương Kỳ tùy chỉnh mà bảng lương không tính được. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này.",
       "preChecksBlockedTp3Error": "Không thể xử lý lương: {n} nhân viên có Mẫu TP3 của năm nay chưa vào các con số bảng lương. Hãy mở Mẫu TP3 của từng người và lưu lại trước.",
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
       "skipped": {

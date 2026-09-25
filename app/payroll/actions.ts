@@ -101,6 +101,11 @@ export async function generateAction(formData: FormData) {
     // record; a TP3 year mismatch is a different fault on employees whose salary record is fine, and a
     // refusal that misdescribes itself sends the operator to the wrong screen.
     const tp3Blockers = checks.tp3YearMismatch?.length ?? 0;
+    // Item 4ca06dea — the same shape again, and the same reason: generatePayslips ALREADY refuses these
+    // runs (`unpayablePayMode` is the third term of its exact set), so before this the operator pressed
+    // Generate and got `preChecksBlockedError` — a message about a missing salary record, for employees
+    // whose salary record is fine. Named here, before the press, in words that match the actual fault.
+    const payModeBlockers = checks.unpayablePayMode?.length ?? 0;
     // 297ae65a — a non-MYR/mixed-currency salary joins the confirm-to-proceed warnings (never blocks).
     // r79 — so does an explicit "Subject to HRDF = Yes" at a company with no HRD Corp registration band.
     // WARN, not REFUSE: the flag is legitimate forward setup, the levy is correctly zero either way, and
@@ -114,6 +119,8 @@ export async function generateAction(formData: FormData) {
       (checks.hrdfSubjectUnregistered?.length ?? 0);
     if (blockers > 0) {
       errMsg = t('preChecksBlockedError', { n: blockers });
+    } else if (payModeBlockers > 0) {
+      errMsg = t('preChecksBlockedPayModeError', { n: payModeBlockers });
     } else if (tp3Blockers > 0) {
       errMsg = t('preChecksBlockedTp3Error', { n: tp3Blockers });
     } else if (warnings > 0 && !acknowledged) {
