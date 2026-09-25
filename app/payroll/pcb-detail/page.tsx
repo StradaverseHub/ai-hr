@@ -46,7 +46,7 @@ export default async function PcbDetailPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  // SHAPE-CHECK BEFORE THE QUERY, the same guard the run screens carry (app/payroll/[batchId]/*). `payslip.id`
+  // SHAPE-CHECK BEFORE THE QUERY, the same guard the run screens under app/payroll/[batchId] carry. `payslip.id`
   // is a uuid column, so a mangled id out of a shared link — `?payslipId=abc`, a stray space, a truncated
   // copy-paste — reaches Postgres as `invalid input syntax for type uuid` and, with no try/catch here and no
   // app/error.tsx anywhere in the tree, becomes an HTTP 500 rather than the "not found" card this page's own
@@ -98,14 +98,14 @@ export default async function PcbDetailPage({
   // A payslip whose run recorded no working still gets the schedules: the DECLARATIONS are real and
   // readable even when the month's trace is not, and the rows fed from the trace say so individually.
   //
-  // NOTE FOR ANY LATER EDITOR: EVERY comment below this point in this file must be a LINE comment, and
-  // must not contain the two-character close of a block comment either. The shape-check note further up
-  // cites a run-screen path with a trailing wildcard, and those two characters OPEN a block comment that
-  // nothing in this file ever closes. TypeScript does not care — it is inside a line comment. The source
-  // guards in test/pcb-detail.test.ts do: they comment-strip this file before matching, so the first
-  // block-comment CLOSE appearing anywhere below that note silently deletes every line in between, and
-  // the guard then fails claiming the scope fence is gone. Correcting the note itself means editing a
-  // line this round does not own, so it is recorded here instead of quietly rewritten.
+  // ⚠️ A TRAP REMOVED ON THE WAY PAST, RECORDED SO IT IS NOT RE-INTRODUCED. The shape-check note above
+  // used to end its citation with a trailing wildcard, and those two characters OPEN a block comment.
+  // TypeScript does not care — they are inside a line comment — but test/pcb-detail.test.ts and
+  // test/7f251381-pcb-lhdn-worksheet.test.ts comment-STRIP this file before matching the scope fence in
+  // it, so the first block-comment close appearing anywhere below that line deleted every line in
+  // between and the guard then failed claiming the fence was gone. Adding the ordinary doc comment this
+  // block started life as was enough to trigger it. The citation no longer carries the wildcard, so a
+  // block comment here is safe again; do not put one back into a line comment in this file.
   const slipData =
     row && explanation && explanation.kind === 'mtd'
       ? await pcbSlipData(s, {
