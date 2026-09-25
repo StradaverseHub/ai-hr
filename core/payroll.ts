@@ -2492,9 +2492,31 @@ export async function setPayrollDeductionInput(
  * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated` and PCB consumes `∑LP + LP₁`, so feeding
  * the full annual every month over-relieves. Per ADR-0050 §0.1 (delta method) the feed is
  *   feed = max(0, annual − ∑LP_already_accumulated_this_year_for_the_paymaster_employment)
- * reading `∑LP` by replaying this assessment year's prior payslips' `st.lp` — the SAME source the kernel
- * uses — so `∑LP + LP₁` converges to the declared annual, claimed exactly once. Self-correcting under
- * mid-year adoption, re-run/idempotency, and mid-year correction.
+ * reading `∑LP` by replaying this assessment year's prior payslips' `st.lp`, so `∑LP + LP₁` converges to
+ * the declared annual, claimed exactly once. Self-correcting under mid-year adoption, re-run/idempotency,
+ * and mid-year correction.
+ *
+ * ⚠️ THE REPLAY IS NO LONGER THE WHOLE OF THE KERNEL'S ∑LP, AND THAT IS DELIBERATE (item 20837372).
+ * Since migration 0488 `generatePayslips` OPENS `acc.lpAccumulated` with the Form TP3 Section D balance
+ * (`employee_statutory_my.tp3_lp`) and replays prior payslips on top; this function reads the replay
+ * ONLY. The two are asking different questions and the difference is not drift:
+ *   · the kernel asks "what deductions has this person had THIS YEAR, from anywhere" — the
+ *     specification's printed page 11 defines ∑LP as "Accumulated allowable deductions in the current
+ *     year, including from previous employment, if any", so the previous employer's reliefs belong in it;
+ *   · this function asks "how much of the annual THIS employee declared TO US on their TP1 is still
+ *     unfed" — and a relief claimed through a DIFFERENT employer has never been fed by us, so netting it
+ *     off here would silently shrink a declaration the employee made to this employer.
+ * Subtracting `tp3_lp` here would do exactly that, and is why it is not subtracted.
+ *
+ * ⚠️ RISK, NAMED RATHER THAN SILENTLY DECIDED: because the two sides are independent, an employee who
+ * declares the SAME relief code on their TP3 (already claimed at the previous employer) AND on their
+ * TP1 with us now has both counted, and their combined ∑LP can exceed the statutory annual limit for
+ * that code. `checkTp1OverClaim` caps a TP1 declaration against our own declarations only; it has never
+ * seen a TP3. Before this round Section D contributed nothing, so the stacking was not reachable. It is
+ * an employee-declaration correctness problem that LHDN's own design leaves with the employee (each
+ * employer is told what to deduct and cannot audit the other), and the year-end assessment settles it —
+ * but a cross-form per-code cap is the right follow-up and it is NOT built here, because deciding which
+ * of the two declarations yields is policy this repo has no source for.
  *
  * Routing (§0.5): the relief is keyed by person but tp1_deduction is per-employment, so for a person with
  * concurrent employments in the batch it is written ONLY to `designated_paymaster_employment_id` (when set;
@@ -2619,8 +2641,9 @@ export async function prefillTp1FromSelfRelief(
     }
     if (annualByPerson.size === 0) return { applied: 0, skipped: 0 };
 
-    // ∑LP already accumulated this assessment year per target employment — replay prior payslips' st.lp,
-    // the SAME ledger the PCB accumulator uses (generatePayslips). Prior = earlier pay periods this year.
+    // ∑LP already accumulated this assessment year per target employment — replay prior payslips' st.lp.
+    // Prior = earlier pay periods this year. ⚠️ THE TP3 SECTION D OPENING BALANCE IS DELIBERATELY NOT
+    // ADDED HERE (item 20837372); the header above says why, and a test pins it.
     const targetEmpIds = personIds.map((pid) => targetByPerson.get(pid)!).filter(Boolean);
     const priorSlips = targetEmpIds.length
       ? await tx
@@ -3542,6 +3565,8 @@ export async function generatePayslips(
         tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
         tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
         tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
+        // ∑LP carried in from previous employment — Form TP3 Section D (item 20837372, migration 0488).
+        tp3Lp: employeeStatutoryMy.tp3Lp,
         // 1.2.4 Zakat election (per-employee). The current row is read like every other statutory field
         // (this config class is not effective-dated); effective from/to are display-only and not read here.
         zakatActive: employeeStatutoryMy.zakatActive,
@@ -4177,7 +4202,15 @@ export async function generatePayslips(
         epfClaimed: tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0,
         pcbPaid: tp3Applies ? Number(e.tp3Pcb ?? 0) : 0,
         zakatPaid: tp3Applies ? Number(e.tp3Zakat ?? 0) : 0,
-        lpAccumulated: 0,
+        // ∑LP — item 20837372. This was a hard `0` until migration 0488, which is the whole defect: the
+        // specification's printed page 22 names ∑LP as one of the FOUR variables a TP3 feeds ("(Y–K*),
+        // X, Z and ∑LP") and printed page 11 defines it as "Accumulated allowable deductions in the
+        // current year, INCLUDING FROM PREVIOUS EMPLOYMENT, if any". ∑LP is SUBTRACTED inside P, so a
+        // zero here made P too high and over-deducted every new joiner who handed in a Section D.
+        //
+        // The prior-payslip replay below then ADDS this employer's own months on top, exactly as it does
+        // for the other four: previous employment opens the balance, this employment accumulates onto it.
+        lpAccumulated: tp3Applies ? Number(e.tp3Lp ?? 0) : 0,
       });
     }
     // LHDN PCB 2026 (feedback 09b554e9) — per-code YTD exemption usage, DERIVED like the PCB accumulators:
@@ -8797,8 +8830,19 @@ async function preProcessChecksTx(
       );
     for (const t of tp3Rows) {
       const seed = deriveAccumulatorSeed(t.payload);
-      // An all-blank Section C declares nothing, so nothing can be dropped by not reading it.
-      if (seed && (seed.netRemuneration !== 0 || seed.epfClaimed !== 0 || seed.pcbPaid !== 0 || seed.zakatPaid !== 0)) {
+      // An all-blank Section C AND Section D declares nothing, so nothing can be dropped by not reading
+      // it. ⚠️ `lpDeclared` JOINED THIS TEST IN ITEM 20837372: a form whose only money is in Section D
+      // now moves the monthly deduction, so a year mismatch on it drops a real figure. Leaving it out
+      // would make this gate quietly narrower than the kernel it guards — the exact drift the comment
+      // above ("the gate and the thing it guards cannot drift apart") was written to prevent.
+      if (
+        seed &&
+        (seed.netRemuneration !== 0 ||
+          seed.epfClaimed !== 0 ||
+          seed.pcbPaid !== 0 ||
+          seed.zakatPaid !== 0 ||
+          seed.lpDeclared !== 0)
+      ) {
         tp3MoneyPersonIds.add(t.personId);
       }
     }

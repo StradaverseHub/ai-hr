@@ -11,8 +11,12 @@
  * ⚠️ IT NOW MOVES TAX — item 1bb09a73, and this is STAGE 2 of the boundary stage 1 wrote down.
  *
  * `core/payroll.ts` seeds the PCB accumulators from `employee_statutory_my.tp3_*` — `tp3Applies =
- * e.tp3Year === pYear`, then netRemuneration / epfClaimed / pcbPaid / zakatPaid, LHDN's ∑(Y−K), K, X and
- * Z. Stage 1 wrote the form into `employee_tp3` and stopped, so the figures HR keyed off the paper form
+ * e.tp3Year === pYear`, then netRemuneration / epfClaimed / pcbPaid / zakatPaid / lp, LHDN's ∑(Y−K), K,
+ * X, Z and ∑LP. ⚠️ ∑LP IS NEW IN ITEM 20837372 and it is the reason to re-read this header: stage 2 of
+ * item 1bb09a73 wired three of the four variables the specification's printed page 22 names, SECTION D
+ * was the missing fourth, and a new joiner who declared their previous employer's reliefs was deducted
+ * MORE than they owed because ∑LP is subtracted inside P. Migration 0488 adds the column and backfills
+ * it. Stage 1 wrote the form into `employee_tp3` and stopped, so the figures HR keyed off the paper form
  * reached nothing: production carried ONE `employee_tp3` row (person b57268ae) and ONE statutory row
  * with a `tp3_year` (person d4ef0b58) — two stores holding DIFFERENT PEOPLE, a form-filler contributing
  * nothing to payroll and payroll figures with no form behind them. `saveTp3` now writes both.
@@ -34,14 +38,20 @@
  *
  * ══ THE OVERLAP IS STILL SHOWN, BECAUSE A LATER HAND EDIT IS STILL ALLOWED ══════════════════════════
  *
- * `deriveAccumulatorSeed` computes the seed from the form's own boxes — (C1 − ΣC2) − C3, C3, C5, C4(i) —
- * and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
+ * `deriveAccumulatorSeed` computes the seed from the form's own boxes — (C1 − ΣC2) − C3, C3, C5, C4(i)
+ * and, since item 20837372, ∑D1…D17 — and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
  * read the same function, so the figure an operator is shown is the figure that lands. The Payroll tab's
  * `setTp3Action` still edits the columns by hand afterwards and this file does not fight it; the strip
  * shows the difference. What is NOT tolerated is the YEAR diverging, which `core/payroll.ts` refuses at
  * the pre-processing gate rather than seeding a silent zero onto a statutory deduction.
  *
  * ══ THE TAXONOMY IS THE TP1'S, READ FOR A DIFFERENT EMPLOYER ════════════════════════════════════════
+ *
+ * ⚠️ AND SINCE ITEM 20837372 THAT SHARED TAXONOMY IS LOAD-BEARING ON THE MONEY PATH, not only on the
+ * two screens: Section D's total becomes ∑LP, the same variable this employer's own TP1 declarations
+ * feed month by month through `payslip.statutory.lp`. The specification's own definition is what makes
+ * one variable carry both — printed page 11: "∑LP  Accumulated allowable deductions in the current
+ * year, including from previous employment, if any".
  *
  * `TP3_SECTION_D` is the pack's `tp3Catalogue.sectionD`, which is the SAME ARRAY OBJECT as
  * `taxReliefCatalogue.items` — the seventeen reliefs the TP1 calls C1–C17 and the TP3 calls D1–D17, with
@@ -296,6 +306,19 @@ export type Tp3AccumulatorSeed = {
   epfClaimed: number;
   pcbPaid: number;
   zakatPaid: number;
+  /**
+   * ∑LP — the total of SECTION D (D1–D17), the reliefs already claimed through the previous employer.
+   *
+   * ⚠️ ADDED BY ITEM 20837372, AND IT IS THE FOURTH OF THE FOUR VARIABLES THE SPECIFICATION NAMES.
+   * Printed page 22 of `spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf`, item 10, verbatim: "The
+   * information amount from the TP3 Form shall be treated in the formula as variable (Y–K*), X, Z and
+   * ∑LP." Until this round only the first three existed here and Section D reached nothing at all.
+   *
+   * SUMMED FROM THE ITEM AMOUNTS, never from a client total: `readGroup` already made each item's
+   * `amount` the server's own sum of its sub-lines and already refused anything over that item's
+   * printed annual limit, so this total cannot exceed what Section D is allowed to carry.
+   */
+  lpDeclared: number;
   /** ΣC2 — shown in its own right, because it is the figure the old single column swallowed. */
   exemptTotal: number;
   /** C1 — the gross before anything comes off it. */
@@ -310,14 +333,62 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
   const epfClaimed = Number(c.c3?.amount ?? 0);
   const pcbPaid = Number(c.c5?.amount ?? 0);
   const zakatPaid = Number(c.c4?.subItems?.i ?? 0);
+  // ∑LP — Section D, item 20837372. OVER THE CATALOGUE, not over the payload's own keys: a stored
+  // payload written before an item left the schedule would otherwise keep contributing to a statutory
+  // deduction through a line the form no longer has. TP3_SECTION_D is the same array the save validated
+  // against, so what is summed here is exactly what the screen showed and the form printed.
+  const lpDeclared = round2(
+    TP3_SECTION_D.reduce((sum, item) => sum + Number((payload.sectionD ?? {})[item.code]?.amount ?? 0), 0),
+  );
   return {
     gross,
     exemptTotal,
     epfClaimed,
     pcbPaid,
     zakatPaid,
+    lpDeclared,
     netRemuneration: round2(gross - exemptTotal - epfClaimed),
   };
+}
+
+/**
+ * The C2 sub-lines whose keyed figure is ABOVE the statutory exemption limit for that line (item
+ * 20837372). Empty when every box is within its limit, or when no limit is sourced for it.
+ *
+ * ⚠️ IT REPORTS; IT NEVER CAPS AND IT NEVER REFUSES, and the reason is the form itself. TP3 Section C
+ * prints ONE money column and no limit column (verified on the agency's own Exhibit 2, printed page 39,
+ * and on the standalone `bm-borang-tp3-2026.pdf`), so ADR-0008's "an item with no printed cap is
+ * captured and never blocked" decides it. Beyond that, the specification's printed page 20 item 9 says
+ * of the exemption limits "Any amount exceed the restricted amount shall be taxable" — addressed to the
+ * employer running the payroll, which for a TP3 is the PREVIOUS employer. The over-limit part is
+ * therefore already sitting in C1 as taxable pay by the time the form is filled in, and capping C2 here
+ * would tax the same ringgit twice. A figure over the limit means the FORM was filled wrong; the
+ * operator fixes the form, and this is what tells them to.
+ */
+export type Tp3ExemptionOverLimit = {
+  /** 'c2' — the Section C line. */
+  code: string;
+  /** 'i' | 'ii' | 'iv' — the roman sub-line the form prints. */
+  subCode: string;
+  amount: number;
+  limit: number;
+  /** amount − limit, the figure to name in the warning. */
+  excess: number;
+};
+
+export function tp3ExemptionOverLimits(payload: Tp3Payload | null | undefined): Tp3ExemptionOverLimit[] {
+  if (!payload || payload.form !== 'tp3-2026') return [];
+  const out: Tp3ExemptionOverLimit[] = [];
+  for (const line of TP3_SECTION_C) {
+    const stored = (payload.sectionC ?? {})[line.code];
+    for (const sub of line.subItems) {
+      const limit = sub.exemptionLimit;
+      if (limit == null) continue; // no sourced limit — nothing to compare against, and none is invented
+      const amount = Number(stored?.subItems?.[sub.code] ?? 0);
+      if (amount > limit) out.push({ code: line.code, subCode: sub.code, amount, limit, excess: round2(amount - limit) });
+    }
+  }
+  return out;
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────────────────────────────
@@ -409,6 +480,8 @@ export type Tp3Identity = {
     epfClaimed: number | null;
     pcbPaid: number | null;
     zakatPaid: number | null;
+    /** ∑LP — Section D's projection (item 20837372). Null = none recorded, which the kernel reads as 0. */
+    lp: number | null;
   };
 };
 
@@ -425,6 +498,7 @@ export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Pr
         epf: employeeStatutoryMy.tp3EpfClaimed,
         pcb: employeeStatutoryMy.tp3PcbPaid,
         zakat: employeeStatutoryMy.tp3ZakatPaid,
+        lp: employeeStatutoryMy.tp3Lp,
       })
       .from(person)
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
@@ -446,6 +520,7 @@ export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Pr
         epfClaimed: num(row?.epf),
         pcbPaid: num(row?.pcb),
         zakatPaid: num(row?.zakat),
+        lp: num(row?.lp),
       },
     };
   });
@@ -486,6 +561,7 @@ async function projectSeedOntoStatutory(
       epf: employeeStatutoryMy.tp3EpfClaimed,
       pcb: employeeStatutoryMy.tp3PcbPaid,
       zakat: employeeStatutoryMy.tp3ZakatPaid,
+      lp: employeeStatutoryMy.tp3Lp,
     })
     .from(employeeStatutoryMy)
     .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -511,6 +587,9 @@ async function projectSeedOntoStatutory(
     tp3EpfClaimed: money(p.seed.epfClaimed),
     tp3PcbPaid: money(p.seed.pcbPaid),
     tp3ZakatPaid: money(p.seed.zakatPaid),
+    // ∑LP — Section D (item 20837372). Written in the SAME statement as the other four and governed by
+    // the SAME `tp3_year`, so the five can never describe different forms.
+    tp3Lp: money(p.seed.lpDeclared),
   };
   await tx
     .update(employeeStatutoryMy)
@@ -537,6 +616,7 @@ async function projectSeedOntoStatutory(
         tp3EpfClaimed: stat.epf,
         tp3PcbPaid: stat.pcb,
         tp3ZakatPaid: stat.zakat,
+        tp3Lp: stat.lp,
       },
       after,
     },
@@ -562,6 +642,7 @@ async function clearProjectionForYear(
       epf: employeeStatutoryMy.tp3EpfClaimed,
       pcb: employeeStatutoryMy.tp3PcbPaid,
       zakat: employeeStatutoryMy.tp3ZakatPaid,
+      lp: employeeStatutoryMy.tp3Lp,
     })
     .from(employeeStatutoryMy)
     .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -573,6 +654,10 @@ async function clearProjectionForYear(
     tp3EpfClaimed: null,
     tp3PcbPaid: null,
     tp3ZakatPaid: null,
+    // ∑LP is withdrawn with the rest (item 20837372). Leaving it behind would keep LOWERING the monthly
+    // deduction from a Section D on a form that no longer exists — the same half of the production
+    // defect this function was written for, pointing the other way.
+    tp3Lp: null,
   };
   await tx
     .update(employeeStatutoryMy)
@@ -595,20 +680,33 @@ async function clearProjectionForYear(
         tp3EpfClaimed: stat.epf,
         tp3PcbPaid: stat.pcb,
         tp3ZakatPaid: stat.zakat,
+        tp3Lp: stat.lp,
       },
       after,
     },
   });
 }
 
-/** Does this form assert any money at all? An all-blank Section C carries nothing to lose. */
+/**
+ * Does this form assert any money at all? An all-blank Section C AND Section D carries nothing to lose.
+ *
+ * ⚠️ SECTION D COUNTS SINCE ITEM 20837372. It did not before, because it reached nothing; now it lowers
+ * the monthly deduction, so a form carrying ONLY Section D has money that must land somewhere. Saving
+ * it against a person with no statutory profile would recreate exactly the defect item 1bb09a73 closed
+ * — a form whose figures reach no calculation — in the one section that used to be harmless.
+ */
 const seedCarriesMoney = (s: Tp3AccumulatorSeed) =>
-  s.gross !== 0 || s.exemptTotal !== 0 || s.epfClaimed !== 0 || s.pcbPaid !== 0 || s.zakatPaid !== 0;
+  s.gross !== 0 ||
+  s.exemptTotal !== 0 ||
+  s.epfClaimed !== 0 ||
+  s.pcbPaid !== 0 ||
+  s.zakatPaid !== 0 ||
+  s.lpDeclared !== 0;
 
 function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
   if (stat == null && seedCarriesMoney(seed)) {
     throw new Tp3Error(
-      'This Form TP3 records previous-employment pay, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
+      'This Form TP3 records previous-employment pay or reliefs, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
     );
   }
 }

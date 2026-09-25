@@ -629,6 +629,10 @@ describe('df35d60d · the record', () => {
 
   it('lets D16 exceed 7,000 across its two bands, because they are two claims and not a group', async () => {
     const { personId } = await hire();
+    // ⚠️ ITEM 20837372 — a statutory row is now REQUIRED for a Section-D-only form too. Section D used
+    // to reach nothing, so it had nothing to lose and saved against a person the tax calculation could
+    // not read. It is now ∑LP, so it is money, and `throwIfNowhereToLand` covers it like the rest.
+    await withStatutoryRow(personId);
     await saveTp3(adminCtx(b), {
       personId,
       assessmentYear: YEAR,
@@ -640,6 +644,10 @@ describe('df35d60d · the record', () => {
 
   it('computes every item amount server-side — a client total is never trusted', async () => {
     const { personId } = await hire();
+    // ⚠️ ITEM 20837372 — a statutory row is now REQUIRED for a Section-D-only form too. Section D used
+    // to reach nothing, so it had nothing to lose and saved against a person the tax calculation could
+    // not read. It is now ∑LP, so it is money, and `throwIfNowhereToLand` covers it like the rest.
+    await withStatutoryRow(personId);
     await saveTp3(adminCtx(b), {
       personId,
       assessmentYear: YEAR,

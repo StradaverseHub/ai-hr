@@ -2801,6 +2801,13 @@
       "when": 1789980197344,
       "tag": "0487_leave_credit_claim_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1789980198344,
+      "tag": "0488_tp3_section_d_lp",
+      "breakpoints": true
     }
   ]
 }
