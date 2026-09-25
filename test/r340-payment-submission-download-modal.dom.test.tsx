@@ -177,14 +177,20 @@ describe('e78fd03d (B) — clicking Download opens the selection pop-up', () => 
     mount({ periodKind: 'month' });
     openDialog();
     const form = document.querySelector('form')!;
+    const field = (name: string) => {
+      const el = form.querySelector(`select[data-field="${name}"]`) as HTMLSelectElement | null;
+      // Asserted BEFORE it is read, so a missing handle fails as this sentence rather than as a
+      // TypeError on null three lines later.
+      expect(el, `the pop-up must carry a ${name} control`).not.toBeNull();
+      return el!;
+    };
     for (const name of ['year', 'month']) {
-      const el = form.querySelector(`select[data-field="${name}"]`) as HTMLSelectElement;
       // A `name` here would put a stray `year=`/`month=` on the download URL beside the periodKey the
       // route actually reads — two spellings of one period, which is what the hidden input removed.
-      expect(el.getAttribute('name'), `the ${name} select must not submit a field of its own`).toBeNull();
+      expect(field(name).getAttribute('name'), `the ${name} select must not submit a field of its own`).toBeNull();
     }
     // The company select DOES submit, under the name the route reads.
-    expect(form.querySelector('select[data-field="company"]')!.getAttribute('name')).toBe('companyId');
+    expect(field('company').getAttribute('name')).toBe('companyId');
   });
 });
 
