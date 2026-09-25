@@ -331,3 +331,43 @@ geofencing behaviour is affected — only where the screens live and what the me
 - Consequence worth stating: the row left `MODULE_OF_HREF`, so the register is no longer hidden from a
   tenant that has not bought the billable `attendance` module — the same un-gating 4509d2b8 made for
   Holidays. Pinned by `test/work-location-organization-relocation.test.ts`.
+
+## Amended 2026-09-25 (639bf4a5 rev 2, r338) — the register is **Attendance › Locations** again, and it is a COMPANY LISTING
+The amendment above describes a structure that no longer exists, and is left standing because it is the
+record of where the addresses in this ADR came from. Read it as history; this section is the current
+shape. Again: no migration, no service change, no schema change, no RLS change. Nothing in this ADR's
+model, storage or geofencing behaviour is affected.
+
+- **The menu row moved back.** The reporter contested r336's move after it shipped and asked for the
+  screen under **Attendance**, renamed **Locations**, listed by company, with Add / View / Edit each on a
+  screen of its own. Under CLAUDE.md §1 that is the owner's decision. The row is a child of
+  `ATTENDANCE_NAV` (`packs/attendance/index.ts`) again, under `labelKey: 'locations'`.
+- **The ADDRESS did not move back, and neither did the screen key.** `/admin/work-locations` is
+  unchanged — they asked to rename the function, not the URL, and a second move in two days would churn
+  every bookmark again and need the three `/admin/locations` redirect stubs re-pointed for nothing.
+  `screenKey: 'locations'` is a permission identity stored role configs may name, and has survived both
+  moves untouched. So every `/admin/work-locations/…` path in the amendment above is still current.
+- **The register is now a COMPANY LISTING**: Company | Location | Status | Action, every company the
+  caller administers on it whether or not it has a location, scoped by
+  `listCompanies(s, { adminOnly: true })` — the database's own `app.is_admin_for`, which is the same
+  predicate the company table's WITH CHECK uses. It renders no form at all. A company with more than one
+  location gets one LINE PER LOCATION, `rowSpan`ned under a single Company cell; nothing is summarised
+  behind a count. **Status is a DERIVED word** — `location` has no active/inactive column — defined on
+  screen as "at least one location that is not archived".
+- **A location's clocking points render on the location's own screens** (`/admin/work-locations/[id]`
+  read-only, `/admin/work-locations/[id]/edit` with their controls), which is what "a site and its points
+  are maintained in one place" means in practice. The points that link to NO location — optional since
+  f9afd1ce / migration 0459 — would have had nowhere to render once the register became a listing, so
+  they have a screen of their own at `/admin/work-locations/clocking`, linked from the listing with a
+  count. Every one of those routes is registered on the same unchanged `locations` screen column.
+- **The pack-ownership half of the r336 amendment is UNCHANGED.** The surface claim on
+  `app/admin/locations/` is still gone and was NOT re-added at the new address: the ADR-0080 ratchet is
+  about IMPORTS, not menus, and every screen in the tree still consumes clocking through
+  `packs/attendance/service`. Those allowlists only ever shrink.
+- **Consequence worth stating, because it reverses the one stated above:** the row is back in
+  `MODULE_OF_HREF`, so the register is entitlement-gated behind the billable `attendance` module again —
+  the 4509d2b8 Holidays argument in reverse. The tenant holds `attendance`, so there is no live impact; a
+  future Leave-only customer would have no route to the register or its branch mapping. The plan offered
+  to keep it un-gated and the reporter did not answer, so it is built gated, as they described it.
+  Un-gating it is one hand-written `MODULE_OF_HREF` exemption. Pinned by
+  `test/work-location-organization-relocation.test.ts`.
