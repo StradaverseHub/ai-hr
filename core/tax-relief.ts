@@ -3,8 +3,14 @@
  *
  * An employee declares their optional reliefs (TP1) per assessment year on /me, and HR maintains the same
  * record on /payroll/transactions/tp1 — since 7ad37961 one record per DEDUCTION MONTH. The SUM of the
- * winning APPROVED declaration per month, over the months already effective, feeds monthly PCB/MTD
- * through `prefillTp1FromSelfRelief` (core/payroll).
+ * winning APPROVED declaration per month, over the months already effective, feeds monthly PCB/MTD as LP₁.
+ *
+ * ⚠️ WHO CONSUMES IT CHANGED IN item 3fa088fb, and this line used to name the wrong thing. The consumer
+ * was `prefillTp1FromSelfRelief` — a MANUAL form action behind a button on the draft batch screen — and
+ * nothing called it when payroll was processed, so the SUM below reached a payslip only if an operator
+ * remembered to press the button. Measured on production: 8 approved 2026 declarations, 88 payslips
+ * issued, ZERO carrying a relief. `generatePayslips` now DERIVES LP₁ itself (see `resolveTp1Feed` in
+ * core/payroll), and the prefill is a preview of that derivation rather than the only bridge to it.
  *
  * ══ THE ONE RULE, AND WHY IT IS ONE (r209) ══════════════════════════════════════════════════════════
  * Which row wins a month, which months count, and what each contributes are ALL answered by
@@ -516,72 +522,6 @@ export function tp1CountForYear(
     }
   }
   return out;
-}
-
-/**
- * ══ THE ONE RULE, HALF THREE: HOW MUCH OF THE DECLARED ANNUAL DOES *THIS* MONTH FEED ════════════════
- *
- * `tp1CountForYear` answers "what has been declared and is in force". It does NOT answer "what should
- * LP₁ be on this run", and that second question is where item 3fa088fb's money went missing: the answer
- * lived inside `prefillTp1FromSelfRelief` — a MANUAL form action behind a button — so a payroll run that
- * nobody pressed the button for calculated PCB as though nothing had been declared. Of the 88 payslips
- * ever issued on the reporter's system, not one carried a TP1 relief while eight approved declarations
- * sat there for 2026.
- *
- * So the delta lives here, once, and BOTH callers reach it:
- *   · `prefillTp1FromSelfRelief` — writes it onto the draft batch so an operator can see and override it;
- *   · `generatePayslips` — DERIVES it at generate time, with no button, exactly as it already auto-applies
- *     the fixed zakat election. That is the fix; the prefill is now a convenience, not the only bridge.
- *
- * ── WHY IT IS A DELTA AND NOT THE ANNUAL (ADR-0050 §0.1) ────────────────────────────────────────────
- * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated`, and PCB consumes `∑LP + LP₁`. Feeding
- * the full declared annual every month would therefore relieve it twelve times over. Feeding
- *   feed = max(0, annual − ∑LP already fed by us this assessment year)
- * makes `∑LP + LP₁` converge on the declared annual, claimed exactly ONCE — and it is self-correcting
- * under mid-year adoption, a re-run, and a mid-year correction, because every one of those only changes
- * what the two inputs are.
- *
- * ── `lpAlreadyFed` IS THE REPLAY OF *OUR* PAYSLIPS, NOT THE KERNEL'S WHOLE ∑LP (item 20837372) ──────
- * Since migration 0488 the kernel OPENS `acc.lpAccumulated` with the Form TP3 Section D balance (a
- * previous employer's accumulated deductions) and replays our own prior payslips on top. Only the REPLAY
- * belongs here. The two are asking different questions: the kernel asks "what deductions has this person
- * had this year, from anywhere"; this asks "how much of the annual they declared TO US is still unfed" —
- * and a relief claimed through a DIFFERENT employer has never been fed by us, so netting it off here
- * would silently shrink a declaration the employee made to this employer. Both callers therefore pass
- * the replay-only figure, and a test pins that they do.
- */
-export type Tp1FeedInput = {
-  /** Every APPROVED declaration of ONE person for the assessment year — unfiltered by month; see below. */
-  approvedRows: readonly Tp1CountableRow[];
-  /** The payroll month being computed. `tp1EffectiveFromMonth` decides what is in force by then. */
-  throughMonth: number;
-  /** ∑LP THIS employer has already fed this assessment year (prior payslips' `st.lp`), TP3 excluded. */
-  lpAlreadyFed: number;
-};
-
-export type Tp1Feed = {
-  /** The declared annual in force through `throughMonth` — `tp1CountForYear(...).total`. */
-  annual: number;
-  /** Echoed back so a caller stamping provenance does not have to recompute or re-round it. */
-  lpAlreadyFed: number;
-  /** LP₁ for this run: `max(0, annual − lpAlreadyFed)`. */
-  feed: number;
-  /** The full reduction, for provenance: which declarations were counted and what each contributed. */
-  counted: Tp1Counted;
-};
-
-export function resolveTp1Feed(p: Tp1FeedInput): Tp1Feed {
-  // ⚠️ NO MONTH PREDICATE HERE AND NONE IN THE CALLERS' SQL. `tp1CountForYear` owns "which rows count",
-  // and r201 is the record of what a second spelling costs: the payroll feed filtered on `approved_month`
-  // in SQL while the limit check filtered on nothing, so a carried-forward declaration counted in FULL on
-  // one side and ZERO on the other, and HR keyed each month's increment against a baseline missing it.
-  const counted = tp1CountForYear(p.approvedRows, { throughMonth: p.throughMonth });
-  const annual = round2(counted.total);
-  const lpAlreadyFed = round2(p.lpAlreadyFed);
-  // Clamped at 0, not allowed to go negative: a month whose ∑LP already exceeds the annual (a correction
-  // that REDUCED a declaration after earlier months had fed the larger figure) must feed nothing further,
-  // never claw money back through a negative LP₁ that would INCREASE P and over-deduct.
-  return { annual, lpAlreadyFed, feed: Math.max(0, round2(annual - lpAlreadyFed)), counted };
 }
 
 /**

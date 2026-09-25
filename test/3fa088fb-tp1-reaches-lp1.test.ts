@@ -451,11 +451,15 @@ describe('3fa088fb — approved TP1 reaches LP₁ automatically', () => {
     const src = readFileSync(join(ROOT, 'core/payroll.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
-    // Two callers each, and no third spelling: r201's defect was two implementations of one question.
-    for (const fn of ['resolveTp1Feed(', 'tp1TargetEmploymentByPerson(tx', 'tp1ApprovedRowsByPerson(tx']) {
+    // ONE declaration and exactly TWO call sites each — the prefill and the kernel. r201's defect was two
+    // implementations of one question, and the standing rule since r209 is that there is never a second.
+    for (const fn of ['resolveTp1Feed(', 'tp1TargetEmploymentByPerson(', 'tp1ApprovedRowsByPerson(']) {
       const hits = src.split(fn).length - 1;
-      expect(hits, `${fn} must have exactly two callers (the prefill and the kernel)`).toBe(2);
+      expect(hits, `${fn} must be declared once and called exactly twice`).toBe(3);
     }
+    // The delta must still reach core/tax-relief for "which declarations count" rather than re-deciding it
+    // — the property test/tp1-counted-contract.test.ts also guards from the other side.
+    expect(src).toMatch(/const counted = tp1CountForYear\(p\.approvedRows, \{ throughMonth: p\.throughMonth \}\)/);
     // And the kernel must not have gone back to trusting the stored column on its own.
     expect(src).toMatch(/tp1FeedByEmp\.get\(e\.employmentId\)/);
   });
