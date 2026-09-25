@@ -4638,7 +4638,7 @@
         "missingBank": "银行资料不完整",
         "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
         "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费",
-        "unpayablePayMode": "自定义周期薪酬结构 — 薪资没有对应的计算方式，无法发放",
+        "unpayablePayMode": "无法计算的薪酬结构 — 自定义周期薪资模式没有对应的薪资计算方式",
         "tp3YearMismatch": "本年度的 TP3 表格尚未进入薪资数字 — 前雇主收入将被当作零"
       },
       "preChecksOpenProfile": "打开档案",
@@ -5766,7 +5766,7 @@
         "missingBank": "银行资料不完整",
         "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
         "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费",
-        "unpayablePayMode": "自定义周期薪酬结构 — 薪资没有对应的计算方式，无法发放",
+        "unpayablePayMode": "无法计算的薪酬结构 — 自定义周期薪资模式没有对应的薪资计算方式",
         "tp3YearMismatch": "本年度的 TP3 表格尚未进入薪资数字 — 前雇主收入将被当作零"
       },
       "unattachedScopeTitle": "有 {n} 位员工的交易不会被本次批次收集",

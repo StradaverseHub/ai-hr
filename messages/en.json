@@ -4091,7 +4091,7 @@
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
-        "unpayablePayMode": "Custom Period pay structure — payroll has no calculation for it, so nothing can be paid",
+        "unpayablePayMode": "A pay structure this system cannot calculate — the Custom Period pay mode has no payroll calculation",
         "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "preChecksOpenProfile": "Open profile",
@@ -5766,7 +5766,7 @@
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
-        "unpayablePayMode": "Custom Period pay structure — payroll has no calculation for it, so nothing can be paid",
+        "unpayablePayMode": "A pay structure this system cannot calculate — the Custom Period pay mode has no payroll calculation",
         "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
       },
       "unattachedScopeTitle": "{n} employee(s) have transactions this run will not collect",

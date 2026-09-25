@@ -4638,7 +4638,7 @@
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
-        "unpayablePayMode": "Cơ cấu lương Kỳ tùy chỉnh — bảng lương không có cách tính, nên không thể trả gì",
+        "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
         "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
@@ -5766,7 +5766,7 @@
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
-        "unpayablePayMode": "Cơ cấu lương Kỳ tùy chỉnh — bảng lương không có cách tính, nên không thể trả gì",
+        "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
         "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
       },
       "unattachedScopeTitle": "{n} nhân viên có giao dịch mà kỳ lương này sẽ không thu thập",
