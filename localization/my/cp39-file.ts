@@ -33,6 +33,7 @@ import {
   person,
 } from '../../db/schema';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+import type { StatutoryPaymentFile } from '../country-pack';
 
 export type Cp39Row = {
   /** TIN digits (with or without the "IG" prefix / dashes) — MANDATORY per Exhibit 4. */
@@ -127,6 +128,26 @@ export const normalizeEmployerNo = (e: string): string => {
   return d.padStart(10, '0');
 };
 
+/**
+ * THE LHDN FILE NAME, STATED ONCE. Exhibit 4's own convention is `xxxxxxxxxxmm_yyyy.txt` — the ten-digit
+ * employer number, the two-digit month of deduction, an underscore, the four-digit year of deduction.
+ *
+ * ⚠️ EXPORTED FOR THE SAME REASON `borangAUploadFilename` AND `perkesoUploadFilename` ARE. r336 made those
+ * two helpers the one definition each of their file's name precisely so two screens offering one month's
+ * file cannot name it differently — an operator who cannot match a downloaded file to a month uploads the
+ * wrong one, and LHDN's portal keys the submission off the name. `buildCp39File` calls this rather than
+ * formatting the name inline, so a second surface that comes to offer this file (the Payment Submission
+ * shelf is the one waiting on it — see app/payroll/payment-submission/registry.ts) asks THIS function and
+ * is not able to invent a second spelling.
+ *
+ * `employerNo` is normalised here, so a caller holding the employer's raw "E 908915-10" gets the same name
+ * as one holding "0090891510". The month is zero-padded; the year is written as given, because a year that
+ * is not four digits is a caller bug the file's own header field would refuse anyway.
+ */
+export function cp39UploadFilename(p: { employerNo: string; year: number | string; month: number | string }): string {
+  return `${normalizeEmployerNo(String(p.employerNo))}${String(p.month).padStart(2, '0')}_${p.year}.txt`;
+}
+
 export type Cp39File = {
   filename: string;
   content: string;
@@ -204,7 +225,8 @@ export function buildCp39File(p: {
   if (header.length !== 57) throw new Error(`header record is ${header.length} chars, expected 57`);
 
   return {
-    filename: `${employer}${mm}_${p.year}.txt`,
+    // The ONE definition of this file's name (see `cp39UploadFilename`), never a second formatting of it.
+    filename: cp39UploadFilename({ employerNo: employer, year: p.year, month: mm }),
     content: [header, ...lines].join('\r\n') + '\r\n',
     totals: { mtdCents, mtdRecords, cp38Cents, cp38Records },
   };
@@ -383,4 +405,44 @@ export function cp39FileForBatch(
     const versions = [...versionSet].sort();
     return { ...file, statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION };
   });
+}
+
+/**
+ * 0d02d4a1 — THE PACK'S ANSWER WHEN A GENERIC SCREEN ASKS FOR THIS MONTH'S e-DATA PCB FILE.
+ *
+ * ⚠️ IT IS AN ADAPTER, NOT A SECOND PRODUCER, AND THE DIFFERENCE IS THE POINT OF THE ROUND. It calls
+ * `cp39FileForBatch` - the same function `/payroll/reports/cp39-file` calls - and reshapes the answer.
+ * Nothing about the read, the four readiness gates, the field positions or the totals is restated here, so
+ * the Payment Submission shelf and the shipped report route cannot hand over different bytes for one
+ * employer's month. That equality is asserted, not merely intended
+ * (test/r340-cp39-payment-submission-download.test.ts).
+ *
+ * TWO KINDS OF FAILURE, KEPT APART. A `Cp39NotReadyError` is the operator's problem stated in their own
+ * words - no E-number on the company, a missing tax number, an identity number that will not fit its
+ * fixed-width box - and it becomes `{ ok: false, reason }`, which the generic caller turns into a 422 with
+ * that sentence. Anything else is a BUG and is rethrown untouched: dressing a driver error up as a
+ * readiness problem would tell an operator to go and fix data that is perfectly fine.
+ *
+ * ⚠️ IT IS ALSO WHY THE GENERIC REGISTRY NEEDS NO MY IMPORT. The Payment Submission registry reaches this
+ * through `CountryPack.paymentFiles` and the localization registry, so nothing under `app/` names this
+ * module and the drift allowlist neither grew nor was consulted (ADR-0080 D1/D6/D7).
+ */
+export async function cp39PaymentFile(
+  ctx: SessionContext,
+  p: { companyId: string; periodKey: string },
+): Promise<StatutoryPaymentFile> {
+  try {
+    const file = await cp39FileForBatch(ctx, p);
+    return {
+      ok: true,
+      // The ONE definition of this file's name, from the builder itself - never a second formatting of it.
+      filename: file.filename,
+      content: file.content,
+      // Fixed-width us-ascii, the same content type the shipped report route serves these bytes with.
+      contentType: 'text/plain; charset=us-ascii',
+    };
+  } catch (e) {
+    if (e instanceof Cp39NotReadyError) return { ok: false, reason: e.message };
+    throw e;
+  }
 }

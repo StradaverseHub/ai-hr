@@ -6990,7 +6990,7 @@
     },
     "paymentSubmission": {
       "pageTitle": "Payment Submission",
-      "pageDescription": "Generate the files you file and pay a month with. Pick the month, then download what each authority needs.",
+      "pageDescription": "Generate the files you file and pay a month with. Choose the file you want, then say which company and month it covers.",
       "nothingFiledTitle": "Nothing here is filed for you.",
       "nothingFiledNotice": "This screen only produces a file and hands it to you. It submits nothing to any authority and pays no one — you still upload each file to the agency's own portal yourself.",
       "company": "Company",
@@ -7014,7 +7014,11 @@
       "verificationFiledFile": "Checked against a real file this employer filed.",
       "verificationSpecificationSample": "Checked against the agency's published sample only — no file from this system has been through the agency's portal yet. Review it before you upload.",
       "verificationFieldTableOnly": "Built from a field table with no sample file. Check every figure before you upload.",
-      "periodFooter": "Showing {period}."
+      "periodFooter": "Showing {period}.",
+      "selectionIntro": "Choose the company and payroll month this file covers, then download it.",
+      "payCycle": "Pay cycle",
+      "cancel": "Cancel",
+      "payCycleMissing": "No pay cycle is available for this file, so it cannot be downloaded yet — a file that pays people must say which run of the month it pays."
     }
   },
   "admin": {

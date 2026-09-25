@@ -2,7 +2,8 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { listCompanies } from '@/core/read';
 import { scopedAdmin } from '@/lib/scope';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
-import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { DownloadDialog } from './download-dialog';
 import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './registry';
 
 /**
@@ -32,15 +33,49 @@ import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './regi
  * LHDN file today with its draft notice in an HTTP RESPONSE HEADER (`X-Draft-Notice`), which no operator
  * has ever read. Here it is a line of text beside the button.
  *
- * ── GET-DRIVEN, NO CLIENT STATE, NO SERVER ACTION ────────────────────────────────────────────────
- * The Borang 8A / CP22 review screens' shape. The selected month is a URL, so it re-opens, bookmarks and
- * sends to a colleague, and the back button works. It also means this file is a server component with no
- * interactivity to hand across the boundary, so no closure ever reaches a client component (the
- * 500-on-every-request trap).
+ * ── e78fd03d: YOU CHOOSE THE FILE FIRST, AND IT THEN ASKS WHAT THE FILE COVERS ───────────────────
+ * The screen used to carry a Year / Payroll month pair and a SHOW button ABOVE the shelves, so a selection
+ * was made before anything had been chosen to apply it to. Those fields and that button are gone: each
+ * available row's Download opens `DownloadDialog`, which asks for company, year and payroll month and then
+ * produces that one file. The reporter asked for that order and it is the right way round.
  *
- * ⚠️ TWO SIBLING FORMS, NEVER NESTED. A form inside a form is invalid HTML and browsers drop the inner
- * one. The filter form owns company / year / month; each download is a plain LINK carrying the same three
- * in its query string, so there is exactly one form on the page.
+ * ⚠️ THE COMPANY WAS NEVER A FIELD THE REPORTER LOST. Their request describes the old area as "Company,
+ * Year and Payroll Month with a SHOW button"; it was Year and Month, and the company came from the
+ * switcher at the top of the page. All three are in the pop-up now, as asked.
+ *
+ * STILL GET-DRIVEN, AND STILL NO SERVER ACTION. The dialog's Download is a plain `<form method="get">`
+ * pointed at the same route the row's link used to point at, so generating a file still records nothing.
+ * The only client state on this screen is "is the pop-up open", inside the dialog; this file remains a
+ * server component that hands the dialog flat props and no closure (the 500-on-every-request trap).
+ *
+ * ⚠️ NO FORM NESTING, AND NO FORM ON THE PAGE AT ALL ANY MORE. A form inside a form is invalid HTML and
+ * browsers drop the inner one; the filter form that made that a hazard has been removed, and each dialog's
+ * form lives in a `Dialog.Portal` attached to `document.body` rather than inside this tree.
+ *
+ * ⚠️ THE PERIOD IS NO LONGER IN THE URL OF THIS SCREEN, only in the download's. `?companyId=&year=&month=`
+ * is still READ, so an old bookmark still opens with the same defaults selected in every pop-up — but
+ * there is nothing on the screen for a period to change any more, so nothing is shown for it either.
+ *
+ * ── THREE KEYS IN `payroll.paymentSubmission` NOW HAVE NO CONSUMER, AND ARE KEPT ON PURPOSE ──────
+ * `show` and `periodFooter` were the removed on-page filter's words; `lhdnCp39Pending` was the unavailable
+ * row's explanation, and that row became downloadable in the same round. All three are still in all six
+ * catalogues with ZERO readers, which is deliberate: r340 forbade deleting an existing catalogue key
+ * (concurrent branches conflict on value changes and deletions far more readily than on appends), and the
+ * namespace rename pass owns the cleanup. Nothing goes red while they sit there —
+ * `test/i18n-coverage.test.ts` detects an orphaned NAMESPACE, never an orphaned KEY.
+ *
+ * ⚠️ AND THE EARLIER REASON GIVEN FOR KEEPING `show` WAS WRONG, WHICH IS WHY IT IS WRITTEN DOWN HERE.
+ * r340's first pass reported that `show` was "still used by app/payroll/reset-records, asserted by
+ * test/reset-records-screen.test.ts". THAT PATH DOES NOT EXIST, and that test covers a leave-configuration
+ * records screen reading a different namespace entirely. The key really has no consumer. Keeping it is
+ * still correct; believing something reads it is not, and a future round deciding what to delete must not
+ * inherit that as a reason to stop.
+ *
+ * ── e78fd03d ALSO REWORDED `pageDescription`, THE ONE EXISTING STRING THIS ROUND CHANGED ─────────
+ * It used to read "Pick the month, then download what each authority needs", which described the control
+ * that is gone. A page telling an operator to pick a month it no longer asks for is worse than a stale
+ * comment, so the value moved with the behaviour in all six locales — deliberately, and it is the only
+ * existing value touched.
  *
  * GATED LIKE ITS SIBLING SCREENS: `scopedAdmin`, not `isAdmin` — an `hr_admin` grant on ANY company makes
  * `isAdmin` true, and these downloads carry every employee's name, identity card number and contributions.
@@ -88,13 +123,18 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
   const fallback = /^\d{4}-\d{2}$/.test(spPeriod) ? spPeriod : previousMonth(today);
   const year = typeof sp.year === 'string' && /^\d{4}$/.test(sp.year) ? sp.year : fallback.slice(0, 4);
   const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? (sp.month as string) : fallback.slice(5, 7);
-  const periodKey = `${year}-${month}`;
-  // Always includes the selected year, so an older link cannot resolve correctly while the select silently
-  // shows a different one beside the figures.
+  // These three are the pop-ups' DEFAULTS now, not a filter the screen applies to anything: nothing on the
+  // page below varies with the month any more. `?periodKey=` is still honoured so an old link still opens
+  // with the month it named already selected. The dialog joins year and month back into one `periodKey`.
+  // Always includes the selected year, so an older link cannot resolve to a year the select cannot show.
   const years = yearOptions(today, year);
   const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
-  const monthName = (mm: string) => monthFmt.format(new Date(Date.UTC(2000, Number(mm) - 1, 1)));
-  const periodLabel = `${monthName(month)} ${year}`;
+  // The month OPTIONS, named in the reader's own language, built once on the server and handed to every
+  // pop-up as flat data. Formatting them in the dialog would need the locale across the boundary for no gain.
+  const monthOptions = MONTHS.map((m) => ({
+    value: m,
+    label: monthFmt.format(new Date(Date.UTC(2000, Number(m) - 1, 1))),
+  }));
 
   /**
    * The provenance line for a row. A MAP, NOT A COMPUTED KEY.
@@ -109,10 +149,9 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
     'field-table-only': t('verificationFieldTableOnly'),
   };
 
-  const downloadHref = (formatId: string) =>
-    `/payroll/payment-submission/download?companyId=${encodeURIComponent(companyId)}&periodKey=${encodeURIComponent(
-      periodKey,
-    )}&format=${encodeURIComponent(formatId)}`;
+  // ONE spelling of the download route, handed to the dialog. The dialog builds the query as form fields
+  // rather than as a string, so nothing here encodes a parameter twice.
+  const DOWNLOAD_ACTION = '/payroll/payment-submission/download';
 
   return (
     <div className={pageWideCls}>
@@ -125,41 +164,6 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
       <Card className="border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
         <p className="font-medium">{t('nothingFiledTitle')}</p>
         <p className="mt-1">{t('nothingFiledNotice')}</p>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
-          <Field label={t('company')}>
-            <select name="companyId" defaultValue={companyId} className={inputCls}>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('year')}>
-            <select name="year" defaultValue={year} className={inputCls}>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('month')}>
-            <select name="month" defaultValue={month} className={inputCls}>
-              {MONTHS.map((m) => (
-                <option key={m} value={m}>
-                  {monthName(m)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <button type="submit" className={btnPrimary}>
-            {t('show')}
-          </button>
-        </form>
       </Card>
 
       {/*
@@ -194,9 +198,25 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
                         </p>
                       </div>
                       {f.available ? (
-                        <a className={btnPrimary} href={downloadHref(f.id)} data-download={f.id}>
-                          {t('download')}
-                        </a>
+                        // `data-download` stays HERE, on the page's own tree, because that is what the
+                        // registry-drives-the-screen guard walks (test/payment-submission-screen-seam.test.ts
+                        // renders this component and reads props; it never renders the dialog).
+                        <div data-download={f.id}>
+                          <DownloadDialog
+                            formatId={f.id}
+                            formatLabel={t(f.labelKey)}
+                            // The format's OWN declaration of what has to be chosen. The screen does not
+                            // decide this and does not branch on the shelf it is on.
+                            periodKind={f.periodKind}
+                            action={DOWNLOAD_ACTION}
+                            companies={companies.map((c) => ({ value: c.id, label: c.name }))}
+                            defaultCompanyId={companyId}
+                            years={years}
+                            defaultYear={year}
+                            months={monthOptions}
+                            defaultMonth={month}
+                          />
+                        </div>
                       ) : (
                         // No button at all, and none is possible: an unavailable descriptor has no
                         // `build` to call. The reason is printed instead of a disabled control, because a
@@ -213,8 +233,6 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
           </section>
         );
       })}
-
-      <p className="text-xs text-muted-foreground">{t('periodFooter', { period: periodLabel })}</p>
     </div>
   );
 }

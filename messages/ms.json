@@ -6990,7 +6990,7 @@
     },
     "paymentSubmission": {
       "pageTitle": "Penghantaran Pembayaran",
-      "pageDescription": "Jana fail yang anda gunakan untuk memfail dan membayar bagi sesuatu bulan. Pilih bulan, kemudian muat turun apa yang diperlukan oleh setiap pihak berkuasa.",
+      "pageDescription": "Jana fail yang anda gunakan untuk memfail dan membayar bagi sesuatu bulan. Pilih fail yang anda mahu, kemudian nyatakan syarikat dan bulan yang diliputinya.",
       "nothingFiledTitle": "Tiada apa-apa di sini difailkan untuk anda.",
       "nothingFiledNotice": "Skrin ini hanya menghasilkan fail dan menyerahkannya kepada anda. Ia tidak menghantar apa-apa kepada mana-mana pihak berkuasa dan tidak membayar sesiapa — anda masih perlu memuat naik setiap fail ke portal agensi itu sendiri.",
       "company": "Syarikat",
@@ -7014,7 +7014,11 @@
       "verificationFiledFile": "Disemak terhadap fail sebenar yang telah difailkan oleh majikan ini.",
       "verificationSpecificationSample": "Disemak terhadap sampel terbitan agensi sahaja — belum ada fail daripada sistem ini melalui portal agensi. Semak sebelum anda memuat naik.",
       "verificationFieldTableOnly": "Dibina daripada jadual medan tanpa fail sampel. Semak setiap angka sebelum anda memuat naik.",
-      "periodFooter": "Memaparkan {period}."
+      "periodFooter": "Memaparkan {period}.",
+      "selectionIntro": "Pilih syarikat dan bulan gaji yang diliputi oleh fail ini, kemudian muat turunnya.",
+      "payCycle": "Kitaran gaji",
+      "cancel": "Batal",
+      "payCycleMissing": "Tiada kitaran gaji tersedia untuk fail ini, jadi ia belum boleh dimuat turun — fail yang membayar pekerja perlu menyatakan pusingan gaji yang mana bagi bulan itu."
     }
   },
   "admin": {

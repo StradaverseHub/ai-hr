@@ -188,31 +188,44 @@ describe('20f6c6a8 (a) — the shelf hands over the SAME bytes the shipped scree
     expect(new Set(lines.map((l) => l.length)), `every record is ${width} characters`).toEqual(new Set([width]));
   });
 
-  it('LHDN is LISTED with its provenance but carries NO builder in this module', () => {
+  it('LHDN is LISTED, DOWNLOADABLE, and still carries no pack import in this module', () => {
     /*
-     * ⚠️ THIS IS A BOUNDARY DECISION, NOT A MISSING FILE, and the distinction is the whole point.
+     * ⚠️ THIS GUARD'S DECISION CHANGED IN r340 (0d02d4a1), SO THE GUARD WAS UPDATED RATHER THAN DELETED.
      *
-     * The e-Data writer exists and ships — `localization/my/cp39-file.ts`, served by
-     * `/payroll/reports/cp39-file`. What this module may not do is NAME `localization/my`: it is generic
-     * code, and `test/country-pack-drift.test.ts` refuses that for any file outside an allowlist which
-     * only ever shrinks (ADR-0080 D1/D7). EPF and SOCSO ride `reportPreview` and so have no such problem.
+     * It used to assert `available: false`. That was never "the file is missing" — the writer ships and
+     * `/payroll/reports/cp39-file` serves it — it was a BOUNDARY fact: this module is generic, it may not
+     * NAME a country pack (`test/country-pack-drift.test.ts`, ADR-0080 D1/D7, an allowlist that only
+     * shrinks), and the writer had no generic door. The row therefore said "not available" while another
+     * screen one menu row away handed over the identical bytes, which is the r296 defect.
      *
-     * So the row is present, ranked first, labelled with its real provenance, and points the operator at
-     * the screen that serves the file today. Asserting `available: false` HERE is what stops someone
-     * "fixing" it by importing the MY writer back into a generic registry.
+     * 0d02d4a1 built the door — `CountryPack.paymentFiles`, resolved through the localization registry by
+     * `app/payroll/payment-submission/pack-file.ts` — so the row is now downloadable AND the boundary is
+     * still intact. BOTH halves are asserted here, because flipping `available` by importing the MY writer
+     * back into a generic registry is exactly what the old assertion existed to prevent, and it would
+     * satisfy the first half alone. The bytes, the file name and the refusals are proved against a real
+     * payroll month in `test/r340-cp39-payment-submission-download.test.ts`.
      */
     const lhdn = SUBMISSION_FORMATS.find((f) => f.id === 'my.lhdn.cp39-edata');
     expect(lhdn, 'the row must stay listed — denying a file another screen serves is the r296 defect').toBeTruthy();
-    expect(lhdn!.available).toBe(false);
-    if (!lhdn!.available) {
-      expect(lhdn!.unavailableReasonKey, 'it must say WHERE the file comes from meanwhile').toBe('lhdnCp39Pending');
-    }
-    // Provenance is still declared, because the ratchet is about honesty, not availability.
+    expect(lhdn!.available, 'the row is downloadable from this shelf now').toBe(true);
+    // Provenance is unchanged, because the ratchet is about honesty and not about availability: reading a
+    // published field table more carefully is not the same evidence as a file the customer really filed.
     expect(lhdn!.verification).toBe('specification-sample');
+    // THE OTHER HALF. No file under this module may name a pack — the door is the registry seam.
+    for (const file of ['registry.ts', 'pack-file.ts', 'download/route.ts', 'page.tsx']) {
+      const src = readFileSync(new URL(`../app/payroll/payment-submission/${file}`, import.meta.url), 'utf8');
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(code, `${file} must not name a country pack directly`).not.toContain('localization/my');
+    }
   });
   it('the shelf names each file what the shipped route names it', async () => {
     const epf = await build('my.epf.borang-a');
     const socso = await build('my.socso.perkeso-assist');
+    const lhdn = await build('my.lhdn.cp39-edata');
+    // LHDN's own convention, from the writer's one definition of it: ten-digit employer number, the
+    // two-digit month of deduction, `_`, the four-digit year (Exhibit 4). 019632... is the EPF number;
+    // 0090891510 is what this fixture's "E 908915-10" normalises to.
+    expect(lhdn.ok && lhdn.filename).toMatch(/^\d{10}(0[1-9]|1[0-2])_\d{4}\.txt$/);
     expect(epf.ok && epf.filename).toMatch(/^kwsp-borang-a-019632261-202608\.txt$/);
     // `perkesoUploadFilename`'s own shape — the helper the shipped PERKESO route calls.
     expect(socso.ok && socso.filename).toMatch(/^perkeso-socso-B1234567890-\d{6}\.txt$/);
@@ -314,8 +327,12 @@ describe('20f6c6a8 (d) — a company with no statutory numbers is REFUSED, not g
     expect(epf.ok).toBe(false);
     if (!epf.ok) expect(epf.message).toMatch(/Borang A|employer/i);
 
-    // LHDN's refusal message is asserted by the shipped route's own tests; this module carries no
-    // builder for it (see 'LHDN is LISTED with its provenance but carries NO builder in this module').
+    // LHDN too, since 0d02d4a1: its refusal names the E-number the company has not been given. The full
+    // set of its refusals is in test/r340-cp39-payment-submission-download.test.ts.
+    const lhdn = await build('my.lhdn.cp39-edata');
+    expect(lhdn.ok).toBe(false);
+    if (!lhdn.ok) expect(lhdn.message).toMatch(/E-number/i);
+
     const socso = await build('my.socso.perkeso-assist');
     expect(socso.ok).toBe(false);
     if (!socso.ok) expect(socso.message.length, 'SOCSO must say what is missing').toBeGreaterThan(10);

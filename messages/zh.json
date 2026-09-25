@@ -6990,7 +6990,7 @@
     },
     "paymentSubmission": {
       "pageTitle": "付款提交",
-      "pageDescription": "生成用于申报和缴付当月款项的文件。选择月份，然后下载各机构所需的文件。",
+      "pageDescription": "生成用于申报和缴付当月款项的文件。先选择所需文件，再指明其涵盖的公司与月份。",
       "nothingFiledTitle": "本页不会代您提交任何内容。",
       "nothingFiledNotice": "此页面只生成文件并交给您。它不会向任何机构提交任何内容，也不会付款给任何人——您仍需自行将每个文件上传到相应机构的门户网站。",
       "company": "公司",
@@ -7014,7 +7014,11 @@
       "verificationFiledFile": "已对照本雇主实际提交过的真实文件核对。",
       "verificationSpecificationSample": "仅对照机构公布的样本核对——本系统生成的文件尚未通过该机构门户网站提交。上传前请先检查。",
       "verificationFieldTableOnly": "依据字段表构建，无样本文件。上传前请核对每一项数字。",
-      "periodFooter": "显示 {period}。"
+      "periodFooter": "显示 {period}。",
+      "selectionIntro": "选择此文件所涵盖的公司和薪资月份，然后下载。",
+      "payCycle": "薪资周期",
+      "cancel": "取消",
+      "payCycleMissing": "此文件没有可用的薪资周期，因此暂时无法下载——支付员工薪酬的文件必须说明它支付的是该月的哪一次发薪。"
     }
   },
   "admin": {

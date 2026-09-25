@@ -202,6 +202,32 @@ export type ConfigSectionDescriptor = {
 };
 
 /**
+ * 0d02d4a1 (ADR-0080 D6) — WHAT A JURISDICTION'S MONTHLY STATUTORY UPLOAD FILE COMES BACK AS.
+ *
+ * A RESULT, NEVER A THROW, and that is the whole reason this type exists. `ok: false` is an
+ * OPERATOR-FIXABLE refusal already phrased in words they can act on ("Company LHDN E-number is not set",
+ * "TIN is mandatory for the CP39 file - missing for: ..."). The pack side owns whatever error class it
+ * raises internally; generic code cannot name that class without importing the pack, so the pack
+ * TRANSLATES at the seam and a caller outside it never has to catch a jurisdiction-specific exception to
+ * tell "this employer has not filled in their E-number" apart from "this code has a bug". A genuine bug
+ * still propagates as a thrown error and must keep doing so.
+ *
+ * `content` is the file's exact characters and nothing re-encodes them afterwards; `filename` is the
+ * agency's own naming convention, produced by the pack's one definition of it, so two surfaces offering
+ * one month's file cannot name it differently.
+ */
+export type StatutoryPaymentFile =
+  | { ok: true; filename: string; content: string; contentType: string }
+  | { ok: false; reason: string };
+
+/** One month's statutory upload file for ONE employer. Takes a `SessionContext`: producing it is a read
+ *  of that month's payslips, and RLS is what fences it - see `paymentFiles` on the contract. */
+export type StatutoryPaymentFileBuilder = (
+  ctx: SessionContext,
+  p: { companyId: string; periodKey: string },
+) => Promise<StatutoryPaymentFile>;
+
+/**
  * The CLIENT-SAFE slice of a country pack's vocabulary (rung 5b, D4): pure data + pure functions
  * ONLY — zero db / server-only / 'use client' deps — so `'use client'` components can consume
  * jurisdiction vocabulary without dragging the full pack (whose statutory-config surface imports
@@ -609,6 +635,32 @@ export interface CountryPack {
    * appears in its authority's section without the page being edited.
    */
   statutoryLinks: StatutoryFormLink[];
+
+  /**
+   * 0d02d4a1 (ADR-0080 D6) — THE MONTHLY STATUTORY UPLOAD FILES THIS JURISDICTION PRODUCES, by the id the
+   * generic Payment Submission registry asks for. OPTIONAL: a jurisdiction with no such filing declares
+   * nothing rather than an empty file under a foreign agency's name (`pcb2iiStatement`'s reasoning, D-14).
+   *
+   * ⚠️ THIS IS THE MEMBER THAT LETS A GENERIC SCREEN HAND OVER A COUNTRY-SPECIFIC FILE WITHOUT NAMING THE
+   * PACK. `app/payroll/payment-submission` is shared by every country this product will ever support, and
+   * the drift ratchet (test/country-pack-drift.test.ts, D1/D7) refuses it any direct reach into a pack -
+   * correctly, and the allowlist only ever shrinks. Before this member existed the LHDN e-Data row on that
+   * screen had to be listed as UNAVAILABLE while `/payroll/reports/*` served the very same file, because
+   * the file's writer had no generic door. This is the door.
+   *
+   * ⚠️ IT TAKES A `SessionContext`, AND THAT IS THE ESTABLISHED SHAPE HERE, NOT A NEW DEVIATION.
+   * `eaStatement`, `pcb2iiStatement`, `eaCompaniesInYear`, `seedReferenceData` and the whole
+   * `statutoryConfig` surface are all ctx/tx-taking members already: this contract has never been "pure
+   * calculators and tables". A monthly return IS a read of that month's payslips, the read is
+   * jurisdiction-shaped (which columns carry the tax number, the old identity card, the instalment), and
+   * RLS is what fences it. Splitting the read out to sit generically above a pure builder would put a
+   * SECOND set of the same figures next to the one the shipped route already files - which is the exact
+   * class of defect (two writers, one file, different bytes) that r296 spent a round removing.
+   *
+   * The KEY is the generic registry's format id. It is a string crossing a seam, exactly as the report
+   * catalog's `ReportDef.id` already is, and both sides of it are pinned by a test.
+   */
+  paymentFiles?: Record<string, StatutoryPaymentFileBuilder>;
 
   /**
    * 587ee719 (D4) — statutory forms this jurisdiction has that we have NOT built. Descriptor-only: the
