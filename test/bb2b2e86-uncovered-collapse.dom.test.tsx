@@ -30,6 +30,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render, screen } from '@testing-library/react';
+import { createTranslator } from 'next-intl';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -44,23 +45,56 @@ import zh from '../messages/zh.json';
 // idiom throws here. Vitest's cwd is the project root (precedent: test/personnel-row-click.dom.test.tsx).
 const read = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8');
 
-const DICT = en.admin.entitlementTemplates as unknown as Record<string, string>;
-/**
- * The REAL English catalogue, formatted the way next-intl formats it, so every assertion below quotes a
- * sentence the screen actually says. A `t` that echoed its key would let a renamed key pass.
- */
-const translate = (key: string, values?: Record<string, unknown>) => {
-  const raw = DICT[key];
-  if (typeof raw !== 'string') throw new Error(`MISSING_MESSAGE: admin.entitlementTemplates.${key}`);
-  return raw.replace(/\{(\w+)\}/g, (_m, name: string) =>
-    values && name in values ? String(values[name]) : `{${name}}`,
-  );
+const CATALOGUES = { en, ms, ta, th, vi: vi_, zh } as const;
+type LocaleKey = keyof typeof CATALOGUES;
+const LOCALE_KEYS = Object.keys(CATALOGUES) as LocaleKey[];
+type Dict = Record<string, unknown>;
+
+/** i18n/request.ts deep-merges a locale over English, so the test catalogue must be built the same way —
+ *  otherwise a key missing from a locale would look missing here and present on the screen. */
+const merge = (base: Dict, over: Dict): Dict => {
+  const out: Dict = { ...base };
+  for (const [k, v] of Object.entries(over ?? {})) {
+    const b = out[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && b && typeof b === 'object' && !Array.isArray(b)) {
+      out[k] = merge(b as Dict, v as Dict);
+    } else if (v != null && v !== '') out[k] = v;
+  }
+  return out;
 };
+const MESSAGES = Object.fromEntries(
+  LOCALE_KEYS.map((l) => [l, l === 'en' ? (en as unknown as Dict) : merge(en as unknown as Dict, CATALOGUES[l] as unknown as Dict)]),
+) as Record<LocaleKey, Dict>;
+
+/**
+ * THE REAL next-intl TRANSLATOR, not a regex over the catalogue — and `onError` THROWS.
+ *
+ * ⚠️ LOAD-BEARING (the house shape, test/r292-anomaly-threshold-disclosure.test.ts): next-intl SWALLOWS
+ * MISSING_MESSAGE and FORMATTING_ERROR and hands back the key. A hand-rolled `{total}` replacer would
+ * format a broken ICU string happily and a guard that only read messages/en.json would never notice.
+ * The §7 six-locale render below is the whole reason this matters: a stray brace in the Tamil or Thai
+ * label is a runtime FORMATTING_ERROR on a real screen, and it is this `throw` that catches it.
+ */
+const translatorFor = (loc: LocaleKey) =>
+  createTranslator({
+    locale: loc,
+    messages: MESSAGES[loc] as never,
+    namespace: 'admin.entitlementTemplates' as never,
+    onError: (e) => {
+      throw e;
+    },
+  }) as unknown as (key: string, values?: Record<string, unknown>) => string;
+
+/** Which locale the next render is in. The card reads its translator from `getTranslations`, exactly as
+ *  next-intl's server API hands it one built from the request's cookie. */
+let LOCALE: LocaleKey = 'en';
+const translate = (key: string, values?: Record<string, unknown>) => translatorFor(LOCALE)(key, values);
+const inLocale = (loc: LocaleKey, key: string, values?: Record<string, unknown>) => translatorFor(loc)(key, values);
 
 vi.mock('next-intl/server', () => ({
   getTranslations: async (ns: string) => {
     if (ns !== 'admin.entitlementTemplates') throw new Error(`unexpected namespace ${ns}`);
-    return translate;
+    return (key: string, values?: Record<string, unknown>) => translate(key, values);
   },
 }));
 
@@ -301,8 +335,6 @@ describe('§6 · the card is still a server component', () => {
 
 // ── §7 · SIX LOCALES ─────────────────────────────────────────────────────────────────────────────────
 describe('§7 · both new labels exist in all six catalogues, and the six differ', () => {
-  const CATALOGUES = { en, ms, ta, th, vi: vi_, zh } as const;
-
   for (const key of ['uncoveredShow', 'uncoveredHide'] as const) {
     it(`${key} is present, non-empty and translated in en/ms/ta/th/vi/zh`, () => {
       const values: string[] = [];
@@ -319,6 +351,42 @@ describe('§7 · both new labels exist in all six catalogues, and the six differ
       expect(new Set(values).size, `${key} not distinct across six locales: ${values.join(' | ')}`).toBe(6);
     });
   }
+
+  /**
+   * THE POPULATED BRANCH, RENDERED, IN SIX LANGUAGES — and the reason this case exists.
+   *
+   * The §8 dev-server render check reaches only the EMPTY branch: `pnpm db:seed` builds a four-employee
+   * demo tenant in which every active employee IS reached by an entitlement table, so the real screen
+   * renders "Every active employee is reached…" and neither new label appears on it. Hand-rolling a
+   * dev-DB fixture to force the other branch was declined. This is the cover for it: the real next-intl
+   * translator, the real merged catalogues, the real component, six times.
+   */
+  it('the populated card renders in all six locales, each in its own language, with the total', async () => {
+    for (const loc of LOCALE_KEYS) {
+      LOCALE = loc;
+      const html = await markup(POPULATED);
+      const show = inLocale(loc, 'uncoveredShow', { total: TOTAL });
+      const hide = inLocale(loc, 'uncoveredHide');
+      expect(html, `${loc} shut label`).toContain(show);
+      expect(html, `${loc} open label`).toContain(hide);
+      expect(show, `${loc} shut label lost its count`).toContain(String(TOTAL));
+      // The key itself never reaches the screen — next-intl returns the key on MISSING_MESSAGE and
+      // FORMATTING_ERROR, and `onError` above turns both into a throw before it can.
+      expect(html, `${loc} leaked a key`).not.toContain('uncoveredShow');
+      expect(html, `${loc} leaked a key`).not.toContain('admin.entitlementTemplates');
+      if (loc !== 'en') {
+        // i18n/request.ts deep-merges onto English, so a key missing from this locale would render the
+        // English sentence and look perfectly fine.
+        expect(hide, `${loc} fell back to English`).not.toBe(inLocale('en', 'uncoveredHide'));
+        expect(show, `${loc} fell back to English`).not.toBe(inLocale('en', 'uncoveredShow', { total: TOTAL }));
+      }
+      // …and the job-grade line, which must stay outside the toggle, is in this locale too.
+      expect(html, `${loc} no-grade line`).toContain(
+        inLocale(loc, 'uncoveredNoGrade', { count: UNGRADED, total: ACTIVE }),
+      );
+    }
+    LOCALE = 'en';
+  });
 
   it('every locale keeps the {total} placeholder on the shut label, and none on the open one', () => {
     for (const [loc, cat] of Object.entries(CATALOGUES)) {
