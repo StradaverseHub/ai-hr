@@ -2782,8 +2782,22 @@ export async function prefillTp1FromSelfRelief(
       : [];
     const lpAccByEmp = new Map<string, number>();
     for (const s of priorSlips) {
-      const st = (s.statutory ?? {}) as { lp?: number };
-      lpAccByEmp.set(s.employmentId, round2((lpAccByEmp.get(s.employmentId) ?? 0) + Number(st.lp ?? 0)));
+      const st = (s.statutory ?? {}) as { lpDetail?: { tp1?: number } };
+      // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
+      // `tp1 + en.lpDeclared`: the TP1 relief AND the month's declared optional-deduction pay codes.
+      // Netting the WHOLE of it off the declared annual lets an unrelated relief pool swallow the
+      // employee's TP1 — an employee with optional-deduction components would watch their approved
+      // declaration shrink to LP₁ = 0.00 as the year ran on, which is the EXACT symptom this item was
+      // raised to fix, reintroduced through the new path. `lpDetail.tp1` is stamped on precisely the
+      // condition `tp1 > 0`, so its ABSENCE means "no TP1 was fed that month" with no ambiguity.
+      //
+      // BOUNDARY, STATED RATHER THAN GLOSSED: a payslip issued BEFORE this item carries no `lpDetail`
+      // at all, so a TP1 an operator keyed through the old Prefill button replays here as 0. Measured on
+      // production 2026-09-25: ZERO of 88 issued payslips carry any TP1 deduction, so that case is not
+      // reachable on this deployment; and a keyed figure is an operator override, which under the
+      // precedence rule below wins on its own run and is struck from no delta anyway.
+      const fed = Number(st.lpDetail?.tp1 ?? 0);
+      lpAccByEmp.set(s.employmentId, round2((lpAccByEmp.get(s.employmentId) ?? 0) + fed));
     }
 
     // Existing draft inputs for these target employments — preserve siblings; honour provenance.
@@ -4355,7 +4369,7 @@ export async function generatePayslips(
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number> };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
       acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
@@ -4369,7 +4383,20 @@ export async function generatePayslips(
       // and a relief already claimed through a different employer has never been fed by us, so netting it
       // off would silently shrink the declaration they made to this employer. So this map replays OUR
       // payslips only. `resolveTp1Feed`'s header carries the full argument; a test pins the difference.
-      lpFedByEmp.set(s.employmentId, round2((lpFedByEmp.get(s.employmentId) ?? 0) + Number(st.lp ?? 0)));
+      // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
+      // `tp1 + en.lpDeclared`: the TP1 relief AND the month's declared optional-deduction pay codes.
+      // Netting the WHOLE of it off the declared annual lets an unrelated relief pool swallow the
+      // employee's TP1 — an employee with optional-deduction components would watch their approved
+      // declaration shrink to LP₁ = 0.00 as the year ran on, which is the EXACT symptom this item was
+      // raised to fix, reintroduced through the new path. `lpDetail.tp1` is stamped on precisely the
+      // condition `tp1 > 0`, so its ABSENCE means "no TP1 was fed that month" with no ambiguity.
+      //
+      // BOUNDARY, STATED RATHER THAN GLOSSED: a payslip issued BEFORE this item carries no `lpDetail`
+      // at all, so a TP1 an operator keyed through the old Prefill button replays here as 0. Measured on
+      // production 2026-09-25: ZERO of 88 issued payslips carry any TP1 deduction, so that case is not
+      // reachable on this deployment; and a keyed figure is an operator override, which under the
+      // precedence rule below wins on its own run and is struck from no delta anyway.
+      lpFedByEmp.set(s.employmentId, round2((lpFedByEmp.get(s.employmentId) ?? 0) + Number(st.lpDetail?.tp1 ?? 0)));
       if (st.exemptionUsed) {
         const used = exemptUsedByEmp.get(s.employmentId) ?? {};
         for (const [code, amt] of Object.entries(st.exemptionUsed)) {

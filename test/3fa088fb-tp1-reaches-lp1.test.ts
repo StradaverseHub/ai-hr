@@ -405,6 +405,43 @@ describe('3fa088fb — approved TP1 reaches LP₁ automatically', () => {
     expect(await lpEverStamped(e.employmentId), '500 + 500 + 800').toBe(1800);
   });
 
+  it('an unrelated optional-deduction pool cannot swallow the declared TP1 (review fix)', async () => {
+    // ── THE DEFECT THIS PINS ──────────────────────────────────────────────────────────────────────
+    // `lpAlreadyFed` asks "how much of the annual this employee declared TO US have we already fed".
+    // The first cut of this item replayed `st.lp`, which is `tp1 + en.lpDeclared` — the TP1 relief AND
+    // the month's declared optional-deduction pay codes. An employee with those codes would watch their
+    // approved declaration shrink towards LP₁ = 0.00 as the year ran on: the EXACT symptom item
+    // 3fa088fb was raised to fix, reintroduced through the new path, and no test in this file caught it.
+    const e = await employee('LP1 NotSwallowed');
+    const batches: Record<string, string> = {};
+    for (const m of ['01', '02']) {
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-${m}` });
+      await setPayrollInput(a, { batchId, employmentId: e.employmentId, overtimeAmount: 0, tp1Deduction: 500 });
+      await generatePayslips(a, { batchId });
+      batches[m] = batchId;
+    }
+
+    // January ALSO carried RM700 of declared optional-deduction pay codes. That is the shape the kernel
+    // writes for such a month: `lp` is the combined figure, `lpDetail.tp1` records the TP1 alone.
+    const janSt = (await slipSt(batches['01'], e.employmentId)) as unknown as Record<string, unknown>;
+    expect(Number(janSt.lp), 'precondition: January stamped 500 of TP1').toBe(500);
+    await owner.db
+      .update(schema.payslip)
+      .set({ statutory: { ...janSt, lp: Number(janSt.lp ?? 0) + 700 } })
+      .where(
+        and(eq(schema.payslip.batchId, batches['01']), eq(schema.payslip.employmentId, e.employmentId)),
+      );
+
+    await declareAndApprove(e.personId, { amount: 1800, approvedMonth: 1 });
+    const mar = await runRegular(`${YEAR}-03`);
+
+    // 1800 declared − 1000 of TP1 ACTUALLY fed = 800. Replaying `st.lp` would strike the RM700 of
+    // unrelated optional deductions off the declaration as well and feed only 100.
+    const marSt = await slipSt(mar, e.employmentId);
+    expect(marSt.lp, 'the optional-deduction pool is not the employee’s TP1').toBe(800);
+    expect(marSt.lpDetail!.tp1AlreadyFed, 'only the TP1 portion counts as already fed').toBe(1000);
+  });
+
   it('never feeds a NEGATIVE LP₁ when a correction reduces the annual below what was already fed', async () => {
     const e = await employee('LP1 Reduced');
     await declareAndApprove(e.personId, { amount: 3000, approvedMonth: 1 });
