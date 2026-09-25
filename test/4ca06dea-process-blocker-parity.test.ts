@@ -229,6 +229,47 @@ describe('4ca06dea · the new strings exist in all six locales and are six diffe
     }
   });
 
+  it('every new message FORMATS, in every locale — the check a plain seed cannot render', async () => {
+    // §8 GAP, STATED RATHER THAN PAPERED OVER. `pnpm db:seed` creates ZERO payroll runs ("Total runs 0
+    // — No payroll processes yet" on the rendered /payroll), so `/payroll/[batchId]` — where the batch
+    // card and its two new `{n}` strings live — is NOT reachable from a plain seed at all, and the
+    // six-locale dev-server render for this round covers /payroll/process only. A malformed ICU string
+    // throws FORMATTING_ERROR at RENDER time and returns a 200 with the block missing: invisible to tsc,
+    // to `next build` and to a key-presence assertion. So the formatter is RUN here instead.
+    const { createTranslator } = await import('next-intl');
+    for (const l of LOCALES) {
+      // ⚠️ `onError` IS LOAD-BEARING: next-intl swallows MISSING_MESSAGE / FORMATTING_ERROR by default
+      // and hands back the key, so an assertion on the output alone would pass on a broken string.
+      const boom = (e: unknown) => {
+        throw e;
+      };
+      const messages = CATALOGUES[l] as unknown as Record<string, unknown>;
+      const tb = createTranslator({ locale: l, messages, namespace: 'payroll.batch', onError: boom as never });
+      const tp = createTranslator({ locale: l, messages, namespace: 'payroll.process', onError: boom as never });
+      for (const [key, n] of [
+        ['preChecksPayModeBlockerHint', 1],
+        ['preChecksPayModeBlockerHint', 7],
+        ['preChecksBlockedPayModeError', 1],
+        ['preChecksBlockedPayModeError', 7],
+      ] as const) {
+        const out = tb(key as never, { n } as never);
+        expect(out, `${l}.${key}`).toContain(String(n));
+        // next-intl hands back the dotted key path when a message is missing or fails to format.
+        expect(out, `${l}.${key} did not resolve`).not.toContain('payroll.batch');
+        expect(out, `${l}.${key} left ICU unrendered`).not.toMatch(/[{}]/);
+      }
+      for (const [t, ns, key] of [
+        [tb, 'payroll.batch', 'preChecks.unpayablePayMode'],
+        [tp, 'payroll.process', 'validationCheck.unpayablePayMode'],
+      ] as const) {
+        const out = (t as (k: never) => string)(key as never);
+        expect(out, `${l}.${ns}.${key}`).toBeTruthy();
+        expect(out, `${l}.${ns}.${key} did not resolve`).not.toContain(ns);
+        expect(out, `${l}.${ns}.${key} left ICU unrendered`).not.toMatch(/[{}]/);
+      }
+    }
+  });
+
   it('the refusal message does NOT reuse the missing-salary-record wording', () => {
     // The whole complaint: the operator pressed Generate and was told these people had no salary record.
     // They have one; it carries a pay mode payroll cannot calculate.
