@@ -43,7 +43,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 import { hireEmployee } from '../core/org';
@@ -143,12 +143,19 @@ async function hire(gender: string | null, marital: string | null) {
   return employmentId;
 }
 
-/** Accrued days for one (employment, type) pair — the only thing "was it granted" can honestly mean. */
+/**
+ * Accrued days for one (employment, type) PAIR — the only thing "was it granted" can honestly mean.
+ *
+ * ⚠️ THE `leaveTypeId` PREDICATE IS LOAD-BEARING and the first draft of this file omitted it, copying a
+ * helper from test/508d3acd-ineligible-grants.test.ts that is correct there because each of its cases
+ * creates exactly ONE leave type. This file grants eleven at once, so a sum over the employment reported
+ * 126 days for every pair and five assertions failed for a reason that had nothing to do with the gate.
+ */
 async function accrued(employmentId: string, leaveTypeId: string) {
   const rows = await owner.db
     .select({ days: schema.leaveLedger.days, entryType: schema.leaveLedger.entryType })
     .from(schema.leaveLedger)
-    .where(eq(schema.leaveLedger.employmentId, employmentId));
+    .where(and(eq(schema.leaveLedger.employmentId, employmentId), eq(schema.leaveLedger.leaveTypeId, leaveTypeId)));
   return rows
     .filter((r) => r.entryType === 'accrual' || r.entryType === 'in_lieu_accrual')
     .reduce((n, r) => n + Number(r.days), 0);
