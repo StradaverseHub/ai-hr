@@ -144,8 +144,27 @@ type FormatCommon = {
   /** i18n key under `payroll.paymentSubmission.format`. */
   labelKey: string;
   descriptionKey: string;
-  /** The period this format is filed for. Every format today is monthly; the field exists so one need not be. */
-  periodKind: 'month';
+  /**
+   * WHAT THE DOWNLOAD POP-UP HAS TO ASK FOR before this file can be produced. Declared by the FORMAT and
+   * read by the modal (e78fd03d), so the selection follows the registry rather than a branch on the group.
+   *
+   *   'month'       — company + year + payroll month. Every format today, and every statutory return
+   *                   genuinely IS one filing per month: LHDN, KWSP and PERKESO each want the month
+   *                   consolidated, whatever runs it was paid in.
+   *   'month-cycle' — the same, plus WHICH RUN of that month. One payroll month can hold a regular run, a
+   *                   bonus run and an advance with different payment dates (ADR-0024 multi-cycle;
+   *                   `payroll_batch.run_seq` is the cycle's identity), so a file that pays PEOPLE has to
+   *                   say which of them it pays.
+   *
+   * ⚠️ NOTHING DECLARES `'month-cycle'` TODAY, AND THAT IS THE HONEST STATE rather than an oversight. The
+   * only file that would need it is a bank salary payment file, and the `salary` shelf is deliberately
+   * empty — a bank payment file moves real money and every bank's layout differs (see the header). The
+   * union is widened and the MODAL reads it so that the day such a format is added it declares
+   * `'month-cycle'` and the cycle field appears with no screen change — the same property this registry
+   * already has to keep for the row itself. It is NOT a picker sitting on the screen waiting for a
+   * consumer: for a `'month'` format the control does not exist.
+   */
+  periodKind: 'month' | 'month-cycle';
   /** REQUIRED. See `FormatVerification` — the registry's whole ratchet. */
   verification: FormatVerification;
 };
@@ -232,6 +251,27 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
      * with its own checking (CLAUDE.md §8), not in a screen's integration.
      *
      * So the row is listed with its provenance, and points at the screen that genuinely serves it today.
+     *
+     * ── r340 (0d02d4a1) RE-READ THIS AND CONFIRMED IT, WITH THE MISSING STEP NAMED ─────────────────
+     * The item was "build the e-Data PCB file"; the file was already correct field-by-field against
+     * Exhibit 4, so the work was this row. It is still not flipped, and the reason is narrower than
+     * "a refactor": the generic read this row needs has nowhere to CALL.
+     *
+     *   · `reportPreview(s, {reportId: 'my.cp39', …})` already returns every field the writer needs —
+     *     `localization/my/reports.ts`'s `cp39()` puts `taxNo`, `ic`, `oldIc`, `passport`, `countryCode`,
+     *     `employeeNo`, `pcb` and `cp38` on each row and the employer header on `meta.formHeader`. So the
+     *     generic DB read of route (a) is genuinely available to `app/`, exactly as `loadBorangAFile`'s is.
+     *   · What is NOT available is the PURE BUILDER. `buildBorangAFile` lives in `lib/`; `buildCp39File`
+     *     lives in the pack, and nothing generic re-exports it. `CountryPack` (localization/country-pack.ts)
+     *     declares `reports`, `plannedForms` and `statutoryLinks` but no payment-file member, and
+     *     `ReportDef.outputs: ['…','file']` is a DISPLAY chip with no generator behind it — audited.
+     *
+     * So finishing this needs ONE of: a `paymentFormats` (or `cp39File`) member on `CountryPack` +
+     * `localization/my/index.ts` (ADR-0080 D6, route (b)), or the pure builder re-homed in `lib/` beside
+     * `kwsp-borang-a-file.ts` (route (a)). Both are outside this module, and the guard test that pins
+     * `available: false` (test/payment-submission-module.test.ts, "LHDN is LISTED … NO builder") is the
+     * third file that has to move in the same commit. `test/pack-drift-allowlist.json` is NOT one of them:
+     * it only shrinks.
      */
     available: false,
     unavailableReasonKey: 'lhdnCp39Pending',

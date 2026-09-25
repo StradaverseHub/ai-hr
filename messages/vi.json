@@ -6899,7 +6899,7 @@
     },
     "paymentSubmission": {
       "pageTitle": "Nộp thanh toán",
-      "pageDescription": "Tạo các tệp dùng để khai và nộp cho một tháng. Chọn tháng, rồi tải về những gì từng cơ quan yêu cầu.",
+      "pageDescription": "Tạo các tệp dùng để khai và nộp cho một tháng. Chọn tệp bạn cần, rồi cho biết tệp đó thuộc công ty và tháng nào.",
       "nothingFiledTitle": "Không có gì ở đây được nộp thay bạn.",
       "nothingFiledNotice": "Màn hình này chỉ tạo tệp và giao cho bạn. Nó không nộp bất cứ thứ gì cho cơ quan nào và không thanh toán cho ai — bạn vẫn phải tự tải từng tệp lên cổng thông tin của cơ quan đó.",
       "company": "Công ty",
@@ -6923,7 +6923,10 @@
       "verificationFiledFile": "Đã đối chiếu với tệp thật mà chủ lao động này đã nộp.",
       "verificationSpecificationSample": "Chỉ đối chiếu với mẫu do cơ quan công bố — chưa có tệp nào từ hệ thống này đi qua cổng thông tin của cơ quan. Hãy kiểm tra trước khi tải lên.",
       "verificationFieldTableOnly": "Dựng từ bảng trường dữ liệu, không có tệp mẫu. Hãy kiểm tra từng con số trước khi tải lên.",
-      "periodFooter": "Đang hiển thị {period}."
+      "periodFooter": "Đang hiển thị {period}.",
+      "selectionIntro": "Chọn công ty và tháng lương mà tệp này bao gồm, rồi tải tệp về.",
+      "payCycle": "Kỳ trả lương",
+      "cancel": "Hủy"
     }
   },
   "admin": {

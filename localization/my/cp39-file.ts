@@ -127,6 +127,26 @@ export const normalizeEmployerNo = (e: string): string => {
   return d.padStart(10, '0');
 };
 
+/**
+ * THE LHDN FILE NAME, STATED ONCE. Exhibit 4's own convention is `xxxxxxxxxxmm_yyyy.txt` — the ten-digit
+ * employer number, the two-digit month of deduction, an underscore, the four-digit year of deduction.
+ *
+ * ⚠️ EXPORTED FOR THE SAME REASON `borangAUploadFilename` AND `perkesoUploadFilename` ARE. r336 made those
+ * two helpers the one definition each of their file's name precisely so two screens offering one month's
+ * file cannot name it differently — an operator who cannot match a downloaded file to a month uploads the
+ * wrong one, and LHDN's portal keys the submission off the name. `buildCp39File` calls this rather than
+ * formatting the name inline, so a second surface that comes to offer this file (the Payment Submission
+ * shelf is the one waiting on it — see app/payroll/payment-submission/registry.ts) asks THIS function and
+ * is not able to invent a second spelling.
+ *
+ * `employerNo` is normalised here, so a caller holding the employer's raw "E 908915-10" gets the same name
+ * as one holding "0090891510". The month is zero-padded; the year is written as given, because a year that
+ * is not four digits is a caller bug the file's own header field would refuse anyway.
+ */
+export function cp39UploadFilename(p: { employerNo: string; year: number | string; month: number | string }): string {
+  return `${normalizeEmployerNo(String(p.employerNo))}${String(p.month).padStart(2, '0')}_${p.year}.txt`;
+}
+
 export type Cp39File = {
   filename: string;
   content: string;
@@ -204,7 +224,8 @@ export function buildCp39File(p: {
   if (header.length !== 57) throw new Error(`header record is ${header.length} chars, expected 57`);
 
   return {
-    filename: `${employer}${mm}_${p.year}.txt`,
+    // The ONE definition of this file's name (see `cp39UploadFilename`), never a second formatting of it.
+    filename: cp39UploadFilename({ employerNo: employer, year: p.year, month: mm }),
     content: [header, ...lines].join('\r\n') + '\r\n',
     totals: { mtdCents, mtdRecords, cp38Cents, cp38Records },
   };
