@@ -108,22 +108,20 @@ export default async function PcbConfigPage({
             the SAME optional-with-fallback path pcbMonth uses (ruleset value ?? pack built-in), so what is
             shown here is the number the kernel actually applies — never a second copy that can drift.
 
-            ⚠️ 04b88724 (r339) — THE SEVEN ROWS BELOW NO LONGER SHARE ONE FOOTING. This comment used to say
-            all seven were "sourced from a reputable published summary … and NOT transcribed from the
-            official publication". That is now true of only two of them:
-              · the FIVE child-category rows were re-read off the primary LHDN MTD specification (printed
-                pages 26–27, Reliefs table item c) and two were CORRECTED there (disabled 6,000 → 8,000,
-                disabled_study 14,000 → 16,000). They are still shown as awaiting sign-off, because that
-                badge means "no human has signed this", not "we do not know where it came from".
-              · `disabledIndividual` (RM7,000) was incidentally confirmed against printed page 28 item e of
-                the same specification, but its own provenance note was left secondary-sourced: upgrading
-                it was out of that item's scope.
-              · `disabledSpouse` (RM5,000) is, on the evidence of printed page 28 item f, WRONG — the spec
-                gives RM6,000 for a disabled husband / wife. It was deliberately NOT changed (out of scope,
-                and zero employees are flagged today). See the note on the constant in
-                localization/my/statutory-tables.ts; it is to be raised as its own board item.
-            So: do not read this heading as a statement about provenance. It is a statement about SIGN-OFF,
-            which is still outstanding for every row under it. */}
+            PROVENANCE, settled across r339 and r340. This comment used to say all seven rows were
+            "sourced from a reputable published summary … and NOT transcribed from the official
+            publication". That is no longer true of any of them — every row below is now transcribed from
+            the primary LHDN 2026 MTD specification:
+              · the FIVE child-category rows off printed pages 26–27, Reliefs table item c, where two were
+                CORRECTED (disabled 6,000 → 8,000, disabled_study 14,000 → 16,000) — item 04b88724, r339.
+              · `disabledIndividual` (RM7,000) off printed page 28 item e.
+              · `disabledSpouse` off printed page 28 item f, CORRECTED RM5,000 → RM6,000 — item 57d48735,
+                r340. r339 found this and flagged it in red rather than widening its own scope; that flag
+                is retired with the fix.
+            THE ROWS STILL SHOW "PENDING SIGN-OFF", AND THAT IS CORRECT. The badge means "no human has
+            signed this", not "we do not know where it came from". A checkable transcription and an
+            accountant's sign-off are different things, and only the first has happened. Do not read this
+            heading as a statement about provenance. */}
         <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('reliefsPendingSignOff')}
         </h3>

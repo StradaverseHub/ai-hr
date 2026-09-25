@@ -20,7 +20,18 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.8';
+export const MY_STATUTORY_VERSION = '2026.9';
+// 2026.9 (2026-09-25): `disabledSpouse` CORRECTED RM5,000 -> RM6,000 against the primary source — item
+//   57d48735. Printed page 28 (PDF p.29) of the LHDN 2026 MTD spec, Reliefs table item f, gives RM6,000
+//   for a disabled husband / wife. RM5,000 is the ANNUAL ASSESSMENT figure under s.47(1)(b) ITA 1967:
+//   the same annual-versus-MTD schedule confusion 2026.8 corrected for the disabled-child figures.
+//   04b88724 found it, flagged it in red rather than widening its scope, and told the reporter to own it
+//   as its own item; this is that item, and the red flag is retired here, in STATUTORY-SOURCES.md §1 and
+//   on the PCB configuration screen. `disabledIndividual` (RM7,000) is unchanged in value but loses its
+//   RATE-ONLY flag: it sits on item e of the same table and was confirmed there. Production exposure when
+//   corrected: ZERO employees with `disabled_spouse` set, so no payslip moves. Gated to category 2 as
+//   before. The bundled signed pack is rebuilt in the same commit — `pnpm statutory:sync` would otherwise
+//   reinstate RM5,000 over the fix and stamp it with the old version.
 // 2026.8 (2026-09-25): TWO `childByCategory` figures CORRECTED against the primary source, and all five
 //   given a page citation — item 04b88724. The reporter contested our claim that the five figures "match
 //   HASiL line for line"; they were right and we were wrong.
@@ -115,8 +126,9 @@ export const MY_PCB_BANDS: PcbBand[] = [
   { upTo: Infinity, M: 2000000, R: 0.3, bCat13: 528400, bCat2: 528400 },
 ];
 
-/** Annual reliefs (RM) used to project chargeable income P. Source: LHDN 2026 MTD spec. VERIFIED,
- *  EXCEPT `disabledIndividual` — see its own note. */
+/** Annual reliefs (RM) used to project chargeable income P. Source: LHDN 2026 MTD spec. Every figure is
+ *  now transcribed from the primary publication; all still await the human sign-off §1 of
+ *  docs/architecture/STATUTORY-SOURCES.md requires before a real filing. */
 export const MY_RELIEFS = {
   /** D — individual + dependent relatives. */
   individual: 9000,
@@ -130,52 +142,42 @@ export const MY_RELIEFS = {
    * FURTHER deduction for a registered disabled individual (OKU), on top of `individual` — s.46(1)(g)
    * ITA 1967, raised from RM6,000 to RM7,000 by Budget 2025 with effect from YA2025 (item d64d0df4).
    *
-   * ⚠️ RATE-ONLY, NOT YET VERIFIED. Every other figure in this object was transcribed from the LHDN
-   * MTD computerised-calculation spec PDF itself. This one is sourced from PwC Worldwide Tax Summaries
-   * (Malaysia — Individual — Deductions, YA2026) because the LHDN spec URL recorded above now 404s, and
-   * a secondary source is not the same thing as the primary one. It is listed as RATE-ONLY in
-   * docs/architecture/STATUTORY-SOURCES.md §1 and MUST be signed off against the current LHDN
-   * publication before a real filing relies on it.
+   * CONFIRMED AGAINST THE PRIMARY SOURCE: LHDN 2026 MTD computerised-calculation specification, printed
+   * page 28 (PDF page 29), Reliefs table item e — "A further deduction of RM7,000 is allowed if the
+   * individual is a disabled person." The figure was checked on that page during r339 (item 04b88724),
+   * which read the same Reliefs table to correct the child figures, and again here (item 57d48735), which
+   * corrected `disabledSpouse` two entries below off item f of that same table. It previously carried a
+   * RATE-ONLY flag from its PwC Worldwide Tax Summaries origin; that flag is retired, the value is
+   * unchanged at RM7,000, and the human sign-off §1 of docs/architecture/STATUTORY-SOURCES.md requires is
+   * still outstanding — a checkable transcription and an accountant's sign-off are different things.
    *
    * The exposure is bounded and opt-in by construction: it is applied ONLY to an employee an admin has
-   * explicitly flagged as a disabled individual, so no existing employee's PCB moves until someone
-   * makes that claim. That is why it ships as a wrong-figure RISK on flagged employees rather than as
-   * a guaranteed over-deduction on every entitled one, which is what leaving it out means.
+   * explicitly flagged as a disabled individual. Production 2026-09-25: zero employees are so flagged.
    */
   disabledIndividual: 7000,
   /**
-   * FURTHER deduction for a DISABLED SPOUSE, on top of `spouse` — s.47(1)(b) ITA 1967 (RM5,000).
-   *
-   * ⚠️⚠️ THIS FIGURE DISAGREES WITH THE PRIMARY SOURCE AND IS LEFT UNCHANGED ON PURPOSE (item 04b88724).
-   * While reading the MTD spec to correct the two child figures below, the SAME Reliefs table was found to
-   * carry this deduction on printed page 28 (PDF page 29), item f:
+   * FURTHER deduction for a DISABLED SPOUSE, on top of `spouse` — LHDN 2026 MTD computerised-calculation
+   * specification, printed page 28 (PDF page 29), Reliefs table item f:
    *     "f.  Disabled Husband / Wife                                          6,000.00
    *          An further deduction of RM6,000 is given in respect of a disabled husband / wife."  [sic]
-   * We hold RM5,000. RM5,000 is the ANNUAL ASSESSMENT figure under s.47(1)(b) ITA 1967 — the identical
-   * class of error as the child figures: the annual-return schedule quoted where the MTD schedule governs.
-   * So this is very probably wrong by RM1,000, in the same direction (under-relief ⇒ over-deduction).
    *
-   * IT IS NOT CORRECTED HERE because item 04b88724 is scoped to `childByCategory`, and a second relief on
-   * the money path is the reporter's to own with its own exposure measurement — not something to slip into
-   * a round about child relief. Exposure measured on production 2026-09-25: ZERO employees have
-   * `employee_statutory_my.disabled_spouse` set, and zero have `disabled_individual` set, so nothing is
-   * mis-deducted today and there is no urgency that would justify widening the scope.
-   * → RAISE THIS AS ITS OWN BOARD ITEM. Do not "fix it while you are in here".
+   * CORRECTED FROM RM5,000 TO RM6,000 (item 57d48735). RM5,000 is the ANNUAL ASSESSMENT figure under
+   * s.47(1)(b) ITA 1967. Malaysia runs two schedules and they disagree here, exactly as they disagree for
+   * the disabled-child figures corrected in 04b88724: the annual-return schedule had been quoted where the
+   * MTD schedule governs. Holding RM5,000 under-relieved by RM1,000, which over-deducts.
    *
-   * `disabledIndividual` above (RM7,000) was checked on the same page at the same time and MATCHES the
-   * spec: printed page 28 item e, "A further deduction of RM7,000 is allowed if the individual is a
-   * disabled person." Its own note is left as-is because upgrading it is likewise out of scope.
+   * 04b88724 found this while correcting `childByCategory`, flagged it in red rather than widening its own
+   * scope, and told the reporter to own it as its own item. This IS that item. The red flag it left here,
+   * in docs/architecture/STATUTORY-SOURCES.md §1 and on the PCB configuration screen is retired with it.
    *
-   * ⚠️ RATE-ONLY, NOT YET VERIFIED — same footing as `disabledIndividual` above: transcribed from PwC
-   * Worldwide Tax Summaries (Malaysia — Individual — Deductions, YA2026) because the LHDN MTD spec URL
-   * recorded above now 404s. Listed as RATE-ONLY in docs/architecture/STATUTORY-SOURCES.md §1 and
-   * shown as "pending sign-off" on the PCB configuration screen.
+   * PRODUCTION EXPOSURE when corrected, measured 2026-09-25: ZERO employees have
+   * `employee_statutory_my.disabled_spouse` set, so no payslip moves today. Re-measure before quoting it.
    *
    * GATED TO CATEGORY 2 exactly like `spouse`. A category-1 (single) or category-3 (spouse working /
    * divorced / widowed) employee has no spouse deduction to add to, so this adds nothing to their P.
    * The Identity & Tax card says so rather than letting the setting look ignored.
    */
-  disabledSpouse: 5000,
+  disabledSpouse: 6000,
   /**
    * PER-CHILD deduction broken out by the five LHDN s.48 categories (item d64d0df4). `perChild` above is
    * the flat RM2,000 figure the projection uses for every child today; this map is what the projection
@@ -235,8 +237,9 @@ export const MY_RELIEFS = {
    * before a real filing: that is an accountant's act, not an agent's, so the PCB configuration screen
    * still shows these rows as awaiting sign-off. The two things are deliberately separate.
    *
-   * ⚠️ `disabledIndividual` and `disabledSpouse` ABOVE ARE STILL SECONDARY-SOURCED AND ONE IS WRONG — see
-   * the note on `disabledSpouse`. Out of scope for item 04b88724; do not read this block as covering them.
+   * `disabledIndividual` (RM7,000, printed p.28 item e) and `disabledSpouse` (RM6,000, printed p.28 item
+   * f) ABOVE now carry the same primary-source footing, read off the same Reliefs table — item 57d48735
+   * corrected the second and cited both. They remain awaiting the same human sign-off as these five.
    */
   childByCategory: {
     // NB: keyed by CHILD_RELIEF_CATEGORY_KEYS below — the SAME five keys the Family register stores per

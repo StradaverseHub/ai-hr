@@ -1,6 +1,6 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.8` (see `MY_STATUTORY_VERSION`)
+**Statutory-table version:** `2026.9` (see `MY_STATUTORY_VERSION`)
 **Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
@@ -63,16 +63,17 @@ to these tables is traceable to the exact runs it affects.
   table rows; ∑LP and Z accumulate through the payslip replay.
 - **Non-resident — ✅ implemented**: flat **30%** of taxable remuneration (spec §D.a, golden:
   RM3,000 → RM900), toggled by the statutory profile's residency flag; §E rounding applies.
-- **Disabled individual (OKU) further deduction — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF.**
-  `MY_RELIEFS.disabledIndividual` = **RM7,000**, the further deduction under **s.46(1)(g) ITA 1967**
-  on top of the RM9,000 individual deduction, raised from RM6,000 by Budget 2025 with effect from
-  **YA2025** (item `d64d0df4`, statutory-table version **2026.6**).
-  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions
-    (YA2026 personal reliefs: self disabled **MYR 7,000** further relief).
-    <https://taxsummaries.pwc.com/malaysia/individual/deductions>
-  - **Why it is not ✅ Verified:** every other figure in `MY_RELIEFS` was transcribed from the LHDN MTD
-    computerised-calculation spec PDF itself. That URL now returns **HTTP 404**, so this figure could
-    only be sourced from a high-trust secondary reference. A secondary source is not the primary one.
+- **Disabled individual (OKU) further deduction — ✅ SOURCED FROM THE PRIMARY SPEC (2026.9). STILL
+  NEEDS A HUMAN SIGN-OFF.** `MY_RELIEFS.disabledIndividual` = **RM7,000**, the further deduction under
+  **s.46(1)(g) ITA 1967** on top of the RM9,000 individual deduction, raised from RM6,000 by Budget 2025
+  with effect from **YA2025** (item `d64d0df4`, version **2026.6**; footing upgraded by `57d48735`, **2026.9**).
+  - **Source (primary):** LHDN 2026 MTD computerised-calculation specification, **printed page 28
+    (PDF 29), Reliefs table item e** — _"A further deduction of RM7,000 is allowed if the individual is a
+    disabled person."_ Read during `04b88724` (r339) and again during `57d48735` (r340), which corrected
+    `disabledSpouse` off item f of the same table.
+  - **Value unchanged.** Only the footing moved: this entry previously rested on PwC _Worldwide Tax
+    Summaries_ because the LHDN URL recorded here returned HTTP 404. The figure the secondary source gave
+    turned out to agree with the specification.
   - **Blast radius if wrong:** bounded and opt-in. The deduction is applied **only** to an employee an
     admin has explicitly flagged as a disabled individual on the Tax Information card, so no existing
     employee's PCB moves until someone makes that claim. Nothing else in the ruleset changed.
@@ -80,36 +81,29 @@ to these tables is traceable to the exact runs it affects.
     or as a separate deduction) against the current LHDN publication, then either record the sign-off
     below or correct the figure and rebuild the bundled pack
     (`node --import tsx scripts/statutory-pack-build-my.ts`).
-- **Disabled spouse further deduction — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF.**
-  `MY_RELIEFS.disabledSpouse` = **RM5,000**, the further deduction under **s.47(1)(b) ITA 1967** on top
-  of the RM4,000 spouse deduction (item `d64d0df4`, statutory-table version **2026.7**).
-  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions
-    (YA2026 personal reliefs: disabled spouse **MYR 5,000** further relief).
-    <https://taxsummaries.pwc.com/malaysia/individual/deductions>
-  - **Why it is not ✅ Verified:** identical reason to the OKU figure above — the LHDN MTD spec PDF URL
-    returns HTTP 404, so only a high-trust secondary reference was available.
-  - 🚨 **2026-09-25 (item `04b88724`) — THIS FIGURE IS VERY PROBABLY WRONG BY RM1,000, AND WAS LEFT
-    UNCHANGED ON PURPOSE.** While reading the MTD specification to correct the child figures below, the
-    SAME Reliefs table was found to give this deduction on **printed page 28 (PDF 29), item f**:
-    _"f. Disabled Husband / Wife … 6,000.00 — An further deduction of RM6,000 is given in respect of a
-    disabled husband / wife."_ [sic] We hold **RM5,000**, which is the **annual assessment** figure under
-    s.47(1)(b) — the identical class of error as the two child figures below (annual-return schedule quoted
-    where the MTD schedule governs), in the same direction (under-relief ⇒ over-deduction).
-    It was NOT corrected because item `04b88724` is scoped to `childByCategory`, and a second relief on the
-    money path needs its own item and its own exposure measurement rather than being slipped into a round
-    about child relief. **Exposure measured on production 2026-09-25: ZERO employees have
-    `employee_statutory_my.disabled_spouse` set** (and zero have `disabled_individual` set), so nothing is
-    mis-deducted today. **→ To be raised as its own board item.**
-    For the same reason, `disabledIndividual` = RM7,000 above was incidentally **confirmed** against
-    printed page 28 item e of the same specification (_"A further deduction of RM7,000 is allowed if the
-    individual is a disabled person."_) but its entry is deliberately left on its secondary footing here,
-    because upgrading it was likewise out of that item's scope.
-  - **Blast radius if wrong:** bounded and opt-in, and narrower still than the OKU figure. It is applied
-    only to an employee an admin has flagged as having a disabled spouse **AND** whose tax category is
-    **2** (married, spouse not working) — the same gate the RM4,000 spouse deduction sits behind.
-    Categories 1 and 3 store and display the flag but their PCB is untouched.
-  - **Action before a real filing:** confirm RM5,000 against the current LHDN publication, then record
-    the sign-off below or correct the figure and rebuild the bundled pack.
+- **Disabled spouse further deduction — ✅ SOURCED FROM THE PRIMARY SPEC (2026.9), FIGURE CORRECTED.
+  STILL NEEDS A HUMAN SIGN-OFF.** `MY_RELIEFS.disabledSpouse` = **RM6,000**, the further deduction under
+  **s.47(1)(b) ITA 1967** on top of the RM4,000 spouse deduction (item `d64d0df4`, version **2026.7**;
+  **CORRECTED RM5,000 → RM6,000 by item `57d48735`, version 2026.9, 2026-09-25**).
+  - **Source (primary):** LHDN 2026 MTD computerised-calculation specification, **printed page 28
+    (PDF 29), Reliefs table item f** — _"f. Disabled Husband / Wife … 6,000.00 — An further deduction of
+    RM6,000 is given in respect of a disabled husband / wife."_ [sic]
+  - **Why it was wrong:** RM5,000 is the **annual assessment** figure under s.47(1)(b), taken from PwC
+    _Worldwide Tax Summaries_ when the LHDN URL 404'd. Malaysia runs two schedules and they disagree here
+    — the identical class of error as the two child figures below, in the same direction
+    (under-relief ⇒ over-deduction). `04b88724` (r339) found it while reading the same Reliefs table to
+    correct the child figures, flagged it in red rather than widening its own scope, and told the reporter
+    to own it as its own item. **This is that item, and the red flag is retired with the fix** — here, on
+    the constant in `localization/my/statutory-tables.ts`, and on the PCB configuration screen.
+  - **Blast radius:** bounded and opt-in, and narrower still than the OKU figure. It is applied only to an
+    employee an admin has flagged as having a disabled spouse **AND** whose tax category is **2** (married,
+    spouse not working) — the same gate the RM4,000 spouse deduction sits behind. Categories 1 and 3 store
+    and display the flag but their PCB is untouched. **Exposure measured on production 2026-09-25: ZERO
+    employees have `employee_statutory_my.disabled_spouse` set**, so the correction moves no payslip today.
+    Re-measure before quoting that again.
+  - **Action before a real filing:** the transcription is done and checkable; what remains is the human
+    sign-off recorded below. The bundled pack was rebuilt in the same commit — `pnpm statutory:sync` would
+    otherwise reinstate RM5,000 over the fix and stamp it with the old version.
 - **Per-category child deductions (LHDN s.48) — ✅ SOURCED FROM THE PRIMARY SPEC (2026.8). STILL NEEDS A
   HUMAN SIGN-OFF.** `MY_RELIEFS.childByCategory` — introduced by item `d64d0df4` (2026.7), **two figures
   CORRECTED and all five given a page citation by item `04b88724` (2026.8, 2026-09-25)**:
