@@ -443,6 +443,14 @@ describe('20837372 (c) · each C2 sub-item carries its own sourced exemption lim
     ]);
   });
 
+  it('the PRINTED FORM does not carry the limits — the agency\'s own Section C has no such column', () => {
+    // §8, statutory documents: never print a figure you cannot stand behind. These limits are the
+    // specification's, not this form's; putting them on the generated PDF would produce a TP3 that does
+    // not match the one the employee signed, with three numbers on it the agency never ruled for.
+    const pdf = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/pdf/route.ts'), 'utf8');
+    expect(pdf, 'the generated form stays faithful to the printed one').not.toMatch(/exemptionLimit/);
+  });
+
   it('the screen prints the limit and the note that says where it comes from', () => {
     const src = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/page.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
