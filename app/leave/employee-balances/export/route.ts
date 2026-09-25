@@ -6,6 +6,7 @@
  * and the screen can never disagree about a figure, an as-at date, or a filter.
  */
 import { getLocale, getTranslations } from 'next-intl/server';
+import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listEmployees } from '@/core/read';
@@ -31,6 +32,11 @@ export async function GET(req: Request) {
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
   const tMe = await getTranslations('me.leaveBalanceTable');
+  // 7da0a4e7 — this route's standing invariant is that the FILE exports the table that was on screen. A
+  // column whose header said one thing here and another there would break it just as surely as a missing
+  // column, so the two figures with standardised names resolve through lib/leave-figure-labels.ts, the
+  // same dictionary the screen reads.
+  const tf = await getTranslations(LEAVE_FIGURE_NS);
 
   // Same selection rule as the screen: an unknown/absent employee falls back to the first by company
   // then name, so an export link can never resolve to a different employee than the page did.
@@ -95,7 +101,7 @@ export async function GET(req: Request) {
       // states the invariant: the file exports the table that was on screen, so a column added to the screen
       // and not to the file is exactly the disagreement it forbids.
       tMe('colFullEntitlement'),
-      tMe('colYtdEntitled'),
+      tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled),
       tInq('colBroughtForward'),
       tMe('colTaken'),
       tInq('colPendingApproval'),
@@ -110,7 +116,7 @@ export async function GET(req: Request) {
       tMe('colPendingShareSource'),
       tMe('colOverutilized'),
       tInq('colForfeitedBf'),
-      tMe('colBalance'),
+      tf(LEAVE_FIGURE_LABEL_KEY.balance),
       // 31e39d74 — the screen captions an ungenerated 0.00 and the export must too, or the file and the
       // screen disagree about the one thing the reporter asked to be told (this route's own header states
       // that invariant). It is a COLUMN here rather than a note under a cell because a spreadsheet has no

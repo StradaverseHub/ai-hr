@@ -26,6 +26,7 @@
  */
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { Layers } from 'lucide-react';
 import type { MyLeaveCard } from '@/core/my-leave';
 import { leaveVisual } from '@/lib/leave-visual';
@@ -58,6 +59,14 @@ export function MyLeaveDashboard({
   const t = useTranslations('leave.myLeave');
   const tTable = useTranslations('me.leaveBalanceTable');
   const tBreakdown = useTranslations('leave.breakdown');
+  // 7da0a4e7 — the two figures this card shares with the balance table take their NAMES from
+  // lib/leave-figure-labels.ts. `leave.myLeave.canApplyFor` ("You can apply for") and `.earnedSoFar`
+  // ("Earned so far") were this screen's own words for numbers the table already called something else;
+  // the reporter found them by reading the two screens side by side. The DATA fields keep their names —
+  // only the labels moved. Both retired keys stay in the catalogues (see lib/leave-figure-labels.ts).
+  const tf = useTranslations(LEAVE_FIGURE_NS);
+  const labelAvailable = () => tf(LEAVE_FIGURE_LABEL_KEY.available);
+  const labelEarned = () => tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -186,14 +195,14 @@ export function MyLeaveDashboard({
         ? t('pendingApproval')
         : key === 'available'
           ? c.isCurrentCycle
-            ? t('canApplyFor')
+            ? labelAvailable()
             : t('remaining')
           : t('notEarnedYet');
 
   const canApplyLine = (c: MyLeaveDashboardCard) =>
     c.canApplyFor != null ? (
       <div className="mt-1.5 flex items-center gap-2 border-t border-border pt-1.5 text-xs font-semibold" data-testid="can-apply-for">
-        <span>{t('canApplyFor')}</span>
+        <span>{labelAvailable()}</span>
         <span className={`ml-auto tabular-nums ${c.canApplyFor < 0 ? 'text-destructive' : ''}`}>{fmt(c.canApplyFor)}</span>
       </div>
     ) : null;
@@ -242,7 +251,7 @@ export function MyLeaveDashboard({
           <h3 className="text-sm font-semibold">{c.leaveType}</h3>
           <dl className="mt-1.5">
             {row(t('entitlement'), c.entitlement)}
-            {row(t('earnedSoFar'), c.earnedSoFar)}
+            {row(labelEarned(), c.earnedSoFar)}
             {segments.map((s) => (
               <div
                 key={s.key}
@@ -302,7 +311,7 @@ export function MyLeaveDashboard({
             >
               {fmt(borrowedValue)}
             </p>
-            <p className="text-[11px] text-muted-foreground">{c.isCurrentCycle ? t('canApplyFor') : t('remaining')}</p>
+            <p className="text-[11px] text-muted-foreground">{c.isCurrentCycle ? labelAvailable() : t('remaining')}</p>
             {laterLine(c)}
           </>
         ) : (
@@ -314,7 +323,7 @@ export function MyLeaveDashboard({
             {laterLine(c)}
             <dl className="mt-1.5">
               {c.hasEntitlement && row(t('entitlement'), c.entitlement)}
-              {c.hasEntitlement && row(t('earnedSoFar'), c.earnedSoFar)}
+              {c.hasEntitlement && row(labelEarned(), c.earnedSoFar)}
               {row(t('taken'), c.taken)}
               {row(t('pending'), c.pending)}
             </dl>

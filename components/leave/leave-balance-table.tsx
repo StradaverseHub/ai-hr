@@ -18,6 +18,7 @@
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
 import { useState } from 'react';
+import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS, type LeaveFigure } from '@/lib/leave-figure-labels';
 import { useTranslations } from 'next-intl';
 import { otherContributors } from '@/lib/shared-leave-balance';
 import { Info } from 'lucide-react';
@@ -40,9 +41,15 @@ import {
 // Leave Type | YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance.
 // "Accrued" surfaces the existing `available` value; Balance is a new computed column (deriveBalanceRow). Each
 // numeric column carries a STATIC plain-English hover tooltip (tipKey, no HR config). Order = display order.
-const NUM_COLS: { key: NumCol; labelKey: string; tipKey: string }[] = [
-  { key: 'ytdEntitled', labelKey: 'colYtdEntitled', tipKey: 'tip.ytdEntitled' },
-  { key: 'available', labelKey: 'colAccrued', tipKey: 'tip.accrued' },
+// 7da0a4e7 — a column carrying `figure` takes its NAME from lib/leave-figure-labels.ts instead of from
+// this file's own `labelKey`, so the same number cannot be called one thing here and another on My Leave.
+// `available` and `balance` both carry one, and they carry DIFFERENT ones on purpose: core/read.ts:3012
+// records that they answer different questions. `colAccrued` stays as the tooltip's anchor and as the
+// retired label key — it is not deleted, because i18n/request.ts deep-merges each locale over English and
+// a key dropped from `en` alone still renders from `ms`.
+const NUM_COLS: { key: NumCol; labelKey: string; tipKey: string; figure?: LeaveFigure }[] = [
+  { key: 'ytdEntitled', labelKey: 'colYtdEntitled', tipKey: 'tip.ytdEntitled', figure: 'ytdEntitled' },
+  { key: 'available', labelKey: 'colAccrued', tipKey: 'tip.accrued', figure: 'available' },
   { key: 'broughtForward', labelKey: 'colCarriedForward', tipKey: 'tip.carriedForward' },
   { key: 'taken', labelKey: 'colTaken', tipKey: 'tip.taken' },
   { key: 'adjustment', labelKey: 'colAdjustment', tipKey: 'tip.adjustment' },
@@ -52,12 +59,16 @@ const NUM_COLS: { key: NumCol; labelKey: string; tipKey: string }[] = [
   { key: 'share', labelKey: 'colShare', tipKey: 'tip.share' },
   { key: 'pendingShare', labelKey: 'colPendingShare', tipKey: 'tip.pendingShare' },
   { key: 'overutilized', labelKey: 'colOverutilized', tipKey: 'tip.overutilized' },
-  { key: 'balance', labelKey: 'colBalance', tipKey: 'tip.balance' },
+  { key: 'balance', labelKey: 'colBalance', tipKey: 'tip.balance', figure: 'balance' },
 ];
 
 export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
   const t = useTranslations('me');
   const tt = useTranslations('me.leaveBalanceTable');
+  const tf = useTranslations(LEAVE_FIGURE_NS);
+  /** A standardised figure is named once, in lib/leave-figure-labels.ts; everything else keeps its own key. */
+  const colLabel = (c: (typeof NUM_COLS)[number]) =>
+    c.figure ? tf(LEAVE_FIGURE_LABEL_KEY[c.figure]) : tt(c.labelKey);
   // Default = leave-type ascending (mirrors the server's localeCompare sort).
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'leaveType', dir: 'asc' });
 
@@ -103,10 +114,10 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
                   <button
                     type="button"
                     onClick={() => toggle(c.key)}
-                    aria-label={tt('sortBy', { column: tt(c.labelKey) })}
+                    aria-label={tt('sortBy', { column: colLabel(c) })}
                     className="inline-flex items-center font-medium hover:text-foreground"
                   >
-                    {tt(c.labelKey)}
+                    {colLabel(c)}
                     <span aria-hidden>{caret(c.key)}</span>
                   </button>
                   {/* Static plain-English hover tooltip on each calculated column (776cd1b5) — no HR config. */}

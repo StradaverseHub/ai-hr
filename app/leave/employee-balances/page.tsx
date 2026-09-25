@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listLeaveTypes } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
@@ -86,6 +87,7 @@ export default async function EmployeeBalancesPage({
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
   const tMe = await getTranslations('me');
+  const tf = await getTranslations(LEAVE_FIGURE_NS); // 7da0a4e7 — one name per figure; see lib/leave-figure-labels.ts
   const locale = await getLocale();
   const sp = await searchParams;
   const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
@@ -449,7 +451,7 @@ export default async function EmployeeBalancesPage({
                         explains is the mismatch this item exists to close. The table already scrolls in
                         `overflow-x-auto` above. */}
                     <th className={thNum}>{tMe('leaveBalanceTable.colFullEntitlement')}</th>
-                    <th className={thNum}>{tMe('leaveBalanceTable.colYtdEntitled')}</th>
+                    <th className={thNum}>{tf(LEAVE_FIGURE_LABEL_KEY.ytdEntitled)}</th>
                     <th className={thNum}>{tInq('colBroughtForward')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colTaken')}</th>
                     <th className={thNum}>{tInq('colPendingApproval')}</th>
