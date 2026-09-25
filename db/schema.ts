@@ -3114,12 +3114,19 @@ export const employeeStatutoryMy = pgTable(
     customHolderId: text('custom_holder_id'),
     // TP3 / opening balances for PCB accumulators (ADR-0014): prior-employment (or pre-migration)
     // year-to-date figures, applied only when tp3Year matches the pay-period year. Per LHDN spec
-    // §E.10 these feed the formula as (Y−K), K, X, Z and never appear on payslips or the EA form.
+    // §E.10 these feed the formula as (Y−K), K, X, Z and ∑LP and never appear on payslips or the EA form.
+    //
+    // FIVE, NOT FOUR, SINCE MIGRATION 0488 (item 20837372). The MTD specification's printed page 22
+    // names exactly four variables the TP3 feeds — "(Y–K*), X, Z and ∑LP" — and `tp3Lp` is the fourth.
+    // It is Form TP3 SECTION D (D1–D17) totalled: the reliefs the employee already claimed through the
+    // previous employer. Before 0488 there was no column, Section D reached nothing, and every new
+    // joiner with a Section D was OVER-deducted — ∑LP is subtracted inside P, so a zero raises the tax.
     tp3Year: integer('tp3_year'),
     tp3NetRemuneration: numeric('tp3_net_remuneration', { precision: 12, scale: 2 }),
     tp3EpfClaimed: numeric('tp3_epf_claimed', { precision: 12, scale: 2 }),
     tp3PcbPaid: numeric('tp3_pcb_paid', { precision: 12, scale: 2 }),
     tp3ZakatPaid: numeric('tp3_zakat_paid', { precision: 12, scale: 2 }),
+    tp3Lp: numeric('tp3_lp', { precision: 12, scale: 2 }),
     // 1.2.4 Zakat election (ADR-0058). zakatActive is the opt-in flag — false ⇒ no zakat regardless of the
     // other fields. zakatState is one of MY_STATES (display/metadata only; no per-state behaviour in v1).
     // zakatMethod selects percent-of-MTD vs a fixed RM amount; zakatPercent is a decimal (e.g. 0.0250 = 2.5%)
