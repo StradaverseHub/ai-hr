@@ -718,3 +718,437 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
     note: 'worksheetNote',
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// ad7bc503 — THE REPORTER'S LHDN CALCULATION SLIP: SECTIONS 2, 4, 5, 6, 7 AND 8
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHAT WAS ALREADY THERE, AND WHAT WAS NOT. The reporter asked for ten sections and opened with
+// "displaying only a summary PCB amount". That premise is wrong and the approved plan says so: sections
+// 3, 9 and 10 have been on this screen since 7f251381 — `pcbWorksheet` above emits the entire symbol
+// block of the reference's page 6 — and section 1 needed extra FIELDS, not a new section. What was
+// genuinely missing is the DETAIL SITTING BEHIND THE TOTALS: the children grid behind Q, the itemised
+// seventeen-line relief schedules behind ΣLP and LP1, the component split behind Y1 and Yt, and the
+// rebate lines behind Z1. That is what this section of the file builds.
+//
+// ⚠️ IT IS THE SAME DISCIPLINE AS `pcbWorksheet`, ENFORCED BY THE SAME TEST. Everything below RE-SHAPES
+// figures the caller already read; not one of them is summed, differenced or re-scaled here. The source
+// guard in test/7f251381-pcb-lhdn-worksheet.test.ts slices this file from its own marker to the end and
+// refuses '+', '*', 'Math.', rounding and formatting outright, which is why there is not an operator in
+// any builder below. The caption keys deliberately carry a `slip` prefix rather than `worksheet`, so that
+// test's caption sweep still describes exactly the rows 7f251381 owns.
+//
+// ⚠️ AND THE ABSENCE RULE IS THE WHOLE POINT OF THE ITEM (CLAUDE.md §8). The reference prints 0.00 down
+// every unclaimed line because the employee filed the form and the answer genuinely was nothing. Our
+// records are frequently not in that position: no declaration was captured at all. So:
+//
+//   · nothing was ever recorded for this line          → `notRecorded`
+//   · the money is real and was used, but only ever    → `notSeparatelyRecorded`
+//     persisted combined with other money
+//   · the step never ran                               → `didNotRun`
+//
+// Printing 0.00 across seventeen lines would state, on a tax document, that the employee claimed nothing
+// in each category. We cannot stand behind that, so we do not print it. This is the ONE place the page
+// deliberately reads differently from the reporter's attachment, and the plan promises it in writing.
+
+/**
+ * One line of the slip. Two figure columns because that is what the agency's own relief schedule has
+ * (CURRENT and ACCUMULATED); a section with one column simply leaves `second` off every row.
+ */
+export type PcbSlipRow = {
+  /** The form's own line marker — 'C1', 'a', 'D1', 'Q', 'Y1'. Language-neutral and NEVER translated, for
+   *  the reason `PcbWorksheetRow.symbol` is not: it is what the two sheets are matched on. */
+  line: string;
+  /** A message key. `ns` names WHICH catalogue resolves it, because the seventeen relief lines are
+   *  already written, in all six locales, under `taxRelief` — and a second transcription of the agency's
+   *  own wording is a second thing to keep in step with the form. */
+  caption: string;
+  ns: 'pcbDetail' | 'taxRelief';
+  first: PcbWorksheetValue;
+  second?: PcbWorksheetValue;
+  /** The ANNUAL LIMIT (RM) column the agency's schedule prints. `null` ⇒ the form prints no figure
+   *  (ADR-0008); absent ⇒ this section has no such column. */
+  limit?: number | null;
+  /** A lettered sub-line, indented under its numbered item. */
+  sub?: true;
+};
+
+export type PcbSlipSection = {
+  /** A key under `payroll.pcbDetail`. */
+  heading: string;
+  /** Column headings, as keys. `secondColumn` absent ⇒ a one-column section. */
+  firstColumn: string;
+  secondColumn?: string;
+  limitColumn?: string;
+  rows: PcbSlipRow[];
+  note?: string;
+};
+
+/** The five LHDN s.48 child categories, in the order `employee_statutory_my.child_relief_table` keys
+ *  them and the order the personnel grid shows them. Exported so a test can assert the row count the
+ *  form is ruled for without restating the taxonomy. */
+export const PCB_CHILD_CATEGORIES: readonly { readonly key: string; readonly caption: string }[] = [
+  { key: 'under_18', caption: 'slipChildUnder18' },
+  { key: 'study_preu', caption: 'slipChildStudyPreu' },
+  { key: 'study_tertiary', caption: 'slipChildStudyTertiary' },
+  { key: 'disabled', caption: 'slipChildDisabled' },
+  { key: 'disabled_study', caption: 'slipChildDisabledStudy' },
+];
+
+/** The employee's stored child / disability tax position, exactly as the column set holds it. */
+export type PcbChildProfile = {
+  /** `child_relief_mode`. The grid is authoritative ONLY in 'auto_table'; see `pcbChildSection`. */
+  mode: string | null;
+  /** `child_relief_table` — `{ <category>: { full, half } }`, or null when none was ever keyed. */
+  table: Record<string, { full?: unknown; half?: unknown } | undefined> | null;
+  disabledIndividual: boolean | null;
+  disabledSpouse: boolean | null;
+};
+
+/** A stored whole number, or the honest absence. NEVER a zero standing in for a missing box. */
+const slipCount = (v: unknown): PcbWorksheetValue =>
+  typeof v === 'number' && Number.isFinite(v) ? { kind: 'count', count: v } : { kind: 'notRecorded' };
+
+/** A stored ringgit figure, or the honest absence. */
+const slipMoney = (v: unknown): PcbWorksheetValue =>
+  typeof v === 'number' && Number.isFinite(v) ? { kind: 'money', amount: v } : { kind: 'notRecorded' };
+
+/** A recorded boolean. `null` is NOT false: the row is absent, so nothing is asserted either way. */
+const slipYesNo = (v: boolean | null | undefined): PcbWorksheetValue =>
+  v == null ? { kind: 'notRecorded' } : { kind: 'caption', caption: v ? 'slipYes' : 'slipNo' };
+
+/**
+ * REPORTER SECTION 2 — CATEGORY OF NUMBER OF CHILDREN / QUALIFICATION RATE.
+ *
+ * The five s.48 categories with the count claimed at the FULL rate and the count claimed at the HALF
+ * rate (LHDN: 100% to one parent, or 50% each where the parents split the claim), then the count and the
+ * relief the calculation actually used, then the two disability indicators.
+ *
+ * ⚠️ THE GRID IS ONLY THE ANSWER IN 'auto_table' MODE. A 'manual' employee has a single keyed
+ * `num_children` and NO per-category split — the split was never recorded, and drawing five zero rows
+ * would assert that HR entered zero in each. In manual mode every category row therefore reads
+ * `notRecorded` and the note says the split was not captured, while C and Q keep their real figures
+ * because those are what the engine used.
+ *
+ * Q AND C COME FROM THE PAYSLIP'S OWN STAMP, not from the grid, and are passed in rather than derived
+ * here: the grid is today's position and the stamp is what the run applied. Recomputing the relief from
+ * the grid would be a second calculation of the very figure this screen exists to explain.
+ */
+export function pcbChildSection(
+  p: PcbChildProfile | null,
+  reliefChildren: PcbWorksheetValue,
+  childCount: PcbWorksheetValue,
+): PcbSlipSection {
+  const grid = p != null && p.mode === 'auto_table' ? p.table : null;
+  const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => ({
+    line: '',
+    caption: c.caption,
+    ns: 'pcbDetail' as const,
+    first: grid ? slipCount(grid[c.key]?.full) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
+    second: grid ? slipCount(grid[c.key]?.half) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
+  }));
+  rows.push({ line: 'C', caption: 'slipChildCount', ns: 'pcbDetail', first: childCount });
+  rows.push({ line: 'Q', caption: 'slipChildRelief', ns: 'pcbDetail', first: reliefChildren });
+  rows.push({ line: '', caption: 'slipDisabledIndividual', ns: 'pcbDetail', first: slipYesNo(p?.disabledIndividual) });
+  rows.push({ line: '', caption: 'slipDisabledSpouse', ns: 'pcbDetail', first: slipYesNo(p?.disabledSpouse) });
+  return {
+    heading: 'slipChildHeading',
+    firstColumn: 'slipColFullRate',
+    secondColumn: 'slipColHalfRate',
+    rows,
+    note: grid ? 'slipChildNoteTable' : 'slipChildNoteManual',
+  };
+}
+
+// ── Sections 5 and 6: the component split behind Y1 and Yt ─────────────────────────────────────────
+//
+// ⚠️ PAYROLL DOES NOT PERSIST THIS SPLIT, AND THAT WAS CHECKED BEFORE THESE ROWS WERE WRITTEN.
+// `localization/my/payroll.ts` hands `pcbMonth` ONE `monthlyWage` (its own `pcbWage`) and ONE
+// `additional`, and `pcbMeta` stamps them back as Y1 and Yt. The payslip's four money columns —
+// basic_salary / allowance / overtime_pay / bonus — are PRESENTATION buckets (`display_category`,
+// "PRESENTATION ONLY and independent of every statutory flag"), they are not the agency's taxonomy, and
+// `pcbWage` is not their sum: exclusions and ticked wage deductions move it. There is no payslip line
+// item table to read either.
+//
+// So the split does not exist, anywhere, for any month. Each component line says `notSeparatelyRecorded`
+// — the vocabulary already on this screen, already used for LHDN's gross Y — and the COMBINED figure the
+// engine actually charged sits above them as a real number. Deriving five component figures from one
+// total would put invented amounts on a tax document, which is the failure this whole screen exists to
+// prevent, and no amount of plausibility makes an invented figure a recorded one.
+
+/** The agency's own remuneration lines for the current month (reference page 3). */
+const SLIP_CURRENT_COMPONENTS: readonly string[] = [
+  'slipCompGrossSalary',
+  'slipCompFeesCommission',
+  'slipCompTipsAwards',
+  'slipCompBenefitsInKind',
+  'slipCompLivingAccommodation',
+];
+
+/** …and its additional-remuneration lines (reference page 3, lower block). */
+const SLIP_ADDITIONAL_COMPONENTS: readonly string[] = [
+  'slipAddBonus',
+  'slipAddArrears',
+  'slipAddCommission',
+  'slipAddGratuity',
+  'slipAddCompensation',
+  'slipAddDirectorFee',
+  'slipAddTaxBorne',
+  'slipAddOther',
+];
+
+const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
+  captions.map((caption) => ({
+    line: '',
+    caption,
+    ns: 'pcbDetail' as const,
+    first: { kind: 'notSeparatelyRecorded' } as PcbWorksheetValue,
+  }));
+
+/**
+ * REPORTER SECTION 5 — CURRENT MONTH'S REMUNERATION.
+ *
+ * @param y1 Y1 as the run stamped it — the combined normal remuneration PCB was charged on.
+ * @param k1 K1 — this month's employee EPF, the leg netted off Y1.
+ */
+export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue): PcbSlipSection {
+  const rows: PcbSlipRow[] = [{ line: 'Y1', caption: 'slipCurrentTotal', ns: 'pcbDetail', first: y1 }];
+  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS)) rows.push(r);
+  rows.push({ line: 'K1', caption: 'slipCurrentEpf', ns: 'pcbDetail', first: k1 });
+  return { heading: 'slipCurrentHeading', firstColumn: 'slipColAmount', rows, note: 'slipCurrentNote' };
+}
+
+/**
+ * REPORTER SECTION 6 — ADDITIONAL REMUNERATION FOR THE CURRENT MONTH.
+ *
+ * The section renders even in a month that paid none, because the reporter asked for the section rather
+ * than for it to disappear — but Yt is then the engine's own stored zero, which IS a recorded figure,
+ * and the §D.2 rows that genuinely did not run are already captioned that way on the worksheet above.
+ */
+export function pcbAdditionalRemunerationSection(
+  yt: PcbWorksheetValue,
+  kt: PcbWorksheetValue,
+): PcbSlipSection {
+  const rows: PcbSlipRow[] = [{ line: 'Yt', caption: 'slipAdditionalTotal', ns: 'pcbDetail', first: yt }];
+  for (const r of slipComponentRows(SLIP_ADDITIONAL_COMPONENTS)) rows.push(r);
+  rows.push({ line: 'Kt', caption: 'slipAdditionalEpf', ns: 'pcbDetail', first: kt });
+  return { heading: 'slipAdditionalRemHeading', firstColumn: 'slipColAmount', rows, note: 'slipAdditionalRemNote' };
+}
+
+// ── Sections 4, 7 and 8: the seventeen-line relief schedule, itemised ──────────────────────────────
+
+/** One lettered sub-line of the agency's schedule, structurally as the pack declares it. */
+export type PcbSlipCatalogueSub = {
+  readonly code: string;
+  readonly limit: number | null;
+};
+
+/** One numbered line of the agency's schedule (C1–C17, D1), structurally as the pack declares it. */
+export type PcbSlipCatalogueItem = {
+  readonly code: string;
+  readonly limit: number | null;
+  readonly subItems: readonly PcbSlipCatalogueSub[];
+  readonly perSubLimit?: boolean;
+};
+
+/** Per-item, and per lettered sub-line, exactly the shape `tp1_relief.categories.items` and TP3's
+ *  `sectionD` both use — which is why one reader serves both sides (`Tp1ItemAmounts`). */
+export type PcbSlipAmounts = {
+  items: Record<string, { amount?: unknown; subItems?: Record<string, unknown> } | undefined>;
+  subItems?: Record<string, Record<string, unknown> | undefined>;
+};
+
+/**
+ * WHAT IS KNOWN ABOUT ONE SIDE OF THE SCHEDULE.
+ *
+ *   · null           nothing was read at all — no declaration, no form. Every line `notRecorded`.
+ *   · attributed:false  money exists and was used, but the row is a LEGACY eight-key or scalar-only
+ *                    declaration that carries NO C1–C17 attribution. `core/tax-relief.ts` states in as
+ *                    many words that there is no honest way to split it, so every line reads
+ *                    `notSeparatelyRecorded` and the total row carries the real figure.
+ *   · attributed:true   the per-line figures are real.
+ */
+export type PcbSlipSide = {
+  attributed: boolean;
+  amounts: PcbSlipAmounts | null;
+  /** The authoritative roll-up for this side, whether or not it is attributed. */
+  total: unknown;
+};
+
+const SLIP_ABSENT: PcbWorksheetValue = { kind: 'notRecorded' };
+const SLIP_COMBINED: PcbWorksheetValue = { kind: 'notSeparatelyRecorded' };
+
+/** One line's figure on one side of the schedule. `pick` names the box; nothing is added up. */
+function slipSideValue(side: PcbSlipSide | null, pick: (a: PcbSlipAmounts) => unknown): PcbWorksheetValue {
+  if (side == null) return SLIP_ABSENT;
+  if (!side.attributed) return SLIP_COMBINED;
+  if (side.amounts == null) return SLIP_ABSENT;
+  return slipMoney(pick(side.amounts));
+}
+
+/**
+ * The agency's relief schedule rendered once, over whichever sides the caller resolved.
+ *
+ * ONE BUILDER FOR THREE OF THE REPORTER'S SECTIONS, on purpose. Sections 4, 7 and 8 are the SAME
+ * seventeen-line taxonomy read for three different questions — what a previous employer already
+ * deducted, what this month's declaration claims, and which rebate lines were declared. Three copies of
+ * the C1–C17 row list is three things to keep in step with the form, and `localization/my/statutory-
+ * tables.ts` refuses a second transcription of this taxonomy for exactly that reason.
+ */
+export function pcbReliefScheduleSection(p: {
+  heading: string;
+  firstColumn: string;
+  secondColumn?: string;
+  note?: string;
+  catalogue: readonly PcbSlipCatalogueItem[];
+  /** Which catalogue the line captions live in — `taxRelief.items.*` or `taxRelief.rebates.*`. */
+  captionGroup: 'items' | 'rebates';
+  first: PcbSlipSide | null;
+  second?: PcbSlipSide | null;
+  /** The roll-up row's caption, or absent for a section the form gives no total line. */
+  totalCaption?: string;
+}): PcbSlipSection {
+  const rows: PcbSlipRow[] = [];
+  for (const def of p.catalogue) {
+    rows.push({
+      line: def.code.toUpperCase(),
+      caption: `${p.captionGroup}.${def.code}.label`,
+      ns: 'taxRelief',
+      limit: def.perSubLimit ? null : def.limit,
+      first: slipSideValue(p.first, (a) => a.items[def.code]?.amount),
+      second: p.secondColumn ? slipSideValue(p.second ?? null, (a) => a.items[def.code]?.amount) : undefined,
+    });
+    for (const sub of def.subItems) {
+      rows.push({
+        line: sub.code,
+        caption: `${p.captionGroup}.${def.code}.sub.${sub.code}`,
+        ns: 'taxRelief',
+        sub: true,
+        limit: sub.limit,
+        first: slipSideValue(p.first, (a) => a.items[def.code]?.subItems?.[sub.code]),
+        second: p.secondColumn
+          ? slipSideValue(p.second ?? null, (a) => a.items[def.code]?.subItems?.[sub.code])
+          : undefined,
+      });
+    }
+  }
+  if (p.totalCaption) {
+    rows.push({
+      line: '',
+      caption: p.totalCaption,
+      ns: 'pcbDetail',
+      first: p.first ? slipMoney(p.first.total) : SLIP_ABSENT,
+      second: p.secondColumn ? (p.second ? slipMoney(p.second.total) : SLIP_ABSENT) : undefined,
+    });
+  }
+  return {
+    heading: p.heading,
+    firstColumn: p.firstColumn,
+    secondColumn: p.secondColumn,
+    limitColumn: 'slipColLimit',
+    rows,
+    note: p.note,
+  };
+}
+
+/**
+ * ad7bc503 — THE REPORTER'S SECTIONS 2, 4, 5, 6, 7 AND 8, IN THEIR OWN ORDER, ASSEMBLED ONCE.
+ *
+ * Sections 1, 3, 9 and 10 are NOT here: 1 is the identification block at the top of the screen, and 3, 9
+ * and 10 are `pcbWorksheet` above, which has emitted them since 7f251381. Rebuilding them would be the
+ * second display of one calculation this whole screen was created to remove.
+ *
+ * A FLAT-RATE PAYEE AND A RUN WITH NO WORKING GET NOTHING, and that is the answer rather than a gap. A
+ * non-resident / REP / knowledge-worker deduction never reaches `pcbMonth`: there is no Q, no ΣLP, no LP1
+ * and no Z1 for them, so five schedules of "not recorded" would assert those figures exist and were
+ * merely unsaved. `flatWorksheet` already says so in one sentence, which is the truthful version.
+ */
+export function pcbSlipSections(
+  x: PcbExplanation,
+  p: {
+    profile: PcbChildProfile | null;
+    catalogue: readonly PcbSlipCatalogueItem[];
+    rebateCatalogue: readonly PcbSlipCatalogueItem[];
+    currentDeduction: PcbSlipSide | null;
+    accumulatedDeduction: PcbSlipSide | null;
+    previousDeduction: PcbSlipSide | null;
+    currentRebate: PcbSlipSide | null;
+    accumulatedRebate: PcbSlipSide | null;
+  },
+): PcbSlipSection[] {
+  if (x.kind !== 'mtd') return [];
+  const t = x.trace;
+  return [
+    // 2 — the children grid behind Q.
+    pcbChildSection(
+      p.profile,
+      slipMoney(x.reliefs.children),
+      t ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
+    ),
+    // 4 — what a previous employer already deducted, itemised. The ACCUMULATED side of the reporter's
+    // section 4: TP3 Section D, keyed exactly as `tp1_relief.categories.items` is.
+    pcbReliefScheduleSection({
+      heading: 'slipPrevDeductionHeading',
+      firstColumn: 'slipColAccumulated',
+      note: 'slipPrevDeductionNote',
+      catalogue: p.catalogue,
+      captionGroup: 'items',
+      first: p.previousDeduction,
+    }),
+    // 5 and 6 — the component split payroll does not persist. See the block above `SLIP_CURRENT_COMPONENTS`.
+    pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth)),
+    pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt)),
+    // 7 — this month's declaration, itemised, beside the year it accumulates into.
+    pcbReliefScheduleSection({
+      heading: 'slipCurrentDeductionHeading',
+      firstColumn: 'slipColCurrent',
+      secondColumn: 'slipColAccumulated',
+      note: 'slipCurrentDeductionNote',
+      catalogue: p.catalogue,
+      captionGroup: 'items',
+      first: p.currentDeduction,
+      second: p.accumulatedDeduction,
+      totalCaption: 'slipDeductionTotal',
+    }),
+    // 8 — the rebate lines, plus the zakat the payroll itself deducted. Z1 IS on the worksheet above as a
+    // symbol; it is repeated here because the reporter's section 8 asks what rebate applied this month and
+    // an answer that omitted the zakat actually taken would be the wrong answer.
+    pcbRebateSection(
+      p.rebateCatalogue,
+      p.currentRebate,
+      p.accumulatedRebate,
+      t ? slipMoney(t.zakatCurrent) : slipMoney(x.zakat),
+    ),
+  ];
+}
+
+/**
+ * REPORTER SECTION 8 — REBATE INFORMATION FOR THE CURRENT MONTH.
+ *
+ * The agency's Section D rebate lines (zakat OTHER than through salary, and the Umrah / religious-travel
+ * levy) and then the zakat the payroll DID deduct through salary.
+ *
+ * ⚠️ THOSE ARE NOT THE SAME MONEY AND THE FORM SAYS SO — D1(a) is expressly zakat "other than that paid
+ * through monthly salary deductions", and that exclusion is the whole point of the line: it is what stops
+ * one payment being counted twice against a person who also has a payroll zakat deduction. So the two sit
+ * on separate rows under separate captions, and nothing here adds them together.
+ */
+function pcbRebateSection(
+  catalogue: readonly PcbSlipCatalogueItem[],
+  current: PcbSlipSide | null,
+  accumulated: PcbSlipSide | null,
+  zakatViaSalary: PcbWorksheetValue,
+): PcbSlipSection {
+  const base = pcbReliefScheduleSection({
+    heading: 'slipRebateHeading',
+    firstColumn: 'slipColCurrent',
+    secondColumn: 'slipColAccumulated',
+    note: 'slipRebateNote',
+    catalogue,
+    captionGroup: 'rebates',
+    first: current,
+    second: accumulated,
+  });
+  base.rows.push({ line: 'Z1', caption: 'slipRebateZakatSalary', ns: 'pcbDetail', limit: null, first: zakatViaSalary });
+  return base;
+}
