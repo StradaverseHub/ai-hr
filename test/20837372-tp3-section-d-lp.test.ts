@@ -671,6 +671,54 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
+// 7b · EVERY OTHER WRITER OF THE ROW MUST LEAVE ∑LP ALONE
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `setStatutoryProfileMY` is a FULL OVERWRITE of `employee_statutory_my`, and two screens call it with
+ * a whole object rebuilt from a form — the Personnel Bank & Statutory card and the Zakat election. Both
+ * already carry explicit pass-throughs for the four TP3 columns, added after each of them silently
+ * wiped something (the comments in `app/admin/personnel/[employmentId]/actions.ts` record it).
+ *
+ * ⚠️ A FIFTH COLUMN IS A FIFTH CHANCE TO BE WIPED, so `tp3_lp` is deliberately NOT in that setter's
+ * write set at all — the same posture as the four custom-payment-holder columns, which that file's own
+ * comment notes are "NOT in setStatutoryProfileMY's write set, so they are untouched here regardless".
+ * That is stronger than a pass-through: a pass-through has to be remembered by every future caller.
+ * This arm is what keeps it true, because the wipe it prevents is silent and only shows up as a PCB
+ * figure that quietly went back up a month later.
+ */
+describe('20837372 · a full-row statutory save does not wipe ∑LP', () => {
+  it('leaves tp3_lp standing when the whole statutory row is rewritten', async () => {
+    const e = await payableEmployee('No Wipe');
+    await saveTp3(adminCtx(b), { personId: e.personId, assessmentYear: YEAR, sectionC: SECTION_C, sectionD: SECTION_D });
+    const before = await statRow(e.personId);
+    expect(Number(before.tp3Lp)).toBe(D_TOTAL);
+
+    // Exactly what the Personnel / Zakat screens do: rebuild the row and pass the four TP3 figures back
+    // through. Nothing hands `tp3Lp` over, because the setter has no such field.
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: before.icNumber,
+      taxCategory: 3,
+      numChildren: 3,
+      tp3Year: before.tp3Year,
+      tp3NetRemuneration: Number(before.tp3NetRemuneration),
+      tp3EpfClaimed: Number(before.tp3EpfClaimed),
+      tp3PcbPaid: Number(before.tp3PcbPaid),
+      tp3ZakatPaid: Number(before.tp3ZakatPaid),
+    });
+
+    const after = await statRow(e.personId);
+    expect(Number(after.tp3Lp), 'a statutory save must not quietly put the PCB back up').toBe(D_TOTAL);
+    // …and the setter genuinely has no field for it, so no future caller can be asked to remember one.
+    const setter = readFileSync(join(ROOT, 'localization/my/statutory.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    expect(setter, 'core/tp3.ts is the ONLY writer of tp3_lp').not.toMatch(/tp3Lp/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
 // 8 · THE MIGRATION'S OWN BACKFILL — the shipped SQL, run against rows it is meant to find
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 
