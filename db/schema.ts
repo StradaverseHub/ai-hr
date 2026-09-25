@@ -5713,7 +5713,14 @@ export const payPeriod = pgTable(
       .references(() => company.id),
     period: text('period').notNull(), // 'YYYY-MM'
     status: payPeriodStatusEnum('status').notNull().default('open'),
-    // One ruleset version for the whole month (ADR-0024 D7). Null on legacy backfilled periods.
+    // One ruleset version for the whole month (ADR-0024 D7), recorded by the INSERT that opens the month
+    // and never updated afterwards — see `openingStatutoryVersion` in core/payroll.ts (00e28308) for what
+    // it does and does not claim. NULL means no version was recorded, which is three distinct things and
+    // no promise about any of them: a period migration 0066 backfilled whose batch had no payslip to read
+    // a version off; a month opened by the kernel BEFORE 00e28308, when nothing wrote this column at all
+    // and every month on production was left null; or a non-statutory company, for which no ruleset
+    // applies. It is deliberately NOT backfilled: we know which rules were current when an old month ran,
+    // not which that run used, and the two part company the moment anything was overridden or restated.
     statutoryVersion: text('statutory_version'),
     createdAt: createdAt(),
   },
