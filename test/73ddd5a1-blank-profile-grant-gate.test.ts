@@ -407,22 +407,49 @@ describe('73ddd5a1 (e) · nothing is clawed back', () => {
    * for that pair AND leave the existing row exactly as it stands — same id, same days, same date, no
    * reversal, no adjustment, no delete.
    */
-  it('a grant run leaves every pre-existing ledger row byte-identical, including on a now-refused pair', async () => {
+  /**
+   * ⚠️ TWO ASSERTIONS, NOT ONE, AND THE SPLIT IS THE POINT. The first draft asserted only that the WHOLE
+   * snapshot was unchanged. That is a weaker guard than it looks: under the pre-73ddd5a1 `'allow'` policy it
+   * fails because rows are ADDED, which is a different fact from an existing row being touched, and a
+   * single `toEqual` cannot tell the two apart. So the no-clawback claim is asserted on the original rows
+   * BY ID — true under any policy, and the only form in which it is the reporter's guarantee.
+   */
+  it('the pre-existing rows are byte-identical after a grant run, looked up by id', async () => {
     const t = await allTypes();
     const blankMarital = await hire('female', null);
-    await owner.db.insert(schema.leaveLedger).values([
-      { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.CGL, entryType: 'accrual', days: '5.00', effectiveOn: `${YEAR - 1}-01-01` },
-      { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.MRL, entryType: 'accrual', days: '3.00', effectiveOn: `${YEAR - 1}-06-01` },
-      { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.AL, entryType: 'adjustment', days: '-1.50', effectiveOn: `${YEAR - 1}-07-01` },
-    ]);
-
-    const before = await ledgerSnapshot();
+    const seeded = await owner.db
+      .insert(schema.leaveLedger)
+      .values([
+        { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.CGL, entryType: 'accrual', days: '5.00', effectiveOn: `${YEAR - 1}-01-01` },
+        { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.MRL, entryType: 'accrual', days: '3.00', effectiveOn: `${YEAR - 1}-06-01` },
+        { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.AL, entryType: 'adjustment', days: '-1.50', effectiveOn: `${YEAR - 1}-07-01` },
+      ])
+      .returning({ id: schema.leaveLedger.id });
+    const seededIds = new Set(seeded.map((r) => r.id));
+    const before = (await ledgerSnapshot()).filter((r) => seededIds.has(r.id));
     expect(before.length, 'the fixture really is three rows').toBe(3);
 
     await openLeaveYear(adminCtx(b), { year: YEAR, leaveTypeIds: [t.CGL, t.MRL] });
 
+    const after = (await ledgerSnapshot()).filter((r) => seededIds.has(r.id));
+    expect(
+      after,
+      'not one existing ledger row may be reversed, adjusted or deleted by this round — those are balances on real employees and the reporter reverses them on their own trigger, not ours',
+    ).toEqual(before);
+    expect(after.length, 'nor may one be deleted outright, which a filtered compare would otherwise hide').toBe(3);
+  });
+
+  it('…and a refused pair adds nothing either, so the whole snapshot is unchanged', async () => {
+    const t = await allTypes();
+    const blankMarital = await hire('female', null);
+    await owner.db.insert(schema.leaveLedger).values([
+      { tenantId: b.tenantId, employmentId: blankMarital, leaveTypeId: t.CGL, entryType: 'accrual', days: '5.00', effectiveOn: `${YEAR - 1}-01-01` },
+    ]);
+
+    const before = await ledgerSnapshot();
+    await openLeaveYear(adminCtx(b), { year: YEAR, leaveTypeIds: [t.CGL, t.MRL] });
     const after = await ledgerSnapshot();
-    expect(after, 'not one existing ledger row may be reversed, adjusted or deleted by this round').toEqual(before);
+    expect(after, 'a run that grants nothing writes nothing').toEqual(before);
   });
 
   it('…and the refused pair gains no row at all, rather than a zero-day one', async () => {
