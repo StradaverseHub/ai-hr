@@ -13,7 +13,7 @@ import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { formatDays } from '@/lib/day-format';
-import { isPoolBorrower, poolBadges } from '@/lib/shared-leave-balance';
+import { pooledEntitlementCaption, isPoolBorrower, poolBadges } from '@/lib/shared-leave-balance';
 import { ENTITLEMENT_STATUS_LABEL_KEY } from '@/lib/entitlement-status';
 import { employeeBalanceRows } from '../rows';
 
@@ -71,6 +71,18 @@ export async function GET(req: Request) {
       .map((c) => `${c.code ?? c.leaveType} ${formatDays(c[which])}`)
       .join('; ');
   };
+  /**
+   * 2a57a007 (r340) — THE POOLED SENTENCE, OR NULL SO THE CELL FALLS THROUGH TO THE SHARED STATUS MAP.
+   *
+   * One decision, taken in lib/shared-leave-balance.ts and read by the screen's caption and by this cell, so
+   * the two cannot tell one row apart differently — this route's header states that invariant. Everything
+   * that is not a pooled borrower still resolves `ENTITLEMENT_STATUS_LABEL_KEY` exactly as it did, in the
+   * cell below, where 31e39d74's cross-surface guard can see it.
+   */
+  const pooledStatusCell = (r: (typeof rows)[number]) => {
+    const pooled = pooledEntitlementCaption(r);
+    return pooled ? tMe(pooled.labelKey, { pool: pooled.pool }) : null;
+  };
   const data: ReportData = {
     filename: `leave-balances-${selected?.employeeCode ?? 'employee'}-${asOf}`,
     title: tInq('balancesTitle'),
@@ -125,7 +137,12 @@ export async function GET(req: Request) {
       cell(r.overutilized),
       cell(r.forfeitedBf),
       cell(r.balance),
-      tMe(ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]),
+      // 2a57a007 (r340) — THE SAME DECISION THE SCREEN'S CAPTION MAKES, through the same function. It matters
+      // most in this column: `statusNotConfigured` and `statusNoEntitlementTable` are THE SAME SENTENCE
+      // ("No entitlement table"), so a borrower row printed, in a file HR forwards, the one instruction that
+      // would stop Emergency Leave drawing on the Annual pool. A pooled borrower reads "draws on the <pool>
+      // pool" instead, which is what the screen says above its figure; every other row is unchanged.
+      pooledStatusCell(r) ?? tMe(ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]),
       asOf,
     ]),
   };

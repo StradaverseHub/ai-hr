@@ -269,9 +269,31 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
     expect(page).toContain(`colSpan={${headers.length}}`);
   });
 
-  it('the row builder carries the figure off the SAME breakdown every other figure came from', () => {
+  /**
+   * ⚠️ UPDATED BY 2a57a007 (r340), NOT SATISFIED BY A DECOY. This case used to require the unconditional
+   * `fullEntitlement: row.fullEntitlement`. The reporter has since raised the consequence of exactly that —
+   * Emergency Leave printing the Annual Leave POOL's Entitlement 7.00 and Earned to Date 2.50 beside a
+   * Balance of 0.00 — so a POOLED BORROWER now states its own figure, which is nothing. r279's actual
+   * property is untouched and is what the two halves below pin: wherever the figure is a real one it comes
+   * off `row`, the single `deriveBalanceRow` output built from the single breakdown `bd`, and from nowhere
+   * else. BOTH BRANCHES ARE NAMED, so the row property can no longer be assigned from anywhere at all while
+   * a matching literal survives somewhere in the file — which is what a `toContain` on the old expression
+   * alone would have allowed. test/2a57a007-borrower-entitlement-columns.test.ts pins the behaviour.
+   */
+  it('the row builder carries the figure off the SAME breakdown every other figure came from — and a pooled borrower states its own 0.00', () => {
     const rows = read('/app/leave/employee-balances/rows.ts');
-    expect(rows).toContain('fullEntitlement: row.fullEntitlement');
+    // The real figure, off `row`, on the row property itself — both columns, both branches, in full.
+    expect(rows).toContain('fullEntitlement: borrower ? 0 : row.fullEntitlement');
+    expect(rows).toContain('ytdEntitled: borrower ? 0 : row.ytdEntitled');
+    // ONE read of the derived figure in the whole file, so it cannot ALSO arrive from a second resolver
+    // (`bd.eligibleDays` was the pre-r279 source and must not come back beside the one above).
+    expect(rows.match(/row\.fullEntitlement/g)?.length, 'exactly one read of the derived Full Entitlement').toBe(1);
+    // COMMENTS STRIPPED for this one: the file's own doc comment NAMES `bd.eligibleDays` as the figure
+    // `deriveBalanceRow` derives from, and a ratchet that reads prose pins the prose (CLAUDE.md §8).
+    const code = rows.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code.match(/bd\.eligibleDays/g) ?? [], 'no second resolver for the same figure').toHaveLength(0);
+    // And the borrower branch is decided by the ONE shared predicate, never re-derived from a figure.
+    expect(rows).toContain('const borrower = isPoolBorrower(');
     // One deriveBalanceRow call, one breakdown — the property this file's header protects.
     expect(rows).toContain('const row = deriveBalanceRow({ ...b, essView: {} }, bd);');
     expect(rows.match(/deriveBalanceRow\(/g)?.length).toBe(1);

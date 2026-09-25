@@ -238,10 +238,36 @@ export function LeaveDetailsPanel({
     });
 
   const panel: PanelData = { breakdown: data, summary };
+  /**
+   * 2a57a007 (r340) — THIS PANEL IS THE THIRD SURFACE, AND IT WAS THE ONE STILL DISAGREEING.
+   *
+   * The grid row for a pooled BORROWER now reads Entitlement 0.00 / Earned to Date 0.00 and names no
+   * entitlement table (app/leave/employee-balances/rows.ts). One click away, this panel was handed the POOL's
+   * breakdown — deliberately, because the pool's ledger is the true story of those days — and printed the
+   * pool's Entitlement, the pool's Earned to Date and, inside the status notice, the pool's table name, with
+   * nothing but an HR-only sentence under one line to say whose they were. That is the reporter's original
+   * complaint, one click away, and the approved plan said all three surfaces or none.
+   *
+   * ⚠️ WHY THE FIGURES ARE NOT ZEROED HERE, AND THIS IS THE WHOLE DESIGN. §1 is ONE CLOSING COLUMN:
+   * `broughtForward + ytdEntitled + adjustments = Total`, `Total − taken − pending − forfeited = Balance`,
+   * closing onto Available (1f6fd6d8 / 0315dac7 / r285 each exist to protect that identity). Replacing two of
+   * its addends with 0.00 would make the column contradict its own Total, and `explainLeaveSummary`'s
+   * SUM-GUARD — which is a correctness guard, not a nuisance — would correctly report "the records behind
+   * 7.00 could not be listed so that they add up to it" on a panel where nothing is in fact wrong. So the
+   * guard is neither bypassed nor silenced: the pool's arithmetic stays whole and ATTRIBUTED, and the
+   * borrower's own fact (its Entitlement and Earned to Date are nothing) is STATED — once above the column
+   * and once on each of the two lines it is about. After this, no reader can take the 7.00 for this leave
+   * type's entitlement, which is what "the three cannot disagree" asks for.
+   */
+  const pooledFrom = hrExplanation?.entitlementFromPool ?? null;
   // r303 — HR's per-line sentences, or null on every employee mount. Rendered from the figures this panel already
   // shows plus the breakdown's own derivation; nothing is looked up or recomputed here.
   const explained = hrExplanation
-    ? explainLeaveSummary(data, { available: summary.available, sharedBalance: hrExplanation.sharedBalance })
+    ? explainLeaveSummary(data, {
+        available: summary.available,
+        sharedBalance: hrExplanation.sharedBalance,
+        entitlementFromPool: pooledFrom,
+      })
     : null;
   // Typed step arguments → display strings. Day figures go through the ONE shared formatter (4a1abc4a).
   const explainValues = (args?: Record<string, ExplainArg>) => {
@@ -518,6 +544,20 @@ export function LeaveDetailsPanel({
           </div>
 
           <div className="space-y-5 px-5 py-4">
+            {/* 2a57a007 (r340) — WHOSE FIGURES THESE ARE, SAID BEFORE ANY OF THEM IS READ. See `pooledFrom`
+                above for why this is a statement rather than a rewrite of the column. MUTED, never amber:
+                a leave type that draws on another type's pool has no entitlement of its own BECAUSE it
+                borrows, which is the arrangement working as configured — and r209's incident is what happens
+                when that normal absence is reported as a defect to be fixed. */}
+            {pooledFrom && (
+              <div
+                role="note"
+                data-testid="panel-pooled-entitlement"
+                className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+              >
+                {t('pooledOwnEntitlement', { pool: pooledFrom })}
+              </div>
+            )}
             {/* As-at date control — the preserved ?asOf= GET form, moved INTO the panel. */}
             {!hideAsOfForm && (
             <form method="GET" action={action} className="flex flex-wrap items-end gap-2">

@@ -17,7 +17,10 @@ import {
   ENTITLEMENT_STATUS_TIP_KEY,
   entitlementStatusNeedsNotice,
 } from '@/lib/entitlement-status';
-import { isPoolBorrower, otherContributors, poolBadges } from '@/lib/shared-leave-balance';
+// 2a57a007 (r340): `pooledEntitlementCaption` is the ONE place that decides a pooled borrower says something
+// else entirely — see `entitlementCaptionCell` below, and the function's own header for the r209 incident it
+// exists to keep shut. The export next door calls the same function for the same row.
+import { pooledEntitlementCaption, isPoolBorrower, otherContributors, poolBadges } from '@/lib/shared-leave-balance';
 // r219 (7966ee35) — HR's half of "why is Replacement Leave in Lieu not available for this person". The
 // employee's own screen gained the same notice from the same read and the same component, which is the
 // point: an employee ringing HR about a missing button and the HR admin looking that person up must be
@@ -173,6 +176,43 @@ export default async function EmployeeBalancesPage({
             {c.code ?? c.leaveType}
           </span>
         ))}
+      </div>
+    );
+  };
+
+  /**
+   * 2a57a007 (r340) — WHY THIS ROW'S ENTITLEMENT READS WHAT IT READS, IN THE RIGHT VOICE.
+   *
+   * 31e39d74 put this caption under the Earned to Date figure and made it AMBER, because every state it
+   * could describe was a misconfiguration somebody had to go and fix. A pooled borrower is not one: a leave
+   * type that draws on another type's pool has no entitlement table BECAUSE it borrows, and telling HR to
+   * create one is the single instruction that would stop the borrowing (r209's incident — read
+   * lib/shared-leave-balance.ts before changing this). So the voice splits with the fact: amber for a
+   * defect, muted for a normal arrangement, and `entitlementStatusCaption` decides which — once, shared with
+   * the export, rather than twice on two screens that then disagree.
+   */
+  const entitlementCaptionCell = (r: (typeof rows)[number]) => {
+    // THE POOLED BRANCH OUTRANKS THE STATUS, and it is MUTED rather than amber: nothing is wrong here.
+    const pooled = pooledEntitlementCaption(r);
+    if (pooled) {
+      return (
+        <div
+          className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground"
+          title={tMe(`leaveBalanceTable.${pooled.tipKey}`, { pool: pooled.pool })}
+          data-testid="entitlement-pooled-caption"
+        >
+          {tMe(`leaveBalanceTable.${pooled.labelKey}`, { pool: pooled.pool })}
+        </div>
+      );
+    }
+    // 31e39d74, byte for byte as it was: every OTHER row's caption, in amber, off the shared status maps.
+    if (!entitlementStatusNeedsNotice(r.entitlementStatus)) return null;
+    return (
+      <div
+        className="mt-0.5 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-500"
+        title={tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!}`)}
+      >
+        {tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]}`)}
       </div>
     );
   };
@@ -494,14 +534,7 @@ export default async function EmployeeBalancesPage({
                           than standing on its own. The figure itself is untouched. */}
                       <td className={tdNum}>
                         <div>{num(r.ytdEntitled)}</div>
-                        {entitlementStatusNeedsNotice(r.entitlementStatus) && (
-                          <div
-                            className="mt-0.5 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-500"
-                            title={tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!}`)}
-                          >
-                            {tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]}`)}
-                          </div>
-                        )}
+                        {entitlementCaptionCell(r)}
                       </td>
                       <td className={tdNum}>{num(r.broughtForward)}</td>
                       <td className={tdNum}>{num(r.taken)}</td>
