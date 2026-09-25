@@ -210,16 +210,30 @@ describe('508d3acd · the year-open grant refuses a pair the type excludes', () 
     ).toBeGreaterThan(0);
   });
 
-  it('…and STILL refuses the recorded contradiction, so the relaxation is not a hole', async () => {
+  /**
+   * ⚠️ 73ddd5a1 (r338) UPDATED THE SECOND ASSERTION — a guard pinning a decision that was reversed, so it
+   * is updated rather than deleted. It used to read `.toBeGreaterThan(0)` with "unplaced is granted — fill
+   * the profile in", on the trade "we would rather grant a day we may have to take back than withhold one
+   * we owe". The reporter was shown that trade and chose the other side of it, in these words: "If the
+   * required information is blank or missing, no leave entitlement should be granted. The entitlement
+   * should only be applied once the relevant employee information has been updated in the system."
+   *
+   * The GRANT path therefore passes 'exclude' and agrees with the read gates. Note what did NOT change:
+   * the test directly above still passes, because a list of every picker option is not a restriction at
+   * all and the policy is never consulted for it. MATERNITY here lists ONE gender — a genuine restriction
+   * — which is the only shape where the two policies ever differed.
+   */
+  it('…and now ALSO refuses the unplaced employee, which is 73ddd5a1', async () => {
     const mtl = await leaveTypeWith(MATERNITY);
     const he = await hire('male', 'married');
     const unplaced = await hire(null, null);
     await seedEntitlement(adminCtx(b), { leaveTypeId: mtl, annualDays: 98, validFrom: '2026-01-01' });
     await openLeaveYear(adminCtx(b), { year: 2026, leaveTypeIds: [mtl] });
     expect(await accrualDays(he, mtl), 'recorded male, maternity is female-only').toBe(0);
-    // The unplaced employee DOES get it, and that is the deliberate trade: we would rather grant a day
-    // we may have to take back than withhold one we owe. The profile is what fixes it.
-    expect(await accrualDays(unplaced, mtl), 'unplaced is granted — fill the profile in').toBeGreaterThan(0);
+    expect(
+      await accrualDays(unplaced, mtl),
+      'a blank gender is granted nothing on a genuinely gender-restricted type — fill the profile in first',
+    ).toBe(0);
   });
 
   /**

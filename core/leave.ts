@@ -1603,15 +1603,28 @@ export function maternityAllowanceEligibility(
  * blank matches no configured list, so `'unknown'` decides whether a missing FACT counts as a missing
  * QUALIFICATION. The two answers are both right, for different questions:
  *
- *   · `'exclude'` — hide it. Correct for a DISPLAY decision: showing a Maternity card to someone we
- *     cannot place is worse than showing nothing, and the reporter was told in writing that an
- *     incomplete profile loses the card.
- *   · `'allow'`  — let it through. Mandatory for any decision that GRANTS OR TAKES AWAY DAYS. On the
- *     reporting account 55 of 75 active employees have no gender recorded, and six live leave types
- *     list ["male","female"] — which restricts nobody, and which `'exclude'` would read as excluding
- *     almost the whole workforce. A year-open under that rule would grant those 55 nothing on six
- *     types; a reversal sweep under it would take real Annual Leave off 33 people because a field is
- *     blank. Both were caught by a production dry run, neither by the suite.
+ *   · `'exclude'` — hide it, and (since 73ddd5a1) do not grant it. Correct for a DISPLAY decision:
+ *     showing a Maternity card to someone we cannot place is worse than showing nothing, and the
+ *     reporter was told in writing that an incomplete profile loses the card.
+ *   · `'allow'`  — let it through. Mandatory for any decision that TAKES DAYS AWAY. On the reporting
+ *     account 55 of 75 active employees have no gender recorded, and six live leave types listed
+ *     ["male","female"] — which restricts nobody, and which `'exclude'` would read as excluding almost
+ *     the whole workforce. A year-open under that rule would grant those 55 nothing on six types; a
+ *     reversal sweep under it would take real Annual Leave off 33 people because a field is blank.
+ *     Both were caught by a production dry run, neither by the suite.
+ *
+ * ⚠️ 73ddd5a1 (r338) — THIS BULLET USED TO SAY "GRANTS OR TAKES AWAY DAYS", AND THE GRANT HALF IS NOW
+ * THE OWNER'S DECISION THE OTHER WAY. Updated rather than deleted, because the incident above is still
+ * the reason the dial exists. What makes the reversal safe is NOT a change of mind about the incident:
+ * it is d272834b's universal-list rule in `eligibilityRuleList`, which removed the FALSE restrictions
+ * that made `'exclude'` catastrophic. The policy is never consulted for a field whose configured list
+ * holds every picker option, so the 33-person case cannot recur through this dial. The reporter's words:
+ * "If the required information is blank or missing, no leave entitlement should be granted. The
+ * entitlement should only be applied once the relevant employee information has been updated in the
+ * system." See the call site in `openLeaveYear` for the measured blast radius, and
+ * `test/73ddd5a1-blank-profile-grant-gate.ts` for the regression guard. The REVERSAL sweep
+ * (`scripts/reverse-ineligible-leave-grants.ts`) stays on `'allow'`: granting a day we may owe is
+ * recoverable, taking one away on a blank field is not.
  *
  * There is no default. A caller that has not thought about it cannot compile.
  */
@@ -8172,8 +8185,50 @@ export async function openLeaveYear(
          *
          * Dated at `effectiveOn` like every other decision in this loop, though none of the identity
          * criteria is time-varying today; that keeps the pair consistent if one ever becomes so.
+         *
+         * ─────────────────────────────────────────────────────────────────────────────────────────────
+         * ⚠️ 73ddd5a1 (r338) — 'allow' → 'exclude'. THE REPORTER'S DECISION, IN THEIR OWN WORDS:
+         *
+         *   "If the required information is blank or missing, no leave entitlement should be granted.
+         *    The entitlement should only be applied once the relevant employee information has been
+         *    updated in the system."
+         *
+         * They were challenged on this and reaffirmed it, so per the fight-back rule it is recorded here
+         * and implemented — do not re-litigate it. The grant path now agrees with the READ gates, which
+         * have passed 'exclude' since 508d3acd (`isLeaveEligible`, the balance-card tail, the apply
+         * dropdown): a balance that was granted but invisible on the employee's own screens is now simply
+         * never granted. That coherence is what the reporter asked for.
+         *
+         * ⚠️ WHY THIS IS NOT THE 33-PERSON INCIDENT AGAIN. Read the header above `UnknownAttributePolicy`
+         * first. 'exclude' was catastrophic BEFORE d272834b because a list holding every picker option was
+         * read literally as a restriction. `eligibilityRuleList` now normalises such a list to the empty
+         * list, so `fails` takes its "no restriction on this field" exit and the `unknown` policy is NEVER
+         * consulted for it. A blank-gender employee therefore keeps every universal-list type and every
+         * no-rule type under EITHER policy. That is asserted, as the regression guard for the recorded
+         * incident, in test/73ddd5a1-blank-profile-grant-gate.ts — do not weaken the universal-list rule.
+         *
+         * MEASURED BLAST RADIUS (production, 2026-09-25, `select code, eligibility from leave_type where
+         * archived_at is null`). Only FOUR live types carry a rule that survives normalisation:
+         *   · MTL  gender ["female"]              + maritalStatus ["married"]     → blank gender OR marital
+         *   · PTL  gender ["male"]                + maritalStatus ["married"]     → blank gender OR marital
+         *   · MRL  maritalStatus ["single"]                                       → blank marital
+         *   · CGL  maritalStatus five of six ('other' omitted)                    → blank marital
+         * CPL / EXM / GD / STD store universal lists on BOTH fields; AL, EL, MC, HOSPITALIZATION,
+         * REPLACEMENT, SP, UPL and NDL have NO eligibility row at all. All twelve are unaffected.
+         * ⚠️ NDL (Natural Disaster Leave) has `eligibility IS NULL` on production, so it never reaches this
+         * predicate (`if (!elig) return true`). The approved plan said blank-marital would cost "Caregiver
+         * AND Natural Disaster Leave"; on today's data it costs CGL only. Corrected here, not repeated.
+         * So the one UNINTENDED cost of this flip is Caregiver Leave for the 48-of-76 active employments
+         * with no marital status recorded. MTL / PTL / MRL being gated is exactly what was asked for.
+         *
+         * ⚠️ FORWARD-LOOKING ONLY. "should only be applied once the information has been updated" is about
+         * what is GRANTED FROM NOW ON. No existing ledger row is reversed, adjusted or deleted by this
+         * change, and none may be: that is the reporter's own separate trigger ("we are not deleting them
+         * on a guess"). `scripts/reverse-ineligible-leave-grants.ts` still passes 'allow' deliberately —
+         * a sweep that TAKES DAYS AWAY must stay on the safe side of a blank field.
+         * ─────────────────────────────────────────────────────────────────────────────────────────────
          */
-        if (!isProfileEligible(t.eligibility as LeaveEligibility | null, e, 'allow')) {
+        if (!isProfileEligible(t.eligibility as LeaveEligibility | null, e, 'exclude')) {
           skipped += 1;
           rows.push(logRow(e.employmentId, t.id, 'not_eligible'));
           continue;
